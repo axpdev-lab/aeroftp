@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Geri yüklenecek bir şey yok",
             "rollbackRestoreFailed": "Geri yükleme başarısız: {error}",
             "intervalHoursOne": "{count} saat",
-            "intervalHoursMany": "{count} saat"
+            "intervalHoursMany": "{count} saat",
+            "resumeNeedsCompare": "Kesintiye uğrayan bu eşitleme güvenle sürdürülemez. Eşitlemeden önce yeni bir karşılaştırma yapın.",
+            "planStaleAfterBatch": "Bu plan hesaplandıktan sonra başka bir dosya işlemi tamamlandı. Eşitlemeden önce yeni bir karşılaştırma yapın."
         },
         "ui": {
             "syncing": "Senkronize ediliyor...",

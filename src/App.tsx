@@ -334,6 +334,7 @@ import { HostKeyDialog, HostKeyInfo } from './components/HostKeyDialog';
 import { KeystoreImportResultModal, KeystoreImportResult } from './components/KeystoreImportResultModal';
 import { APP_BACKGROUND_PATTERNS, APP_BACKGROUND_KEY, DEFAULT_APP_BACKGROUND } from './utils/appBackgroundPatterns';
 import { resolveProfileS3Location, getProviderById } from './providers/registry';
+import { s3ServerLabel } from './providers/s3HostMap';
 import { SharePermissionsDialog } from './components/SharePermissionsDialog';
 import { CommandPalette, CommandItem, CommandCategory } from './components/CommandPalette';
 import { ScanningToast, INITIAL_SCANNING_STATE } from './components/ScanningToast';
@@ -21867,18 +21868,7 @@ const App: React.FC = () => {
               if (protocol === 'azure') return 'Azure Blob';
               if (protocol === 'filen') return 'Filen';
               if (protocol === 'mega') return 'MEGA';
-              if (protocol === 's3') {
-                // Show bucket name or short hostname instead of full URL
-                const s3Server = liveConnectionParams.server || '';
-                try {
-                  const url = new URL(s3Server.startsWith('http') ? s3Server : `https://${s3Server}`);
-                  const host = url.hostname;
-                  // Shorten Cloudflare R2 and AWS S3 URLs
-                  if (host.includes('.r2.cloudflarestorage.com')) return `R2: ${host.split('.')[0].slice(0, 8)}...`;
-                  if (host.includes('.amazonaws.com')) return host.replace('.s3.amazonaws.com', '').replace('.s3.', ' (S3 ');
-                  return `S3: ${host.length > 30 ? host.slice(0, 27) + '...' : host}`;
-                } catch { return 'S3'; }
-              }
+              if (protocol === 's3') return s3ServerLabel(liveConnectionParams.server || '', liveConnectionParams.options?.endpoint);
               const server = liveConnectionParams.server;
               const username = liveConnectionParams.username;
               // For WebDAV-based protocols, extract hostname from full URL

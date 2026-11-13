@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "没有需要恢复的内容",
             "rollbackRestoreFailed": "恢复失败：{error}",
             "intervalHoursOne": "{count} 小时",
-            "intervalHoursMany": "{count} 小时"
+            "intervalHoursMany": "{count} 小时",
+            "resumeNeedsCompare": "无法安全地恢复此中断的同步。请在同步前重新比较。",
+            "planStaleAfterBatch": "计算此方案后，另一项文件操作已完成。请在同步前重新比较。"
         },
         "ui": {
             "syncing": "正在同步...",

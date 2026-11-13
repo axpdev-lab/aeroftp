@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Nimic de restaurat",
             "rollbackRestoreFailed": "Restaurarea a eșuat: {error}",
             "intervalHoursOne": "{count} oră",
-            "intervalHoursMany": "{count} h"
+            "intervalHoursMany": "{count} h",
+            "resumeNeedsCompare": "Această sincronizare întreruptă nu poate fi reluată în siguranță. Efectuați o nouă comparație înainte de sincronizare.",
+            "planStaleAfterBatch": "O altă operațiune cu fișiere s-a încheiat după calcularea acestui plan. Efectuați o nouă comparație înainte de sincronizare."
         },
         "ui": {
             "syncing": "Se sincronizează...",

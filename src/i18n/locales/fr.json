@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Rien à restaurer",
             "rollbackRestoreFailed": "Échec de la restauration : {error}",
             "intervalHoursOne": "{count} heure",
-            "intervalHoursMany": "{count} heures"
+            "intervalHoursMany": "{count} heures",
+            "resumeNeedsCompare": "Cette synchronisation interrompue ne peut pas être reprise en toute sécurité. Effectuez une nouvelle comparaison avant de synchroniser.",
+            "planStaleAfterBatch": "Une autre opération sur les fichiers s'est terminée après le calcul de ce plan. Effectuez une nouvelle comparaison avant de synchroniser."
         },
         "ui": {
             "syncing": "Synchronisation...",

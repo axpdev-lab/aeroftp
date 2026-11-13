@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "복원할 항목이 없습니다",
             "rollbackRestoreFailed": "복원 실패: {error}",
             "intervalHoursOne": "{count}시간",
-            "intervalHoursMany": "{count}시간"
+            "intervalHoursMany": "{count}시간",
+            "resumeNeedsCompare": "중단된 동기화를 안전하게 재개할 수 없습니다. 동기화하기 전에 다시 비교하세요.",
+            "planStaleAfterBatch": "이 계획을 계산한 후 다른 파일 작업이 완료되었습니다. 동기화하기 전에 다시 비교하세요."
         },
         "ui": {
             "syncing": "동기화 중...",

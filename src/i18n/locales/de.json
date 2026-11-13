@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Nichts wiederherzustellen",
             "rollbackRestoreFailed": "Wiederherstellung fehlgeschlagen: {error}",
             "intervalHoursOne": "{count} Stunde",
-            "intervalHoursMany": "{count} Stunden"
+            "intervalHoursMany": "{count} Stunden",
+            "resumeNeedsCompare": "Diese unterbrochene Synchronisierung kann nicht sicher fortgesetzt werden. Führen Sie vor der Synchronisierung einen neuen Vergleich durch.",
+            "planStaleAfterBatch": "Ein anderer Dateivorgang wurde abgeschlossen, nachdem dieser Plan berechnet wurde. Führen Sie vor der Synchronisierung einen neuen Vergleich durch."
         },
         "ui": {
             "syncing": "Synchronisiere...",

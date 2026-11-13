@@ -13,6 +13,7 @@
 
 import type { ProviderConfig, ProviderCategory, BaseProtocol, ProviderRegistry } from './types';
 import { getConnectionPreset } from './connectionManifest';
+import { s3ProviderForEndpoint } from './s3HostMap';
 
 // ============================================================================
 // Cloudflare R2 jurisdictions
@@ -2334,8 +2335,12 @@ export const resolveS3Endpoint = (providerId: string | undefined, region?: strin
  * template for the CLI, MCP and AeroCloud paths.
  */
 const isExplicitS3Host = (host?: string | null): boolean => {
-    const h = host?.trim().toLowerCase() ?? '';
-    return h !== '' && !h.includes('amazonaws.com');
+    const h = host?.trim() ?? '';
+    // On the shared table's domain boundary, as the Rust loader decides it
+    // (map_s3_provider_from_endpoint): a lookalike such as
+    // `s3.amazonaws.com.example` is an explicit endpoint, not AWS (#1506
+    // Requested 173).
+    return h !== '' && s3ProviderForEndpoint(h) !== 'amazon-s3';
 };
 
 /**

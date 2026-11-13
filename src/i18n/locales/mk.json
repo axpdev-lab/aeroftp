@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Нема ништо за враќање",
             "rollbackRestoreFailed": "Враќањето не успеа: {error}",
             "intervalHoursOne": "{count} час",
-            "intervalHoursMany": "{count} часа"
+            "intervalHoursMany": "{count} часа",
+            "resumeNeedsCompare": "Оваа прекината синхронизација не може безбедно да се продолжи. Направете нова споредба пред синхронизирањето.",
+            "planStaleAfterBatch": "Друга операција со датотеки заврши откако овој план беше пресметан. Направете нова споредба пред синхронизирањето."
         },
         "ui": {
             "syncing": "Синхронизирање...",

@@ -93,6 +93,62 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
     }
 }
 
+/// One row of `src/shared/s3-host-map.json`, the host table the frontend's
+/// `deriveProviderId` reads too.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct S3HostEntry {
+    provider_id: String,
+    domains: Vec<String>,
+    #[serde(default)]
+    host_patterns: Vec<String>,
+}
+
+#[derive(serde::Deserialize)]
+struct S3HostMap {
+    providers: Vec<S3HostEntry>,
+}
+
+/// The shared host table with its patterns compiled once.
+fn s3_host_map() -> &'static [(S3HostEntry, Vec<regex::Regex>)] {
+    static MAP: std::sync::LazyLock<Vec<(S3HostEntry, Vec<regex::Regex>)>> =
+        std::sync::LazyLock::new(|| {
+            let map: S3HostMap =
+                serde_json::from_str(include_str!("../../src/shared/s3-host-map.json"))
+                    .expect("valid S3 host map");
+            map.providers
+                .into_iter()
+                .map(|entry| {
+                    let patterns = entry
+                        .host_patterns
+                        .iter()
+                        .map(|p| regex::Regex::new(p).expect("valid S3 host pattern"))
+                        .collect();
+                    (entry, patterns)
+                })
+                .collect()
+        });
+    &MAP
+}
+
+/// The provider a bare, lowercase endpoint host belongs to in the shared
+/// table: the host equals one of its domains or ends with `.` + domain, or
+/// matches one of its host patterns. Never a substring, so a bucket named
+/// after another vendor stays with the host's vendor and a lookalike matches
+/// nothing (#1506 Requested 173).
+fn s3_provider_for_host(host: &str) -> Option<&'static str> {
+    s3_host_map().iter().find_map(|(entry, patterns)| {
+        let by_domain = entry.domains.iter().any(|domain| {
+            host == domain
+                || host
+                    .strip_suffix(domain.as_str())
+                    .is_some_and(|rest| rest.ends_with('.'))
+        });
+        (by_domain || patterns.iter().any(|p| p.is_match(host)))
+            .then_some(entry.provider_id.as_str())
+    })
+}
+
 /// Infer the S3 providerId from an endpoint URL or bare host. Used by every
 /// importer whose source records an endpoint rather than a provider token
 /// (aws, mc, s3cmd, kopia, duplicacy, restic).
@@ -105,81 +161,22 @@ pub(crate) fn map_s3_provider_from_endpoint(endpoint: &str) -> &'static str {
         .next()
         .unwrap_or(endpoint)
         .to_lowercase();
-    // Tigris first, on its domain boundary: a bucket-qualified Tigris host can
-    // carry another vendor's marker (`x.b2-y.t3.storage.dev`), which the
-    // substring rules below would take for that vendor. Current `t3.storage.dev`
-    // and the legacy `fly.storage.tigris.dev`, exact host or bucket subdomain.
-    {
-        let host = h.split(':').next().unwrap_or("");
-        for domain in ["t3.storage.dev", "fly.storage.tigris.dev"] {
-            if host == domain || host.ends_with(&format!(".{domain}")) {
-                return "tigris";
-            }
-        }
-    }
-    // Fastly Object Storage, on its domain boundary and ahead of the substring
-    // rules for the same reason: `x.minio-y.us-east.object.fastlystorage.app`
-    // is a Fastly bucket host, not MinIO. At least one label must precede the
-    // suffix, so `object.fastlystorage.app.example` and the bare apex do not match.
-    {
-        let host = h.split(':').next().unwrap_or("");
-        if host.len() > ".object.fastlystorage.app".len()
-            && host.ends_with(".object.fastlystorage.app")
-        {
-            return "fastly";
-        }
-    }
-    // Neon Object Storage endpoints are per-branch
-    // (`<branch>.storage.c-<n>.<region>.aws.neon.tech`); the domain boundary
-    // keeps a lookalike host from claiming the preset.
-    {
-        let host = h.split(':').next().unwrap_or("");
-        if host == "aws.neon.tech" || host.ends_with(".aws.neon.tech") {
-            return "neon-s3";
-        }
-    }
-    if h.is_empty() || h.contains("amazonaws.com") {
+    // No endpoint is the AWS default in every source that records one.
+    if h.is_empty() {
         return "amazon-s3";
     }
-    if h.contains("r2.cloudflarestorage.com") {
-        return "cloudflare-r2";
+    let host = h.split(':').next().unwrap_or("");
+    if let Some(provider_id) = s3_provider_for_host(host) {
+        return provider_id;
     }
-    if h.contains("digitaloceanspaces.com") {
-        return "digitalocean-spaces";
-    }
-    if h.contains("wasabisys.com") {
-        return "wasabi";
-    }
-    if h.contains("backblazeb2.com") || h.contains(".b2-") {
-        return "backblaze";
-    }
-    if h.contains("linodeobjects.com") {
-        return "linode-object-storage";
-    }
-    if h.contains("scw.cloud") {
-        return "scaleway";
-    }
-    if h.contains("cloud-object-storage.appdomain.cloud") {
-        return "ibm-cos";
-    }
-    if h.contains("storjshare.io") || h.contains("gateway.storj") {
-        return "storj";
-    }
-    if h.contains("idrivee2") {
-        return "idrive-e2";
-    }
-    {
-        // Domain-boundary match: accept exactly `s3.filebase.io` (optional port)
-        // and virtual-hosted bucket subdomains; reject lookalike hosts.
-        let host = h.split(':').next().unwrap_or("");
-        if host == "s3.filebase.io" || host.ends_with(".s3.filebase.io") {
-            return "filebase";
-        }
-    }
-    if h.contains("ionos") {
-        return "ionos-s3";
-    }
-    if h.contains("min.io") || h.contains("minio") {
+    // MinIO, last: a MinIO server has no fixed domain, so outside MinIO's own
+    // `min.io` the only signal is a host label named `minio` (`minio`,
+    // `minio2`, `s3-minio`). A whole label, not a substring: `dominion.example`
+    // is not MinIO.
+    let minio_label = host
+        .split(['.', '-', '_'])
+        .any(|label| label.trim_end_matches(|c: char| c.is_ascii_digit()) == "minio");
+    if host == "min.io" || host.ends_with(".min.io") || minio_label {
         return "minio";
     }
     "custom-s3"
@@ -1356,6 +1353,9 @@ mod tests {
             "https://minio-mirror.us-east.object.fastlystorage.app",
             "https://idrivee2-copy.eu-west-1.object.fastlystorage.app",
             "https://backblazeb2.us-west.object.fastlystorage.app",
+            // Fastly's own apex is under Fastly's domain, as in the shared
+            // table; it names no region, so the import keeps the preset's.
+            "https://object.fastlystorage.app",
         ] {
             assert_eq!(
                 map_s3_provider_from_endpoint(endpoint),
@@ -1367,7 +1367,6 @@ mod tests {
         for endpoint in [
             "https://eu-central-1.object.fastlystorage.app.example",
             "https://eu-central-1.object.fastlystorage.app.evil.com/bucket",
-            "https://object.fastlystorage.app",
             "https://notobject.fastlystorage.app",
             "https://eu-central-1.myobject.fastlystorage.app",
             "https://fastlystorage.app",
@@ -1384,6 +1383,96 @@ mod tests {
             map_s3_provider_from_endpoint("https://s3.us-east-1.amazonaws.com"),
             "amazon-s3"
         );
+    }
+
+    /// The host cases of `src/shared/s3-host-map.json`, which the frontend's
+    /// `s3HostMap.test.ts` runs too: both sides read one table and agree on
+    /// every listed host (#1506 Requested 173).
+    #[test]
+    fn s3_host_map_cases_match_the_frontend_table() {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Case {
+            host: String,
+            provider_id: Option<String>,
+        }
+        #[derive(serde::Deserialize)]
+        struct Cases {
+            cases: Vec<Case>,
+        }
+        let cases: Cases =
+            serde_json::from_str(include_str!("../../src/shared/s3-host-map.json")).unwrap();
+        assert!(!cases.cases.is_empty());
+        for case in cases.cases {
+            assert_eq!(
+                s3_provider_for_host(&case.host),
+                case.provider_id.as_deref(),
+                "{}",
+                case.host
+            );
+            // The mapper agrees on a full endpoint URL; a host the table does
+            // not know falls to its non-host fallbacks, never to a table id.
+            let mapped =
+                map_s3_provider_from_endpoint(&format!("https://{}:443/bucket", case.host));
+            match case.provider_id.as_deref() {
+                Some(id) => assert_eq!(mapped, id, "{}", case.host),
+                None => assert!(
+                    matches!(mapped, "custom-s3" | "minio"),
+                    "{}: {mapped}",
+                    case.host
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn s3_provider_from_endpoint_takes_the_host_vendor_not_the_bucket_name() {
+        for (endpoint, expected) in [
+            // A bucket named after another vendor stays with the host's vendor.
+            ("https://idrivee2-copy.s3.filebase.io", "filebase"),
+            (
+                "https://backblaze-backup.s3.us-east-1.amazonaws.com",
+                "amazon-s3",
+            ),
+            (
+                "https://wasabi-archive.abc123.r2.cloudflarestorage.com",
+                "cloudflare-r2",
+            ),
+            ("https://x.b2-y.s3.eu-central-1.wasabisys.com", "wasabi"),
+            (
+                "https://minio-backup.s3.us-east-1.amazonaws.com",
+                "amazon-s3",
+            ),
+            ("https://ionos-archive.minio.lab.example:9000", "minio"),
+            (
+                "https://storj-mirror.nyc3.digitaloceanspaces.com",
+                "digitalocean-spaces",
+            ),
+            (
+                "https://scw.cloud-copy.s3.eu-central-1.wasabisys.com",
+                "wasabi",
+            ),
+            // Lookalikes match no vendor.
+            ("https://evilwasabisys.com", "custom-s3"),
+            ("https://wasabisys.com.example", "custom-s3"),
+            ("https://s3.amazonaws.com.evil.example/bucket", "custom-s3"),
+            ("https://myidrivee2-2.com.evil", "custom-s3"),
+            ("https://s3.ionos.example", "custom-s3"),
+            // MinIO has no fixed domain: its own `min.io`, or a host label
+            // named `minio`, and never a substring of another word.
+            ("https://play.min.io", "minio"),
+            ("http://minio:9000", "minio"),
+            ("http://minio2.lab.local:9000", "minio"),
+            ("https://s3-minio.example.com", "minio"),
+            ("https://dominion.example.com", "custom-s3"),
+            ("https://notmin.io", "custom-s3"),
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                expected,
+                "{endpoint}"
+            );
+        }
     }
 
     #[test]

@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "Není co obnovit",
             "rollbackRestoreFailed": "Obnovení selhalo: {error}",
             "intervalHoursOne": "{count} hodina",
-            "intervalHoursMany": "{count} h"
+            "intervalHoursMany": "{count} h",
+            "resumeNeedsCompare": "Tuto přerušenou synchronizaci nelze bezpečně obnovit. Před synchronizací proveďte nové porovnání.",
+            "planStaleAfterBatch": "Po výpočtu tohoto plánu skončila další souborová operace. Před synchronizací proveďte nové porovnání."
         },
         "ui": {
             "syncing": "Synchronizace...",

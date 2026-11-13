@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "No hi ha res a restaurar",
             "rollbackRestoreFailed": "Ha fallat la restauració: {error}",
             "intervalHoursOne": "{count} hora",
-            "intervalHoursMany": "{count} hores"
+            "intervalHoursMany": "{count} hores",
+            "resumeNeedsCompare": "No es pot reprendre aquesta sincronització interrompuda de manera segura. Feu una comparació nova abans de sincronitzar.",
+            "planStaleAfterBatch": "Una altra operació de fitxers ha acabat després de calcular aquest pla. Feu una comparació nova abans de sincronitzar."
         },
         "ui": {
             "syncing": "Sincronitzant...",

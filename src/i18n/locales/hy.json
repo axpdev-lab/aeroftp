@@ -2699,7 +2699,9 @@
             "rollbackRestoreNothing": "Վերականգնելու ոչինչ չկա",
             "rollbackRestoreFailed": "Վերականգնումը ձախողվեց: {error}",
             "intervalHoursOne": "{count} ժամ",
-            "intervalHoursMany": "{count} ժամ"
+            "intervalHoursMany": "{count} ժամ",
+            "resumeNeedsCompare": "Այս ընդհատված համաժամացումը հնարավոր չէ անվտանգ շարունակել։ Համաժամացնելուց առաջ կատարեք նոր համեմատություն։",
+            "planStaleAfterBatch": "Այս պլանի հաշվարկից հետո ավարտվեց ֆայլերի մեկ այլ գործողություն։ Համաժամացնելուց առաջ կատարեք նոր համեմատություն։"
         },
         "ui": {
             "syncing": "Սինքրոնացում...",

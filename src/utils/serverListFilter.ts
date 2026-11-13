@@ -8,29 +8,7 @@
 
 import { ServerProfile, ProviderType, getE2EBits, getProtocolClass, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../types';
 import { getProviderById } from '../providers';
-import s3HostMap from '../shared/s3-host-map.json';
-
-interface S3HostEntry {
-    providerId: string;
-    preset: boolean;
-    domains: string[];
-    hostPatterns?: string[];
-}
-
-const S3_HOST_ENTRIES: readonly (S3HostEntry & { patterns: RegExp[] })[] = (s3HostMap.providers as S3HostEntry[])
-    .filter(entry => entry.preset)
-    .map(entry => ({ ...entry, patterns: (entry.hostPatterns ?? []).map(p => new RegExp(p)) }));
-
-/** The S3 preset a bare endpoint host belongs to, on a domain boundary, or
- *  undefined. Exported for the table's own test. */
-export function s3ProviderForHost(host: string): string | undefined {
-    const h = host.toLowerCase();
-    for (const entry of S3_HOST_ENTRIES) {
-        if (entry.domains.some(domain => h === domain || h.endsWith('.' + domain))) return entry.providerId;
-        if (entry.patterns.some(pattern => pattern.test(h))) return entry.providerId;
-    }
-    return undefined;
-}
+import { s3ProviderForEndpoint } from '../providers/s3HostMap';
 
 /** The fields the search reads. Saved profiles satisfy it, and so do the
  *  previews a bridge import builds from a third-party config, which carry
@@ -52,8 +30,7 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         // a bucket named after another vendor for that vendor:
         // `backblaze-backup.s3.amazonaws.com` read as Backblaze (#1506
         // Requested 173).
-        const s3Host = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
-        const match = s3ProviderForHost(s3Host);
+        const match = s3ProviderForEndpoint(host);
         if (match) return match;
     }
     if (proto === 'webdav') {

@@ -2706,7 +2706,9 @@
             "rollbackRestoreNothing": "পুনরুদ্ধার করার কিছু নেই",
             "rollbackRestoreFailed": "পুনরুদ্ধার ব্যর্থ: {error}",
             "intervalHoursOne": "{count} ঘণ্টা",
-            "intervalHoursMany": "{count} ঘণ্টা"
+            "intervalHoursMany": "{count} ঘণ্টা",
+            "resumeNeedsCompare": "এই বাধাপ্রাপ্ত সিঙ্ক নিরাপদে পুনরায় চালু করা যায় না। সিঙ্ক করার আগে নতুন করে তুলনা করুন।",
+            "planStaleAfterBatch": "এই পরিকল্পনা গণনার পর আরেকটি ফাইল অপারেশন শেষ হয়েছে। সিঙ্ক করার আগে নতুন করে তুলনা করুন।"
         },
         "ui": {
             "syncing": "সিঙ্ক হচ্ছে...",
