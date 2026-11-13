@@ -91,6 +91,35 @@ it.each([
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('a running repair keeps its dialog: backdrop inert, X and Close ask, Wait keeps it', async () => {
+    const onClose = vi.fn();
+    const state = vaultState({ showRepairDialog: true, isRepairing: true });
+    await render(<><Parent onClose={onClose} suspended />{createElement(VaultBrowse, { state })}</>);
+    const backdrop = host.querySelector<HTMLElement>('div.fixed.inset-0')!;
+    const alertOpen = () => host.querySelector('[role=alertdialog]') !== null;
+    // The backdrop is inert while the repair runs.
+    await act(async () => { backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })); });
+    expect(state.setShowRepairDialog).not.toHaveBeenCalled();
+    expect(alertOpen()).toBe(false);
+    // Both the X and the footer Close route through the busy confirm.
+    const x = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('✕'))!;
+    await act(async () => { x.click(); });
+    expect(alertOpen()).toBe(true);
+    expect(state.setShowRepairDialog).not.toHaveBeenCalled();
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[role=alertdialog] button')].find(b => /keep running/i.test(b.textContent ?? ''))!.click(); });
+    expect(alertOpen()).toBe(false);
+    const footerClose = [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'Close')!;
+    await act(async () => { footerClose.click(); });
+    expect(alertOpen()).toBe(true);
+    expect(state.setShowRepairDialog).not.toHaveBeenCalled();
+    // Wait keeps the dialog; no second repair was ever started.
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('[role=alertdialog] button')].find(b => /keep running/i.test(b.textContent ?? ''))!.click(); });
+    expect(alertOpen()).toBe(false);
+    expect(state.setShowRepairDialog).not.toHaveBeenCalled();
+    expect(state.handleRepair).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+});
+
 it('ESC closes the vault receipt sub-dialog and leaves the panel open', async () => {
     const onClose = vi.fn();
     const onReceiptClose = vi.fn();
