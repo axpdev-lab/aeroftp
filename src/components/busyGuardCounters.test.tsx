@@ -164,10 +164,6 @@ it('VersionBrowser: the guard stays busy until every restore finishes', async ()
     const onClose = vi.fn();
     await render(createElement(VersionBrowser, { filePath: '/f.txt', onClose }));
     await flush();
-    const restores = [...host.querySelectorAll<HTMLButtonElement>('button[title]')].filter(b => b.title && b.title !== '');
-    // One restore button per version row.
-    const restoreButtons = [...host.querySelectorAll('button')].filter(b => b.closest('tr, [class*=row], li, div'));
-    // Fallback: click every button whose title mentions restore (translated or key).
     const candidates = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => /restore/i.test(b.title) || /restore/i.test(b.textContent ?? ''));
     expect(candidates.length).toBeGreaterThanOrEqual(2);
     await click(candidates[0]);
@@ -180,6 +176,72 @@ it('VersionBrowser: the guard stays busy until every restore finishes', async ()
     await act(async () => { pending.get('/a2')!.resolve({}); });
     await flush();
     await click(closeButton()!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('VersionBrowser: a restore and a cleanup overlapping keep the guard busy until both settle', async () => {
+    const pending = new Map<string, ReturnType<typeof deferred>>();
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        if (cmd === 'list_file_versions') return [
+            { archive_path: '/a1', original_relative: '/f.txt', archived_at: '', size: 1 },
+        ];
+        if (cmd === 'versions_disk_usage') return 0;
+        const d = deferred<unknown>(); pending.set(cmd === 'cleanup_versions' ? 'cleanup' : (args as { archivePath?: string }).archivePath ?? cmd, d);
+        return d.promise;
+    });
+    const onClose = vi.fn();
+    await render(createElement(VersionBrowser, { filePath: '/f.txt', onClose }));
+    await flush();
+    const restore = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => /restore/i.test(b.title) || /restore/i.test(b.textContent ?? ''))!;
+    const cleanup = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => /clean up/i.test(b.textContent ?? ''))!;
+    const backdrop = () => host.querySelector<HTMLElement>('div.absolute.inset-0')!;
+    await click(restore);
+    await click(cleanup);
+    // Restore settles while the cleanup still runs: neither the backdrop nor
+    // a plain close may dismiss the browser, and the X asks instead.
+    await act(async () => { pending.get('/a1')!.resolve({}); });
+    await flush();
+    await click(backdrop());
+    expect(onClose).not.toHaveBeenCalled();
+    await click(closeButton()!);
+    expect(alertOpen()).toBe(true);
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => /keep/i.test(b.textContent ?? ''))!.click(); });
+    await act(async () => { pending.get('cleanup')!.resolve({ deleted_count: 0, freed_bytes: 0 }); });
+    await flush();
+    await click(backdrop());
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('VersionBrowser: a rejected restore does not leave the guard stuck busy', async () => {
+    const pending = new Map<string, ReturnType<typeof deferred>>();
+    vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+        if (cmd === 'list_file_versions') return [
+            { archive_path: '/a1', original_relative: '/f.txt', archived_at: '', size: 1 },
+            { archive_path: '/a2', original_relative: '/f.txt', archived_at: '', size: 1 },
+        ];
+        if (cmd === 'versions_disk_usage') return 0;
+        const d = deferred<unknown>(); pending.set((args as { archivePath?: string }).archivePath ?? cmd, d);
+        return d.promise;
+    });
+    const onClose = vi.fn();
+    await render(createElement(VersionBrowser, { filePath: '/f.txt', onClose }));
+    await flush();
+    const restores = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => /restore/i.test(b.title) || /restore/i.test(b.textContent ?? ''));
+    expect(restores.length).toBe(2);
+    const backdrop = () => host.querySelector<HTMLElement>('div.absolute.inset-0')!;
+    await click(restores[0]);
+    await click(restores[1]);
+    // The first restore fails while the second still runs: the guard must
+    // stay busy for the survivor.
+    await act(async () => { pending.get('/a1')!.reject(new Error('restore failed')); });
+    await flush();
+    await click(backdrop());
+    expect(onClose).not.toHaveBeenCalled();
+    // Once the second settles the close is free again.
+    await act(async () => { pending.get('/a2')!.resolve({}); });
+    await flush();
+    await click(backdrop());
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
