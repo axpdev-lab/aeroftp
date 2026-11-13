@@ -103,6 +103,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const [selectedNote, setSelectedNote] = useState<FilenNote | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
+  // The title as last persisted: the auto-save only writes content, so a
+  // title edit must keep the close guard up on its own (Discussion #1527).
+  const [savedTitle, setSavedTitle] = useState('');
   const [noteType, setNoteType] = useState<NoteTypeOption>('text');
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -110,7 +113,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // An edited note not yet saved is lost on close, and a save in flight goes
   // on after it: the backdrop is inert then, and the X and ESC ask first
   // (Discussion #1527).
-  const guarded = useGuardedClose({ guard: saving ? 'busy' : dirty ? 'dirty' : null, onClose });
+  const titleUnsaved = selectedNote !== null && noteTitle !== savedTitle;
+  const guarded = useGuardedClose({ guard: saving ? 'busy' : dirty || titleUnsaved ? 'dirty' : null, onClose });
 
   // State: history view
   const [history, setHistory] = useState<FilenNoteHistoryEntry[] | null>(null);
@@ -175,6 +179,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const openNote = useCallback(async (note: FilenNote) => {
     setSelectedNote(note);
     setNoteTitle(note.title);
+    setSavedTitle(note.title);
     setNoteType(note.noteType);
     setLoadingContent(true);
     setDirty(false);
@@ -204,11 +209,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           content: noteContent,
           noteType: noteType,
         });
-        if (noteTitle !== selectedNote.title) {
+        if (noteTitle !== savedTitle) {
           await invoke('filen_notes_edit_title', {
             uuid: selectedNote.uuid,
             title: noteTitle,
           });
+          setSavedTitle(noteTitle);
         }
       } catch (err) {
         setError(String(err));
@@ -220,7 +226,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     setNoteContent('');
     setDirty(false);
     loadNotes();
-  }, [dirty, selectedNote, noteContent, noteTitle, noteType, loadNotes]);
+  }, [dirty, selectedNote, noteContent, noteTitle, savedTitle, noteType, loadNotes]);
 
   // ── Keyboard ──
 
@@ -285,11 +291,12 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         content: noteContent,
         noteType: noteType,
       });
-      if (noteTitle !== selectedNote.title) {
+      if (noteTitle !== savedTitle) {
         await invoke('filen_notes_edit_title', {
           uuid: selectedNote.uuid,
           title: noteTitle,
         });
+        setSavedTitle(noteTitle);
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_saved', { provider: 'Filen', title: noteTitle }) });
       setDirty(false);
@@ -299,7 +306,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     } finally {
       setSaving(false);
     }
-  }, [selectedNote, saving, noteContent, noteTitle, noteType, humanLog, t]);
+  }, [selectedNote, saving, noteContent, noteTitle, savedTitle, noteType, humanLog, t]);
 
   const createNote = useCallback(async () => {
     if (!newTitle.trim()) return;
@@ -659,7 +666,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
               <Loader2 size={11} className="animate-spin" />
               {t('filenNotes.saving')}
             </span>
-          ) : dirty ? (
+          ) : dirty || titleUnsaved ? (
             <span className="flex items-center gap-1 text-[10px] text-amber-400">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               {t('filenNotes.unsaved')}
@@ -672,7 +679,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           ) : null}
           <button
             onClick={saveNow}
-            disabled={!dirty || saving}
+            disabled={!(dirty || titleUnsaved) || saving}
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 disabled:opacity-30 disabled:cursor-default"
             title={t('filenNotes.saveNow')}
           >

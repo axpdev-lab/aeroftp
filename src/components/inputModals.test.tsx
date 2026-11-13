@@ -749,6 +749,40 @@ describe('FilenNotesPanel (Discussion #1527)', () => {
         await expectDirtyConfirmThenDiscard(onClose);
     });
 
+    it('keeps the close guard up for a title edit after the content auto-save completes', async () => {
+        const onClose = vi.fn();
+        await openNote(onClose);
+        vi.useFakeTimers();
+        try {
+            await typeInto(input('textarea'), 'sentinel body edited');
+            await typeInto(titleInput(), 'sentinel-note-retitled');
+            mocks.handlers.filen_notes_edit_content = async () => null;
+            await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+            expect(mocks.invoke).toHaveBeenCalledWith('filen_notes_edit_content', expect.objectContaining({ uuid: 'note-sentinel' }));
+            expect(mocks.invoke).not.toHaveBeenCalledWith('filen_notes_edit_title', expect.anything());
+            await clickX();
+            expect(confirmOpen()).toBe(true);
+            expect(onClose).not.toHaveBeenCalled();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('answers Escape on the close confirm with keep editing: no save, editor and edits stay', async () => {
+        const onClose = vi.fn();
+        await openNote(onClose);
+        mocks.handlers.filen_notes_edit_content = async () => { throw new Error('sentinel save failure'); };
+        await typeInto(titleInput(), 'sentinel-note-edited');
+        await clickX();
+        expect(confirmOpen()).toBe(true);
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(input('input[placeholder="filenNotes.untitled"]').value).toBe('sentinel-note-edited');
+        expect(mocks.invoke).not.toHaveBeenCalledWith('filen_notes_edit_content', expect.anything());
+        expect(mocks.invoke).not.toHaveBeenCalledWith('filen_notes_edit_title', expect.anything());
+    });
+
     it('keeps a save in flight from the backdrop, and the X offers to close anyway', async () => {
         const onClose = vi.fn();
         const save = deferred<unknown>();
