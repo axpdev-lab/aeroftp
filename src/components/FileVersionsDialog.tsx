@@ -33,8 +33,11 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
+  // Operations on different versions can overlap: the guard counts every
+  // pending request, so the first one to finish cannot drop it (review).
+  const [pendingOps, setPendingOps] = useState(0);
   // A download, restore or purge already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
-  const guarded = useGuardedClose({ guard: actionInProgress !== null ? 'busy' : null, onClose });
+  const guarded = useGuardedClose({ guard: pendingOps > 0 ? 'busy' : null, onClose });
 
   useEffect(() => {
     loadVersions();
@@ -60,6 +63,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     if (!savePath) return;
 
     setActionInProgress(version.id);
+    setPendingOps(c => c + 1);
     try {
       await invoke('provider_download_version', {
         path: filePath,
@@ -69,12 +73,14 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Download version failed:', err);
     } finally {
+      setPendingOps(c => c - 1);
       setActionInProgress(null);
     }
   };
 
   const handleRestore = async (version: FileVersion) => {
     setActionInProgress(version.id);
+    setPendingOps(c => c + 1);
     try {
       await invoke('provider_restore_version', {
         path: filePath,
@@ -84,6 +90,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Restore version failed:', err);
     } finally {
+      setPendingOps(c => c - 1);
       setActionInProgress(null);
     }
   };
@@ -91,6 +98,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const handlePurge = async (version: FileVersion) => {
     setPendingPurge(null);
     setActionInProgress(version.id);
+    setPendingOps(c => c + 1);
     try {
       await invoke('provider_delete_version', {
         path: filePath,
@@ -101,6 +109,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
       console.error('Purge version failed:', err);
       setError(String(err));
     } finally {
+      setPendingOps(c => c - 1);
       setActionInProgress(null);
     }
   };

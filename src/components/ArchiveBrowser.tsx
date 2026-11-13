@@ -149,6 +149,9 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const [showPassword, setShowPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(isEncrypted);
     const [extracting, setExtracting] = useState<string | null>(null);
+    // Extracts and previews can overlap: the guard counts every pending
+    // request so the first finisher cannot drop it while another runs.
+    const [pendingOps, setPendingOps] = useState(0);
     // Real byte-true extract progress (>=10MB only); RAR reports indeterminate.
     const progress = useArchiveProgress(extracting !== null);
     // Lock the modal during an extraction so a stray click / reflexive X can't abandon
@@ -157,7 +160,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     // asks before it is dropped, and an archive opened with one is kept from the
     // backdrop, so a stray click never forces retyping it (Discussion #1527).
     const guarded = useGuardedClose({
-        guard: extracting !== null ? 'busy' : needsPassword && password !== '' ? 'dirty' : null,
+        guard: pendingOps > 0 ? 'busy' : needsPassword && password !== '' ? 'dirty' : null,
         onClose,
         backdrop: !needsPassword && password !== '' ? 'never' : 'idle',
     });
@@ -244,6 +247,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         if (!savePath) return;
 
         setExtracting(entryName);
+        setPendingOps(c => c + 1);
         try {
             const cmd = EXTRACT_ENTRY_COMMAND[archiveType];
             const args: Record<string, unknown> = {
@@ -256,6 +260,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         } catch (e) {
             setError(String(e));
         } finally {
+            setPendingOps(c => c - 1);
             setExtracting(null);
         }
     };
@@ -263,6 +268,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const handlePreview = async (entryName: string) => {
         // Extract to temp and open with system preview
         setExtracting(entryName);
+        setPendingOps(c => c + 1);
         try {
             const tempDirPath = await tempDir();
             const fileName = entryName.split(/[\\/]/).pop() || 'preview';
@@ -282,6 +288,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         } catch (e) {
             setError(String(e));
         } finally {
+            setPendingOps(c => c - 1);
             setExtracting(null);
         }
     };

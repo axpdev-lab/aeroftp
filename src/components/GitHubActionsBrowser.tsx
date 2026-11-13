@@ -92,8 +92,11 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionInProgress, setActionInProgress] = useState<number | null>(null);
+  // Actions on different runs can overlap: the guard counts every pending
+  // request, so the first one to finish cannot drop it while another runs.
+  const [pendingActions, setPendingActions] = useState(0);
   // A cancel or re-run already sent to GitHub goes on after a close: the backdrop is inert while it runs (Discussion #1527).
-  const guarded = useGuardedClose({ guard: actionInProgress !== null ? 'busy' : null, onClose });
+  const guarded = useGuardedClose({ guard: pendingActions > 0 ? 'busy' : null, onClose });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchRuns = useCallback(async () => {
@@ -145,6 +148,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
 
   const runAction = async (command: string, runId: number) => {
     setActionInProgress(runId);
+    setPendingActions(c => c + 1);
     const actionLabel = command === 'github_cancel_workflow' ? t('github.cancelWorkflow') :
       command === 'github_rerun_failed_jobs' ? t('github.rerunFailedJobs') : t('github.rerunWorkflow');
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'GitHub' }, 'running');
@@ -156,6 +160,7 @@ export const GitHubActionsBrowser: React.FC<GitHubActionsBrowserProps> = ({
       humanLog.updateEntry(logId, { status: 'error', message: t('activity.github_run_action_error', { provider: 'GitHub', action: actionLabel }) });
       setError(String(err));
     } finally {
+      setPendingActions(c => c - 1);
       setActionInProgress(null);
     }
   };

@@ -45,6 +45,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const [role, setRole] = useState<BoxRole>('viewer');
   const [adding, setAdding] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
+  // Removes on different collaborators can overlap: count every pending
+  // request so the first finisher cannot drop the busy guard (review).
+  const [pendingRemoves, setPendingRemoves] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -52,7 +55,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const emailRef = useRef<HTMLInputElement>(null);
   // An invite or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
   // inert in both cases and the X asks first (Discussion #1527).
-  const guarded = useGuardedClose({ guard: adding || removingId !== null ? 'busy' : email.trim() ? 'dirty' : null, onClose });
+  const guarded = useGuardedClose({ guard: adding || pendingRemoves > 0 ? 'busy' : email.trim() ? 'dirty' : null, onClose });
 
   const roleLabel = (r: string) => (r in ROLE_KEY ? t(ROLE_KEY[r as BoxRole]) : r);
 
@@ -99,6 +102,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
   const handleRemove = async (id: string) => {
     setRemovingId(id);
+    setPendingRemoves(c => c + 1);
     setError(null);
     setNotice(null);
     try {
@@ -108,6 +112,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
     } catch (err) {
       setError(String(err));
     } finally {
+      setPendingRemoves(c => c - 1);
       setRemovingId(null);
     }
   };

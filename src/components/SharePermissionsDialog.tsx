@@ -37,9 +37,12 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   const [newRole, setNewRole] = useState('reader');
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
+  // Removes on different permissions can overlap: count every pending
+  // request so the first finisher cannot drop the busy guard (review).
+  const [pendingRemoves, setPendingRemoves] = useState(0);
   // A share or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
   // inert in both cases and the X asks first (Discussion #1527).
-  const guarded = useGuardedClose({ guard: adding || removing !== null ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
+  const guarded = useGuardedClose({ guard: adding || pendingRemoves > 0 ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -85,12 +88,14 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
 
   const handleRemove = async (target: string) => {
     setRemoving(target);
+    setPendingRemoves(c => c + 1);
     try {
       await invoke('provider_remove_permission', { path: filePath, target });
       await loadPermissions();
     } catch (err) {
       setError(String(err));
     } finally {
+      setPendingRemoves(c => c - 1);
       setRemoving(null);
     }
   };

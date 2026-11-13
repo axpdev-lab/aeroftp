@@ -40,10 +40,11 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClos
     const [loading, setLoading] = useState(false);
     const [diskUsage, setDiskUsage] = useState<number>(0);
     const [cleanupResult, setCleanupResult] = useState<CleanupStats | null>(null);
-    const [cleaning, setCleaning] = useState(false);
-    const [restoring, setRestoring] = useState(false);
+    // Restores and cleanups can overlap: the guard counts every pending
+    // request, so the first one to finish cannot drop it while another runs.
+    const [pendingOps, setPendingOps] = useState(0);
     // A cleanup or restore already sent goes on after a close: in modal mode the backdrop is inert while it runs (Discussion #1527).
-    const guarded = useGuardedClose({ guard: cleaning || restoring ? 'busy' : null, onClose: onClose ?? (() => {}) });
+    const guarded = useGuardedClose({ guard: pendingOps > 0 ? 'busy' : null, onClose: onClose ?? (() => {}) });
 
     const loadVersions = useCallback(async () => {
         setLoading(true);
@@ -80,7 +81,7 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClos
     }, [loadVersions, loadDiskUsage]);
 
     const handleRestore = async (version: VersionEntry) => {
-        setRestoring(true);
+        setPendingOps(c => c + 1);
         try {
             await invoke('restore_file_version', {
                 archivePath: version.archive_path,
@@ -90,12 +91,12 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClos
         } catch (e) {
             console.error('Failed to restore version:', e);
         } finally {
-            setRestoring(false);
+            setPendingOps(c => c - 1);
         }
     };
 
     const handleCleanup = async () => {
-        setCleaning(true);
+        setPendingOps(c => c + 1);
         try {
             const stats = await invoke<CleanupStats>('cleanup_versions');
             setCleanupResult(stats);
@@ -104,7 +105,7 @@ export const VersionBrowser: React.FC<VersionBrowserProps> = ({ filePath, onClos
         } catch (e) {
             console.error('Failed to cleanup versions:', e);
         } finally {
-            setCleaning(false);
+            setPendingOps(c => c - 1);
         }
     };
 

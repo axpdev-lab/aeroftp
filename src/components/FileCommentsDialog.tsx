@@ -38,6 +38,9 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  // Deletes on different comments can overlap: the guard counts every
+  // pending request, so the first one to finish cannot drop it (review).
+  const [pendingDeletes, setPendingDeletes] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -62,7 +65,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   // goes on after it: the backdrop is inert then, and the X, Close and ESC
   // ask first (Discussion #1527).
   const guarded = useGuardedClose({
-    guard: sending || deletingId !== null ? 'busy' : message.trim() ? 'dirty' : null,
+    guard: sending || pendingDeletes > 0 ? 'busy' : message.trim() ? 'dirty' : null,
     onClose,
   });
 
@@ -95,6 +98,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
 
   const handleDelete = async (id: string) => {
     setDeletingId(id);
+    setPendingDeletes(c => c + 1);
     setError(null);
     setNotice(null);
     try {
@@ -104,6 +108,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
     } catch (err) {
       setError(String(err));
     } finally {
+      setPendingDeletes(c => c - 1);
       setDeletingId(null);
     }
   };
