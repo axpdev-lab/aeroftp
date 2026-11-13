@@ -803,6 +803,39 @@ describe('FilenNotesPanel (Discussion #1527)', () => {
         }
     });
 
+    it('saves a title edit on the way back to the list after the content auto-save completes', async () => {
+        // Back to the list saved only while `dirty`, which the content
+        // auto-save clears: a title typed before it was dropped unasked.
+        const onClose = vi.fn();
+        await openNote(onClose);
+        vi.useFakeTimers();
+        try {
+            await typeInto(input('textarea'), 'sentinel body edited');
+            await typeInto(titleInput(), 'sentinel-note-retitled');
+            mocks.handlers.filen_notes_edit_content = async () => null;
+            mocks.handlers.filen_notes_edit_title = async () => null;
+            await act(async () => { await vi.advanceTimersByTimeAsync(2100); });
+        } finally {
+            vi.useRealTimers();
+        }
+        // ESC in the editor goes back to the list, saving first.
+        await escape();
+        await flush();
+        expect(mocks.invoke).toHaveBeenCalledWith('filen_notes_edit_title', { uuid: 'note-sentinel', title: 'sentinel-note-retitled' });
+    });
+
+    it('stays in the editor with the edits when the save on the way back fails', async () => {
+        const onClose = vi.fn();
+        await openNote(onClose);
+        mocks.handlers.filen_notes_edit_content = async () => { throw new Error('sentinel save failure'); };
+        await typeInto(titleInput(), 'sentinel-note-edited');
+        await escape();
+        await flush();
+        expect(mocks.invoke).toHaveBeenCalledWith('filen_notes_edit_content', expect.objectContaining({ uuid: 'note-sentinel' }));
+        expect(input('input[placeholder="filenNotes.untitled"]').value).toBe('sentinel-note-edited');
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('answers Escape on the close confirm with keep editing: no save, editor and edits stay', async () => {
         const onClose = vi.fn();
         await openNote(onClose);

@@ -201,14 +201,19 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
-    if (dirty && selectedNote) {
+    // A title edit outlives the content auto-save, which clears `dirty`, so
+    // it is saved on its own; and a failed save keeps the editor and its
+    // edits on screen instead of leaving them behind (Discussion #1527).
+    if (selectedNote && (dirty || noteTitle !== savedTitle)) {
       setSaving(true);
       try {
-        await invoke('filen_notes_edit_content', {
-          uuid: selectedNote.uuid,
-          content: noteContent,
-          noteType: noteType,
-        });
+        if (dirty) {
+          await invoke('filen_notes_edit_content', {
+            uuid: selectedNote.uuid,
+            content: noteContent,
+            noteType: noteType,
+          });
+        }
         if (noteTitle !== savedTitle) {
           await invoke('filen_notes_edit_title', {
             uuid: selectedNote.uuid,
@@ -218,6 +223,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         }
       } catch (err) {
         setError(String(err));
+        return;
       } finally {
         setSaving(false);
       }
