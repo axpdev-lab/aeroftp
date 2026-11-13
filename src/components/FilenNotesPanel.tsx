@@ -215,6 +215,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
     // it is saved on its own; and a failed save keeps the editor and its
     // edits on screen instead of leaving them behind (Discussion #1527).
     if (selectedNote && (dirty || noteTitle !== savedTitle)) {
+      const startVersion = editVersionRef.current;
       setSaving(true);
       try {
         if (dirty) {
@@ -237,6 +238,9 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       } finally {
         setSaving(false);
       }
+      // An edit typed while this save ran was not part of it: stay on the
+      // note, still dirty, instead of leaving it unsaved behind.
+      if (editVersionRef.current !== startVersion) return;
     }
     setSelectedNote(null);
     setNoteContent('');

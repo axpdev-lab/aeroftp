@@ -891,6 +891,26 @@ describe('FilenNotesPanel (Discussion #1527)', () => {
         expect(host.querySelector('input[placeholder="filenNotes.untitled"]')).toBeNull();
     });
 
+    it('stays on the note when the title changes while Back is saving', async () => {
+        // Back used the title it started with and then cleared the editor,
+        // so a title typed during its save disappeared unsaved.
+        const onClose = vi.fn();
+        await openNote(onClose);
+        const save = deferred<unknown>();
+        mocks.handlers.filen_notes_edit_content = () => save.promise;
+        mocks.handlers.filen_notes_edit_title = async () => null;
+        await typeInto(input('textarea'), 'sentinel body edited');
+        await escape();
+        await flush();
+        await typeInto(titleInput(), 'sentinel-note-typed-during-back');
+        await act(async () => save.resolve(null));
+        await flush();
+        expect(host.querySelector('input[placeholder="filenNotes.untitled"]')).not.toBeNull();
+        expect(titleInput().value).toBe('sentinel-note-typed-during-back');
+        await clickX();
+        expect(confirmOpen()).toBe(true);
+    });
+
     it('saves a title edit on the way back to the list after the content auto-save completes', async () => {
         // Back to the list saved only while `dirty`, which the content
         // auto-save clears: a title typed before it was dropped unasked.
