@@ -130,9 +130,17 @@ describe('GuardedCloseConfirm keyboard ownership (Discussion #1527 review pass 2
         await act(async () => { x.click(); });
         await flush();
         expect(host.querySelector('[role="alertdialog"]')).not.toBeNull();
-        // Several Tabs must stay inside the confirm, and Enter keeps editing.
+        // Several Tabs must stay inside the confirm; a real Enter keydown on
+        // the focused confirm control must not reach the host's add action.
         for (let i = 0; i < 3; i++) await key('Tab');
-        expect(confirmButtons()).toContain(document.activeElement);
+        const focused = document.activeElement as HTMLElement;
+        expect(confirmButtons()).toContain(focused);
+        await act(async () => {
+            focused.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        });
+        await flush();
+        expect(mocks.invoke).not.toHaveBeenCalledWith('provider_add_permission', expect.anything());
+        // jsdom does not synthesize click from Enter; click Keep to close.
         await act(async () => { confirmButtons()[0].click(); });
         await flush();
         expect(host.querySelector('[role="alertdialog"]')).toBeNull();
