@@ -21,7 +21,7 @@ let root: Root | undefined;
 let host: HTMLDivElement;
 afterEach(async () => { if (root) await React.act(async () => root!.unmount()); host?.remove(); root = undefined; mocks.listeners.clear(); mocks.invoke.mockReset(); });
 
-async function mount(pairs: unknown[] | null) {
+async function mount(pairs: unknown[] | null, onClose: () => void = vi.fn()) {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     mocks.invoke.mockImplementation(async (command: string) => {
         if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
@@ -30,7 +30,7 @@ async function mount(pairs: unknown[] | null) {
         return [];
     });
     host = document.createElement('div'); document.body.append(host); root = createRoot(host);
-    await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+    await React.act(async () => root!.render(<CloudPanel isOpen onClose={onClose} />));
 }
 
 describe('AeroCloud Update settings and cycle reporting', () => {
@@ -119,6 +119,62 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         await React.act(async () => { await Promise.resolve(); });
         expect(remoteFolder()).toBeNull();
         expect(host.textContent).toContain('/other');
+    });
+
+    it('locks every settings input while a save is in flight, then shows the persisted folder', async () => {
+        await mount([]);
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        let resolveSave!: (v: unknown) => void;
+        const save = new Promise(res => { resolveSave = res; });
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'save_cloud_config_cmd') return save;
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/other');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('common.save'))!.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('save_cloud_config_cmd', expect.objectContaining({ config: expect.objectContaining({ remote_folder: '/other' }) }));
+        // The whole settings form is inert while the save runs: a draft typed
+        // now must never become the displayed target.
+        expect(remoteFolder()!.matches(':disabled')).toBe(true);
+        await React.act(async () => resolveSave(null));
+        await React.act(async () => { await Promise.resolve(); });
+        expect(remoteFolder()).toBeNull();
+        expect(host.textContent).toContain('/other');
+    });
+
+    it('keeps the settings panel open on a backdrop click while an unchanged save runs', async () => {
+        const onClose = vi.fn();
+        await mount([], onClose);
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        let resolveSave!: (v: unknown) => void;
+        const save = new Promise(res => { resolveSave = res; });
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'save_cloud_config_cmd') return save;
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        await openSettings();
+        // No edits: the dirty guard is off, but a save cannot be stopped.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('common.save'))!.click());
+        const backdrop = host.querySelector('[aria-label="cloud.dialogSettingsLabel"]')!;
+        await React.act(async () => backdrop.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(remoteFolder()).not.toBeNull();
+        await React.act(async () => resolveSave(null));
+        await React.act(async () => { await Promise.resolve(); });
     });
 
     it('keeps the edit in place when the settings save rejects', async () => {

@@ -384,7 +384,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setShowSettings(false);
     };
     const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
-    const settingsGuard = useGuardedClose({ guard: settingsEdited ? 'dirty' : null, onClose });
+    // A save cannot be stopped: while it runs the whole settings view is busy,
+    // so the backdrop stays inert even when there are no unsaved edits.
+    const settingsGuard = useGuardedClose({ guard: savingSettings ? 'busy' : settingsEdited ? 'dirty' : null, onClose });
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -588,7 +590,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         <button onClick={closeSettings} disabled={savingSettings} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-50"><X size={20} /></button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto">
+                    <fieldset disabled={savingSettings} className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto border-0 m-0 min-w-0">
                         {/* LEFT COLUMN: Connection & Location */}
                         <section className="space-y-4">
                             <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionConnection')}</h3>
@@ -819,7 +821,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                 <WatcherStatus watchPath={config?.local_folder} />
                             </div>
                         </section>
-                    </div>
+                    </fieldset>
 
                     {/* Footer: full width */}
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
