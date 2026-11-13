@@ -64,11 +64,13 @@ export const VaultPanel: React.FC<VaultPanelProps> = ({ onClose, isConnected = f
     // click cannot discard the work and force re-entering the password; the X
     // (or ESC) is the only way out of those states (Discussion #1527).
     const guarded = useGuardedClose({
-        // A create form being filled in (passwords, a description) or a
+        // A create form being filled in (passwords, a description, staged
+        // files or folders) or a
         // password typed to open a vault is unsaved input: the X and ESC ask
         // before dropping it (Discussion #1527).
         guard: state.loading ? 'busy'
-            : (state.mode === 'create' && (state.password || state.confirmPassword || state.description))
+            : (state.mode === 'create' && (state.password || state.confirmPassword || state.description
+                || state.stagedFiles.length > 0 || state.stagedDirs.length > 0))
                 || (state.mode === 'open' && state.password) ? 'dirty' : null,
         onClose,
         backdrop: state.mode === 'home' ? 'idle' : 'never',

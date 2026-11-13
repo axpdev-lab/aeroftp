@@ -751,7 +751,7 @@ describe('VaultPanel (Discussion #1527)', () => {
     it('asks on ESC before dropping a create form being filled in, or a password typed to open', async () => {
         const onClose = vi.fn();
         vault('create');
-        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1', confirmPassword: '', description: '' });
+        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1', confirmPassword: '', description: '', stagedFiles: [], stagedDirs: [] });
         await render(<VaultPanel onClose={onClose} />);
         await escape();
         expect(confirmOpen()).toBe(true);
@@ -765,10 +765,26 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
     });
 
+    it('asks on ESC before dropping files staged for a new vault, and Keep keeps them', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '', stagedFiles: ['/sentinel/a.txt'], stagedDirs: [] });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+        await escape();
+        await click('modalGuard.discardAndClose');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('closes an empty create form on ESC at once', async () => {
         const onClose = vi.fn();
         vault('create');
-        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '' });
+        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '', stagedFiles: [], stagedDirs: [] });
         await render(<VaultPanel onClose={onClose} />);
         await escape();
         expect(onClose).toHaveBeenCalledTimes(1);
