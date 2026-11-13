@@ -281,7 +281,7 @@ export const ArchivePasswordDialog: React.FC<ArchivePasswordDialogProps> = ({ ar
     // The X and Cancel are disabled while the password is checked; a typed
     // password keeps the backdrop inert and the X asks before dropping it
     // (Discussion #1527).
-    const guarded = useGuardedClose({ guard: verifying ? 'busy' : password ? 'dirty' : null, onClose });
+    const guarded = useGuardedClose({ guard: verifying ? 'busy' : password ? 'dirty' : null, onClose, escape: true });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -618,6 +618,7 @@ export const PropertiesDialog: React.FC<PropertiesDialogProps> = ({
     const guarded = useGuardedClose({
         guard: applyingPrivacy || pendingAttr !== null || file.checksum?.calculating ? 'busy' : null,
         onClose,
+        escape: true,
     });
     const [attrError, setAttrError] = useState<string | null>(null);
 
@@ -1413,7 +1414,7 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
     const [applyingPrivacy, setApplyingPrivacy] = useState(false);
     // A privacy change in flight goes on after a close: the backdrop is
     // inert while it runs, and the X and ESC ask first (Discussion #1527).
-    const guarded = useGuardedClose({ guard: applyingPrivacy ? 'busy' : null, onClose });
+    const guarded = useGuardedClose({ guard: applyingPrivacy ? 'busy' : null, onClose, escape: true });
     const applyPrivacyToAll = async () => {
         if (!onPrivacyChange) return;
         setApplyingPrivacy(true);
@@ -1424,14 +1425,6 @@ export const MultiFilePropertiesDialog: React.FC<MultiFilePropertiesDialogProps>
         document.documentElement.classList.add('modal-open');
         return () => { document.documentElement.classList.remove('modal-open'); };
     }, []);
-
-    useEffect(() => {
-        const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') guarded.requestClose();
-        };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [guarded.requestClose]);
 
     const fileCount = files.filter(f => !f.is_dir).length;
     const folderCount = files.filter(f => f.is_dir).length;
@@ -1733,7 +1726,7 @@ export const MasterPasswordSetupDialog: React.FC<MasterPasswordSetupDialogProps>
     // While the store is being set up the backdrop is inert and the X asks,
     // since setting up goes on after a close; typed passwords ask before they
     // are dropped (Discussion #1527: a stray click closed it mid-setup).
-    const guarded = useGuardedClose({ guard: isLoading ? 'busy' : password || confirmPassword ? 'dirty' : null, onClose });
+    const guarded = useGuardedClose({ guard: isLoading ? 'busy' : password || confirmPassword ? 'dirty' : null, onClose, escape: true });
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();

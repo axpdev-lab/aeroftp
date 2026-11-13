@@ -310,7 +310,8 @@ export const CompressDialog: React.FC<CompressDialogProps> = ({ files, defaultNa
         || password !== '' || confirmPassword !== '' || encryptFileNames
         || advMethod !== 'lzma2' || advDictionary !== undefined || advThreads !== undefined || advSolid
     );
-    const guarded = useGuardedClose({ guard: compressing ? 'busy' : optionsChanged ? 'dirty' : null, onClose });
+    // ESC goes through the shared stack like the X (Discussion #1527).
+    const guarded = useGuardedClose({ guard: compressing ? 'busy' : optionsChanged ? 'dirty' : null, onClose, escape: true });
 
     // Hide scrollbars when dialog is open (WebKitGTK fix)
     useEffect(() => {

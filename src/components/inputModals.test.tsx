@@ -59,7 +59,7 @@ import { FilenNotesPanel } from './FilenNotesPanel';
 import { ImageSaveDialog } from './Preview/viewers/ImageSaveDialog';
 import { UniversalPreview } from './Preview/UniversalPreview';
 import { GitHubWriteModeIndicator } from './GitHubWriteModeIndicator';
-import { useGuardedClose } from '../hooks/useGuardedClose';
+import { isEscapeClaimed, useGuardedClose } from '../hooks/useGuardedClose';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -268,6 +268,16 @@ describe('CompressDialog (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
         expect(confirmOpen()).toBe(false);
     });
+
+    it('answers ESC like the X: edited options ask before they are dropped', async () => {
+        // ESC used to do nothing here, and the app-wide shortcut cleared the
+        // file selection behind the dialog instead.
+        const onClose = vi.fn();
+        await open(onClose);
+        await typeInto(nameInput(), 'sentinel-renamed');
+        expect(isEscapeClaimed()).toBe(true);
+        await expectDirtyConfirmThenDiscard(onClose, () => escape());
+    });
 });
 
 // ─── ArchiveBrowser ───────────────────────────────────────────────────────
@@ -366,6 +376,14 @@ describe('ArchivePasswordDialog (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(2);
         expect(confirmOpen()).toBe(false);
     });
+
+    it('answers ESC like the X: a typed password asks before it is dropped', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await typeInto(passwordInput(), 'sentinel-pass-1');
+        expect(isEscapeClaimed()).toBe(true);
+        await expectDirtyConfirmThenDiscard(onClose, () => escape());
+    });
 });
 
 describe('MasterPasswordSetupDialog (Discussion #1527)', () => {
@@ -403,6 +421,14 @@ describe('MasterPasswordSetupDialog (Discussion #1527)', () => {
         await open(onClose);
         await clickBackdrop();
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC like the X: typed passwords ask before they are dropped', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await typeInto(fields()[1], 'sentinel-pass-1');
+        expect(isEscapeClaimed()).toBe(true);
+        await expectDirtyConfirmThenDiscard(onClose, () => escape());
     });
 });
 
@@ -445,6 +471,14 @@ describe('PropertiesDialog (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(2);
         expect(confirmOpen()).toBe(false);
     });
+
+    it('closes on ESC at rest, through the shared stack', async () => {
+        const onClose = vi.fn();
+        await render(<PropertiesDialog file={file()} onClose={onClose} />);
+        expect(isEscapeClaimed()).toBe(true);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
 });
 
 describe('MultiFilePropertiesDialog (Discussion #1527)', () => {
@@ -482,6 +516,14 @@ describe('MultiFilePropertiesDialog (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
         await escape();
         expect(onClose).toHaveBeenCalledTimes(2);
+    });
+
+    it('claims ESC through the shared stack, so the app shortcut leaves the selection alone', async () => {
+        const onClose = vi.fn();
+        await render(<MultiFilePropertiesDialog selection={selection} onClose={onClose} />);
+        expect(isEscapeClaimed()).toBe(true);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 });
 
