@@ -92,6 +92,14 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
   const formDirty = view === 'create' && (formTag.trim() !== '' || formName.trim() !== '' || formBody.trim() !== '');
   const createGuard = creating ? 'busy' : formDirty ? 'dirty' : null;
   const guarded = useGuardedClose({ guard: createGuard, onClose });
+  // Back leaves the create form like the backdrop does, but with a dirty
+  // draft it asks first instead of dropping the typed release silently; a
+  // create in flight stays put, matching the inert backdrop (Discussion #1527).
+  const [confirmBack, setConfirmBack] = useState(false);
+  const requestBack = () => {
+    if (!createGuard) setView('list');
+    else if (formDirty) setConfirmBack(true);
+  };
 
   const suggestedTag = React.useMemo(() => {
     if (releases.length === 0) return 'v1.0.0';
@@ -282,7 +290,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
         <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-3 border-b cursor-grab active:cursor-grabbing" style={{ borderColor: 'var(--color-border)' }}>
           <div className="flex items-center gap-2">
             {view === 'create' ? (
-              <button onClick={() => setView('list')} className="p-1 rounded transition-colors hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}><ArrowLeft size={16} /></button>
+              <button onClick={requestBack} className="p-1 rounded transition-colors hover:opacity-80" style={{ color: 'var(--color-text-secondary)' }}><ArrowLeft size={16} /></button>
             ) : (
               <Tag size={16} className="text-orange-400" />
             )}
@@ -485,6 +493,14 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
       )}
       {guarded.confirmOpen && guarded.confirmKind && (
         <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
+      {confirmBack && (
+        <GuardedCloseConfirm
+          kind="dirty"
+          canAbort={false}
+          onKeep={() => setConfirmBack(false)}
+          onConfirm={() => { setConfirmBack(false); setView('list'); }}
+        />
       )}
     </div>
   );
