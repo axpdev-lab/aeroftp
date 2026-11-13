@@ -58,6 +58,7 @@ import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface UsersManagePanelProps {
@@ -99,7 +100,9 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [stats, setStats] = React.useState<UserStorageStats[]>([]);
     const [unlockStatus, setUnlockStatus] = React.useState<UserUnlockStatus | null>(null);
     const [loading, setLoading] = React.useState(false);
-    const [busyUserId, setBusyUserId] = React.useState<number | null>(null);
+    // Every account with an operation in flight: its row stays disabled until
+    // that operation settles, and the close guard stays busy while any runs.
+    const userOps = useInFlight<number>();
     const [error, setError] = React.useState('');
     const [newName, setNewName] = React.useState('');
     const [newAvatar, setNewAvatar] = React.useState(AVATAR_CHOICES[0]);
@@ -133,10 +136,6 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [avatarDraftColor, setAvatarDraftColor] = React.useState(COLOR_CHOICES[0]);
     const [avatarSaving, setAvatarSaving] = React.useState(false);
     const [pendingAdds, setPendingAdds] = React.useState(0);
-    // Per-account operations can overlap on different rows: count them all so
-    // the first finisher cannot drop the busy guard (busyUserId only marks the
-    // row that is busy right now).
-    const [pendingUserOps, setPendingUserOps] = React.useState(0);
     const [showIconPicker, setShowIconPicker] = React.useState(false);
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
@@ -206,8 +205,8 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         }
     }, [t]);
 
-    const beginUserOp = (id: number) => { setBusyUserId(id); setPendingUserOps(c => c + 1); };
-    const endUserOp = () => { setBusyUserId(null); setPendingUserOps(c => c - 1); };
+    const beginUserOp = userOps.begin;
+    const endUserOp = userOps.end;
 
     const toggleDefaultAccount = React.useCallback(
         async (user: UserMetadata) => {
@@ -224,7 +223,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             } catch (err) {
                 setError(mapUserPartitionError(err, t));
             } finally {
-                endUserOp();
+                endUserOp(user.id);
             }
         },
         [defaultAccountId, refresh, t],
@@ -240,7 +239,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const formTyped = newName.trim() !== '' || newPassphrase !== '' || newConfirmPassphrase !== ''
         || editingUserId !== null || passphraseForm !== null;
     const guarded = useGuardedClose({
-        guard: pendingUserOps > 0 || avatarSaving || pendingAdds > 0 ? 'busy' : formTyped ? 'dirty' : null,
+        guard: userOps.count > 0 || avatarSaving || pendingAdds > 0 ? 'busy' : formTyped ? 'dirty' : null,
         onClose,
     });
 
@@ -309,7 +308,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            endUserOp();
+            endUserOp(user.id);
         }
     };
 
@@ -343,7 +342,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            endUserOp();
+            endUserOp(user.id);
         }
     };
 
@@ -367,7 +366,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            endUserOp();
+            endUserOp(user.id);
         }
     };
 
@@ -423,7 +422,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            endUserOp();
+            endUserOp(user.id);
         }
     };
 
@@ -437,7 +436,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            endUserOp();
+            endUserOp(user.id);
         }
     };
 
@@ -457,8 +456,9 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
 
     const handleAvatarSave = async () => {
         if (!avatarEditingUser) return;
+        const avatarUserId = avatarEditingUser.id;
         setAvatarSaving(true);
-        beginUserOp(avatarEditingUser.id);
+        beginUserOp(avatarUserId);
         setError('');
         try {
             await setUserAvatar(avatarEditingUser.id, avatarDraftEmoji || null, avatarDraftColor || null);
@@ -470,7 +470,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(mapUserPartitionError(err, t));
         } finally {
             setAvatarSaving(false);
-            endUserOp();
+            endUserOp(avatarUserId);
         }
     };
 
@@ -714,7 +714,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             <button
                                                 type="button"
                                                 onClick={() => openAvatarEditor(user)}
-                                                disabled={busyUserId === user.id}
+                                                disabled={userOps.has(user.id)}
                                                 className="group/avatar relative shrink-0 rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
                                                 title={t('manageUsers.editAvatar')}
                                                 aria-label={t('manageUsers.editAvatar')}
@@ -784,7 +784,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => void toggleDefaultAccount(user)}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
                                                         defaultAccountId === user.id
                                                             ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
@@ -801,7 +801,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     <button
                                                         type="button"
                                                         onClick={() => startRename(user)}
-                                                        disabled={busyUserId === user.id}
+                                                        disabled={userOps.has(user.id)}
                                                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                         title={t('manageUsers.rename')}
                                                     >
@@ -813,7 +813,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleCopy(user); }}
-                                                    disabled={busyUserId === user.id || !canCopy}
+                                                    disabled={userOps.has(user.id) || !canCopy}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                     title={canCopy ? t('manageUsers.copy') : t('manageUsers.copyLockedHint')}
                                                 >
@@ -831,7 +831,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         showOld: false,
                                                         showNew: false,
                                                     })}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                     title={user.hasPassphrase ? t('manageUsers.changeMyPassword') : t('manageUsers.setPassword')}
                                                 >
@@ -842,7 +842,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => setResetTarget(user)}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/30"
                                                     title={t('manageUsers.resetPassword')}
                                                 >
@@ -853,7 +853,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleSetAdmin(user, !user.isAdmin); }}
-                                                    disabled={busyUserId === user.id || (user.isAdmin && isLastAdmin)}
+                                                    disabled={userOps.has(user.id) || (user.isAdmin && isLastAdmin)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-emerald-950/30"
                                                     title={user.isAdmin ? t('manageUsers.revokeAdmin') : t('manageUsers.promoteAdmin')}
                                                 >
@@ -864,7 +864,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleDelete(user); }}
-                                                    disabled={busyUserId === user.id || !canDelete}
+                                                    disabled={userOps.has(user.id) || !canDelete}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
                                                     title={isLastAdmin ? t('manageUsers.cannotDeleteLastAdmin') : t('manageUsers.delete')}
                                                 >
@@ -931,7 +931,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="submit"
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-blue-300"
                                                 >
                                                     <Check size={15} />

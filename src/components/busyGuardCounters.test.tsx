@@ -83,6 +83,10 @@ it('PluginBrowser: the guard stays busy until every install finishes', async () 
     expect(installButtons.length).toBeGreaterThanOrEqual(2);
     await click(installButtons[0]);
     await click(installButtons[1]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(installButtons[0].disabled).toBe(true);
+    expect(installButtons[1].disabled).toBe(true);
     // First install settles while the second is still pending.
     await act(async () => { installs[0].resolve({}); });
     await click(closeButton()!);
@@ -109,6 +113,10 @@ it('GitHubActionsBrowser: the guard stays busy until every workflow action finis
     const byTitle = (frag: string) => [...host.querySelectorAll<HTMLButtonElement>(`button[title*="${frag}"]`)];
     await click(byTitle('Cancel')[0]);
     await click(byTitle('Re-run failed')[0]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(byTitle('Cancel')[0].disabled).toBe(true);
+    expect(byTitle('Re-run failed')[0].disabled).toBe(true);
     await act(async () => { actions[0].resolve({}); });
     await flush();
     await click(closeButton()!);
@@ -139,6 +147,10 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
     expect(restores.length).toBe(2);
     await click(restores[0]);
     await click(restores[1]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(restores[0].disabled).toBe(true);
+    expect(restores[1].disabled).toBe(true);
     await act(async () => { pending.get('provider_restore_version:v2')!.resolve({}); });
     await flush();
     await click(closeButton()!);
@@ -262,6 +274,10 @@ it('FileCommentsDialog: the guard stays busy until every delete finishes', async
     expect(deletes.length).toBe(2);
     await click(deletes[0]);
     await click(deletes[1]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(deletes[0].disabled).toBe(true);
+    expect(deletes[1].disabled).toBe(true);
     await act(async () => { pending.get('box_delete_comment:c1')!.resolve({}); });
     await flush();
     await click(closeButton()!);
@@ -290,6 +306,10 @@ it('BoxCollaboratorsDialog: the guard stays busy until every remove finishes', a
     expect(removes.length).toBe(2);
     await click(removes[0]);
     await click(removes[1]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(removes[0].disabled).toBe(true);
+    expect(removes[1].disabled).toBe(true);
     await act(async () => { pending.get('box_remove_collaboration:k1')!.resolve({}); });
     await flush();
     await click(closeButton()!);
@@ -352,6 +372,10 @@ it('SharePermissionsDialog: the guard stays busy until every remove finishes', a
     expect(removes.length).toBe(2);
     await click(removes[0]);
     await click(removes[1]);
+    // Each row stays disabled until its own request settles: a single
+    // in-progress value re-enabled the first row when the second started.
+    expect(removes[0].disabled).toBe(true);
+    expect(removes[1].disabled).toBe(true);
     await act(async () => { pending.get('provider_remove_permission:u1')!.resolve({}); });
     await flush();
     await click(closeButton()!);

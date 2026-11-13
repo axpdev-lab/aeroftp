@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { getUiLocale } from '../utils/formatters';
 import {
@@ -37,10 +38,9 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   const [comments, setComments] = useState<FileComment[] | null>(null);
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deletes = useInFlight<string>();
   // Deletes on different comments can overlap: the guard counts every
   // pending request, so the first one to finish cannot drop it (review).
-  const [pendingDeletes, setPendingDeletes] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   // goes on after it: the backdrop is inert then, and the X, Close and ESC
   // ask first (Discussion #1527).
   const guarded = useGuardedClose({
-    guard: sending || pendingDeletes > 0 ? 'busy' : message.trim() ? 'dirty' : null,
+    guard: sending || deletes.count > 0 ? 'busy' : message.trim() ? 'dirty' : null,
     onClose,
   });
 
@@ -97,8 +97,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
   };
 
   const handleDelete = async (id: string) => {
-    setDeletingId(id);
-    setPendingDeletes(c => c + 1);
+    deletes.begin(id);
     setError(null);
     setNotice(null);
     try {
@@ -108,8 +107,7 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
     } catch (err) {
       setError(String(err));
     } finally {
-      setPendingDeletes(c => c - 1);
-      setDeletingId(null);
+      deletes.end(id);
     }
   };
 
@@ -157,12 +155,12 @@ export function FileCommentsDialog({ provider, filePath, fileName, onClose }: Fi
                   </div>
                   <button
                     onClick={() => void handleDelete(c.id)}
-                    disabled={deletingId === c.id}
+                    disabled={deletes.has(c.id)}
                     className="p-1 rounded text-red-500 hover:bg-red-500/10 disabled:opacity-50"
                     title={t('common.delete')}
                     aria-label={t('common.delete')}
                   >
-                    {deletingId === c.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    {deletes.has(c.id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                   </button>
                 </div>
               </div>

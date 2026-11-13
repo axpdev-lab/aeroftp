@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
   addBoxCollaborator,
@@ -44,10 +45,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<BoxRole>('viewer');
   const [adding, setAdding] = useState(false);
-  const [removingId, setRemovingId] = useState<string | null>(null);
+  const removes = useInFlight<string>();
   // Removes on different collaborators can overlap: count every pending
   // request so the first finisher cannot drop the busy guard (review).
-  const [pendingRemoves, setPendingRemoves] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -55,7 +55,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const emailRef = useRef<HTMLInputElement>(null);
   // An invite or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
   // inert in both cases and the X asks first (Discussion #1527).
-  const guarded = useGuardedClose({ guard: adding || pendingRemoves > 0 ? 'busy' : email.trim() ? 'dirty' : null, onClose });
+  const guarded = useGuardedClose({ guard: adding || removes.count > 0 ? 'busy' : email.trim() ? 'dirty' : null, onClose });
 
   const roleLabel = (r: string) => (r in ROLE_KEY ? t(ROLE_KEY[r as BoxRole]) : r);
 
@@ -101,8 +101,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   };
 
   const handleRemove = async (id: string) => {
-    setRemovingId(id);
-    setPendingRemoves(c => c + 1);
+    removes.begin(id);
     setError(null);
     setNotice(null);
     try {
@@ -112,8 +111,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
     } catch (err) {
       setError(String(err));
     } finally {
-      setPendingRemoves(c => c - 1);
-      setRemovingId(null);
+      removes.end(id);
     }
   };
 
@@ -157,12 +155,12 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
                 </div>
                 <button
                   onClick={() => void handleRemove(c.id)}
-                  disabled={removingId === c.id}
+                  disabled={removes.has(c.id)}
                   className="p-1 rounded text-red-500 hover:bg-red-500/10 disabled:opacity-50"
                   title={t('common.remove')}
                   aria-label={t('common.remove')}
                 >
-                  {removingId === c.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  {removes.has(c.id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 </button>
               </div>
             ))

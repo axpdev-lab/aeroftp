@@ -157,3 +157,31 @@ it('stays busy while a second account operation is still pending', async () => {
     await clickX();
     expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('keeps each account row disabled until its own operation settles', async () => {
+    // One "busy row" value: starting B re-enabled A's row while A still ran,
+    // and A finishing re-enabled B's row while B still ran.
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const resolvers: Array<() => void> = [];
+    vi.mocked(copyUser).mockImplementation(() => new Promise<typeof adminUser>(res => { resolvers.push(() => res(adminUser)); }));
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose: vi.fn(), onChanged: vi.fn() }));
+    await flush();
+    const copies = () => [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => b.title?.includes('Duplicate user'));
+    await act(async () => { copies()[0].click(); });
+    await flush();
+    expect(copies()[0].disabled).toBe(true);
+    await act(async () => { copies()[1].click(); });
+    await flush();
+    // Both run: both rows stay disabled.
+    expect(copies()[0].disabled).toBe(true);
+    expect(copies()[1].disabled).toBe(true);
+    await act(async () => { resolvers[0](); });
+    await flush();
+    // A settled: only A's row is free again.
+    expect(copies()[0].disabled).toBe(false);
+    expect(copies()[1].disabled).toBe(true);
+    await act(async () => { resolvers[1](); });
+    await flush();
+    expect(copies()[1].disabled).toBe(false);
+});

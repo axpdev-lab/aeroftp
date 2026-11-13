@@ -9,6 +9,7 @@ import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
 import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface FileVersion {
@@ -31,13 +32,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const ops = useInFlight<string>();
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
   // Operations on different versions can overlap: the guard counts every
   // pending request, so the first one to finish cannot drop it (review).
-  const [pendingOps, setPendingOps] = useState(0);
   // A download, restore or purge already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
-  const guarded = useGuardedClose({ guard: pendingOps > 0 ? 'busy' : null, onClose });
+  const guarded = useGuardedClose({ guard: ops.count > 0 ? 'busy' : null, onClose });
 
   useEffect(() => {
     loadVersions();
@@ -62,8 +62,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     const savePath = await pickSave({ defaultPath: defaultName });
     if (!savePath) return;
 
-    setActionInProgress(version.id);
-    setPendingOps(c => c + 1);
+    ops.begin(version.id);
     try {
       await invoke('provider_download_version', {
         path: filePath,
@@ -73,14 +72,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Download version failed:', err);
     } finally {
-      setPendingOps(c => c - 1);
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
   const handleRestore = async (version: FileVersion) => {
-    setActionInProgress(version.id);
-    setPendingOps(c => c + 1);
+    ops.begin(version.id);
     try {
       await invoke('provider_restore_version', {
         path: filePath,
@@ -90,15 +87,13 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Restore version failed:', err);
     } finally {
-      setPendingOps(c => c - 1);
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
   const handlePurge = async (version: FileVersion) => {
     setPendingPurge(null);
-    setActionInProgress(version.id);
-    setPendingOps(c => c + 1);
+    ops.begin(version.id);
     try {
       await invoke('provider_delete_version', {
         path: filePath,
@@ -109,8 +104,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
       console.error('Purge version failed:', err);
       setError(String(err));
     } finally {
-      setPendingOps(c => c - 1);
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
@@ -170,16 +164,16 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleDownload(v)}
-                          disabled={actionInProgress === v.id}
+                          disabled={ops.has(v.id)}
                           className="p-1 text-gray-400 hover:text-blue-500 disabled:opacity-50"
                           title={t('versions.download') || 'Download this version'}
                         >
-                          {actionInProgress === v.id ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                          {ops.has(v.id) ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                         </button>
                         {i > 0 && (
                           <button
                             onClick={() => handleRestore(v)}
-                            disabled={actionInProgress === v.id}
+                            disabled={ops.has(v.id)}
                             className="p-1 text-gray-400 hover:text-orange-500 disabled:opacity-50"
                             title={t('versions.restore') || 'Restore this version'}
                           >
@@ -188,7 +182,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                         )}
                         <button
                           onClick={() => setPendingPurge(v)}
-                          disabled={actionInProgress === v.id}
+                          disabled={ops.has(v.id)}
                           className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
                           title={t('versions.purge') || 'Permanently delete this version'}
                         >

@@ -8,6 +8,7 @@ import { useTranslation } from '../../i18n';
 import { SearchBox } from '../SearchBox';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
 import { useGuardedClose } from '../../hooks/useGuardedClose';
+import { useInFlight } from '../../hooks/useInFlight';
 import { GuardedCloseConfirm } from '../GuardedCloseConfirm';
 
 interface RegistryFile {
@@ -57,16 +58,15 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
     const [activeTab, setActiveTab] = useState<BrowserTab>('browse');
     const [registry, setRegistry] = useState<RegistryEntry[]>([]);
     const [loading, setLoading] = useState(false);
-    const [installing, setInstalling] = useState<string | null>(null);
+    const installs = useInFlight<string>();
     // Concurrent installs of different plugins share the guard: it stays busy
     // until the last pending install settles, not just the first (review).
-    const [pendingInstalls, setPendingInstalls] = useState(0);
     const [search, setSearch] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [registryDisabled, setRegistryDisabled] = useState(false);
     const searchRef = useRef<HTMLInputElement>(null);
     // An install already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
-    const guarded = useGuardedClose({ guard: pendingInstalls > 0 ? 'busy' : null, onClose });
+    const guarded = useGuardedClose({ guard: installs.count > 0 ? 'busy' : null, onClose });
 
     // Fetch registry on open
     useEffect(() => {
@@ -115,8 +115,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
 
     const installPlugin = async (pluginId: string) => {
         if (registryDisabled) return;
-        setInstalling(pluginId);
-        setPendingInstalls(c => c + 1);
+        installs.begin(pluginId);
         try {
             await invoke('install_plugin_from_registry', { pluginId });
             onInstalled();
@@ -128,8 +127,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                 setError(msg);
             }
         } finally {
-            setPendingInstalls(c => c - 1);
-            setInstalling(null);
+            installs.end(pluginId);
         }
     };
 
@@ -249,7 +247,7 @@ export const PluginBrowser: React.FC<PluginBrowserProps> = ({
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 {filtered.map(entry => {
                                     const isInstalled = installedPluginIds.has(entry.id);
-                                    const isInstalling = installing === entry.id;
+                                    const isInstalling = installs.has(entry.id);
                                     return (
                                         <div
                                             key={entry.id}
