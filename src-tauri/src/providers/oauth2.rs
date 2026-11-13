@@ -708,6 +708,26 @@ pub(crate) fn force_signout_enolck_for_test(on: bool) {
     FORCE_SIGNOUT_ENOLCK.with(|force| force.set(on));
 }
 
+/// Seed the in-memory token cache for one account (tests only).
+#[cfg(test)]
+pub(crate) fn seed_memory_token_for_test(account: &str, json: &str) {
+    MEMORY_TOKEN_CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(account.to_owned(), json.to_owned());
+}
+
+/// Whether the in-memory token cache still holds one account (tests only).
+#[cfg(test)]
+pub(crate) fn memory_token_cache_contains_for_test(account: &str) -> bool {
+    MEMORY_TOKEN_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|map| map.contains_key(account))
+}
+
 /// Why the caller wants the legacy lock. Only the lock-error policy differs.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum LegacyLockUse {
