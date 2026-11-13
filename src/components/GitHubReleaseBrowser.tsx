@@ -93,6 +93,14 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   const formDirty = view === 'create' && (formTag.trim() !== '' || formName.trim() !== '' || formBody.trim() !== '' || formDraft || formPrerelease);
   const createGuard = creating ? 'busy' : formDirty ? 'dirty' : null;
   const guarded = useGuardedClose({ guard: createGuard, onClose });
+  // Back from the create form drops the draft (the next release starts
+  // empty): it asks while the form is dirty and does nothing while a
+  // create runs, like the X, ESC and the backdrop (Discussion #1527).
+  const [confirmBack, setConfirmBack] = useState(false);
+  const requestBack = () => {
+    if (!createGuard) setView('list');
+    else if (createGuard === 'dirty') setConfirmBack(true);
+  };
 
   /** Suggest next patch version from existing releases */
   const suggestedTag = React.useMemo(() => {
@@ -362,7 +370,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
           <div className="flex items-center gap-2">
             {view === 'create' ? (
               <button
-                onClick={() => setView('list')}
+                onClick={requestBack}
                 className="p-1 rounded transition-colors hover:opacity-80"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
@@ -492,6 +500,14 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       )}
       {guarded.confirmOpen && guarded.confirmKind && (
         <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
+      {confirmBack && (
+        <GuardedCloseConfirm
+          kind="dirty"
+          canAbort={false}
+          onKeep={() => setConfirmBack(false)}
+          onConfirm={() => { setConfirmBack(false); setView('list'); }}
+        />
       )}
     </div>
   );
