@@ -103,4 +103,24 @@ describe('GitLabReleaseBrowser Back guard (Discussion #1527 review)', () => {
         expect(confirmOpen()).toBe(false);
         expect(descriptionInput()).toBeNull();
     });
+
+    it('keeps Back inert while a release create is in flight', async () => {
+        let resolveCreate!: () => void;
+        mocks.invoke.mockImplementation(async (cmd: string) => {
+            if (cmd === 'gitlab_list_releases') return [];
+            if (cmd === 'gitlab_create_release') return new Promise<null>(res => { resolveCreate = () => res(null); });
+            return null;
+        });
+        const onClose = vi.fn();
+        await openCreateForm(onClose);
+        await typeInto(host.querySelector('input')!, 'v9.9.9');
+        await typeInto(descriptionInput(), 'sentinel release notes');
+        await click('gitlab.createRelease');
+        await press(backButton());
+        expect(confirmOpen()).toBe(false);
+        expect(descriptionInput()).not.toBeNull();
+        expect(onClose).not.toHaveBeenCalled();
+        await act(async () => { resolveCreate(); });
+        await flush();
+    });
 });

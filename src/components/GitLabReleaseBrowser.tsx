@@ -98,7 +98,7 @@ export const GitLabReleaseBrowser: React.FC<GitLabReleaseBrowserProps> = ({
   const [confirmBack, setConfirmBack] = useState(false);
   const requestBack = () => {
     if (!createGuard) setView('list');
-    else if (formDirty) setConfirmBack(true);
+    else if (createGuard === 'dirty') setConfirmBack(true);
   };
 
   const suggestedTag = React.useMemo(() => {
