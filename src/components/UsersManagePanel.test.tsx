@@ -82,3 +82,45 @@ it('reports account creation as busy, not dirty, until addUser settles', async (
     await act(async () => { resolveAdd(); });
     await flush();
 });
+
+it('stays busy while a second account creation is still pending', async () => {
+    const resolvers: Array<() => void> = [];
+    vi.mocked(addUser).mockImplementation(() => new Promise<typeof adminUser>(res => {
+        resolvers.push(() => res(adminUser));
+    }));
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const nameInput = host.querySelector<HTMLInputElement>('input[placeholder]')!;
+    const submitForm = async () => {
+        const submit = host.querySelector<HTMLButtonElement>('button[type=submit]')!;
+        await act(async () => { submit.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+        await flush();
+    };
+    const typeName = async (value: string) => {
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, value);
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    };
+    const clickX = async () => {
+        const x = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.innerHTML.includes('lucide-x'))!;
+        await act(async () => { x.click(); });
+    };
+    await typeName('first');
+    await submitForm();
+    await typeName('second');
+    await submitForm();
+    expect(addUser).toHaveBeenCalledTimes(2);
+    expect(resolvers.length).toBe(2);
+    // The first creation settles while the second is still in flight.
+    await act(async () => { resolvers[0](); });
+    await flush();
+    await clickX();
+    const alert = host.querySelector('[role=alertdialog]');
+    expect(alert).not.toBeNull();
+    expect(alert!.textContent).toContain('Operation in progress');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { resolvers[1](); });
+    await flush();
+});
