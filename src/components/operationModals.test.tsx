@@ -287,6 +287,31 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(findButton('transfer.crossProfile.executeTransfer')).toBeTruthy();
     };
 
+    it('asks on ESC before dropping a setup edited by hand', async () => {
+        // ESC now closes the panel: an edited destination path was dropped
+        // without a word.
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        const dest = host.querySelector<HTMLInputElement>('input[placeholder="transfer.crossProfile.destinationPathPlaceholder"]')!;
+        await typeInto(dest, '/sentinel/dest');
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(dest.value).toBe('/sentinel/dest');
+        await click('modalGuard.discardAndClose');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes an untouched setup on ESC at once', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps a plan being built from the backdrop, and the X asks first', async () => {
         const onClose = vi.fn();
         const pending = deferred<unknown>();

@@ -100,6 +100,11 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     const [destPath, setDestPath] = useState('/');
     const [recursive, setRecursive] = useState(true);
     const [skipExisting, setSkipExisting] = useState(false);
+    // True once the user changed a setting by hand (a profile, a path, an
+    // option, a swap): ESC and the X then ask before dropping the setup
+    // instead of closing it at once (Discussion #1527).
+    const [settingsTouched, setSettingsTouched] = useState(false);
+    const touched = <T,>(set: (value: T) => void) => (value: T) => { setSettingsTouched(true); set(value); };
 
     const [plan, setPlan] = useState<CrossProfilePlan | null>(null);
     const [summary, setSummary] = useState<TransferSummary | null>(null);
@@ -350,6 +355,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     };
 
     const handleSwapProfiles = () => {
+        setSettingsTouched(true);
         setSourceProfile(destProfile);
         setDestProfile(sourceProfile);
         setSourcePath(destPath);
@@ -366,7 +372,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
     // too: only the X or ESC close it (Discussion #1527). Only a transfer can
     // be stopped: a plan being built goes on, and the confirm says so.
     const guarded = useGuardedClose({
-        guard: phase === 'executing' || loading ? 'busy' : null,
+        guard: phase === 'executing' || loading ? 'busy' : phase === 'setup' && settingsTouched ? 'dirty' : null,
         onClose,
         onAbort: phase === 'executing' ? handleCancel : undefined,
         backdrop: plan || summary ? 'never' : 'idle',
@@ -429,7 +435,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     <input
                                         type="text"
                                         value={sourcePath}
-                                        onChange={(e) => setSourcePath(e.target.value)}
+                                        onChange={(e) => touched(setSourcePath)(e.target.value)}
                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                         placeholder={t('transfer.crossProfile.sourcePathPlaceholder')}
                                     />
@@ -457,7 +463,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     <input
                                         type="text"
                                         value={destPath}
-                                        onChange={(e) => setDestPath(e.target.value)}
+                                        onChange={(e) => touched(setDestPath)(e.target.value)}
                                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                                         placeholder={t('transfer.crossProfile.destinationPathPlaceholder')}
                                     />
@@ -469,7 +475,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     title={t('transfer.crossProfile.sourceProfile')}
                                     profiles={sourceChoices}
                                     selected={sourceProfile}
-                                    onSelect={setSourceProfile}
+                                    onSelect={touched(setSourceProfile)}
                                     emptyMessage={t('transfer.crossProfile.noProfiles')}
                                     role="source"
                                 />
@@ -477,7 +483,7 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                                     title={t('transfer.crossProfile.destinationProfile')}
                                     profiles={destChoices}
                                     selected={destProfile}
-                                    onSelect={setDestProfile}
+                                    onSelect={touched(setDestProfile)}
                                     emptyMessage={t('transfer.crossProfile.noProfiles')}
                                     role="destination"
                                 />
@@ -486,12 +492,12 @@ export const CrossProfilePanel: React.FC<CrossProfilePanelProps> = ({ onClose, i
                             <div className="flex flex-wrap items-center gap-6 px-1">
                                 <Checkbox
                                     checked={recursive}
-                                    onChange={setRecursive}
+                                    onChange={touched(setRecursive)}
                                     label={<span className="text-sm text-gray-700 dark:text-gray-300">{t('transfer.crossProfile.recursive')}</span>}
                                 />
                                 <Checkbox
                                     checked={skipExisting}
-                                    onChange={setSkipExisting}
+                                    onChange={touched(setSkipExisting)}
                                     label={<span className="text-sm text-gray-700 dark:text-gray-300">{t('transfer.crossProfile.skipExisting')}</span>}
                                 />
                             </div>
