@@ -222,9 +222,37 @@ export function AeroShareHandshakeBody({
   const [shareResult, setShareResult] = useState<PeerShareStarted | null>(null);
   const [liveStatus, setLiveStatus] = useState('');
 
+  // The friends effect auto-picks the first saved recipient when the roster
+  // loads, so the opening values of the recipient picker are the seeded ones,
+  // not the literal useState defaults.
+  const recipientAutoSeeded = !prefillAfid && friends.length > 0;
+  const initialRecipientMode = recipientAutoSeeded ? 'saved' : 'paste';
+  const initialSelectedFriend = recipientAutoSeeded ? friends[0].afid : '';
+
+  // The friends effect auto-picks the first saved recipient when the roster
+  // loads, so the picker is clean both at the literal defaults and at the
+  // seeded values; only a user change away from either counts as dirty.
+  const recipientPickerClean = (recipientMode === 'paste' && selectedFriend === '')
+    || (recipientMode === initialRecipientMode && selectedFriend === initialSelectedFriend);
+
+  const recvFormDirty = recvPhase !== 'done' && (
+    link.trim() !== ''
+    || issuerAfid !== (editConnection?.afid ?? prefillAfid ?? '')
+    || issuerAlias !== (editConnection?.alias ?? prefillAlias ?? '')
+    || localFolder !== (editConnection?.localFolder ?? defaultLocalPath ?? '')
+    || customIcon !== editConnection?.customIconUrl
+  );
+  const shareFormDirty = sharePhase !== 'done' && (
+    shareFolder !== (prefillShareFolder ?? '')
+    || !recipientPickerClean
+    || recipientAfid !== (prefillAfid ?? '')
+    || recipientAlias !== (prefillAlias ?? '')
+    || driveName !== ''
+    || customIcon !== editConnection?.customIconUrl
+  );
   const closeGuard: GuardKind | null = recvPhase === 'working' || sharePhase === 'working'
     ? 'busy'
-    : (recvPhase !== 'done' && link.trim() !== '') || (sharePhase !== 'done' && recipientAfid.trim() !== (prefillAfid ?? ''))
+    : recvFormDirty || shareFormDirty
       ? 'dirty'
       : null;
   const keepShareResult = sharePhase === 'done' && shareResult !== null;

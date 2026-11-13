@@ -699,6 +699,17 @@ describe('AeroShareDialog (Discussion #1527)', () => {
         expect(confirmOpen()).toBe(true);
     });
 
+    it('keeps a changed share folder from the backdrop while the recipient stays untouched', async () => {
+        const onClose = vi.fn();
+        await openShare(onClose);
+        const folderInput = button('aeroShare.dialog.chooseFolder')
+            .parentElement!.querySelector('input') as HTMLInputElement;
+        await typeInto(folderInput, '/sentinel/other');
+        await clickBackdrop();
+        expect(onClose).not.toHaveBeenCalled();
+        await expectDirtyConfirmThenDiscard(onClose);
+    });
+
     it('closes from the backdrop and ESC with nothing typed', async () => {
         const onClose = vi.fn();
         await openShare(onClose);
