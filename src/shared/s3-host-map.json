@@ -1,6 +1,6 @@
 {
   "_doc": [
-    "One table for recognizing an S3 provider from an endpoint host, read by the frontend (src/utils/serverListFilter.ts deriveProviderId) and by the bridge mapper (src-tauri/src/bridge_shared.rs map_s3_provider_from_endpoint).",
+    "One table for recognizing an S3 provider from an endpoint host, read by the frontend (src/providers/s3HostMap.ts: deriveProviderId and the explicit-endpoint check of resolveProfileS3Location) and by the bridge mapper (src-tauri/src/bridge_shared.rs map_s3_provider_from_endpoint).",
     "A host matches a provider when it equals one of its domains or ends with '.' + domain (domain boundary), or matches one of its hostPatterns (for vendors whose registrable domain varies, such as idrivee2-<n>.com). Never a substring: a bucket named after another vendor ('backblaze-backup.s3.amazonaws.com') stays with the host's vendor, and lookalikes ('evilwasabisys.com') match nothing.",
     "No two providers share a domain, so the order of the list does not matter. preset=false marks providers the bridge maps on import that have no preset in the app; the frontend skips them.",
     "cases: hosts with the provider they must map to (null = no provider); both sides test against them. #1506 Requested 173."
