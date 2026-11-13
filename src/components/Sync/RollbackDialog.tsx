@@ -22,6 +22,8 @@ interface RollbackDialogProps {
     isOpen: boolean;
     /** Render inside an AeroSync tab instead of a separate modal. */
     embedded?: boolean;
+    /** Embedded: false while the pane is hidden behind another tool tab. */
+    active?: boolean;
     onClose: () => void;
     localPath: string;
     remotePath: string;
@@ -34,6 +36,7 @@ interface RollbackDialogProps {
 export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     isOpen,
     embedded = false,
+    active = true,
     onClose,
     localPath,
     remotePath,
@@ -64,11 +67,16 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     // takes the top ESC slot through the shared stack while open, so one press
     // cancels only the confirm and the parent answers again once it is gone
     // (Discussion #1527).
+    // A hidden pane (another tool tab chosen) drops its confirm, so it can
+    // neither hold ESC nor reappear stale.
     useGuardedClose({
         guard: null,
         onClose: () => setConfirmRestore(false),
-        escape: !!(isOpen && embedded && confirmRestore),
+        escape: !!(isOpen && embedded && active && confirmRestore),
     });
+    useEffect(() => {
+        if (!active) setConfirmRestore(false);
+    }, [active]);
 
     useEffect(() => {
         if (!isOpen) return;

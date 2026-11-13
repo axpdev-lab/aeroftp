@@ -381,6 +381,25 @@ it('lets ESC close only the restore confirm and leaves AeroSync open', async () 
 });
 
 
+it('drops the restore confirm when its pane is hidden, so ESC reaches AeroSync again', async () => {
+    // Switching tabs kept the hidden Rollback pane mounted with its confirm
+    // open: the next ESC dismissed that invisible confirm instead of closing
+    // the AeroSync dialog on screen.
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(2);
+    await choose('Plan');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
 it('refreshes an already-active History pane only after journal dismissal settles', async () => {
     const journal = { local_path: '/local', remote_path: '/remote', updated_at: '2026-10-29T19:00:00Z',
         completed: false, total_entries: 1, completed_entries: 0 };

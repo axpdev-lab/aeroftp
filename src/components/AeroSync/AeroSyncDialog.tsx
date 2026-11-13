@@ -401,7 +401,7 @@ export const AeroSyncDialog: React.FC<AeroSyncDialogProps> = ({
                                     onApplyImport={applyImportedSettings} />}
                                 {tool === 'multiPath' && <MultiPathEditor embedded isOpen onClose={() => selectTab('plan')}
                                     localPath={localPath} remotePath={remotePath} />}
-                                {tool === 'rollback' && <RollbackDialog embedded isOpen onClose={() => selectTab('plan')}
+                                {tool === 'rollback' && <RollbackDialog embedded isOpen active={activeTab === 'rollback'} onClose={() => selectTab('plan')}
                                     onRestoringChange={running => {
                                         // Invalidate both before writes begin and before Plan is unlocked,
                                         // including rejected restores that may have partially changed files.
