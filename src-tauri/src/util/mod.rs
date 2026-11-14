@@ -15,6 +15,8 @@ pub mod json_error;
 pub mod profile_name;
 pub mod provider_guard;
 pub mod scratch;
+#[cfg(all(test, unix))]
+pub(crate) mod script_stub;
 pub mod shutdown;
 pub mod size;
 pub mod start_folder;

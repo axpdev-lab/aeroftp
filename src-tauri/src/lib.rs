@@ -26610,13 +26610,10 @@ mod privileged_update_staging_tests {
         std::fs::create_dir(&fake_bin).expect("fake bin");
         let fake_dpkg = fake_bin.join("dpkg");
         let dpkg_called = root.path().join("dpkg-called");
-        std::fs::write(
+        crate::util::script_stub::install(
             &fake_dpkg,
-            b"#!/bin/sh\ntouch \"$AEROFTP_TEST_DPKG_CALLED\"\n",
-        )
-        .expect("fake dpkg");
-        std::fs::set_permissions(&fake_dpkg, std::fs::Permissions::from_mode(0o755))
-            .expect("fake dpkg mode");
+            "#!/bin/sh\ntouch \"$AEROFTP_TEST_DPKG_CALLED\"\n",
+        );
         let path = format!(
             "{}:{}",
             fake_bin.display(),

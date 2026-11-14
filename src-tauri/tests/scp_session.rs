@@ -6,6 +6,10 @@
 //! uutils), which macOS does not ship.
 #![cfg(target_os = "linux")]
 
+#[path = "support/script_stub.rs"]
+mod script_stub;
+use script_stub::fake_tool;
+
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::os::unix::ffi::OsStrExt;
@@ -379,8 +383,7 @@ async fn a_download_refuses_a_file_the_server_renamed() {
     let bin = root.join("bin");
     std::fs::create_dir(&bin).unwrap();
     let fake = bin.join("scp");
-    std::fs::write(&fake, "#!/bin/sh\nhead -c 1 >/dev/null\nprintf 'C0644 5 .bashrc\\n'\nhead -c 1 >/dev/null\nprintf 'evil\\n\\0'\n").unwrap();
-    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    fake_tool(&fake, "#!/bin/sh\nhead -c 1 >/dev/null\nprintf 'C0644 5 .bashrc\\n'\nhead -c 1 >/dev/null\nprintf 'evil\\n\\0'\n");
     let path = format!("{}:{}", s(&bin), system_path());
     let scp = ScpSession::open(connect(&root, &path).await, IO)
         .await
@@ -405,15 +408,13 @@ async fn a_stalled_download_holds_the_server_back() {
     let bin = root.join("bin");
     std::fs::create_dir(&bin).unwrap();
     let fake = bin.join("scp");
-    std::fs::write(
+    fake_tool(
         &fake,
         format!(
             "#!/bin/sh\nhead -c 1 >/dev/null\nprintf 'C0644 {SIZE} big\\n'\nhead -c 1 >/dev/null\n\
              head -c {SIZE} /dev/zero\n: > sent\nprintf '\\0'\nhead -c 1 >/dev/null\n"
         ),
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     let path = format!("{}:{}", s(&bin), system_path());
     let scp = ScpSession::open(connect(&root, &path).await, IO)
         .await
@@ -499,12 +500,10 @@ async fn a_find_without_the_listing_options_is_refused_naming_it() {
     let bin = root.join("bin");
     std::fs::create_dir(&bin).unwrap();
     let fake = bin.join("find");
-    std::fs::write(
+    fake_tool(
         &fake,
         "#!/bin/sh\necho 'find: unrecognized: -print0' >&2\nexit 1\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     let path = format!("{}:{}", s(&bin), system_path());
     let err = ScpSession::open(connect(&root, &path).await, IO)
         .await
@@ -528,16 +527,14 @@ async fn a_rename_skipped_by_mv_n_is_reported_as_an_existing_target() {
     let bin = root.join("bin");
     std::fs::create_dir(&bin).unwrap();
     let fake = bin.join("mv");
-    std::fs::write(
+    fake_tool(
         &fake,
         "#!/bin/sh\ncase $(cat mode) in\n\
          skip1) : > \"$4\"; exit 1 ;;\n\
          skip0) : > \"$4\"; exit 0 ;;\n\
          deny) echo \"mv: cannot move '$3': Permission denied\" >&2; exit 1 ;;\n\
          esac\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(&fake, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    );
     let path = format!("{}:{}", s(&bin), system_path());
     let scp = ScpSession::open(connect(&root, &path).await, IO)
         .await
@@ -577,12 +574,7 @@ async fn bounded_reads_refuse_failed_seek_overlong_and_short_windows() {
         let root = temp_dir(tag);
         let bin = root.join("bin");
         std::fs::create_dir(&bin).unwrap();
-        std::fs::write(bin.join(tool), script).unwrap();
-        std::fs::set_permissions(
-            bin.join(tool),
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
+        fake_tool(bin.join(tool), script);
         std::fs::write(root.join("bytes"), b"0123456789").unwrap();
         let path = format!("{}:{}", s(&bin), system_path());
         let scp = ScpSession::open(connect(&root, &path).await, IO)
