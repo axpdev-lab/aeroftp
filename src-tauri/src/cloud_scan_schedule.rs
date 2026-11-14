@@ -140,6 +140,21 @@ impl ScanLedger {
         state.pending = state.pending.take().or(old.pending);
     }
 
+    /// As [`Self::moved`], for a key that another pair still uses: the state
+    /// is merged into `to` and kept under `from`.
+    pub fn copied(&mut self, from: &str, to: &str) {
+        if from == to {
+            return;
+        }
+        let Some(old) = self.pairs.get(from).cloned() else {
+            return;
+        };
+        let state = self.pairs.entry(to.to_string()).or_default();
+        state.last_full_scan = state.last_full_scan.max(old.last_full_scan);
+        state.traits = state.traits.or(old.traits);
+        state.pending = state.pending.take().or(old.pending);
+    }
+
     /// Remember what a connected provider said about scanning.
     pub fn learn(&mut self, key: &str, traits: ProviderScanTraits) {
         self.pairs.entry(key.to_string()).or_default().traits = Some(traits);
@@ -445,6 +460,19 @@ mod tests {
         assert!(ledger.pairs.contains_key("l|/h/a"));
         ledger.moved("l|missing", "l|/h/a");
         assert_eq!(ledger.pairs.len(), 1);
+    }
+
+    /// A key another pair still uses keeps its state when it is copied.
+    #[test]
+    fn a_copied_pair_keeps_its_scan_state_under_both_keys() {
+        let mut ledger = ScanLedger::default();
+        ledger.request_full_scan("l|~/docs", "the watcher lost events");
+        ledger.copied("l|~/docs", "l|/home/u/docs");
+        let now = Instant::now();
+        assert!(ledger.pending_full_scan_due("l|~/docs", now));
+        assert!(ledger.pending_full_scan_due("l|/home/u/docs", now));
+        ledger.record_full_scan("l|/home/u/docs", now);
+        assert!(ledger.pending_full_scan_due("l|~/docs", now));
     }
 
     const HOUR: Duration = Duration::from_secs(3600);

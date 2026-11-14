@@ -4020,11 +4020,23 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     };
     // Both files are read before either is written, so an unreadable one
     // leaves the other untouched too.
-    let place_config = config_unplaced(&cloud_config::load_cloud_config_strict()?);
-    let place_pairs = cloud_pairs::load_cloud_pairs_config_strict()?
-        .pairs
-        .iter()
-        .any(pair_unplaced);
+    // An entry on the same `~` key that this connect does not place (it
+    // reaches another profile or endpoint) keeps syncing under that key.
+    let keeps_the_key = |remote: &str, local: &std::path::Path| {
+        remote == unresolved && local == config.local_folder.as_path()
+    };
+    let stored_config = cloud_config::load_cloud_config_strict()?;
+    let stored_pairs = cloud_pairs::load_cloud_pairs_config_strict()?;
+    let place_config = config_unplaced(&stored_config);
+    let place_pairs = stored_pairs.pairs.iter().any(pair_unplaced);
+    let mut key_still_used =
+        !place_config && keeps_the_key(&stored_config.remote_folder, &stored_config.local_folder);
+    if !place_pairs {
+        key_still_used |= stored_pairs
+            .pairs
+            .iter()
+            .any(|pair| keeps_the_key(&pair.remote_path, &pair.local_path));
+    }
     #[cfg(test)]
     if let Some(edit) = BETWEEN_PLACEMENT_READ_AND_WRITE
         .lock()
@@ -4039,6 +4051,8 @@ pub(crate) async fn anchor_login_relative_remote_folder(
             let unplaced = config_unplaced(stored);
             if unplaced {
                 stored.remote_folder = placed.clone();
+            } else {
+                key_still_used |= keeps_the_key(&stored.remote_folder, &stored.local_folder);
             }
             Ok(unplaced)
         })?;
@@ -4046,9 +4060,13 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     if place_pairs {
         persisted |= cloud_pairs::with_cloud_pairs_mut(|pairs| {
             let mut moved = false;
-            for pair in pairs.pairs.iter_mut().filter(|pair| pair_unplaced(pair)) {
-                pair.remote_path = placed.clone();
-                moved = true;
+            for pair in pairs.pairs.iter_mut() {
+                if pair_unplaced(pair) {
+                    pair.remote_path = placed.clone();
+                    moved = true;
+                } else {
+                    key_still_used |= keeps_the_key(&pair.remote_path, &pair.local_path);
+                }
             }
             Ok(moved)
         })?;
@@ -4057,16 +4075,23 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     // reads them under its key: what the scan ledger held under the `~` key
     // (a request, a floor) moves with them. Every caller that places, the
     // manual sync, the background cycles and the folder picker, goes
-    // through here; an entry left unplaced keeps its ledger state.
+    // through here. When an entry left unplaced still syncs under the `~`
+    // key (a homonymous pair that reaches another profile), the state is
+    // copied, not moved: both keys keep a request until each one's scan
+    // answers it.
     if persisted {
         let placed_config = CloudConfig {
             remote_folder: placed.clone(),
             ..config.clone()
         };
-        crate::cloud_scan_schedule::ledger().moved(
-            &crate::cloud_scan_schedule::pair_key(config),
-            &crate::cloud_scan_schedule::pair_key(&placed_config),
-        );
+        let from = crate::cloud_scan_schedule::pair_key(config);
+        let to = crate::cloud_scan_schedule::pair_key(&placed_config);
+        let mut ledger = crate::cloud_scan_schedule::ledger();
+        if key_still_used {
+            ledger.copied(&from, &to);
+        } else {
+            ledger.moved(&from, &to);
+        }
     }
     Ok(Some(placed))
 }
@@ -8366,6 +8391,109 @@ mod baseline_tests {
                 }),
                 now
             ));
+        });
+    }
+
+    /// The configuration pinned to id-a is placed while the pair on the same
+    /// local folder resolves by name to id-b and keeps its `~` form: both
+    /// shared the `~` key, and the pair still syncs under it, so a full scan
+    /// asked for there stays due there and is due under the placed key too.
+    /// When nothing is left on the `~` key, the state moves.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_pair_left_on_the_tilde_key_keeps_its_scan_request() {
+        with_scratch_index(async {
+            let key = crate::cloud_scan_schedule::pair_key;
+            let local = std::path::PathBuf::from("/sync/homonym-ledger");
+            let by_id = CloudConfig {
+                enabled: true,
+                local_folder: local.clone(),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                server_profile_id: Some("id-a".to_string()),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let reset = || {
+                let pair = crate::cloud_pairs::CloudPathPair::from_legacy(&by_id);
+                cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                    pairs.pairs = vec![pair];
+                    Ok(())
+                })
+                .unwrap();
+                let stored = by_id.clone();
+                cloud_config::with_cloud_config_mut(move |disk| {
+                    *disk = stored;
+                    Ok(())
+                })
+                .unwrap();
+            };
+            let tilde_key = key(&by_id);
+            let placed_key = key(&CloudConfig {
+                remote_folder: "/home/u/docs".to_string(),
+                ..by_id.clone()
+            });
+            let now = std::time::Instant::now();
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+
+            reset();
+            crate::cloud_scan_schedule::ledger()
+                .request_full_scan(&tilde_key, "the watcher lost events");
+            let homonym = ProfileResolution {
+                connected: Some("id-a".to_string()),
+                by_name: Some("id-b".to_string()),
+                by_reference: Some("id-a".to_string()),
+                names_read: true,
+            };
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym, None, None)
+                .await
+                .unwrap();
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/u/docs"
+            );
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                "~/docs"
+            );
+            {
+                let ledger = crate::cloud_scan_schedule::ledger();
+                assert!(
+                    ledger.pending_full_scan_due(&tilde_key, now),
+                    "the pair's request stays"
+                );
+                assert!(ledger.pending_full_scan_due(&placed_key, now));
+            }
+
+            // Both entries reach the connected profile: nothing is left on
+            // the `~` key, so the state moves.
+            reset();
+            crate::cloud_scan_schedule::ledger().record_full_scan(&placed_key, now);
+            let both = ProfileResolution {
+                connected: Some("id-a".to_string()),
+                by_name: Some("id-a".to_string()),
+                by_reference: Some("id-a".to_string()),
+                names_read: true,
+            };
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &both, None, None)
+                .await
+                .unwrap();
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                "/home/u/docs"
+            );
+            let ledger = crate::cloud_scan_schedule::ledger();
+            assert!(
+                !ledger.pending_full_scan_due(&tilde_key, now),
+                "nothing is left on the `~` key"
+            );
+            assert!(
+                ledger.pending_full_scan_due(&placed_key, now),
+                "the request moved"
+            );
         });
     }
 
