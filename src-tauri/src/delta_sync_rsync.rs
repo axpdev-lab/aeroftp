@@ -87,7 +87,14 @@ fn sanitize_rsync_message(raw: &str) -> String {
         s = re.replace_all(&s, "<redacted>").to_string();
     }
     if s.len() > MAX_REASON_LEN {
-        s.truncate(MAX_REASON_LEN);
+        // The limit counts bytes and a message can hold any text (a user
+        // name, a server's words): cut at the last character boundary at or
+        // before it, never inside a character, which `truncate` panics on.
+        let mut cut = MAX_REASON_LEN;
+        while !s.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        s.truncate(cut);
         s.push_str("…[truncated]");
     }
     s
@@ -1203,6 +1210,104 @@ mod tests {
             1,
             "a failed remote probe must be cached, not re-run on the next transfer"
         );
+    }
+
+    /// CodeRabbit review 5906630728 (outside diff): a refusal message is cut
+    /// at 512 bytes, and it can hold any text (a refused login names the
+    /// user). A multibyte character across the limit is cut before it, at
+    /// every offset it can straddle the limit by: the gate answers its hard
+    /// error, fresh and cached, and so does a transfer, instead of panicking
+    /// inside `String::truncate`.
+    #[tokio::test]
+    async fn a_refusal_cut_inside_a_character_is_cut_before_it() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+
+        struct Refusing(String);
+
+        #[async_trait]
+        impl DeltaTransport for Refusing {
+            fn name(&self) -> &'static str {
+                "multibyte-refusal"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Err(RsyncError::HardRejection(self.0.clone()))
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("a refused probe transfers nothing")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                unreachable!("a refused probe transfers nothing")
+            }
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        // Two, three and four byte characters, each at every offset that puts
+        // the limit inside it, and one that ends exactly on the limit.
+        for ch in ['\u{e9}', '\u{20ac}', '\u{1f600}'] {
+            for inside in 0..ch.len_utf8() {
+                let lead =
+                    "native hard rejection (PinnedLoginRefused): the server refused the key ";
+                let pad = MAX_REASON_LEN - lead.len() - inside;
+                let message = format!("{lead}{}{}", "u".repeat(pad), ch.to_string().repeat(40));
+                assert!(message.len() > MAX_REASON_LEN);
+                assert_eq!(
+                    message.is_char_boundary(MAX_REASON_LEN),
+                    inside == 0,
+                    "{ch:?} {inside}"
+                );
+                let transport = Refusing(message);
+                let key = format!("test-multibyte-{}-{inside}", ch.len_utf8());
+                for attempt in ["fresh", "cached"] {
+                    let gate = check_delta_eligibility_with_transport(&transport, &key).await;
+                    let hard = gate
+                        .hard_error
+                        .unwrap_or_else(|| panic!("{ch:?} {inside} {attempt}: {:?}", gate.reason));
+                    assert!(hard.contains("PinnedLoginRefused"), "{hard}");
+                    assert!(hard.ends_with("…[truncated]"), "{hard}");
+                    let kept = hard.trim_end_matches("…[truncated]");
+                    assert!(
+                        kept.len() <= MAX_REASON_LEN && kept.len() > MAX_REASON_LEN - 4,
+                        "{ch:?} {inside}: kept {} bytes",
+                        kept.len()
+                    );
+                    let r = transfer_with_delta(
+                        &transport,
+                        SyncDirection::Upload,
+                        Path::new("/tmp/multibyte-nope"),
+                        "/remote/multibyte-nope",
+                        &key,
+                        None,
+                    )
+                    .await
+                    .expect("a refusal is a typed result");
+                    assert!(
+                        r.hard_error.is_some_and(|e| e.ends_with("…[truncated]")),
+                        "{ch:?} {inside} {attempt}"
+                    );
+                }
+            }
+        }
+        // The helper on its own, at the same offsets and with no room at all.
+        for text in [
+            "\u{e9}".repeat(600),
+            "\u{20ac}".repeat(400),
+            "\u{1f600}".repeat(300),
+        ] {
+            for skew in 0..4 {
+                let cut = sanitize_rsync_message(&format!("{}{text}", "a".repeat(skew)));
+                assert!(cut.ends_with("…[truncated]"));
+                assert!(cut.len() <= MAX_REASON_LEN + "…[truncated]".len());
+            }
+        }
     }
 
     /// The sync-start gate reads the same cached probe: a pinned key that is

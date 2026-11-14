@@ -658,6 +658,20 @@ impl GitHubProvider {
         provider
     }
 
+    /// Two sessions of one account on one repository, without the network:
+    /// the first on the protected `main`, the second on its working branch.
+    /// For the tests of what a wrapper forwards of each one's identity.
+    #[cfg(test)]
+    pub(crate) fn on_main_and_on_its_working_branch_for_test() -> (Self, Self) {
+        let on_main = Self::protected_for_test("http://127.0.0.1:9".to_string());
+        let mut on_branch = Self::protected_for_test("http://127.0.0.1:9".to_string());
+        on_branch.write_mode = GitHubWriteMode::BranchWorkflow {
+            branch: Self::workflow_branch_name("alice", "main"),
+        };
+        assert_ne!(on_main.content_branch(), on_branch.content_branch());
+        (on_main, on_branch)
+    }
+
     /// A provider in the state `connect` leaves it in, without the network:
     /// the account and the repository's default branch as the API reported
     /// them, the configured branch (or that default) active.
@@ -4510,6 +4524,8 @@ mod tests {
         /// Merged with a merge commit, level, or absent: no report.
         #[tokio::test]
         async fn a_pending_branch_of_an_earlier_release_is_reported_and_never_written() {
+            // The process-wide warning queue is one for every test of the run.
+            let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
             let own = GitHubProvider::workflow_branch_name("alice", "main");
             let legacy = "aeroftp/alice-smith/main".to_string();
             let (_dir, file) = a_file();

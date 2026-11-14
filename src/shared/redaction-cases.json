@@ -752,5 +752,15 @@
     "name": "X2 malformed escapes are literal, the escaped URL beside them is masked",
     "input": "C:\\tmp\\x1 https:\\/\\/bob:hunter2\\u12@host/p",
     "expected": "C:\\tmp\\x1 https:\\/\\/***REDACTED***@host/p"
+  },
+  {
+    "name": "R1 delimiters spelled through a re-forming escape, within the bound, masked exactly",
+    "input": "log: https:\\u005c/\\u005c/bob:hunter2@host/p",
+    "expected": "log: https:\\u005c/\\u005c/***REDACTED***@host/p"
+  },
+  {
+    "name": "R1 a backslash run that re-forms an escape, within the bound, masked exactly",
+    "input": "log: https:\\\\\\\\u002f\\\\\\\\u002fbob:hunter2@host/p",
+    "expected": "log: https:\\\\\\\\u002f\\\\\\\\u002f***REDACTED***@host/p"
   }
 ]

@@ -3496,6 +3496,16 @@ pub fn report_warning(message: String) {
     }
 }
 
+/// Held for its whole length by every test that calls [`report_warning`] or
+/// [`take_warnings`] outside a [`CallWarnings::scope`]: the process queue is
+/// one for all the tests of a run, which cargo runs in parallel, so without
+/// it one test drains another's warning or leaves it an extra one. An async
+/// test takes it with `.lock().await`, a plain one with `.blocking_lock()`.
+/// Pinned by `every_test_of_the_process_warning_queue_holds_its_lock`.
+#[cfg(test)]
+pub(crate) static WARNING_QUEUE_TEST_LOCK: tokio::sync::Mutex<()> =
+    tokio::sync::Mutex::const_new(());
+
 /// Take the warnings reported since the last call, oldest first, for the
 /// front end to show in its own format (the CLI: a line on stderr, or a JSON
 /// object there with `--json`; MCP: a text block of the tool result): inside
@@ -4791,8 +4801,76 @@ mod tests {
 
     /// A queue no front end reads keeps the newest warnings and counts the
     /// ones it dropped: it kept the oldest and dropped the newest silently.
+    /// CodeRabbit 4575254538: every test that reads or fills the process
+    /// warning queue directly holds `WARNING_QUEUE_TEST_LOCK` from its first
+    /// statement, in every module of the crate. Read from the sources: a new
+    /// test that uses the queue without the lock fails here.
+    #[test]
+    fn every_test_of_the_process_warning_queue_holds_its_lock() {
+        let sources = [
+            ("providers/mod.rs", include_str!("mod.rs")),
+            ("providers/b2.rs", include_str!("b2.rs")),
+            ("providers/filelu.rs", include_str!("filelu.rs")),
+            ("providers/ftp.rs", include_str!("ftp.rs")),
+            ("providers/s3.rs", include_str!("s3.rs")),
+            ("providers/sftp.rs", include_str!("sftp.rs")),
+            ("providers/directory.rs", include_str!("directory.rs")),
+            ("providers/multi_thread.rs", include_str!("multi_thread.rs")),
+            ("providers/filen/mod.rs", include_str!("filen/mod.rs")),
+            ("providers/github/mod.rs", include_str!("github/mod.rs")),
+            ("mcp/server.rs", include_str!("../mcp/server.rs")),
+            (
+                "provider_commands.rs",
+                include_str!("../provider_commands.rs"),
+            ),
+            (
+                "provider_transfer_executor.rs",
+                include_str!("../provider_transfer_executor.rs"),
+            ),
+            (
+                "ai_core/gui_tools.rs",
+                include_str!("../ai_core/gui_tools.rs"),
+            ),
+        ];
+        let test_attr = regex::Regex::new(
+            r"(?m)^( *)#\[(?:tokio::)?test(?:\([^)]*\))?\]\s*(?:async )?fn (\w+)",
+        )
+        .unwrap();
+        let uses = regex::Regex::new(r"\b(?:take_warnings\(\)|report_warning\()").unwrap();
+        let mut locked = 0;
+        for (file, source) in sources {
+            for test in test_attr.captures_iter(source) {
+                // A test's body: up to the brace that closes it, at its own
+                // indentation (rustfmt's), so the code after a test module
+                // is never read as part of its last test.
+                let start = test.get(0).unwrap().end();
+                let close = format!("\n{}}}\n", &test[1]);
+                let end = source[start..]
+                    .find(&close)
+                    .map_or(source.len(), |at| start + at);
+                let body = &source[start..end];
+                if &test[2] == "every_test_of_the_process_warning_queue_holds_its_lock" {
+                    continue;
+                }
+                let Some(first_use) = uses.find(body) else {
+                    continue;
+                };
+                let lock = body.find("WARNING_QUEUE_TEST_LOCK");
+                assert!(
+                    lock.is_some_and(|at| at < first_use.start()),
+                    "{file}: {} uses the process warning queue without holding its lock",
+                    &test[2]
+                );
+                locked += 1;
+            }
+        }
+        assert_eq!(locked, 16, "the tests that use the process warning queue");
+    }
+
     #[test]
     fn the_warning_queue_keeps_the_newest_and_counts_the_dropped() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.blocking_lock();
         for i in 0..MAX_PENDING_WARNINGS + 3 {
             report_warning(format!("w{i}"));
         }

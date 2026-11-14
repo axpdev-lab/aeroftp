@@ -566,7 +566,71 @@ fn decode_body(text: &str) -> Option<(String, Vec<usize>)> {
 /// The userinfo spans `[start, end)` of `text`, in order (see
 /// [`redact_url_userinfo`]).
 fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut budget = DecodeBudget {
+        work: 0,
+        depth: 0,
+        limit: DECODE_WORK_PER_BYTE * text.len() + 4096,
+    };
+    userinfo_spans_within(text, &mut budget)
+}
+
+/// The bound on decoding (R1), the TS twin's: the levels decoded inside
+/// one another, and the work of every level together (each level is
+/// parsed, scanned and decoded once, its length counted three times),
+/// whatever chain of escapes the text holds. `\u005c` repeated decodes to
+/// itself shortened by five characters at each level: without the bound,
+/// N levels (N frames of stack) and work quadratic in N from text a server
+/// sent.
+pub(crate) const MAX_DECODE_DEPTH: usize = 64;
+
+/// The work allowed per byte of the text, over every level together (R1):
+/// about ten levels of the text's full length (each costs three units per
+/// byte), so a long nested dump decodes exactly where it can. A chain that
+/// re-forms an escape at every level reaches this before
+/// [`MAX_DECODE_DEPTH`] (64 such levels cost about 192 units per byte): the
+/// depth bound is the stack's backstop.
+const DECODE_WORK_PER_BYTE: usize = 32;
+
+struct DecodeBudget {
+    work: usize,
+    depth: usize,
+    limit: usize,
+}
+
+impl DecodeBudget {
+    /// A level of `length` bytes would go past the bound: the caller masks
+    /// what it would have decoded (conservative, never unmasked).
+    fn past(&self, length: usize) -> bool {
+        self.depth >= MAX_DECODE_DEPTH || self.work + length > self.limit
+    }
+}
+
+/// One decoded level, inside `budget`: its userinfo spans mapped back onto
+/// the raw text. `None` past the bound.
+fn deeper(
+    budget: &mut DecodeBudget,
+    length: usize,
+    decode: impl FnOnce() -> Option<(String, Vec<usize>)>,
+) -> Option<Vec<(usize, usize)>> {
+    if budget.past(length) {
+        return None;
+    }
+    budget.work += length;
+    let Some((decoded, raw)) = decode() else {
+        return Some(Vec::new());
+    };
+    budget.depth += 1;
+    let spans = userinfo_spans_within(&decoded, budget)
+        .into_iter()
+        .map(|(a, b)| (raw[a], raw[b]))
+        .collect();
+    budget.depth -= 1;
+    Some(spans)
+}
+
+fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
+    budget.work += 2 * text.len();
     let json = serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok();
     let mut spans = Vec::new();
     if !json {
@@ -575,12 +639,11 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
         // comma, single quotes) is also scanned decoded, as one string body,
         // by these same rules, and the spans are mapped back; the raw scan
         // below still runs, so decoding never masks less.
-        if let Some((decoded, raw)) = decode_body(text) {
-            spans.extend(
-                userinfo_spans(&decoded)
-                    .into_iter()
-                    .map(|(a, b)| (raw[a], raw[b])),
-            );
+        match deeper(budget, text.len(), || decode_body(text)) {
+            Some(found) => spans.extend(found),
+            // Past the bound with an escape still to decode: all of it.
+            None if decode_body(text).is_some() => return vec![(0, text.len())],
+            None => {}
         }
     }
     let mut i = 0;
@@ -595,12 +658,14 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
                 // and escapes; the raw scan below still runs on the token
                 // too, so decoding never masks less (an escaped newline ends
                 // the decoded authority, not the raw one).
-                let (decoded, raw) = decode_string_token(text, i + 1, end);
-                spans.extend(
-                    userinfo_spans(&decoded)
-                        .into_iter()
-                        .map(|(a, b)| (raw[a], raw[b])),
-                );
+                let from = i + 1;
+                match deeper(budget, end - from, || {
+                    Some(decode_string_token(text, from, end))
+                }) {
+                    Some(found) => spans.extend(found),
+                    // Past the bound: the whole token is masked.
+                    None => spans.push((from, end)),
+                }
             }
             i += 1;
             continue;
@@ -656,9 +721,12 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
 /// ([`decode_body`], X2), so a prefix, a suffix, a trailing comma or single
 /// quotes around an escaped URL never leave it unmasked; malformed escapes
 /// are literal. Each level is one linear pass and the recursion stops at the
-/// first level that decodes nothing; a level is shorter than the one before
-/// by one character per escape, so a line full of backslashes, halved at
-/// every level, costs twice its length in all. With an
+/// first level that decodes nothing. A chain of escapes can re-form one at
+/// every level (`\u005c` repeated shortens by five bytes per level), so the
+/// decoding is bounded (R1): at most [`MAX_DECODE_DEPTH`] levels inside one
+/// another, and 32n + 4096 units of work in all (n the text's length). A
+/// level past either bound that still holds an escape is masked whole (the
+/// text, or the JSON token): conservative, never unmasked. With an
 /// `@` in it, the userinfo is everything up to the LAST `@`, and all of it
 /// becomes the placeholder. Both twins run src/shared/redaction-cases.json,
 /// the parser-agreement and escape cases included.
@@ -1067,7 +1135,8 @@ mod tests {
                 serde_json::json!({ "v": inner }).to_string()
             }),
             // X2: long lines that are not JSON, full of backslashes, decoded
-            // as a string body at every level: a run halves at each one.
+            // as a string body at every level: a backslash run halves at each one
+            // (chains that re-form an escape are R1's, below).
             format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(400_000)),
             format!(
                 "log: {} https:\\/\\/bob:hunter2@h/p",
@@ -1097,6 +1166,103 @@ mod tests {
         let started = std::time::Instant::now();
         assert_eq!(redact(&finding), finding);
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    /// R1 (CodeRabbit 4575254533, Greptile 4575199182): chains of escapes
+    /// that re-form an escape at every level. Without a bound, `\`
+    /// repeated N times is N levels and work quadratic in N (and N frames of
+    /// stack): the decoding stops at `MAX_DECODE_DEPTH` levels or 32n + 4096
+    /// units of work, and what is past the bound is masked whole, never
+    /// returned unmasked. The TS twin runs the same chains.
+    #[test]
+    fn the_decoding_stays_bounded_on_self_recreating_escapes() {
+        type Chain = (&'static str, fn(usize) -> String);
+        let chains: [Chain; 4] = [
+            ("the bot's chain", |n| {
+                format!("log: \\{}", "u005c".repeat(n))
+            }),
+            ("a backslash run that re-forms \\u", |n| {
+                format!("log: {}{}", "\\\\".repeat(n), "u005c".repeat(n))
+            }),
+            ("escaped backslashes mixed with \\/", |n| {
+                format!("log: {}", "\\u005c\\/".repeat(n))
+            }),
+            ("an escaped quote chain", |n| {
+                format!("log: \"{}\"", "\\u005c\\u0022".repeat(n))
+            }),
+        ];
+        let url = r" https:\/\/bob:hunter2@host/p";
+        for (name, chain) in chains {
+            for n in [10_000, 100_000] {
+                for input in [chain(n), chain(n) + url] {
+                    let started = std::time::Instant::now();
+                    // A stack depth of n would overflow here: it is bounded.
+                    let masked = redact_url_userinfo(&input);
+                    // The bound of the long-line tests: far above a linear
+                    // scan under a parallel build (a 2 s bound failed there),
+                    // far below the minutes a quadratic one takes.
+                    assert!(
+                        started.elapsed() < std::time::Duration::from_secs(15),
+                        "{name} at {n}"
+                    );
+                    assert!(!masked.contains("hunter2"), "{name} at {n}");
+                    assert!(!redact(&input).contains("hunter2"), "{name} at {n}");
+                    assert_eq!(redact_url_userinfo(&masked), masked, "{name} at {n}");
+                }
+            }
+        }
+        // Within the bound, decoded to the end: the userinfo alone.
+        assert_eq!(
+            redact_url_userinfo(r"log: https:\/\/bob:hunter2@host/p"),
+            r"log: https:\/\/***REDACTED***@host/p"
+        );
+        // Past the bound: conservative (the work bound ends first on such a
+        // chain, at 32n + 4096; see the depth pin below).
+        let long = format!(
+            "log: \\{}{url}",
+            "u005c".repeat(super::MAX_DECODE_DEPTH + 10)
+        );
+        assert_eq!(redact_url_userinfo(&long), "***REDACTED***");
+    }
+
+    /// A long dump nested four levels deep: inside the work bound (32n), so
+    /// it is masked exactly, never the whole line.
+    #[test]
+    fn a_url_four_decodes_deep_in_a_line_over_8_kb_is_masked_exactly() {
+        let escape = |s: &str| s.replace('\\', "\\\\").replace('/', "\\/");
+        let deep = |s: &str| escape(&escape(&escape(&escape(s))));
+        let pad = "x".repeat(9_000);
+        let line = format!("{pad} {}bob:hunter2@host{}", deep("https://"), deep("/p"));
+        assert!(line.len() > 8 * 1024);
+        assert_eq!(
+            redact_url_userinfo(&line),
+            format!(
+                "{pad} {}***REDACTED***@host{}",
+                deep("https://"),
+                deep("/p")
+            )
+        );
+    }
+
+    /// The depth bound on its own, with no work limit: past
+    /// `MAX_DECODE_DEPTH` levels the level is masked whole; below it, exactly.
+    #[test]
+    fn past_the_depth_bound_the_level_is_masked_whole_with_no_work_limit() {
+        let url = r" https:\/\/bob:hunter2@host/p";
+        let chain = |links: usize| format!("log: \\{}{url}", "u005c".repeat(links));
+        let unlimited = || super::DecodeBudget {
+            work: 0,
+            depth: 0,
+            limit: usize::MAX,
+        };
+        let past = chain(super::MAX_DECODE_DEPTH + 10);
+        assert!(super::userinfo_spans_within(&past, &mut unlimited()).contains(&(0, past.len())));
+        let below = chain(super::MAX_DECODE_DEPTH - 2);
+        let spans = super::userinfo_spans_within(&below, &mut unlimited());
+        assert!(!spans.is_empty());
+        for (a, b) in spans {
+            assert_eq!(&below[a..b], "bob:hunter2");
+        }
     }
 
     /// `[ "https:\/\/u0:p\u0040h0\/x", ... ]`: every delimiter escaped.
