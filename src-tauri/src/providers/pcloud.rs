@@ -2921,11 +2921,10 @@ mod tests {
                 matches!(outcome, Err(ProviderError::AlreadyExists(_))),
                 "{to}: {outcome:?}"
             );
-            assert!(
-                calls.lock().unwrap().is_empty(),
-                "{to}: {:?}",
-                calls.lock().unwrap()
-            );
+            {
+                let seen_calls = calls.lock().unwrap().clone();
+                assert!(seen_calls.is_empty(), "{to}: {:?}", seen_calls);
+            }
         }
     }
 
@@ -3006,11 +3005,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A rename onto its own path does nothing and sends nothing.
@@ -3018,11 +3016,10 @@ mod tests {
     async fn rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_on_pcloud_tree(&["/a.txt"], r#"{"result":0}"#).await;
         provider.rename("/a.txt", "/a.txt").await.expect("no-op");
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// `replace` is the verb for "put this over that" (CLI `edit`, MCP

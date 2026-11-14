@@ -3621,11 +3621,14 @@ mod tests {
                 .provider
                 .upload(local.path().to_str().unwrap(), &target, None)
                 .await;
-            assert!(
-                f.mutations.lock().unwrap().is_empty(),
-                "strict upload sent mutations before verification: {:?}",
-                f.mutations.lock().unwrap()
-            );
+            {
+                let seen_mutations = f.mutations.lock().unwrap().clone();
+                assert!(
+                    seen_mutations.is_empty(),
+                    "strict upload sent mutations before verification: {:?}",
+                    seen_mutations
+                );
+            }
             assert!(
                 matches!(outcome, Err(ProviderError::ParseError(_))),
                 "{outcome:?}"
@@ -3639,11 +3642,14 @@ mod tests {
         let mut f = cap_fixture(false).await;
         let target = cache_a_capped_child(&mut f, true).await;
         let outcome = f.provider.replace("/big/file-1-0", &target).await;
-        assert!(
-            f.mutations.lock().unwrap().is_empty(),
-            "strict replace sent mutations before verification: {:?}",
-            f.mutations.lock().unwrap()
-        );
+        {
+            let seen_mutations = f.mutations.lock().unwrap().clone();
+            assert!(
+                seen_mutations.is_empty(),
+                "strict replace sent mutations before verification: {:?}",
+                seen_mutations
+            );
+        }
         assert!(
             matches!(outcome, Err(ProviderError::ParseError(_))),
             "{outcome:?}"
@@ -4285,11 +4291,10 @@ mod tests {
         .await;
         let outcome = provider.rename("/src/a.txt", "/dst/b.txt").await;
         assert!(outcome.is_err(), "{outcome:?}");
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// `replace` is the verb for "put this over that" (CLI `edit`, MCP
@@ -4365,11 +4370,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A replace puts one file in place of another. Onto a folder it set the
@@ -4392,11 +4396,10 @@ mod tests {
                 "{from} -> {to}: {outcome:?}"
             );
         }
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// FileLu answers HTTP 200 and puts the refusal in the body: reading
@@ -5334,11 +5337,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
         // Moving it into another folder under the same name renames nothing.
         let (mut provider, _) =
             provider_with_cached_tree(&[("/d", "7"), ("/e", "8"), ("/d/it's.txt", "AAA")]).await;
@@ -5803,11 +5805,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::InvalidPath(ref m)) if m.contains("HTML entities")),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// Both copies rename the clone with FileLu's file rename, so a name it
@@ -5829,11 +5830,10 @@ mod tests {
             "{outcome:?}"
         );
         for calls in [calls, clone_calls] {
-            assert!(
-                calls.lock().unwrap().is_empty(),
-                "{:?}",
-                calls.lock().unwrap()
-            );
+            {
+                let seen_calls = calls.lock().unwrap().clone();
+                assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+            }
         }
     }
 
@@ -5925,11 +5925,14 @@ mod tests {
                 ),
                 _ => unreachable!(),
             }
-            assert!(
-                calls.lock().unwrap().is_empty(),
-                "{case}: no clone/move/rename before destination verification: {:?}",
-                calls.lock().unwrap()
-            );
+            {
+                let seen_calls = calls.lock().unwrap().clone();
+                assert!(
+                    seen_calls.is_empty(),
+                    "{case}: no clone/move/rename before destination verification: {:?}",
+                    seen_calls
+                );
+            }
         }
     }
 

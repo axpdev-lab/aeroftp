@@ -2213,11 +2213,10 @@ mod tests {
                 "{from} -> {to}: {outcome:?}"
             );
         }
-        assert!(
-            moves.lock().unwrap().is_empty(),
-            "{:?}",
-            moves.lock().unwrap()
-        );
+        {
+            let seen_moves = moves.lock().unwrap().clone();
+            assert!(seen_moves.is_empty(), "{:?}", seen_moves);
+        }
     }
 
     #[test]
