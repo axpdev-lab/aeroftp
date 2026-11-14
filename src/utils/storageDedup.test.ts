@@ -227,6 +227,25 @@ describe('storageDedup', () => {
         expect(summary.totalUsed).toBe(3_000_000);
     });
 
+    it('case 4c7: every spelling of one Puter account counts once', () => {
+        // `/Alice`, `/%41lice` and the template with the user name `Alice`
+        // decode to one account: one key, one quota.
+        const profiles = [
+            ['s1', 'https://dav.puter.com/Alice', '-token'],
+            ['s2', 'https://dav.puter.com/%41lice', '-token'],
+            ['s3', 'https://dav.puter.com/{username}', 'Alice'],
+        ].map(([id, host, username]) => make({
+            id, protocol: 'webdav', providerId: 'puter-webdav', host, port: 443, username,
+            used: 1_000, total: 25_000_000,
+        }));
+        for (const profile of profiles) {
+            expect(getStorageDedupKey(profile)).toBe('webdav:puter-webdav:alice');
+        }
+        const summary = aggregateByDedupKey(profiles);
+        expect(summary.uniqueCount).toBe(1);
+        expect(summary.totalUsed).toBe(1_000);
+    });
+
     it('case 4c6: a percent-encoded Puter account keys like its user name', () => {
         // The connect writes `a@b` into the URL as `a%40b` when it fills the
         // template; both spellings of the account are one drive.

@@ -134,10 +134,12 @@ pub fn puter_account(raw_host: &str) -> String {
     let raw = s[idx + 1..].split('/').next().unwrap_or("");
     // The URL holds the account percent-encoded (`a%40b`), the user name
     // decoded (`a@b`): decoded, both spellings of one account key alike.
+    // Lowercased again after decoding: `%41lice` and `alice` are one account.
     let segment = percent_encoding::percent_decode_str(raw)
         .decode_utf8()
         .map(|d| d.into_owned())
-        .unwrap_or_else(|_| raw.to_string());
+        .unwrap_or_else(|_| raw.to_string())
+        .to_lowercase();
     // The form saves the default `https://dav.puter.com/{username}` as it
     // is: the placeholder names no account, the profile's user name does.
     if segment.contains("{username}") {
@@ -949,6 +951,38 @@ mod tests {
         let summary = aggregate(&profiles);
         assert_eq!(summary.unique_count, 2);
         assert_eq!(summary.total_used, 3_000_000);
+    }
+
+    #[test]
+    fn every_spelling_of_one_puter_account_counts_once() {
+        // `/Alice`, `/%41lice` and the template with the user name `Alice`
+        // decode to one account: one key, one quota.
+        let spellings = [
+            ("s1", "https://dav.puter.com/Alice", "-token"),
+            ("s2", "https://dav.puter.com/%41lice", "-token"),
+            ("s3", "https://dav.puter.com/{username}", "Alice"),
+        ];
+        let profiles: Vec<_> = spellings
+            .iter()
+            .map(|(id, host, user)| {
+                p(
+                    id,
+                    "webdav",
+                    Some("puter-webdav"),
+                    host,
+                    443,
+                    user,
+                    Some(1_000),
+                    Some(25_000_000),
+                )
+            })
+            .collect();
+        for profile in &profiles {
+            assert_eq!(dedup_key(profile), "webdav:puter-webdav:alice");
+        }
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 1);
+        assert_eq!(summary.total_used, 1_000);
     }
 
     #[test]

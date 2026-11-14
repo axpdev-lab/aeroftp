@@ -251,7 +251,8 @@ const puterAccount = (rawHost: string | undefined): string => {
     // The URL holds the account percent-encoded (`a%40b`), the user name
     // decoded (`a@b`): decoded, both spellings of one account key alike.
     try {
-        segment = decodeURIComponent(segment);
+        // Lowercased again after decoding: `%41lice` and `alice` are one account.
+        segment = decodeURIComponent(segment).toLowerCase();
     } catch {
         // A malformed escape stays as written.
     }
