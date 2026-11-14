@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Mati: sambungan data menuju hos yang anda sambungkan, seperti yang dilakukan curl. Hidupkan hanya untuk pelayan yang menghantar data dari alamat lain.",
             "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)",
             "discoverNeon": "Neon Object Storage: storan serasi S3 untuk setiap cabang projek (5 GB percuma setiap projek)",
-            "discoverPuter": "Storan awan Puter melalui WebDAV (25 MB percuma, tanpa kad)"
+            "discoverPuter": "Storan awan Puter melalui WebDAV (25 MB percubaan, tanpa kad)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

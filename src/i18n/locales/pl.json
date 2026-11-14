@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Wyłączone: połączenia danych idą do hosta, z którym się połączyłeś, tak jak robi to curl. Włącz tylko dla serwera, który wysyła dane z innego adresu.",
             "discoverFastly": "Fastly Object Storage: pamięć masowa zgodna z S3 w 12 regionach (5 GB za darmo, wymagana karta)",
             "discoverNeon": "Neon Object Storage: magazyn zgodny z S3 dla każdej gałęzi projektu (5 GB bezpłatnie na projekt)",
-            "discoverPuter": "Chmura Puter przez WebDAV (25 MB za darmo, bez karty)"
+            "discoverPuter": "Chmura Puter przez WebDAV (25 MB wersji próbnej, bez karty)"
         },
         "shortcuts": {
             "title": "Skróty klawiszowe",

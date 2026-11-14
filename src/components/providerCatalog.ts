@@ -281,9 +281,10 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'ibm-cos', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
-    // Free tier is 25 MB (puter.com/pricing, 2026-11); no card required.
+    // A 25 MB trial allowance (puter.com/pricing, 2026-11), no card required:
+    // too small to call a free plan (owner, 2026-11-14), so no freeStorageGb.
     { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: null,
-      freeNote: '25 MB free', healthCheckUrl: 'https://api.puter.com',
+      freeNote: '25 MB trial', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 1,

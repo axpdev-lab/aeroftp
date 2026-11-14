@@ -236,7 +236,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | pCloud Drive | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
 | Proton Drive | CH | 5 GB (E2E) | API / CLI |
-| Puter | US | 25 MB free | WebDAV |
+| Puter | US | 25 MB trial | WebDAV |
 | Quotaless | - | trial / invite | S3*, WebDAV* |
 | S3Drive | - | 12 GB (via Storj) | S3 |
 | Seafile | - | self-hosted | WebDAV |

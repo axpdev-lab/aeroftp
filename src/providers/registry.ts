@@ -1462,7 +1462,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'puter-webdav',
         name: 'Puter',
-        description: 'Puter cloud storage via WebDAV (25 MB free, no card)',
+        description: 'Puter cloud storage via WebDAV (25 MB trial, no card)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',

@@ -854,7 +854,7 @@
             "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)",
             "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)",
             "discoverNeon": "Neon Object Storage: archiviazione compatibile con S3 per branch di progetto (5 GB gratis per progetto)",
-            "discoverPuter": "Archiviazione cloud Puter via WebDAV (25 MB gratis, senza carta)"
+            "discoverPuter": "Archiviazione cloud Puter via WebDAV (25 MB di prova, senza carta)"
         },
         "browser": {
             "remote": "Remoto",

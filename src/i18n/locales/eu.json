@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Desaktibatuta: datu-konexioak konektatu zaren ostalarira doaz, curl-ek egiten duen bezala. Aktibatu soilik datuak beste helbide batetik bidaltzen dituen zerbitzari baterako.",
             "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan, txartela behar da)",
             "discoverNeon": "Neon Object Storage: S3-rekin bateragarria den biltegiratzea proiektu-adar bakoitzerako (5 GB doan proiektu bakoitzeko)",
-            "discoverPuter": "Puter hodei-urrunera WebDAV bidez (25 MB doan, txartelik gabe)"
+            "discoverPuter": "Puter hodei-urrunera WebDAV bidez (25 MB proba, txartelik gabe)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

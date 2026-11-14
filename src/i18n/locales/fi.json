@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Pois: tietoyhteydet menevät isäntään, johon yhdistit, kuten curl tekee. Ota käyttöön vain palvelimelle, joka lähettää dataa toisesta osoitteesta.",
             "discoverFastly": "Fastly Object Storage: S3-yhteensopiva tallennustila 12 alueella (5 GB ilmaiseksi, kortti vaaditaan)",
             "discoverNeon": "Neon Object Storage: S3-yhteensopiva tallennus projektin haaroittain (5 GB ilmaiseksi projektia kohti)",
-            "discoverPuter": "Puter pilvitallennus WebDAVin kautta (25 Mtä maksutonta, ei korttia)"
+            "discoverPuter": "Puter pilvitallennus WebDAVin kautta (25 Mt kokeilu, ei korttia)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

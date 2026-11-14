@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Kapalı: veri bağlantıları, curl gibi bağlandığınız ana makineye gider. Yalnızca verileri başka bir adresten gönderen sunucu için açın.",
             "discoverFastly": "Fastly Object Storage: 12 bölgede S3 uyumlu depolama (5 GB ücretsiz, kart gerekli)",
             "discoverNeon": "Neon Object Storage: proje dalı başına S3 uyumlu depolama (proje başına 5 GB ücretsiz)",
-            "discoverPuter": "WebDAV üzerinden Puter bulut depolama (25 MB ücretsiz, kart yok)"
+            "discoverPuter": "WebDAV üzerinden Puter bulut depolama (25 MB deneme, kart yok)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",
