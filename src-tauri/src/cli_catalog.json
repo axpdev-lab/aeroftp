@@ -783,6 +783,27 @@
     ]
   },
   {
+    "company": "LifetimeCloud",
+    "logoId": "lifetimecloud",
+    "country": "IT",
+    "freeGb": null,
+    "freeNote": "1 GB trial",
+    "freeRequiresCard": false,
+    "regions": [
+      "IT"
+    ],
+    "protocols": [
+      {
+        "label": "WebDAV",
+        "protocol": "webdav",
+        "providerId": "lifetimecloud",
+        "paid": true,
+        "category": "webdav",
+        "note": null
+      }
+    ]
+  },
+  {
     "company": "Uploadcare",
     "logoId": "uploadcare",
     "country": "US",

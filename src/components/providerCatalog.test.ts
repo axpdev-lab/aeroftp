@@ -323,4 +323,25 @@ describe('commercial tier model: free / free-card / paid', () => {
             expect(row.freeRequiresCard, `${name} CLI freeRequiresCard`).toBe(true);
         }
     });
+
+    it('LifetimeCloud is listed with trial copy and never classified as free', () => {
+        const entry = PROVIDER_CATALOG.find(c => c.logoId === 'lifetimecloud');
+        expect(entry).toBeDefined();
+        expect(entry!.company).toBe('LifetimeCloud');
+        expect(entry!.countryCode).toBe('IT');
+        expect(entry!.freeStorageGb).toBeNull();
+        expect(entry!.freeNote).toBe('1 GB trial');
+        expect(companyTier(entry!)).toBe('paid');
+        expect(companyTierInCategory(entry!, 'webdav')).toBe('paid');
+        expect(entry!.protocols).toEqual([
+            { label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav', paid: true },
+        ]);
+
+        const tile = PROVIDER_GRID.find(t => t.logoId === 'lifetimecloud');
+        expect(tile).toEqual({
+            logoId: 'lifetimecloud',
+            icon: 'lifetimecloud.png',
+            docsPath: 'providers/lifetimecloud',
+        });
+    });
 });

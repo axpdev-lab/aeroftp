@@ -287,6 +287,10 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       freeNote: '25 MB trial', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
+    { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: null,
+      freeNote: '1 GB trial', healthCheckUrl: 'https://lifetimecloud.me/',
+      searchAliases: ['lifetimecloud', 'lifetimecloud.me', 'lifetime cloud'],
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav', paid: true }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 1,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.uploadcare.com',
       protocols: [{ label: 'API', protocol: 'uploadcare', providerId: 'uploadcare', category: 'media-services' }] },
@@ -481,6 +485,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'seafile', icon: 'seafile.png', docsPath: 'providers/seafile' },
     { logoId: 'drivehq', icon: 'drivehq.png', docsPath: 'providers/drivehq' },
     { logoId: 'mailru-cloud', icon: 'mailru-cloud.png', docsPath: 'providers/mailru-cloud', label: 'Mail.ru Cloud' },
+    { logoId: 'lifetimecloud', icon: 'lifetimecloud.png', docsPath: 'providers/lifetimecloud' },
     // SFTP
     { logoId: 'hetzner-storage-box', icon: 'hetzner.png', docsPath: 'providers/hetzner-storage-box' },
     // Developer
