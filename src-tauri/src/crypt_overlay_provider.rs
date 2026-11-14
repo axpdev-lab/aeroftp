@@ -524,10 +524,10 @@ pub struct CryptOverlayProvider {
     /// Whether the server already said where a `cd` into the anchor
     /// landed: one report per overlay, not one per folder change.
     alias_probed: bool,
-    /// A `cd` into the anchor whose report could not be read. The next call
-    /// that hands back a path the server built (`pwd`, `list`, `stat`, the
-    /// encrypted-view check) asks again first, so the server's name for the
-    /// anchor never reaches a caller unmapped.
+    /// A `cd` into the anchor whose report could not be read. Every later
+    /// call that takes or returns a path asks again first and fails with the
+    /// server's error while the answer stays unread, so a path under the
+    /// server's name for the anchor is never mapped as outside it.
     alias_pending: Option<String>,
 }
 
@@ -564,7 +564,7 @@ impl CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<(Vec<RemoteEntry>, usize, usize), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc_path = if path.is_empty() || path == "." {
             path.to_string()
         } else {
@@ -658,15 +658,16 @@ impl CryptOverlayProvider {
     }
 
     /// Ask again where a `cd` with an unread report landed, before a call
-    /// that returns paths the server built from it. A failed ask leaves the
-    /// report pending for the next such call.
-    async fn settle_scope_alias(&mut self) {
+    /// that maps a path or returns paths the server built. While the answer
+    /// stays unread the call fails with the server's error: the overlay
+    /// cannot tell a path under the anchor's other name from one outside it.
+    async fn settle_scope_alias(&mut self) -> Result<(), ProviderError> {
         if self.alias_pending.is_none() {
-            return;
+            return Ok(());
         }
-        if let Ok(reported) = self.inner.pwd().await {
-            self.note_reported_cwd(&reported);
-        }
+        let reported = self.inner.pwd().await?;
+        self.note_reported_cwd(&reported);
+        Ok(())
     }
 
     /// `reported` is where the server says the session is now: when a `cd`
@@ -1279,6 +1280,7 @@ impl StorageProvider for CryptOverlayProvider {
         if path == ".." {
             return self.cd_up().await;
         }
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.cd(&enc).await?;
         self.learn_scope_alias(&enc).await;
@@ -1286,9 +1288,8 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
-        self.inner.cd_up().await?;
-        self.alias_pending = None;
-        Ok(())
+        self.settle_scope_alias().await?;
+        self.inner.cd_up().await
     }
 
     fn download_was_refused(&self) -> bool {
@@ -1309,7 +1310,7 @@ impl StorageProvider for CryptOverlayProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(remote_path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(remote_path);
         // Stage (for outside this holds plaintext; for inside: ciphertext).
@@ -1346,7 +1347,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(remote_path, false, AccessKind::Read)?;
         let data = self.inner.download_to_bytes(&enc).await?;
         if self.target_is_encrypted(remote_path) {
@@ -1364,7 +1365,7 @@ impl StorageProvider for CryptOverlayProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         crate::filesystem::validate_path(local_path).map_err(ProviderError::InvalidPath)?;
         let enc = self.map(remote_path, false, AccessKind::Write)?;
         let plaintext = tokio::fs::read(local_path)
@@ -1437,19 +1438,19 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.mkdir(&enc).await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete(&enc).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         // Round 2 of the 4.2.1 review: the folder is judged through the
         // overlay first, so a file it holds refuses the removal. On the wire
@@ -1478,13 +1479,13 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.rmdir_recursive(&enc).await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Move/rename", from, to)?;
         // is_dir is unknown for a bare rename. The two leaf encodings differ
         // only under rclone `off`+suffix mode; `map_existing` resolves the
@@ -1501,7 +1502,7 @@ impl StorageProvider for CryptOverlayProvider {
     /// through exactly this wrapper, so a default here would have kept the
     /// defect alive where it matters most (G119).
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Replace", from, to)?;
         let (enc_from, from_is_dir) = self.map_existing(from, AccessKind::Write).await?;
         let enc_to = self.map(to, from_is_dir, AccessKind::Write)?;
@@ -1524,13 +1525,13 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<Option<std::time::Duration>, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         self.inner.wait_until_readable(&enc).await
     }
 
     async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         self.inner.prepare_file_move(&enc).await
     }
@@ -1551,7 +1552,12 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         paths: &[String],
     ) -> Vec<Result<Option<String>, ProviderError>> {
-        self.settle_scope_alias().await;
+        if let Err(error) = self.settle_scope_alias().await {
+            return paths
+                .iter()
+                .map(|_| Err(ProviderError::Other(error.to_string())))
+                .collect();
+        }
         let mapped = paths
             .iter()
             .map(|path| self.map(path, false, AccessKind::Write))
@@ -1570,7 +1576,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
         let is_enc = self.target_is_encrypted(path);
@@ -1612,7 +1618,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let s = self.inner.size(&enc).await?;
         if self.target_is_encrypted(path) {
@@ -1623,7 +1629,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         if self.inner.exists(&enc).await? {
             return Ok(true);
@@ -1650,7 +1656,7 @@ impl StorageProvider for CryptOverlayProvider {
         path: &str,
         identity: Option<&str>,
     ) -> Result<bool, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc_file = self.map(path, false, AccessKind::Write)?;
         if self
             .inner
@@ -1670,7 +1676,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         // Under rclone `off`+suffix a folder is `name` on the wire and a file
         // `name.bin`. No probe picks the form: an item purged from the trash
         // by the path it had is not live, and a live folder of the same name
@@ -1685,7 +1691,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Write).await?;
         self.inner.chmod(&enc, mode).await
     }
@@ -1703,7 +1709,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         // The ciphertext blob is self-contained (the content nonce is embedded,
         // not derived from the name), so copying it verbatim to a new encrypted
         // name stays decryptable. Map both ends; the content is untouched.
@@ -1717,7 +1723,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Server-side copy", from, to)?;
         let enc_from = self.map(from, false, AccessKind::Write)?;
         let enc_to = self.map(to, false, AccessKind::Write)?;
@@ -1731,7 +1737,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.disk_usage(&enc).await
     }
@@ -1753,7 +1759,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let mut versions = self.inner.list_versions(&enc).await?;
         if self.target_is_encrypted(path) {
@@ -1770,7 +1776,7 @@ impl StorageProvider for CryptOverlayProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(path);
         // Room check against the requested version's size when the backend
@@ -1820,13 +1826,13 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.restore_version(&enc, version_id).await
     }
 
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete_version(&enc, version_id).await
     }
@@ -1920,7 +1926,7 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         self.inner.stored_checksum(&enc).await
     }
@@ -1930,7 +1936,7 @@ impl StorageProvider for CryptOverlayProvider {
         path: &str,
         algorithm: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        self.settle_scope_alias().await;
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         self.inner.stored_checksum_for(&enc, algorithm).await
     }
@@ -6823,6 +6829,155 @@ pub(crate) mod tests {
                     .filter(|k| k.starts_with("/srv/"))
                     .collect();
                 assert!(under_alias.is_empty(), "{label}: {under_alias:?}");
+            }
+        }
+    }
+
+    /// Run one overlay call by name on a path under the anchor's alias,
+    /// keeping only whether it succeeded.
+    async fn run_path_call(
+        p: &mut CryptOverlayProvider,
+        op: &str,
+        local: &str,
+        out: &str,
+    ) -> Result<(), ProviderError> {
+        const SECRET: &str = "/srv/docs/secret.txt";
+        match op {
+            "cd" => p.cd("sub").await,
+            "cd_up" => p.cd_up().await,
+            "list" => p.list(".").await.map(drop),
+            "stat" => p.stat(SECRET).await.map(drop),
+            "download" => p.download(SECRET, out, None).await,
+            "download_to_bytes" => p.download_to_bytes(SECRET).await.map(drop),
+            "upload" => p.upload(local, "/srv/docs/new.txt", None).await,
+            "mkdir" => p.mkdir("/srv/docs/sub").await,
+            "delete" => p.delete(SECRET).await,
+            "rmdir" => p.rmdir("/srv/docs/empty").await,
+            "rmdir_recursive" => p.rmdir_recursive("/srv/docs/empty").await,
+            "rename" => p.rename(SECRET, "/srv/docs/renamed.txt").await,
+            "replace" => p.replace(SECRET, "/srv/docs/replaced.txt").await,
+            "wait_until_readable" => p.wait_until_readable(SECRET).await.map(drop),
+            "prepare_file_move" => p.prepare_file_move(SECRET).await,
+            "capture_trash_identities" => p
+                .capture_trash_identities(&[SECRET.to_string()])
+                .await
+                .remove(0)
+                .map(drop),
+            "size" => p.size(SECRET).await.map(drop),
+            "exists" => p.exists(SECRET).await.map(drop),
+            "delete_permanent_with_identity" => p
+                .delete_permanent_with_identity(SECRET, None)
+                .await
+                .map(drop),
+            "delete_permanent" => p.delete_permanent(SECRET).await.map(drop),
+            "chmod" => p.chmod(SECRET, 0o600).await,
+            "server_copy" => p.server_copy(SECRET, "/srv/docs/copy.txt").await,
+            "server_side_copy" => p.server_side_copy(SECRET, "/srv/docs/copy.txt").await,
+            "disk_usage" => p.disk_usage("/srv/docs").await.map(drop),
+            "list_versions" => p.list_versions(SECRET).await.map(drop),
+            "download_version" => p.download_version(SECRET, "v1", out).await,
+            "restore_version" => p.restore_version(SECRET, "v1").await,
+            "delete_version" => p.delete_version(SECRET, "v1").await,
+            "stored_checksum" => p.stored_checksum(SECRET).await.map(drop),
+            "stored_checksum_for" => p.stored_checksum_for(SECRET, "sha256").await.map(drop),
+            "cwd_in_encrypted_view" => p.cwd_in_encrypted_view().await.map(drop),
+            other => panic!("no case for {other}"),
+        }
+    }
+
+    /// The probe after the `cd` fails and so does the call's own retry: the
+    /// overlay cannot tell the anchor's other name from a folder outside it,
+    /// so every call that takes or returns a path, `cd` and `cd_up` included,
+    /// fails and touches nothing. Once the server answers, the alias maps to
+    /// the anchor and a folder that is really outside still takes plaintext.
+    #[tokio::test]
+    async fn every_path_call_refuses_while_the_server_does_not_say_where_it_is() {
+        const OPS: &[&str] = &[
+            "cd",
+            "cd_up",
+            "list",
+            "stat",
+            "cwd_in_encrypted_view",
+            "download",
+            "download_to_bytes",
+            "upload",
+            "mkdir",
+            "delete",
+            "rmdir",
+            "rmdir_recursive",
+            "rename",
+            "replace",
+            "wait_until_readable",
+            "prepare_file_move",
+            "capture_trash_identities",
+            "size",
+            "exists",
+            "delete_permanent_with_identity",
+            "delete_permanent",
+            "chmod",
+            "server_copy",
+            "server_side_copy",
+            "disk_usage",
+            "list_versions",
+            "download_version",
+            "restore_version",
+            "delete_version",
+            "stored_checksum",
+            "stored_checksum_for",
+        ];
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        for op in OPS {
+            for (label, keys) in both_kinds() {
+                let label = format!("{label}, {op}");
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.seed_raw_dir("/srv/other");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+                let dir =
+                    std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+                tokio::fs::create_dir_all(&dir).await.unwrap();
+                let local = dir.join("secret.txt");
+                let local = local.to_str().unwrap();
+                tokio::fs::write(local, b"never in clear").await.unwrap();
+                p.upload(local, "/home/u/docs/secret.txt", None)
+                    .await
+                    .unwrap();
+                let out = dir.join("out.bin");
+                let out = out.to_str().unwrap();
+                let before_files = {
+                    let mut v = mem_of(&mut p).raw_paths();
+                    v.sort();
+                    v
+                };
+                let before_dirs = mem_of(&mut p).raw_dirs();
+                let before_cwd = mem_of(&mut p).cwd.lock().unwrap().clone();
+                mem_of(&mut p).pwd_failures = 2;
+                p.cd("/home/u/docs").await.unwrap();
+                let cwd = mem_of(&mut p).cwd.lock().unwrap().clone();
+                assert_ne!(cwd, before_cwd, "{label}");
+
+                let outcome = run_path_call(&mut p, op, local, out).await;
+                assert!(outcome.is_err(), "{label}: {outcome:?}");
+                let mem = mem_of(&mut p);
+                let mut files = mem.raw_paths();
+                files.sort();
+                assert_eq!(files, before_files, "{label}");
+                assert_eq!(mem.raw_dirs(), before_dirs, "{label}");
+                assert_eq!(*mem.cwd.lock().unwrap(), cwd, "{label}");
+                assert!(!std::path::Path::new(out).exists(), "{label}");
+
+                assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+                assert_eq!(p.size("/srv/docs/secret.txt").await.unwrap(), 14, "{label}");
+                p.upload(local, "/srv/other/plain.txt", None).await.unwrap();
+                assert_eq!(
+                    mem_of(&mut p).raw_bytes("/srv/other/plain.txt").as_deref(),
+                    Some(&b"never in clear"[..]),
+                    "{label}"
+                );
+                let _ = tokio::fs::remove_dir_all(&dir).await;
             }
         }
     }
