@@ -2069,6 +2069,7 @@ describe('runDeltaGate', () => {
         let onContinue: (() => void) | undefined;
         const deps = {
             requested: Promise.resolve(1),
+            probeDelta: true,
             generation: vi.fn(async () => generation),
             skipPrompt: vi.fn(async () => skip),
             probe: vi.fn(async () => {
@@ -2122,6 +2123,19 @@ describe('runDeltaGate', () => {
         expect(g.deps.launch).not.toHaveBeenCalled();
     });
 
+    it('checks a run that is not probed against the generation before it launches (E3)', async () => {
+        const switched = gate(eligible, false);
+        switched.switchConnection();
+        await runDeltaGate({ ...switched.deps, probeDelta: false });
+        expect(switched.deps.probe).not.toHaveBeenCalled();
+        expect(switched.deps.launch).not.toHaveBeenCalled();
+        expect(switched.deps.changed).toHaveBeenCalledTimes(1);
+        const same = gate(eligible, false);
+        await runDeltaGate({ ...same.deps, probeDelta: false });
+        expect(same.deps.probe).not.toHaveBeenCalled();
+        expect(same.deps.launch).toHaveBeenCalledTimes(1);
+    });
+
     it('launches on the same connection, and stops on a refusal even without a profile', async () => {
         for (const [verdict, skip] of [[eligible, false], [unavailable, true]] as const) {
             const g = gate(verdict, skip);
@@ -2162,7 +2176,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
     let compiled: string | undefined;
     const compile = async () => {
         compiled ??= (await transformWithOxc([
-            block('  const connectionGenerationAtAction = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.'),
+            block('  const connectionAtAction = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.'),
             block('  const handleCompareMirrorLeftToRight = useCallback(', '  const { dismissJournal: handleDismissJournal'),
             block('  const executeSyncPresetPlan = useCallback(', '  const clipboardCut'),
         ].join('\n'), 'sync-actions.ts')).code;
@@ -2171,9 +2185,11 @@ describe('the sync actions read the generation at the action (E1)', () => {
     const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
     const FILE = { relative_path: 'a.txt', action: 'upload' };
 
-    /** App's actions on one SFTP session whose generation the test moves. */
-    const station = async () => {
+    /** App's actions on one session (SFTP unless named) whose generation
+     *  and protocol the test moves. */
+    const station = async (protocol = 'sftp') => {
         let generation = 1;
+        const profile = { protocol, savedProfileId: 'p1', name: 'S' };
         const order: string[] = [];
         let finishCanary!: (result: unknown) => void;
         let approve: (() => void) | undefined;
@@ -2181,7 +2197,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
         const ctx: Record<string, unknown> = {
             useLatestCallback: <F>(fn: F) => fn,
             useCallback: <F>(fn: F) => fn,
-            activeUnifiedRemoteProfile: { protocol: 'sftp', savedProfileId: 'p1', name: 'S' },
+            activeUnifiedRemoteProfile: profile,
             invoke: vi.fn((command: string) => {
                 if (command === 'provider_connection_generation') {
                     order.push('generation');
@@ -2231,9 +2247,10 @@ describe('the sync actions read the generation at the action (E1)', () => {
         ) as Record<Action, (...args: unknown[]) => void>;
         return {
             actions,
-            ctx: ctx as { runRemoteSync: ReturnType<typeof vi.fn>; notify: { error: ReturnType<typeof vi.fn> } },
+            ctx: ctx as { runRemoteSync: ReturnType<typeof vi.fn>; notify: { error: ReturnType<typeof vi.fn> }; invoke: ReturnType<typeof vi.fn> },
             order,
-            switchConnection: () => { generation += 1; },
+            /** Another connection: a new generation, and its protocol. */
+            switchConnection: (to = profile.protocol) => { generation += 1; profile.protocol = to; },
             finishCanary: () => finishCanary({ sampled: 1 }),
             approve: () => approve?.(),
             approvalShown: () => approve !== undefined,
@@ -2300,6 +2317,44 @@ describe('the sync actions read the generation at the action (E1)', () => {
         // Its only read is the gate's "now"; the "requested" one is the caller's.
         expect(run.split("'provider_connection_generation'").length - 1).toBe(1);
         expect(run).toContain("generation: () => invoke<number>('provider_connection_generation'),");
-        expect(run).toContain('requested: opts.requestedGeneration,');
+        expect(run).toContain('requested: opts.requestedConnection.generation,');
+        // E3: no launch path around the gate, and the probe follows the
+        // action's protocol.
+        expect(run.split('launch: launchRun').length - 1).toBe(1);
+        expect(run.split('launchRun()').length - 1).toBe(0);
+        expect(run).toContain("probeDelta: protocol === 'sftp',");
+        expect(run).toContain('const protocol = opts.requestedConnection.protocol;');
+    });
+
+    // E3: the connection switches to another protocol while the canary
+    // approval waits; the earlier plan must not launch on it.
+    it.each([
+        ['SFTP to FTP', 'sftp', 'ftp'],
+        ['FTP to SFTP', 'ftp', 'sftp'],
+        ['FTP to S3', 'ftp', 's3'],
+    ] as const)('launches nothing after a %s switch while the canary approval waits', async (_name, from, to) => {
+        const s = await station(from);
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.switchConnection(to);
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        // The probe is chosen by the action's protocol, not the new one.
+        const probed = s.ctx.invoke.mock.calls.some(([command]) => command === 'sftp_probe_delta_eligibility');
+        expect(probed).toBe(from === 'sftp');
+    });
+
+    it.each(['ftp', 's3'])('launches an approved %s canary run on the same connection', async (protocol) => {
+        const s = await station(protocol);
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+        expect(s.ctx.notify.error).not.toHaveBeenCalled();
+        expect(s.ctx.invoke.mock.calls.some(([command]) => command === 'sftp_probe_delta_eligibility')).toBe(false);
     });
 });

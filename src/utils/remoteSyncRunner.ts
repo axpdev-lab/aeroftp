@@ -53,6 +53,10 @@ export interface DeltaGateDeps {
     /** The same read, now. It moves on every connect, disconnect and tab
      *  switch. */
     generation: () => Promise<number>;
+    /** Whether the action's connection was an SFTP session, the only one
+     *  probed for delta. Any other run is still checked against the
+     *  generation before it launches (E3). */
+    probeDelta: boolean;
     /** Whether the question about continuing without delta is off: the
      *  saved profile turned it off, or the session has no saved profile (an
      *  ad-hoc connection, which has no place to keep the answer). */
@@ -76,8 +80,10 @@ export interface DeltaGateDeps {
  * current one first: before the question (Q7), before every launch, in the
  * question's Continue, and on the error path. A changed connection launches
  * nothing. A probe that failed launches nothing either (fail closed): the
- * refusal it might have carried is unknown. The run itself carrying the
- * generation to the backend is #1561's target binding (Q6).
+ * refusal it might have carried is unknown. Every run passes through it, of
+ * any protocol: one whose action saw no SFTP session is not probed, and is
+ * launched only after the same generation check (E3). The run itself
+ * carrying the generation to the backend is #1561's target binding (Q6).
  */
 export async function runDeltaGate(deps: DeltaGateDeps): Promise<void> {
     let requested: number;
@@ -89,6 +95,12 @@ export async function runDeltaGate(deps: DeltaGateDeps): Promise<void> {
     }
     const sameConnection = async (): Promise<boolean> =>
         (await deps.generation().catch(() => undefined)) === requested;
+    if (!deps.probeDelta) {
+        // E3: no probe, the same check before the launch.
+        if (await sameConnection()) deps.launch();
+        else deps.changed();
+        return;
+    }
     let skip = false;
     let verdict: DeltaEligibilityProbeResult;
     try {
