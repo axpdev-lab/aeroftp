@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expandUsernameInPath } from './usernameTemplate';
 import cases from '../shared/username-template-cases.json';
-import { resolveUsernameTemplate } from './cryptScope';
+import { profileOverlayScope, resolveUsernameTemplate } from './cryptScope';
 import { profileRoot } from '../components/CloudSetupWizard';
 import type { ServerProfile } from '../types';
 
@@ -31,6 +31,44 @@ describe('expandUsernameInPath', () => {
             expect(expandUsernameInPath(cases.pathTemplate, c.user), JSON.stringify(c.user))
                 .toBe(c.path ?? cases.pathTemplate);
         }
+    });
+
+    it('fills the overlay folder from the shared table, as the backend overlay scope does', () => {
+        // The backend runs the same table through profile_overlay_scope; a
+        // trimmed name there put the encrypted folder somewhere else.
+        for (const c of cases.cases) {
+            const profile = {
+                username: c.user,
+                aeroCryptOverlay: { remoteScope: cases.pathTemplate },
+            } as unknown as ServerProfile;
+            expect(profileOverlayScope(profile), JSON.stringify(c.user)).toBe(c.path ?? cases.pathTemplate);
+        }
+    });
+
+    it('fills the AeroCloud root from the shared table, as the backend profile_root does', () => {
+        for (const c of cases.cases) {
+            const filled = profileRoot({ initialPath: cases.pathTemplate, username: c.user } as unknown as ServerProfile);
+            const expected = profileRoot({ initialPath: c.path ?? cases.pathTemplate, username: '' } as unknown as ServerProfile);
+            expect(filled, JSON.stringify(c.user)).toBe(expected);
+        }
+    });
+
+    it('no caller passes a trimmed user name to the helper', () => {
+        // The helper judges blankness itself; a caller that trims moves the
+        // folder away from the one the backend fills.
+        const offenders: string[] = [];
+        const walk = (dir: string) => {
+            for (const name of readdirSync(dir)) {
+                const path = join(dir, name);
+                if (statSync(path).isDirectory()) { walk(path); continue; }
+                if (!/\.(ts|tsx)$/.test(name) || /\.test\.tsx?$/.test(name)) continue;
+                for (const m of readFileSync(path, 'utf8').matchAll(/expandUsernameInPath\(([^;]*?)\)/g)) {
+                    if (/trim/.test(m[1])) offenders.push(path);
+                }
+            }
+        };
+        walk(join(process.cwd(), 'src'));
+        expect(offenders).toEqual([]);
     });
 
     it('is what the crypt scope and the AeroCloud root use', () => {

@@ -4094,6 +4094,26 @@ mod username_template_tests {
     use super::cli_username_template;
     use ftp_client_gui_lib::connection_manifest::USERNAME_TEMPLATE_MISSING;
 
+    /// The CLI fills from the shared case table: the table's value, or exit 5.
+    #[test]
+    fn the_cli_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            for (key, url) in [("urlTemplate", true), ("pathTemplate", false)] {
+                let want = case[if url { "url" } else { "path" }].as_str();
+                let got = cli_username_template(table[key].as_str().unwrap(), user, url);
+                match want {
+                    Some(v) => assert_eq!(got, Ok(v.to_string()), "{user:?} {key}"),
+                    None => assert_eq!(got.unwrap_err().0, 5, "{user:?} {key}"),
+                }
+            }
+        }
+    }
+
     /// A saved profile whose server URL or start folder needs a user name the
     /// profile does not have: exit 5 with the text every surface gives, never
     /// a connect to `/dav//`.

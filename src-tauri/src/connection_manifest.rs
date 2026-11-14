@@ -578,6 +578,70 @@ mod tests {
         );
     }
 
+    /// No caller hands the helpers a trimmed user name: the login sends the
+    /// name as stored, and a trimmed one put the encrypted folder of the CLI
+    /// and AeroCloud somewhere else than the window's (plaintext uploads).
+    /// Blankness is judged inside the helpers only. The check reads every call
+    /// site's user-name argument and the `let` that binds it in the 40 lines
+    /// above the call.
+    #[test]
+    fn no_caller_trims_the_user_name_it_passes_to_the_helpers() {
+        let call = regex::Regex::new(
+            r"(?s)expand_username_in_(?:url|path)\(\s*[^,]+?,\s*(&?[A-Za-z_][A-Za-z0-9_.]*)\s*\)",
+        )
+        .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![root];
+        let mut offenders = Vec::new();
+        let mut calls = 0;
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs")
+                    || path.ends_with("connection_manifest.rs")
+                {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                for m in call.captures_iter(&text) {
+                    calls += 1;
+                    let arg = m[1].trim_start_matches('&');
+                    let at = m.get(0).unwrap().start();
+                    let line = text[..at].lines().count();
+                    let above: Vec<&str> = text[..at].lines().rev().take(40).collect();
+                    let ident = arg.rsplit('.').next().unwrap();
+                    let binding = format!("let {ident} =");
+                    let traced = above.iter().position(|l| l.contains(&binding)).map(|i| {
+                        above[..=i]
+                            .iter()
+                            .rev()
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    });
+                    let trimmed = arg.contains("trim")
+                        || traced.as_deref().is_some_and(|b| {
+                            let stmt = &b[b.find(&binding).unwrap()..];
+                            let stmt = &stmt[..stmt.find(';').unwrap_or(stmt.len())];
+                            stmt.contains("trim")
+                        });
+                    if trimmed {
+                        offenders.push(format!("{}:{line}", path.display()));
+                    }
+                }
+            }
+        }
+        assert!(calls >= 8, "the guard found only {calls} call sites");
+        assert!(
+            offenders.is_empty(),
+            "a trimmed user name reaches the helpers: {offenders:?}"
+        );
+    }
+
     use crate::providers::{FtpConfig, FtpTlsMode, ProviderConfig, ProviderType};
     use serde_json::json;
 

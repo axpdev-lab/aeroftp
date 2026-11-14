@@ -693,6 +693,38 @@ mod webdav_config_tests {
         );
     }
 
+    /// The connect reads the server URL and the start folder from the shared
+    /// case table: both filled as the table says, or the profile refused.
+    #[test]
+    fn the_connect_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let cfg = ProviderConfig {
+                name: "template".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: table["urlTemplate"].as_str().unwrap().to_string(),
+                port: Some(443),
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: Some(table["pathTemplate"].as_str().unwrap().to_string()),
+                extra: std::collections::HashMap::new(),
+            };
+            let resolved = WebDavConfig::from_provider_config(&cfg).ok();
+            match (case["url"].as_str(), case["path"].as_str()) {
+                (Some(url), Some(path)) => {
+                    let resolved = resolved.unwrap_or_else(|| panic!("{user:?} refused"));
+                    assert_eq!(resolved.url, url, "{user:?}");
+                    assert_eq!(resolved.initial_path.as_deref(), Some(path), "{user:?}");
+                }
+                _ => assert!(resolved.is_none(), "{user:?} must be refused"),
+            }
+        }
+    }
+
     /// A user name that cannot fill a folder template (a directory login such
     /// as `DOMAIN\alice`) is refused with the way out in the message, and the
     /// way out works: the same folder written in full, without the

@@ -10133,7 +10133,13 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             let marker = format!("<key>{key}</key>\n\t<string>");
             duck.find(&marker).map(|i| {
                 let rest = &duck[i + marker.len()..];
-                rest[..rest.find("</string>").unwrap()].to_string()
+                // The bookmark is XML: `&` is written `&amp;` and so on.
+                rest[..rest.find("</string>").unwrap()]
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .replace("&apos;", "'")
+                    .replace("&amp;", "&")
             })
         };
         let scheme = if value("Protocol").as_deref() == Some("davs") {
@@ -10175,12 +10181,25 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             .collect();
         assert!(presets.len() >= 10, "{presets:?}");
         for (id, server, port) in &presets {
-            let users: &[&str] = if server.contains("{username}") {
-                &["alice", "alice@example.com", "a b", "50%", "a/b"]
+            // Template presets run every user name of the shared case table the
+            // URL form accepts, so the exports cannot drift from the connect.
+            let table: serde_json::Value = serde_json::from_str(include_str!(
+                "../../src/shared/username-template-cases.json"
+            ))
+            .unwrap();
+            let users: Vec<String> = if server.contains("{username}") {
+                table["cases"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|c| c["url"].is_string())
+                    .map(|c| c["user"].as_str().unwrap().to_string())
+                    .collect()
             } else {
-                &["alice"]
+                vec!["alice".to_string()]
             };
-            for user in users {
+            for user in &users {
+                let user = user.as_str();
                 let expected =
                     crate::connection_manifest::expand_username_in_url(server, user).unwrap();
                 let connect = webdav_connect_url(id, "", *port, user).unwrap();

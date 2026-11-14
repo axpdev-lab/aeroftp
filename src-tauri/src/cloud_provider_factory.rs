@@ -1145,6 +1145,26 @@ mod tests {
         );
     }
 
+    /// AeroCloud reads its root from the shared case table like every other
+    /// reader: the user name as stored, or the template when it is refused.
+    #[test]
+    fn profile_root_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let template = table["pathTemplate"].as_str().unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let expected = case["path"].as_str().unwrap_or(template);
+            assert_eq!(
+                profile_root(&serde_json::json!({ "initialPath": template, "username": user })),
+                profile_root(&serde_json::json!({ "initialPath": expected })),
+                "{user:?}"
+            );
+        }
+    }
+
     #[test]
     fn connection_extra_carries_the_profile_options() {
         let profile = serde_json::json!({

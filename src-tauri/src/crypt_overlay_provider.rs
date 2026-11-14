@@ -2659,20 +2659,20 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
 /// binding without a folder as the whole remote, which anchored above the
 /// vault the app wrote at the starting folder.
 pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
-    // An empty username leaves the template as written, as the window does.
+    // The user name as stored, never trimmed, as the window fills it: a
+    // trimmed name put the encrypted folder somewhere else than the one the
+    // window writes to. A blank or refused name leaves the template as written.
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|u| !u.is_empty());
+        .unwrap_or("");
     let field = |value: Option<&serde_json::Value>| {
         value
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .map(|s| match username {
-                Some(u) => crate::connection_manifest::expand_username_in_path(s, u)
-                    .unwrap_or_else(|_| s.to_string()),
-                None => s.to_string(),
+            .map(|s| {
+                crate::connection_manifest::expand_username_in_path(s, username)
+                    .unwrap_or_else(|_| s.to_string())
             })
     };
     field(profile.pointer("/aeroCryptOverlay/remoteScope"))
@@ -6479,6 +6479,27 @@ pub(crate) mod tests {
                 expected,
                 "{scope:?} {start:?}"
             );
+        }
+    }
+
+    /// The window reads an overlay folder from the same case table
+    /// (`profileOverlayScope` in src/utils/cryptScope.ts): the user name as
+    /// stored, never trimmed, or the template when the name is refused.
+    #[test]
+    fn the_overlay_scope_fills_the_username_as_the_window_does() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let template = table["pathTemplate"].as_str().unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let p = serde_json::json!({
+                "username": user,
+                "aeroCryptOverlay": { "remoteScope": template }
+            });
+            let expected = case["path"].as_str().unwrap_or(template);
+            assert_eq!(profile_overlay_scope(&p), expected, "{user:?}");
         }
     }
 
