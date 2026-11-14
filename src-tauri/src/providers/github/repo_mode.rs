@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 
 use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
-use super::releases_mode::delete_release;
+use super::releases_mode::{delete_release, delete_release_asset};
 use super::{GitHubVirtualPath, GitHubWriteMode};
 
 /// Maximum number of files to fetch commit dates for (avoids rate-limit pressure)
@@ -657,7 +657,6 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -670,6 +669,8 @@ impl GitHubProvider {
                 "Creating GitHub releases via mkdir is not supported".to_string(),
             ));
         }
+        // After the release path is answered, which is not the tree (Q2).
+        self.refuse_stale_write().await?;
 
         let gitkeep_path = format!("{}/.gitkeep", norm);
         let default_msg = format!("Create directory {} via AeroFTP", norm);
@@ -711,7 +712,6 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_stale_write().await?;
         let resolved = self.resolve_path(path);
 
         if let Some(virtual_path) = self.parse_virtual_path(&resolved) {
@@ -722,11 +722,24 @@ impl GitHubProvider {
                 GitHubVirtualPath::ReleaseTag(tag) => {
                     delete_release(&mut self.client, &self.owner, &self.repo, &tag).await
                 }
-                GitHubVirtualPath::ReleaseAsset { .. } => {
-                    self.delete_file(path, commit_message).await
+                // An asset is the release's, deleted as the provider's
+                // `delete` deletes one, not through the contents API.
+                GitHubVirtualPath::ReleaseAsset { tag, asset_name } => {
+                    delete_release_asset(
+                        &mut self.client,
+                        &self.owner,
+                        &self.repo,
+                        &tag,
+                        &asset_name,
+                    )
+                    .await
                 }
             };
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as `rmdir_recursive` does.
+        self.refuse_stale_write().await?;
 
         // Each child's path is built from a name the API gave: every one
         // must be inside the folder before any of them is deleted.

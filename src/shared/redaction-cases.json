@@ -682,5 +682,40 @@
     "name": "T3 two secret fields that overlap",
     "input": "x-api-key: token=abc rest",
     "expected": "x-api-key: ***REDACTED*** rest"
+  },
+  {
+    "name": "U1 the bot's input: a Windows home folder that runs into a password field keeps its mask and covers the field",
+    "input": "open C:\\Users\\Alice password=\"hunter2\"",
+    "expected": "open C:\\Users\\***"
+  },
+  {
+    "name": "U1 the same with escaped quotes",
+    "input": "open C:\\Users\\Alice password=\\\"hunter2\\\"",
+    "expected": "open C:\\Users\\***"
+  },
+  {
+    "name": "U1 a Windows home folder with a space is masked whole",
+    "input": "C:\\Users\\John Smith\\Documents\\a.txt",
+    "expected": "C:\\Users\\***\\Documents\\a.txt"
+  },
+  {
+    "name": "U1 a Windows home folder with a space before a password field",
+    "input": "C:\\Users\\John Smith password=x",
+    "expected": "C:\\Users\\***"
+  },
+  {
+    "name": "U1 a line break ends a Windows home folder",
+    "input": "C:\\Users\\Alice\nnext line",
+    "expected": "C:\\Users\\***\nnext line"
+  },
+  {
+    "name": "U1 the POSIX twin",
+    "input": "open /home/alice password=\"hunter2\"",
+    "expected": "open /home/*** password=***REDACTED***"
+  },
+  {
+    "name": "U1 an identity span straddling a credential on both sides keeps its mask and joins the union",
+    "input": "C:\\Users\\bob-token=abc,def",
+    "expected": "C:\\Users\\***"
   }
 ]

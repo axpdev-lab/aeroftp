@@ -2635,8 +2635,26 @@ const App: React.FC = () => {
   // connect emits. Names the protocol in the UI only.
   const wentOnOverScpRef = useRef(false);
 
+  // What a provider reported while it connected (`provider_connect` answers
+  // `{ message, warnings }`, the connect's own warnings and no other's): each
+  // is shown once, titled with the existing warning key, its text the
+  // backend's, and kept in the activity log. Any other answer (an older
+  // backend's plain string) holds none (CodeRabbit 4573911765).
+  const showConnectWarnings = useCallback((answer: unknown) => {
+    const warnings = typeof answer === 'object' && answer !== null
+      ? (answer as { warnings?: unknown }).warnings
+      : undefined;
+    if (!Array.isArray(warnings)) return;
+    for (const warning of warnings) {
+      if (typeof warning !== 'string' || !warning) continue;
+      notify.warning(t('common.warning'), warning);
+      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'pending');
+    }
+  }, [humanLog, notify, t]);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
-  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`,
+  // then shows what the provider reported while it connected.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
@@ -2646,7 +2664,10 @@ const App: React.FC = () => {
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }), [cancellableConnect]);
+  }).then((answer) => {
+    if (command === 'provider_connect') showConnectWarnings(answer);
+    return answer;
+  }), [cancellableConnect, showConnectWarnings]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -12877,8 +12898,15 @@ const App: React.FC = () => {
         ?? Promise.reject(new Error('no connection was captured with this comparison')),
       probeDelta: protocol === 'sftp',
       generation: () => invoke<number>('provider_connection_generation'),
-      skipPrompt: async () => !opts.profileId || (await loadSavedServerProfiles())
-        .find((p) => p.id === opts.profileId)?.skipDeltaEligibilityPrompt === true,
+      // The question keeps its answer in a saved profile: a session with no
+      // saved profile (no id, or the fallback id of an ad-hoc session, which
+      // no saved profile has) skips it, as an unreadable profile list does
+      // (`runDeltaGate`). The probe and a hard refusal apply all the same.
+      skipPrompt: async () => {
+        if (!opts.profileId) return true;
+        const profile = (await loadSavedServerProfiles()).find((p) => p.id === opts.profileId);
+        return !profile || profile.skipDeltaEligibilityPrompt === true;
+      },
       probe: () => invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility'),
       launch: launchRun,
       refuse: (message) => notify.error(t('aerosync.title'), message),

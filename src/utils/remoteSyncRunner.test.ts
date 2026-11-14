@@ -2156,6 +2156,22 @@ describe('runDeltaGate', () => {
         expect(adHoc.deps.refuse).toHaveBeenCalledWith('PinnedKeyMismatch');
         expect(adHoc.deps.launch).not.toHaveBeenCalled();
     });
+
+    // CodeRabbit 4573911803, the complement: saved profiles that cannot be
+    // read have no place to keep an answer either, so the question is not
+    // asked; the probe and a hard refusal still apply.
+    it('skips the question when the saved profiles cannot be read, and still stops on a refusal', async () => {
+        for (const [verdict, launches] of [[unavailable, true], [{ ...unavailable, hard_error: 'PinnedKeyMismatch' }, false]] as const) {
+            const g = gate(verdict, false);
+            g.deps.skipPrompt.mockRejectedValueOnce(new Error('saved profiles unreadable'));
+            g.release();
+            await runDeltaGate(g.deps);
+            expect(g.deps.probe).toHaveBeenCalledTimes(1);
+            expect(g.deps.ask).not.toHaveBeenCalled();
+            expect(g.deps.launch).toHaveBeenCalledTimes(launches ? 1 : 0);
+            expect(g.deps.refuse).toHaveBeenCalledTimes(launches ? 0 : 1);
+        }
+    });
 });
 
 /**
@@ -2187,7 +2203,10 @@ describe('the sync actions read the generation at the action (E1)', () => {
 
     /** App's actions on one session (SFTP unless named) whose generation
      *  and protocol the test moves. */
-    const station = async (protocol = 'sftp') => {
+    const station = async (protocol = 'sftp', options: {
+        verdict?: { eligible: boolean; reason: string | null; hard_error: string | null; server_identity: null };
+        saved?: () => Promise<unknown[]>;
+    } = {}) => {
         let generation = 1;
         const profile = { protocol, savedProfileId: 'p1', name: 'S' };
         const order: string[] = [];
@@ -2204,7 +2223,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
                     return Promise.resolve(generation);
                 }
                 if (command === 'sftp_probe_delta_eligibility') {
-                    return Promise.resolve({ eligible: true, reason: null, hard_error: null, server_identity: null });
+                    return Promise.resolve(options.verdict ?? { eligible: true, reason: null, hard_error: null, server_identity: null });
                 }
                 if (command === 'sync_canary_run') return new Promise((resolve) => { finishCanary = resolve; });
                 return Promise.reject(new Error(`unexpected ${command}`));
@@ -2230,7 +2249,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
             setSyncCancelling: vi.fn(),
             runDeltaGate,
             debugMode: false,
-            loadSavedServerProfiles: async () => [],
+            loadSavedServerProfiles: options.saved ?? (async () => []),
             setDeltaEligibilityPrompt: vi.fn(),
             aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'p1' }, connection: null as unknown },
             setAeroSync: vi.fn(),
@@ -2313,6 +2332,29 @@ describe('the sync actions read the generation at the action (E1)', () => {
         const same = await station();
         act(same);
         await vi.waitFor(() => expect(same.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+    });
+
+    // CodeRabbit 4573911803: the question keeps its answer in a saved
+    // profile. An ad-hoc session (its fallback id, here `p1`, names no saved
+    // profile) and an unreadable profile list run without it; a saved
+    // profile that keeps the question asks it.
+    it.each([
+        ['an ad-hoc session', async () => [], false],
+        ['an unreadable profile list', async () => { throw new Error('saved profiles unreadable'); }, false],
+        ['a saved profile that keeps the question', async () => [{ id: 'p1' }], true],
+    ] as const)('asks about continuing without delta for %s only when a saved profile can keep the answer', async (_name, saved, asks) => {
+        const unavailable = { eligible: false, reason: 'no rsync', hard_error: null, server_identity: null };
+        const s = await station('sftp', { verdict: unavailable, saved });
+        const prompt = (s.ctx as unknown as { setDeltaEligibilityPrompt: ReturnType<typeof vi.fn> }).setDeltaEligibilityPrompt;
+        s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }]);
+        if (asks) {
+            await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+            expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        } else {
+            await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+            expect(prompt).not.toHaveBeenCalled();
+        }
+        expect(s.ctx.invoke).toHaveBeenCalledWith('sftp_probe_delta_eligibility');
     });
 
     it('every call of runConnectedRemoteSync is one of these actions, with its generation', () => {
@@ -2432,5 +2474,69 @@ describe('the sync actions read the generation at the action (E1)', () => {
         await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
         expect(s.ctx.notify.error).not.toHaveBeenCalled();
         expect(s.ctx.invoke.mock.calls.some(([command]) => command === 'sftp_probe_delta_eligibility')).toBe(false);
+    });
+});
+
+/**
+ * CodeRabbit 4573911765: what a provider reports while it connects (a GitHub
+ * working branch an earlier version made, with commits the protected branch
+ * lacks) reaches the user of the page. App's own `runConnect`, from its
+ * source: a `provider_connect` answer's warnings are each shown once, titled
+ * with the existing warning key, and kept in the activity log; none, none
+ * shown; an older backend's plain string holds none.
+ */
+describe('a connect shows what its provider reported', () => {
+    const LEGACY = 'GitHub: a working branch named aeroftp/alice-smith/main, as earlier AeroFTP versions named it, has commits the protected branch does not.';
+    const station = async (answers: unknown[]) => {
+        const a = APP.indexOf('  // What a provider reported while it connected');
+        const b = APP.indexOf('  // Esc aborts an in-progress connection.', a);
+        if (a < 0 || b < 0) throw new Error('Missing block: runConnect');
+        const { code } = await transformWithOxc(APP.slice(a, b), 'run-connect.ts');
+        const queue = [...answers];
+        const ctx = {
+            useCallback: <F>(fn: F) => fn,
+            cancellableConnect: (run: (token: string) => Promise<unknown>) => run('token-1'),
+            wentOnOverScpRef: { current: false },
+            invoke: vi.fn(async () => queue.shift()),
+            notify: { warning: vi.fn() },
+            humanLog: { log: vi.fn() },
+            t: (key: string) => key,
+        };
+        const runConnect = new Function(...Object.keys(ctx), `${code}; return runConnect;`)(...Object.values(ctx)) as
+            (command: string, params: Record<string, unknown>) => Promise<unknown>;
+        return { runConnect, ctx };
+    };
+
+    it('shows a pending legacy branch once, and keeps it in the activity log', async () => {
+        const s = await station([{ message: 'Connected to repo via github', warnings: [LEGACY] }]);
+        await expect(s.runConnect('provider_connect', { protocol: 'github' })).resolves.toEqual({ message: 'Connected to repo via github', warnings: [LEGACY] });
+        expect(s.ctx.notify.warning).toHaveBeenCalledTimes(1);
+        expect(s.ctx.notify.warning).toHaveBeenCalledWith('common.warning', LEGACY);
+        expect(s.ctx.humanLog.log).toHaveBeenCalledTimes(1);
+        expect(s.ctx.humanLog.log).toHaveBeenCalledWith('CONNECT', `common.warning: ${LEGACY}`, 'pending');
+    });
+
+    it.each([
+        ['no warning', { message: 'Connected', warnings: [] }],
+        ['an older backend (a plain string)', 'Connected to repo via github'],
+        ['no answer', undefined],
+    ] as const)('shows nothing for %s', async (_name, answer) => {
+        const s = await station([answer]);
+        await expect(s.runConnect('provider_connect', {})).resolves.toEqual(answer);
+        expect(s.ctx.notify.warning).not.toHaveBeenCalled();
+        expect(s.ctx.humanLog.log).not.toHaveBeenCalled();
+    });
+
+    it('shows a warning only with the connect that reported it, never again on a reconnect', async () => {
+        const s = await station([{ message: 'Connected', warnings: [LEGACY] }, { message: 'Connected', warnings: [] }]);
+        await s.runConnect('provider_connect', {});
+        await s.runConnect('provider_connect', {});
+        expect(s.ctx.notify.warning).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads warnings from provider_connect only', async () => {
+        const s = await station([{ warnings: [LEGACY] }]);
+        await s.runConnect('connect_ftp', {});
+        expect(s.ctx.notify.warning).not.toHaveBeenCalled();
     });
 });

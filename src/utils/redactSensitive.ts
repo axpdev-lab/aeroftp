@@ -67,10 +67,15 @@ export type RedactionRule = (
     /** An identity rule (an address, a home folder, a hash), not a
      *  credential: see `applyRules`. */
     identity?: true;
+    /** The e-mail rule: its spans know where their `@` is (U1). */
+    email?: true;
+    /** The URL userinfo scan (U1). */
+    userinfo?: true;
 };
 
-/** A part of the original text a rule masks, and what replaces it. */
-export type Span = { start: number; end: number; replacement: string };
+/** A part of the original text a rule masks, and what replaces it; an
+ *  e-mail span also knows its `@`, a URL userinfo span that it is one. */
+export type Span = { start: number; end: number; replacement: string; at?: number; userinfo?: true };
 
 /**
  * The spans one rule masks, read on the ORIGINAL text (T3). A match keeps the
@@ -95,11 +100,16 @@ const spansOf = (text: string, rule: RedactionRule): Span[] => {
 };
 
 /**
- * The identity spans that no credential span overlaps (`applyRules`), in
- * time linear in the spans after the sort: the credentials are merged once
- * into sorted disjoint ranges, then the identity spans are walked in start
- * order with one index that only moves forward. `steps`, for the tests,
- * counts the comparisons.
+ * The identity spans the credentials do not cover ENTIRELY (`applyRules`,
+ * U1): one covered only in part is kept and joins the union, so nothing an
+ * identity rule hid becomes visible. One named exception, the one the fixed
+ * point needs: an e-mail span whose local part lies inside a URL userinfo
+ * span that ends at its `@` (`https://token@host`) is dropped; the userinfo
+ * already masks the secret, and the host stays. Linear in the spans after
+ * the sort: the credentials are merged once into sorted disjoint ranges,
+ * then the identity spans are walked in start order with one index that
+ * only moves forward; the userinfo spans are found by their end. `steps`,
+ * for the tests, counts the comparisons.
  */
 export const uncoveredIdentity = (
     identity: ReadonlyArray<Span>,
@@ -107,8 +117,10 @@ export const uncoveredIdentity = (
     steps = { count: 0 },
 ): Span[] => {
     const covered: Array<[number, number]> = [];
+    const userinfoEnds = new Map<number, number>();
     for (const span of [...credentials].sort((a, b) => a.start - b.start)) {
         steps.count += 1;
+        if (span.userinfo) userinfoEnds.set(span.end, Math.min(span.start, userinfoEnds.get(span.end) ?? span.start));
         if (span.end <= span.start) continue;
         const last = covered[covered.length - 1];
         if (last && span.start <= last[1]) last[1] = Math.max(last[1], span.end);
@@ -122,7 +134,10 @@ export const uncoveredIdentity = (
             next += 1;
         }
         steps.count += 1;
-        if (!(next < covered.length && covered[next][0] < span.end)) kept.push(span);
+        const inside = next < covered.length && covered[next][0] <= span.start && span.end <= covered[next][1];
+        const userinfoStart = span.at === undefined ? undefined : userinfoEnds.get(span.at);
+        const mailInUserinfo = userinfoStart !== undefined && userinfoStart <= span.start;
+        if (!inside && !mailInUserinfo) kept.push(span);
     }
     return kept;
 };
@@ -135,17 +150,22 @@ export const uncoveredIdentity = (
  * - Credentials (every rule but the identity ones): the masked part is the
  *   UNION of their spans, so a credential any rule finds is masked whole.
  * - Identity rules (addresses, home folders, hashes): a span of theirs that
- *   overlaps a credential span is dropped, as the credential already covers
- *   that part: an e-mail-shaped `token@host` inside a URL's authority is the
- *   URL's userinfo, masked as such, and its host stays.
+ *   the credentials cover entirely is dropped; one they cover in part joins
+ *   the union; an e-mail-shaped `token@host` whose local part is a URL's
+ *   userinfo is that URL's, masked as such, and its host stays
+ *   (`uncoveredIdentity`, U1).
  * Spans that overlap merge into one, replaced by the replacement of the
  * span that starts first; on equal starts, of the longer one; then of the
  * replacement that sorts first.
  */
 export const applyRules = (text: string, rules: ReadonlyArray<RedactionRule>): string => {
-    const credentials = rules.filter((rule) => !rule.identity).flatMap((rule) => spansOf(text, rule));
+    const credentials = rules
+        .filter((rule) => !rule.identity)
+        .flatMap((rule) => spansOf(text, rule).map((span) => (rule.userinfo ? { ...span, userinfo: true as const } : span)));
     const identity = uncoveredIdentity(
-        rules.filter((rule) => rule.identity).flatMap((rule) => spansOf(text, rule)),
+        rules
+            .filter((rule) => rule.identity)
+            .flatMap((rule) => spansOf(text, rule).map((span) => (rule.email ? { ...span, at: text.indexOf('@', span.start) } : span))),
         credentials,
     );
     const spans = [...credentials, ...identity]
@@ -156,7 +176,9 @@ export const applyRules = (text: string, rules: ReadonlyArray<RedactionRule>): s
     for (let n = 0; n < spans.length;) {
         const first = spans[n];
         let end = first.end;
-        for (n += 1; n < spans.length && spans[n].start < end; n += 1) end = Math.max(end, spans[n].end);
+        // Touching spans merge too (U1): two masks side by side would read
+        // as a home folder again on a second pass.
+        for (n += 1; n < spans.length && spans[n].start <= end; n += 1) end = Math.max(end, spans[n].end);
         out += text.slice(copied, first.start) + first.replacement;
         copied = end;
     }
@@ -327,7 +349,7 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Inline credentials in URLs: a linear scan, not a pattern (see
     // `redactUrlUserinfo`). Read on the original text like every rule, so no
     // other rule can take its `@` and it takes no other rule's label (T3).
-    { spans: userinfoSpans, replacement: '***REDACTED***' },
+    { spans: userinfoSpans, replacement: '***REDACTED***', userinfo: true },
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
     // password. Its span covers the whole value, so `Authorization: Bearer
@@ -377,7 +399,7 @@ export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Email addresses. The local part is at most 64 characters (RFC 5321), which
     // also keeps a long run of such characters without an `@` (a hex or base64url
     // dump) from costing a quadratic scan on every start position.
-    { pattern: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***', identity: true },
+    { pattern: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***', identity: true, email: true },
     // IPv4 addresses, but keep loopback / unspecified for local-debug clarity
     {
         pattern: /\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b/g,
@@ -387,7 +409,11 @@ export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Home directories
     { pattern: /\/home\/[A-Za-z0-9._-]+/g, replacement: '/home/***', identity: true },
     { pattern: /\/Users\/[A-Za-z0-9._-]+/g, replacement: '/Users/***', identity: true },
-    { pattern: /C:\\Users\\[^\\]+/gi, replacement: 'C:\\Users\\***', identity: true },
+    // The account's folder name, greedy to the next backslash, as on main,
+    // so a name with a space (`John Smith`) is masked whole. A credential
+    // it runs into is only partly covered, so the span is kept and joins
+    // the union (U1). A line break ends it.
+    { pattern: /C:\\Users\\[^\\\r\n]+/gi, replacement: 'C:\\Users\\***', identity: true },
     // Generic high-entropy hex blobs (likely keys / hashes / nonces), 32+ chars
     { pattern: /\b[A-Fa-f0-9]{32,}\b/g, replacement: '***HEX-REDACTED***', identity: true },
 ];

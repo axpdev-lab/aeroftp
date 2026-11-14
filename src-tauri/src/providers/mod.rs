@@ -1286,9 +1286,8 @@ pub trait StorageProvider: Send + Sync {
     /// protected-branch refusal). From then on the provider itself refuses
     /// every write of the session (`TargetChanged`), whoever holds it: a
     /// plan made against the previous tree stops at its next write, and a
-    /// new connection is a new provider. The GUI target reads the flag
-    /// without the provider lock to move its epoch, so the page reads the
-    /// target again.
+    /// new connection is a new provider. Callers that show the target must
+    /// read this flag to refresh their view.
     fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
         None
     }

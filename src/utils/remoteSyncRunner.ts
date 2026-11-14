@@ -59,7 +59,9 @@ export interface DeltaGateDeps {
     probeDelta: boolean;
     /** Whether the question about continuing without delta is off: the
      *  saved profile turned it off, or the session has no saved profile (an
-     *  ad-hoc connection, which has no place to keep the answer). */
+     *  ad-hoc connection, which has no place to keep the answer). A failed
+     *  answer (the saved profiles unreadable) skips it too, for the same
+     *  reason; the probe and a hard refusal still apply. */
     skipPrompt: () => Promise<boolean>;
     /** `sftp_probe_delta_eligibility`. */
     probe: () => Promise<DeltaEligibilityProbeResult>;
@@ -104,7 +106,7 @@ export async function runDeltaGate(deps: DeltaGateDeps): Promise<void> {
     let skip = false;
     let verdict: DeltaEligibilityProbeResult;
     try {
-        skip = await deps.skipPrompt().catch(() => false);
+        skip = await deps.skipPrompt().catch(() => true);
         verdict = await deps.probe();
     } catch (error) {
         if (!(await sameConnection())) deps.changed();

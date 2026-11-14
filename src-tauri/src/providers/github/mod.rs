@@ -146,10 +146,17 @@ const WORKING_BRANCH_CANDIDATES: u32 = 9;
 enum WorkingBranchState {
     /// No such branch.
     Missing,
-    /// Nothing the base lacks (merged with a merge commit, or empty). Such
-    /// a branch IS reused (R2): its history is already in the base, and it
-    /// is fast-forwarded to the base before a write.
+    /// Level with the base: nothing ahead, nothing behind (made at the
+    /// base's tip, or fast-forwarded to it). Written as it is.
     NotAhead,
+    /// Nothing ahead of the base, but behind it: merged with a merge commit,
+    /// or left empty while the base moved on. Its tree is an older one of
+    /// the base's. A refused write reuses it, fast-forwarded to the base
+    /// first (R2, [`GitHubProvider::prepare_working_branch`]); a session
+    /// already on it is poisoned at its next write instead
+    /// ([`GitHubProvider::refuse_stale_write`]), since what it lists is that
+    /// older tree (CodeRabbit 4573911759).
+    Behind,
     /// Work the base does not hold yet.
     Pending,
     /// Squash- or rebase-merged, its tip the merged head: never written
@@ -696,7 +703,10 @@ impl GitHubProvider {
     /// merged while the session stayed open (or the branch deleted) would
     /// take the next write onto a branch whose work is done, reviving its
     /// commits: the session is poisoned and refuses, and the next connection
-    /// starts afresh. Only in the branch workflow.
+    /// starts afresh. A merge commit leaves the branch BEHIND (nothing
+    /// ahead), its tree an older one of the base's: refused the same way.
+    /// Only a branch level with the base (just prepared) or ahead of it is
+    /// written. Only in the branch workflow.
     ///
     /// The bound. The check is the full classification, because nothing
     /// cheaper sees a merge: a squash or rebase merge moves the BASE, never
@@ -738,7 +748,9 @@ impl GitHubProvider {
                 self.last_branch_check = Some(std::time::Instant::now());
                 Ok(())
             }
-            WorkingBranchState::Merged | WorkingBranchState::Missing => {
+            WorkingBranchState::Behind
+            | WorkingBranchState::Merged
+            | WorkingBranchState::Missing => {
                 self.last_branch_check = None;
                 self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
                 Err(ProviderError::TargetChanged)
@@ -816,7 +828,11 @@ impl GitHubProvider {
             return Ok(WorkingBranchState::Missing);
         };
         if compare.ahead_by == 0 {
-            return Ok(WorkingBranchState::NotAhead);
+            return Ok(if compare.behind_by == 0 {
+                WorkingBranchState::NotAhead
+            } else {
+                WorkingBranchState::Behind
+            });
         }
         if compare.behind_by == 0 {
             return Ok(WorkingBranchState::Pending);
@@ -886,11 +902,12 @@ impl GitHubProvider {
     /// `-9`) is looked at, not only up to the first gap: a merged original
     /// deleted on GitHub must not hide the pending work of a later one. The
     /// rule: the first PENDING candidate, if any (connect adopts it, a
-    /// refused write goes there); with none pending, the first empty one
-    /// (fast-forwarded), else the first missing name (created from the base).
-    /// A MERGED one (squash- or rebase-merged) is never written again; one
-    /// merged with a merge commit is NOT AHEAD and is reused, fast-forwarded
-    /// first (R2). The cost is one listing, plus
+    /// refused write goes there); with none pending, the first with nothing
+    /// ahead (NOT AHEAD, or BEHIND and fast-forwarded), else the first
+    /// missing name (created from the base). A MERGED one (squash- or
+    /// rebase-merged) is never written again; one merged with a merge commit
+    /// is BEHIND and is reused, fast-forwarded first (R2). The cost is one
+    /// listing, plus
     /// one compare per candidate that exists (and the pull-request lookup
     /// only for a diverged one): one request when there is none.
     ///
@@ -920,12 +937,16 @@ impl GitHubProvider {
             }
             states.push((name, state));
         }
-        for wanted in [WorkingBranchState::NotAhead, WorkingBranchState::Missing] {
-            if let Some(found) = states.iter().find(|(_, state)| *state == wanted) {
-                return Ok(Some(found.clone()));
-            }
-        }
-        Ok(None)
+        let nothing_ahead = states.iter().find(|(_, state)| {
+            matches!(
+                state,
+                WorkingBranchState::NotAhead | WorkingBranchState::Behind
+            )
+        });
+        let missing = states
+            .iter()
+            .find(|(_, state)| *state == WorkingBranchState::Missing);
+        Ok(nothing_ahead.or(missing).cloned())
     }
 
     /// The branch a refused write goes to ([`Self::current_working_branch`]),
@@ -955,7 +976,9 @@ impl GitHubProvider {
     /// files to a protected repository is not stopped after its first one
     /// at every connection. A merged, empty or missing one leaves the
     /// session on the protected branch (R2, Q1, Q4). Any failed lookup fails
-    /// the connect rather than guess.
+    /// the connect rather than guess. A pending branch named the way the
+    /// earlier releases named it is reported, never adopted
+    /// ([`Self::report_legacy_working_branch`]).
     async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
         // Nothing pending (every name merged included): the session stays
         // on the protected branch; browsing and reads work (C1).
@@ -965,7 +988,7 @@ impl GitHubProvider {
         {
             self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
         }
-        Ok(())
+        self.report_legacy_working_branch(&base).await
     }
 
     /// The one place a working branch is named (P7, P8):
@@ -976,8 +999,11 @@ impl GitHubProvider {
     /// App's `x[bot]` to a user's `x-bot`, so `<tag>`, the first 16 hex
     /// digits of the SHA-256 of the login (lowercased) and the EXACT base
     /// name (S2 e), tells them apart.
-    /// A branch named under the earlier scheme (display name, no tag) is
-    /// neither adopted nor written again.
+    /// A branch named under the scheme of the releases before it
+    /// (`aeroftp/<sanitised display name>/<sanitised base>`, no tag:
+    /// [`Self::legacy_working_branch_name`]) is neither adopted nor written
+    /// again; a connect that finds one with commits its base lacks says so
+    /// ([`Self::report_legacy_working_branch`]).
     fn workflow_branch_name(user_login: &str, base_branch: &str) -> String {
         use sha2::Digest;
         // The login AND the exact base (S2 e): a GitHub App's
@@ -999,11 +1025,66 @@ impl GitHubProvider {
         )
     }
 
+    /// The name every release from v3.8.0 to v4.2.7 gave the working branch
+    /// (one form throughout): `aeroftp/<display name>/<base>`, both
+    /// sanitised by [`Self::sanitise_branch_component`], the display name
+    /// being the account's profile name (`account_name`, `AeroFTP App` for
+    /// an installation token), or `aeroftp` when it has none. Not the login:
+    /// two accounts can share a display name, so the branch may be another
+    /// account's.
+    fn legacy_working_branch_name(&self) -> String {
+        format!(
+            "aeroftp/{}/{}",
+            Self::sanitise_branch_component(self.account_name.as_deref().unwrap_or("aeroftp")),
+            Self::sanitise_branch_component(self.active_branch()),
+        )
+    }
+
+    /// CodeRabbit 4573911765: the working branch a released version made
+    /// ([`Self::legacy_working_branch_name`]) is never adopted nor written
+    /// (the new naming stands, and the user may get a second pull request),
+    /// but when it holds commits `base` lacks (PENDING), the user is told
+    /// that work is not in this session. A merged one, or one with nothing
+    /// ahead, is not reported. Looked up by its exact name, never as a
+    /// prefix: one request, a 404 being no such branch; any other failure
+    /// fails the connect, as the other lookups of the working branch do.
+    /// The text is AeroFTP's: the branch names in it are sanitised, and
+    /// nothing else the server sent is in it. It goes through the provider
+    /// warnings ([`crate::providers::report_warning`]), which the CLI prints
+    /// and MCP returns with the call, and to the log.
+    async fn report_legacy_working_branch(&mut self, base: &str) -> Result<(), ProviderError> {
+        let legacy = self.legacy_working_branch_name();
+        let url = format!("{}/git/ref/heads/{legacy}", self.repo_url());
+        match self.client.get_json::<serde_json::Value>(&url).await {
+            Ok(_) => {}
+            Err(
+                GitHubError::PathNotFound(_)
+                | GitHubError::RepoNotFound
+                | GitHubError::BranchNotFound(_)
+                | GitHubError::NotFound(_),
+            ) => return Ok(()),
+            Err(e) => return Err(ProviderError::from(e)),
+        }
+        if self.classify_working_branch(base, &legacy).await? != WorkingBranchState::Pending {
+            return Ok(());
+        }
+        let message = format!(
+            "GitHub: a working branch named {legacy}, as earlier AeroFTP versions named it, \
+             has commits the protected branch does not. This session neither shows them nor \
+             writes there: a write the protected branch refuses goes to {}. If that work is \
+             yours, open a pull request from {legacy} on GitHub to keep it.",
+            self.own_working_branch()?
+        );
+        log::warn!("{message}");
+        crate::providers::report_warning(message);
+        Ok(())
+    }
+
     /// The working branch a refused write goes to, made ready against ONE
     /// base tip (S3b, T1): the walk classifies every candidate against
-    /// `base_tip`; a PENDING one is written as it is, a NOT AHEAD one is
-    /// fast-forwarded to `base_tip` (no force), a MISSING one is created at
-    /// it. When GitHub answers that another client changed the branch in
+    /// `base_tip`; a PENDING one is written as it is, a NOT AHEAD or BEHIND
+    /// one is fast-forwarded to `base_tip` (no force; nothing to move when
+    /// it is already there), a MISSING one is created at it. When GitHub answers that another client changed the branch in
     /// between (the create refused because it now exists, the fast-forward
     /// refused because it moved), the walk runs again against the same tip:
     /// a branch behind is fast-forwarded, a merged one gives the next name or
@@ -1016,7 +1097,9 @@ impl GitHubProvider {
             let (branch, state) = self.allocate_working_branch(base_tip).await?;
             let ready = match state {
                 WorkingBranchState::Pending => true,
-                WorkingBranchState::NotAhead => self.fast_forward_to(&branch, base_tip).await?,
+                WorkingBranchState::NotAhead | WorkingBranchState::Behind => {
+                    self.fast_forward_to(&branch, base_tip).await?
+                }
                 WorkingBranchState::Missing => self.create_branch_at(&branch, base_tip).await?,
                 // The walk never names a merged branch.
                 WorkingBranchState::Merged => {
@@ -1080,7 +1163,8 @@ impl GitHubProvider {
         }
     }
 
-    /// Move a NOT AHEAD working branch up to `base_sha` (R2): a write on a
+    /// Move a working branch with nothing ahead (NOT AHEAD or BEHIND) up to
+    /// `base_sha` (R2): a write on a
     /// branch behind the base would land on an older tree. A plain update
     /// with no force, which GitHub accepts only as a fast forward. `true`
     /// when the branch is at `base_sha` (moved, or already there). `false`
@@ -1998,7 +2082,6 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.refuse_stale_write().await?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2009,6 +2092,8 @@ impl StorageProvider for GitHubProvider {
                 "Creating GitHub releases via mkdir is not supported".to_string(),
             ));
         }
+        // After the release path is answered, which is not the tree (Q2).
+        self.refuse_stale_write().await?;
 
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -2182,7 +2267,6 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.refuse_stale_write().await?;
         if self.parse_virtual_path(&self.resolve_path(from)).is_some()
             || self.parse_virtual_path(&self.resolve_path(to)).is_some()
         {
@@ -2190,6 +2274,8 @@ impl StorageProvider for GitHubProvider {
                 "Renaming GitHub releases or release assets is not supported".to_string(),
             ));
         }
+        // After the release paths are answered, which are not the tree (Q2).
+        self.refuse_stale_write().await?;
 
         let resolved_to = self.resolve_path(to);
         if self.resolve_path(from) == resolved_to {
@@ -3304,9 +3390,10 @@ mod tests {
         ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
             let log = Arc::new(Mutex::new(Vec::new()));
             let seen = log.clone();
+            let own_puts = Arc::new(std::sync::atomic::AtomicUsize::new(0));
             let app = axum::Router::new().fallback(axum::routing::any(
                 move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
-                    let (seen, own) = (seen.clone(), own.clone());
+                    let (seen, own, own_puts) = (seen.clone(), own.clone(), own_puts.clone());
                     async move {
                         use axum::response::IntoResponse;
                         let path = urlencoding::decode(uri.path()).unwrap().into_owned();
@@ -3388,6 +3475,19 @@ mod tests {
                         if method == axum::http::Method::PUT
                             && body.contains(&format!("\"branch\":\"{own}\""))
                         {
+                            if put_own.1 == "502_THEN_422" {
+                                // The first attempt answers 502 (it may have
+                                // landed); a later one finds the file there.
+                                let n = own_puts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                                return if n == 0 {
+                                    raw(502, r#"{"message": "Bad gateway"}"#.to_string())
+                                } else {
+                                    raw(
+                                        422,
+                                        r#"{"message": "\"sha\" wasn't supplied"}"#.to_string(),
+                                    )
+                                };
+                            }
                             if put_own.1 == "STALL" {
                                 // The answer starts, then its body never ends.
                                 use futures_util::StreamExt as _;
@@ -3445,6 +3545,11 @@ mod tests {
             for (case, exists, compare, merged, refused) in [
                 ("merged", true, (3, 2), true, true),
                 ("deleted", false, (0, 0), false, true),
+                // CodeRabbit 4573911759: merged with a merge commit, it has
+                // nothing ahead and is behind: an older tree, refused. Level
+                // with its base (just prepared), it is written.
+                ("merged with a merge commit", true, (0, 1), false, true),
+                ("level with its base", true, (0, 0), false, false),
                 ("pending", true, (1, 0), false, false),
             ] {
                 let (origin, log, server) =
@@ -3952,6 +4057,10 @@ mod tests {
                 // T4: the body stalls past the read timeout (the client
                 // reports a 408 of its own).
                 ("stalled answer", (200, "STALL"), true),
+                // CodeRabbit 4573911774: a second attempt would be refused
+                // because the first, answered 502, landed. There is none:
+                // the 502 stands and the session is poisoned.
+                ("server error, a retry refused", (502, "502_THEN_422"), true),
                 ("refused", (422, r#"{"message": "Invalid request"}"#), false),
             ] {
                 let (origin, log, server) =
@@ -3966,6 +4075,15 @@ mod tests {
                     "{case}"
                 );
                 assert_eq!(provider.refuse_when_poisoned().is_err(), poisoned, "{case}");
+                let own_writes = log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|w| {
+                        w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{own}\""))
+                    })
+                    .count();
+                assert_eq!(own_writes, 1, "{case}: the fallback write is sent once");
                 if poisoned {
                     let before = log.lock().unwrap().len();
                     assert!(
@@ -3987,6 +4105,136 @@ mod tests {
             let poison = Arc::new(std::sync::atomic::AtomicBool::new(false));
             PoisonUnlessRefused(Some(poison.clone())).refused();
             assert!(!poison.load(std::sync::atomic::Ordering::SeqCst));
+        }
+
+        /// CodeRabbit 4573911765: a working branch a released version made
+        /// (`aeroftp/<display name>/<base>`), with a commit its base lacks:
+        /// the connect reports it by name, the session does not take it, and
+        /// a refused write goes to the new branch, nothing to the old one.
+        /// Merged with a merge commit, level, or absent: no report.
+        #[tokio::test]
+        async fn a_pending_branch_of_an_earlier_release_is_reported_and_never_written() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let legacy = "aeroftp/alice-smith/main".to_string();
+            let (_dir, file) = a_file();
+            for (case, legacy_state, reported) in [
+                ("pending", Some((1u64, 0u64)), true),
+                ("merged with a merge commit", Some((0, 2)), false),
+                ("level", Some((0, 0)), false),
+                ("absent", None, false),
+            ] {
+                let log = Arc::new(Mutex::new(Vec::<String>::new()));
+                let seen = log.clone();
+                let (legacy_name, own_name) = (legacy.clone(), own.clone());
+                let app = axum::Router::new().fallback(axum::routing::any(
+                    move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                        let (seen, legacy, own) =
+                            (seen.clone(), legacy_name.clone(), own_name.clone());
+                        async move {
+                            use axum::response::IntoResponse;
+                            let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                            let reply = |status: u16, json: serde_json::Value| {
+                                (
+                                    axum::http::StatusCode::from_u16(status).unwrap(),
+                                    axum::Json(json),
+                                )
+                                    .into_response()
+                            };
+                            seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                            let not_found = serde_json::json!({"message": "Not Found"});
+                            if path.ends_with("/branches/main") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": "main", "protected": true,
+                                        "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                    }),
+                                );
+                            }
+                            if path.ends_with(&format!("/git/ref/heads/{legacy}")) {
+                                return match legacy_state {
+                                    Some(_) => reply(
+                                        200,
+                                        serde_json::json!({"ref": format!("refs/heads/{legacy}")}),
+                                    ),
+                                    None => reply(404, not_found),
+                                };
+                            }
+                            if path.contains("/compare/") && path.ends_with(&legacy) {
+                                let (ahead, behind) = legacy_state.unwrap();
+                                return reply(
+                                    200,
+                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                                );
+                            }
+                            if path.contains("/git/matching-refs/heads/") {
+                                return reply(200, serde_json::json!([]));
+                            }
+                            if method == axum::http::Method::PUT
+                                && body.contains("\"branch\":\"main\"")
+                            {
+                                return reply(
+                                    403,
+                                    serde_json::json!({"message": "Protected branch update failed"}),
+                                );
+                            }
+                            if method == axum::http::Method::POST && path.ends_with("/git/refs") {
+                                return reply(201, serde_json::json!({"ref": "r"}));
+                            }
+                            if method == axum::http::Method::PUT
+                                && body.contains(&format!("\"branch\":\"{own}\""))
+                            {
+                                return reply(201, serde_json::json!({"content": {"sha": "abc123"}}));
+                            }
+                            reply(404, not_found)
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                provider.account_name = Some("Alice Smith".to_string());
+                let _ = crate::providers::take_warnings();
+                provider.start_on_existing_working_branch().await.unwrap();
+                let warnings = crate::providers::take_warnings();
+                assert_eq!(
+                    warnings
+                        .iter()
+                        .any(|w| w.contains(&legacy) && w.contains(&own)),
+                    reported,
+                    "{case}: {warnings:?}"
+                );
+                assert_eq!(
+                    warnings.len(),
+                    usize::from(reported),
+                    "{case}: {warnings:?}"
+                );
+                assert_eq!(provider.working_branch(), None, "{case}: not adopted");
+                provider.upload(&file, "/a.txt", None).await.unwrap();
+                let sent = log.lock().unwrap().clone();
+                assert!(
+                    sent.iter()
+                        .any(|w| w.starts_with("PUT ")
+                            && w.contains(&format!("\"branch\":\"{own}\""))),
+                    "{case}: the refused write went to the new branch: {sent:?}"
+                );
+                assert!(
+                    !sent
+                        .iter()
+                        .any(|w| !w.starts_with("GET ") && w.contains(&legacy)),
+                    "{case}: nothing written to the old branch: {sent:?}"
+                );
+                // Looked up by its exact name: one request, never a prefix.
+                assert_eq!(
+                    sent.iter()
+                        .filter(|w| w.starts_with("GET ") && w.contains("/git/ref/heads/"))
+                        .count(),
+                    1,
+                    "{case}: {sent:?}"
+                );
+                server.abort();
+            }
         }
 
         /// S2 (a): a merged pull request on the second page of the lookup
@@ -4041,20 +4289,138 @@ mod tests {
             );
         }
 
-        /// S2 (b), the class: every tree write goes through the one check.
+        /// S2 (b), the class: every tree write goes through the one check,
+        /// and (CodeRabbit 4573911780) only after its method has answered a
+        /// release path, which is not the tree (Q2): in every method holding
+        /// the check, each `parse_virtual_path` comes before it. The methods
+        /// that take no release path are named, so a new one is a decision.
         #[test]
         fn every_tree_write_checks_the_working_branch_first() {
-            for (source, writes) in [
-                (include_str!("mod.rs"), 7),
-                (include_str!("repo_mode.rs"), 4),
+            const CHECK: &str = "self.refuse_stale_write().await?";
+            let method =
+                regex::Regex::new(r"(?m)^    (?:pub(?:\([a-z]+\))? )?(?:async )?fn ([a-z_]+)")
+                    .unwrap();
+            let mut without_dispatch = Vec::new();
+            for (file, source, writes) in [
+                ("mod.rs", include_str!("mod.rs"), 7),
+                ("repo_mode.rs", include_str!("repo_mode.rs"), 4),
             ] {
                 let code = source.split("#[cfg(test)]\nmod tests").next().unwrap();
                 assert_eq!(code.matches("self.refuse_when_poisoned()").count(), 0);
-                assert_eq!(
-                    code.matches("self.refuse_stale_write().await?").count(),
-                    writes
-                );
+                assert_eq!(code.matches(CHECK).count(), writes, "{file}");
+                let starts: Vec<(usize, &str)> = method
+                    .captures_iter(code)
+                    .map(|c| (c.get(0).unwrap().start(), c.get(1).unwrap().as_str()))
+                    .collect();
+                let mut checked = 0;
+                for (n, (start, name)) in starts.iter().enumerate() {
+                    let end = starts.get(n + 1).map_or(code.len(), |next| next.0);
+                    let body = &code[*start..end];
+                    let Some(check) = body.find(CHECK) else {
+                        continue;
+                    };
+                    checked += body.matches(CHECK).count();
+                    match body.rfind("parse_virtual_path") {
+                        Some(dispatch) => assert!(
+                            dispatch < check,
+                            "{file} {name}: the check comes before the release dispatch"
+                        ),
+                        None => without_dispatch.push(format!("{file} {name}")),
+                    }
+                }
+                assert_eq!(checked, writes, "{file}: every check is in a method");
             }
+            without_dispatch.sort();
+            assert_eq!(
+                without_dispatch,
+                [
+                    "mod.rs batch_upload",
+                    "repo_mode.rs delete_file",
+                    "repo_mode.rs upload_file"
+                ]
+            );
+        }
+
+        /// CodeRabbit 4573911774, the class: a request that writes the tree,
+        /// whichever client method sends it, is sent once when it is answered
+        /// 5xx, and that 5xx is what the caller gets (the write may have
+        /// landed). Any other request is retried once after a 5xx. (GraphQL
+        /// goes to its fixed endpoint, not this mock; `writes_the_tree`
+        /// classes it with the tree writes, pinned by the poison test.)
+        #[tokio::test]
+        async fn a_tree_write_answered_5xx_is_sent_once() {
+            let log = Arc::new(Mutex::new(Vec::<String>::new()));
+            let seen = log.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let seen = seen.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        seen.lock()
+                            .unwrap()
+                            .push(format!("{method} {}", uri.path()));
+                        (
+                            axum::http::StatusCode::BAD_GATEWAY,
+                            axum::Json(serde_json::json!({"message": "Bad gateway"})),
+                        )
+                            .into_response()
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+            let body = serde_json::json!({});
+            let client = &mut provider.client;
+            let sent = |log: &Arc<Mutex<Vec<String>>>| {
+                let mut log = log.lock().unwrap();
+                let n = log.len();
+                log.clear();
+                n
+            };
+            let put = client.put_json("/repos/o/r/contents/a.txt", &body).await;
+            assert!(matches!(put, Err(GitHubError::ServerError(_))), "{put:?}");
+            assert_eq!(sent(&log), 1, "put contents");
+            let deleted = client.delete_json("/repos/o/r/contents/a.txt", &body).await;
+            assert!(
+                matches!(deleted, Err(GitHubError::ServerError(_))),
+                "{deleted:?}"
+            );
+            assert_eq!(sent(&log), 1, "delete contents");
+            let created = client
+                .post_json::<serde_json::Value>("/repos/o/r/git/refs", &body)
+                .await;
+            assert!(
+                matches!(created, Err(GitHubError::ServerError(_))),
+                "{created:?}"
+            );
+            assert_eq!(sent(&log), 1, "create a ref");
+            let moved = client
+                .patch_json("/repos/o/r/git/refs/heads/x", &body)
+                .await;
+            assert!(
+                matches!(moved, Err(GitHubError::ServerError(_))),
+                "{moved:?}"
+            );
+            assert_eq!(sent(&log), 1, "move a ref");
+            let blob = client
+                .post_json::<serde_json::Value>("/repos/o/r/git/blobs", &body)
+                .await;
+            assert!(matches!(blob, Err(GitHubError::ServerError(_))), "{blob:?}");
+            assert_eq!(sent(&log), 1, "create a blob");
+            client
+                .delete("/repos/o/r/git/refs/heads/x")
+                .await
+                .unwrap_err();
+            assert_eq!(sent(&log), 1, "delete a ref");
+            // Not the tree: retried once.
+            client
+                .post_json::<serde_json::Value>("/repos/o/r/pulls", &body)
+                .await
+                .unwrap_err();
+            assert_eq!(sent(&log), 2, "a pull request");
+            server.abort();
         }
 
         /// R1: a poisoned session refuses what writes the tree (contents,
@@ -4127,6 +4493,7 @@ mod tests {
                     .await,
                 provider.rmdir("/docs").await,
                 provider.rmdir_recursive("/docs").await,
+                provider.delete_directory_recursive("/docs", None).await,
             ] {
                 assert!(
                     matches!(refused, Err(ProviderError::TargetChanged)),
@@ -4148,6 +4515,14 @@ mod tests {
                 provider.delete(&format!("/{releases}/v1/a.txt")).await,
                 provider.rmdir(&format!("/{releases}/v1")).await,
                 provider.rmdir_recursive(&format!("/{releases}/v1")).await,
+                // CodeRabbit 4573911780: the repository-mode recursive delete
+                // answers a release as `rmdir_recursive` does.
+                provider
+                    .delete_directory_recursive(&format!("/{releases}/v1"), None)
+                    .await,
+                provider
+                    .delete_directory_recursive(&format!("/{releases}/v1/a.txt"), None)
+                    .await,
             ];
             // Each one looked its release up (a GET, which this mock answers
             // 404 and does not log): reached, not refused by the poison.
@@ -4155,6 +4530,25 @@ mod tests {
                 assert!(
                     !matches!(outcome, Err(ProviderError::TargetChanged)),
                     "release operation {n}: {outcome:?}"
+                );
+            }
+            // A release path these methods do not take is answered as such,
+            // not refused as a tree write.
+            for (n, outcome) in [
+                provider.mkdir(&format!("/{releases}/v2")).await,
+                provider
+                    .create_directory(&format!("/{releases}/v2"), None)
+                    .await,
+                provider
+                    .rename(&format!("/{releases}/v1"), &format!("/{releases}/v3"))
+                    .await,
+            ]
+            .iter()
+            .enumerate()
+            {
+                assert!(
+                    matches!(outcome, Err(ProviderError::NotSupported(_))),
+                    "release path {n}: {outcome:?}"
                 );
             }
             server.abort();
@@ -5082,7 +5476,7 @@ mod tests {
     /// `a_content_read_never_names_the_base_branch`. A new entry is a
     /// reader of the base; anything that reads content uses
     /// `content_branch()`.
-    const ACTIVE_BRANCH_READERS: [&str; 11] = [
+    const ACTIVE_BRANCH_READERS: [&str; 12] = [
         // Its protection and the write mode it gives.
         "connect",
         "encoded_branch_for_path",
@@ -5096,6 +5490,9 @@ mod tests {
         // connect, before every write (S2 b) and at the fallback (whose tip
         // `upload` reads, S3b).
         "own_working_branch",
+        // The name the released versions gave it, reported, never written
+        // (CodeRabbit 4573911765).
+        "legacy_working_branch_name",
         "refuse_stale_write",
         "start_on_existing_working_branch",
         "upload",
