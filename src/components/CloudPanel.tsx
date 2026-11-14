@@ -77,6 +77,22 @@ type CloudVersioningSelectValue =
     | 'simple_5'
     | 'staggered';
 
+/**
+ * Whether two JSON values are equal by value, whatever the order of their
+ * keys; an absent value is `null`.
+ */
+function sameJson(left: unknown, right: unknown): boolean {
+    const canonical = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(canonical);
+        if (value && typeof value === 'object') {
+            return Object.fromEntries(Object.keys(value as Record<string, unknown>).sort()
+                .map(key => [key, canonical((value as Record<string, unknown>)[key])]));
+        }
+        return value ?? null;
+    };
+    return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right));
+}
+
 function toVersioningSelectValue(strategy?: CloudVersioningStrategy | null): CloudVersioningSelectValue {
     if (!strategy) {
         return 'trash_can_30';
@@ -439,8 +455,17 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // after an await.
     const configRef = useRef(config);
     useEffect(() => { configRef.current = config; }, [config]);
+    // Whether the shown configuration failed to load, for the same reply.
+    const configLoadErrorRef = useRef(configLoadError);
+    useEffect(() => { configLoadErrorRef.current = configLoadError; }, [configLoadError]);
+    // Bumped only when the configuration is replaced (a load, setup, Pause,
+    // Resume, Disable), not when it is saved: a Sync Now, Pause, Resume,
+    // Disable or excluded-folders reply that resolves after the panel shows
+    // another configuration belongs to the one that asked, and is dropped.
+    const configIdentity = useRef(0);
     const replaceConfig = (next: CloudConfig | null) => {
         configGeneration.current += 1;
+        configIdentity.current += 1;
         setConfig(next);
         setShowSettings(false);
         setSettingsBaseline(null);
@@ -543,13 +568,19 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             // A file that names another account (another profile or local
             // folder) is not this configuration's: it replaces the panel's,
             // with any draft, instead of lending it a folder.
+            // The connection parameters are compared by value: they can name
+            // another endpoint with the same profile and folders. No shown
+            // configuration is the same account unless it failed to load:
+            // then the file read now replaces the error, while one cleared by
+            // Disable stays cleared.
             const shown = configRef.current;
-            const sameAccount = !shown || (
+            const sameAccount = shown ? (
                 (shown.server_profile_id ?? null) === (cfg.server_profile_id ?? null)
                 && shown.server_profile === cfg.server_profile
                 && shown.local_folder === cfg.local_folder
                 && shown.protocol_type === cfg.protocol_type
-            );
+                && sameJson(shown.connection_params, cfg.connection_params)
+            ) : !configLoadErrorRef.current;
             if (refresh && sameAccount) {
                 // A sync moves last_sync, and places a `~/...` remote folder
                 // under the login folder and saves the absolute path. Both
@@ -571,13 +602,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 setConfigLoadError(null);
                 replaceConfig(cfg);
             }
+            // The configuration this read installed or merged into: a later
+            // read, a save or a replacement while the pairs or the status are
+            // read owns the panel, and these replies are dropped.
+            const installed = configGeneration.current;
+            const disowned = () => superseded() || installed !== configGeneration.current;
             // Pair-specific settings own Update whenever pairs exist. Failure
             // to read them must not expose an ineffective legacy checkbox.
             const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);
+            if (disowned()) return;
             setHasCloudPairs(pairs ? pairs.pairs.length > 0 : null);
 
             if (cfg.enabled) {
                 const sts = await invoke<CloudSyncStatus>('get_cloud_status');
+                if (disowned()) return;
                 // The status from Rust already has the correct type
                 setStatus(sts);
             }
@@ -602,6 +640,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const handleSyncNow = async () => {
         logger.debug('Starting sync...');
         setStatus({ type: 'syncing', current_file: 'Scanning...', progress: 0 });
+        const asked = configIdentity.current;
         try {
             // Start background sync if not already running
             if (!isBackgroundSyncRunning) {
@@ -609,20 +648,24 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             }
             const result = await invoke<string>('trigger_cloud_sync');
             logger.debug('Sync result:', result);
+            if (asked !== configIdentity.current) return;
             setStatus({ type: 'idle' });
             // Reload config to update last_sync: a refresh, not a new
             // configuration: an open settings draft must survive it.
             loadConfig(true);
         } catch (error) {
             console.error('Sync failed:', error);
+            if (asked !== configIdentity.current) return;
             setStatus({ type: 'error', message: String(error) });
         }
     };
 
     const handlePause = async () => {
         setPendingLifecycle(c => c + 1);
+        const asked = configIdentity.current;
         try {
             const updated = await invoke<CloudConfig>('pause_aerocloud');
+            if (asked !== configIdentity.current) return;
             replaceConfig(updated);
             setStatus({ type: 'paused' });
             logger.debug('Sync paused');
@@ -635,8 +678,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     const handleResume = async () => {
         setPendingLifecycle(c => c + 1);
+        const asked = configIdentity.current;
         try {
             const updated = await invoke<CloudConfig>('resume_aerocloud');
+            if (asked !== configIdentity.current) return;
             replaceConfig(updated);
             setStatus({ type: 'idle', last_sync: config?.last_sync || undefined });
             logger.debug('Sync resumed');
@@ -658,8 +703,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const performDisable = async () => {
         setPendingDisableConfirm(false);
         setPendingLifecycle(c => c + 1);
+        const asked = configIdentity.current;
         try {
             await invoke('disable_aerocloud');
+            if (asked !== configIdentity.current) return;
             replaceConfig(null);
             setStatus({ type: 'not_configured' });
             logger.debug('AeroCloud disabled');
@@ -925,8 +972,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                 <SelectiveSyncTree
                                     excludedFolders={config?.excluded_folders || []}
                                     onSave={async (folders) => {
+                                        const asked = configIdentity.current;
                                         try {
                                             await invoke('update_excluded_folders', { excludedFolders: folders });
+                                            if (asked !== configIdentity.current) return;
                                             setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
                                             // Persisted immediately, so it must not count as an unsaved edit.
                                             setSettingsBaseline(prev => prev ? { ...prev, excluded_folders: folders } : prev);
@@ -995,8 +1044,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                             onClick={async () => {
                                 if (config && !savingSettings) {
                                     setSavingSettings(true);
+                                    const asked = configIdentity.current;
                                     try {
                                         await invoke('save_cloud_config_cmd', { config });
+                                        if (asked !== configIdentity.current) return;
                                         configGeneration.current += 1;
                                         // Sync interval to SyncSchedule so the background worker uses the correct value
                                         try {
@@ -1016,6 +1067,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);
+                                        if (asked !== configIdentity.current) return;
                                         setSettingsSaveError(String(e));
                                     } finally {
                                         setSavingSettings(false);

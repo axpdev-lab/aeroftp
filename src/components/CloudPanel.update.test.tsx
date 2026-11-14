@@ -5,6 +5,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudPanel } from './CloudPanel';
 import en from '../i18n/locales/en.json';
+import panelSource from './CloudPanel.tsx?raw';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Map<string, (event: { payload: unknown }) => void>(), setupResult: null as unknown }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
@@ -546,6 +547,86 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(saved).toEqual([]);
     });
 
+    it('replaces the panel when the refreshed file connects with other parameters, by value', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const base = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', server_profile: 'nas', protocol_type: 's3', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+        let disk: unknown = { ...base, connection_params: { bucket: 'a', region: 'eu' } };
+        const saved: unknown[] = [];
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: unknown }) => {
+            if (command === 'get_cloud_config') return disk;
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config); return null; }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        const settings = () => React.act(async () => {
+            host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click();
+            await Promise.resolve(); await Promise.resolve();
+        });
+        const draft = () => host.querySelector('input[placeholder="/cloud/"]');
+        // The same parameters in another key order are the same connection.
+        disk = { ...base, connection_params: { region: 'eu', bucket: 'a' } };
+        await settings();
+        expect(draft()).not.toBeNull();
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.cancel')!.click());
+        // Another bucket with the same profile and folders is another endpoint:
+        // the draft of the old one closes, nothing of it is saved.
+        disk = { ...base, connection_params: { bucket: 'b', region: 'eu' } };
+        await settings();
+        expect(draft()).toBeNull();
+        expect(saved).toEqual([]);
+    });
+
+    it('installs the file on reopen after a failed first load, without a retry', async () => {
+        let readable = false;
+        await mount([], vi.fn(), () => readable);
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        readable = true;
+        await React.act(async () => root!.render(<CloudPanel isOpen={false} onClose={vi.fn()} />));
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        expect(host.querySelector('[role="alert"]')).toBeNull();
+        expect(host.querySelector('button[title="common.settings"]')).not.toBeNull();
+    });
+
+    it('drops an older refresh whose pair list lands after a newer one', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const disk = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', server_profile: 'nas', protocol_type: 'sftp', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+        let pairs: unknown[] = [];
+        let holdPairs = false;
+        let releasePairs!: (value: unknown) => void;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_config') return disk;
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') {
+                if (holdPairs) { holdPairs = false; return new Promise(resolve => { releasePairs = resolve; }); }
+                return { pairs };
+            }
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        // A: the refresh after a sync waits on the pair list, read before a pair was added.
+        holdPairs = true;
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+        // B: opening Settings reads the list with the new pair.
+        pairs = [{ id: 'phone' }];
+        await React.act(async () => {
+            host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click();
+            await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+        });
+        const legacyUpdate = () => Array.from(host.querySelectorAll('label')).find(label => label.textContent?.includes('aerosync.updateOnly'));
+        expect(legacyUpdate()).toBeUndefined();
+        // A lands last with the empty list: the pairs still own Update.
+        await React.act(async () => releasePairs({ pairs: [] }));
+        expect(legacyUpdate()).toBeUndefined();
+    });
+
     it('drops a post-sync refresh that read the file before Disable and a new setup', async () => {
         mocks.setupResult = { enabled: true, cloud_name: 'fresh', local_folder: '/local2', remote_folder: '/new', sync_interval_secs: 300, sync_direction: 'bidirectional', exclude_patterns: [], excluded_folders: [] };
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
@@ -774,4 +855,41 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect([...host.querySelectorAll('button')].some(b => b.textContent?.includes('cloud.syncNow'))).toBe(false);
     });
 
+});
+
+describe('every reply the panel applies belongs to the panel that asked', () => {
+    // Each await in CloudPanel, and the check between it and the state it
+    // sets: the read sequence for the file, the configuration it installed
+    // for the pairs and the status, the configuration identity for Sync Now,
+    // Pause, Resume, Disable, the excluded folders and the save. A new await
+    // fails here until it is listed with its check.
+    const AWAITS: [string, string | null][] = [
+        ["cfg = await invoke<CloudConfig>('get_cloud_config');", 'if (superseded()) return;'],
+        ["const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);", 'if (disowned()) return;'],
+        ["const sts = await invoke<CloudSyncStatus>('get_cloud_status');", 'if (disowned()) return;'],
+        ['await startBackgroundSync();', null],
+        ["const result = await invoke<string>('trigger_cloud_sync');", 'if (asked !== configIdentity.current) return;'],
+        ["const updated = await invoke<CloudConfig>('pause_aerocloud');", 'if (asked !== configIdentity.current) return;'],
+        ["const updated = await invoke<CloudConfig>('resume_aerocloud');", 'if (asked !== configIdentity.current) return;'],
+        ["await invoke('disable_aerocloud');", 'if (asked !== configIdentity.current) return;'],
+        ["await invoke('open_in_file_manager', { path: config.local_folder });", null],
+        ["await invoke('update_excluded_folders', { excludedFolders: folders });", 'if (asked !== configIdentity.current) return;'],
+        ["await invoke('save_cloud_config_cmd', { config });", 'if (asked !== configIdentity.current) return;'],
+        ["const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');", null],
+        ["await invoke('save_sync_schedule_cmd', {", null],
+    ];
+    it('checks ownership right after each await that is followed by a state change', () => {
+        const code = panelSource.split('\n').filter(line => !line.trim().startsWith('//')).join('\n');
+        expect(code.match(/\bawait /g)?.length).toBe(AWAITS.length);
+        for (const [call, check] of AWAITS) {
+            const at = code.indexOf(call);
+            expect(at, call).toBeGreaterThan(0);
+            if (!check) continue;
+            const after = code.slice(at + call.length);
+            const nextState = after.search(/\b(set[A-Z]\w*|replaceConfig)\(/);
+            const guarded = after.indexOf(check);
+            expect(guarded, call).toBeGreaterThanOrEqual(0);
+            expect(guarded, call).toBeLessThan(nextState);
+        }
+    });
 });
