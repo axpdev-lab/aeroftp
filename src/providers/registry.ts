@@ -1473,7 +1473,7 @@ export const PROVIDERS: ProviderConfig[] = [
             { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set Server to https://dav.puter.com/<username> (the {username} path resolves to -token otherwise)' },
         ],
         setupInstructions: [
-            'The free plan has no time limit but is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
+            'The free plan is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
         ],
         features: {
             shareLink: false,

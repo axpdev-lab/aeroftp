@@ -326,10 +326,10 @@ describe('commercial tier model: free / free-card / paid', () => {
     });
 
     it('a trial is always time-limited and never a free tier', () => {
-        // Owner rule, 2026-11-14: a free plan with no time limit is free,
-        // however tight its usage limits (LifetimeCloud, Puter); "trial" marks
-        // only a time-limited allowance (a 30-day or 12-month window, a
-        // new-user offer), which keeps freeStorageGb null.
+        // Project rule: a plan the provider publishes as free is free, however
+        // tight its usage limits (LifetimeCloud, Puter); "trial" marks only a
+        // time-limited allowance (a 30-day or 12-month window, a new-user
+        // offer), which keeps freeStorageGb null.
         for (const c of PROVIDER_CATALOG) {
             if (!/trial/i.test(c.freeNote ?? '')) continue;
             expect(c.freeStorageGb, `${c.company}: a time-limited trial is no free tier`).toBeNull();
@@ -344,7 +344,7 @@ describe('commercial tier model: free / free-card / paid', () => {
     });
 
     it('Puter is listed as its published free plan, printed as 25 MB, in the Free filter', () => {
-        // Puter publishes a Free plan of 25 MB with no card and no time limit.
+        // Puter publishes a Free plan of 25 MB with no card.
         const entry = PROVIDER_CATALOG.find(c => c.logoId === 'puter');
         expect(entry).toBeDefined();
         expect(entry!.freeStorageGb).toBe(0.025);

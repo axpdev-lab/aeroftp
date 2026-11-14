@@ -65,7 +65,7 @@ describe('connection metadata used by saved profiles', () => {
         expect(provider!.protocol).toBe('webdav');
         expect(provider!.category).toBe('webdav');
         expect(provider!.features).toEqual({ shareLink: false, sync: true });
-        // A free plan with no time limit and usage limits (owner, 2026-11-14):
+        // A free plan with no time limit and usage limits:
         // the description says free, never trial, and the setup notes give the
         // limits before the user saves the profile.
         expect((provider!.description ?? '').toLowerCase()).toContain('free');
