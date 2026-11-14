@@ -24780,6 +24780,13 @@ mod restored_transfer_owner_tests {
                     return axum::Json(serde_json::json!({"ahead_by": 1, "behind_by": 0}))
                         .into_response();
                 }
+                // #1572's discovery lists the account's working branches in
+                // one request: the working branch exists (its name, tag
+                // included, is the one asked for).
+                if let Some((_, own)) = path.split_once("/git/matching-refs/heads/") {
+                    return axum::Json(serde_json::json!([{"ref": format!("refs/heads/{own}")}]))
+                        .into_response();
+                }
                 if path.contains("/branches/") {
                     // The working branch exists already, ahead of main.
                     return axum::Json(serde_json::json!({
@@ -25022,14 +25029,19 @@ mod restored_transfer_owner_tests {
             .contains(&"delete /g.txt".to_string()));
     }
 
-    /// K9, now without any pass: an upload dropped while its write to the
-    /// working branch waits (a cancel, a timeout) leaves the session wholly
-    /// on the protected branch, not switched and not poisoned. Its target is
-    /// unchanged, and nothing the session sends afterwards goes to the
-    /// working branch through it.
+    /// K9, reconciled with #1572 (T4, S2 d): an upload dropped while its
+    /// write request to the working branch is in flight (a cancel, a
+    /// timeout) may have landed. The session is NOT switched (it never
+    /// learned that the write went through) but it IS poisoned: the GUI
+    /// target advances (`observe_target_poison`), so a page reads the target
+    /// again, and the next write is refused with no request sent after the
+    /// drop. A drop before any write request for the working branch was sent
+    /// poisons nothing (#1572:
+    /// `a_fallback_dropped_before_its_write_is_sent_leaves_the_session_unpoisoned`).
     #[tokio::test]
-    async fn a_dropped_fallback_upload_leaves_the_session_on_its_branch() {
-        let (addr, _requests_after_switch, server) = protected_github_server(true).await;
+    async fn a_fallback_write_dropped_in_flight_is_not_switched_but_poisons_and_refuses_the_next_write(
+    ) {
+        let (addr, requests_after_switch, server) = protected_github_server(true).await;
         let state = ProviderState::new();
         let provider =
             crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
@@ -25048,9 +25060,12 @@ mod restored_transfer_owner_tests {
                 tokio::time::timeout(std::time::Duration::from_millis(500), upload)
                     .await
                     .is_err(),
-                "the working-branch write is held"
+                "the working-branch write is held, then dropped"
             );
         }
+        // The server holds only the write to the working branch: the timeout
+        // above dropped that request in flight.
+        let sent_at_drop = requests_after_switch.lock().unwrap().len();
         {
             let mut slot = state.provider.lock().await;
             let github = crate::crypt_overlay_provider::concrete_provider_mut(
@@ -25059,13 +25074,31 @@ mod restored_transfer_owner_tests {
             .as_any_mut()
             .downcast_mut::<crate::providers::github::GitHubProvider>()
             .unwrap();
-            assert_eq!(github.working_branch(), None);
-            assert!(!github
-                .target_poison()
-                .unwrap()
-                .load(std::sync::atomic::Ordering::SeqCst));
+            assert_eq!(github.working_branch(), None, "not switched");
+            assert!(
+                github
+                    .target_poison()
+                    .unwrap()
+                    .load(std::sync::atomic::Ordering::SeqCst),
+                "poisoned: the dropped write may have landed"
+            );
         }
-        assert_eq!(state.gui_target_snapshot(true).await.unwrap(), before);
+        let after = state.gui_target_snapshot(true).await.unwrap();
+        assert_ne!(after.1, before.1, "the GUI target advanced");
+        // The next write: refused, and nothing more is sent.
+        let next = state
+            .provider
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .upload(file.to_str().unwrap(), "/b.txt", None)
+            .await;
+        assert!(
+            matches!(next, Err(ProviderError::TargetChanged)),
+            "{next:?}"
+        );
+        assert_eq!(requests_after_switch.lock().unwrap().len(), sent_at_drop);
         server.abort();
     }
 
