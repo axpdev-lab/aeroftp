@@ -521,9 +521,13 @@ pub struct CryptOverlayProvider {
     /// reported stays inside the overlay. Paths outside the anchor and its
     /// alias pass through as before.
     scope_alias: Option<String>,
-    /// Whether a `cd` into the anchor already asked the server where it
-    /// landed: one `PWD` per overlay, not one per folder change.
+    /// Whether the server already said where a `cd` into the anchor
+    /// landed: one report per overlay, not one per folder change.
     alias_probed: bool,
+    /// A `cd` into the anchor whose report could not be read. The next
+    /// `pwd` reads it instead, so the server's name for the anchor never
+    /// reaches a caller unmapped.
+    alias_pending: Option<String>,
 }
 
 impl CryptOverlayProvider {
@@ -611,6 +615,7 @@ impl CryptOverlayProvider {
             scope: norm_anchor(scope),
             scope_alias: None,
             alias_probed: false,
+            alias_pending: None,
         }
     }
 
@@ -640,27 +645,44 @@ impl CryptOverlayProvider {
     /// A report that is not such an alias (the root, an ancestor or a
     /// descendant of the anchor, a different tail) teaches nothing.
     async fn learn_scope_alias(&mut self, wire: &str) {
-        if self.alias_probed || self.scope.is_empty() || !wire.starts_with('/') {
+        self.alias_pending = None;
+        if self.alias_probed || self.below_scope(wire).is_none() {
             return;
         }
+        match self.inner.pwd().await {
+            Ok(reported) => self.learn_scope_alias_from(wire, &reported),
+            Err(_) => self.alias_pending = Some(wire.to_string()),
+        }
+    }
+
+    /// The part of the absolute `wire` below the anchor (`""` for the
+    /// anchor itself), or `None` when `wire` is not the anchor or below it.
+    fn below_scope(&self, wire: &str) -> Option<String> {
+        if self.scope.is_empty() || !wire.starts_with('/') {
+            return None;
+        }
         let wire = norm_abs(wire);
-        let Some(below) = (if wire == self.scope {
-            Some("")
-        } else {
-            wire.strip_prefix(&self.scope)
-                .filter(|rest| rest.starts_with('/'))
-        }) else {
+        if wire == self.scope {
+            return Some(String::new());
+        }
+        wire.strip_prefix(&self.scope)
+            .filter(|rest| rest.starts_with('/'))
+            .map(str::to_string)
+    }
+
+    /// Learn the alias from `reported`, the server's answer to where a
+    /// `cd` to `wire` landed. See [`Self::learn_scope_alias`].
+    fn learn_scope_alias_from(&mut self, wire: &str, reported: &str) {
+        let Some(below) = self.below_scope(wire) else {
             return;
         };
         self.alias_probed = true;
-        let Ok(reported) = self.inner.pwd().await else {
-            return;
-        };
-        let reported = norm_abs(&reported);
+        let wire = norm_abs(wire);
+        let reported = norm_abs(reported);
         if reported == wire {
             return;
         }
-        let Some(alias) = reported.strip_suffix(below).map(norm_abs) else {
+        let Some(alias) = reported.strip_suffix(below.as_str()).map(norm_abs) else {
             return;
         };
         let related = |a: &str, b: &str| a == b || b.starts_with(&format!("{a}/"));
@@ -1217,6 +1239,9 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         let enc = self.inner.pwd().await?;
+        if let Some(wire) = self.alias_pending.take() {
+            self.learn_scope_alias_from(&wire, &enc);
+        }
         Ok(decode_scoped(
             &self.keys,
             &self.scope,
@@ -1231,7 +1256,7 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         if path == ".." {
-            return self.inner.cd_up().await;
+            return self.cd_up().await;
         }
         let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.cd(&enc).await?;
@@ -1240,7 +1265,9 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
-        self.inner.cd_up().await
+        self.inner.cd_up().await?;
+        self.alias_pending = None;
+        Ok(())
     }
 
     fn download_was_refused(&self) -> bool {
@@ -5523,6 +5550,8 @@ pub(crate) mod tests {
         /// `pwd` reports a folder under this other name (`from`, `to`), as
         /// an FTP server answers with the folder a symlink points to.
         reports_as: Option<(&'static str, &'static str)>,
+        /// How many `pwd` calls fail before the next one answers.
+        pwd_failures: u32,
     }
 
     impl MemProvider {
@@ -5548,6 +5577,7 @@ pub(crate) mod tests {
                 login_folder: None,
                 kind: ProviderType::Ftp,
                 reports_as: None,
+                pwd_failures: 0,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5739,6 +5769,10 @@ pub(crate) mod tests {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
+            if self.pwd_failures > 0 {
+                self.pwd_failures -= 1;
+                return Err(ProviderError::ConnectionFailed("PWD timed out".into()));
+            }
             let cwd = self.cwd.lock().unwrap().clone();
             Ok(match self.reports_as {
                 Some((from, to)) if cwd == from || cwd.starts_with(&format!("{from}/")) => {
@@ -6446,43 +6480,75 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn the_anchor_under_the_name_the_server_reports_stays_encrypted() {
         for (label, keys) in both_kinds() {
-            let mut mem = MemProvider::new();
-            mem.seed_raw_dir("/home/u/docs");
-            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
-            let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
-            provider.cd("/home/u/docs").await.unwrap();
-            assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs", "{label}");
-            assert!(provider.cwd_in_encrypted_view().await.unwrap(), "{label}");
-
-            let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
-            tokio::fs::create_dir_all(&dir).await.unwrap();
-            let local = dir.join("secret.txt");
-            tokio::fs::write(&local, b"never in clear").await.unwrap();
-            provider
-                .upload(local.to_str().unwrap(), "/srv/docs/secret.txt", None)
-                .await
-                .unwrap();
-            provider
-                .upload(local.to_str().unwrap(), "/srv/other/plain.txt", None)
-                .await
-                .unwrap();
-            let _ = tokio::fs::remove_dir_all(&dir).await;
-
-            let mem = provider
-                .inner
-                .as_any_mut()
-                .downcast_mut::<MemProvider>()
-                .unwrap();
-            let files = mem.files.lock().unwrap();
-            let mut keys: Vec<&String> = files.keys().collect();
-            keys.sort();
-            assert_eq!(keys.len(), 2, "{label}: {keys:?}");
-            assert_eq!(keys[1], "/srv/other/plain.txt", "{label}");
-            assert_eq!(files["/srv/other/plain.txt"], b"never in clear", "{label}");
-            assert!(keys[0].starts_with("/home/u/docs/"), "{label}: {keys:?}");
-            assert!(!keys[0].contains("secret"), "{label}: {keys:?}");
-            assert_ne!(files[keys[0]].as_slice(), b"never in clear", "{label}");
+            assert_the_alias_is_read_as_the_anchor(label, keys, 0).await;
         }
+    }
+
+    /// The `PWD` that follows the `cd` fails (a timeout), and the next one
+    /// answers with the alias: that answer is read as the anchor's alias,
+    /// not handed to the caller as a folder outside the vault.
+    #[tokio::test]
+    async fn a_failed_alias_probe_is_resolved_by_the_next_pwd() {
+        for (label, keys) in both_kinds() {
+            assert_the_alias_is_read_as_the_anchor(label, keys, 1).await;
+        }
+    }
+
+    /// Both the probe and the caller's `PWD` fail: the overlay is not
+    /// marked as probed, so the next `cd` into the anchor asks again.
+    #[tokio::test]
+    async fn a_failed_alias_probe_is_asked_again_at_the_next_cd() {
+        for (label, keys) in both_kinds() {
+            assert_the_alias_is_read_as_the_anchor(label, keys, 2).await;
+        }
+    }
+
+    async fn assert_the_alias_is_read_as_the_anchor(
+        label: &str,
+        keys: OverlayKeys,
+        pwd_failures: u32,
+    ) {
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/home/u/docs");
+        mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+        mem.pwd_failures = pwd_failures;
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+        provider.cd("/home/u/docs").await.unwrap();
+        for _ in 1..pwd_failures {
+            assert!(provider.pwd().await.is_err(), "{label}");
+            provider.cd("/home/u/docs").await.unwrap();
+        }
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs", "{label}");
+        assert!(provider.cwd_in_encrypted_view().await.unwrap(), "{label}");
+
+        let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("secret.txt");
+        tokio::fs::write(&local, b"never in clear").await.unwrap();
+        provider
+            .upload(local.to_str().unwrap(), "/srv/docs/secret.txt", None)
+            .await
+            .unwrap();
+        provider
+            .upload(local.to_str().unwrap(), "/srv/other/plain.txt", None)
+            .await
+            .unwrap();
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let files = mem.files.lock().unwrap();
+        let mut keys: Vec<&String> = files.keys().collect();
+        keys.sort();
+        assert_eq!(keys.len(), 2, "{label}: {keys:?}");
+        assert_eq!(keys[1], "/srv/other/plain.txt", "{label}");
+        assert_eq!(files["/srv/other/plain.txt"], b"never in clear", "{label}");
+        assert!(keys[0].starts_with("/home/u/docs/"), "{label}: {keys:?}");
+        assert!(!keys[0].contains("secret"), "{label}: {keys:?}");
+        assert_ne!(files[keys[0]].as_slice(), b"never in clear", "{label}");
     }
 
     /// The rclone import writes `~/docs` for an SFTP crypt remote that opens

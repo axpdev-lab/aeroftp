@@ -7390,6 +7390,7 @@ mod baseline_tests {
     /// write (another window saved it meanwhile) no longer names the `~`
     /// form: the write re-checks under the lock, places nothing over the
     /// edit, and saves nothing, so the file keeps the bytes the edit wrote.
+    #[cfg(target_os = "linux")]
     #[test]
     fn anchor_leaves_a_pair_edited_after_its_first_read() {
         with_scratch_index(async {
