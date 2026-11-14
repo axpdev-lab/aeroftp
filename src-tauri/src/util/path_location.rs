@@ -26,6 +26,16 @@
 //!   (`/docs/` is `/docs`); `/` is the root;
 //! - a NUL character is refused;
 //! - the empty path is not refused here: each site says what it means.
+//!
+//! Two policies read the rule. A path the user writes now (a form, a save
+//! that sets the folder, the CLI) is refused in every form above
+//! ([`location_problem`]). A location already saved, read again by a sync
+//! cycle, the selective-sync picker or the AeroCloud tab, or kept unchanged by
+//! a save of another setting, is refused only for what can change where it
+//! points: a `..` step and a NUL ([`saved_location_problem`]). Its `.` and
+//! empty steps are left exactly as saved and sent to the server byte for
+//! byte, as before this rule: `/backup//docs` saved years ago, which every
+//! POSIX server reads as `/backup/docs`, keeps syncing after an upgrade.
 
 /// Why a path cannot be used as a location.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -85,17 +95,41 @@ pub fn location_problem(path: &str) -> Option<LocationProblem> {
     None
 }
 
+/// The reason a location already saved cannot be used: a `..` step or a
+/// NUL, which change where it points. Its `.` and empty steps are kept.
+pub fn saved_location_problem(path: &str) -> Option<LocationProblem> {
+    if path.contains('\0') {
+        return Some(LocationProblem::Nul);
+    }
+    path.split(['/', '\\'])
+        .any(|step| step == "..")
+        .then_some(LocationProblem::ParentStep)
+}
+
+/// `Err` naming a saved `path` as written, with `what` it is, when it has a
+/// `..` step or a NUL ([`saved_location_problem`]).
+pub fn refuse_a_saved_location(what: &str, path: &str) -> Result<(), String> {
+    match saved_location_problem(path) {
+        None => Ok(()),
+        Some(problem) => Err(unusable(what, path, problem)),
+    }
+}
+
+fn unusable(what: &str, path: &str, problem: LocationProblem) -> String {
+    format!(
+        "The {what} '{}' contains {}: write it as a plain path, without '.' or '..' steps \
+         or doubled slashes",
+        path.replace('\0', "\\0"),
+        problem.reason()
+    )
+}
+
 /// `Err` naming `path` as written, with `what` it is (`"remote folder"`),
 /// when it cannot be used as a location.
 pub fn refuse_an_unusable_location(what: &str, path: &str) -> Result<(), String> {
     match location_problem(path) {
         None => Ok(()),
-        Some(problem) => Err(format!(
-            "The {what} '{}' contains {}: write it as a plain path, without '.' or '..' steps \
-             or doubled slashes",
-            path.replace('\0', "\\0"),
-            problem.reason()
-        )),
+        Some(problem) => Err(unusable(what, path, problem)),
     }
 }
 
@@ -126,6 +160,16 @@ mod tests {
         assert!(cases.len() >= 20);
         for case in cases {
             let path = case["path"].as_str().unwrap();
+            let saved = case["savedProblem"].as_str();
+            assert_eq!(
+                saved_location_problem(path).map(LocationProblem::name),
+                saved,
+                "{case}"
+            );
+            assert_eq!(
+                refuse_a_saved_location("remote folder", path).is_err(),
+                saved.is_some()
+            );
             let expected = case["problem"].as_str();
             assert_eq!(
                 location_problem(path).map(LocationProblem::name),
@@ -185,6 +229,8 @@ mod tests {
         const CHECKS: &[&str] = &[
             "refuse_an_unusable_location(",
             "refuse_an_unusable_remote_folder(",
+            "refuse_a_saved_remote_folder(",
+            "refuse_a_saved_location(",
             "location_problem(",
             "login_relative_rest(",
         ];
@@ -265,7 +311,8 @@ mod tests {
         let service = FILES[1].1;
         let place = body(service, "place_login_relative_remote_folder");
         assert!(
-            place.find("refuse_an_unusable_remote_folder(") < place.find("resolve_home_scope(")
+            place.find("refuse_a_saved_remote_folder(").unwrap()
+                < place.find("resolve_home_scope(").unwrap()
         );
         let lib = FILES[0].1;
         for name in [

@@ -199,14 +199,30 @@ it('lists the folder the connect opened when the session cannot place the saved 
   expect(ftp).toHaveBeenCalledWith('docs');
 });
 
-it('refuses a saved folder that is not plain before listing anything, named as written', async () => {
+it('refuses a saved folder with a parent step or a NUL before listing anything, named as written', async () => {
   const { openAeroCloudFolder } = await import('./liveConnection');
-  for (const folder of ['/docs/../private', '~/docs/./a', '~//docs', '/docs//a']) {
+  for (const folder of ['/docs/../private', '~/docs/../a', 'C:\\sync\\..\\x', '/docs\0a']) {
     const place = vi.fn(async (path: string) => path);
     const navigate = vi.fn(async (path: string) => path);
     await expect(openAeroCloudFolder(folder, true, place, navigate)).rejects.toThrow(`'${folder}'`);
     expect(place).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
+  }
+});
+
+it('lists a saved folder with a doubled slash or a current step as saved, byte for byte', async () => {
+  const { openAeroCloudFolder } = await import('./liveConnection');
+  for (const folder of ['/backup//docs', '/srv/./cloud', '~//docs']) {
+    // FTP: the connect opened no folder and nothing was placed: the folder as saved.
+    const navigate = vi.fn(async (path: string) => path);
+    await openAeroCloudFolder(folder, false, async () => null, navigate);
+    expect(navigate).toHaveBeenCalledWith(folder);
+    // A placement is listed as placed, from the folder as saved.
+    const place = vi.fn(async (path: string) => path);
+    const placed = vi.fn(async (path: string) => path);
+    await openAeroCloudFolder(folder, true, place, placed);
+    expect(place).toHaveBeenCalledWith(folder);
+    expect(placed).toHaveBeenCalledWith(folder);
   }
 });
 

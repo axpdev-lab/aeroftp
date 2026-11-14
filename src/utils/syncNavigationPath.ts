@@ -47,6 +47,17 @@ export function locationProblem(path: string): LocationProblem | null {
     return null;
 }
 
+/**
+ * Whether a location saved before the rule above may still be used: the
+ * backend's `util::path_location::saved_location_problem`, with the same
+ * shared table. Only a `..` step (either separator) and a NUL are refused;
+ * a `.` or empty step is used as saved, byte for byte, as it was before.
+ */
+export function savedLocationProblem(path: string): LocationProblem | null {
+    if (path.includes('\0')) return 'nul';
+    return path.split(/[\\/]/u).includes('..') ? 'parent' : null;
+}
+
 /** A component boundary is required; a sibling such as /base-other is outside. */
 export function relativeSyncSegments(path: string, base: string): string[] | null {
     if (locationProblem(path) || locationProblem(base)) return null;
@@ -72,24 +83,6 @@ export function isWithinSyncFolder(path: string, folder: string): boolean {
     const root = folder.replace(/[\\/]+$/u, '');
     if (!root) return /^[\\/]/u.test(path);
     return path === root || path === folder || path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
-}
-
-/**
- * Whether the breadcrumb may enter `path` under the Navigation Sync boundary
- * `minPath`: not a proper ancestor of the boundary, and, while a boundary is
- * set, not a path that is not plain (`locationProblem`): typed as
- * `/docs/../etc`, it read as under `/docs` and entered `/etc`. Without a
- * boundary every path may be entered.
- */
-export function breadcrumbMayEnter(path: string, minPath: string | undefined): boolean {
-    if (!minPath) return true;
-    if (locationProblem(path)) return false;
-    const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
-    const sp = norm(path);
-    const mp = norm(minPath);
-    if (sp === mp) return true;
-    if (sp === '/') return false;
-    return !mp.startsWith(`${sp}/`);
 }
 
 /** Display coherence only; this equality never chooses a destination for I/O. */

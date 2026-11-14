@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { ConnectionParams } from '../types';
-import { locationProblem } from './syncNavigationPath';
+import { savedLocationProblem } from './syncNavigationPath';
 
 /** The part of a session tab this resolution reads. */
 export interface LiveConnectionSession {
@@ -207,8 +207,9 @@ export function selectAeroCloudProfile<P extends { id: string; name: string }>(
  * folder) lists the folder it stands in. Listed again as given, `docs` was
  * resolved from there and named `docs/docs`. A connect that opened no folder
  * (FTP's `connect_ftp`) lists it as given, from the login folder. A saved
- * folder that is not plain (`locationProblem`) is refused before anything is
- * listed, named as written.
+ * folder with a `..` step or a NUL (`savedLocationProblem`) is refused before
+ * anything is listed, named as written; a `.` or empty step is listed as
+ * saved.
  */
 export async function openAeroCloudFolder(
     remoteFolder: string,
@@ -216,8 +217,8 @@ export async function openAeroCloudFolder(
     place: (folder: string) => Promise<string | null>,
     navigate: (folder: string) => Promise<string>,
 ): Promise<string> {
-    if (locationProblem(remoteFolder)) {
-        throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '.' or '..' step or a doubled slash: set it again as a plain path`);
+    if (savedLocationProblem(remoteFolder)) {
+        throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '..' step or a NUL: set it again as a plain path`);
     }
     const placed = await place(remoteFolder);
     return navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));

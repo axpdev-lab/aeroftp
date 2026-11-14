@@ -1,165 +1,215 @@
 {
-  "_comment": "Whether a remote path a user wrote or saved may be used as a location (joined to a root, stripped of a prefix, compared with a folder boundary). Read by the backend (src-tauri/src/util/path_location.rs, location_problem) and by the frontend (src/utils/syncNavigationPath.test.ts, locationProblem), so both refuse the same paths for the same reason. `/` and `\\` both end a step; a `.` step, a `..` step, an empty step (a doubled slash, except before a leading separator, the second one of a leading `\\\\` of a Windows UNC path, and after a single trailing separator) and a NUL are refused, never collapsed. A null problem means the path may be used.",
+  "_comment": "Whether a remote path a user wrote or saved may be used as a location (joined to a root, stripped of a prefix, compared with a folder boundary). Read by the backend (src-tauri/src/util/path_location.rs, location_problem) and by the frontend (src/utils/syncNavigationPath.test.ts, locationProblem), so both refuse the same paths for the same reason. `/` and `\\` both end a step; a `.` step, a `..` step, an empty step (a doubled slash, except before a leading separator, the second one of a leading `\\\\` of a Windows UNC path, and after a single trailing separator) and a NUL are refused, never collapsed. A null problem means the path may be used. `savedProblem` is the reason a location ALREADY saved is refused (saved_location_problem / savedLocationProblem): only a `..` step and a NUL, which change where it points; its `.` and empty steps are left as saved.",
   "cases": [
     {
       "path": "",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/docs",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/docs/",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "docs",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "docs/sub",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "~",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "~/",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "~/docs",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/home/u/docs/a.txt",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "docs..x",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "...",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/a/.hidden",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "C:\\Users\\u\\docs",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "/remote.php/dav/files/{username}/",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "..",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "../escape",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "docs/../shared",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "~/../vault",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "/docs/../private/a.txt",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "/docs/..",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": "docs\\..\\x",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
     },
     {
       "path": ".",
-      "problem": "current"
+      "problem": "current",
+      "savedProblem": null
     },
     {
       "path": "./docs",
-      "problem": "current"
+      "problem": "current",
+      "savedProblem": null
     },
     {
       "path": "/docs/./a.txt",
-      "problem": "current"
+      "problem": "current",
+      "savedProblem": null
     },
     {
       "path": "~/./docs",
-      "problem": "current"
+      "problem": "current",
+      "savedProblem": null
     },
     {
       "path": "docs\\.\\x",
-      "problem": "current"
+      "problem": "current",
+      "savedProblem": null
     },
     {
       "path": "//",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "//docs",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "~//docs",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "/docs//a",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "/docs//",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "docs//sub",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "docs\\\\sub",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "/docs/\\a",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "/docs/a\u0000b",
-      "problem": "nul"
+      "problem": "nul",
+      "savedProblem": "nul"
     },
     {
       "path": "\\\\nas\\share\\sync",
-      "problem": null
+      "problem": null,
+      "savedProblem": null
     },
     {
       "path": "\\\\\\nas",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "//nas/share",
-      "problem": "empty"
+      "problem": "empty",
+      "savedProblem": null
     },
     {
       "path": "\\\\nas\\..\\x",
-      "problem": "parent"
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/srv/./a/../b",
+      "problem": "current",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/backup//docs",
+      "problem": "empty",
+      "savedProblem": null
     }
   ]
 }

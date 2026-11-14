@@ -438,9 +438,25 @@ const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 /// there, so every surface that saves one (the setup, the settings, the
 /// pairs, the CLI) refuses it, as written, on every protocol: it is never
 /// collapsed into the folder it might have meant
-/// ([`crate::util::path_location`]).
-pub fn refuse_an_unusable_remote_folder(remote_folder: &str) -> Result<(), String> {
+/// ([`crate::util::path_location`]). `saved` is the folder already saved in
+/// that place: a save that keeps it unchanged (another setting edited) is
+/// refused only for a `..` step or a NUL, so a folder saved before this rule
+/// with a doubled slash or a `.` step keeps saving and syncing as before.
+pub fn refuse_an_unusable_remote_folder(
+    remote_folder: &str,
+    saved: Option<&str>,
+) -> Result<(), String> {
+    if saved == Some(remote_folder) {
+        return refuse_a_saved_remote_folder(remote_folder);
+    }
     crate::util::path_location::refuse_an_unusable_location("remote folder", remote_folder)
+}
+
+/// A remote folder already saved, read again (a sync cycle, the picker): only
+/// a `..` step or a NUL is refused, which change where it points; `.` and
+/// empty steps are kept and sent to the server as saved.
+pub fn refuse_a_saved_remote_folder(remote_folder: &str) -> Result<(), String> {
+    crate::util::path_location::refuse_a_saved_location("remote folder", remote_folder)
 }
 
 /// Validate cloud configuration
@@ -495,7 +511,7 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     {
         return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
-    refuse_an_unusable_remote_folder(&config.remote_folder)?;
+    refuse_an_unusable_remote_folder(&config.remote_folder, None)?;
 
     Ok(())
 }
@@ -766,12 +782,12 @@ mod tests {
                     ..CloudConfig::default()
                 };
                 assert!(validate_config(&config).is_err(), "{protocol} {folder}");
-                let err = refuse_an_unusable_remote_folder(folder).unwrap_err();
+                let err = refuse_an_unusable_remote_folder(folder, None).unwrap_err();
                 assert!(err.contains(&format!("'{folder}'")), "{err}");
             }
             for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/data/", "/", "~"] {
                 assert!(
-                    refuse_an_unusable_remote_folder(folder).is_ok(),
+                    refuse_an_unusable_remote_folder(folder, None).is_ok(),
                     "{protocol} {folder}"
                 );
             }

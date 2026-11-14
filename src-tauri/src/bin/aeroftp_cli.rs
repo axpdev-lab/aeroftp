@@ -15888,6 +15888,7 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                     return 11;
                 }
             };
+            let saved_folder = config.remote_folder.clone();
             let mut changed = false;
             if let Some(local) = local {
                 config.local_folder = std::path::PathBuf::from(local);
@@ -15987,7 +15988,10 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 return 5;
             }
 
-            if let Err(e) = cloud_config::refuse_an_unusable_remote_folder(&config.remote_folder) {
+            if let Err(e) = cloud_config::refuse_an_unusable_remote_folder(
+                &config.remote_folder,
+                Some(&saved_folder),
+            ) {
                 print_error(format, &e, 5);
                 return 5;
             }
@@ -16145,6 +16149,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
 
             if let Err(e) = ftp_client_gui_lib::cloud_config::refuse_an_unusable_remote_folder(
                 &new_pair.remote_path,
+                None,
             ) {
                 print_error(format, &e, 5);
                 return 5;

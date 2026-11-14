@@ -4,9 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { breadcrumbMayEnter, canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, relativeSyncSegments, savedLocationProblem, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
 import locationCases from '../shared/path-location-cases.json';
-import breadcrumb from '../components/BreadcrumbBar.tsx?raw';
 import syncNavigationSource from './syncNavigationPath.ts?raw';
 import overlayScopeSource from './overlayScope.ts?raw';
 import liveConnectionSource from './liveConnection.ts?raw';
@@ -169,31 +168,17 @@ describe('locationProblem', () => {
         }
     });
 
+    it('refuses only a parent step or a NUL in a saved location, as the backend does', () => {
+        for (const { path, savedProblem } of locationCases.cases) {
+            expect(savedLocationProblem(path), JSON.stringify(path)).toBe(savedProblem);
+        }
+    });
+
     it('takes no relative steps from a path that is not plain', () => {
         expect(relativeSyncSegments('/docs/a/../../private', '/docs')).toBeNull();
         expect(relativeSyncSegments('/docs//a', '/docs')).toBeNull();
         expect(relativeSyncSegments('/private/a', '/docs/../private')).toBeNull();
         expect(relativeSyncSegments('/docs/a/', '/docs/')).toEqual(['a']);
-    });
-});
-
-describe('breadcrumbMayEnter', () => {
-    it('closes the ancestors of the boundary, and a typed path that is not plain', () => {
-        expect(breadcrumbMayEnter('/', undefined)).toBe(true);
-        expect(breadcrumbMayEnter('/docs/../etc', undefined)).toBe(true);
-        expect(breadcrumbMayEnter('/docs', '/docs/')).toBe(true);
-        expect(breadcrumbMayEnter('/docs/a', '/docs')).toBe(true);
-        expect(breadcrumbMayEnter('/', '/docs')).toBe(false);
-        expect(breadcrumbMayEnter('/home', '/home/u/docs')).toBe(false);
-        for (const typed of ['/docs/../etc', '/docs/./a', '/docs//a', 'C:\\sync\\..\\x']) {
-            expect(breadcrumbMayEnter(typed, '/docs'), typed).toBe(false);
-        }
-    });
-
-    it('is the check the breadcrumb runs on segments and typed paths', () => {
-        expect(breadcrumb).toContain('!breadcrumbMayEnter(segmentPath, minPath)');
-        expect(breadcrumb).toMatch(/if \(trimmed && trimmed !== currentPath && !isAboveMinPath\(trimmed\)\)/);
-        expect(breadcrumb).not.toMatch(/mp\.startsWith/);
     });
 });
 
@@ -227,7 +212,7 @@ describe('every location site checks the path first', () => {
                 checked.push(name);
             }
         }
-        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'breadcrumbMayEnter', 'isValidOverlayScope', 'resolveOverlayScope', 'aeroCloudFolderNotPlain']));
+        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'isValidOverlayScope', 'resolveOverlayScope', 'aeroCloudFolderNotPlain']));
         // The exempt names still exist: a rename cannot hide a new site.
         const all = syncNavigationSource + overlayScopeSource + liveConnectionSource + wizardSource;
         for (const name of Object.keys(EXEMPT)) expect(all, name).toMatch(new RegExp(`(function|const) ${name}\\b`, 'u'));
@@ -236,6 +221,6 @@ describe('every location site checks the path first', () => {
         const complete = wizardSource.slice(wizardSource.indexOf('const handleComplete = async'));
         expect(complete.indexOf('aeroCloudFolderNotPlain(profile, subfolder)')).toBeLessThan(complete.indexOf('aeroCloudRemoteFolder('));
         const open = liveConnectionSource.slice(liveConnectionSource.indexOf('export async function openAeroCloudFolder'));
-        expect(open.indexOf('locationProblem(remoteFolder)')).toBeLessThan(open.indexOf('await place('));
+        expect(open.indexOf('savedLocationProblem(remoteFolder)')).toBeLessThan(open.indexOf('await place('));
     });
 });

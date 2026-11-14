@@ -3880,9 +3880,10 @@ pub(crate) async fn place_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
 ) -> Result<Option<String>, String> {
-    // A folder saved before the saves refused it, or written by hand, is
-    // refused before anything is placed or synced against it.
-    crate::cloud_config::refuse_an_unusable_remote_folder(&config.remote_folder)?;
+    // A saved folder with a `..` step or a NUL (written by hand, or saved
+    // before the saves refused it) is refused before anything is placed or
+    // synced against it; its `.` and empty steps are kept as saved.
+    crate::cloud_config::refuse_a_saved_remote_folder(&config.remote_folder)?;
     // The connected provider decides, not the config's protocol field, which a
     // legacy config may leave empty.
     if !matches!(
@@ -7726,12 +7727,14 @@ mod baseline_tests {
         });
     }
 
-    /// A saved folder with a `.`, `..` or empty step (written by hand, or
-    /// saved before the saves refused it) is refused before it is placed or
-    /// synced against, on every protocol, and named as written.
+    /// A saved folder with a `..` step or a NUL (written by hand, or saved
+    /// before the saves refused it) is refused before it is placed or synced
+    /// against, on every protocol, and named as written. A `.` or empty step
+    /// in a saved folder is left as saved: it names the same folder on the
+    /// server, and refusing it would stop a sync that works.
     #[test]
     #[cfg(target_os = "linux")]
-    fn a_saved_folder_that_is_not_plain_is_refused_before_placing() {
+    fn a_saved_folder_is_refused_before_placing_only_for_a_parent_step_or_a_nul() {
         with_scratch_index(async {
             for kind in [
                 crate::providers::ProviderType::WebDav,
@@ -7741,17 +7744,82 @@ mod baseline_tests {
                     kind: Some(kind),
                     ..Default::default()
                 };
-                for remote in ["/docs/../private", "~/docs/./a", "~//docs", "/docs//a"] {
-                    let config = CloudConfig {
-                        remote_folder: remote.to_string(),
-                        ..Default::default()
-                    };
-                    let err = place_login_relative_remote_folder(&mut provider, &config)
+                let config = |remote: &str| CloudConfig {
+                    remote_folder: remote.to_string(),
+                    ..Default::default()
+                };
+                for remote in ["/docs/../private", "~/docs/../a", "/docs/a\0b"] {
+                    let err = place_login_relative_remote_folder(&mut provider, &config(remote))
                         .await
                         .expect_err(remote);
-                    assert!(err.contains(&format!("'{remote}'")), "{err}");
+                    assert!(
+                        err.contains(&format!("'{}'", remote.replace('\0', "\\0"))),
+                        "{err}"
+                    );
+                }
+                for remote in ["/backup//docs", "/srv/./cloud", "/docs/"] {
+                    assert_eq!(
+                        place_login_relative_remote_folder(&mut provider, &config(remote))
+                            .await
+                            .unwrap(),
+                        None,
+                        "{remote}"
+                    );
                 }
             }
+        });
+    }
+
+    /// A folder saved before the rule with a doubled slash or a `.` step runs
+    /// its cycle as before: the server receives the folder byte for byte as
+    /// saved, never a normalized form. One with a `..` step is refused before
+    /// any command names it.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_cycle_sends_a_saved_folder_as_saved_and_refuses_a_parent_step_first() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_saved", ftp.port, None);
+            let commands_since = |from: usize| ftp.log.lock().unwrap()[from..].join("\n");
+            for (remote, normalized) in [
+                ("/backup//docs", "/backup/docs"),
+                ("/srv/./cloud", "/srv/cloud"),
+            ] {
+                let from = ftp.log.lock().unwrap().len();
+                let local = tempfile::tempdir().unwrap();
+                std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+                let config = aerocloud_config(local.path(), remote, "srv_saved");
+                let report = run_pair_full_cycle(config, Some(&store), None)
+                    .await
+                    .unwrap();
+                assert!(
+                    report.result.errors.is_empty(),
+                    "{remote}: {:?}",
+                    report.result.errors
+                );
+                assert_eq!(report.result.uploaded, 1, "{remote}");
+                let log = commands_since(from);
+                assert!(
+                    log.contains(&format!("STOR {remote}/note.txt")),
+                    "commands:\n{log}"
+                );
+                assert!(!log.contains(normalized), "commands:\n{log}");
+            }
+            let from = ftp.log.lock().unwrap().len();
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "/srv/../x", "srv_saved");
+            let err = match run_pair_full_cycle(config, Some(&store), None).await {
+                Err(err) => err.message,
+                Ok(report) => report.result.errors.join("; "),
+            };
+            assert!(err.contains("'/srv/../x'"), "{err}");
+            let log = commands_since(from);
+            assert!(
+                !log.contains("/srv") && !log.contains("/x") && !log.contains("STOR"),
+                "commands:\n{log}"
+            );
         });
     }
 

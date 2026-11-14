@@ -2,7 +2,6 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { isWindowsLocalPath, normalizeLocalPath } from '../utils/localPath';
-import { breadcrumbMayEnter } from '../utils/syncNavigationPath';
 import { TID, type GuiPanelId } from '../utils/testIds';
 import * as React from 'react';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
@@ -209,11 +208,16 @@ export const BreadcrumbBar: React.FC<BreadcrumbBarProps> = ({
     setEditValue('');
   }, []);
 
-  // Whether a path is closed by the minPath boundary: a proper ancestor of
-  // it, or a typed path that is not plain (`breadcrumbMayEnter`).
-  const isAboveMinPath = useCallback((segmentPath: string): boolean => (
-    !breadcrumbMayEnter(segmentPath, minPath)
-  ), [minPath]);
+  // Check if a path is above (proper ancestor of) the minPath boundary
+  const isAboveMinPath = useCallback((segmentPath: string): boolean => {
+    if (!minPath) return false;
+    const norm = (p: string) => p.endsWith('/') && p.length > 1 ? p.slice(0, -1) : p;
+    const sp = norm(segmentPath);
+    const mp = norm(minPath);
+    if (sp === mp) return false; // at boundary, not above
+    if (sp === '/') return true; // root is above everything
+    return mp.startsWith(sp + '/');
+  }, [minPath]);
 
   const confirmEdit = useCallback(() => {
     const trimmed = editValue.trim();

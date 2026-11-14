@@ -291,6 +291,64 @@ mod parent_step_save_tests {
             };
             save_cloud_config_cmd_blocking(fine.clone()).unwrap();
             add_cloud_pair_blocking(cloud_pairs::CloudPathPair::from_legacy(&fine)).unwrap();
+
+            // A folder saved before the rule with a doubled slash keeps
+            // saving when another setting changes, and stays as saved; a new
+            // folder written that way is refused, and a `..` always is.
+            let old = cloud_config::CloudConfig {
+                remote_folder: "/backup//docs".to_string(),
+                ..fine.clone()
+            };
+            cloud_config::save_cloud_config(&old).unwrap();
+            let edited = cloud_config::CloudConfig {
+                update_only: !old.update_only,
+                ..old.clone()
+            };
+            save_cloud_config_cmd_blocking(edited.clone()).unwrap();
+            let stored = cloud_config::load_cloud_config_strict().unwrap();
+            assert_eq!(stored.remote_folder, "/backup//docs");
+            assert_eq!(stored.update_only, edited.update_only);
+            let moved = cloud_config::CloudConfig {
+                remote_folder: "/backup//other".to_string(),
+                ..edited.clone()
+            };
+            assert!(save_cloud_config_cmd_blocking(moved).is_err());
+            let mut pair = cloud_pairs::CloudPathPair::from_legacy(&old);
+            pair.id = "kept".to_string();
+            cloud_pairs::save_cloud_pairs_config(&cloud_pairs::CloudPairsConfig {
+                pairs: vec![pair.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+            pair.enabled = !pair.enabled;
+            save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                pairs: vec![pair.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config_strict().unwrap().pairs[0].remote_path,
+                "/backup//docs"
+            );
+            let mut renamed = pair.clone();
+            renamed.id = "new".to_string();
+            assert!(
+                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                    pairs: vec![renamed],
+                    ..Default::default()
+                })
+                .is_err()
+            );
+            cloud_config::save_cloud_config(&cloud_config::CloudConfig {
+                remote_folder: "/srv/../x".to_string(),
+                ..fine.clone()
+            })
+            .unwrap();
+            assert!(save_cloud_config_cmd_blocking(cloud_config::CloudConfig {
+                remote_folder: "/srv/../x".to_string(),
+                ..fine
+            })
+            .is_err());
         });
         match prev_xdg {
             Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
@@ -16337,7 +16395,12 @@ async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<()
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
 fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
-    cloud_config::refuse_an_unusable_remote_folder(&config.remote_folder)?;
+    // A folder kept as saved (another setting edited) follows the saved rule.
+    let saved = cloud_config::load_cloud_config_strict().ok();
+    cloud_config::refuse_an_unusable_remote_folder(
+        &config.remote_folder,
+        saved.as_ref().map(|saved| saved.remote_folder.as_str()),
+    )?;
     cloud_config::save_cloud_config(&config)
 }
 
@@ -16368,8 +16431,14 @@ async fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> R
 fn save_cloud_pairs_config_cmd_blocking(
     config: cloud_pairs::CloudPairsConfig,
 ) -> Result<(), String> {
+    // A pair whose folder is kept as saved follows the saved rule.
+    let saved = cloud_pairs::load_cloud_pairs_config_strict().ok();
     for pair in &config.pairs {
-        cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path)?;
+        let kept = saved
+            .as_ref()
+            .and_then(|saved| saved.pairs.iter().find(|stored| stored.id == pair.id))
+            .map(|stored| stored.remote_path.as_str());
+        cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, kept)?;
     }
     cloud_pairs::save_cloud_pairs_config(&config)
 }
@@ -16387,7 +16456,7 @@ async fn add_cloud_pair(
 fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path)?;
+    cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, None)?;
     cloud_pairs::with_cloud_pairs_mut(|config| {
         if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
             return Err("A pair with the same local and remote path already exists".to_string());
