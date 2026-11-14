@@ -238,7 +238,7 @@ pub(crate) fn obscure_password(plaintext: &str) -> Result<String, String> {
 // ============ INI Parser ============
 
 /// A parsed rclone remote: section name → key/value pairs.
-type RcloneRemote = HashMap<String, String>;
+pub(crate) type RcloneRemote = HashMap<String, String>;
 
 /// Maximum number of remotes to parse.
 ///
@@ -248,13 +248,51 @@ type RcloneRemote = HashMap<String, String>;
 /// into a quadratic write storm. Matches the cap the other importers use.
 const MAX_REMOTES: usize = 10_000;
 
-/// Parse rclone.conf INI format into named sections.
-fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
-    let mut sections: HashMap<String, RcloneRemote> = HashMap::new();
-    let mut current_section: Option<String> = None;
+/// A syntax diagnostic produced while parsing an INI configuration template.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IniParseIssue {
+    pub line: usize,
+    pub block_name: Option<String>,
+    pub message: String,
+}
 
-    for line in content.lines() {
-        let line = line.trim();
+/// An INI `[name]` block together with the 1-based line number of its first header.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct IniSectionWithSpan {
+    pub name: String,
+    pub start_line: usize,
+    pub data: RcloneRemote,
+}
+
+/// Result of span- and line-aware INI parsing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct IniSpanParseResult {
+    pub sections: Vec<IniSectionWithSpan>,
+    pub issues: Vec<IniParseIssue>,
+    pub capped: bool,
+}
+
+/// Parse INI `[name]` / `key = value` blocks while preserving first-seen block
+/// order, 1-based start lines, and per-line structural diagnostics.
+///
+/// Key merging, trimming, comment handling, and the `MAX_REMOTES` cap match
+/// [`parse_rclone_conf`] identically.
+pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult {
+    let mut sections: Vec<IniSectionWithSpan> = Vec::new();
+    let mut index_by_name: HashMap<String, usize> = HashMap::new();
+    let mut issues: Vec<IniParseIssue> = Vec::new();
+    let mut current_section: Option<usize> = None;
+    let mut capped = false;
+
+    for (idx, raw_line) in content.lines().enumerate() {
+        let line_num = idx + 1;
+        let stripped = if idx == 0 {
+            raw_line.strip_prefix('\u{FEFF}').unwrap_or(raw_line)
+        } else {
+            raw_line
+        };
+        let line = stripped.trim();
 
         // Skip empty lines and comments
         if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
@@ -264,30 +302,115 @@ fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
         // Section header: [name]
         if line.starts_with('[') && line.ends_with(']') {
             let name = line[1..line.len() - 1].trim().to_string();
-            if !name.is_empty() {
-                if !sections.contains_key(&name) && sections.len() >= MAX_REMOTES {
-                    log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
-                    break;
-                }
-                sections.entry(name.clone()).or_default();
-                current_section = Some(name);
+            if name.is_empty() {
+                issues.push(IniParseIssue {
+                    line: line_num,
+                    block_name: current_section.map(|i| sections[i].name.clone()),
+                    message: format!("Empty block header '[]' on line {} was ignored.", line_num),
+                });
+                continue;
+            }
+            if let Some(&existing_idx) = index_by_name.get(&name) {
+                issues.push(IniParseIssue {
+                    line: line_num,
+                    block_name: Some(name.clone()),
+                    message: format!(
+                        "Duplicate block header '[{}]' on line {}; keys merge into the earlier block.",
+                        name, line_num
+                    ),
+                });
+                current_section = Some(existing_idx);
+            } else if sections.len() >= MAX_REMOTES {
+                capped = true;
+                issues.push(IniParseIssue {
+                    line: line_num,
+                    block_name: Some(name),
+                    message: format!(
+                        "Stopped parsing at the {MAX_REMOTES}-profile limit on line {}.",
+                        line_num
+                    ),
+                });
+                break;
+            } else {
+                let new_idx = sections.len();
+                index_by_name.insert(name.clone(), new_idx);
+                sections.push(IniSectionWithSpan {
+                    name,
+                    start_line: line_num,
+                    data: HashMap::new(),
+                });
+                current_section = Some(new_idx);
             }
             continue;
         }
 
+        let active_block = current_section.map(|i| sections[i].name.clone());
+        if line.starts_with('[') {
+            issues.push(IniParseIssue {
+                line: line_num,
+                block_name: active_block,
+                message: format!(
+                    "Malformed block header on line {}: expected closing ']'.",
+                    line_num
+                ),
+            });
+            continue;
+        }
+
         // Key = value
-        if let Some(ref section) = current_section {
-            if let Some((key, value)) = line.split_once('=') {
-                let key = key.trim().to_lowercase();
-                let value = value.trim().to_string();
-                if let Some(sec) = sections.get_mut(section) {
-                    sec.insert(key, value);
+        if let Some((raw_key, raw_value)) = line.split_once('=') {
+            let key = raw_key.trim().to_lowercase();
+            let value = raw_value.trim().to_string();
+            if let Some(sec_idx) = current_section {
+                if key.is_empty() {
+                    issues.push(IniParseIssue {
+                        line: line_num,
+                        block_name: Some(sections[sec_idx].name.clone()),
+                        message: format!("Missing key name before '=' on line {}.", line_num),
+                    });
                 }
+                sections[sec_idx].data.insert(key, value);
+            } else {
+                issues.push(IniParseIssue {
+                    line: line_num,
+                    block_name: None,
+                    message: format!(
+                        "Key '{}' on line {} appears outside any [name] block and was ignored.",
+                        raw_key.trim(),
+                        line_num
+                    ),
+                });
             }
+        } else {
+            issues.push(IniParseIssue {
+                line: line_num,
+                block_name: active_block,
+                message: format!(
+                    "Unrecognized syntax on line {}: expected [name] or key = value.",
+                    line_num
+                ),
+            });
         }
     }
 
-    sections
+    IniSpanParseResult {
+        sections,
+        issues,
+        capped,
+    }
+}
+
+/// Parse rclone.conf INI format into named sections.
+fn parse_rclone_conf(content: &str) -> HashMap<String, RcloneRemote> {
+    let parsed = parse_ini_sections_with_spans(content);
+    if parsed.capped {
+        log::warn!("rclone import: stopped at the {MAX_REMOTES}-remote cap");
+    }
+    parsed
+        .sections
+        .into_iter()
+        .map(|section| (section.name, section.data))
+        .collect()
 }
 
 // ============ Type Mapping ============
@@ -756,13 +879,22 @@ fn expand_rclone_key_files(
     Ok(())
 }
 
-/// Convert a single rclone remote to an AeroFTP profile.
+/// Distinguishes an rclone.conf import from a configuration-template import so
+/// backend warnings and skip reasons are written with native terminology at creation.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ImportSourceKind {
+    RcloneFile,
+    Template,
+}
+
+/// Convert a single rclone or template section to an AeroFTP profile.
 /// `aeroftp_export` is what the header says when AeroFTP's own export wrote the
 /// file ([`aeroftp_export_header`]), `None` for any other rclone.conf.
 fn map_remote(
     name: &str,
     remote: &RcloneRemote,
     aeroftp_export: Option<AeroftpExport>,
+    source: ImportSourceKind,
 ) -> Result<MappedProfile, String> {
     let rclone_type = remote
         .get("type")
@@ -785,9 +917,15 @@ fn map_remote(
                 None
             }
             RcloneSecretField::Unreadable(why) => {
-                note(format!(
-                    "{key} does not reveal as an rclone-obscured password ({why}); imported without it"
-                ));
+                let msg = match source {
+                    ImportSourceKind::RcloneFile => format!(
+                        "{key} does not reveal as an rclone-obscured password ({why}); imported without it"
+                    ),
+                    ImportSourceKind::Template => format!(
+                        "{key} is not a valid obfuscated value ({why}); imported without it"
+                    ),
+                };
+                note(msg);
                 None
             }
         }
@@ -829,8 +967,12 @@ fn map_remote(
             && revealed.bytes().all(|b| (0x21..=0x7e).contains(&b));
         if !written_obscured {
             if key_shaped && export.version.is_none() {
+                let form_noun = match source {
+                    ImportSourceKind::RcloneFile => "an rclone-obscured value",
+                    ImportSourceKind::Template => "an obfuscated value",
+                };
                 note(format!(
-                    "{key} also reads as an rclone-obscured value, the form AeroFTP \
+                    "{key} also reads as {form_noun}, the form AeroFTP \
                      exports before {fixed_in} wrote; kept as written: if the profile \
                      does not sign in, export it again from a current AeroFTP"
                 ));
@@ -878,6 +1020,14 @@ fn map_remote(
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(default)
     };
+
+    for key in ["host", "endpoint", "hostname", "auth"] {
+        if get_str(key).is_some_and(host_field_carries_userinfo) {
+            return Err(format!(
+                "{rclone_type} {key} must not contain userinfo (@); set credentials in their dedicated fields instead"
+            ));
+        }
+    }
 
     let mapped = match rclone_type.as_str() {
         // ---- FTP ----
@@ -1660,11 +1810,18 @@ fn map_remote(
                 .map(str::trim)
                 .filter(|k| !k.is_empty());
             if public_key.is_none() {
-                note(
-                    "public_key is missing: AeroFTP does not need it, but exporting \
-                     this profile back to rclone does"
-                        .to_string(),
-                );
+                note(match source {
+                    ImportSourceKind::RcloneFile => {
+                        "public_key is missing: AeroFTP does not need it, but exporting \
+                         this profile back to rclone does"
+                            .to_string()
+                    }
+                    ImportSourceKind::Template => {
+                        "public_key is missing: AeroFTP does not need it, but re-exporting \
+                         this profile does"
+                            .to_string()
+                    }
+                });
             }
             let options = public_key.map(|k| serde_json::json!({ "imagekit_public_key": k }));
             let private_key = get_plain_secret("private_key");
@@ -1701,9 +1858,23 @@ fn map_remote(
                 .then(|| rclone_proton_session_to_aeroftp(remote))
                 .flatten();
             let warning = if mode != "native" {
-                "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; rclone's saved session was left out"
+                match source {
+                    ImportSourceKind::RcloneFile => {
+                        "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; rclone's saved session was left out"
+                    }
+                    ImportSourceKind::Template => {
+                        "this build reaches Proton Drive through the official CLI: sign in with `proton-drive auth login`; the saved session in the template was left out"
+                    }
+                }
             } else if session.is_some() {
-                "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
+                match source {
+                    ImportSourceKind::RcloneFile => {
+                        "rclone's saved session was imported and is now shared with rclone: the first of the two to refresh it keeps it, the other signs in again"
+                    }
+                    ImportSourceKind::Template => {
+                        "the saved session in the template was imported and is now shared with the external configuration: the first of the two to refresh it keeps it, the other signs in again"
+                    }
+                }
             } else {
                 concat!(
                     "the remote holds no complete saved session: after the import, ",
@@ -1730,14 +1901,26 @@ fn map_remote(
         // The remote holds the FileLu Rclone key, which rclone sends to
         // filelu.com/rclone. AeroFTP signs in to filelu.com/api with the
         // account's Developer API key, a different key the remote does not hold.
-        "filelu" => Err(
-            "filelu remote holds the FileLu Rclone key, not the Developer API key \
-             AeroFTP signs in with (Account Settings)"
-                .to_string(),
-        ),
+        "filelu" => Err(match source {
+            ImportSourceKind::RcloneFile => {
+                "filelu remote holds the FileLu Rclone key, not the Developer API key \
+                 AeroFTP signs in with (Account Settings)"
+                    .to_string()
+            }
+            ImportSourceKind::Template => {
+                "filelu block holds an external bridge key, not the Developer API key \
+                 AeroFTP signs in with (Account Settings)"
+                    .to_string()
+            }
+        }),
 
-        // Unsupported rclone types: skip gracefully
-        _ => Err(format!("unsupported rclone type: {}", rclone_type)),
+        // Unsupported backend types: skip gracefully
+        _ => Err(match source {
+            ImportSourceKind::RcloneFile => format!("unsupported rclone type: {}", rclone_type),
+            ImportSourceKind::Template => {
+                format!("unsupported template backend type: {}", rclone_type)
+            }
+        }),
     };
     let mut mapped = mapped?;
     // The way back of the export's certificate switch: the FTP backend's own
@@ -1865,6 +2048,7 @@ fn map_alias_remote(
     remote: &RcloneRemote,
     sections: &HashMap<String, RcloneRemote>,
     aeroftp_export: Option<AeroftpExport>,
+    source: ImportSourceKind,
 ) -> Result<(MappedProfile, String), String> {
     let target = remote
         .get("remote")
@@ -1907,7 +2091,7 @@ fn map_alias_remote(
             "alias remote opens the crypt remote '{base}', which imports on its own"
         ));
     }
-    let mut mapped = map_remote(name, base_remote, aeroftp_export)?;
+    let mut mapped = map_remote(name, base_remote, aeroftp_export, source)?;
     let alias_has_path = !path.trim_end().trim_matches('/').is_empty();
     // A Drive remote rooted at a folder id (`root_folder_id`, which the profile
     // keeps as its start) reads the alias path under that folder; written as a
@@ -2010,6 +2194,7 @@ fn map_crypt_remote(
     remote: &RcloneRemote,
     sections: &HashMap<String, RcloneRemote>,
     aeroftp_export: Option<AeroftpExport>,
+    source: ImportSourceKind,
 ) -> Result<(MappedProfile, String), String> {
     let remote_target = remote
         .get("remote")
@@ -2055,42 +2240,54 @@ fn map_crypt_remote(
             base_remote_name
         )
     })?;
-    let mut mapped = map_remote(&base_remote_name, base_remote, aeroftp_export)
+    let mut mapped = map_remote(&base_remote_name, base_remote, aeroftp_export, source)
         .map_err(|e| format!("crypt remote wraps '{}': {}", base_remote_name, e))?;
 
     let get_str = |k: &str| remote.get(k).map(|s| s.as_str());
     // `password` and `password2` are `IsPassword` fields. A crypt remote whose
-    // password or salt rclone could not reveal is not imported: the overlay
-    // would be enabled with a key derived from something else, and an
-    // unreadable salt left out would select rclone's default salt, so files
-    // would read as noise, or be written under a key rclone cannot open. An
-    // absent salt, or `obscure("")`, IS rclone's default salt. An empty
-    // password is valid in rclone, which then uses an all-zero key (rclone
-    // v1.75.1 `backend/crypt/cipher.go`, `Key`), but the overlay requires a
-    // password, so that remote is not imported either.
-    let password =
-        match rclone_password_field(remote, "password") {
-            RcloneSecretField::Absent => None,
-            RcloneSecretField::Revealed(password) => Some(password),
-            RcloneSecretField::Empty => return Err(
+    // password or salt could not reveal is not imported: the overlay would be
+    // enabled with a key derived from something else, and an unreadable salt
+    // left out would select the default salt, so files would read as noise.
+    let password = match rclone_password_field(remote, "password") {
+        RcloneSecretField::Absent => None,
+        RcloneSecretField::Revealed(password) => Some(password),
+        RcloneSecretField::Empty => return Err(match source {
+            ImportSourceKind::RcloneFile => {
                 "crypt remote's password is empty (rclone then encrypts with an all-zero key), \
-                 and AeroFTP's crypt overlay requires a password"
-                    .to_string(),
-            ),
-            RcloneSecretField::Unreadable(why) => {
-                return Err(format!(
-                "crypt remote's password does not reveal as an rclone-obscured password ({why})"
-            ))
+                     and AeroFTP's crypt overlay requires a password"
+                    .to_string()
             }
-        };
+            ImportSourceKind::Template => {
+                "encrypted block's password is empty (an empty password selects an all-zero key), \
+                     and AeroFTP's crypt overlay requires a password"
+                    .to_string()
+            }
+        }),
+        RcloneSecretField::Unreadable(why) => {
+            return Err(match source {
+                ImportSourceKind::RcloneFile => format!(
+                    "crypt remote's password does not reveal as an rclone-obscured password ({why})"
+                ),
+                ImportSourceKind::Template => {
+                    format!("encrypted block's password is not a valid obfuscated password ({why})")
+                }
+            })
+        }
+    };
     let salt = match rclone_password_field(remote, "password2") {
         RcloneSecretField::Absent | RcloneSecretField::Empty => None,
         RcloneSecretField::Revealed(salt) => Some(salt),
         RcloneSecretField::Unreadable(why) => {
-            return Err(format!(
-                "crypt remote's password2 (the salt) does not reveal as an rclone-obscured \
-                 password ({why}); without it the overlay would use rclone's default salt"
-            ))
+            return Err(match source {
+                ImportSourceKind::RcloneFile => format!(
+                    "crypt remote's password2 (the salt) does not reveal as an rclone-obscured \
+                     password ({why}); without it the overlay would use rclone's default salt"
+                ),
+                ImportSourceKind::Template => format!(
+                    "encrypted block's password2 (the salt) is not a valid obfuscated \
+                     password ({why}); without it the overlay would use the default encryption salt"
+                ),
+            })
         }
     };
 
@@ -2154,27 +2351,188 @@ fn map_crypt_remote(
     Ok((mapped, base_remote_name))
 }
 
-/// Parse a WebDAV URL into (host, basePath, port).
-fn parse_webdav_url(url: &str) -> (String, String, u32) {
-    let without_scheme = url
-        .trim_start_matches("https://")
-        .trim_start_matches("http://");
-    let is_https = url.starts_with("https://");
+struct WebDavUrlParts {
+    host: String,
+    base_path: String,
+    port: u32,
+    userinfo_user: Option<String>,
+    userinfo_pass: Option<String>,
+    sanitized_url: String,
+}
 
-    let (host_port, path) = match without_scheme.find('/') {
-        Some(i) => (&without_scheme[..i], without_scheme[i..].to_string()),
+/// Percent-decode an RFC 3986 userinfo component, decoding valid `%XX` UTF-8
+/// sequences while keeping invalid escapes (such as `%ZZ`, incomplete `%2`, or
+/// invalid UTF-8 byte sequences) literally as written.
+fn percent_decode_userinfo_lossless(raw: &str) -> String {
+    let bytes = raw.as_bytes();
+    let mut out = String::with_capacity(raw.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let mut decoded_bytes = Vec::new();
+            let mut j = i;
+            while j + 2 < bytes.len() && bytes[j] == b'%' {
+                let Some(hi) = (bytes[j + 1] as char).to_digit(16) else {
+                    break;
+                };
+                let Some(lo) = (bytes[j + 2] as char).to_digit(16) else {
+                    break;
+                };
+                decoded_bytes.push(((hi << 4) | lo) as u8);
+                j += 3;
+            }
+            if decoded_bytes.is_empty() {
+                out.push('%');
+                i += 1;
+                continue;
+            }
+            match std::str::from_utf8(&decoded_bytes) {
+                Ok(text) => {
+                    out.push_str(text);
+                    i = j;
+                }
+                Err(err) => {
+                    let valid_up_to = err.valid_up_to();
+                    if valid_up_to > 0 {
+                        if let Ok(valid) = std::str::from_utf8(&decoded_bytes[..valid_up_to]) {
+                            out.push_str(valid);
+                        }
+                        i += valid_up_to * 3;
+                    } else {
+                        out.push_str(&raw[i..i + 3]);
+                        i += 3;
+                    }
+                }
+            }
+        } else {
+            let ch = raw[i..].chars().next().expect("valid utf8 boundary");
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
+}
+
+enum AuthorityPrefix<'a> {
+    Scheme { lower: String, rest: &'a str },
+    SchemeRelative { rest: &'a str },
+    None { rest: &'a str },
+}
+
+/// Split an RFC 3986 scheme prefix (`scheme://`) or scheme-relative `//` off
+/// an authority-bearing URL/host string so userinfo detection and WebDAV URL
+/// parsing share the exact same scheme/authority boundary rules.
+fn split_authority_prefix(trimmed: &str) -> AuthorityPrefix<'_> {
+    if let Some(pos) = trimmed.find("://") {
+        let scheme = &trimmed[..pos];
+        let valid_scheme = !scheme.is_empty()
+            && scheme.as_bytes()[0].is_ascii_alphabetic()
+            && scheme[1..]
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.'));
+        if valid_scheme {
+            return AuthorityPrefix::Scheme {
+                lower: scheme.to_ascii_lowercase(),
+                rest: &trimmed[pos + 3..],
+            };
+        }
+    }
+    if let Some(rest) = trimmed.strip_prefix("//") {
+        return AuthorityPrefix::SchemeRelative { rest };
+    }
+    AuthorityPrefix::None { rest: trimmed }
+}
+
+/// Return true when a host- or endpoint-like field carries an `@` before the
+/// host (in its authority component), while allowing `@` in a path such as
+/// `https://s3.example.test/@public`.
+fn host_field_carries_userinfo(raw: &str) -> bool {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    let without_scheme = match split_authority_prefix(trimmed) {
+        AuthorityPrefix::Scheme { rest, .. }
+        | AuthorityPrefix::SchemeRelative { rest }
+        | AuthorityPrefix::None { rest } => rest,
+    };
+    let authority = without_scheme.split(['/', '?', '#']).next().unwrap_or("");
+    authority.contains('@')
+}
+
+fn parse_webdav_url_parts(url: &str) -> WebDavUrlParts {
+    let trimmed = url.trim();
+    let (scheme_prefix, without_scheme, is_https) = match split_authority_prefix(trimmed) {
+        AuthorityPrefix::Scheme { lower, rest } => match lower.as_str() {
+            "https" | "webdavs" | "davs" => ("https://".to_string(), rest, true),
+            "http" | "webdav" | "dav" => ("http://".to_string(), rest, false),
+            other => (format!("{other}://"), rest, false),
+        },
+        AuthorityPrefix::SchemeRelative { rest } | AuthorityPrefix::None { rest } => {
+            (String::new(), rest, false)
+        }
+    };
+
+    let (authority, path) = match without_scheme.find(['/', '?', '#']) {
+        Some(i) if without_scheme.as_bytes()[i] == b'/' => {
+            (&without_scheme[..i], without_scheme[i..].to_string())
+        }
+        Some(i) => (&without_scheme[..i], String::new()),
         None => (without_scheme, String::new()),
     };
 
-    let (host, port) = match host_port.rsplit_once(':') {
-        Some((h, p)) => {
-            let port = p.parse::<u32>().unwrap_or(if is_https { 443 } else { 80 });
-            (h.to_string(), port)
-        }
-        None => (host_port.to_string(), if is_https { 443 } else { 80 }),
+    let (userinfo, host_port) = match authority.rfind('@') {
+        Some(at) => (Some(&authority[..at]), &authority[at + 1..]),
+        None => (None, authority),
     };
 
-    (host, path, port)
+    let decode_part = |s: &str| (!s.is_empty()).then(|| percent_decode_userinfo_lossless(s));
+    let (userinfo_user, userinfo_pass) = match userinfo {
+        Some(info) => match info.split_once(':') {
+            Some((u, p)) => (decode_part(u), decode_part(p)),
+            None => (decode_part(info), None),
+        },
+        None => (None, None),
+    };
+
+    let default_port = if is_https { 443 } else { 80 };
+    let (host, port) = if host_port.starts_with('[') {
+        if let Some(bracket_end) = host_port.find(']') {
+            let suffix = &host_port[bracket_end + 1..];
+            if let Some(port_str) = suffix.strip_prefix(':') {
+                let port = port_str.parse::<u32>().unwrap_or(default_port);
+                (host_port[..=bracket_end].to_string(), port)
+            } else {
+                (host_port.to_string(), default_port)
+            }
+        } else {
+            (host_port.to_string(), default_port)
+        }
+    } else {
+        match host_port.rsplit_once(':') {
+            Some((h, p)) if !h.contains(':') => {
+                let port = p.parse::<u32>().unwrap_or(default_port);
+                (h.to_string(), port)
+            }
+            _ => (host_port.to_string(), default_port),
+        }
+    };
+
+    let sanitized_url = format!("{}{}{}", scheme_prefix, host_port, path);
+    WebDavUrlParts {
+        host,
+        base_path: path,
+        port,
+        userinfo_user,
+        userinfo_pass,
+        sanitized_url,
+    }
+}
+
+/// Parse a WebDAV URL into (host, basePath, port), never leaking userinfo into host.
+fn parse_webdav_url(url: &str) -> (String, String, u32) {
+    let parts = parse_webdav_url_parts(url);
+    (parts.host, parts.base_path, parts.port)
 }
 
 // ============ Default config path detection ============
@@ -2358,7 +2716,10 @@ const MAX_RCLONE_EXPANDED_BYTES: usize = 64 * 1024 * 1024;
 /// A remote costs its own keys and values, and an alias or crypt also costs
 /// every section on its way to the remote it opens (at most 8 hops, the bound
 /// `resolve_alias_target` keeps).
-fn check_rclone_expansion(sections: &HashMap<String, RcloneRemote>) -> Result<(), String> {
+fn check_rclone_expansion(
+    sections: &HashMap<String, RcloneRemote>,
+    source: ImportSourceKind,
+) -> Result<(), String> {
     let size =
         |remote: &RcloneRemote| -> usize { remote.iter().map(|(k, v)| k.len() + v.len()).sum() };
     let mut total = 0usize;
@@ -2387,11 +2748,17 @@ fn check_rclone_expansion(sections: &HashMap<String, RcloneRemote>) -> Result<()
             current = next;
         }
         if total > MAX_RCLONE_EXPANDED_BYTES {
-            return Err(format!(
-                "rclone.conf expands to more than {} MB once its aliases and crypt remotes are \
-                 resolved; split the file",
-                MAX_RCLONE_EXPANDED_BYTES / (1024 * 1024)
-            ));
+            let mb = MAX_RCLONE_EXPANDED_BYTES / (1024 * 1024);
+            return Err(match source {
+                ImportSourceKind::RcloneFile => format!(
+                    "rclone.conf expands to more than {mb} MB once its aliases and crypt remotes are \
+                     resolved; split the file"
+                ),
+                ImportSourceKind::Template => format!(
+                    "Configuration template expands to more than {mb} MB once its aliases and \
+                     encrypted blocks are resolved; split the template"
+                ),
+            });
         }
     }
     Ok(())
@@ -2424,57 +2791,144 @@ fn is_generated_alias_name(name: &str, base: &str, base_type: &str, path: &str) 
         })
 }
 
-pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
-    // Read through the cap, not after a size check: a file that grows between
-    // the caller's metadata check and this read cannot get past it.
-    let content = {
-        use std::io::Read;
-        let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES;
-        let mut bytes = Vec::new();
-        std::fs::File::open(config_path)
-            .and_then(|f| f.take(cap + 1).read_to_end(&mut bytes))
-            .map_err(|e| format!("Read rclone.conf: {}", e))?;
-        if bytes.len() as u64 > cap {
-            return Err(format!(
-                "rclone.conf is larger than {} MB",
-                cap / (1024 * 1024)
-            ));
-        }
-        String::from_utf8(bytes).map_err(|e| format!("Read rclone.conf: {}", e))?
-    };
+/// Explicit user declaration for how obscured-capable secret fields
+/// (`pass`, `password`, `password2`, `key_file_pass`, `api_key`, or URL userinfo)
+/// in a template block are encoded. Never inferred automatically.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TemplateSecretForm {
+    Clear,
+    Obscured,
+}
 
-    let mut sections = parse_rclone_conf(&content);
-    expand_rclone_key_files(&mut sections, rclone_config_dir(config_path).as_deref())?;
-    check_rclone_expansion(&sections)?;
-    let aeroftp_export = aeroftp_export_header(&content);
+impl TemplateSecretForm {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::Obscured => "obscured",
+        }
+    }
+}
+
+/// Per-block / default explicit secret form selection for template evaluation.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TemplateSecretPolicy {
+    pub default_form: Option<TemplateSecretForm>,
+    pub per_block: HashMap<String, TemplateSecretForm>,
+}
+
+impl TemplateSecretPolicy {
+    pub fn form_for(&self, block_name: &str) -> Option<TemplateSecretForm> {
+        let trimmed = block_name.trim();
+        self.per_block
+            .get(block_name)
+            .or_else(|| self.per_block.get(trimmed))
+            .copied()
+            .or(self.default_form)
+    }
+}
+
+/// Secret inspection metadata recorded during template evaluation for one block.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TemplateSecretBlockMeta {
+    pub looks_obscured: bool,
+    pub chosen_form: Option<TemplateSecretForm>,
+}
+
+/// A template block that could not be mapped into a server profile.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateSkippedBlock {
+    pub name: String,
+    pub backend_type: String,
+    pub reason: String,
+    pub start_line: usize,
+}
+
+/// A non-fatal warning generated while mapping a configuration template block.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateBlockWarning {
+    pub name: String,
+    pub reason: String,
+    pub start_line: usize,
+}
+
+/// Evaluated output from [`evaluate_template_text`], ready for redacted preview
+/// or vault commit without duplicating backend mapping rules.
+#[derive(Clone)]
+pub struct TemplateEngineOutput {
+    pub servers: Vec<ServerProfileExport>,
+    pub provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets>,
+    pub skipped: Vec<TemplateSkippedBlock>,
+    pub warnings: Vec<TemplateBlockWarning>,
+    pub parse_issues: Vec<IniParseIssue>,
+    pub secret_blocks: HashMap<String, TemplateSecretBlockMeta>,
+    pub block_start_lines: HashMap<String, usize>,
+    pub total_blocks: usize,
+    pub source_label: String,
+    pub capped: bool,
+}
+
+const OBSCURED_SECRET_KEYS: [&str; 5] =
+    ["pass", "key_file_pass", "api_key", "password", "password2"];
+
+struct MappedSectionsOutcome {
+    servers: Vec<ServerProfileExport>,
+    skipped: Vec<RcloneSkippedRemote>,
+    warnings: Vec<RcloneImportWarning>,
+    provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets>,
+    total_remotes: usize,
+}
+
+fn import_parsed_sections(
+    mut sections: HashMap<String, RcloneRemote>,
+    ordered_names: Option<&[String]>,
+    aeroftp_export: Option<AeroftpExport>,
+    config_dir: Option<&Path>,
+    source: ImportSourceKind,
+    url_passwords: &HashMap<String, String>,
+) -> Result<MappedSectionsOutcome, String> {
+    let (id_prefix, log_prefix) = match source {
+        ImportSourceKind::RcloneFile => ("rclone", "[rclone import]"),
+        ImportSourceKind::Template => ("tpl", "[template import]"),
+    };
+    expand_rclone_key_files(&mut sections, config_dir)?;
+    check_rclone_expansion(&sections, source)?;
+
     let total_remotes = sections.len();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
     let mut warnings = Vec::new();
-    let mut provider_secrets: std::collections::HashMap<
-        String,
-        crate::profile_export::ProviderSecrets,
-    > = std::collections::HashMap::new();
+    let mut provider_secrets: HashMap<String, crate::profile_export::ProviderSecrets> =
+        HashMap::new();
 
-    // Iterate remotes in a stable, alphabetical order. parse_rclone_conf
-    // returns a HashMap whose iteration order is randomized per run, which
-    // surfaced the imported servers (and the skipped list) in a different
-    // order every time. Sorting the section names by their lexicographic
-    // order mirrors `rclone listremotes`, so the import list matches what
-    // the user sees in rclone itself.
-    let mut section_names: Vec<&String> = sections.keys().collect();
-    section_names.sort();
+    // Legacy file imports sort section names alphabetically so the order
+    // matches `rclone listremotes`. Template evaluation passes `ordered_names`
+    // in block appearance order.
+    let section_names: Vec<String> = match ordered_names {
+        Some(names) => names
+            .iter()
+            .filter(|name| sections.contains_key(name.as_str()))
+            .cloned()
+            .collect(),
+        None => {
+            let mut names: Vec<String> = sections.keys().cloned().collect();
+            names.sort();
+            names
+        }
+    };
 
     // AeroFTP's own export carries a profile's start folder or pinned bucket
     // as an alias it names after the profile (`<name>-path`, `<name>-<bucket>`).
     // Those fold back into the profile they came from, so the round trip
     // returns one profile that opens where it did, not a profile at the root
     // plus a second one. Aliases in any other file are profiles of their own.
-    let mut folded: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    let mut folded: HashSet<&str> = HashSet::new();
     let mut start_of: HashMap<&str, &str> = HashMap::new();
     if aeroftp_export.is_some() {
         for name in &section_names {
-            let remote = &sections[*name];
+            let remote = &sections[name];
             if remote.get("type").map(|t| t.trim()) != Some("alias") {
                 continue;
             }
@@ -2510,7 +2964,7 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         }
     }
 
-    for name in section_names {
+    for name in &section_names {
         let remote = &sections[name];
         let rclone_type = remote.get("type").map(|s| s.as_str()).unwrap_or("unknown");
         if folded.contains(name.as_str()) {
@@ -2521,39 +2975,45 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         // for an alias or a crypt, the remote it opens, whose token was mapped.
         let mut app_section = remote;
         let mapped = if rclone_type == "crypt" {
-            map_crypt_remote(name, remote, &sections, aeroftp_export).map(|(mapped, base)| {
-                if let Some(base_remote) = sections.get(&base) {
-                    app_section = base_remote;
-                }
-                mapped
-            })
+            map_crypt_remote(name, remote, &sections, aeroftp_export, source).map(
+                |(mapped, base)| {
+                    if let Some(base_remote) = sections.get(&base) {
+                        app_section = base_remote;
+                    }
+                    (mapped, base)
+                },
+            )
         } else if rclone_type == "alias" {
-            map_alias_remote(name, remote, &sections, aeroftp_export).map(|(mapped, base)| {
-                if let Some(base_remote) = sections.get(&base) {
-                    app_section = base_remote;
-                }
-                mapped
-            })
+            map_alias_remote(name, remote, &sections, aeroftp_export, source).map(
+                |(mapped, base)| {
+                    if let Some(base_remote) = sections.get(&base) {
+                        app_section = base_remote;
+                    }
+                    (mapped, base)
+                },
+            )
         } else {
-            map_remote(name, remote, aeroftp_export).map(|mut mapped| {
+            map_remote(name, remote, aeroftp_export, source).map(|mut mapped| {
                 if let Some(path) = start_of.get(name.as_str()) {
                     apply_rclone_start_folder(&mut mapped, path);
                 }
-                mapped
+                (mapped, name.clone())
             })
         };
 
         match mapped {
-            Ok(mapped) => {
+            Ok((mapped, base_name)) => {
                 if let Some(reason) = &mapped.credential_warning {
-                    tracing::warn!("[rclone import] remote '{}': {}", name, reason);
+                    let clean_reason = reason.clone();
+                    tracing::warn!("{} block '{}': {}", log_prefix, name, clean_reason);
                     warnings.push(RcloneImportWarning {
                         name: name.clone(),
-                        reason: reason.clone(),
+                        reason: clean_reason,
                     });
                 }
                 let id = format!(
-                    "rclone-{}-{}",
+                    "{}-{}-{}",
+                    id_prefix,
                     name.to_lowercase().replace(' ', "-"),
                     &crate::bridge_shared::uuid_v4()[..8]
                 );
@@ -2613,7 +3073,9 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
                     last_connected: None,
                     options: mapped.options,
                     provider_id: mapped.provider_id,
-                    credential: mapped.password,
+                    credential: mapped
+                        .password
+                        .or_else(|| url_passwords.get(&base_name).cloned()),
                     has_stored_credential: None,
                     public_url_base: None,
                     ..Default::default()
@@ -2629,13 +3091,200 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
         }
     }
 
-    Ok(RcloneImportResult {
+    Ok(MappedSectionsOutcome {
         servers,
         skipped,
         warnings,
-        source_path: config_path.display().to_string(),
-        total_remotes,
         provider_secrets,
+        total_remotes,
+    })
+}
+
+pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
+    // Read through the cap, not after a size check: a file that grows between
+    // the caller's metadata check and this read cannot get past it.
+    let content = {
+        use std::io::Read;
+        let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES;
+        let mut bytes = Vec::new();
+        std::fs::File::open(config_path)
+            .and_then(|f| f.take(cap + 1).read_to_end(&mut bytes))
+            .map_err(|e| format!("Read rclone.conf: {}", e))?;
+        if bytes.len() as u64 > cap {
+            return Err(format!(
+                "rclone.conf is larger than {} MB",
+                cap / (1024 * 1024)
+            ));
+        }
+        String::from_utf8(bytes).map_err(|e| format!("Read rclone.conf: {}", e))?
+    };
+
+    let sections = parse_rclone_conf(&content);
+    let aeroftp_export = aeroftp_export_header(&content);
+    let outcome = import_parsed_sections(
+        sections,
+        None,
+        aeroftp_export,
+        rclone_config_dir(config_path).as_deref(),
+        ImportSourceKind::RcloneFile,
+        &HashMap::new(),
+    )?;
+
+    Ok(RcloneImportResult {
+        servers: outcome.servers,
+        skipped: outcome.skipped,
+        warnings: outcome.warnings,
+        source_path: config_path.display().to_string(),
+        total_remotes: outcome.total_remotes,
+        provider_secrets: outcome.provider_secrets,
+    })
+}
+
+/// Evaluate raw INI configuration template text into AeroFTP profile drafts,
+/// line-numbered syntax diagnostics, and explicit-choice secret metadata without
+/// guessing or touching disk / vault.
+pub fn evaluate_template_text(
+    content: &str,
+    base_dir: Option<&Path>,
+    source_label: &str,
+    secret_policy: &TemplateSecretPolicy,
+) -> Result<TemplateEngineOutput, String> {
+    let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize;
+    if content.len() > cap {
+        return Err(format!(
+            "Configuration template exceeds the {} MB limit.",
+            cap / (1024 * 1024)
+        ));
+    }
+
+    let trimmed_bom = content.strip_prefix('\u{FEFF}').unwrap_or(content);
+    let parsed = parse_ini_sections_with_spans(trimmed_bom);
+    let mut ordered_names: Vec<String> = Vec::with_capacity(parsed.sections.len());
+    let mut block_start_lines: HashMap<String, usize> =
+        HashMap::with_capacity(parsed.sections.len());
+    let mut sections: HashMap<String, RcloneRemote> = HashMap::with_capacity(parsed.sections.len());
+    let mut secret_blocks: HashMap<String, TemplateSecretBlockMeta> = HashMap::new();
+    let mut url_passwords: HashMap<String, String> = HashMap::new();
+
+    for section in parsed.sections {
+        ordered_names.push(section.name.clone());
+        block_start_lines.insert(section.name.clone(), section.start_line);
+
+        let mut data = section.data;
+
+        // Strip userinfo from URL fields before preview or backend mapping
+        // sees them so credentials never reach host or preview payloads.
+        // URL-embedded passwords are already clear text by RFC 3986 and stay out
+        // of `data["pass"]` so explicit `pass` always wins and URL passwords are
+        // stored verbatim without prompting for a secret-form choice.
+        if let Some(raw_url) = data.get("url").cloned() {
+            let parts = parse_webdav_url_parts(&raw_url);
+            if parts.userinfo_user.is_some() || parts.userinfo_pass.is_some() {
+                data.insert("url".to_string(), parts.sanitized_url);
+                if data
+                    .get("user")
+                    .map(|s| s.trim().is_empty())
+                    .unwrap_or(true)
+                {
+                    if let Some(u) = parts.userinfo_user {
+                        data.insert("user".to_string(), u);
+                    }
+                }
+                if data
+                    .get("pass")
+                    .map(|s| s.trim().is_empty())
+                    .unwrap_or(true)
+                {
+                    if let Some(p) = parts.userinfo_pass {
+                        url_passwords.insert(section.name.clone(), p);
+                    }
+                }
+            }
+        }
+
+        // Collect present secret fields and never guess plain vs obscured.
+        let mut present_secrets: Vec<(&'static str, String)> = Vec::new();
+        for key in OBSCURED_SECRET_KEYS {
+            if let Some(raw_val) = data.get(key) {
+                if !raw_val.is_empty() {
+                    present_secrets.push((key, raw_val.clone()));
+                }
+            }
+        }
+
+        if !present_secrets.is_empty() {
+            let looks_obscured = present_secrets
+                .iter()
+                .all(|(_, v)| matches!(reveal_canonical_rclone(v), Ok(ref dec) if !dec.is_empty()));
+            let chosen_form = secret_policy.form_for(&section.name);
+            secret_blocks.insert(
+                section.name.clone(),
+                TemplateSecretBlockMeta {
+                    looks_obscured,
+                    chosen_form,
+                },
+            );
+            match chosen_form {
+                Some(TemplateSecretForm::Clear) => {
+                    for (key, raw_val) in present_secrets {
+                        let obscured = obscure_password(&raw_val)?;
+                        data.insert(key.to_string(), obscured);
+                    }
+                }
+                Some(TemplateSecretForm::Obscured) => {}
+                None => {
+                    for key in OBSCURED_SECRET_KEYS {
+                        data.remove(key);
+                    }
+                }
+            }
+        }
+
+        sections.insert(section.name, data);
+    }
+
+    let aeroftp_export = aeroftp_export_header(trimmed_bom);
+    let outcome = import_parsed_sections(
+        sections,
+        Some(&ordered_names),
+        aeroftp_export,
+        base_dir,
+        ImportSourceKind::Template,
+        &url_passwords,
+    )?;
+
+    let skipped = outcome
+        .skipped
+        .into_iter()
+        .map(|s| TemplateSkippedBlock {
+            start_line: block_start_lines.get(&s.name).copied().unwrap_or(1),
+            name: s.name,
+            backend_type: s.rclone_type,
+            reason: s.reason,
+        })
+        .collect();
+
+    let warnings = outcome
+        .warnings
+        .into_iter()
+        .map(|w| TemplateBlockWarning {
+            start_line: block_start_lines.get(&w.name).copied().unwrap_or(1),
+            name: w.name,
+            reason: w.reason,
+        })
+        .collect();
+
+    Ok(TemplateEngineOutput {
+        servers: outcome.servers,
+        provider_secrets: outcome.provider_secrets,
+        skipped,
+        warnings,
+        parse_issues: parsed.issues,
+        secret_blocks,
+        block_start_lines,
+        total_blocks: outcome.total_remotes,
+        source_label: source_label.to_string(),
+        capped: parsed.capped,
     })
 }
 
@@ -4101,14 +4750,16 @@ pub fn export_rclone(
                     .and_then(|o| o.get("basePath"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
+                let host = server.host.trim_end_matches('/');
+                let host_has_own_path = crate::providers::types::webdav_host_has_own_path(host);
+                let effective_base = if host_has_own_path { "" } else { base_path };
                 // Some host strings already carry the scheme (`https://...`)
                 // because the GUI persists the full URL as the host on
                 // certain WebDAV presets. In that case we MUST NOT prepend
                 // another scheme or the URL becomes `https://https://...`
                 // and rclone refuses to dial.
-                let host = server.host.trim_end_matches('/');
                 let url = if host.starts_with("http://") || host.starts_with("https://") {
-                    format!("{}{}", host, base_path)
+                    format!("{}{}", host, effective_base)
                 } else {
                     let scheme = webdav_export_scheme(host, server.port, options);
                     if webdav_is_local_bridge(host, server.port) {
@@ -4125,7 +4776,7 @@ pub fn export_rclone(
                     } else {
                         format!(":{}", server.port)
                     };
-                    format!("{}://{}{}{}", scheme, host, port_str, base_path)
+                    format!("{}://{}{}{}", scheme, host, port_str, effective_base)
                 };
                 // Resolve {username} template that Nextcloud-derived
                 // presets store verbatim in the URL or initial path
@@ -5049,7 +5700,13 @@ mod tests {
             "[swift-test]\ntype = swift\nauth = http://127.0.0.1:8080/identity/v3/auth/tokens\nuser = synthetic\nkey = synthetic\n",
         );
         assert_eq!(result.len(), 1);
-        let profile = map_remote("swift-test", &result["swift-test"], None).unwrap();
+        let profile = map_remote(
+            "swift-test",
+            &result["swift-test"],
+            None,
+            ImportSourceKind::RcloneFile,
+        )
+        .unwrap();
         assert_eq!(
             profile.host,
             "http://127.0.0.1:8080/identity/v3/auth/tokens"
@@ -5599,6 +6256,140 @@ region = eu-west-1
     }
 
     #[test]
+    fn test_parse_webdav_url_parts_decodes_userinfo_preserving_invalid_escapes() {
+        let parts = parse_webdav_url_parts("https://alice%40corp:p%40ss@dav.example.test/dav/");
+        assert_eq!(parts.userinfo_user.as_deref(), Some("alice@corp"));
+        assert_eq!(parts.userinfo_pass.as_deref(), Some("p@ss"));
+        assert_eq!(parts.host, "dav.example.test");
+        assert_eq!(parts.base_path, "/dav/");
+        assert_eq!(parts.sanitized_url, "https://dav.example.test/dav/");
+
+        let invalid = parse_webdav_url_parts(
+            "https://bad%ZZusr%C3%A9:p%20%FF%40s+1%@dav.example.test/files/",
+        );
+        assert_eq!(invalid.userinfo_user.as_deref(), Some("bad%ZZusré"));
+        assert_eq!(invalid.userinfo_pass.as_deref(), Some("p %FF@s+1%"));
+        assert_eq!(invalid.host, "dav.example.test");
+    }
+
+    #[test]
+    fn test_map_remote_refuses_userinfo_in_host_bearing_keys() {
+        for (rtype, key, val) in [
+            ("ftp", "host", "ftp://alice:SuperSecret!@ftp.example.test"),
+            ("sftp", "host", "bob:SuperSecret!@sftp.example.test"),
+            (
+                "s3",
+                "endpoint",
+                "https://AKIA:SuperSecret!@s3.example.test",
+            ),
+            (
+                "swift",
+                "auth",
+                "https://user:SuperSecret!@auth.example.test/v3",
+            ),
+        ] {
+            let mut remote = HashMap::new();
+            remote.insert("type".into(), rtype.into());
+            remote.insert(key.into(), val.into());
+            let err = map_remote("bad", &remote, None, ImportSourceKind::Template)
+                .err()
+                .expect("host-bearing key with userinfo must be refused");
+            assert!(!err.contains("SuperSecret"), "err leaked secret: {err}");
+            assert!(err.contains(key), "err should name key {key}: {err}");
+        }
+
+        let mut s3_path_at = HashMap::new();
+        s3_path_at.insert("type".into(), "s3".into());
+        s3_path_at.insert("provider".into(), "Other".into());
+        s3_path_at.insert("endpoint".into(), "https://s3.example.test/@public".into());
+        assert!(
+            map_remote("ok", &s3_path_at, None, ImportSourceKind::Template).is_ok(),
+            "@ in URL path after host must still be accepted"
+        );
+    }
+
+    #[test]
+    fn import_rclone_refuses_userinfo_in_host_bearing_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rclone.conf");
+        std::fs::write(
+            &path,
+            "\
+[bad-ftp]
+type = ftp
+host = ftp://alice:SuperSecret!@ftp.example.test
+
+[bad-sftp]
+type = sftp
+host = bob:SuperSecret!@sftp.example.test
+
+[bad-s3]
+type = s3
+provider = Other
+endpoint = https://AKIA:SuperSecret!@s3.example.test
+
+[bad-pcloud]
+type = pcloud
+hostname = carol:SuperSecret!@api.pcloud.com
+
+[bad-swift]
+type = swift
+auth = https://dave:SuperSecret!@auth.example.test/v3
+
+[ok-s3-path]
+type = s3
+provider = Other
+endpoint = https://s3.example.test/@public
+access_key_id = AKIAOK
+",
+        )
+        .unwrap();
+
+        let result = import_rclone(&path).unwrap();
+        let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["ok-s3-path"]);
+        assert_eq!(result.skipped.len(), 5, "skipped count mismatch");
+
+        let expected = [
+            ("bad-ftp", "ftp", "host"),
+            ("bad-sftp", "sftp", "host"),
+            ("bad-s3", "s3", "endpoint"),
+            ("bad-pcloud", "pcloud", "hostname"),
+            ("bad-swift", "swift", "auth"),
+        ];
+        for (name, backend, key) in expected {
+            let entry = result
+                .skipped
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("missing skipped entry for {name}"));
+            assert_eq!(
+                entry.reason,
+                format!(
+                    "{backend} {key} must not contain userinfo (@); set credentials in their dedicated fields instead"
+                ),
+                "{name}: unexpected skip reason"
+            );
+            for forbidden in [
+                "SuperSecret",
+                "alice",
+                "bob",
+                "AKIA",
+                "carol",
+                "dave",
+                "example.test",
+                "api.pcloud.com",
+            ] {
+                assert!(
+                    !entry.reason.contains(forbidden),
+                    "{name}: reason leaked `{forbidden}`: {}",
+                    entry.reason
+                );
+            }
+        }
+    }
+
+    #[test]
     fn test_map_ftp() {
         let mut remote = HashMap::new();
         remote.insert("type".into(), "ftp".into());
@@ -5606,7 +6397,8 @@ region = eu-west-1
         remote.insert("user".into(), "admin".into());
         remote.insert("port".into(), "21".into());
 
-        let mapped = map_remote("test-ftp", &remote, None).expect("should map FTP");
+        let mapped = map_remote("test-ftp", &remote, None, ImportSourceKind::RcloneFile)
+            .expect("should map FTP");
         assert_eq!(mapped.protocol, "ftp");
         assert_eq!(mapped.host, "ftp.example.com");
         assert_eq!(mapped.port, 21);
@@ -5621,7 +6413,8 @@ region = eu-west-1
         remote.insert("user".into(), "secure".into());
         remote.insert("tls".into(), "true".into());
 
-        let mapped = map_remote("test-ftps", &remote, None).expect("should map FTPS");
+        let mapped = map_remote("test-ftps", &remote, None, ImportSourceKind::RcloneFile)
+            .expect("should map FTPS");
         assert_eq!(mapped.protocol, "ftps");
     }
 
@@ -5630,7 +6423,7 @@ region = eu-west-1
         let mut remote = HashMap::new();
         remote.insert("type".into(), "fichier".into());
 
-        assert!(map_remote("unsupported", &remote, None).is_err());
+        assert!(map_remote("unsupported", &remote, None, ImportSourceKind::RcloneFile).is_err());
     }
 
     /// Issue #214: rclone stores `token = {"access_token", "refresh_token",
@@ -5688,7 +6481,8 @@ region = eu-west-1
             r#"{"access_token":"abc","token_type":"Bearer","refresh_token":"r","expiry":"2030-01-01T00:00:00Z"}"#
                 .into(),
         );
-        let mapped = map_remote("my-drive", &remote, None).expect("should map drive");
+        let mapped = map_remote("my-drive", &remote, None, ImportSourceKind::RcloneFile)
+            .expect("should map drive");
         assert_eq!(mapped.protocol, "googledrive");
         let oauth_json = mapped.oauth_token.expect("token must be propagated");
         let parsed: serde_json::Value = serde_json::from_str(&oauth_json).unwrap();
@@ -5710,7 +6504,8 @@ region = eu-west-1
             "token".into(),
             r#"{"access_token":"a","refresh_token":"rotated"}"#.into(),
         );
-        let mapped = map_remote("jotta", &remote, None).expect("should map jotta");
+        let mapped = map_remote("jotta", &remote, None, ImportSourceKind::RcloneFile)
+            .expect("should map jotta");
         assert_eq!(mapped.protocol, "jottacloud");
         assert_eq!(mapped.username, "alice@example.com");
         let refresh_json = mapped.jotta_refresh.expect("refresh must be propagated");
@@ -5748,9 +6543,15 @@ region = eu-west-1
         crypt.insert("filename_encryption".into(), "standard".into());
         crypt.insert("directory_name_encryption".into(), "true".into());
 
-        let mapped = map_crypt_remote("mycrypt", &crypt, &sections, None)
-            .expect("should map crypt")
-            .0;
+        let mapped = map_crypt_remote(
+            "mycrypt",
+            &crypt,
+            &sections,
+            None,
+            ImportSourceKind::RcloneFile,
+        )
+        .expect("should map crypt")
+        .0;
         assert_eq!(mapped.protocol, "sftp");
         assert_eq!(mapped.host, "192.168.1.10");
         assert_eq!(mapped.initial_path.as_deref(), Some("/encrypted"));
@@ -10070,7 +10871,8 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
 
     fn import_section(conf: &str, name: &str) -> MappedProfile {
         let sections = parse_rclone_conf(conf);
-        map_remote(name, &sections[name], None).unwrap_or_else(|e| panic!("{name}: {e}"))
+        map_remote(name, &sections[name], None, ImportSourceKind::RcloneFile)
+            .unwrap_or_else(|e| panic!("{name}: {e}"))
     }
 
     fn option_of<'a>(profile: &'a MappedProfile, key: &str) -> Option<&'a serde_json::Value> {
@@ -10795,9 +11597,9 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             }
         };
         alias(40, &mut sections);
-        assert!(check_rclone_expansion(&sections).is_ok());
+        assert!(check_rclone_expansion(&sections, ImportSourceKind::RcloneFile).is_ok());
         alias(80, &mut sections);
-        let err = check_rclone_expansion(&sections).unwrap_err();
+        let err = check_rclone_expansion(&sections, ImportSourceKind::RcloneFile).unwrap_err();
         assert!(err.contains("expands to more than"), "{err}");
     }
 
@@ -11323,7 +12125,7 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         for backend in RCLONE_BRIDGE_BACKENDS {
             let conf = format!("[x]\ntype = {}\n", backend.rclone_type);
             let remotes = parse_rclone_conf(&conf);
-            if let Err(e) = map_remote("x", &remotes["x"], None) {
+            if let Err(e) = map_remote("x", &remotes["x"], None, ImportSourceKind::RcloneFile) {
                 assert!(
                     !e.contains("unsupported rclone type"),
                     "{}: {e}",
@@ -11874,5 +12676,540 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             conf.contains("remote = minio-media:/media/vault\n"),
             "{conf}"
         );
+    }
+
+    #[test]
+    fn template_messy_config_parity_between_parse_rclone_conf_and_span_parser() {
+        let messy = "\
+# leading comment
+; semicolon comment
+orphan_key = orphan_value
+malformed line without equals
+[first]
+type = sftp
+host = one.example.test
+user = alice
+
+# repeated header overrides/merges keys identically
+[first]
+host = two.example.test
+
+[   ]
+still_first = yes
+
+[second]
+type=webdav
+url = https://dav.example.test/files
+bad syntax here
+user = bob
+";
+        let legacy = parse_rclone_conf(messy);
+        let spanned = parse_ini_sections_with_spans(messy);
+        let from_spans: HashMap<String, RcloneRemote> = spanned
+            .sections
+            .iter()
+            .map(|s| (s.name.clone(), s.data.clone()))
+            .collect();
+        assert_eq!(legacy, from_spans);
+        assert_eq!(legacy.len(), 2);
+        assert_eq!(
+            legacy["first"].get("host").map(String::as_str),
+            Some("two.example.test")
+        );
+        assert_eq!(
+            legacy["first"].get("still_first").map(String::as_str),
+            Some("yes")
+        );
+    }
+
+    #[test]
+    fn template_span_parser_flags_duplicate_headers_orphan_keys_and_malformed_lines_with_exact_line_numbers(
+    ) {
+        let input = "\
+orphan = value
+bad syntax
+[alpha]
+type = ftp
+host = ftp.example.test
+[alpha]
+user = alice
+[unclosed
+not_an_assignment
+";
+        let res = parse_ini_sections_with_spans(input);
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.line == 1 && i.block_name.is_none()));
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.line == 2 && i.block_name.is_none()));
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.line == 6 && i.block_name.as_deref() == Some("alpha")));
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.line == 8 && i.block_name.as_deref() == Some("alpha")));
+        assert!(res
+            .issues
+            .iter()
+            .any(|i| i.line == 9 && i.block_name.as_deref() == Some("alpha")));
+    }
+
+    #[test]
+    fn template_secret_policy_requires_explicit_choice_never_guesses_and_preserves_23char_plain() {
+        // 23 ASCII characters valid as unpadded URL-safe base64 whose AES-256-CTR
+        // decryption may happen to pass a lenient UTF-8 check — guessing would
+        // silently mangle it instead of keeping it byte-for-byte.
+        let plain_23 = "QuJDREVGR0hJSktMTU5PUFE";
+        assert_eq!(plain_23.len(), 23);
+
+        let cfg = format!(
+            "\
+[alpha]
+type = sftp
+host = sftp.example.test
+user = alice
+pass = {plain_23}
+
+[beta]
+type = ftp
+host = ftp.example.test
+user = bob
+pass = AnotherPlain456!
+"
+        );
+        let default_res =
+            evaluate_template_text(&cfg, None, "test-paste", &TemplateSecretPolicy::default())
+                .unwrap();
+        assert_eq!(default_res.servers.len(), 2);
+        assert!(default_res.servers.iter().all(|s| s.credential.is_none()));
+        assert!(default_res.secret_blocks["alpha"].chosen_form.is_none());
+        assert!(default_res.secret_blocks["beta"].chosen_form.is_none());
+
+        let mut per_block = HashMap::new();
+        per_block.insert("alpha".to_string(), TemplateSecretForm::Clear);
+        let scoped_res = evaluate_template_text(
+            &cfg,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: None,
+                per_block,
+            },
+        )
+        .unwrap();
+        let alpha = scoped_res
+            .servers
+            .iter()
+            .find(|s| s.name == "alpha")
+            .unwrap();
+        let beta = scoped_res
+            .servers
+            .iter()
+            .find(|s| s.name == "beta")
+            .unwrap();
+        assert_eq!(alpha.credential.as_deref(), Some(plain_23));
+        assert!(beta.credential.is_none());
+
+        let global_res = evaluate_template_text(
+            &cfg,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Clear),
+                per_block: HashMap::new(),
+            },
+        )
+        .unwrap();
+        let beta_global = global_res
+            .servers
+            .iter()
+            .find(|s| s.name == "beta")
+            .unwrap();
+        assert_eq!(beta_global.credential.as_deref(), Some("AnotherPlain456!"));
+    }
+
+    #[test]
+    fn template_webdav_url_userinfo_strips_schemes_and_keeps_password_verbatim() {
+        // Case 1: URL password only -> stored verbatim without demanding a secret-form choice,
+        // even when another secret field on another form or no secret choice is present.
+        let cfg = "\
+[dav]
+type = webdav
+url = https://alice:secret%2B1@dav.example.test/dav/
+";
+        let unchosen =
+            evaluate_template_text(cfg, None, "test-paste", &TemplateSecretPolicy::default())
+                .unwrap();
+        assert!(
+            unchosen.secret_blocks.is_empty(),
+            "URL password must not request a secret-form choice"
+        );
+        let srv = &unchosen.servers[0];
+        assert_eq!(srv.host, "dav.example.test");
+        assert!(!srv.host.contains('@') && !srv.host.contains("secret"));
+        assert_eq!(srv.username, "alice");
+        assert_eq!(srv.credential.as_deref(), Some("secret+1"));
+        assert_eq!(
+            srv.options
+                .as_ref()
+                .and_then(|o| o.get("basePath"))
+                .and_then(|v| v.as_str()),
+            Some("/dav/")
+        );
+
+        // Case 2: URL password alongside key_file_pass keeps URL password byte-for-byte regardless of Obscured choice.
+        let obsc_kfp = obscure_password("kfp-secret").unwrap();
+        let cfg_with_kfp = format!(
+            "[dav-kfp]\ntype = webdav\nurl = https://alice:UrlPass!@dav.example.test/dav/\nkey_file_pass = {obsc_kfp}\n"
+        );
+        let with_obscured = evaluate_template_text(
+            &cfg_with_kfp,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Obscured),
+                per_block: HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            with_obscured.servers[0].credential.as_deref(),
+            Some("UrlPass!")
+        );
+
+        // Case 3: Explicit pass wins over URL password, URL password is never stored or echoed.
+        let cfg_explicit = "\
+[dav-explicit]
+type = webdav
+url = https://alice:UrlShadowSecret@dav.example.test/dav/
+pass = ExplicitSecret
+";
+        let explicit_unchosen = evaluate_template_text(
+            cfg_explicit,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy::default(),
+        )
+        .unwrap();
+        assert!(explicit_unchosen.servers[0].credential.is_none());
+
+        let explicit_clear = evaluate_template_text(
+            cfg_explicit,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Clear),
+                per_block: HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            explicit_clear.servers[0].credential.as_deref(),
+            Some("ExplicitSecret")
+        );
+
+        // Uppercase / WebDAV / DAV / scheme-relative / leading-tab userinfo never leaks into host or basePath.
+        for (label, raw_url, expected_host, expected_base, expected_scheme) in [
+            (
+                "upper-https",
+                "HTTPS://alice:U%401@dav.example.test/dav/",
+                "dav.example.test",
+                Some("/dav/"),
+                Some("https"),
+            ),
+            (
+                "webdav",
+                "webdav://bob:P1@dav.example.test:8080/files/",
+                "dav.example.test",
+                Some("/files/"),
+                Some("http"),
+            ),
+            (
+                "davs",
+                "davs://carol:P2@dav.example.test/sub",
+                "dav.example.test",
+                Some("/sub"),
+                Some("https"),
+            ),
+            (
+                "scheme-rel",
+                "//dave:P3@dav.example.test/rel/",
+                "dav.example.test",
+                Some("/rel/"),
+                None,
+            ),
+            (
+                "tab-bare",
+                "\teve:P4@dav.example.test/bare/",
+                "dav.example.test",
+                Some("/bare/"),
+                None,
+            ),
+        ] {
+            let b1_cfg = format!("[{label}]\ntype = webdav\nurl = {raw_url}\n");
+            let eval = evaluate_template_text(
+                &b1_cfg,
+                None,
+                "test-paste",
+                &TemplateSecretPolicy::default(),
+            )
+            .unwrap();
+            let s = &eval.servers[0];
+            assert_eq!(s.host, expected_host, "{label}");
+            assert!(!s.host.contains('@'), "{label}: {}", s.host);
+            assert_eq!(
+                s.options
+                    .as_ref()
+                    .and_then(|o| o.get("basePath"))
+                    .and_then(|v| v.as_str()),
+                expected_base,
+                "{label}"
+            );
+            assert_eq!(
+                s.options
+                    .as_ref()
+                    .and_then(|o| o.get("webdavScheme"))
+                    .and_then(|v| v.as_str()),
+                expected_scheme,
+                "{label}"
+            );
+        }
+        assert!(host_field_carries_userinfo("//bob:pw@sftp.example.test"));
+        assert!(host_field_carries_userinfo(
+            "\tHTTPS://bob:pw@sftp.example.test/x"
+        ));
+        assert!(!host_field_carries_userinfo(
+            "https://s3.example.test/@public"
+        ));
+    }
+
+    #[test]
+    fn template_webdav_url_password_follows_crypt_wrapper_and_drops_on_merged_duplicate_header() {
+        let obsc_crypt_pw = obscure_password("vault-pw").unwrap();
+        let cfg_crypt = format!(
+            "[dav]\ntype = webdav\nurl = https://alice:CryptWrapPass@dav.example.test/dav/\n\
+             [vault]\ntype = crypt\nremote = dav:enc\npassword = {obsc_crypt_pw}\n"
+        );
+        let crypt_eval = evaluate_template_text(
+            &cfg_crypt,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Obscured),
+                per_block: HashMap::new(),
+            },
+        )
+        .unwrap();
+        let dav_srv = crypt_eval
+            .servers
+            .iter()
+            .find(|s| s.name == "dav")
+            .expect("dav server present");
+        let vault_srv = crypt_eval
+            .servers
+            .iter()
+            .find(|s| s.name == "vault")
+            .expect("vault crypt server present");
+        assert_eq!(dav_srv.credential.as_deref(), Some("CryptWrapPass"));
+        assert_eq!(vault_srv.credential.as_deref(), Some("CryptWrapPass"));
+
+        let cfg_dup = "\
+[dup-url]
+type = webdav
+url = https://alice:FirstSecret@first.example/dav/
+[dup-url]
+url = https://second.example/dav/
+";
+        let dup_eval = evaluate_template_text(
+            cfg_dup,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy::default(),
+        )
+        .unwrap();
+        assert_eq!(dup_eval.servers.len(), 1);
+        assert_eq!(dup_eval.servers[0].name, "dup-url");
+        assert_eq!(dup_eval.servers[0].host, "second.example");
+        assert!(
+            dup_eval.servers[0].credential.is_none(),
+            "merged duplicate header whose later url omits userinfo must not inherit earlier url password"
+        );
+    }
+
+    #[test]
+    fn template_diagnostics_never_mention_rclone_and_preserve_block_names() {
+        let cfg = "\
+[bad-type]
+type = not_a_real_backend
+[rclone-prod]
+type = sftp
+host = sftp.example.test
+user = alice
+pass = PlainTextNotObscured
+[bad-crypt]
+type = crypt
+remote = missing-rclone-target:/vault
+password = PlainCryptNotObscured
+";
+        let res = evaluate_template_text(
+            cfg,
+            None,
+            "test-paste",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Obscured),
+                per_block: HashMap::new(),
+            },
+        )
+        .unwrap();
+        assert!(
+            res.skipped
+                .iter()
+                .any(|s| s.name == "bad-crypt" && s.reason.contains("missing-rclone-target")),
+            "{:?}",
+            res.skipped
+        );
+        assert!(
+            res.servers.iter().any(|s| s.name == "rclone-prod"),
+            "block name containing rclone must stay intact"
+        );
+        for s in &res.skipped {
+            if s.name == "bad-type" {
+                assert!(
+                    !s.reason.to_lowercase().contains("rclone"),
+                    "skipped reason leaked word: {}",
+                    s.reason
+                );
+            }
+        }
+        for w in &res.warnings {
+            assert!(
+                !w.reason.to_lowercase().contains("rclone"),
+                "warning leaked word: {}",
+                w.reason
+            );
+        }
+        for i in &res.parse_issues {
+            assert!(
+                !i.message.to_lowercase().contains("rclone"),
+                "parse issue leaked word: {}",
+                i.message
+            );
+        }
+    }
+
+    #[test]
+    fn template_rejects_oversized_pasted_text_past_10mb_cap() {
+        let big = "a".repeat(crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize + 1);
+        let err =
+            evaluate_template_text(&big, None, "test-paste", &TemplateSecretPolicy::default())
+                .err()
+                .expect("must reject template > 10 MB");
+        assert!(!err.to_lowercase().contains("rclone"), "{err}");
+    }
+
+    #[test]
+    fn webdav_imported_with_url_path_and_saved_base_path_connects_to_that_path() {
+        let pass = obscure_password("ltc-secret").unwrap();
+        let cfg = format!(
+            "[ltc]\ntype = webdav\nurl = https://lifetimecloud.me/dav/alice/\nuser = alice\npass = {pass}\n"
+        );
+        let res = import_text(&cfg, "ltc-url-path");
+        let srv = &res.servers[0];
+        let val = serde_json::json!({
+            "host": srv.host,
+            "options": srv.options,
+        });
+        let (extra, resolved_host) = crate::profile_loader::profile_connection_extra(
+            &val,
+            crate::providers::ProviderType::WebDav,
+            &srv.host,
+        );
+        let pcfg = crate::providers::ProviderConfig {
+            name: srv.name.clone(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: resolved_host,
+            port: Some(srv.port as u16),
+            username: Some(srv.username.clone()),
+            password: srv.credential.clone(),
+            initial_path: srv.initial_path.clone(),
+            extra,
+        };
+        let webdav_cfg = crate::providers::WebDavConfig::from_provider_config(&pcfg).unwrap();
+        assert_eq!(webdav_cfg.url, "https://lifetimecloud.me/dav/alice/");
+    }
+
+    #[test]
+    fn webdav_export_import_connect_url_roundtrip_is_identical() {
+        let original = RcloneExportServer {
+            id: "srv_ltc".to_string(),
+            name: "ltc".to_string(),
+            host: "lifetimecloud.me".to_string(),
+            port: 443,
+            username: "alice".to_string(),
+            protocol: Some("webdav".to_string()),
+            provider_id: Some("webdav".to_string()),
+            options: Some(serde_json::json!({ "basePath": "/dav/alice/" })),
+        };
+        let orig_val = serde_json::json!({
+            "host": original.host,
+            "options": original.options,
+        });
+        let (orig_extra, orig_host) = crate::profile_loader::profile_connection_extra(
+            &orig_val,
+            crate::providers::ProviderType::WebDav,
+            &original.host,
+        );
+        let orig_url = crate::providers::WebDavConfig::from_provider_config(
+            &crate::providers::ProviderConfig {
+                name: original.name.clone(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: orig_host,
+                port: Some(original.port as u16),
+                username: Some(original.username.clone()),
+                password: Some("ltc-secret".to_string()),
+                initial_path: None,
+                extra: orig_extra,
+            },
+        )
+        .unwrap()
+        .url;
+
+        let (_, exported) = export_to_string(&[original], "ltc-roundtrip");
+        assert!(
+            exported.contains("url = https://lifetimecloud.me/dav/alice/"),
+            "{exported}"
+        );
+
+        let reimported = &import_text(&exported, "ltc-roundtrip-in").servers[0];
+        let re_val = serde_json::json!({
+            "host": reimported.host,
+            "options": reimported.options,
+        });
+        let (re_extra, re_host) = crate::profile_loader::profile_connection_extra(
+            &re_val,
+            crate::providers::ProviderType::WebDav,
+            &reimported.host,
+        );
+        let re_url = crate::providers::WebDavConfig::from_provider_config(
+            &crate::providers::ProviderConfig {
+                name: reimported.name.clone(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: re_host,
+                port: Some(reimported.port as u16),
+                username: Some(reimported.username.clone()),
+                password: reimported.credential.clone(),
+                initial_path: reimported.initial_path.clone(),
+                extra: re_extra,
+            },
+        )
+        .unwrap()
+        .url;
+        assert_eq!(orig_url, "https://lifetimecloud.me/dav/alice/");
+        assert_eq!(re_url, orig_url);
     }
 }

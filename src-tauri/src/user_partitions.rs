@@ -4287,6 +4287,37 @@ pub fn store_imported_credential_for_user(
     set_user_credential_for(&conn, &root_key, user_id, credential_id, &kind, secret)
 }
 
+/// Remove an imported credential from both the user's partition and the vault.
+/// Both deletes must succeed or the import commit stops before writing profiles.
+pub fn delete_imported_credential_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    let before_vault = get_optional_secret(store, credential_id)?;
+    let mut conn = open_or_init_cli()?;
+    let _session = hold_user_session(&conn, user_id);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Start credential delete: {e}"))?;
+    delete_user_credential_for(&tx, user_id, credential_id)?;
+    store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    if let Err(e) = tx.commit() {
+        let cause = format!("Commit credential delete: {e}");
+        if let Some(prev) = before_vault {
+            if let Err(undo) = store.store(credential_id, prev.as_str()) {
+                return Err(format!(
+                    "{cause}; the vault could not be put back to match the partition: {undo}"
+                ));
+            }
+        }
+        return Err(cause);
+    }
+    Ok(())
+}
+
 /// What one credential key holds before an import writes it, in the vault and
 /// in `user`'s partition ([`snapshot_credential_for_user`]).
 pub struct CredentialSnapshot {
@@ -4324,7 +4355,29 @@ pub fn restore_credential_for_user(
     written: &str,
     before: &CredentialSnapshot,
 ) -> Result<(), String> {
-    use crate::profile_import_plan::{rollback_action, RollbackAction};
+    restore_credential_op_for_user(
+        store,
+        user_id,
+        credential_id,
+        credential_type,
+        false,
+        written,
+        before,
+    )
+}
+
+/// Undo either an import write or an import delete (`written_delete == true`)
+/// place by place ([`crate::profile_import_plan::rollback_action_for_write`]).
+pub fn restore_credential_op_for_user(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+    credential_type: Option<&str>,
+    written_delete: bool,
+    written: &str,
+    before: &CredentialSnapshot,
+) -> Result<(), String> {
+    use crate::profile_import_plan::{rollback_action_for_write, RollbackAction, SecretWrite};
     let mut conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
     // The session and the partition's transaction first: if either cannot be had,
@@ -4336,11 +4389,16 @@ pub fn restore_credential_for_user(
         .map_err(|e| format!("Start credential restore: {e}"))?;
     let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
     let vault = get_optional_secret(store, credential_id)?;
+    let write_op = if written_delete {
+        SecretWrite::delete(credential_id.to_string(), None)
+    } else {
+        SecretWrite::new(credential_id.to_string(), None, written)
+    };
     // The partition first: until the commit it can still go back by itself, so a
     // failure here or in the vault leaves both places holding what they held.
-    match rollback_action(
+    match rollback_action_for_write(
         partition.as_ref().map(|v| v.as_str()),
-        written,
+        &write_op,
         before.partition.as_ref().map(|v| v.as_str()),
     ) {
         RollbackAction::Leave => {}
@@ -4351,9 +4409,9 @@ pub fn restore_credential_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    let vault_action = rollback_action(
+    let vault_action = rollback_action_for_write(
         vault.as_ref().map(|v| v.as_str()),
-        written,
+        &write_op,
         before.vault.as_ref().map(|v| v.as_str()),
     );
     let vault_changed = vault_action != RollbackAction::Leave;

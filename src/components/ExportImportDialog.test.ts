@@ -25,6 +25,9 @@ vi.mock('../utils/userPartitions', async original => ({
     accountChangeGeneration: () => accountChanges,
 }));
 vi.mock('./BridgeSourcePanel', () => ({ BridgeSourcePanel: () => null }));
+vi.mock('./ConfigurationTemplatePanel', () => ({
+    ConfigurationTemplatePanel: () => createElement('div', { 'data-testid': 'mock-template-panel' }),
+}));
 
 import { invoke } from '@tauri-apps/api/core';
 import { ExportImportDialog } from './ExportImportDialog';
@@ -299,5 +302,21 @@ describe('ExportImportDialog .aeroftp import', () => {
             vi.advanceTimersByTime(3000);
         });
         expect(onClose).toHaveBeenCalled();
+    });
+
+    it('opens the Configuration template view from the start-screen card', async () => {
+        await act(async () => {
+            root.render(createElement(ExportImportDialog, {
+                servers: [],
+                onImport: vi.fn(),
+                onProfilesStored: vi.fn(),
+                onClose: vi.fn(),
+            }));
+        });
+        const card = host.querySelector<HTMLButtonElement>('[data-testid="export-import-template-card"]')!;
+        expect(card).not.toBeNull();
+        await click(card);
+        expect(host.querySelector('[data-testid="mock-template-panel"]')).not.toBeNull();
+        expect(host.textContent).toContain('settings.templateTitle');
     });
 });
