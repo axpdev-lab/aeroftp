@@ -1308,9 +1308,6 @@ export interface DeltaServerIdentity {
 export interface DeltaEligibilityProbeResult {
   eligible: boolean;
   reason: string | null;
-  /** A refusal the run must not go past (a pinned key that is not the login
-   *  key, a rejected host key): the sync stops before any write. */
-  hard_error?: string | null;
   server_identity: DeltaServerIdentity | null;
 }
 

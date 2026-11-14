@@ -460,7 +460,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, launchAfterDeltaProbe, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -12807,26 +12807,28 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the question about
-    // continuing without delta, never the probe: a hard refusal still stops
-    // the run before any write.
+    // unavailable. A saved per-server opt-out skips the probe entirely.
     const shouldProbe = protocol === 'sftp' && !!opts.profileId;
     if (!shouldProbe) {
       launchRun();
       return;
     }
 
-    // P5: the run is launched only on the connection it was asked for (the
-    // probe and the question both wait).
-    void launchAfterDeltaProbe({
-      generation: () => invoke<number>('provider_connection_generation'),
-      skipPrompt: async () => (await loadSavedServerProfiles())
-        .find((p) => p.id === opts.profileId)?.skipDeltaEligibilityPrompt === true,
-      probe: () => invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility'),
-      launch: launchRun,
-      refuse: (message) => notify.error(t('aerosync.title'), message),
-      changed: () => notify.error(t('aerosync.title'), t('toast.remoteTargetChanged')),
-      ask: (verdict, onContinue) => {
+    void (async () => {
+      try {
+        const stored = await loadSavedServerProfiles();
+        const profile = stored.find((p) => p.id === opts.profileId);
+        if (profile?.skipDeltaEligibilityPrompt) {
+          launchRun();
+          return;
+        }
+        const verdict = await invoke<DeltaEligibilityProbeResult>(
+          'sftp_probe_delta_eligibility',
+        );
+        if (verdict.eligible) {
+          launchRun();
+          return;
+        }
         const reason = verdict.reason
           || t('aerosync.deltaEligibility.heading')
           || 'Delta sync unavailable for this server.';
@@ -12837,17 +12839,17 @@ const App: React.FC = () => {
           reason,
           serverLabel,
           profileId: opts.profileId!,
-          onContinue,
+          onContinue: () => { launchRun(); },
         });
-      },
-      onProbeError: (err) => {
+      } catch (err) {
         // Probe failures should not block the run; log and proceed.
         if (debugMode) {
           // eslint-disable-next-line no-console
           console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
         }
-      },
-    });
+        launchRun();
+      }
+    })();
   });
 
   // GAP-10: shared local-local sync launcher. A dual-local AeroFile pair has

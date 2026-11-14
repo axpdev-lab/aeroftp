@@ -8,8 +8,6 @@ import {
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
-    launchAfterDeltaProbe,
-    type DeltaProbeGateDeps,
     type SyncRunFile,
     type SyncRunDirs,
     type RemoteSyncConfig,
@@ -2031,88 +2029,5 @@ describe('canonical Unicode paths (#1326)', () => {
         expect(savedIndex?.files?.[remoteRel]).toBeUndefined();
         expect(savedIndex?.files?.[localRel]).toMatchObject({ size: 9 });
         expect(savedIndex?.remote_spellings?.[localRel]).toBe(remoteRel);
-    });
-});
-
-// P5: the probe waits on the network and the question on the user. A tab
-// switch or reconnect meanwhile moves the connection generation, and the run
-// asked for on the earlier connection launches nothing on the new one.
-describe('launchAfterDeltaProbe', () => {
-    type Verdict = Awaited<ReturnType<DeltaProbeGateDeps['probe']>>;
-    const eligible: Verdict = { eligible: true, reason: null, hard_error: null, server_identity: null };
-    const unavailable: Verdict = { eligible: false, reason: 'no rsync', hard_error: null, server_identity: null };
-
-    /** A gate whose probe resolves only when the test says so. */
-    const gate = (verdict: Verdict | Error, skip = false) => {
-        let generation = 1;
-        let release!: () => void;
-        const held = new Promise<void>((resolve) => { release = resolve; });
-        let onContinue: (() => void) | undefined;
-        const deps = {
-            generation: vi.fn(async () => generation),
-            skipPrompt: vi.fn(async () => skip),
-            probe: vi.fn(async () => {
-                await held;
-                if (verdict instanceof Error) throw verdict;
-                return verdict;
-            }),
-            launch: vi.fn(),
-            refuse: vi.fn(),
-            changed: vi.fn(),
-            ask: vi.fn((_verdict: Verdict, answer: () => void) => { onContinue = answer; }),
-        } satisfies DeltaProbeGateDeps;
-        return {
-            deps,
-            switchConnection: () => { generation += 1; },
-            release,
-            answer: () => onContinue?.(),
-        };
-    };
-
-    it.each([
-        ['an eligible verdict', eligible, false],
-        ['an opted-out question', unavailable, true],
-        ['a failed probe', new Error('probe failed'), false],
-    ] as const)('launches nothing on a switched connection after %s', async (_case, verdict, skip) => {
-        const g = gate(verdict, skip);
-        const pending = launchAfterDeltaProbe(g.deps);
-        await vi.waitFor(() => expect(g.deps.probe).toHaveBeenCalled());
-        g.switchConnection();
-        g.release();
-        await pending;
-        expect(g.deps.launch).not.toHaveBeenCalled();
-        expect(g.deps.changed).toHaveBeenCalledTimes(1);
-    });
-
-    it('launches nothing from the question answered after a switch', async () => {
-        const g = gate(unavailable);
-        const pending = launchAfterDeltaProbe(g.deps);
-        g.release();
-        await pending;
-        expect(g.deps.ask).toHaveBeenCalledTimes(1);
-        g.switchConnection();
-        g.answer();
-        await vi.waitFor(() => expect(g.deps.changed).toHaveBeenCalledTimes(1));
-        expect(g.deps.launch).not.toHaveBeenCalled();
-    });
-
-    it('launches on the same connection, and stops on a hard refusal', async () => {
-        for (const [verdict, skip] of [[eligible, false], [unavailable, true], [new Error('x'), false]] as const) {
-            const g = gate(verdict, skip);
-            g.release();
-            await launchAfterDeltaProbe(g.deps);
-            expect(g.deps.launch).toHaveBeenCalledTimes(1);
-            expect(g.deps.changed).not.toHaveBeenCalled();
-        }
-        const answered = gate(unavailable);
-        answered.release();
-        await launchAfterDeltaProbe(answered.deps);
-        answered.answer();
-        await vi.waitFor(() => expect(answered.deps.launch).toHaveBeenCalledTimes(1));
-        const refused = gate({ ...unavailable, hard_error: 'PinnedKeyMismatch' }, true);
-        refused.release();
-        await launchAfterDeltaProbe(refused.deps);
-        expect(refused.deps.refuse).toHaveBeenCalledWith('PinnedKeyMismatch');
-        expect(refused.deps.launch).not.toHaveBeenCalled();
     });
 });

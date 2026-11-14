@@ -417,5 +417,50 @@
     "name": "url password holding an escaped quote and a comma in a sentence",
     "input": "upload to ftp://bob:pa\\\",ss@host failed",
     "expected": "upload to ftp://***REDACTED***@host failed"
+  },
+  {
+    "name": "Q3 cell bare text: an escaped quote and colon in a password",
+    "input": "upload to ftp://bob:pa\\\":ss@host failed",
+    "expected": "upload to ftp://***REDACTED***@host failed"
+  },
+  {
+    "name": "Q3 cell plain json at the string start: escaped quote and brace in a password, next field kept",
+    "input": "{\"url\":\"ftp://bob:pa\\\"}ss@host\",\"b\":\"x@y\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "Q3 cell plain json mid-string: the reported input",
+    "input": "{\"message\":\"upload to ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"upload to ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "Q3 cell plain json mid-string: an authority without userinfo keeps the next field",
+    "input": "{\"m\":\"see ftp://mirror.example\",\"b\":\"x@y\"}",
+    "expected": "{\"m\":\"see ftp://mirror.example\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "Q3 cell escaped json mid-string: a deeper quote and colon in a password, next field kept",
+    "input": "{\\\"m\\\":\\\"upload to ftp://bob:pa\\\\\\\":ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"m\\\":\\\"upload to ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+  },
+  {
+    "name": "Q3 cell two levels down: masked, next field kept",
+    "input": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://bob:pw@host\\\\\\\",\\\\\\\"b\\\\\\\":\\\\\\\"x@y\\\\\\\"}",
+    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@host\\\\\\\",\\\\\\\"b\\\\\\\":\\\\\\\"x@y\\\\\\\"}"
+  },
+  {
+    "name": "Q3 cell two levels down: a three-level quote in a password",
+    "input": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://bob:pa\\\\\\\\\\\\\\\"ss@host\\\\\\\"}",
+    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@host\\\\\\\"}"
+  },
+  {
+    "name": "Q3 cell outside a string, after a closing quote",
+    "input": "{\"k\": ftp://bob:p\\\"w@host}",
+    "expected": "{\"k\": ftp://***REDACTED***@host}"
+  },
+  {
+    "name": "Q3 a quote inside an earlier password sets no level for the next url",
+    "input": "{\"m\":\"ftp://a:p\\\\\\\"q@h1 and ftp://bob:pa\\\":ss@h2\"}",
+    "expected": "{\"m\":\"ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2\"}"
   }
 ]

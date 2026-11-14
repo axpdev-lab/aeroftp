@@ -14445,9 +14445,6 @@ struct DeltaServerIdentity {
 struct DeltaEligibilityProbeResult {
     eligible: bool,
     reason: Option<String>,
-    /// Set when the run must stop before any write (see
-    /// `DeltaEligibilityStatus::hard_error`).
-    hard_error: Option<String>,
     server_identity: Option<DeltaServerIdentity>,
 }
 
@@ -14586,7 +14583,6 @@ async fn sftp_probe_delta_eligibility(
         return Ok(DeltaEligibilityProbeResult {
             eligible: false,
             reason: Some(reason.to_string()),
-            hard_error: None,
             server_identity,
         });
     }
@@ -14610,7 +14606,6 @@ async fn sftp_probe_delta_eligibility(
     Ok(DeltaEligibilityProbeResult {
         eligible: verdict.eligible,
         reason: verdict.reason,
-        hard_error: verdict.hard_error,
         server_identity,
     })
 }

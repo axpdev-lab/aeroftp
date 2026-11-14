@@ -69,21 +69,6 @@ const isAsciiLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 9
 const isSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
 const isSchemeChar = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57)
     || code === 43 || code === 45 || code === 46;
-// Whether the escaped quote whose quote is at `quote` closes a JSON value
-// inside an escaped string: what follows it is the rest of that JSON, `\",\"`
-// (spaces allowed after the comma), `\":`, `\"}`, `\"]`, or the end of the
-// text. A bare `\",` is not: it is as much a password's `",` (P9, U10).
-const closesJsonValue = (text: string, quote: number): boolean => {
-    const next = quote + 1;
-    if (next >= text.length) return true;
-    const code = text.charCodeAt(next);
-    if (code === 58 || code === 125 || code === 93) return true;
-    if (code !== 44) return false;
-    let k = next + 1;
-    while (k < text.length && isSpace(text.charCodeAt(k))) k += 1;
-    return text.charCodeAt(k) === 92 && text.charCodeAt(k + 1) === 34;
-};
-
 /** Backslashes that run back from just before `end`. */
 const backslashesBefore = (text: string, end: number): number => {
     let n = 0;
@@ -92,21 +77,44 @@ const backslashesBefore = (text: string, end: number): number => {
 };
 
 /**
+ * The escape level of a quote preceded by `run` backslashes: 0 a real quote,
+ * 1 a quote of JSON inside a string (`\"`), 2 one more level down
+ * (`\\\"`). Each odd run is one escape; an even run is escaped backslashes
+ * before a quote of that level (`\\"` is level 0).
+ */
+const quoteLevel = (run: number): number => {
+    let level = 0;
+    while (run % 2 === 1) {
+        level += 1;
+        run = (run - 1) / 2;
+    }
+    return level;
+};
+
+/**
  * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
  * URLs in one pass over the text, so its time is linear whatever the input.
  * After `scheme://` the authority runs to the first `/`, `?`, `#`, ASCII
  * space or unescaped double quote (a backslash escapes the next character,
- * as inside a JSON string). An escaped quote ends it only where it is the
- * end of the string the URL sits in (P9, U10), read from the quote that
- * opened that string, just before the scheme:
- * - a bare `"` (plain JSON): never, an escaped quote is the value's own
- *   (`"https://bob:pa\",ss@host"`);
- * - an escaped `\"` (JSON inside a JSON string): its own `\"` does, and a
- *   deeper `\\\"` is the value's;
- * - no quote (a URL inside a sentence): only `\",\"`, `\":`, `\"}`, `\"]` or
- *   the end of the text.
- * Anything else is part of the value: when it cannot be told, the scan goes
- * on and masks more, since a leaked password is worse than a lost field.
+ * as inside a JSON string). Which quote ends it is decided by the string the
+ * URL sits in (Q3, the whole rule; the cases of
+ * src/shared/redaction-cases.json cover each cell):
+ *
+ * | the URL starts                           | its level | a quote ends the authority   |
+ * |------------------------------------------|-----------|------------------------------|
+ * | in bare text, no quote before it         | 0         | `"` (level 0)                |
+ * | after a `"` (plain JSON), at its start   | 0         | `"`; `\"` is the value's     |
+ * | after a `"`, text before it (mid-string) | 0         | `"`; `\"` is the value's     |
+ * | after a `\"` (JSON in a string), start   | 1         | `\"` or `"`; `\\\"` the value's |
+ * | after a `\"`, mid-string                 | 1         | `\"` or `"`; `\\\"` the value's |
+ * | after a `\\\"` (two levels down)          | 2         | a quote of level 2 or less   |
+ *
+ * The level of the string is the level of the LAST quote before the scheme
+ * (the one that opened it, or a closing one when the URL is outside strings),
+ * leaving out the quotes inside an authority already read. A quote ends the
+ * authority when its own level is that level or less: a deeper one is part
+ * of the value. Nothing else about what follows a quote is read, so a
+ * password holding `\",`, `\":` or `\"}` is masked whole.
  * With an `@` in it, the userinfo is everything up
  * to the LAST `@`, and all of it becomes the placeholder, user name included:
  * a token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
@@ -117,7 +125,14 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
     let out = '';
     let copied = 0;
     let i = 0;
+    // The level of the string the scan is in: the last quote read, outside
+    // the authorities (`untracked`).
+    let level = 0;
+    let untracked = 0;
     while (i + 3 <= text.length) {
+        if (text.charCodeAt(i) === 34 && i >= untracked) {
+            level = quoteLevel(backslashesBefore(text, i));
+        }
         if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;
             continue;
@@ -136,28 +151,20 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
             continue;
         }
         const authority = i + 3;
-        // The quote that opened the string holding this URL: an even run of
-        // backslashes before it is a real quote (plain JSON), a run of
-        // 1 (mod 4) an escaped JSON string's own delimiter.
-        const opener = start > 0 && text.charCodeAt(start - 1) === 34
-            ? backslashesBefore(text, start - 1)
-            : -1;
-        const context = opener < 0 ? 'none' : opener % 2 === 0 ? 'plain' : opener % 4 === 1 ? 'escaped' : 'none';
         let k = authority;
         let run = 0;
         let lastAt = -1;
         while (k < text.length) {
             const code = text.charCodeAt(k);
             if (code === 47 || code === 63 || code === 35 || isSpace(code)) break;
-            if (code === 34) {
-                if (run % 2 === 0) break;
-                if (context === 'escaped' && run % 4 === 1) break;
-                if (context === 'none' && run === 1 && closesJsonValue(text, k)) break;
-            }
+            if (code === 34 && quoteLevel(run) <= level) break;
             if (code === 64) lastAt = k;
             run = code === 92 ? run + 1 : 0;
             k += 1;
         }
+        // The quotes of this authority are the value's: they never set the
+        // level for a later URL.
+        untracked = k;
         if (lastAt < 0) {
             // No userinfo: go on right after this `://`. The authority ended
             // at a `/`, and a scheme whose `://` starts just before it (one

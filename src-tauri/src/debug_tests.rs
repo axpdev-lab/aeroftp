@@ -405,31 +405,57 @@ fn redaction_patterns() -> &'static [(regex::Regex, Replacement)] {
     })
 }
 
+/// The escape level of a quote preceded by `run` backslashes: 0 a real
+/// quote, 1 a quote of JSON inside a string (`\"`), 2 one more level down
+/// (`\\\"`). Each odd run is one escape; an even run is escaped backslashes
+/// before a quote of that level (`\\"` is level 0).
+fn quote_level(mut run: usize) -> usize {
+    let mut level = 0;
+    while run % 2 == 1 {
+        level += 1;
+        run = (run - 1) / 2;
+    }
+    level
+}
+
 /// Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and
 /// `webdav` URLs in one pass over the text, so its time is linear whatever the
 /// input. After `scheme://` the authority runs to the first `/`, `?`, `#`,
-/// ASCII space or unescaped double quote (a backslash escapes the next
-/// character, as inside a JSON string). An escaped quote ends it only where it
-/// is the end of the string the URL sits in, read from the quote that opened
-/// that string just before the scheme (P9, U10): after a bare `"` never (the
-/// value's own, `"https://bob:pa\",ss@host"`); after an escaped `\"` its own
-/// `\"` does and a deeper `\\\"` is the value's; with no quote, only
-/// `\",\"`, `\":`, `\"}`, `\"]` or the end of the text. Anything else is
-/// part of the value: when it cannot be told the scan masks more, since a
-/// leaked password is worse than a lost field. With an `@` in it, the userinfo is
-/// everything up to the LAST `@`, and all of it becomes the placeholder, user
-/// name included: a token is often the user name (`ghp_x:x-oauth-basic@`,
-/// `token:@`). An authority without `@` (`host:443`) stays. The TS twin is `redactUrlUserinfo` in
-/// src/utils/redactSensitive.ts; both run src/shared/redaction-cases.json.
+/// ASCII space or a quote that ends the string the URL sits in (Q3; the
+/// table is on the TS twin, `redactUrlUserinfo`, and the shared cases cover
+/// each cell). The level of that string is the level of the LAST quote
+/// before the scheme ([`quote_level`]), leaving out the quotes inside an
+/// authority already read; a quote ends the authority when its own level is
+/// that level or less, and a deeper one is part of the value. Nothing else
+/// about what follows a quote is read, so a password holding `\",`, `\":` or
+/// `\"}` is masked whole. With an `@` in it, the userinfo is everything up to
+/// the LAST `@`, and all of it becomes the placeholder, user name included: a
+/// token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
+/// authority without `@` (`host:443`) stays. Both twins run
+/// src/shared/redaction-cases.json.
 fn redact_url_userinfo(text: &str) -> String {
     const SCHEMES: [&str; 7] = ["ftp", "ftps", "sftp", "scp", "http", "https", "webdav"];
     let bytes = text.as_bytes();
     let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
     let is_space = |b: u8| b == b' ' || (b'\t'..=b'\r').contains(&b);
+    let backslashes_before = |end: usize| {
+        bytes[..end]
+            .iter()
+            .rev()
+            .take_while(|&&b| b == b'\\')
+            .count()
+    };
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
     let mut i = 0;
+    // The level of the string the scan is in: the last quote read, outside
+    // the authorities (`untracked`).
+    let mut level = 0;
+    let mut untracked = 0;
     while i + 3 <= bytes.len() {
+        if bytes[i] == b'"' && i >= untracked {
+            level = quote_level(backslashes_before(i));
+        }
         if &bytes[i..i + 3] != b"://" {
             i += 1;
             continue;
@@ -448,43 +474,6 @@ fn redact_url_userinfo(text: &str) -> String {
             continue;
         }
         let authority = i + 3;
-        // The quote that opened the string holding this URL: an even run of
-        // backslashes before it is a real quote (plain JSON), a run of
-        // 1 (mod 4) an escaped JSON string's own delimiter.
-        #[derive(PartialEq)]
-        enum Opener {
-            Plain,
-            Escaped,
-            None,
-        }
-        let opener = if start > 0 && bytes[start - 1] == b'"' {
-            let run = bytes[..start - 1]
-                .iter()
-                .rev()
-                .take_while(|&&b| b == b'\\')
-                .count();
-            if run % 2 == 0 {
-                Opener::Plain
-            } else if run % 4 == 1 {
-                Opener::Escaped
-            } else {
-                Opener::None
-            }
-        } else {
-            Opener::None
-        };
-        // After a `\"` at `quote`, the rest of an escaped JSON: `\",\"`
-        // (spaces after the comma), `\":`, `\"}`, `\"]` or the end. A bare
-        // `\",` is as much a password's `",`.
-        let closes_json_value = |quote: usize| match bytes.get(quote + 1) {
-            None | Some(b':' | b'}' | b']') => true,
-            Some(b',') => {
-                let rest = &bytes[quote + 2..];
-                let skip = rest.iter().take_while(|&&b| is_space(b)).count();
-                rest[skip..].starts_with(b"\\\"")
-            }
-            Some(_) => false,
-        };
         let mut k = authority;
         let mut run = 0usize;
         let mut last_at = None;
@@ -493,11 +482,7 @@ fn redact_url_userinfo(text: &str) -> String {
             if matches!(b, b'/' | b'?' | b'#') || is_space(b) {
                 break;
             }
-            if b == b'"'
-                && (run.is_multiple_of(2)
-                    || (opener == Opener::Escaped && run % 4 == 1)
-                    || (opener == Opener::None && run == 1 && closes_json_value(k)))
-            {
+            if b == b'"' && quote_level(run) <= level {
                 break;
             }
             if b == b'@' {
@@ -506,6 +491,9 @@ fn redact_url_userinfo(text: &str) -> String {
             run = if b == b'\\' { run + 1 } else { 0 };
             k += 1;
         }
+        // The quotes of this authority are the value's: they never set the
+        // level for a later URL.
+        untracked = k;
         let Some(at) = last_at else {
             // No userinfo: go on right after this `://`. The authority ended
             // at a `/`, and a scheme whose `://` starts just before it (one

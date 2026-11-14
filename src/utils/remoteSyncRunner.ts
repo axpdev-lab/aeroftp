@@ -28,75 +28,7 @@ import type {
     SyncIndex,
     SyncIndexEntry,
     SyncEcStatus,
-    DeltaEligibilityProbeResult,
 } from '../types';
-
-/** What the SFTP delta gate before a run needs (P5). */
-export interface DeltaProbeGateDeps {
-    /** The connection generation now (`provider_connection_generation`): it
-     *  moves on every connect, disconnect and tab switch. */
-    generation: () => Promise<number>;
-    /** Whether the saved profile turned off the question about continuing
-     *  without delta. Unreadable, the question stays on. */
-    skipPrompt: () => Promise<boolean>;
-    /** `sftp_probe_delta_eligibility`. */
-    probe: () => Promise<DeltaEligibilityProbeResult>;
-    launch: () => void;
-    /** A refusal the run must not go past. */
-    refuse: (message: string) => void;
-    /** The connection changed while the probe or the question waited. */
-    changed: () => void;
-    /** Ask whether to continue without delta; `onContinue` is the answer. */
-    ask: (verdict: DeltaEligibilityProbeResult, onContinue: () => void) => void;
-    onProbeError?: (error: unknown) => void;
-}
-
-/**
- * Probe delta before a run, then launch it only on the connection the run
- * was asked for (P5). The probe waits on the network and the question on the
- * user; a tab switch or a reconnect meanwhile moves the generation, and the
- * run (its paths and plan are the earlier connection's) is not launched on
- * the new one, after the probe, after a failed probe, or from the question.
- */
-export async function launchAfterDeltaProbe(deps: DeltaProbeGateDeps): Promise<void> {
-    let generation: number;
-    try {
-        generation = await deps.generation();
-    } catch {
-        deps.changed();
-        return;
-    }
-    const launchIfSameConnection = async (): Promise<void> => {
-        const now = await deps.generation().catch(() => undefined);
-        if (now !== generation) {
-            deps.changed();
-            return;
-        }
-        deps.launch();
-    };
-    let skip = false;
-    let verdict: DeltaEligibilityProbeResult;
-    try {
-        skip = await deps.skipPrompt().catch(() => false);
-        verdict = await deps.probe();
-    } catch (error) {
-        // A failed probe does not block the run; the connection check does.
-        deps.onProbeError?.(error);
-        await launchIfSameConnection();
-        return;
-    }
-    // A hard refusal stops the run here, before it creates a folder or
-    // archives a file: a transfer would only meet the same refusal later.
-    if (verdict.hard_error) {
-        deps.refuse(verdict.hard_error);
-        return;
-    }
-    if (verdict.eligible || skip) {
-        await launchIfSameConnection();
-        return;
-    }
-    deps.ask(verdict, () => { void launchIfSameConnection(); });
-}
 
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
 export type SyncRunFileStatus =

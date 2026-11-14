@@ -131,6 +131,23 @@ impl GitHubConfig {
     }
 }
 
+/// How many working-branch names a walk tries (`name`, `name-2` ...).
+const WORKING_BRANCH_CANDIDATES: u32 = 9;
+
+/// What a working branch holds against its base
+/// ([`GitHubProvider::classify_working_branch`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkingBranchState {
+    /// No such branch.
+    Missing,
+    /// Nothing the base lacks (merged with a merge commit, or empty).
+    NotAhead,
+    /// Work the base does not hold yet.
+    Pending,
+    /// Squash- or rebase-merged, its tip the merged head: never written again.
+    Merged,
+}
+
 /// GitHub storage provider implementing the [`StorageProvider`] trait.
 ///
 /// Connects to a single repository and exposes its tree as a virtual filesystem.
@@ -639,24 +656,102 @@ impl GitHubProvider {
         }
     }
 
-    /// One decision, at connect (A1, point 1): a protected branch whose
-    /// working branch this account already has, with commits the protected
-    /// branch does not (an earlier refused write, not merged yet), starts the
-    /// session on that working branch. The listing, the target identity and
-    /// every write are the working branch's from the first request, so no
-    /// session switches tree half way, and a sync of many files to a
-    /// protected repository is not stopped after its first one at every
-    /// connection. A working branch that is not ahead (its pull request was
-    /// merged and the branch kept) holds an older tree: the session stays on
-    /// the protected branch (R2). Only a 404 says the branch is not there;
-    /// any other answer fails the connect rather than guess.
-    async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
-        let branch = self.own_working_branch()?;
+    /// What a working branch holds against `base` (Q1, Q4).
+    ///
+    /// Ancestry says "pending" only when the branch is ahead and not behind:
+    /// a merge of any kind puts a commit on the base the branch lacks. A
+    /// branch that is ahead AND behind is either squash- or rebase-merged
+    /// and kept, or pending work whose base moved on, and ancestry cannot
+    /// tell them apart; a merged pull request can. The branch is MERGED only
+    /// when a pull request from it into `base` was merged with the branch's
+    /// current tip as its head (nothing written since). Anything else (an
+    /// open one, none, a closed unmerged one, new commits after the merge) is
+    /// pending. Only a 404 says the branch is not there; any other answer of
+    /// any lookup is an error, never a guess.
+    async fn classify_working_branch(
+        &mut self,
+        base: &str,
+        branch: &str,
+    ) -> Result<WorkingBranchState, ProviderError> {
+        let Some(compare) = self.compare_with(base, branch).await? else {
+            return Ok(WorkingBranchState::Missing);
+        };
+        if compare.ahead_by == 0 {
+            return Ok(WorkingBranchState::NotAhead);
+        }
+        if compare.behind_by == 0 {
+            return Ok(WorkingBranchState::Pending);
+        }
+        let tip = self
+            .client
+            .get_json::<GitHubBranch>(&self.branch_api_url(branch))
+            .await
+            .map_err(ProviderError::from)?
+            .commit
+            .sha;
+        let url = format!(
+            "{}/pulls?state=all&head={}&base={}&per_page=100",
+            self.repo_url(),
+            urlencoding::encode(&format!("{}:{}", self.owner, branch)),
+            urlencoding::encode(base),
+        );
+        let pulls: Vec<GitHubPullRequest> = self
+            .client
+            .get_json(&url)
+            .await
+            .map_err(ProviderError::from)?;
+        Ok(
+            if pulls
+                .iter()
+                .any(|pr| pr.merged_at.is_some() && pr.head.sha == tip)
+            {
+                WorkingBranchState::Merged
+            } else {
+                WorkingBranchState::Pending
+            },
+        )
+    }
+
+    /// The working branch for this account and base, and what it holds: the
+    /// first of the candidate names (`workflow_branch_name`, then `-2` to
+    /// `-9`) that is not MERGED. A merged branch kept on the server is never
+    /// adopted nor written again; the next name takes its place, and pending
+    /// work stays on one branch however often the base moves (Q1, Q4).
+    async fn current_working_branch(
+        &mut self,
+    ) -> Result<(String, WorkingBranchState), ProviderError> {
+        let own = self.own_working_branch()?;
         let base = self.active_branch().to_string();
-        if let Some(compare) = self.compare_with(&base, &branch).await? {
-            if compare.ahead_by > 0 {
-                self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
+        for n in 1..=WORKING_BRANCH_CANDIDATES {
+            let name = if n == 1 {
+                own.clone()
+            } else {
+                format!("{own}-{n}")
+            };
+            match self.classify_working_branch(&base, &name).await? {
+                WorkingBranchState::Merged => continue,
+                state => return Ok((name, state)),
             }
+        }
+        Err(ProviderError::InvalidConfig(format!(
+            "The working branches {own} to {own}-{WORKING_BRANCH_CANDIDATES} were all merged and \
+             kept: delete the merged ones on GitHub to write again"
+        )))
+    }
+
+    /// One decision, at connect (A1, point 1): a protected branch whose
+    /// working branch holds PENDING work ([`Self::classify_working_branch`])
+    /// starts the session on that working branch. The listing, the target
+    /// identity and every write are the working branch's from the first
+    /// request, so no session switches tree half way, and a sync of many
+    /// files to a protected repository is not stopped after its first one
+    /// at every connection. A merged, empty or missing one leaves the
+    /// session on the protected branch (R2, Q1, Q4). Any failed lookup fails
+    /// the connect rather than guess.
+    async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
+        let (branch, state) = self.current_working_branch().await?;
+        if state == WorkingBranchState::Pending {
+            self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
         }
         Ok(())
     }
@@ -1460,7 +1555,6 @@ impl StorageProvider for GitHubProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1479,6 +1573,10 @@ impl StorageProvider for GitHubProvider {
             )
             .await;
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as the client's own check allows it.
+        self.refuse_when_poisoned()?;
 
         // Enforce write mode.
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
@@ -1572,7 +1670,10 @@ impl StorageProvider for GitHubProvider {
                     } else {
                         unreachable!()
                     };
-                    let workflow_branch = self.own_working_branch()?;
+                    // The branch the walk names: a pending one as it is, an
+                    // empty one moved up to the base, a missing one created
+                    // from it; never a merged one's stale tip (Q1, Q4).
+                    let (workflow_branch, _) = self.current_working_branch().await?;
                     self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
                         .await
                         .map_err(|e2| {
@@ -1671,7 +1772,6 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1697,6 +1797,10 @@ impl StorageProvider for GitHubProvider {
                 }
             };
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as the client's own check allows it.
+        self.refuse_when_poisoned()?;
 
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -1744,7 +1848,6 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
         // Round 2 of the 4.2.1 review: the API's delete takes a folder's
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
@@ -1763,6 +1866,10 @@ impl StorageProvider for GitHubProvider {
                 GitHubVirtualPath::ReleaseAsset { .. } => self.delete(path).await,
             };
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as the client's own check allows it.
+        self.refuse_when_poisoned()?;
         self.refuse_non_empty_dir(path).await?;
 
         // GitHub has no empty-dir concept; delete all contents recursively.
@@ -1770,7 +1877,6 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1790,6 +1896,10 @@ impl StorageProvider for GitHubProvider {
             Some(GitHubVirtualPath::ReleaseAsset { .. }) => return self.delete(path).await,
             None => {}
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as the client's own check allows it.
+        self.refuse_when_poisoned()?;
         // Each child's path is built from a name the API gave: every one
         // must be inside the folder before any of them is deleted.
         let entries = crate::sync_core::listing_to_remove(&resolved, self.list(path).await?)?;
@@ -2213,6 +2323,9 @@ mod tests {
                         if path.contains("/compare/") {
                             return reply(compare.0, compare.1);
                         }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            return reply(200, serde_json::json!([]));
+                        }
                         if path.contains("/branches/") {
                             return reply(
                                 200,
@@ -2241,6 +2354,237 @@ mod tests {
             let addr = listener.local_addr().unwrap();
             let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
             (format!("http://{addr}"), log, server)
+        }
+
+        /// One branch as [`api_per_branch`] serves it.
+        #[derive(Clone)]
+        struct Branch {
+            ahead: u64,
+            behind: u64,
+            tip: &'static str,
+            /// `(merged, head sha)` of each pull request from it into `main`.
+            pulls: Vec<(bool, &'static str)>,
+        }
+
+        /// A GitHub API that answers each branch by name (`branches`; any
+        /// other is a 404), `pulls_status` for the pull-request lookup,
+        /// refuses direct pushes to `main` and logs every write.
+        async fn api_per_branch(
+            branches: Vec<(String, Branch)>,
+            pulls_status: u16,
+        ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let seen = log.clone();
+            let branches = Arc::new(branches);
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                    let (seen, branches) = (seen.clone(), branches.clone());
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let query =
+                            urlencoding::decode(uri.query().unwrap_or("")).unwrap().into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        if method != axum::http::Method::GET {
+                            seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                        }
+                        let named = |name: &str| {
+                            branches
+                                .iter()
+                                .find(|(branch, _)| branch == name)
+                                .map(|(_, b)| b.clone())
+                        };
+                        let not_found = serde_json::json!({"message": "Not Found"});
+                        if let Some((_, head)) = path.split_once("/compare/main...") {
+                            return match named(head) {
+                                Some(b) => reply(
+                                    200,
+                                    serde_json::json!({"ahead_by": b.ahead, "behind_by": b.behind}),
+                                ),
+                                None => reply(404, not_found),
+                            };
+                        }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            if pulls_status != 200 {
+                                return reply(pulls_status, serde_json::json!({"message": "x"}));
+                            }
+                            let head = query
+                                .split('&')
+                                .find_map(|kv| kv.strip_prefix("head=o:"))
+                                .unwrap_or("");
+                            let pulls: Vec<_> = named(head)
+                                .map(|b| b.pulls)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .enumerate()
+                                .map(|(n, (merged, sha))| {
+                                    serde_json::json!({
+                                        "number": n + 1, "title": "t",
+                                        "state": if merged { "closed" } else { "open" },
+                                        "html_url": "u", "created_at": "c", "mergeable": null,
+                                        "merged_at": if merged { serde_json::json!("2026-11-01T00:00:00Z") } else { serde_json::Value::Null },
+                                        "head": {"ref": head, "sha": sha},
+                                        "base": {"ref": "main", "sha": "b"},
+                                        "user": {"login": "alice", "email": null, "name": null},
+                                    })
+                                })
+                                .collect();
+                            return reply(200, serde_json::json!(pulls));
+                        }
+                        if let Some((_, name)) = path.split_once("/branches/") {
+                            return match named(name) {
+                                Some(b) => reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": name, "protected": false,
+                                        "commit": {"sha": b.tip}
+                                    }),
+                                ),
+                                None => reply(404, not_found),
+                            };
+                        }
+                        if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"")
+                        {
+                            return reply(
+                                403,
+                                serde_json::json!({"message": "Protected branch update failed"}),
+                            );
+                        }
+                        if method == axum::http::Method::POST && path.ends_with("/git/refs") {
+                            return reply(201, serde_json::json!({"ref": "r"}));
+                        }
+                        if method == axum::http::Method::PUT || method == axum::http::Method::PATCH
+                        {
+                            return reply(200, serde_json::json!({"content": {"sha": "abc123"}}));
+                        }
+                        reply(404, not_found)
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}"), log, server)
+        }
+
+        const TIP: &str = "1111111111111111111111111111111111111111";
+
+        /// Q1, Q4: a working branch squash-merged and kept, then `main`
+        /// moved on (ahead AND behind; its merged pull request's head is the
+        /// tip). The session stays on `main`, and a refused write goes to a
+        /// fresh branch (`-2`) created from `main`, never onto the stale tip.
+        #[tokio::test]
+        async fn a_squash_merged_kept_branch_is_not_adopted_and_a_write_takes_the_next_name() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let merged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls: vec![(true, TIP)],
+            };
+            let (origin, log, server) = api_per_branch(vec![(own.clone(), merged)], 200).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider.start_on_existing_working_branch().await.unwrap();
+            assert_eq!(provider.working_branch(), None);
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("a.txt");
+            std::fs::write(&file, b"a").unwrap();
+            provider
+                .upload(file.to_str().unwrap(), "/a.txt", None)
+                .await
+                .unwrap();
+            let fresh = format!("{own}-2");
+            let writes = log.lock().unwrap().clone();
+            assert!(
+                writes.iter().any(|w| w.starts_with("POST ")
+                    && w.contains("/git/refs")
+                    && w.contains(&format!("refs/heads/{fresh}"))
+                    && w.contains("0123456789abcdef0123456789abcdef01234567")),
+                "the fresh branch is made from main: {writes:?}"
+            );
+            assert!(
+                writes.iter().any(
+                    |w| w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{fresh}\""))
+                ),
+                "{writes:?}"
+            );
+            assert!(
+                !writes
+                    .iter()
+                    .any(|w| w.contains(&format!("\"branch\":\"{own}\""))),
+                "nothing on the merged branch: {writes:?}"
+            );
+            server.abort();
+        }
+
+        /// Q1, Q4: pending work on a diverged branch is adopted: a commit
+        /// after its merged pull request (head is not the tip), no pull
+        /// request at all while `main` moved on, an open pull request. And
+        /// the walk goes past a merged branch to a pending `-2`.
+        #[tokio::test]
+        async fn pending_work_on_a_diverged_branch_is_adopted() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            for pulls in [
+                vec![(true, "2222222222222222222222222222222222222222")],
+                vec![],
+                vec![(false, TIP)],
+            ] {
+                let pending = Branch {
+                    ahead: 3,
+                    behind: 2,
+                    tip: TIP,
+                    pulls: pulls.clone(),
+                };
+                let (origin, _log, server) =
+                    api_per_branch(vec![(own.clone(), pending)], 200).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider.start_on_existing_working_branch().await.unwrap();
+                assert_eq!(provider.working_branch(), Some(own.as_str()), "{pulls:?}");
+                server.abort();
+            }
+            let merged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls: vec![(true, TIP)],
+            };
+            let pending = Branch {
+                ahead: 1,
+                behind: 0,
+                tip: TIP,
+                pulls: vec![],
+            };
+            let fresh = format!("{own}-2");
+            let (origin, _log, server) =
+                api_per_branch(vec![(own.clone(), merged), (fresh.clone(), pending)], 200).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider.start_on_existing_working_branch().await.unwrap();
+            assert_eq!(provider.working_branch(), Some(fresh.as_str()));
+            server.abort();
+        }
+
+        /// Q1, Q4: a pull-request lookup that fails fails the connect, never
+        /// a guess.
+        #[tokio::test]
+        async fn a_failed_pull_request_lookup_fails_the_connect() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let diverged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls: vec![],
+            };
+            let (origin, _log, server) = api_per_branch(vec![(own, diverged)], 500).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            assert!(provider.start_on_existing_working_branch().await.is_err());
+            assert_eq!(provider.working_branch(), None);
+            server.abort();
         }
 
         fn compared(ahead_by: u64, behind_by: u64) -> (u16, serde_json::Value) {
@@ -2403,7 +2747,45 @@ mod tests {
                     .await,
                 Err(ProviderError::TargetChanged)
             ));
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("a.txt");
+            std::fs::write(&file, b"a").unwrap();
+            for refused in [
+                provider
+                    .upload(file.to_str().unwrap(), "/docs/a.txt", None)
+                    .await,
+                provider.rmdir("/docs").await,
+                provider.rmdir_recursive("/docs").await,
+            ] {
+                assert!(
+                    matches!(refused, Err(ProviderError::TargetChanged)),
+                    "{refused:?}"
+                );
+            }
             assert_eq!(log.lock().unwrap().len(), allowed.len());
+            // Q2: a release (an asset uploaded or deleted, a tag deleted) is
+            // not the tree: it reaches the API, whatever this mock answers.
+            let releases = super::VIRTUAL_RELEASES_DIR;
+            let release_operations = [
+                provider
+                    .upload(
+                        file.to_str().unwrap(),
+                        &format!("/{releases}/v1/a.txt"),
+                        None,
+                    )
+                    .await,
+                provider.delete(&format!("/{releases}/v1/a.txt")).await,
+                provider.rmdir(&format!("/{releases}/v1")).await,
+                provider.rmdir_recursive(&format!("/{releases}/v1")).await,
+            ];
+            // Each one looked its release up (a GET, which this mock answers
+            // 404 and does not log): reached, not refused by the poison.
+            for (n, outcome) in release_operations.iter().enumerate() {
+                assert!(
+                    !matches!(outcome, Err(ProviderError::TargetChanged)),
+                    "release operation {n}: {outcome:?}"
+                );
+            }
             server.abort();
         }
     }

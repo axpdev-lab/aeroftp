@@ -178,6 +178,14 @@ describe('redactCredentials: one URL rule, any scheme, never past a field (T11)'
         const s3 = String.raw`{"src":"s3://AKIAEXAMPLE:se\",cret@bucket/key"}`;
         expect(redactCredentials(s3)).toBe(String.raw`{"src":"s3://***REDACTED***@bucket/key"}`);
     });
+    // Q3: text before the URL in a plain JSON string, and `\":` in the
+    // password: the string's level is the opening quote's, so it is masked.
+    it('masks a password after text in a plain JSON string', () => {
+        const raw = String.raw`{"message":"upload to ftp://bob:pa\":ss@host/file"}`;
+        expect(redactCredentials(raw)).toBe(String.raw`{"message":"upload to ftp://***REDACTED***@host/file"}`);
+        const s3 = String.raw`{"message":"copy s3://AKIAEXAMPLE:se\":cret@bucket/key"}`;
+        expect(redactCredentials(s3)).toBe(String.raw`{"message":"copy s3://***REDACTED***@bucket/key"}`);
+    });
 });
 
 describe('redactUrlUserinfo (H9: linear by construction)', () => {
