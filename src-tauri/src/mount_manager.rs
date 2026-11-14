@@ -345,6 +345,14 @@ fn save_to_sidecar_at(registry: &MountRegistry, path: &Path) -> Result<(), Strin
     Ok(())
 }
 
+/// A test's pause point inside [`save_to_vault_with`], after the vault store
+/// and before the stub write: the window a failed stub write rolls back.
+/// Keyed by the sidecar path, so a save of another test never runs it.
+#[cfg(test)]
+type StubWritePause = (std::path::PathBuf, Box<dyn FnOnce() + Send>);
+#[cfg(test)]
+static BEFORE_STUB_WRITE: std::sync::Mutex<Option<StubWritePause>> = std::sync::Mutex::new(None);
+
 /// Vault-mode save on an explicit store and sidecar path, so tests can pin
 /// the stub-write rule against a real test vault.
 fn save_to_vault_with(
@@ -366,6 +374,15 @@ fn save_to_vault_with(
     store
         .store(VAULT_REGISTRY_KEY, &json)
         .map_err(|e| format!("Mount registry vault store: {}", e))?;
+    #[cfg(test)]
+    {
+        let mut slot = BEFORE_STUB_WRITE.lock().unwrap_or_else(|e| e.into_inner());
+        if slot.as_ref().is_some_and(|(path, _)| path == sidecar) {
+            let (_, pause) = slot.take().unwrap();
+            drop(slot);
+            pause();
+        }
+    }
     // Keep a sidecar stub recording the storage mode so external readers know
     // where to look (but no mount data leaks). A failed stub write must
     // surface: silently losing it would flip the detected mode back to
@@ -1435,6 +1452,90 @@ mod tests {
             store.get(VAULT_REGISTRY_KEY),
             Err(CredentialError::NotFound(_))
         ));
+    }
+
+    /// A read that starts while a vault save is between its store and a
+    /// failing stub write waits for the rollback and returns the registry
+    /// that stays saved, never the value about to be undone: `start_mount`
+    /// would otherwise mount a folder the saved configuration never holds.
+    #[cfg(unix)]
+    #[test]
+    fn a_read_during_a_failed_vault_save_sees_the_registry_that_stays() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use std::sync::{Arc, Mutex};
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the write, skipping");
+            return;
+        }
+        let vault_dir = tempfile::tempdir().unwrap();
+        let vault_path = vault_dir.path().join("vault.db");
+        CredentialStore::write_test_vault(&vault_path, &[7u8; 32]);
+        let store = CredentialStore::from_verified_key(&vault_path, &[7u8; 32]);
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let sidecar = dir.join("mounts.json");
+        let mut mount = test_mount("m1", data.path());
+        mount.remote_path = "/old".into();
+        save_to_vault_with(
+            &store,
+            &MountRegistry {
+                storage_mode: StorageMode::Vault,
+                mounts: vec![mount.clone()],
+            },
+            &sidecar,
+        )
+        .unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        // The stub stays readable, so the read finds the vault; a new stub
+        // cannot be written next to it.
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+
+        let read_in_window = Arc::new(AtomicBool::new(false));
+        let reader = Arc::new(Mutex::new(None));
+        {
+            let read_in_window = read_in_window.clone();
+            let reader = reader.clone();
+            let vault_path = vault_path.clone();
+            let sidecar = sidecar.clone();
+            *BEFORE_STUB_WRITE.lock().unwrap() = Some((
+                sidecar.clone(),
+                Box::new(move || {
+                    let handle = std::thread::spawn(move || {
+                        let store = CredentialStore::from_verified_key(&vault_path, &[7u8; 32]);
+                        load_registry_at(&sidecar, Some(&store))
+                            .mounts
+                            .first()
+                            .map(|m| m.remote_path.clone())
+                    });
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    read_in_window.store(handle.is_finished(), Ordering::SeqCst);
+                    *reader.lock().unwrap() = Some(handle);
+                }),
+            ));
+        }
+        let mut changed = mount;
+        changed.remote_path = "/new".into();
+        assert!(upsert_config_at(changed, &sidecar, Some(&store)).is_err());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert!(
+            !read_in_window.load(Ordering::SeqCst),
+            "the read ran inside the save's window"
+        );
+        let handle = reader
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the save reached its stub write");
+        assert_eq!(handle.join().unwrap().as_deref(), Some("/old"));
     }
 
     /// The happy path of the same seam: vault entry written, stub records

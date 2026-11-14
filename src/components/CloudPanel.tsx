@@ -4,7 +4,7 @@
 // AeroCloud Panel - Personal Multi-Protocol Cloud Sync
 // Setup wizard, cloud dashboard, and sync controls
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { emit } from '@tauri-apps/api/event';
 import { useTauriListener } from '../hooks/useTauriListener';
@@ -379,6 +379,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // saved it does nothing (Discussion #1527); the X and Cancel of the
     // settings view only leave it, as before.
     const [settingsBaseline, setSettingsBaseline] = useState<CloudConfig | null>(null);
+    // The baseline as of the latest commit, for the post-sync refresh, which
+    // runs after an await and would otherwise read the one it started with.
+    const settingsBaselineRef = useRef(settingsBaseline);
+    useEffect(() => { settingsBaselineRef.current = settingsBaseline; }, [settingsBaseline]);
     // Settings does not open while Pause, Resume or Disable is in flight
     // (pendingLifecycle, below): their result replaces the configuration and
     // would drop a draft opened meanwhile. Every entry (the dashboard button,
@@ -493,14 +497,22 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             }
             setRefreshError(null);
             if (refresh) {
-                // A sync only moves last_sync (the folders are inputs, not
-                // outputs), so merge that persisted field into the draft and
-                // the baseline: an open settings view is neither closed nor
-                // marked dirty by the refresh.
+                // A sync moves last_sync, and places a `~/...` remote folder
+                // under the login folder and saves the absolute path. Both
+                // persisted fields are merged into the draft and the
+                // baseline: an open settings view is neither closed nor
+                // marked dirty by the refresh, and a later save of another
+                // setting never writes the `~` form back over the placed
+                // folder. A folder the user edited in the draft stays theirs.
                 // A configuration cleared meanwhile (Disable) stays cleared: a
                 // late refresh must not bring the disabled setup back.
-                setConfig(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
-                setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
+                const savedFolder = settingsBaselineRef.current?.remote_folder;
+                setConfig(prev => prev ? {
+                    ...prev,
+                    last_sync: cfg.last_sync,
+                    remote_folder: savedFolder === undefined || prev.remote_folder === savedFolder ? cfg.remote_folder : prev.remote_folder,
+                } : prev);
+                setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync, remote_folder: cfg.remote_folder } : prev);
             } else {
                 setConfigLoadError(null);
                 replaceConfig(cfg);

@@ -326,8 +326,13 @@ where
         .lock()
         .map_err(|_| "Config write lock poisoned".to_string())?;
     let mut config = load_cloud_config_strict_at(path)?;
+    let before = serde_json::to_value(&config).ok();
     let out = f(&mut config)?;
-    save_cloud_config_unlocked_at(&config, path)?;
+    // A mutation that changed nothing writes nothing: the file keeps its
+    // bytes, and a save that would fail cannot fail a no-op.
+    if before.is_none() || serde_json::to_value(&config).ok() != before {
+        save_cloud_config_unlocked_at(&config, path)?;
+    }
     Ok(out)
 }
 
@@ -490,6 +495,28 @@ mod tests {
     /// A `cloud_config.json` that exists but does not parse is an error on
     /// the write path: the mutator reports it and the file bytes stay
     /// untouched, never overwritten by an empty config.
+    /// A mutation that changes nothing writes nothing: the file keeps its
+    /// exact bytes (a save would rewrite them in its own layout). A change
+    /// is still saved.
+    #[test]
+    fn a_mutation_that_changes_nothing_leaves_the_config_file_alone() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let compact = serde_json::to_string(&CloudConfig::default()).unwrap();
+        std::fs::write(&path, &compact).unwrap();
+        with_cloud_config_mut_at(&path, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
+        with_cloud_config_mut_at(&path, |config| {
+            config.remote_folder = "/placed".to_string();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            load_cloud_config_strict_at(&path).unwrap().remote_folder,
+            "/placed"
+        );
+    }
+
     #[test]
     fn an_unparseable_config_is_never_overwritten() {
         let data = tempfile::tempdir().unwrap();

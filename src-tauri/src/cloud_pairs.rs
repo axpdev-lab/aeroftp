@@ -241,8 +241,13 @@ where
         .lock()
         .map_err(|_| "Pairs write lock poisoned".to_string())?;
     let mut config = load_cloud_pairs_config_strict_at(path)?;
+    let before = serde_json::to_value(&config).ok();
     let out = f(&mut config)?;
-    save_cloud_pairs_config_unlocked_at(&config, path)?;
+    // A mutation that changed nothing writes nothing: the file keeps its
+    // bytes, and a save that would fail cannot fail a no-op.
+    if before.is_none() || serde_json::to_value(&config).ok() != before {
+        save_cloud_pairs_config_unlocked_at(&config, path)?;
+    }
     Ok(out)
 }
 
@@ -359,6 +364,29 @@ mod tests {
         let err = with_cloud_pairs_mut_at(&path, |_| Ok(())).unwrap_err();
         assert!(err.contains("parse"), "{err}");
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A mutation that changes nothing writes nothing: the file keeps its
+    /// exact bytes (a save would rewrite them in its own layout). A change
+    /// is still saved.
+    #[test]
+    fn a_mutation_that_changes_nothing_leaves_the_pairs_file_alone() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_pairs.json");
+        let bytes = br#"{"pairs":[],"parallel_pairs":false}"#.as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        with_cloud_pairs_mut_at(&path, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        with_cloud_pairs_mut_at(&path, |config| {
+            config.parallel_pairs = true;
+            Ok(())
+        })
+        .unwrap();
+        assert!(
+            load_cloud_pairs_config_strict_at(&path)
+                .unwrap()
+                .parallel_pairs
+        );
     }
 
     /// A parse error names the kind and position, never the value: a

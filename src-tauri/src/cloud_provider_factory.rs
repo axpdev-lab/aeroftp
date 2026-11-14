@@ -348,8 +348,11 @@ fn profile_root(profile: &serde_json::Value) -> String {
             // connect path and `profile_protocol_class` apply.
             .unwrap_or("ftp"),
     );
-    // Spaces alone are a folder name too: the connect opens them.
-    if root.is_empty() {
+    // Spaces alone are no folder name: an all-blank starting folder is the
+    // server root, as the setup wizard reads it (`profileRoot` and
+    // `aeroCloudBase` in CloudSetupWizard.tsx), so the remote folder it saved
+    // against that root is the one opened. Spaces around a name are kept.
+    if root.trim().is_empty() {
         "/".to_string()
     } else {
         crate::crypt_overlay_provider::login_relative_form(&root, under_login).into_owned()
@@ -1228,11 +1231,16 @@ mod tests {
     #[test]
     fn profile_root_is_the_starting_folder_with_the_username_resolved() {
         assert_eq!(profile_root(&serde_json::json!({})), "/");
-        // Spaces alone name a folder the connect opens, under the login
-        // folder on FTP (the default protocol).
+        // Spaces alone are the server root, as the setup wizard reads them;
+        // spaces around a name are part of it, under the login folder on
+        // FTP (the default protocol).
         assert_eq!(
             profile_root(&serde_json::json!({ "initialPath": "  " })),
-            "~/  "
+            "/"
+        );
+        assert_eq!(
+            profile_root(&serde_json::json!({ "initialPath": " docs " })),
+            "~/ docs "
         );
         assert_eq!(
             profile_root(&serde_json::json!({ "initialPath": "/var/www" })),
@@ -1446,12 +1454,13 @@ mod tests {
 
     /// A profile root opens the folder the connect opens: a root with `..`
     /// (valid for a profile, refused only as an overlay scope) is resolved by
-    /// the server from the login folder, and a root of spaces alone is that
-    /// folder, not `/`. The placed path is what the target identity carries.
+    /// the server from the login folder, and a root of spaces alone is the
+    /// server root the wizard saved the remote folder against: the connect
+    /// opens no folder named by spaces, which need not exist. The placed path
+    /// is what the target identity carries.
     #[tokio::test]
     async fn profile_roots_open_the_folder_the_connect_opens() {
-        let port =
-            scripted_login_ftp(&["/home/u/docs", "/home/u/shared", "/home/u/  "], true).await;
+        let port = scripted_login_ftp(&["/home/u/docs", "/home/u/shared"], true).await;
 
         let root = profile_root(
             &serde_json::json!({ "protocol": "ftp", "initialPath": "docs/../shared" }),
@@ -1465,13 +1474,13 @@ mod tests {
         assert_eq!(provider.pwd().await.unwrap(), "/home/u/shared");
 
         let root = profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": "  " }));
-        assert_eq!(root, "~/  ");
+        assert_eq!(root, "/");
         let mut provider = connected_ftp(port, &root).await;
         let placed = enter_profile_root(&mut provider, Some(&root))
             .await
             .unwrap();
-        assert_eq!(placed.as_deref(), Some("/home/u/  "));
-        assert_eq!(provider.pwd().await.unwrap(), "/home/u/  ");
+        assert_eq!(placed, None);
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u");
 
         // A server that did not report its login folder (no post-login `PWD`,
         // or a Windows drive path) still opens a relative start folder: the

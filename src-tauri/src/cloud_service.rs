@@ -3962,6 +3962,19 @@ async fn open_aerocloud_connection(
     let opened = cloud_provider_factory::create_cloud_connection(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
+    compose_aerocloud_connection(opened, config, store, persist_placement).await
+}
+
+/// The part of [`open_aerocloud_connection`] after the connect: place the
+/// remote folder, then wrap the overlays of the profile the connection used.
+/// Split at the connect so a test can change the saved profiles in between,
+/// as an edit made while connecting would.
+async fn compose_aerocloud_connection(
+    opened: cloud_provider_factory::OpenedCloudProvider,
+    config: &mut CloudConfig,
+    store: &credential_store::CredentialStore,
+    persist_placement: bool,
+) -> Result<ConnectedCloudProvider, String> {
     let mut provider = opened.provider;
     // A `~/...` remote folder is placed under the login folder here, on the
     // raw provider (through the overlay `~` is a ciphertext name), and the
@@ -7841,6 +7854,64 @@ mod baseline_tests {
             );
             let log = ftp.log.lock().unwrap().join("\n");
             assert!(!log.contains("STOR"), "no upload may happen:\n{log}");
+        });
+    }
+
+    /// The overlay is wrapped for the profile the connection used. A profile
+    /// list edited while connecting (the connected profile renamed, a
+    /// homonym with the same binding but none of its keys saved under the
+    /// name) passes both binding checks, so only the connected id keeps the
+    /// overlay on the keys of the profile the session belongs to: resolved
+    /// again by name, the overlay finds no keys and the cycle fails.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_overlay_follows_the_connected_profile_when_the_name_moves() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let binding = serde_json::json!({
+                "enabled": true,
+                "kind": "aerocrypt",
+                "remoteScope": "/docs",
+                "withHeader": false,
+            });
+            seed_ftp_profile(&store, "srv_a", ftp.port, Some(binding));
+            seed_aerocrypt_overlay(&store, "srv_a");
+            let local = tempfile::tempdir().unwrap();
+            let mut config = aerocloud_config(local.path(), "/docs/sync", "srv_a");
+            config.server_profile_id = None;
+
+            let opened = cloud_provider_factory::create_cloud_connection(&config)
+                .await
+                .unwrap();
+            assert_eq!(opened.profile_id.as_deref(), Some("srv_a"));
+            // Meanwhile srv_a is renamed and srv_b takes its name, written
+            // where the connect read the list (the active account's).
+            let mut profiles =
+                crate::user_partitions::mcp_list_active_server_profiles(&store).unwrap();
+            assert_eq!(profiles.len(), 1);
+            let mut homonym = profiles[0].clone();
+            homonym["id"] = serde_json::json!("srv_b");
+            profiles[0]["name"] = serde_json::json!("old");
+            profiles.push(homonym);
+            let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+            let root_key = store.derive_user_partition_wrapping_key();
+            crate::user_partitions::replace_active_server_profiles(&mut conn, &root_key, &profiles)
+                .unwrap();
+            let names = crate::user_partitions::mcp_list_active_server_profiles(&store).unwrap();
+            assert_eq!(
+                crate::crypt_overlay_provider::select_aerocloud_profile(&names, None, "nas")
+                    .and_then(|p| p["id"].as_str()),
+                Some("srv_b")
+            );
+
+            let mut composed = compose_aerocloud_connection(opened, &mut config, &store, false)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+            // The overlay is on: a folder outside its anchor is refused.
+            assert!(
+                ensure_remote_folder_within_overlay(&mut *composed.provider, "/elsewhere").is_err()
+            );
         });
     }
 
