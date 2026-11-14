@@ -16598,6 +16598,7 @@ async fn list_remote_folders_tree(
         &config,
         &resolution,
         store.as_ref(),
+        opened.endpoint.as_deref(),
     )
     .await?
     .unwrap_or_else(|| config.remote_folder.clone());

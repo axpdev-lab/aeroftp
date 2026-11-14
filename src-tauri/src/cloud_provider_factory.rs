@@ -106,6 +106,57 @@ pub(crate) struct OpenedCloudProvider {
     /// one read that chose it: a later read of the profile list can name
     /// another profile if the list changed meanwhile.
     pub profile_id: Option<String>,
+    /// The endpoint this connection was built for ([`endpoint_fingerprint`]),
+    /// before any folder was placed; `None` for the providers that log in
+    /// through an app (OAuth), which have no starting folder to place.
+    pub endpoint: Option<String>,
+}
+
+/// What a direct-auth connection connects to: protocol, host, port, user,
+/// starting folder and every endpoint option (base path, bucket, region,
+/// share), as the builder receives them before the connect. Secrets are left
+/// out: a changed password still reaches the same login folder. Held in
+/// memory only, to tell whether the saved settings still name the endpoint a
+/// session connected to.
+fn endpoint_fingerprint(config: &ProviderConfig) -> String {
+    let secret = |key: &str| {
+        let key = key.to_ascii_lowercase();
+        ["pass", "secret", "token", "private_key", "credential"]
+            .iter()
+            .any(|word| key.contains(word))
+    };
+    let options: std::collections::BTreeMap<&str, &str> = config
+        .extra
+        .iter()
+        .filter(|(key, _)| !secret(key))
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    identity_digest(serde_json::json!({
+        "protocol": format!("{:?}", config.provider_type),
+        "host": config.host,
+        "port": config.port,
+        "username": config.username,
+        "initial_path": config.initial_path,
+        "options": options,
+    }))
+}
+
+/// The endpoint the saved settings name now for `config`, read as
+/// [`create_cloud_connection`] reads them; `None` for a protocol that does
+/// not connect through the direct-auth builder. Compared with
+/// [`OpenedCloudProvider::endpoint`] to tell whether a connection still
+/// stands for the saved settings.
+pub(crate) fn current_endpoint_fingerprint(
+    store: &credential_store::CredentialStore,
+    config: &CloudConfig,
+) -> Result<Option<String>, String> {
+    let Some(provider_type) = direct_provider_type(&config.protocol_type) else {
+        return Ok(None);
+    };
+    let (_, mut provider_config) = direct_provider_config(store, config, provider_type)?;
+    let fingerprint = endpoint_fingerprint(&provider_config);
+    scrub_secrets(&mut provider_config);
+    Ok(Some(fingerprint))
 }
 
 /// Hash canonical structured identity without persisting credentials or depending on map order.
@@ -237,32 +288,11 @@ pub(crate) fn current_overlay_binding(
 pub(crate) async fn create_cloud_connection(
     config: &CloudConfig,
 ) -> Result<OpenedCloudProvider, String> {
+    if let Some(provider_type) = direct_provider_type(&config.protocol_type) {
+        return create_via_factory(config, provider_type).await;
+    }
     match config.protocol_type.as_str() {
-        // --- Direct auth providers: use ProviderFactory ---
-        "ftp" => create_via_factory(config, ProviderType::Ftp).await,
-        "ftps" => create_via_factory(config, ProviderType::Ftps).await,
-        "sftp" => create_via_factory(config, ProviderType::Sftp).await,
-        "scp" => create_via_factory(config, ProviderType::Scp).await,
-        "webdav" => create_via_factory(config, ProviderType::WebDav).await,
-        "s3" => create_via_factory(config, ProviderType::S3).await,
-        "azure" => create_via_factory(config, ProviderType::Azure).await,
-        "mega" => create_via_factory(config, ProviderType::Mega).await,
-        "proton" | "protondrive" => create_via_factory(config, ProviderType::Proton).await,
-        "filen" => create_via_factory(config, ProviderType::Filen).await,
-        "internxt" => create_via_factory(config, ProviderType::Internxt).await,
-        "kdrive" => create_via_factory(config, ProviderType::KDrive).await,
-        "jottacloud" => create_via_factory(config, ProviderType::Jottacloud).await,
-        "filelu" => create_via_factory(config, ProviderType::FileLu).await,
-        "koofr" => create_via_factory(config, ProviderType::Koofr).await,
-        "twake" => create_via_factory(config, ProviderType::Twake).await,
-        "opendrive" => create_via_factory(config, ProviderType::OpenDrive).await,
         "yandexdisk" => create_yandex(config).await,
-        "imagekit" => create_via_factory(config, ProviderType::ImageKit).await,
-        "uploadcare" => create_via_factory(config, ProviderType::Uploadcare).await,
-        "cloudinary" => create_via_factory(config, ProviderType::Cloudinary).await,
-        "backblaze" | "b2" | "backblazeb2" => {
-            create_via_factory(config, ProviderType::Backblaze).await
-        }
 
         // --- OAuth2 providers: direct instantiation ---
         "googledrive" => create_google_drive(config).await,
@@ -277,6 +307,35 @@ pub(crate) async fn create_cloud_connection(
 
         other => Err(format!("Unsupported protocol for AeroCloud: {}", other)),
     }
+}
+
+/// The direct-auth providers, which connect through `ProviderFactory` with
+/// the saved profile's host, user and options.
+fn direct_provider_type(protocol: &str) -> Option<ProviderType> {
+    Some(match protocol {
+        "ftp" => ProviderType::Ftp,
+        "ftps" => ProviderType::Ftps,
+        "sftp" => ProviderType::Sftp,
+        "scp" => ProviderType::Scp,
+        "webdav" => ProviderType::WebDav,
+        "s3" => ProviderType::S3,
+        "azure" => ProviderType::Azure,
+        "mega" => ProviderType::Mega,
+        "proton" | "protondrive" => ProviderType::Proton,
+        "filen" => ProviderType::Filen,
+        "internxt" => ProviderType::Internxt,
+        "kdrive" => ProviderType::KDrive,
+        "jottacloud" => ProviderType::Jottacloud,
+        "filelu" => ProviderType::FileLu,
+        "koofr" => ProviderType::Koofr,
+        "twake" => ProviderType::Twake,
+        "opendrive" => ProviderType::OpenDrive,
+        "imagekit" => ProviderType::ImageKit,
+        "uploadcare" => ProviderType::Uploadcare,
+        "cloudinary" => ProviderType::Cloudinary,
+        "backblaze" | "b2" | "backblazeb2" => ProviderType::Backblaze,
+        _ => return None,
+    })
 }
 
 // ── Direct auth providers ──────────────────────────────────────────
@@ -559,29 +618,23 @@ fn connection_extra(
     (extra, host)
 }
 
-/// Connect a direct-auth provider for AeroCloud.
-///
-/// The saved profile the config names is the source of the connection: host,
-/// user and password as the profile holds them now, and every provider option
-/// it stores. The `server_{name}` blob the old setup wizard copied credentials
-/// into is read only when no saved profile carries that name, which is the
-/// case of a config set up with hand-typed credentials: preferring it would
-/// keep connecting with a password changed since in the profile.
-async fn create_via_factory(
+/// The settings a direct-auth connection is built from: the saved profile the
+/// config names and the provider config made from it, as
+/// [`create_via_factory`] connects with them.
+fn direct_provider_config(
+    store: &credential_store::CredentialStore,
     config: &CloudConfig,
     provider_type: ProviderType,
-) -> Result<OpenedCloudProvider, String> {
-    let store = credential_store::CredentialStore::from_cache()
-        .ok_or_else(|| "Credential vault not open".to_string())?;
-
-    let profile = saved_profile(&store, config)?;
+) -> Result<(Option<serde_json::Value>, ProviderConfig), String> {
+    let profile = saved_profile(store, config)?;
     let mut creds = match &profile {
-        Some(profile) => profile_creds(&store, profile)?,
+        Some(profile) => profile_creds(store, profile)?,
+
         // MUV-3: resolve_active_credential prefers the active user's per-user
         // store and falls back to the legacy (dual-written) vault.
         None => {
             let json = crate::user_partitions::resolve_active_credential(
-                &store,
+                store,
                 &format!("server_{}", config.server_profile),
             )
             .ok()
@@ -615,7 +668,7 @@ async fn create_via_factory(
         .and_then(|p| p.parse::<u16>().ok())
         .or(embedded_port);
 
-    let mut provider_config = ProviderConfig {
+    let provider_config = ProviderConfig {
         name: config.cloud_name.clone(),
         provider_type,
         host: host.clone(),
@@ -632,10 +685,11 @@ async fn create_via_factory(
         ),
         extra,
     };
+    Ok((profile, provider_config))
+}
 
-    let binding = overlay_binding(profile.as_ref());
-    let mut provider = ProviderFactory::create(&provider_config)
-        .map_err(|e| format!("Failed to create provider: {}", e))?;
+/// Clear the secrets a provider config holds once the provider consumed it.
+fn scrub_secrets(provider_config: &mut ProviderConfig) {
     // A3-05: Zeroize password after it has been consumed by the provider
     provider_config.zeroize_password();
     // A-L2: the SFTP key passphrase reaches `extra` from the profile options and
@@ -647,8 +701,33 @@ async fn create_via_factory(
         use zeroize::Zeroize;
         passphrase.zeroize();
     }
+}
+
+/// Connect a direct-auth provider for AeroCloud.
+///
+/// The saved profile the config names is the source of the connection: host,
+/// user and password as the profile holds them now, and every provider option
+/// it stores. The `server_{name}` blob the old setup wizard copied credentials
+/// into is read only when no saved profile carries that name, which is the
+/// case of a config set up with hand-typed credentials: preferring it would
+/// keep connecting with a password changed since in the profile.
+async fn create_via_factory(
+    config: &CloudConfig,
+    provider_type: ProviderType,
+) -> Result<OpenedCloudProvider, String> {
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Credential vault not open".to_string())?;
+    let (profile, mut provider_config) = direct_provider_config(&store, config, provider_type)?;
+    let host = provider_config.host.clone();
+    let endpoint = endpoint_fingerprint(&provider_config);
+
+    let binding = overlay_binding(profile.as_ref());
+    let mut provider = ProviderFactory::create(&provider_config)
+        .map_err(|e| format!("Failed to create provider: {}", e))?;
+    scrub_secrets(&mut provider_config);
 
     info!("AeroCloud: connecting via {:?} to {}", provider_type, host);
+
     provider
         .connect()
         .await
@@ -703,6 +782,7 @@ async fn create_via_factory(
             .and_then(|p| p.get("id"))
             .and_then(|v| v.as_str())
             .map(str::to_string),
+        endpoint: Some(endpoint),
     })
 }
 
@@ -763,6 +843,7 @@ async fn open_yandex_oauth(
         identity,
         overlay_binding: binding,
         profile_id: Some(profile_id.to_string()).filter(|id| !id.trim().is_empty()),
+        endpoint: None,
     })
 }
 
@@ -859,6 +940,7 @@ fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedClo
         identity,
         overlay_binding: app.overlay_binding.clone(),
         profile_id: Some(app.profile_id.clone()).filter(|id| !id.trim().is_empty()),
+        endpoint: None,
     }
 }
 
@@ -1545,6 +1627,57 @@ mod tests {
         }
     }
 
+    /// The endpoint names where a connection goes, not how it logs in: a
+    /// changed password or key passphrase is the same endpoint, a changed
+    /// host, port, user, starting folder or option is another one.
+    #[test]
+    fn the_endpoint_fingerprint_leaves_the_secrets_out() {
+        let base = ProviderConfig {
+            name: "nas".to_string(),
+            provider_type: ProviderType::Sftp,
+            host: "nas.example".to_string(),
+            port: Some(22),
+            username: Some("u".to_string()),
+            password: Some("pw".to_string()),
+            initial_path: Some("~/docs".to_string()),
+            extra: HashMap::from([
+                ("key_passphrase".to_string(), "secret".to_string()),
+                ("private_key_path".to_string(), "/k".to_string()),
+                ("profile_id".to_string(), "srv".to_string()),
+            ]),
+        };
+        let fingerprint = endpoint_fingerprint(&base);
+        let mut secrets = base.clone();
+        secrets.password = Some("other".to_string());
+        secrets
+            .extra
+            .insert("key_passphrase".to_string(), "other".to_string());
+        secrets
+            .extra
+            .insert("private_key_path".to_string(), "/other".to_string());
+        secrets
+            .extra
+            .insert("access_token".to_string(), "t".to_string());
+        assert_eq!(endpoint_fingerprint(&secrets), fingerprint);
+        let edits: [(&str, fn(&mut ProviderConfig)); 6] = [
+            ("host", |c| c.host = "other.example".to_string()),
+            ("port", |c| c.port = Some(2222)),
+            ("user", |c| c.username = Some("v".to_string())),
+            ("starting folder", |c| {
+                c.initial_path = Some("~/other".to_string())
+            }),
+            ("protocol", |c| c.provider_type = ProviderType::Scp),
+            ("option", |c| {
+                c.extra.insert("base_path".to_string(), "/dav".to_string());
+            }),
+        ];
+        for (what, edit) in edits {
+            let mut edited = base.clone();
+            edit(&mut edited);
+            assert_ne!(endpoint_fingerprint(&edited), fingerprint, "{what}");
+        }
+    }
+
     #[test]
     fn connection_extra_carries_the_profile_options() {
         let profile = serde_json::json!({
@@ -1734,6 +1867,7 @@ mod tests {
                     &config,
                     &resolution,
                     Some(&store),
+                    opened.endpoint.as_deref(),
                 )
                 .await?
                 .unwrap_or_else(|| config.remote_folder.clone());
