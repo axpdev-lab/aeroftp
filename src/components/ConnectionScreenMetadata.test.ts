@@ -494,3 +494,31 @@ describe('Puter WebDAV credential guidance and Advanced Server override', () => 
         expect(serverInput.value).toBe('https://dav.puter.com/myuser');
     });
 });
+
+describe('LifetimeCloud WebDAV credential helpText and overlay defaults', () => {
+    it('renders username and password helpText for lifetimecloud and keeps crypt overlay opt-in', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'lifetimecloud',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const text = container.textContent || '';
+        expect(text).toContain('Used to fill https://lifetimecloud.me/dav/{username}/ automatically');
+        expect(text).toContain('Profile > Enable WebDAV > Generate WebDAV token (not your LifetimeCloud account password)');
+        expect(container.querySelector('input[placeholder="connection.passwordPlaceholder"]')).not.toBeNull();
+    });
+});
