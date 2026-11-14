@@ -1535,7 +1535,7 @@ export const PROVIDERS: ProviderConfig[] = [
     {
         id: 'lifetimecloud',
         name: 'LifetimeCloud',
-        description: 'LifetimeCloud storage via WebDAV (1 GB trial, no card)',
+        description: 'LifetimeCloud storage via WebDAV (1 GB free, no card)',
         protocol: 'webdav',
         category: 'webdav',
         icon: 'Cloud',
@@ -1563,9 +1563,11 @@ export const PROVIDERS: ProviderConfig[] = [
         helpUrl: 'https://lifetimecloud.me/articles/rclone-webdav-guide.html',
         signupUrl: 'https://lifetimecloud.me/register',
         setupInstructions: [
+            'The free plan has no time limit but limited use: 1 GB, at most 50 MB per file and 50 files, no card',
             'Sign in to your LifetimeCloud profile, enable WebDAV, and generate a WebDAV token (if compromised, regenerate it)',
             'Enter that WebDAV token in the WebDAV token field above, not your LifetimeCloud account password',
             'Plain WebDAV transfers are HTTPS-only without provider-side end-to-end encryption, and WebDAV deletes are permanent (no Trash)',
+            'Files uploaded from the LifetimeCloud website or apps are listed over WebDAV but download as encrypted data: download those from the website',
             'Optional: enable an AeroCrypt or rclone-crypt overlay in this profile for client-side encryption',
         ],
     },

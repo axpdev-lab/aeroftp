@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan, txartela behar da)",
             "discoverNeon": "Neon Object Storage: S3-rekin bateragarria den biltegiratzea proiektu-adar bakoitzerako (5 GB doan proiektu bakoitzeko)",
             "discoverPuter": "Puter hodei-urrunera WebDAV bidez (25 MB proba, txartelik gabe)",
-            "discoverLifetimeCloud": "LifetimeCloud biltegiratzea WebDAV bidez (1 GB proba, txartelik gabe)"
+            "discoverLifetimeCloud": "LifetimeCloud biltegiratzea WebDAV bidez (1 GB doan, txartelik gabe)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

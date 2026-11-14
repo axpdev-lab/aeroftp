@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis, cartão necessário)",
             "discoverNeon": "Neon Object Storage: armazenamento compatível com S3 por ramificação de projeto (5 GB grátis por projeto)",
             "discoverPuter": "Armazenamento em nuvem Puter via WebDAV (25 MB de teste, sem cartão)",
-            "discoverLifetimeCloud": "Armazenamento LifetimeCloud via WebDAV (teste de 1 GB, sem cartão)"
+            "discoverLifetimeCloud": "Armazenamento LifetimeCloud via WebDAV (1 GB grátis, sem cartão)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

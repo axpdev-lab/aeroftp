@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: αποθήκευση συμβατή με S3 σε 12 περιοχές (5 GB δωρεάν, απαιτείται κάρτα)",
             "discoverNeon": "Neon Object Storage: αποθήκευση συμβατή με S3 για κάθε branch έργου (5 GB δωρεάν ανά έργο)",
             "discoverPuter": "Αποθήκευση cloud Puter μέσω WebDAV (25 MB δοκιμή, χωρίς κάρτα)",
-            "discoverLifetimeCloud": "Αποθήκευση LifetimeCloud μέσω WebDAV (δοκιμή 1 GB, χωρίς κάρτα)"
+            "discoverLifetimeCloud": "Αποθήκευση LifetimeCloud μέσω WebDAV (1 GB δωρεάν, χωρίς κάρτα)"
         },
         "shortcuts": {
             "title": "Συντομεύσεις πληκτρολογίου",

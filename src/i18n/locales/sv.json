@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort krävs)",
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per projektgren (5 GB gratis per projekt)",
             "discoverPuter": "Puter-molnlagring via WebDAV (25 MB test, inget kort)",
-            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB provperiod, inget kort)"
+            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, inget kort)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

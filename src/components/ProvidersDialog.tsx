@@ -8,7 +8,7 @@ import { useTranslation, type TranslationFunction } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
-import { findCatalogByLogo, findCatalogByProviderId, hasFreeTier, isDevOnlyProvider, isPaidProvider } from './providerCatalog';
+import { findCatalogByLogo, findCatalogByProviderId, formatFreeStorage, hasFreeTier, isDevOnlyProvider, isPaidProvider } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -439,7 +439,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                           {catalog && (
                             isFree ? (
                               <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap shrink-0">
-                                {catalog.freeStorageGb != null ? `${catalog.freeStorageGb} GB` : t('providers.freeTier')}
+                                {catalog.freeStorageGb != null ? formatFreeStorage(catalog.freeStorageGb) : t('providers.freeTier')}
                               </span>
                             ) : (
                               <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap shrink-0">

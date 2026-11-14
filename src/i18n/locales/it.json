@@ -855,7 +855,7 @@
             "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)",
             "discoverNeon": "Neon Object Storage: archiviazione compatibile con S3 per branch di progetto (5 GB gratis per progetto)",
             "discoverPuter": "Archiviazione cloud Puter via WebDAV (25 MB di prova, senza carta)",
-            "discoverLifetimeCloud": "Archiviazione LifetimeCloud tramite WebDAV (prova da 1 GB, senza carta)"
+            "discoverLifetimeCloud": "Archiviazione LifetimeCloud tramite WebDAV (1 GB gratis, senza carta)"
         },
         "browser": {
             "remote": "Remoto",

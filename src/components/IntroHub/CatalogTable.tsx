@@ -33,6 +33,7 @@ import {
     companyLaunchProtocol,
     companyMatchesTier,
     catalogParentKey,
+    formatFreeStorage,
 } from '../providerCatalog';
 
 type CatalogColId = 'company' | 'parent' | 'region' | 'freeGb' | 'free' | 'paid' | 'health';
@@ -329,7 +330,7 @@ export function CatalogTable({ companies, category, onSelectProvider, getHealth,
                     <td key={col.id} className={`py-1.5 px-3 tabular-nums ${alignClass(col.id)}`}>
                         <span className="inline-flex items-center gap-1 justify-end">
                             {c.freeStorageGb != null
-                                ? <span className="text-gray-900 dark:text-gray-100">{c.freeStorageGb} GB</span>
+                                ? <span className="text-gray-900 dark:text-gray-100">{formatFreeStorage(c.freeStorageGb)}</span>
                                 : <span className="text-[10px] text-gray-400 dark:text-gray-500" title={c.freeNote}>{c.freeNote || '-'}</span>}
                             {c.freeRequiresCard && (
                                 <span

@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)",
             "discoverNeon": "Neon Object Storage: S3-kompatibler Speicher pro Projekt-Branch (5 GB kostenlos pro Projekt)",
             "discoverPuter": "Puter-Cloudspeicher über WebDAV (25 MB zum Testen, ohne Karte)",
-            "discoverLifetimeCloud": "LifetimeCloud-Speicher über WebDAV (1 GB Testversion, ohne Karte)"
+            "discoverLifetimeCloud": "LifetimeCloud-Speicher über WebDAV (1 GB kostenlos, ohne Karte)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

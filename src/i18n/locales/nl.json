@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)",
             "discoverNeon": "Neon Object Storage: S3-compatibele opslag per projectbranch (5 GB gratis per project)",
             "discoverPuter": "Puter-cloudopslag via WebDAV (25 MB proef, zonder kaart)",
-            "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB proefversie, geen kaart)"
+            "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB gratis, geen kaart)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

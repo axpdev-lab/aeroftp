@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "07420313b85381b9b17ff98f565e01994d960570e1048e001bd0400725279e55",
+    "enHash": "47700e9205e368a1a0b57c7f5b6020bd12fb688cd6fa9d4a59221e7630b57475",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -544,6 +544,9 @@
         ],
         "protocol.discoverFileLuCloud": [
             "Multi-protocol cloud storage (1 GB free)"
+        ],
+        "protocol.discoverLifetimeCloud": [
+            "LifetimeCloud storage via WebDAV (1 GB trial, no card)"
         ],
         "protocol.discoverMegaS4": [
             "S3-compatible, Pro plan required, 4 regions (EU/CA)"

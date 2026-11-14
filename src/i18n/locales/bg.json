@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3-съвместимо хранилище в 12 региона (5 GB безплатно, изисква се карта)",
             "discoverNeon": "Neon Object Storage: хранилище, съвместимо със S3, за всяка гранка на проект (5 GB безплатно на проект)",
             "discoverPuter": "Облачно хранилище Puter чрез WebDAV (25 MB пробен период, без карта)",
-            "discoverLifetimeCloud": "Хранилище LifetimeCloud чрез WebDAV (1 GB пробен период, без карта)"
+            "discoverLifetimeCloud": "Хранилище LifetimeCloud чрез WebDAV (1 GB безплатно, без карта)"
         },
         "shortcuts": {
             "title": "Клавишни комбинации",

@@ -287,10 +287,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       freeNote: '25 MB trial', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav', paid: true }] },
-    { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: null,
-      freeNote: '1 GB trial', healthCheckUrl: 'https://lifetimecloud.me/',
+    // A free plan: 1 GB, no card, no time limit, limited use (at most 50 MB per
+    // file and 50 files; account card and lifetimecloud.me/it, 2026-11-14).
+    { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: 1,
+      freeNote: 'limited: 50 files, 50 MB per file', healthCheckUrl: 'https://lifetimecloud.me/',
       searchAliases: ['lifetimecloud', 'lifetimecloud.me', 'lifetime cloud'],
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav', paid: true }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 1,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.uploadcare.com',
       protocols: [{ label: 'API', protocol: 'uploadcare', providerId: 'uploadcare', category: 'media-services' }] },
@@ -613,6 +615,12 @@ export function hasFreeTier(c: CatalogCompany): boolean {
 export type CompanyTier = 'free' | 'free-card' | 'paid';
 
 /** Classify a company into its commercial bucket for the tier filter. */
+/** A free allowance as people read it: below 1 GB in MB (`0.025` is
+ *  "25 MB", not "0.025 GB"), from 1 GB in GB. */
+export function formatFreeStorage(gb: number): string {
+    return gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`;
+}
+
 export function companyTier(c: CatalogCompany): CompanyTier {
     if (c.freeRequiresCard) return 'free-card';
     return hasFreeTier(c) ? 'free' : 'paid';
@@ -808,7 +816,7 @@ export function buildProvidersMarkdown(): string {
             const hq = c.countryCode ? c.countryCode.toUpperCase() : '-';
             let free: string;
             if (c.freeStorageGb != null) {
-                free = `${c.freeStorageGb} GB`;
+                free = formatFreeStorage(c.freeStorageGb);
                 if (c.freeNote) free += ` (${c.freeNote})`;
             } else {
                 free = c.freeNote ?? '-';

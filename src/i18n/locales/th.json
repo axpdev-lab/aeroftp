@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: ที่เก็บข้อมูลที่เข้ากันได้กับ S3 ใน 12 ภูมิภาค (ฟรี 5 GB, ต้องใช้บัตร)",
             "discoverNeon": "Neon Object Storage: ที่จัดเก็บข้อมูลที่เข้ากันได้กับ S3 ต่อสาขาโปรเจกต์ (5 GB ฟรีต่อโปรเจกต์)",
             "discoverPuter": "ที่เก็บข้อมูลคลาวด์ Puter ผ่าน WebDAV (25 MB ทดลองใช้ ไม่ต้องใช้บัตร)",
-            "discoverLifetimeCloud": "พื้นที่จัดเก็บ LifetimeCloud ผ่าน WebDAV (ทดลองใช้ 1 GB, ไม่ต้องใช้บัตร)"
+            "discoverLifetimeCloud": "พื้นที่จัดเก็บ LifetimeCloud ผ่าน WebDAV (ฟรี 1 GB, ไม่ต้องใช้บัตร)"
         },
         "shortcuts": {
             "title": "แป้นพิมพ์ลัด",

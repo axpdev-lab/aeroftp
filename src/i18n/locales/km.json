@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: ឃ្លាំងផ្ទុកត្រូវគ្នា S3 ក្នុង 12 តំបន់ (5 GB ឥតគិតថ្លៃ, ត្រូវការកាត)",
             "discoverNeon": "Neon Object Storage: កន្លែងផ្ទុកដែលត្រូវគ្នាជាមួយ S3 សម្រាប់សាខាគម្រោងនីមួយៗ (5 GB ឥតគិតថ្លៃក្នុងមួយគម្រោង)",
             "discoverPuter": "ការផ្ទុកពពក Puter តាមរយៈ WebDAV (25 MB សាកល្បង គ្មានកាត)",
-            "discoverLifetimeCloud": "ទំហំផ្ទុក LifetimeCloud តាមរយៈ WebDAV (សាកល្បង 1 GB មិនបាច់មានកាត)"
+            "discoverLifetimeCloud": "ទំហំផ្ទុក LifetimeCloud តាមរយៈ WebDAV (1 GB ឥតគិតថ្លៃ មិនបាច់មានកាត)"
         },
         "shortcuts": {
             "title": "ផ្លូវកាត់ក្តារចុច",

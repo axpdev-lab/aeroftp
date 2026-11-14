@@ -225,7 +225,7 @@ AeroFTP organizes integrations on three tiers, so what you see in the catalog is
 | Jottacloud | NO | 5 GB | API |
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
-| LifetimeCloud | IT | 1 GB trial | WebDAV* |
+| LifetimeCloud | IT | 1 GB (limited: 50 files, 50 MB per file) | WebDAV |
 | Mail.ru Cloud | RU | 8 GB (app password required) | WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S4 (S3)* |
 | Microsoft Azure Blob | US | 12-month trial | Blob* |

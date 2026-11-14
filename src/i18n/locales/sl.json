@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)",
             "discoverNeon": "Neon Object Storage: shrambe, združljive s S3, za vsako vejo projekta (5 GB brezplačno na projekt)",
             "discoverPuter": "Puter oblaka shranjevanje prek WebDAV-a (25 MB preizkus, brez kartice)",
-            "discoverLifetimeCloud": "Shramba LifetimeCloud prek WebDAV (1 GB preizkus, brez kartice)"
+            "discoverLifetimeCloud": "Shramba LifetimeCloud prek WebDAV (1 GB brezplačno, brez kartice)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

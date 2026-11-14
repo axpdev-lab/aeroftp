@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: storage na compatible sa S3 sa 12 rehiyon (5 GB libre, kailangan ng card)",
             "discoverNeon": "Neon Object Storage: S3-compatible na storage para sa bawat project branch (5 GB libre kada proyekto)",
             "discoverPuter": "Puter cloud storage sa pamamagitan ng WebDAV (25 MB trial, walang card)",
-            "discoverLifetimeCloud": "Imbakan ng LifetimeCloud sa pamamagitan ng WebDAV (pagsubok na 1 GB, walang card)"
+            "discoverLifetimeCloud": "Imbakan ng LifetimeCloud sa pamamagitan ng WebDAV (1 GB libre, walang card)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

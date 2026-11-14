@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: storan serasi S3 di 12 wilayah (5 GB percuma, kad diperlukan)",
             "discoverNeon": "Neon Object Storage: storan serasi S3 untuk setiap cabang projek (5 GB percuma setiap projek)",
             "discoverPuter": "Storan awan Puter melalui WebDAV (25 MB percubaan, tanpa kad)",
-            "discoverLifetimeCloud": "Storan LifetimeCloud melalui WebDAV (percubaan 1 GB, tanpa kad)"
+            "discoverLifetimeCloud": "Storan LifetimeCloud melalui WebDAV (1 GB percuma, tanpa kad)"
         },
         "shortcuts": {
             "title": "Pintasan Papan Kekunci",

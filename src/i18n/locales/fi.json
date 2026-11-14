@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: S3-yhteensopiva tallennustila 12 alueella (5 GB ilmaiseksi, kortti vaaditaan)",
             "discoverNeon": "Neon Object Storage: S3-yhteensopiva tallennus projektin haaroittain (5 GB ilmaiseksi projektia kohti)",
             "discoverPuter": "Puter pilvitallennus WebDAVin kautta (25 Mt kokeilu, ei korttia)",
-            "discoverLifetimeCloud": "LifetimeCloud-tallennustila WebDAVin kautta (1 GB kokeilu, ei korttia)"
+            "discoverLifetimeCloud": "LifetimeCloud-tallennustila WebDAVin kautta (1 GB ilmaiseksi, ei korttia)"
         },
         "shortcuts": {
             "title": "Pikanäppäimet",

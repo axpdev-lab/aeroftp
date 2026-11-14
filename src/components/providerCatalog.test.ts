@@ -19,6 +19,7 @@ import {
     companyTier,
     companyTierInCategory,
     companyMatchesTier,
+    formatFreeStorage,
 } from './providerCatalog';
 
 describe('CLI catalog drift guard', () => {
@@ -324,6 +325,24 @@ describe('commercial tier model: free / free-card / paid', () => {
         }
     });
 
+    it('a trial is always time-limited and never a free tier', () => {
+        // Owner rule, 2026-11-14: a free plan with no time limit is free,
+        // however tight its usage limits (LifetimeCloud, Puter); "trial" marks
+        // only a time-limited allowance (a 30-day or 12-month window, a
+        // new-user offer), which keeps freeStorageGb null.
+        for (const c of PROVIDER_CATALOG) {
+            if (!/trial/i.test(c.freeNote ?? '')) continue;
+            expect(c.freeStorageGb, `${c.company}: a time-limited trial is no free tier`).toBeNull();
+        }
+    });
+
+    it('a free allowance below 1 GB is printed in MB', () => {
+        expect(formatFreeStorage(0.025)).toBe('25 MB');
+        expect(formatFreeStorage(0.5)).toBe('500 MB');
+        expect(formatFreeStorage(1)).toBe('1 GB');
+        expect(formatFreeStorage(15)).toBe('15 GB');
+    });
+
     it('Puter is listed with trial copy and never classified as free', () => {
         // A 25 MB allowance is a trial, not a free plan (owner, 2026-11-14):
         // without `paid` on its only method the WebDAV tab filed Puter under
@@ -336,17 +355,19 @@ describe('commercial tier model: free / free-card / paid', () => {
         expect(companyTierInCategory(entry!, 'webdav')).toBe('paid');
     });
 
-    it('LifetimeCloud is listed with trial copy and never classified as free', () => {
+    it('LifetimeCloud is listed as a free 1 GB plan with its limits, in the Free filter', () => {
+        // No card and no time limit, only usage limits: a free plan, never a
+        // trial, with the limits in its note.
         const entry = PROVIDER_CATALOG.find(c => c.logoId === 'lifetimecloud');
         expect(entry).toBeDefined();
         expect(entry!.company).toBe('LifetimeCloud');
         expect(entry!.countryCode).toBe('IT');
-        expect(entry!.freeStorageGb).toBeNull();
-        expect(entry!.freeNote).toBe('1 GB trial');
-        expect(companyTier(entry!)).toBe('paid');
-        expect(companyTierInCategory(entry!, 'webdav')).toBe('paid');
+        expect(entry!.freeStorageGb).toBe(1);
+        expect(entry!.freeNote).toBe('limited: 50 files, 50 MB per file');
+        expect(companyTier(entry!)).toBe('free');
+        expect(companyTierInCategory(entry!, 'webdav')).toBe('free');
         expect(entry!.protocols).toEqual([
-            { label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav', paid: true },
+            { label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav' },
         ]);
 
         const tile = PROVIDER_GRID.find(t => t.logoId === 'lifetimecloud');

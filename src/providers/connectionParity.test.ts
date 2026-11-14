@@ -48,7 +48,7 @@ describe('connection metadata used by saved profiles', () => {
         expect(passField?.helpText).toMatch(/persistent connections/i);
     });
 
-    it('LifetimeCloud WebDAV preset is declared in manifest and registry with trial wording and token onboarding', () => {
+    it('LifetimeCloud WebDAV preset is declared in manifest and registry as a free plan with token onboarding', () => {
         const manifestPreset = connectionManifest.presets.find(p => p.id === 'lifetimecloud');
         expect(manifestPreset).toMatchObject({
             id: 'lifetimecloud',
@@ -65,8 +65,12 @@ describe('connection metadata used by saved profiles', () => {
         expect(provider!.protocol).toBe('webdav');
         expect(provider!.category).toBe('webdav');
         expect(provider!.features).toEqual({ shareLink: false, sync: true });
-        expect((provider!.description ?? '').toLowerCase()).toContain('trial');
-        expect((provider!.description ?? '').toLowerCase()).not.toContain('free');
+        // A free plan with no time limit and usage limits (owner, 2026-11-14):
+        // the description says free, never trial, and the setup notes give the
+        // limits before the user saves the profile.
+        expect((provider!.description ?? '').toLowerCase()).toContain('free');
+        expect((provider!.description ?? '').toLowerCase()).not.toContain('trial');
+        expect((provider!.setupInstructions ?? []).join(' ')).toMatch(/50 MB per file and 50 files/);
         const pwField = provider!.fields.find(f => f.key === 'password');
         expect(pwField?.label).toBe('WebDAV token');
         expect(pwField?.placeholder?.toLowerCase()).toContain('not your lifetimecloud account password');

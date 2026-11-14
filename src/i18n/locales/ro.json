@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)",
             "discoverNeon": "Neon Object Storage: stocare compatibilă cu S3 pentru fiecare ramură de proiect (5 GB gratuite pe proiect)",
             "discoverPuter": "Stocare cloud Puter prin WebDAV (25 MB de probă, fără card)",
-            "discoverLifetimeCloud": "Stocare LifetimeCloud prin WebDAV (probă de 1 GB, fără card)"
+            "discoverLifetimeCloud": "Stocare LifetimeCloud prin WebDAV (1 GB gratuit, fără card)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

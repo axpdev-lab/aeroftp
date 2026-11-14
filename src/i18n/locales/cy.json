@@ -2382,7 +2382,7 @@
             "discoverFastly": "Fastly Object Storage: storfa sy'n gydnaws ag S3 mewn 12 rhanbarth (5 GB am ddim, mae angen cerdyn)",
             "discoverNeon": "Neon Object Storage: storio'n gytûn â S3 ar gyfer pob cangen prosiect (5 GB am ddim fesul prosiect)",
             "discoverPuter": "Storio cymywl Puter ar gyfer WebDAV (25 MB treial, dim cerdyn)",
-            "discoverLifetimeCloud": "Storio LifetimeCloud drwy WebDAV (treial 1 GB, dim cerdyn)"
+            "discoverLifetimeCloud": "Storio LifetimeCloud drwy WebDAV (1 GB am ddim, dim cerdyn)"
         },
         "shortcuts": {
             "title": "Llwybrau Byr Bysellfwrdd",
