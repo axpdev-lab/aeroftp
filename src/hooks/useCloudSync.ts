@@ -41,6 +41,9 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const [cloudLastSync, setCloudLastSync] = useState<string | null>(null);
   const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');
   const [cloudRemoteFolder, setCloudRemoteFolder] = useState<string>('');
+  // The saved profile AeroCloud syncs with, by id: the badges and the share
+  // link are offered only on a connection made with it.
+  const [cloudProfileId, setCloudProfileId] = useState<string | null>(null);
   const [cloudPublicUrlBase, setCloudPublicUrlBase] = useState<string>('');
   const [cloudProtocolType, setCloudProtocolType] = useState<string>('ftp');
 
@@ -65,6 +68,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           paused?: boolean;
           cloud_name?: string;
           server_profile?: string;
+          server_profile_id?: string | null;
           last_sync?: string;
           local_folder?: string;
           remote_folder?: string;
@@ -81,6 +85,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         if (config.last_sync) setCloudLastSync(config.last_sync);
         if (config.local_folder) setCloudLocalFolder(config.local_folder);
         if (config.remote_folder) setCloudRemoteFolder(config.remote_folder);
+        setCloudProfileId(config.server_profile_id || null);
         if (config.public_url_base) setCloudPublicUrlBase(config.public_url_base);
         if (config.protocol_type) setCloudProtocolType(config.protocol_type);
       } catch (e) {
@@ -152,6 +157,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         setCloudLastSync(null);
         setCloudLocalFolder('');
         setCloudRemoteFolder('');
+        setCloudProfileId(null);
         setCloudPublicUrlBase('');
       }
     });
@@ -297,6 +303,8 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     setCloudLocalFolder,
     cloudRemoteFolder,
     setCloudRemoteFolder,
+    cloudProfileId,
+    setCloudProfileId,
     cloudPublicUrlBase,
     setCloudPublicUrlBase,
     cloudProtocolType,

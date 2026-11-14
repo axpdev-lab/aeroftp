@@ -375,6 +375,19 @@ fn saved_profile(
     .cloned())
 }
 
+/// The id of the saved profile an AeroCloud config names, selected as the
+/// connection selects it; `None` when it names none.
+pub(crate) fn aerocloud_profile_id(
+    store: &credential_store::CredentialStore,
+    config: &CloudConfig,
+) -> Result<Option<String>, String> {
+    Ok(saved_profile(store, config)?
+        .as_ref()
+        .and_then(|profile| profile.get("id"))
+        .and_then(|id| id.as_str())
+        .map(str::to_string))
+}
+
 /// The folder a saved profile opens in, which is the root AeroCloud works in:
 /// the profile's starting folder with the `{username}` template some WebDAV
 /// presets keep in it resolved, `/` when it has none. AeroCloud connects

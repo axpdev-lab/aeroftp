@@ -191,3 +191,31 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(fresh).toContain('setCloudRemoteFolder(listedCloudFolder);');
   expect(app).not.toMatch(/navigateToRemoteFolder\(cloudConfig\.remote_folder\)/);
 });
+
+it('offers the sync badges and the share link only on the AeroCloud connection', async () => {
+  const { isAeroCloudConnection, liveSavedServerId, selectAeroCloudProfile } = await import('./liveConnection');
+  const form = { server: '', username: '', password: '' };
+  const cloud = { id: 'srv_cloud', connectionParams: { ...form, savedServerId: 'srv_cloud' }, savedServerId: 'srv_cloud' };
+  const other = { id: 'srv_other_tab', connectionParams: { ...form, savedServerId: 'srv_other' }, savedServerId: 'srv_other' };
+  // Another server listing the same path: no badge, no link.
+  expect(isAeroCloudConnection(liveSavedServerId([cloud, other], 'srv_other_tab', form), 'srv_cloud')).toBe(false);
+  // The AeroCloud session, and the AeroCloud tab (no session, its params on the form).
+  expect(isAeroCloudConnection(liveSavedServerId([cloud, other], 'srv_cloud', form), 'srv_cloud')).toBe(true);
+  expect(isAeroCloudConnection(liveSavedServerId([], null, { ...form, savedServerId: 'srv_cloud' }), 'srv_cloud')).toBe(true);
+  // A session that names no profile does not borrow the form's.
+  expect(liveSavedServerId([{ id: 'quick', connectionParams: form }], 'quick', { ...form, savedServerId: 'srv_cloud' })).toBeNull();
+  expect(isAeroCloudConnection(null, 'srv_cloud')).toBe(false);
+  expect(isAeroCloudConnection('srv_cloud', null)).toBe(false);
+  // The tab opens the profile the config is pinned to, as the backend selects it.
+  const profiles = [{ id: 'a', name: 'nas' }, { id: 'b', name: 'nas' }];
+  expect(selectAeroCloudProfile(profiles, 'b', 'nas')?.id).toBe('b');
+  expect(selectAeroCloudProfile(profiles, 'gone', 'nas')).toBeUndefined();
+  expect(selectAeroCloudProfile(profiles, null, 'nas')?.id).toBe('a');
+  expect(selectAeroCloudProfile(profiles, null, 'b')?.id).toBe('b');
+  // Both entry points read that predicate, and the tab records the profile it opened.
+  const badge = app.slice(app.indexOf('const getSyncBadge = '), app.indexOf('const lastSyncTime', app.indexOf('const getSyncBadge = ')));
+  expect(badge).toContain('if (!isLocal && !onAeroCloudConnection()) return null;');
+  expect(app).toMatch(/cloudRemoteFolder && onAeroCloudConnection\(\) && isWithinSyncFolder\(file\.path, cloudRemoteFolder\)/);
+  expect(app).toContain('const cloudServer = selectAeroCloudProfile(savedServers, cloudConfig.server_profile_id, cloudConfig.server_profile);');
+  expect(app.match(/setCloudProfileId\(cloudServer\.id\);/g)?.length).toBe(2);
+});

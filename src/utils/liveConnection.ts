@@ -149,3 +149,46 @@ export function isSameConnection(live: ConnectionParams, target: ConnectionParam
     }
     return true;
 }
+
+/**
+ * The saved profile the connection on screen was made with: the active
+ * session's, else the form's (the AeroCloud tab has no session of its own).
+ * A session that names none has none: the form's id can belong to an earlier
+ * connect, as in `resolveLiveConnectionParams`.
+ */
+export function liveSavedServerId(
+    sessions: ReadonlyArray<LiveConnectionSession & { savedServerId?: string }>,
+    activeSessionId: string | null | undefined,
+    formParams: ConnectionParams,
+): string | null {
+    if (activeSessionId) {
+        const active = sessions.find(session => session.id === activeSessionId);
+        return active?.savedServerId || active?.connectionParams?.savedServerId || null;
+    }
+    return formParams.savedServerId || null;
+}
+
+/**
+ * Whether the connection on screen is the one AeroCloud syncs with: the same
+ * saved profile, by id. A path or a display name says nothing about the
+ * server, and an unknown id on either side is not a match.
+ */
+export const isAeroCloudConnection = (liveId: string | null | undefined, cloudProfileId: string | null | undefined): boolean =>
+    !!liveId && !!cloudProfileId && liveId === cloudProfileId;
+
+/**
+ * The saved profile an AeroCloud config names, as the backend's
+ * `select_aerocloud_profile` selects it: by its id when the config carries
+ * one (an id that matches nothing selects nothing, never a homonym), else by
+ * exact name, else by the name taken as an id.
+ */
+export function selectAeroCloudProfile<P extends { id: string; name: string }>(
+    profiles: ReadonlyArray<P>,
+    profileId: string | null | undefined,
+    profileName: string,
+): P | undefined {
+    const id = profileId?.trim();
+    if (id) return profiles.find(p => p.id === id);
+    return profiles.find(p => p.name === profileName) ?? profiles.find(p => p.id === profileName);
+}
+

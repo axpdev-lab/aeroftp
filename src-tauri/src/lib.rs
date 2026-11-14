@@ -180,7 +180,20 @@ pub mod portable;
 /// a new pair. The files stay as they were.
 #[cfg(test)]
 mod remote_share_link_tests {
-    use super::remote_share_link;
+    use super::{remote_share_link, share_link_connection_check};
+
+    /// The link is built only from the AeroCloud connection: another
+    /// server's session, a connection with no saved profile, a config that
+    /// selects none, or a session switched to another profile before the
+    /// command runs are refused.
+    #[test]
+    fn a_share_link_is_built_only_from_the_aerocloud_connection() {
+        assert!(share_link_connection_check(Some("srv_cloud"), Some("srv_cloud")).is_ok());
+        assert!(share_link_connection_check(Some("srv_other"), Some("srv_cloud")).is_err());
+        assert!(share_link_connection_check(None, Some("srv_cloud")).is_err());
+        assert!(share_link_connection_check(Some("srv_cloud"), None).is_err());
+        assert!(share_link_connection_check(None, None).is_err());
+    }
 
     /// A file is shared from the folder it is under, at a component
     /// boundary, in the form the session listed it.
@@ -17014,11 +17027,15 @@ fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
 /// Generate share link from remote path (when browsing remote files)
 #[tauri::command]
 async fn generate_share_link_remote(
+    provider_state: State<'_, provider_commands::ProviderState>,
     remote_path: String,
     remote_root: Option<String>,
 ) -> Result<String, String> {
+    // The connection as it stands when the link is asked for, not when the
+    // menu opened: a switch in between is refused below.
+    let connected = provider_state.connected_profile_id();
     tokio::task::spawn_blocking(move || {
-        generate_share_link_remote_blocking(remote_path, remote_root)
+        generate_share_link_remote_blocking(remote_path, remote_root, connected)
     })
     .await
     .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
@@ -17027,10 +17044,13 @@ async fn generate_share_link_remote(
 /// The body of `generate_share_link_remote`, kept synchronous and run on the blocking pool.
 ///
 /// `remote_root` is the AeroCloud folder as the session listed it, the form
-/// `remote_path` comes in; without it the saved folder is used.
+/// `remote_path` comes in; without it the saved folder is used. `connected`
+/// is the saved profile of the connection on screen: the link is built only
+/// when it is the profile AeroCloud syncs with, as the config selects it.
 fn generate_share_link_remote_blocking(
     remote_path: String,
     remote_root: Option<String>,
+    connected: Option<String>,
 ) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
@@ -17043,6 +17063,11 @@ fn generate_share_link_remote_blocking(
             .to_string()
     })?;
 
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Credential vault not open".to_string())?;
+    let expected = cloud_provider_factory::aerocloud_profile_id(&store, &config)?;
+    share_link_connection_check(connected.as_deref(), expected.as_deref())?;
+
     let root = remote_root
         .filter(|root| !root.trim().is_empty())
         .unwrap_or_else(|| config.remote_folder.clone());
@@ -17051,6 +17076,23 @@ fn generate_share_link_remote_blocking(
     info!("Generated share link (remote): {}", url);
 
     Ok(url)
+}
+
+/// A share link names a file on the AeroCloud server: the connection it is
+/// built from must be the saved profile AeroCloud syncs with. Another server
+/// can list the same path, and an unknown profile on either side matches
+/// nothing.
+fn share_link_connection_check(
+    connected: Option<&str>,
+    expected: Option<&str>,
+) -> Result<(), String> {
+    match (connected, expected) {
+        (Some(connected), Some(expected)) if connected == expected => Ok(()),
+        _ => Err(
+            "The connection on screen is not the AeroCloud server: no share link is built for it"
+                .to_string(),
+        ),
+    }
 }
 
 /// The public URL of `remote_path` under the AeroCloud folder `root`. The

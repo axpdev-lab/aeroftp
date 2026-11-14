@@ -170,6 +170,14 @@ impl ProviderState {
         }
     }
 
+    /// The saved profile the connected provider was opened with, if any.
+    pub(crate) fn connected_profile_id(&self) -> Option<String> {
+        self.connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
     /// Bind an optional restored-transfer generation before any remote I/O.
     /// Keep the returned guard through the whole command, including DAG lock
     /// releases and folder phases. Dropping/error/cancellation releases the pin.

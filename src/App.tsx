@@ -525,7 +525,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { connectionNumberOf, connectionTargetKey, isAeroCloudConnection, isSameConnection, liveSavedServerId, resolveLiveConnectionParams, savedProfileIdOf, selectAeroCloudProfile } from './utils/liveConnection';
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
@@ -1867,10 +1867,18 @@ const App: React.FC = () => {
   }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
+  // Whether the connection on screen is the one AeroCloud syncs with (the
+  // saved profile, by id): the remote badges and the share link are its.
+  const onAeroCloudConnection = () =>
+    isAeroCloudConnection(liveSavedServerId(sessions, activeSessionId, liveConnectionParams), cloudProfileId);
+
   // Sync Badge Helper - returns badge element if file is in cloud folder
   const getSyncBadge = (fileModified: string | undefined, isLocal: boolean) => {
-    // Only show badges if cloud is active and we have cloud folder paths
+    // Only show badges if cloud is active and we have cloud folder paths. A
+    // remote badge only on the AeroCloud connection: another server can list
+    // the same path, and its files are not the ones AeroCloud synced.
     if (!isCloudActive || !cloudLastSync || !cloudLocalFolder || !cloudRemoteFolder) return null;
+    if (!isLocal && !onAeroCloudConnection()) return null;
 
     // Check if current path is within cloud folder (local or remote)
     const currentPath = isLocal ? currentLocalPath : currentRemotePath;
@@ -2435,6 +2443,7 @@ const App: React.FC = () => {
     cloudLastSync,
     cloudLocalFolder, setCloudLocalFolder,
     cloudRemoteFolder, setCloudRemoteFolder,
+    cloudProfileId, setCloudProfileId,
     cloudPublicUrlBase,
   } = useCloudSync({
     activityLog, humanLog, t, checkForUpdate, isAppLocked,
@@ -9734,6 +9743,7 @@ const App: React.FC = () => {
         local_folder: string;
         remote_folder: string;
         server_profile: string;
+        server_profile_id?: string | null;
         protocol_type?: string;
       }>('get_cloud_config');
 
@@ -9752,7 +9762,10 @@ const App: React.FC = () => {
         return;
       }
 
-      const cloudServer = savedServers.find((s: { name: string }) => s.name === cloudConfig.server_profile);
+      // The profile the config is pinned to, by id; by name only for a config
+      // saved without one, as the backend selects it. A name two profiles
+      // share would otherwise open whichever is listed first.
+      const cloudServer = selectAeroCloudProfile(savedServers, cloudConfig.server_profile_id, cloudConfig.server_profile);
 
       if (!cloudServer) {
         notify.error(t('toast.serverNotFound'), t('toast.serverProfileNotFound', { name: cloudConfig.server_profile }));
@@ -9999,6 +10012,7 @@ const App: React.FC = () => {
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           setCloudRemoteFolder(listedFolder);
+          setCloudProfileId(cloudServer.id);
           setCloudLocalFolder(cloudConfig.local_folder);
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
@@ -10039,6 +10053,7 @@ const App: React.FC = () => {
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
       setCloudRemoteFolder(listedCloudFolder);
+      setCloudProfileId(cloudServer.id);
       setCloudLocalFolder(cloudConfig.local_folder);
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
@@ -15907,7 +15922,7 @@ const App: React.FC = () => {
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
-    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && isWithinSyncFolder(file.path, cloudRemoteFolder)) {
+    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && onAeroCloudConnection() && isWithinSyncFolder(file.path, cloudRemoteFolder)) {
       items.push({
         label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
