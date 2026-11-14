@@ -545,13 +545,16 @@ impl GitHubProvider {
     }
 
     fn contents_query_url(&self, path: &str) -> String {
+        self.contents_query_url_on(path, &self.encoded_content_branch_for_query())
+    }
+
+    /// [`Self::contents_query_url`] on another branch (`encoded_branch`,
+    /// already encoded for a query): the fallback reads the destination
+    /// file on the working branch it writes to (X4).
+    fn contents_query_url_on(&self, path: &str, encoded_branch: &str) -> String {
         let resolved = Self::normalise_path(path);
         if resolved.is_empty() {
-            format!(
-                "{}/contents?ref={}",
-                self.repo_url(),
-                self.encoded_content_branch_for_query(),
-            )
+            format!("{}/contents?ref={}", self.repo_url(), encoded_branch)
         } else {
             // Encode each path segment individually: do NOT encode the slashes
             let encoded_path = resolved
@@ -563,7 +566,7 @@ impl GitHubProvider {
                 "{}/contents/{}?ref={}",
                 self.repo_url(),
                 encoded_path,
-                self.encoded_content_branch_for_query(),
+                encoded_branch,
             )
         }
     }
@@ -1071,9 +1074,9 @@ impl GitHubProvider {
         let message = format!(
             "GitHub: a working branch named {legacy}, as earlier AeroFTP versions named it, \
              has commits the protected branch does not. This session neither shows them nor \
-             writes there: a write the protected branch refuses goes to {}. If that work is \
-             yours, open a pull request from {legacy} on GitHub to keep it.",
-            self.own_working_branch()?
+             writes there: a write the protected branch refuses goes to a working branch \
+             chosen at that write. If that work is yours, open a pull request from {legacy} \
+             on GitHub to keep it."
         );
         log::warn!("{message}");
         crate::providers::report_warning(message);
@@ -2024,12 +2027,44 @@ impl StorageProvider for GitHubProvider {
                                     ))
                                 }),
                             })?;
+                    // CodeRabbit 4574777433 (X4): everything in the body that
+                    // came from the protected branch's state is read again on
+                    // the branch it now goes to, which can hold pending work
+                    // another client made: the file's SHA there decides
+                    // between a create and an update, for the request and for
+                    // its commit message. Nothing is written yet, so a failed
+                    // lookup fails the upload alone.
+                    let destination_url = self
+                        .contents_query_url_on(&resolved, &urlencoding::encode(&workflow_branch));
+                    let destination_sha = match self
+                        .client
+                        .get_json_at::<GitHubContent>(&destination_url, &resolved)
+                        .await
+                    {
+                        Ok(existing) => Some(existing.sha),
+                        Err(GitHubError::PathNotFound(_) | GitHubError::RepoNotFound) => None,
+                        Err(e) => return Err(ProviderError::from(e)),
+                    };
+                    let message = self.with_co_author(&format!(
+                        "{} {}",
+                        if destination_sha.is_some() {
+                            "Update"
+                        } else {
+                            "Create"
+                        },
+                        file_name
+                    ));
                     // QA-GH-019: Mutate the existing body in-place: no clone of the
                     // large base64 content. `body` is already a serde_json::Value on the stack.
                     // The upload goes to the working branch by name; the
                     // session is still on the protected one while it waits.
                     if let Some(obj) = body.as_object_mut() {
                         obj.insert("branch".to_string(), serde_json::json!(workflow_branch));
+                        obj.insert("message".to_string(), serde_json::json!(message));
+                        match destination_sha {
+                            Some(sha) => obj.insert("sha".to_string(), serde_json::json!(sha)),
+                            None => obj.remove("sha"),
+                        };
                     }
                     // Until the answer proves the write was refused, it may
                     // have landed (S2 d, T4): only `proves_not_written`
@@ -3730,6 +3765,367 @@ mod tests {
             server.abort();
         }
 
+        /// CodeRabbit 4574777431 (X3): a write answered 200 whose body is not
+        /// JSON, or stalls past the read timeout, is not a write that
+        /// succeeded. With a classification still inside the window, the next
+        /// write classifies the branch again rather than skip the check; an
+        /// answer read to its end lets the next write skip it.
+        #[tokio::test]
+        async fn a_write_whose_success_body_fails_forces_the_next_check() {
+            use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering::SeqCst};
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            for (case, body) in [
+                ("invalid body", 1u8),
+                ("stalled body", 2),
+                ("whole body", 0),
+            ] {
+                let answer = Arc::new(AtomicU8::new(body));
+                let compares = Arc::new(AtomicUsize::new(0));
+                let state = (answer.clone(), compares.clone());
+                let app = axum::Router::new().fallback(axum::routing::any(
+                    move |method: axum::http::Method, uri: axum::http::Uri| {
+                        let (answer, compares) = state.clone();
+                        async move {
+                            use axum::response::IntoResponse;
+                            let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                            let json = |status: u16, body: String| {
+                                (
+                                    axum::http::StatusCode::from_u16(status).unwrap(),
+                                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                                    axum::body::Body::from(body),
+                                )
+                                    .into_response()
+                            };
+                            if path.contains("/compare/") {
+                                compares.fetch_add(1, SeqCst);
+                                return json(200, r#"{"ahead_by": 1, "behind_by": 0}"#.into());
+                            }
+                            if method == axum::http::Method::PUT && path.contains("/contents/") {
+                                return match answer.swap(0, SeqCst) {
+                                    1 => json(200, "not json".into()),
+                                    2 => {
+                                        use futures_util::StreamExt as _;
+                                        let first = futures_util::stream::once(async {
+                                            Ok::<_, std::io::Error>(axum::body::Bytes::from_static(
+                                                b"{\"content\":",
+                                            ))
+                                        });
+                                        (
+                                            axum::http::StatusCode::OK,
+                                            [(
+                                                axum::http::header::CONTENT_TYPE,
+                                                "application/json",
+                                            )],
+                                            axum::body::Body::from_stream(
+                                                first.chain(futures_util::stream::pending()),
+                                            ),
+                                        )
+                                            .into_response()
+                                    }
+                                    _ => json(200, r#"{"content": {"sha": "abc123"}}"#.into()),
+                                };
+                            }
+                            json(404, r#"{"message": "Not Found"}"#.into())
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                provider.client.client = reqwest::Client::builder()
+                    .read_timeout(std::time::Duration::from_millis(300))
+                    .build()
+                    .unwrap();
+                provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                    branch: own.clone(),
+                };
+                // A write that succeeded, its classification just made: the
+                // window is open.
+                provider.client.last_tree_write_ok = true;
+                provider.last_branch_check = Some(std::time::Instant::now());
+                let (_dir, file) = a_file();
+                let first = provider.upload(&file, "/a.txt", None).await;
+                assert_eq!(compares.load(SeqCst), 0, "{case}: inside the window");
+                assert_eq!(first.is_err(), body != 0, "{case}: {first:?}");
+                assert_eq!(provider.client.last_tree_write_ok, body == 0, "{case}");
+                provider.upload(&file, "/b.txt", None).await.unwrap();
+                assert_eq!(
+                    compares.load(SeqCst),
+                    usize::from(body != 0),
+                    "{case}: the next write classifies again only after a failed body"
+                );
+                server.abort();
+            }
+        }
+
+        /// CodeRabbit 4574777433 (X4): the fallback goes to a working branch
+        /// another client left pending work on, where the file is not what it
+        /// is on `main`. The request is built from the working branch's state:
+        /// its SHA for an update (never `main`'s), no SHA for a create, and
+        /// the commit message that says which.
+        #[tokio::test]
+        async fn the_fallback_write_is_built_from_the_working_branch_file() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            for (case, on_main, on_own, wording) in [
+                (
+                    "different SHAs",
+                    Some("sha-main"),
+                    Some("sha-own"),
+                    "Update a.txt",
+                ),
+                ("only on main", Some("sha-main"), None, "Create a.txt"),
+                (
+                    "only on the working branch",
+                    None,
+                    Some("sha-own"),
+                    "Update a.txt",
+                ),
+            ] {
+                let log = Arc::new(Mutex::new(Vec::<String>::new()));
+                let seen = log.clone();
+                let own_name = own.clone();
+                let app = axum::Router::new().fallback(axum::routing::any(
+                    move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                        let (seen, own) = (seen.clone(), own_name.clone());
+                        async move {
+                            use axum::response::IntoResponse;
+                            let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                            let query = urlencoding::decode(uri.query().unwrap_or(""))
+                                .unwrap()
+                                .into_owned();
+                            let reply = |status: u16, json: serde_json::Value| {
+                                (
+                                    axum::http::StatusCode::from_u16(status).unwrap(),
+                                    axum::Json(json),
+                                )
+                                    .into_response()
+                            };
+                            let not_found = serde_json::json!({"message": "Not Found"});
+                            let file = |sha: Option<&str>| match sha {
+                                Some(sha) => reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": "a.txt", "path": "a.txt", "type": "file",
+                                        "size": 1, "sha": sha,
+                                    }),
+                                ),
+                                None => reply(404, not_found.clone()),
+                            };
+                            if method != axum::http::Method::GET {
+                                seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                            }
+                            if path.ends_with("/branches/main") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": "main", "protected": true,
+                                        "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                    }),
+                                );
+                            }
+                            if method == axum::http::Method::GET && path.ends_with("/contents/a.txt") {
+                                return if query.contains(&format!("ref={own}")) {
+                                    file(on_own)
+                                } else {
+                                    file(on_main)
+                                };
+                            }
+                            if path.contains("/git/matching-refs/heads/") {
+                                return reply(200, serde_json::json!([{"ref": format!("refs/heads/{own}")}]));
+                            }
+                            if path.contains("/compare/") {
+                                // Pending work another client made.
+                                return reply(200, serde_json::json!({"ahead_by": 1, "behind_by": 0}));
+                            }
+                            if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"") {
+                                return reply(
+                                    403,
+                                    serde_json::json!({"message": "Protected branch update failed"}),
+                                );
+                            }
+                            if method == axum::http::Method::PUT {
+                                // As GitHub: an update names the SHA the file has
+                                // on this branch, a create names none.
+                                let sha = serde_json::from_str::<serde_json::Value>(&body)
+                                    .ok()
+                                    .and_then(|b| b.get("sha").and_then(|s| s.as_str()).map(str::to_string));
+                                return if sha.as_deref() == on_own {
+                                    reply(201, serde_json::json!({"content": {"sha": "sha-new"}}))
+                                } else {
+                                    reply(409, serde_json::json!({"message": "a.txt does not match"}))
+                                };
+                            }
+                            reply(404, not_found)
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                let (_dir, file) = a_file();
+                provider
+                    .upload(&file, "/a.txt", None)
+                    .await
+                    .unwrap_or_else(|e| panic!("{case}: {e:?}"));
+                let writes = log.lock().unwrap().clone();
+                let fallback = writes
+                    .iter()
+                    .find(|w| w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{own}\"")))
+                    .unwrap_or_else(|| panic!("{case}: {writes:?}"));
+                let body: serde_json::Value = serde_json::from_str(
+                    fallback
+                        .split_once(' ')
+                        .unwrap()
+                        .1
+                        .split_once(' ')
+                        .unwrap()
+                        .1,
+                )
+                .unwrap();
+                assert_eq!(body.get("sha").and_then(|s| s.as_str()), on_own, "{case}");
+                assert!(
+                    body["message"].as_str().unwrap().starts_with(wording),
+                    "{case}: {body}"
+                );
+                assert_eq!(provider.working_branch(), Some(own.as_str()), "{case}");
+                server.abort();
+            }
+        }
+
+        /// The other half of T4: an upload dropped BEFORE any write request
+        /// for the working branch was sent (while the fallback still lists
+        /// the working branches, or reads the destination file on the one it
+        /// chose, X4) wrote nothing there, so the session is neither switched
+        /// nor poisoned and the next write goes on. (Dropped while that write
+        /// request is in flight, it is poisoned:
+        /// `a_fallback_write_whose_answer_is_lost_poisons_the_session`.)
+        #[tokio::test]
+        async fn a_fallback_dropped_before_its_write_is_sent_leaves_the_session_unpoisoned() {
+            use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            // CodeRabbit 4574777433 (X4): the destination read is a request
+            // between the refusal on `main` and the fallback write; dropped,
+            // or answered 5xx, it fails the upload with nothing written.
+            for held in [
+                "the working-branch listing",
+                "the destination read",
+                "a destination read answered 502",
+            ] {
+                let hold = Arc::new(AtomicBool::new(true));
+                let log = Arc::new(Mutex::new(Vec::<String>::new()));
+                let state = (hold.clone(), log.clone(), own.clone(), held);
+                let app = axum::Router::new().fallback(axum::routing::any(
+                    move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                        let (hold, log, own, held) = state.clone();
+                        async move {
+                            use axum::response::IntoResponse;
+                            let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                            let query = urlencoding::decode(uri.query().unwrap_or(""))
+                                .unwrap()
+                                .into_owned();
+                            let reply = |status: u16, json: serde_json::Value| {
+                                (
+                                    axum::http::StatusCode::from_u16(status).unwrap(),
+                                    axum::Json(json),
+                                )
+                                    .into_response()
+                            };
+                            if method != axum::http::Method::GET {
+                                log.lock().unwrap().push(format!("{method} {path} {body}"));
+                            }
+                            let stall = || async {
+                                if hold.load(SeqCst) {
+                                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                                }
+                            };
+                            if path.ends_with("/branches/main") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": "main", "protected": true,
+                                        "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                    }),
+                                );
+                            }
+                            if path.contains("/git/matching-refs/heads/") {
+                                if held == "the working-branch listing" {
+                                    stall().await;
+                                }
+                                return reply(200, serde_json::json!([{"ref": format!("refs/heads/{own}")}]));
+                            }
+                            if path.contains("/compare/") {
+                                return reply(200, serde_json::json!({"ahead_by": 1, "behind_by": 0}));
+                            }
+                            if method == axum::http::Method::GET && query.contains(&format!("ref={own}")) {
+                                if held == "the destination read" {
+                                    stall().await;
+                                }
+                                if held == "a destination read answered 502" && hold.load(SeqCst) {
+                                    return reply(502, serde_json::json!({"message": "Bad gateway"}));
+                                }
+                                return reply(404, serde_json::json!({"message": "Not Found"}));
+                            }
+                            if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"") {
+                                return reply(
+                                    403,
+                                    serde_json::json!({"message": "Protected branch update failed"}),
+                                );
+                            }
+                            if method == axum::http::Method::PUT {
+                                return reply(201, serde_json::json!({"content": {"sha": "abc123"}}));
+                            }
+                            reply(404, serde_json::json!({"message": "Not Found"}))
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                let (_dir, file) = a_file();
+                // A read answered 5xx is retried once after a second; a held
+                // one is dropped at half a second.
+                let window = if held.ends_with("502") { 5_000 } else { 500 };
+                let dropped = tokio::time::timeout(
+                    std::time::Duration::from_millis(window),
+                    provider.upload(&file, "/a.txt", None),
+                )
+                .await;
+                if held.ends_with("502") {
+                    assert!(
+                        matches!(dropped, Ok(Err(_))),
+                        "{held}: the upload fails: {dropped:?}"
+                    );
+                } else {
+                    assert!(dropped.is_err(), "{held}: the upload is held, then dropped");
+                }
+                let to_own = |log: &Arc<Mutex<Vec<String>>>| {
+                    log.lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|w| w.contains(&own))
+                        .count()
+                };
+                assert_eq!(
+                    to_own(&log),
+                    0,
+                    "{held}: nothing was sent for the working branch"
+                );
+                assert!(
+                    provider.refuse_when_poisoned().is_ok(),
+                    "{held}: not poisoned"
+                );
+                assert_eq!(provider.working_branch(), None, "{held}: not switched");
+                // The next write is served: the fallback runs again and lands.
+                hold.store(false, SeqCst);
+                provider.upload(&file, "/a.txt", None).await.unwrap();
+                assert_eq!(to_own(&log), 1, "{held}");
+                server.abort();
+            }
+        }
+
         /// What the T1 API holds for one working-branch name.
         #[derive(Clone, Copy, Debug)]
         struct Held {
@@ -4199,12 +4595,22 @@ mod tests {
                 provider.start_on_existing_working_branch().await.unwrap();
                 let warnings = crate::providers::take_warnings();
                 assert_eq!(
-                    warnings
-                        .iter()
-                        .any(|w| w.contains(&legacy) && w.contains(&own)),
+                    warnings.iter().any(|w| w.contains(&legacy)),
                     reported,
                     "{case}: {warnings:?}"
                 );
+                // The warning names no destination: which working branch a
+                // refused write goes to is chosen at that write (a merged
+                // candidate is skipped, all merged means a refusal), so the
+                // only branch it names is the legacy one.
+                for warning in &warnings {
+                    assert!(!warning.contains(&own), "{case}: {warning}");
+                    assert_eq!(
+                        warning.matches("aeroftp/").count(),
+                        warning.matches(legacy.as_str()).count(),
+                        "{case}: {warning}"
+                    );
+                }
                 assert_eq!(
                     warnings.len(),
                     usize::from(reported),

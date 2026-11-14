@@ -148,6 +148,13 @@ pub enum AerorsyncErrorKind {
     /// offer something else (`none`, an agent identity, a key). Nothing was
     /// offered to the server. Never fall back.
     PinnedPasswordMismatch,
+    /// The server answered that it refuses the credential the session
+    /// logged in with (its pinned key, or its password), on the second
+    /// login the delta path opens (X1): by the authentication result
+    /// (`AuthResult::Failure`), never by the text of an error. The
+    /// account, the key or the server's rules changed since the session
+    /// logged in. Never fall back.
+    PinnedLoginRefused,
     Internal,
 }
 
@@ -255,6 +262,10 @@ impl AerorsyncError {
 
     pub fn pinned_password_mismatch(detail: impl Into<String>) -> Self {
         Self::new(AerorsyncErrorKind::PinnedPasswordMismatch, detail)
+    }
+
+    pub fn pinned_login_refused(detail: impl Into<String>) -> Self {
+        Self::new(AerorsyncErrorKind::PinnedLoginRefused, detail)
     }
 
     /// Translate a terminal out-of-band `AerorsyncEvent` into the
@@ -446,6 +457,7 @@ impl TransferError {
                 AerorsyncErrorKind::HostKeyRejected => "Native(HostKeyRejected)",
                 AerorsyncErrorKind::PinnedKeyMismatch => "Native(PinnedKeyMismatch)",
                 AerorsyncErrorKind::PinnedPasswordMismatch => "Native(PinnedPasswordMismatch)",
+                AerorsyncErrorKind::PinnedLoginRefused => "Native(PinnedLoginRefused)",
                 AerorsyncErrorKind::Internal => "Native(Internal)",
             },
         }
@@ -554,7 +566,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::events::AerorsyncEvent;
 
-    const ALL_KINDS: [AerorsyncErrorKind; 13] = [
+    const ALL_KINDS: [AerorsyncErrorKind; 14] = [
         AerorsyncErrorKind::UnsupportedVersion,
         AerorsyncErrorKind::InvalidFrame,
         AerorsyncErrorKind::TransportFailure,
@@ -567,6 +579,7 @@ mod tests {
         AerorsyncErrorKind::HostKeyRejected,
         AerorsyncErrorKind::PinnedKeyMismatch,
         AerorsyncErrorKind::PinnedPasswordMismatch,
+        AerorsyncErrorKind::PinnedLoginRefused,
         AerorsyncErrorKind::Internal,
     ];
 
@@ -813,6 +826,7 @@ mod tests {
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
             AerorsyncErrorKind::Cancelled,
         ] {
@@ -888,8 +902,10 @@ mod tests {
         );
         checked += 2;
 
+        // 202: `PinnedLoginRefused` (X1) joined the never-retried kinds,
+        // two details by two commit states.
         assert_eq!(
-            checked, 198,
+            checked, 202,
             "the inherited case table shrank: {checked} cases checked"
         );
     }

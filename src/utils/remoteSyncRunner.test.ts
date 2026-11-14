@@ -3174,7 +3174,12 @@ describe('a connect shows what its provider reported', () => {
         expect(s.ctx.notify.warning).toHaveBeenCalledTimes(1);
         expect(s.ctx.notify.warning).toHaveBeenCalledWith('common.warning', LEGACY);
         expect(s.ctx.humanLog.log).toHaveBeenCalledTimes(1);
-        expect(s.ctx.humanLog.log).toHaveBeenCalledWith('CONNECT', `common.warning: ${LEGACY}`, 'pending');
+        expect(s.ctx.humanLog.log).toHaveBeenCalledWith('CONNECT', `common.warning: ${LEGACY}`, 'success');
+        // No status the activity log counts as a running operation
+        // ('running' or 'pending'), or its badge stays active after the connect.
+        for (const call of s.ctx.humanLog.log.mock.calls) {
+            expect(['running', 'pending']).not.toContain(call[2]);
+        }
     });
 
     it.each([

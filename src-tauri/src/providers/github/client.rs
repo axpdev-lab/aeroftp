@@ -49,10 +49,17 @@ pub struct GitHubHttpClient {
     /// sent (see `writes_the_tree`).
     pub(super) poison: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     /// Whether the last request that writes the tree (`writes_the_tree`)
-    /// got a success answer. Lowered before each such request is sent, so a
-    /// write that failed, or was never answered (its future dropped), leaves
-    /// it down: what lets `refuse_stale_write` skip a check (S2 b).
+    /// got a success answer, its body read to the end. Lowered before each
+    /// such request is sent, and raised only by the high-level method once it
+    /// has handled the whole answer ([`Self::confirm_tree_write`]): a write
+    /// that failed, was never answered, or whose 2xx body stalled, was not
+    /// JSON or was dropped while it was read (X3), leaves it down. What lets
+    /// `refuse_stale_write` skip a check (S2 b).
     pub(super) last_tree_write_ok: bool,
+    /// The last request sent was a tree write answered 2xx, its body not yet
+    /// handled: [`Self::confirm_tree_write`] turns it into
+    /// `last_tree_write_ok`.
+    answered_tree_write: bool,
 }
 
 /// A request that writes the repository's files or refs: the contents API,
@@ -150,6 +157,7 @@ impl GitHubHttpClient {
             api_origin_override: None,
             poison: None,
             last_tree_write_ok: false,
+            answered_tree_write: false,
         })
     }
 
@@ -177,6 +185,7 @@ impl GitHubHttpClient {
         path_hint: Option<&str>,
     ) -> Result<Response, GitHubError> {
         let tree_write = sends_a_tree_write(&builder);
+        self.answered_tree_write = false;
         if tree_write {
             self.last_tree_write_ok = false;
         }
@@ -197,9 +206,8 @@ impl GitHubHttpClient {
 
         let status = response.status();
         if status.is_success() {
-            if tree_write {
-                self.last_tree_write_ok = true;
-            }
+            // Not yet `last_tree_write_ok`: the body is still to be read.
+            self.answered_tree_write = tree_write;
             return Ok(response);
         }
 
@@ -292,6 +300,17 @@ impl GitHubHttpClient {
                 }
             }
             Err(e) => Err(e),
+        }
+    }
+
+    /// The answer of the request just sent was handled to its end: a tree
+    /// write answered 2xx is now one that succeeded (`last_tree_write_ok`).
+    /// Called by each high-level method after its body is read and parsed,
+    /// never on an error path, so an answer whose body fails or is dropped
+    /// leaves the flag down (X3).
+    fn confirm_tree_write(&mut self) {
+        if std::mem::take(&mut self.answered_tree_write) {
+            self.last_tree_write_ok = true;
         }
     }
 
@@ -409,9 +428,12 @@ impl GitHubHttpClient {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PUT, &full_url).json(body);
         let resp = self.execute_with_retry(builder, None).await?;
-        resp.json::<serde_json::Value>()
+        let value = resp
+            .json::<serde_json::Value>()
             .await
-            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))?;
+        self.confirm_tree_write();
+        Ok(value)
     }
 
     /// `POST` with a JSON body; returns the response JSON.
@@ -423,9 +445,12 @@ impl GitHubHttpClient {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url).json(body);
         let resp = self.execute_with_retry(builder, None).await?;
-        resp.json::<T>()
+        let value = resp
+            .json::<T>()
             .await
-            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))?;
+        self.confirm_tree_write();
+        Ok(value)
     }
 
     /// `POST` with empty body. Returns `()` on 2xx.
@@ -434,6 +459,7 @@ impl GitHubHttpClient {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::POST, &full_url);
         self.execute_with_retry(builder, None).await?;
+        self.confirm_tree_write();
         Ok(())
     }
 
@@ -446,9 +472,12 @@ impl GitHubHttpClient {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::PATCH, &full_url).json(body);
         let resp = self.execute_with_retry(builder, None).await?;
-        resp.json::<serde_json::Value>()
+        let value = resp
+            .json::<serde_json::Value>()
             .await
-            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("json: {e}"))))?;
+        self.confirm_tree_write();
+        Ok(value)
     }
 
     /// `DELETE` with a JSON body. Returns `()` on success.
@@ -459,7 +488,9 @@ impl GitHubHttpClient {
     ) -> Result<(), GitHubError> {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url).json(body);
+        // A DELETE's answer is its status; its body is not read.
         self.execute_with_retry(builder, None).await?;
+        self.confirm_tree_write();
         Ok(())
     }
 
@@ -468,6 +499,7 @@ impl GitHubHttpClient {
         let full_url = self.resolve_url(url)?;
         let builder = self.request(Method::DELETE, &full_url);
         self.execute_with_retry(builder, None).await?;
+        self.confirm_tree_write();
         Ok(())
     }
 
@@ -504,6 +536,7 @@ impl GitHubHttpClient {
             }
         }
 
+        self.confirm_tree_write();
         Ok(json)
     }
 
@@ -515,9 +548,20 @@ impl GitHubHttpClient {
     ) -> Result<serde_json::Value, GitHubError> {
         let builder = self.request(Method::POST, GRAPHQL_URL).json(body);
         let resp = self.execute_with_retry(builder, None).await?;
-        resp.json::<serde_json::Value>()
+        let json = resp
+            .json::<serde_json::Value>()
             .await
-            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("graphql: {e}"))))
+            .map_err(|e| timed_out_or(e, |e| GitHubError::ParseError(format!("graphql: {e}"))))?;
+        // An answer that names errors is not a success the caller can count
+        // on: the flag stays down and the caller reads them.
+        if json
+            .get("errors")
+            .and_then(|e| e.as_array())
+            .is_none_or(|e| e.is_empty())
+        {
+            self.confirm_tree_write();
+        }
+        Ok(json)
     }
 
     /// Download raw file content (sets `Accept: application/octet-stream`).
