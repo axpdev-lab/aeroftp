@@ -147,6 +147,20 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
     });
 
+    it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s writes nothing while the overlay gate is up', async name => {
+        // An unresolved `{username}` overlay folder, a confirm mismatch, a
+        // default-salt entropy refusal or a half-recorded crypt form.
+        const f = fixture('none');
+        f.context.overlaySaveBlocked = true;
+        const fn = await execute(connection, [name], f.context);
+        await fn[name]();
+        expect(f.read).not.toHaveBeenCalled();
+        expect(f.store).not.toHaveBeenCalled();
+        for (const n of ['aeroCryptOverlayFields', 'tryStoreCredential', 'stashFilenApiKey', 'migrateCryptCredentials', 'syncPersistedModeCredentials', 'deleteModeCredentials']) {
+            expect(f.context[n], n).not.toHaveBeenCalled();
+        }
+    });
+
     it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s refuses a failed strict read before any credential mutation', async name => {
         const f = fixture('read');
         const fn = await execute(connection, [name], f.context);

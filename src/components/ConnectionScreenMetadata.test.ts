@@ -594,5 +594,35 @@ describe('A crypt overlay folder the user name cannot fill', () => {
         // `/files/{username}/crypt`, which the backend refuses to unlock.
         expect(overlayPath.value).toBe('crypt');
         expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const save = () => [...container.querySelectorAll('button')].find(b => ['common.save', 'common.connect'].includes(b.textContent?.trim() ?? ''))!;
+        expect(save().disabled).toBe(true);
+        // A user name that fills the folder clears the refusal and enables Save.
+        const user = [...container.querySelectorAll<HTMLInputElement>('input')].find(i => i.value === 'DOMAIN\\alice')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        expect(save().disabled).toBe(false);
+    });
+
+    it('lets an OAuth sign-in write nothing while the overlay folder is unresolved', async () => {
+        // An OAuth profile has no user name, so a `{username}` folder cannot be filled.
+        profiles = [{
+            id: 'edited', name: 'Account', host: '', port: 443, username: '',
+            protocol: 'googledrive', initialPath: '/vault/{username}', localInitialPath: '/local',
+        }];
+        await renderEditor();
+        await act(async () => button('aerocryptProfile.overlaysSection').click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const before = structuredClone(profiles);
+        mocks.invoke.mockClear();
+        await act(async () => button('Test OAuth sign-in').click());
+        const writes = mocks.invoke.mock.calls.map(([command]) => command)
+            .filter(command => /save_active_server_profiles|store_credential|credential_store|aerocrypt/.test(String(command)));
+        expect(writes).toEqual([]);
+        expect(profiles).toEqual(before);
     });
 });

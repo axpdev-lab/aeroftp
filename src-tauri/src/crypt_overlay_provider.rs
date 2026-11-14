@@ -6581,6 +6581,40 @@ pub(crate) mod tests {
                 !dirs.iter().any(|d| d.ends_with("/cloud")),
                 "{name}: the root's folder went up in plaintext: {dirs:?}"
             );
+            // A file the wizard-produced folder receives is stored encrypted:
+            // neither its name nor its bytes reach the server in plaintext.
+            let plaintext = b"AeroCloud plaintext that must never be stored as is";
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), plaintext).unwrap();
+            provider
+                .upload(
+                    &local.path().to_string_lossy(),
+                    &format!("{}/cloud/doc.txt", bare(&root)),
+                    None,
+                )
+                .await
+                .expect("upload under the root");
+            let mem = provider
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap()
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let stored = mem.raw_paths();
+            assert!(!stored.is_empty(), "{name}: nothing was stored");
+            for path in &stored {
+                assert!(
+                    !path.ends_with("doc.txt"),
+                    "{name}: plaintext name stored: {path}"
+                );
+                let bytes = mem.raw_bytes(path).unwrap_or_default();
+                assert!(
+                    !bytes.windows(plaintext.len()).any(|w| w == plaintext),
+                    "{name}: plaintext bytes stored at {path}"
+                );
+            }
         }
     }
 
