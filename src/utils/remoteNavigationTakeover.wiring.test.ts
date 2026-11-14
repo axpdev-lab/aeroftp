@@ -27,7 +27,7 @@ function between(start: string, end: string, from = 0): string {
 function context() {
     const state = { loading: true, decrypting: true, reason: 'old /Crypt listing' as string | null };
     const ctx = {
-        remoteNavCounter: { current: 7 }, remoteNavInFlightRef: { current: 7 }, remoteTakeoverRef: { current: 0 },
+        remoteNavCounter: { current: 7 }, remoteNavInFlightRef: { current: 7 },
         remoteConnectPhaseVersionRef: { current: 0 }, remoteConnectPhaseRef: { current: false as false | string }, backendUncertainRef: { current: false },
         connectStartSessionsRef: { current: null as unknown }, sessions: [] as { id: string }[],
         setOverlayDecrypting: vi.fn((value: boolean) => { state.decrypting = value; }),

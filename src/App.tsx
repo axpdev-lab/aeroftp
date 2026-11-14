@@ -990,10 +990,6 @@ const App: React.FC = () => {
   const [showSiteCommand, setShowSiteCommand] = useState(false);
   // Navigation counter to discard stale async responses from previous navigations
   const remoteNavCounter = useRef(0);
-  // Bumped by every takeover of the remote panel (`releaseRemoteNavigation`:
-  // a connect phase, a tab switch): work started for the session on screen
-  // checks it to tell that the session is still the one it started on.
-  const remoteTakeoverRef = useRef(0);
   // #401: synchronous in-flight latches. A second double-click (e.g. on "Parent
   // folder") used to stack a second navigation before the async loading state
   // updated, overshooting the target. These refs block re-entry the instant a
@@ -4939,7 +4935,6 @@ const App: React.FC = () => {
    *  starts, a tab switch, and `takeOverActiveSession`. */
   const releaseRemoteNavigation = useLatestCallback(() => {
     ++remoteNavCounter.current;
-    ++remoteTakeoverRef.current;
     remoteNavInFlightRef.current = 0;
     // The backend drops the listing still in flight, which holds the provider
     // lock: a stalled one would otherwise keep the takeover's disconnect, and
@@ -9912,13 +9907,28 @@ const App: React.FC = () => {
       // paths, so the lock read every folder as above the root.
       // `connectOpenedIt`: this open's own connect took the saved folder as its
       // starting folder (a provider connect); a kept session did not.
-      const openCloudRemoteFolder = (connectOpenedIt: boolean, ownsTheSession: () => boolean): Promise<string> =>
-        openAeroCloudFolder(cloudConfig.remote_folder, connectOpenedIt, placeStartFolder, navigateToRemoteFolder, ownsTheSession);
-      // The open owns the session it starts on until a takeover (a tab
-      // switch, another connect) moves the panel to another one.
-      const ownSessionFromNow = (): (() => boolean) => {
-        const taken = remoteTakeoverRef.current;
-        return () => taken === remoteTakeoverRef.current;
+      const openCloudRemoteFolder = (connectOpenedIt: boolean, owner: AeroCloudOpenOwner): Promise<string> =>
+        openAeroCloudFolder(
+          cloudConfig.remote_folder,
+          connectOpenedIt,
+          placeStartFolder,
+          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(); return listed; }),
+          owner.owns,
+        );
+      // The open owns the panel while the remote listing generation
+      // (`remoteNavCounter`) is its own. Every takeover moves it on as its
+      // first step (`releaseRemoteNavigation`: a connect phase, a tab
+      // switch), and so does any newer listing, which `withRemoteListSpinner`
+      // already treats as superseding. The open's own listing moves it too:
+      // that listing returned only while it was still the latest, so the
+      // owner adopts the generation it ended on.
+      type AeroCloudOpenOwner = { owns: () => boolean; listed: () => void };
+      const ownSessionFromNow = (): AeroCloudOpenOwner => {
+        let owned = remoteNavCounter.current;
+        return {
+          owns: () => owned === remoteNavCounter.current,
+          listed: () => { owned = remoteNavCounter.current; },
+        };
       };
 
       // Connection params to set (for protocol detection in other parts of the app)
@@ -9946,11 +9956,10 @@ const App: React.FC = () => {
         // form is empty, and the servers screen can fill it with another
         // profile. "Same" is the whole target, not the host: one host serves
         // several accounts, and one S3 account several buckets.
-        const isSameServer = mayReuseForAeroCloud(
-          isSameConnection(
-            normalizeProviderConnectionParams(liveConnectionParams),
-            normalizeProviderConnectionParams(connParams),
-          ),
+        const isSameServer = isSameConnection(
+          normalizeProviderConnectionParams(liveConnectionParams),
+          normalizeProviderConnectionParams(connParams),
+        ) && mayReuseForAeroCloud(
           liveSavedServerId(sessions, activeSessionId, liveConnectionParams),
           cloudServer.id,
           cloudConfig.remote_folder,
@@ -10025,11 +10034,11 @@ const App: React.FC = () => {
 
         // Navigate to cloud folders
         try {
-          const ownsTheSession = ownSessionFromNow();
-          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, ownsTheSession);
+          const owner = ownSessionFromNow();
+          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
           setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
-          if (!ownsTheSession()) return;
+          if (!owner.owns()) return;
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           setCloudRemoteFolder(listedFolder);
@@ -10069,10 +10078,10 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
 
       // Navigate to cloud folders
-      const ownsTheSession = ownSessionFromNow();
-      const listedCloudFolder = await openCloudRemoteFolder(isProvider, ownsTheSession);
+      const owner = ownSessionFromNow();
+      const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
-      if (!ownsTheSession()) return;
+      if (!owner.owns()) return;
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
       setCloudRemoteFolder(listedCloudFolder);

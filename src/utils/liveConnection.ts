@@ -210,8 +210,8 @@ export function selectAeroCloudProfile<P extends { id: string; name: string }>(
  * folder with a `..` step or a NUL (`savedLocationProblem`) is refused before
  * anything is listed, named as written; a `.` or empty step is listed as
  * saved. An open that no longer owns the session (`ownsTheSession`: a tab
- * switch or another connect took it over while the placement or the listing
- * was awaited) stops as a cancelled listing: it lists nothing on the new
+ * switch, another connect or a newer listing took the panel while the
+ * placement or the listing was awaited) stops as a cancelled listing: it lists nothing on the new
  * connection and hands nothing back for the AeroCloud state.
  */
 export async function openAeroCloudFolder(
@@ -236,7 +236,7 @@ export const AEROCLOUD_OPEN_SUPERSEDED = 'LISTING_CANCELLED: the AeroCloud folde
 
 /**
  * Whether the AeroCloud tab may keep the connection on screen instead of
- * connecting again: the same target (`isSameConnection`), made with the
+ * connecting again, past the same target (`isSameConnection`): made with the
  * saved profile AeroCloud is pinned to (two profiles with the same target
  * parameters are two accounts to the backend, and the share link follows
  * the connected one), and a saved folder that names its place on its own.
@@ -245,12 +245,10 @@ export const AEROCLOUD_OPEN_SUPERSEDED = 'LISTING_CANCELLED: the AeroCloud folde
  * is another folder. Those connect again.
  */
 export function mayReuseForAeroCloud(
-    sameTarget: boolean,
     liveProfileId: string | null,
     cloudProfileId: string | null | undefined,
     remoteFolder: string,
 ): boolean {
-    if (!sameTarget) return false;
     if (cloudProfileId && liveProfileId !== cloudProfileId) return false;
     return remoteFolder.startsWith('/');
 }

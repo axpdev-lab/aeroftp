@@ -43,7 +43,6 @@ describe('a takeover outside a connect phase releases the remote navigation', ()
             useLatestCallback: (fn: unknown) => fn,
             remoteNavCounter: { current: 7 },
             remoteNavInFlightRef: { current: 7 },
-            remoteTakeoverRef: { current: 3 },
             invoke: vi.fn(async () => true),
         };
         const release = await run<() => void>(
@@ -52,9 +51,6 @@ describe('a takeover outside a connect phase releases the remote navigation', ()
         release();
         // A listing that started under generation 7 is dropped when it lands.
         expect(ctx.remoteNavCounter).toEqual({ current: 8 });
-        // Work started for the old session (an AeroCloud folder open) no
-        // longer owns the panel.
-        expect(ctx.remoteTakeoverRef).toEqual({ current: 4 });
         expect(ctx.remoteNavInFlightRef).toEqual({ current: 0 });
         expect(ctx.setRemoteListLoading).toHaveBeenCalledWith(false);
         expect(ctx.setRemoteListReason).toHaveBeenCalledWith(null);

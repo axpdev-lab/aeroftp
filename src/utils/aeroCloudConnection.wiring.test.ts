@@ -159,7 +159,7 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   // The AeroCloud tab opens its folder through the helper, with the
   // placement and the listing the app uses; a provider connect listing ''
   // lists the folder it stands in.
-  expect(app).toContain('openAeroCloudFolder(cloudConfig.remote_folder, connectOpenedIt, placeStartFolder, navigateToRemoteFolder, ownsTheSession)');
+  expect(app).toContain('openAeroCloudFolder(\n          cloudConfig.remote_folder,\n          connectOpenedIt,\n          placeStartFolder,\n          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(); return listed; }),\n          owner.owns,\n        )');
   const nav = app.slice(app.indexOf('const navigateToRemoteFolder = async'), app.indexOf('// Connection params to set'));
   expect(nav).toContain("invoke<{ files: any[]; current_path: string }>('provider_change_dir', { path: folder })");
   expect(nav).toContain("invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: null })");
@@ -177,10 +177,10 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(relativeSyncSegments('/usr/home/u/docs', '~/docs')).toBeNull();
   // Both AeroCloud entries take that folder for the lock, the badges and the share link.
   const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
-  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, ownsTheSession\);\s*setSyncBasePaths\(\{ remote: listedFolder,/);
+  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*setSyncBasePaths\(\{ remote: listedFolder,/);
   expect(lock).toContain('setCloudRemoteFolder(listedFolder);');
   const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
-  expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, ownsTheSession);');
+  expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);');
   expect(fresh).toContain('setCloudRemoteFolder(listedCloudFolder);');
   expect(app).not.toMatch(/navigateToRemoteFolder\(cloudConfig\.remote_folder\)/);
 });
@@ -231,24 +231,23 @@ it('keeps the session on screen only for the pinned profile and a folder that na
   const { mayReuseForAeroCloud } = await import('./liveConnection');
   // Two profiles with the same target parameters are two accounts: the
   // AeroCloud tab pinned to B does not adopt A's connection.
-  expect(mayReuseForAeroCloud(true, 'srv_a', 'srv_b', '/home/u/docs')).toBe(false);
-  expect(mayReuseForAeroCloud(true, 'srv_b', 'srv_b', '/home/u/docs')).toBe(true);
-  expect(mayReuseForAeroCloud(true, null, 'srv_b', '/home/u/docs')).toBe(false);
-  expect(mayReuseForAeroCloud(true, null, undefined, '/home/u/docs')).toBe(true);
-  expect(mayReuseForAeroCloud(false, 'srv_b', 'srv_b', '/home/u/docs')).toBe(false);
+  expect(mayReuseForAeroCloud('srv_a', 'srv_b', '/home/u/docs')).toBe(false);
+  expect(mayReuseForAeroCloud('srv_b', 'srv_b', '/home/u/docs')).toBe(true);
+  expect(mayReuseForAeroCloud(null, 'srv_b', '/home/u/docs')).toBe(false);
+  expect(mayReuseForAeroCloud(null, undefined, '/home/u/docs')).toBe(true);
   // A relative or empty folder starts where the connect starts, which a
   // session at `/home/u/other` no longer is: it connects again.
   for (const folder of ['docs', '~/docs', '']) {
-    expect(mayReuseForAeroCloud(true, 'srv_b', 'srv_b', folder), folder).toBe(false);
+    expect(mayReuseForAeroCloud('srv_b', 'srv_b', folder), folder).toBe(false);
   }
   // The app decides with it, from the live connection's profile, and a kept
   // session is not told its connect opened the folder.
   const kept = app.slice(app.indexOf('// === SCENARIO 1: ALREADY CONNECTED ==='), app.indexOf('// === SCENARIO 2'));
-  expect(kept).toMatch(/const isSameServer = mayReuseForAeroCloud\(\s*isSameConnection\(/);
+  expect(kept).toMatch(/const isSameServer = isSameConnection\([\s\S]*?\) && mayReuseForAeroCloud\(/);
   expect(kept).toContain('liveSavedServerId(sessions, activeSessionId, liveConnectionParams),');
   expect(kept).toContain('cloudServer.id,');
   expect(kept).toContain('cloudConfig.remote_folder,');
-  expect(kept).toContain('openCloudRemoteFolder(isProvider && !isSameServer, ownsTheSession)');
+  expect(kept).toContain('openCloudRemoteFolder(isProvider && !isSameServer, owner)');
 });
 
 it('drops a folder open that finishes after another connection took the session', async () => {
@@ -276,13 +275,19 @@ it('drops a folder open that finishes after another connection took the session'
     ['kept session', app.slice(app.indexOf('// === SCENARIO 1: ALREADY CONNECTED ==='), scenario2)],
     ['fresh connect', app.slice(scenario2, scenario2 + 4000)],
   ]) {
-    const check = entry.indexOf('if (!ownsTheSession()) return;');
+    const check = entry.indexOf('if (!owner.owns()) return;');
     expect(check, marker).toBeGreaterThan(entry.indexOf("await invoke('get_local_files'"));
     expect(check, marker).toBeLessThan(entry.indexOf('setCloudRemoteFolder('));
     expect(check, marker).toBeLessThan(entry.indexOf("invoke('trigger_cloud_sync')"));
   }
+  // The owner is the remote listing generation: every takeover moves it on
+  // first, and the open adopts only the generation its own listing ended on.
   const release_ = app.slice(app.indexOf('const releaseRemoteNavigation = useLatestCallback'));
-  expect(release_.slice(0, 200)).toContain('++remoteTakeoverRef.current;');
+  expect(release_.slice(0, 120)).toMatch(/useLatestCallback\(\(\) => \{\s*\+\+remoteNavCounter\.current;/);
+  const own = app.slice(app.indexOf('const ownSessionFromNow = ()'), app.indexOf('const ownSessionFromNow = ()') + 300);
+  expect(own).toContain('let owned = remoteNavCounter.current;');
+  expect(own).toContain('owns: () => owned === remoteNavCounter.current,');
+  expect(own).toContain('listed: () => { owned = remoteNavCounter.current; },');
 });
 
 it('offers the sync badges and the share link only on the AeroCloud connection', async () => {
