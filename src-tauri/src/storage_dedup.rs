@@ -175,6 +175,14 @@ pub fn access_key_hash(access_key: &str) -> String {
     hex[..12].to_string()
 }
 
+/// WebDAV presets whose server URL is chosen by the user (self-hosted or
+/// per-user node): nextcloud, seafile, infinicloud. Their dedup key must
+/// carry the normalised host or the same user name on two servers collapses
+/// into one drive. Mirrors the TS `USER_HOSTED_WEBDAV_PRESETS`.
+pub fn is_user_hosted_webdav_preset(provider_id: Option<&str>) -> bool {
+    matches!(provider_id, Some("nextcloud" | "seafile" | "infinicloud"))
+}
+
 /// Identify cloud-preset WebDAV providers (Koofr, InfiniCloud, Nextcloud, ...)
 /// vs custom self-hosted WebDAV servers. The list mirrors `deriveProviderId`
 /// and the registry presets recognised by the GUI.
@@ -346,6 +354,17 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
                 return format!("id:{}", profile.id);
             }
             return format!("webdav:puter-webdav:{}:{}", account, user_or_id());
+        }
+        if is_user_hosted_webdav_preset(profile.provider_id) {
+            let pid = profile.provider_id.unwrap_or(proto);
+            let host = normalize_host(profile.host);
+            let port = if profile.port == 0 { 443 } else { profile.port };
+            let port_part = if port == 443 {
+                String::new()
+            } else {
+                format!(":{port}")
+            };
+            return format!("webdav:{}:{}{}:{}", pid, host, port_part, user_or_id());
         }
         if is_webdav_preset(profile.provider_id) {
             let pid = profile.provider_id.unwrap_or(proto);
@@ -922,6 +941,91 @@ mod tests {
             None,
         );
         assert_eq!(dedup_key(&c), "webdav:puter-webdav::carol");
+    }
+
+    #[test]
+    fn user_hosted_webdav_presets_key_by_host_too() {
+        // nextcloud, seafile and infinicloud take the server URL from the
+        // user: the same user name on two servers is two drives, while case
+        // and the default port do not split one.
+        let a = p(
+            "n1",
+            "webdav",
+            Some("nextcloud"),
+            "https://Cloud-A.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let b = p(
+            "n2",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-b.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&a), "webdav:nextcloud:cloud-a.example.com:alice");
+        assert_eq!(dedup_key(&b), "webdav:nextcloud:cloud-b.example.com:alice");
+        let summary = aggregate(&[a.clone(), b.clone()]);
+        assert_eq!(summary.unique_count, 2);
+        // Same host spelled differently, and the implicit vs explicit 443,
+        // are the same drive.
+        let c = p(
+            "n3",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com",
+            0,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&c), dedup_key(&a));
+        // A non-default port is a different endpoint.
+        let d = p(
+            "n4",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com",
+            8443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(
+            dedup_key(&d),
+            "webdav:nextcloud:cloud-a.example.com:8443:alice"
+        );
+        // seafile and infinicloud follow the same rule.
+        let s = p(
+            "s1",
+            "webdav",
+            Some("seafile"),
+            "https://seafile.example.com",
+            443,
+            "bob",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&s), "webdav:seafile:seafile.example.com:bob");
+        let i = p(
+            "i1",
+            "webdav",
+            Some("infinicloud"),
+            "https://alice-node.teracloud.jp",
+            443,
+            "alice@example.com",
+            None,
+            None,
+        );
+        assert_eq!(
+            dedup_key(&i),
+            "webdav:infinicloud:alice-node.teracloud.jp:alice@example.com"
+        );
     }
 
     #[test]

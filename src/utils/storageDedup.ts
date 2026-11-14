@@ -200,6 +200,21 @@ const accessKeyHash = (accessKey: string): string => {
     return fastHashHex((accessKey || '').trim()).slice(0, 16);
 };
 
+/**
+ * WebDAV presets whose server URL is chosen by the user (self-hosted or
+ * per-user node): nextcloud, seafile, infinicloud. Their dedup key must
+ * carry the normalised host or the same user name on two servers collapses
+ * into one drive. Mirrors the Rust `is_user_hosted_webdav_preset`.
+ */
+const USER_HOSTED_WEBDAV_PRESETS: ReadonlySet<string> = new Set([
+    'nextcloud',
+    'seafile',
+    'infinicloud',
+]);
+
+const isUserHostedWebDavPreset = (providerId: string | undefined): boolean =>
+    !!providerId && USER_HOSTED_WEBDAV_PRESETS.has(providerId);
+
 const isWebDavPreset = (providerId: string | undefined): boolean =>
     !!providerId && WEBDAV_PRESET_IDS.has(providerId);
 
@@ -267,6 +282,12 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
             // must not collapse into one drive.
             if (!account && userNorm === '-token') return `id:${server.id}`;
             return `webdav:puter-webdav:${account}:${userOrId}`;
+        }
+        if (isUserHostedWebDavPreset(providerId)) {
+            const host = normalizeHost(server.host);
+            const port = server.port || 443;
+            const portPart = port === 443 ? '' : `:${port}`;
+            return `webdav:${providerId}:${host}${portPart}:${userOrId}`;
         }
         if (isWebDavPreset(providerId)) {
             return `webdav:${providerId}:${userOrId}`;

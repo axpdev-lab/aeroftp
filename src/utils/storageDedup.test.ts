@@ -240,6 +240,48 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav::carol');
     });
 
+    it('case 4c4: user-hosted WebDAV presets key by host too', () => {
+        // nextcloud, seafile and infinicloud take the server URL from the
+        // user: the same user name on two servers is two drives, while case
+        // and the default port do not split one.
+        const a = make({
+            id: 'n1', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://Cloud-A.example.com', port: 443, username: 'alice',
+        });
+        const b = make({
+            id: 'n2', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-b.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(a)).toBe('webdav:nextcloud:cloud-a.example.com:alice');
+        expect(getStorageDedupKey(b)).toBe('webdav:nextcloud:cloud-b.example.com:alice');
+        const summary = aggregateByDedupKey([a, b]);
+        expect(summary.uniqueCount).toBe(2);
+        // Same host spelled differently, and the implicit vs explicit 443,
+        // are the same drive.
+        const c = make({
+            id: 'n3', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com', port: 0, username: 'alice',
+        });
+        expect(getStorageDedupKey(c)).toBe(getStorageDedupKey(a));
+        // A non-default port is a different endpoint.
+        const d = make({
+            id: 'n4', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com', port: 8443, username: 'alice',
+        });
+        expect(getStorageDedupKey(d)).toBe('webdav:nextcloud:cloud-a.example.com:8443:alice');
+        // seafile and infinicloud follow the same rule.
+        const s = make({
+            id: 's1', protocol: 'webdav', providerId: 'seafile',
+            host: 'https://seafile.example.com', port: 443, username: 'bob',
+        });
+        expect(getStorageDedupKey(s)).toBe('webdav:seafile:seafile.example.com:bob');
+        const i = make({
+            id: 'i1', protocol: 'webdav', providerId: 'infinicloud',
+            host: 'https://alice-node.teracloud.jp', port: 443, username: 'alice@example.com',
+        });
+        expect(getStorageDedupKey(i)).toBe('webdav:infinicloud:alice-node.teracloud.jp:alice@example.com');
+    });
+
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
         // The frontend S3 mirror missed 'ibm-cos', so same-key profiles in
         // different regions keyed by host (two drives) while Rust keyed by
