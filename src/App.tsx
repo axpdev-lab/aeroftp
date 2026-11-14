@@ -23,7 +23,7 @@ import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelec
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
@@ -89,12 +89,6 @@ interface ConnectedRemoteRunOptions {
   resumeJournal?: SyncJournal;
   /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
   profileId?: string;
-  /** Execution target retained across a canary approval. */
-  target?: QueuedTarget;
-  preparedTarget?: Promise<{ readonly epoch: number } | { readonly error: unknown }>;
-  localRoot?: string;
-  remoteRoot?: string;
-  authenticatedRemoteContent?: boolean;
   /**
    * GAP-9a: Maniac mode. When true the run drops journal persistence and the
    * bandwidth caps for raw speed, then runs a mandatory post-sync
@@ -110,6 +104,47 @@ interface ConnectedRemoteRunOptions {
    * value when the launch is asked for.
    */
   planBatchGeneration?: number;
+  /**
+   * E1, E3, P1, and #1561's target binding: the connection the plan's
+   * comparison was taken on, captured by `openAeroSync`
+   * (`connectionAtAction`) before the compare and the journal load, and
+   * stored with that comparison; so before the plan is built and before
+   * anything the action waits on (a canary trial and its approval). The
+   * sync-start gate compares the generation with the current one before ANY
+   * launch, whatever the protocol; the delta probe is chosen from this
+   * protocol, never the latest one; and every command of the run carries
+   * this capture's GUI target epoch and owner binding. A run reads none of
+   * them for itself. Required, so no caller can omit it; null (none
+   * captured) fails closed.
+   */
+  requestedConnection: ConnectionAtAction | null;
+}
+
+/** The connection a comparison, and every sync action on it, was started on
+ *  (E3, P1), with #1561's target binding taken at the same moment. */
+interface ConnectionAtAction {
+  /** `provider_connection_generation`, asked for at the capture, for every
+   *  protocol: every remote session is a provider whose connect, disconnect
+   *  and tab switch move it. */
+  generation: Promise<number>;
+  /** The session's protocol at the capture. */
+  protocol: ProviderType | undefined;
+  /**
+   * The remote target (session, profile, connection, overlay, OAuth login)
+   * the comparison was taken on; the GUI target epoch prepared with it; and
+   * the owner binding read under that epoch. Taken with the comparison, not
+   * at the click: an overlay armed, unlocked or locked between the compare
+   * and the click moves the epoch but not the generation, so an epoch read
+   * at the click would be the new view's and pass. Failures are kept as
+   * values, so an abandoned comparison cannot reject unobserved.
+   */
+  target: QueuedTarget;
+  preparedTarget: Promise<{ readonly epoch: number } | { readonly error: unknown }>;
+  ownerBinding: Promise<{ readonly binding: string } | { readonly error: unknown }>;
+  /** The roots and the overlay content flag of the comparison. */
+  localRoot: string;
+  remoteRoot: string;
+  authenticatedRemoteContent: boolean;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -260,7 +295,7 @@ import {
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
-import { useAeroSyncContextActions } from './components/AeroSync/useAeroSyncContextActions';
+import { useAeroSyncContextActions, type AeroSyncState } from './components/AeroSync/useAeroSyncContextActions';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
@@ -476,7 +511,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, normalizedSyncRoot, runDeltaGate, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -1140,6 +1175,13 @@ const App: React.FC = () => {
   const [aeroSync, setAeroSync] = useState<{
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
+    /**
+     * P1: the connection the comparison in `context` was taken on, captured
+     * by the `openAeroSync` call that built this state (null for a pair with
+     * no remote). Every plan an action builds comes from this comparison or
+     * its journal, so the sync-start gate compares this generation.
+     */
+    connection: ConnectionAtAction | null;
   } | null>(null);
   // A sync or a restore runs inside the window, which owns their state.
   const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
@@ -2695,8 +2737,26 @@ const App: React.FC = () => {
   // connect emits. Names the protocol in the UI only.
   const wentOnOverScpRef = useRef(false);
 
+  // What a provider reported while it connected (`provider_connect` answers
+  // `{ message, warnings }`, the connect's own warnings and no other's): each
+  // is shown once, titled with the existing warning key, its text the
+  // backend's, and kept in the activity log. Any other answer (an older
+  // backend's plain string) holds none (CodeRabbit 4573911765).
+  const showConnectWarnings = useCallback((answer: unknown) => {
+    const warnings = typeof answer === 'object' && answer !== null
+      ? (answer as { warnings?: unknown }).warnings
+      : undefined;
+    if (!Array.isArray(warnings)) return;
+    for (const warning of warnings) {
+      if (typeof warning !== 'string' || !warning) continue;
+      notify.warning(t('common.warning'), warning);
+      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'pending');
+    }
+  }, [humanLog, notify, t]);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
-  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`,
+  // then shows what the provider reported while it connected.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
@@ -2706,7 +2766,10 @@ const App: React.FC = () => {
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }), [cancellableConnect]);
+  }).then((answer) => {
+    if (command === 'provider_connect') showConnectWarnings(answer);
+    return answer;
+  }), [cancellableConnect, showConnectWarnings]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -12633,6 +12696,12 @@ const App: React.FC = () => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
+    // P1: the connection this comparison is taken on, read before the
+    // compare and the journal load start. It is stored in the state this call
+    // builds, beside the context, so entries, journal and connection are
+    // replaced together; a click acts on one state, never on a newer
+    // connection with older entries.
+    const connection = connectionAtAction();
     const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
     // Read before the scan starts: a batch running now still ends after it.
     const batchGeneration = batchGenerationRef.current;
@@ -12662,6 +12731,7 @@ const App: React.FC = () => {
 
       setAeroSync({
         initialTab,
+        connection: null,
         context: {
           batchGeneration,
           compareResult: canRecurse
@@ -12780,6 +12850,7 @@ const App: React.FC = () => {
       // responsive while the recursive scan runs.
       setAeroSync({
         initialTab,
+        connection,
         context: {
           batchGeneration,
           compareResult: null,
@@ -12899,6 +12970,7 @@ const App: React.FC = () => {
 
     setAeroSync({
       initialTab,
+      connection: null,
       context: {
         batchGeneration,
         compareResult: null,
@@ -12922,6 +12994,42 @@ const App: React.FC = () => {
   // panels. Both the Plan tab preset executor and the Compare-tab mirror
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
+  //
+  // E1 (D2, Q5), E3, P1: the connection, asked for by `openAeroSync` before
+  // it starts the comparison every plan comes from, so before the plan is
+  // built and before any wait (a canary trial and its approval): its
+  // generation, for every protocol, and its protocol. It is stored with the
+  // comparison; a run carries it to the sync-start gate, which compares the
+  // generation with the current one before any launch, SFTP or not.
+  //
+  // #1561's target binding is taken in the same call: the remote target, its
+  // GUI target epoch and the owner binding under that epoch, and the roots.
+  // A run binds every command to that epoch and the index and journal to
+  // that binding, so an overlay change between the compare and the click
+  // (which moves the epoch, not the generation) is refused too.
+  const connectionAtAction = useLatestCallback((): ConnectionAtAction => {
+    const generation = invoke<number>('provider_connection_generation');
+    // An unread rejection would surface as unhandled when no gate awaits it.
+    generation.catch(() => undefined);
+    const target = snapshotQueuedTarget();
+    const preparedTarget = prepareGuiTarget(queuedTargetGuard(target));
+    const isProvider = usesProviderApi(target.params.protocol);
+    const ownerBinding = preparedTarget.then((prepared) => ('error' in prepared
+      ? prepared
+      : invoke<string>('provider_gui_target_binding', { expectedGuiTarget: prepared.epoch, isProvider })
+        .then((binding) => ({ binding } as const), (error) => ({ error } as const))));
+    return {
+      generation,
+      protocol: target.params.protocol,
+      target,
+      preparedTarget,
+      ownerBinding,
+      localRoot: currentLocalPath,
+      remoteRoot: currentRemotePath,
+      authenticatedRemoteContent: isCryptOverlayActive(),
+    };
+  });
+
   const runConnectedRemoteSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
@@ -12942,8 +13050,15 @@ const App: React.FC = () => {
       return;
     }
 
-    // Keep the exact target of the Execute gesture through the delta prompt.
-    const target = opts.target ?? snapshotQueuedTarget();
+    // The connection and target of the comparison the plan comes from,
+    // captured by openAeroSync (P1, and #1561's target binding). None
+    // captured: there is nothing to bind the run to, so nothing launches.
+    const connection = opts.requestedConnection;
+    if (!connection) {
+      notify.error(t('aerosync.title'), t('toast.remoteTargetChanged'));
+      return;
+    }
+    const target = connection.target;
     const checkTarget = queuedTargetGuard(target);
     if ((target.profileId != null && opts.profileId != null && opts.profileId !== target.profileId)
       || (opts.resumeJournal && (opts.resumeJournal.profile_id ?? null) !== target.profileId)) {
@@ -12952,7 +13067,9 @@ const App: React.FC = () => {
     }
     let targetEpoch: number | undefined;
     let ownerBinding: string | undefined;
-    const protocol = target.params.protocol;
+    // E3: the protocol of the comparison's connection. A later one belongs
+    // to another connection, which the gate refuses.
+    const protocol = connection.protocol;
     // AeroSync runner routing must match how the connection was actually
     // dialled. A modern FTP/FTPS session lives in `state.provider` (the
     // StorageProvider impl), exactly like SFTP and the cloud providers, and
@@ -12974,8 +13091,8 @@ const App: React.FC = () => {
     };
 
     const runConfig: RemoteSyncConfig = {
-      localRoot: opts.localRoot ?? currentLocalPath,
-      remoteRoot: opts.remoteRoot ?? currentRemotePath,
+      localRoot: connection.localRoot,
+      remoteRoot: connection.remoteRoot,
       profileId: target.profileId,
       isProvider,
       isFtp: !isProvider,
@@ -12998,7 +13115,7 @@ const App: React.FC = () => {
       postSyncVerification: opts.maniac === true,
       // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
       errorCorrection: opts.errorCorrection,
-      authenticatedRemoteContent: opts.authenticatedRemoteContent ?? isCryptOverlayActive(),
+      authenticatedRemoteContent: connection.authenticatedRemoteContent,
     };
 
     if (syncPreflightPendingRef.current || remoteSyncRunningRef.current) {
@@ -13129,79 +13246,97 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the question about
-    // continuing without delta, never the probe: a hard refusal still stops
-    // the run before any write.
+    // unavailable. Every SFTP session is probed, an ad-hoc one (no saved
+    // profile) too: it reaches native delta and pins its login key like any
+    // other. A saved per-server opt-out, or having no saved profile, skips
+    // the question about continuing without delta, never the probe: a hard
+    // refusal stops the run before any write (C2, D2, `runDeltaGate`).
+    // E3: every run goes through the gate, which compares the comparison's
+    // generation with the current one before any launch; only a run whose
+    // comparison saw an SFTP session probes. The preflight is owned until
+    // the gate ends (a Stop takes it back, silently), the comparison's GUI
+    // target epoch and owner binding are resolved first, and the probe
+    // carries that epoch.
+    let launched = false;
     syncPreflightPendingRef.current = preflightOwner;
     setSyncPreflightPending(true);
+    const refused = (title: string, message: string) => {
+      if (ownsPreflight()) notify.error(title, message);
+      finishPreflight();
+    };
     void (async () => {
       try {
-        targetEpoch = opts.preparedTarget
-          ? await resolveGuiTarget(opts.preparedTarget, checkTarget)
-          : await captureGuiTarget(checkTarget);
+        targetEpoch = await resolveGuiTarget(connection.preparedTarget, checkTarget);
         if (!ownsPreflight()) return;
-        ownerBinding = await invoke<string>('provider_gui_target_binding', { expectedGuiTarget: targetEpoch, isProvider });
-        if (!ownsPreflight()) return;
-        checkTarget();
-        const shouldProbe = protocol === 'sftp' && !!opts.profileId;
-        if (!shouldProbe) {
-          await launchRun();
-          return;
-        }
-        // The saved profiles only tell whether to ask about continuing
-        // without delta. Unreadable, they leave the question on: the safety
-        // probe below runs either way.
-        const stored = await loadSavedServerProfiles().catch(() => [] as Awaited<ReturnType<typeof loadSavedServerProfiles>>);
+        const bound = await connection.ownerBinding;
+        if ('error' in bound) throw bound.error;
+        ownerBinding = bound.binding;
         if (!ownsPreflight()) return;
         checkTarget();
-        const profile = stored.find((p) => p.id === opts.profileId);
-        // Probed even when the prompt is turned off: the opt-out skips the
-        // question about continuing without delta, not a refusal.
-        const verdict = await invoke<DeltaEligibilityProbeResult>(
-          'sftp_probe_delta_eligibility',
-          { expectedGuiTarget: targetEpoch },
-        );
-        if (!ownsPreflight()) return;
-        checkTarget();
-        // A hard refusal stops the run here, before it creates a folder or
-        // archives a file: a transfer would only meet the same refusal later.
-        if (verdict.hard_error) {
-          notify.error(t('aerosync.title'), verdict.hard_error);
-          return;
-        }
-        if (verdict.eligible || profile?.skipDeltaEligibilityPrompt) {
-          await launchRun();
-          return;
-        }
-        const reason = verdict.reason
-          || t('aerosync.deltaEligibility.heading')
-          || 'Delta sync unavailable for this server.';
-        const serverLabel = activeUnifiedRemoteProfile?.name
-          || verdict.server_identity?.host
-          || t('browser.remote');
-        parked = true;
-        setDeltaEligibilityPrompt({
-          reason,
-          serverLabel,
-          profileId: opts.profileId!,
-          owner: preflightOwner,
-          onContinue: () => { parked = false; void launchRun().finally(finishPreflight); },
-          onCancel: finishPreflight,
+        await runDeltaGate({
+          requested: connection.generation,
+          probeDelta: protocol === 'sftp',
+          generation: () => invoke<number>('provider_connection_generation'),
+          // The question keeps its answer in a saved profile: a session with
+          // no saved profile (no id, or the fallback id of an ad-hoc session,
+          // which no saved profile has) skips it, as an unreadable profile
+          // list does (`runDeltaGate`). The probe and a hard refusal apply
+          // all the same.
+          skipPrompt: async () => {
+            if (!opts.profileId) return true;
+            const profile = (await loadSavedServerProfiles()).find((p) => p.id === opts.profileId);
+            return !profile || profile.skipDeltaEligibilityPrompt === true;
+          },
+          probe: async () => {
+            checkTarget();
+            return invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility', { expectedGuiTarget: targetEpoch });
+          },
+          launch: () => {
+            if (!ownsPreflight()) return finishPreflight();
+            launched = true;
+            void launchRun().finally(finishPreflight);
+          },
+          refuse: (message) => refused(t('aerosync.title'), message),
+          failed: (err) => {
+            if (debugMode) {
+              // eslint-disable-next-line no-console
+              console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
+            }
+            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) {
+              refused(t('aerosync.title'), String(err));
+            } else {
+              refused(
+                t('aerosync.deltaEligibility.title'),
+                `${t('aerosync.deltaEligibility.heading')} ${t('common.retry')}`,
+              );
+            }
+          },
+          changed: () => refused(t('aerosync.title'), t('toast.remoteTargetChanged')),
+          ask: (verdict, onContinue) => {
+            if (!ownsPreflight()) return finishPreflight();
+            const reason = verdict.reason
+              || t('aerosync.deltaEligibility.heading')
+              || 'Delta sync unavailable for this server.';
+            const serverLabel = activeUnifiedRemoteProfile?.name
+              || verdict.server_identity?.host
+              || t('browser.remote');
+            parked = true;
+            setDeltaEligibilityPrompt({
+              reason,
+              serverLabel,
+              profileId: opts.profileId!,
+              owner: preflightOwner,
+              onContinue: () => { parked = false; onContinue(); },
+              onCancel: finishPreflight,
+            });
+          },
         });
       } catch (err) {
-        if (!ownsPreflight()) return;
-        if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined || ownerBinding === undefined) {
-          notify.error(t('aerosync.title'), String(err));
-          return;
-        }
-        // Probe failures should not block the run; log and proceed.
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
-        }
-        await launchRun();
+        // The comparison's target could not be bound (changed, or its epoch
+        // or owner binding unreadable): nothing launches.
+        if (ownsPreflight()) notify.error(t('aerosync.title'), String(err));
       } finally {
-        if (!parked) finishPreflight();
+        if (!parked && !launched) finishPreflight();
       }
     })();
   });
@@ -13312,6 +13447,9 @@ const App: React.FC = () => {
   });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13344,6 +13482,7 @@ const App: React.FC = () => {
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
         planBatchGeneration: context.batchGeneration,
+        requestedConnection,
       });
     }
   }, [
@@ -13353,6 +13492,9 @@ const App: React.FC = () => {
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13381,6 +13523,7 @@ const App: React.FC = () => {
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
         planBatchGeneration: context.batchGeneration,
+        requestedConnection,
       });
     }
   }, [
@@ -13395,6 +13538,9 @@ const App: React.FC = () => {
   // local-local pair resumes through `runLocalLocalSync`, every other pair
   // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
+    // E1, P1: the connection the journal was loaded on, captured with the
+    // comparison by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     if (!context) return;
     // Old journals lack the policy and per-file overwrite intent.
@@ -13427,11 +13573,22 @@ const App: React.FC = () => {
         ...(journal.ec_max_file_size != null ? { maxFileSize: journal.ec_max_file_size } : {}) } : null,
       resumeJournal: journal,
       profileId: context.activeProfileId,
+      requestedConnection,
     });
   }, [aeroSync, notify, t, runConnectedRemoteSync, runLocalLocalSync]);
 
+  // The context hook edits the comparison it was given; the connection that
+  // comparison was taken on travels with it unchanged (P1).
+  const setAeroSyncComparison = useCallback<Dispatch<SetStateAction<AeroSyncState | null>>>((action) => {
+    setAeroSync((prev) => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next === prev) return prev;
+      return next ? { ...next, connection: prev?.connection ?? null } : null;
+    });
+  }, []);
+
   const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
-    useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
+    useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);
 
 
   /**
@@ -13445,6 +13602,11 @@ const App: React.FC = () => {
    * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useLatestCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
+    // E1, P1: the connection of the comparison the plan comes from, captured
+    // by the openAeroSync call that built this state, before the compare: a
+    // run approved after a connection switch (a canary wait included) is the
+    // earlier connection's plan, and the gate must see that.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13503,11 +13665,6 @@ const App: React.FC = () => {
     // carrying nested relative paths; runConnectedRemoteSync handles the
     // SFTP probe, config, resumable journal and rich report. ─────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
-      const target = snapshotQueuedTarget();
-      const preparedTarget = prepareGuiTarget(queuedTargetGuard(target));
-      const localRoot = currentLocalPath;
-      const remoteRoot = currentRemotePath;
-      const authenticatedRemoteContent = isCryptOverlayActive();
       const leftIsLocal = context.pairKind === 'local-remote';
       const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, leftIsLocal);
 
@@ -13530,15 +13687,11 @@ const App: React.FC = () => {
           transferBudget: runtime.transferBudget,
           versionedBackup: runtime.versionedBackup,
           profileId: context.activeProfileId,
-          target,
-          preparedTarget,
-          localRoot,
-          remoteRoot,
-          authenticatedRemoteContent,
           maniac: runtime.speedMode === 'maniac',
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
           planBatchGeneration: context.batchGeneration,
+          requestedConnection,
         });
       };
 

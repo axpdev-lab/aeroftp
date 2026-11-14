@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
+import { CREDENTIAL_RULES, REDACTION_PATTERNS, applyRules, redactCredentials, redactSensitive, redactUrlUserinfo, uncoveredIdentity, type Span } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -70,12 +70,91 @@ describe('redactSensitive matrix', () => {
     it('leaves what is not a secret field alone', () => {
         for (const line of unchanged) expect(redactSensitive(line)).toBe(line);
     });
+
+    // T3, the class: every rule reads the original text, so no rule can
+    // consume another's delimiter and the order of the rules means nothing.
+    // Any order of either list gives the same output on every shared case;
+    // and every secret field and Authorization form of the matrix, put
+    // inside a URL's userinfo, leaves nothing of it (a form holding `/`, `?`
+    // or `#` ends the authority itself and is not one).
+    it('gives the same output whatever the order of the rules', () => {
+        // A fixed shuffle, so a failure can be replayed.
+        let seed = 7;
+        const shuffled = <T>(list: ReadonlyArray<T>): T[] => {
+            const out = [...list];
+            for (let i = out.length - 1; i > 0; i -= 1) {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                const j = seed % (i + 1);
+                [out[i], out[j]] = [out[j], out[i]];
+            }
+            return out;
+        };
+        for (let round = 0; round < 8; round += 1) {
+            const sensitive = shuffled(REDACTION_PATTERNS);
+            const credentials = shuffled(CREDENTIAL_RULES);
+            for (const { name, input } of cases) {
+                expect(applyRules(input, sensitive), name).toBe(redactSensitive(input));
+                expect(applyRules(input, credentials), name).toBe(redactCredentials(input));
+            }
+        }
+    });
+
+    it('masks the whole userinfo of a URL that holds any secret field or Authorization form', () => {
+        const userinfos: string[] = [];
+        for (const key of keys) {
+            for (const template of values) {
+                const value = template.replace('{v}', secret);
+                for (const sep of separators) {
+                    for (const form of valueForms) userinfos.push(`${key}${sep}${form.replace('{v}', value)}`);
+                }
+            }
+        }
+        for (const { credential } of authorization) userinfos.push(`authorization: ${credential}`);
+        let checked = 0;
+        for (const userinfo of userinfos.filter((u) => !/[/?#]/.test(u))) {
+            const input = `https://tok:${userinfo}@host/x`;
+            for (const out of [redactSensitive(input), redactCredentials(input)]) {
+                // The whole userinfo, from the token to the field's value, is
+                // gone (the field's value may take the host with it: over-
+                // masking), and a second pass changes nothing.
+                expect(out.startsWith('https://***REDACTED***'), `${input} -> ${out}`).toBe(true);
+                expect(out, input).not.toContain(secret);
+                expect(out, input).not.toContain('tok:');
+                expect(redactSensitive(out), out).toBe(out);
+            }
+            checked += 1;
+        }
+        expect(checked).toBeGreaterThan(100);
+    });
 });
 
 describe('redactSensitive on a long line', () => {
     // Far above a linear scan even on a loaded machine, and far below the minutes
     // a quadratic one takes: a tighter bound failed under a parallel build.
     const LINEAR_BOUND_MS = 15_000;
+
+    // T3: the identity spans a credential covers are dropped in one walk.
+    // 20k URLs whose `secret@host` is also an e-mail, and 20k e-mails beside
+    // them; and the walk's comparisons, counted: linear in the spans.
+    it('drops the identity spans a credential covers in linear time', () => {
+        const n = 20_000;
+        const urls = Array.from({ length: n }, (_, k) => `ftp://user${k}:secret@host${k}.example/x`);
+        const mails = Array.from({ length: n }, (_, k) => `mail${k}@x${k}.example`);
+        const input = [...urls, ...mails].join(' ');
+        const started = performance.now();
+        const out = redactSensitive(input);
+        expect(performance.now() - started).toBeLessThan(LINEAR_BOUND_MS);
+        expect(out).not.toMatch(/secret|user\d+:/);
+        expect(out.match(/ftp:\/\/\*\*\*REDACTED\*\*\*@host\d+\.example\/x/g)).toHaveLength(n);
+        expect(out.match(/(^| )\*\*\*@\*\*\*/g)).toHaveLength(n);
+
+        const span = (start: number, end: number): Span => ({ start, end, replacement: 'x' });
+        const credentials = Array.from({ length: n }, (_, k) => span(10 * k, 10 * k + 5));
+        const identity = Array.from({ length: 2 * n }, (_, k) => span(5 * k, 5 * k + 3));
+        const steps = { count: 0 };
+        expect(uncoveredIdentity(identity, credentials, steps)).toHaveLength(n);
+        expect(steps.count).toBeLessThanOrEqual(2 * (credentials.length + identity.length));
+    });
 
     // A run of address characters with no "@" (a hex or base64url dump) once
     // cost a scan from every start position: quadratic, minutes for 200 KB.
@@ -158,17 +237,52 @@ describe('redactCredentials: URL userinfo', () => {
     });
 });
 
+describe('S1: both entry points, every scheme and every escape form', () => {
+    it('masks each S1 shared case the same way through redactCredentials', () => {
+        for (const { name, input, expected } of cases.filter(({ name }) => name.startsWith('S1 '))) {
+            expect(redactCredentials(input), name).toBe(expected);
+        }
+    });
+
+    it('masks every URL of a 20k escaped-token document, each at its own token', () => {
+        const input = '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']';
+        const masked = redactUrlUserinfo(input);
+        expect(masked.match(/\*\*\*REDACTED\*\*\*/g)).toHaveLength(20_000);
+        expect(masked).not.toMatch(/u\d+:p/);
+        expect(redactUrlUserinfo(masked)).toBe(masked);
+    });
+});
+
 describe('redactCredentials: one URL rule, any scheme, never past a field (T11)', () => {
     it('keeps the field after an authority without userinfo', () => {
         expect(redactCredentials('{"a":"https://host:443","b":"x@y"}')).toBe('{"a":"https://host:443","b":"x@y"}');
     });
-    it('keeps it in JSON escaped inside a string too', () => {
+    // D1: raw escaped JSON is not JSON as a whole: plain text, where no quote
+    // ends an authority, so a path-less URL over-masks into the next field
+    // by policy; nothing leaks.
+    it('over-masks, never leaks, in JSON escaped without its outer string', () => {
         const escaped = '{\\"a\\":\\"https://host:443\\",\\"b\\":\\"x@y\\"}';
-        expect(redactCredentials(escaped)).toBe(escaped);
+        expect(redactCredentials(escaped)).toBe('{\\"a\\":\\"https://***REDACTED***@y\\"}');
     });
     it('still masks the userinfo of other schemes', () => {
         expect(redactCredentials('get s3://AKIAEXAMPLE:secretkey@bucket/key failed'))
             .toBe('get s3://***REDACTED***@bucket/key failed');
+    });
+    // P9 (U10): an escaped quote and a comma inside a password, in plain
+    // JSON, is the password's, not the end of the field.
+    it('masks a password that holds an escaped quote and a comma', () => {
+        const raw = String.raw`{"url":"https://bob:pa\",ss@host/path"}`;
+        expect(redactCredentials(raw)).toBe(String.raw`{"url":"https://***REDACTED***@host/path"}`);
+        const s3 = String.raw`{"src":"s3://AKIAEXAMPLE:se\",cret@bucket/key"}`;
+        expect(redactCredentials(s3)).toBe(String.raw`{"src":"s3://***REDACTED***@bucket/key"}`);
+    });
+    // Q3: text before the URL in a plain JSON string, and `\":` in the
+    // password: the string's level is the opening quote's, so it is masked.
+    it('masks a password after text in a plain JSON string', () => {
+        const raw = String.raw`{"message":"upload to ftp://bob:pa\":ss@host/file"}`;
+        expect(redactCredentials(raw)).toBe(String.raw`{"message":"upload to ftp://***REDACTED***@host/file"}`);
+        const s3 = String.raw`{"message":"copy s3://AKIAEXAMPLE:se\":cret@bucket/key"}`;
+        expect(redactCredentials(s3)).toBe(String.raw`{"message":"copy s3://***REDACTED***@bucket/key"}`);
     });
 });
 
@@ -180,6 +294,18 @@ describe('redactUrlUserinfo (H9: linear by construction)', () => {
             'ftp://' + ':'.repeat(200_000),
             'x'.repeat(100_000) + '://'.repeat(100_000),
             'ftp://ftp://'.repeat(50_000),
+            // D1: long whitespace and many strings, valid JSON and not.
+            '{"a":"' + ' '.repeat(200_000) + 'ftp://u:p@h"}',
+            JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)),
+            JSON.stringify(Array.from({ length: 20_000 }, () => 's')) + ' tail',
+            '"'.repeat(200_000) + 'ftp://u:p@h',
+            // D1: a large valid JSON document, URLs throughout.
+            JSON.stringify({ rows: Array.from({ length: 20_000 }, (_, n) => ({ id: n, url: `https://user${n}:secret@host${n}.example/p`, note: 'x@y' })) }),
+            // S1: 20k escaped tokens, each decoded once; a document of 20k
+            // URLs serialized inside one string; twelve levels of nesting.
+            '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']',
+            JSON.stringify({ log: JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)) }),
+            Array.from({ length: 12 }).reduce<string>((inner) => JSON.stringify({ v: inner }), 'ftp://u:p@h/' + 'x'.repeat(1000)),
         ];
         for (const input of inputs) {
             const started = performance.now();

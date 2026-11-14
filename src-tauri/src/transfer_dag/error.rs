@@ -201,6 +201,10 @@ impl TransferError {
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
+            // A changed authorization (an SFTP pin) is never retried on this
+            // session: like a refused login, it waits for a reconnect. A
+            // poisoned GitHub session is the typed `TargetChanged` above,
+            // never retried either (`default_retry_for`).
             ProviderError::AuthenticationFailed(_) | ProviderError::HostKeyRejected(_) => {
                 TransferErrorKind::Auth
             }

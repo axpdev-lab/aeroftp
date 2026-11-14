@@ -29,10 +29,10 @@
 #![allow(dead_code)]
 
 use crate::delta_transport::DeltaTransport;
-use crate::rsync_over_ssh::{RsyncCapability, RsyncConfig, RsyncError, RsyncStats};
+use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
 use regex::Regex;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex as TokioMutex;
@@ -98,32 +98,6 @@ fn sanitize_rsync_message(raw: &str) -> String {
 pub enum SyncDirection {
     Upload,
     Download,
-}
-
-/// Stable per-session context that drives rsync behavior.
-///
-/// Built once by the sync loop when it initializes a delta-capable session
-/// (typically after `SftpProvider::connect()`), reused for every file in that session.
-#[derive(Debug, Clone)]
-pub struct DeltaSyncContext {
-    /// SSH username for rsync transport.
-    pub ssh_user: String,
-    /// SSH host for rsync transport.
-    pub ssh_host: String,
-    /// SSH port (defaults to 22 in rsync_over_ssh if `None`).
-    pub ssh_port: Option<u16>,
-    /// Absolute path to SSH private key. Missing → delta disabled, classic fallback.
-    pub ssh_key_path: Option<PathBuf>,
-    /// `StrictHostKeyChecking` level for the rsync-driven SSH transport.
-    pub strict_host_key_check: String,
-    /// Optional known_hosts path (usually `~/.ssh/known_hosts`).
-    pub known_hosts_path: Option<PathBuf>,
-    /// File-size threshold below which delta is skipped (overhead > saving).
-    pub min_file_size: u64,
-    /// Enable compression on the rsync transport.
-    pub compress: bool,
-    /// Session identity used as cache key for capability probing.
-    pub session_key: String,
 }
 
 /// Outcome of one delta-sync attempt.
@@ -328,31 +302,6 @@ async fn probe_capability_cached(
     report
 }
 
-/// Build a per-session [`RsyncConfig`] from the stable [`DeltaSyncContext`].
-///
-/// This is the bridge value used to construct the concrete transport; callers
-/// who already hold a `Box<dyn DeltaTransport>` don't need to touch it.
-pub fn build_rsync_config(ctx: &DeltaSyncContext) -> RsyncConfig {
-    RsyncConfig {
-        compress: ctx.compress,
-        preserve_times: true,
-        progress: true,
-        min_file_size: ctx.min_file_size,
-        ssh_key_path: ctx.ssh_key_path.clone(),
-        ssh_password: None,
-        auth_method: crate::rsync_over_ssh::AuthMethod::SshKey,
-        ssh_port: ctx.ssh_port,
-        ssh_user: ctx.ssh_user.clone(),
-        ssh_host: ctx.ssh_host.clone(),
-        strict_host_key_check: ctx.strict_host_key_check.clone(),
-        known_hosts_path: ctx.known_hosts_path.clone(),
-        pinned_private_key: None,
-        pinned_key_sha256: None,
-        // A key-file login: there is no password session to repeat.
-        pinned_password: false,
-    }
-}
-
 /// Attempt a delta-sync transfer. Returns a result regardless of success:
 /// if delta cannot be used (any reason: no capability, missing key, small file,
 /// transfer error), `used_delta = false` and `fallback_reason` is populated so
@@ -497,26 +446,29 @@ pub async fn try_delta_transfer_with_transport(
 
 /// Check delta eligibility without transferring any file.
 ///
-/// Uses the same cached remote probe that powers real transfers, but adds a
-/// 5-second timeout because this path runs on the sync-start UX gate and must
-/// not stall the UI indefinitely.
+/// The very probe the transfers of this session read, bounded by its own
+/// [`PROBE_TIMEOUT`] and cached either way, with no shorter timeout of its
+/// own (P3). An outer timeout used to cancel it at 5 s without caching
+/// anything: a refusal that took longer was reported as an ordinary "delta
+/// unavailable", the run went on, and the transfers probed again and stopped
+/// half way, after the run had already deleted or created folders. Now the
+/// gate and every transfer share one verdict: a refusal stops the run before
+/// any write, and a probe that does not finish in time is cached as
+/// unavailable for the session, so no delta login is made and nothing stops
+/// the run half way.
 #[doc(hidden)]
 pub async fn check_delta_eligibility_with_transport(
     transport: &dyn DeltaTransport,
     session_key: &str,
 ) -> DeltaEligibilityStatus {
-    let remote_capability = timeout(
-        Duration::from_secs(5),
-        probe_capability_cached(transport, session_key),
-    )
-    .await;
+    let remote_capability = probe_capability_cached(transport, session_key).await;
 
     let capability = match remote_capability {
-        Ok(Ok(capability)) => capability,
+        Ok(capability) => capability,
         // The same split as a transfer's: a refusal that must not fall back
         // stays a hard error, fresh or cached, so the sync-start gate stops
         // the run instead of offering to continue without delta.
-        Ok(Err(ProbeFailure::Hard(reason))) => {
+        Err(ProbeFailure::Hard(reason)) => {
             let verdict = hard_rejection_result(&reason);
             if let Some(hard) = verdict.hard_error {
                 return DeltaEligibilityStatus {
@@ -531,20 +483,13 @@ pub async fn check_delta_eligibility_with_transport(
                 hard_error: None,
             };
         }
-        Ok(Err(reason)) => {
+        Err(reason) => {
             return DeltaEligibilityStatus {
                 eligible: false,
                 reason: Some(sanitize_rsync_message(&format!(
                     "remote delta unavailable: {}",
                     reason
                 ))),
-                hard_error: None,
-            };
-        }
-        Err(_) => {
-            return DeltaEligibilityStatus {
-                eligible: false,
-                reason: Some("remote delta probe timed out after 5s".to_string()),
                 hard_error: None,
             };
         }
@@ -871,6 +816,11 @@ pub async fn invalidate_session_cache(session_key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the unix tests build an `RsyncConfig` (Windows CI denies unused imports).
+    #[cfg(unix)]
+    use crate::rsync_over_ssh::RsyncConfig;
+    #[cfg(unix)]
+    use std::path::PathBuf;
 
     // The probe cache is a process-global static; tests that clear it and assert
     // on its contents must not interleave, or one test's `clear_probe_cache()`
@@ -1055,33 +1005,6 @@ mod tests {
                 .contains("host key mismatch"),
             "hard rejection must surface in hard_error with the original message"
         );
-    }
-
-    #[test]
-    fn build_config_copies_context_fields() {
-        let ctx = DeltaSyncContext {
-            ssh_user: "alice".into(),
-            ssh_host: "example.com".into(),
-            ssh_port: Some(2222),
-            ssh_key_path: Some(PathBuf::from("/tmp/key")),
-            strict_host_key_check: "accept-new".into(),
-            known_hosts_path: Some(PathBuf::from("/tmp/kh")),
-            min_file_size: 4096,
-            compress: false,
-            session_key: "s1".into(),
-        };
-        let cfg = build_rsync_config(&ctx);
-        assert_eq!(cfg.ssh_user, "alice");
-        assert_eq!(cfg.ssh_host, "example.com");
-        assert_eq!(cfg.ssh_port, Some(2222));
-        assert_eq!(cfg.ssh_key_path.unwrap(), PathBuf::from("/tmp/key"));
-        assert!(cfg.ssh_password.is_none());
-        assert_eq!(cfg.auth_method, crate::rsync_over_ssh::AuthMethod::SshKey);
-        assert_eq!(cfg.strict_host_key_check, "accept-new");
-        assert_eq!(cfg.min_file_size, 4096);
-        assert!(!cfg.compress);
-        assert!(cfg.preserve_times);
-        assert!(cfg.progress);
     }
 
     #[tokio::test]
@@ -1340,6 +1263,99 @@ mod tests {
             1,
             "the second read is the cache"
         );
+    }
+
+    /// P3: a refusal slower than the gate's old 5 s timeout still stops the
+    /// run at the gate (a hard error, not "delta unavailable"); a probe that
+    /// outlasts the probe bound is the session's verdict too, so the
+    /// transfers after the gate make no delta login, see no refusal half way
+    /// and send nothing through the transport.
+    #[tokio::test(start_paused = true)]
+    async fn a_slow_refusal_stops_at_the_gate_and_a_timed_out_probe_stays_the_sessions_verdict() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// Refuses after `delay`; counts probes and transfers.
+        struct Delayed {
+            delay: Duration,
+            probes: AtomicUsize,
+            transfers: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl DeltaTransport for Delayed {
+            fn name(&self) -> &'static str {
+                "delayed-refusal"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(self.delay).await;
+                Err(RsyncError::HardRejection(
+                    "native hard rejection (HostKeyRejected): fingerprint mismatch".into(),
+                ))
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                self.transfers.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                self.transfers.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::RemoteNotAvailable)
+            }
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        // Six seconds: past the old outer 5 s, inside the probe bound.
+        let slow = Delayed {
+            delay: Duration::from_secs(6),
+            probes: AtomicUsize::new(0),
+            transfers: AtomicUsize::new(0),
+        };
+        let status = check_delta_eligibility_with_transport(&slow, "test-gate-slow-refusal").await;
+        assert!(!status.eligible);
+        assert!(status.hard_error.is_some(), "{status:?}");
+
+        // Past the probe bound: unavailable at the gate, and the same for
+        // every transfer of the session, which neither probes again nor
+        // reaches the transport.
+        let stuck = Delayed {
+            delay: PROBE_TIMEOUT + Duration::from_secs(60),
+            probes: AtomicUsize::new(0),
+            transfers: AtomicUsize::new(0),
+        };
+        let key = "test-gate-timed-out";
+        let status = check_delta_eligibility_with_transport(&stuck, key).await;
+        assert!(!status.eligible);
+        assert!(status.hard_error.is_none(), "{status:?}");
+        for _ in 0..3 {
+            let result = transfer_with_delta(
+                &stuck,
+                SyncDirection::Upload,
+                Path::new("/tmp/nope"),
+                "/remote/nope",
+                key,
+                None,
+            )
+            .await
+            .expect("a fallback");
+            assert!(!result.used_delta);
+            assert!(result.hard_error.is_none(), "{result:?}");
+        }
+        assert_eq!(
+            stuck.probes.load(Ordering::SeqCst),
+            1,
+            "one verdict per session"
+        );
+        assert_eq!(stuck.transfers.load(Ordering::SeqCst), 0);
     }
 
     /// A probe that refuses a pinned key that is not the login key must stop
