@@ -47,4 +47,32 @@ describe('connection metadata used by saved profiles', () => {
         expect(passField?.helpText).toMatch(/-token/);
         expect(passField?.helpText).toMatch(/persistent connections/i);
     });
+
+    it('LifetimeCloud WebDAV preset is declared in manifest and registry with trial wording and token onboarding', () => {
+        const manifestPreset = connectionManifest.presets.find(p => p.id === 'lifetimecloud');
+        expect(manifestPreset).toMatchObject({
+            id: 'lifetimecloud',
+            protocol: 'webdav',
+            generic: false,
+            defaults: {
+                server: 'https://lifetimecloud.me/dav/{username}/',
+                port: 443,
+            },
+        });
+
+        const provider = PROVIDERS.find(p => p.id === 'lifetimecloud');
+        expect(provider).toBeDefined();
+        expect(provider!.protocol).toBe('webdav');
+        expect(provider!.category).toBe('webdav');
+        expect(provider!.features).toEqual({ shareLink: false, sync: true });
+        expect((provider!.description ?? '').toLowerCase()).toContain('trial');
+        expect((provider!.description ?? '').toLowerCase()).not.toContain('free');
+        const pwField = provider!.fields.find(f => f.key === 'password');
+        expect(pwField?.label).toBe('WebDAV token');
+        expect(pwField?.placeholder?.toLowerCase()).toContain('not your lifetimecloud account password');
+        expect(provider!.passwordGenUrl).toBe('https://lifetimecloud.me/profile');
+        expect(provider!.helpUrl).toBe('https://lifetimecloud.me/articles/rclone-webdav-guide.html');
+        expect(provider!.signupUrl).toBe('https://lifetimecloud.me/register');
+        expect(provider!.healthCheckUrl).toBe('https://lifetimecloud.me/');
+    });
 });

@@ -209,3 +209,22 @@ describe('select all on a filtered checklist', () => {
         expect(selectShownLabel(new Set(all), all, false)).toEqual({ key: 'settings.deselectAll' });
     });
 });
+
+describe('deriveProviderId LifetimeCloud host boundary', () => {
+    const dav = (host: string) => ({ name: 'd', host, username: 'alice', protocol: 'webdav' as const });
+
+    it('matches exact lifetimecloud.me and real subdomains before the cloud. Nextcloud rule', () => {
+        expect(deriveProviderId(dav('https://lifetimecloud.me/dav/alice/'))).toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://webdav.lifetimecloud.me/dav/{username}/'))).toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://user@lifetimecloud.me:443/dav/alice?foo=bar'))).toBe('lifetimecloud');
+    });
+
+    it('rejects lookalike hosts and keeps Nextcloud hosts on nextcloud', () => {
+        expect(deriveProviderId(dav('https://notlifetimecloud.me/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://lifetimecloud.me.example/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://evil-lifetimecloud.me/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://lifetimecloud-host.example/dav/alice/'))).toBeUndefined();
+        expect(deriveProviderId(dav('https://cloud.example.com/remote.php/dav/files/alice/'))).toBe('nextcloud');
+        expect(deriveProviderId(dav('https://nextcloud.example.com/'))).toBe('nextcloud');
+    });
+});

@@ -929,6 +929,16 @@
       "firstRegion": null
     },
     {
+      "id": "lifetimecloud",
+      "protocol": "webdav",
+      "generic": false,
+      "defaults": {
+        "server": "https://lifetimecloud.me/dav/{username}/",
+        "port": 443
+      },
+      "firstRegion": null
+    },
+    {
       "id": "drivehq",
       "protocol": "webdav",
       "generic": false,

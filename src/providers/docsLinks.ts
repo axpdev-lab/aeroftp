@@ -53,6 +53,7 @@ const PROVIDER_ID_TO_SLUG: Record<string, string> = {
     'quotaless-s3': 'quotaless',
     'quotaless-webdav': 'quotaless',
     'mailru-cloud': 'mailru-cloud',
+    lifetimecloud: 'lifetimecloud',
     '4shared-webdav': '4shared',
     s3drive: 's3drive',
     jianguoyun: 'jianguoyun',

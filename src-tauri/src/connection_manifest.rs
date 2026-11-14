@@ -308,6 +308,7 @@ pub fn resolve_profile(
     let explicit_host = host.is_some_and(|host| !host.trim().is_empty());
     let username = username.or(spec.default_username.as_deref()).unwrap_or("");
     let host = host
+        .filter(|host| !host.trim().is_empty())
         .or_else(|| defaults?.get("server")?.as_str())
         .or(spec.default_host.as_deref())
         .unwrap_or("")
@@ -565,5 +566,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(created["options"]["proton_mode"], "native");
+    }
+
+    #[test]
+    fn lifetimecloud_preset_resolves_username_template_with_omitted_or_blank_host() {
+        for host in [None, Some(""), Some("   ")] {
+            let created = super::resolve_profile(
+                "webdav",
+                Some("lifetimecloud"),
+                host,
+                None,
+                Some("alice"),
+                None,
+                &json!({}),
+            )
+            .expect("lifetimecloud preset should resolve");
+            assert_eq!(created["protocol"], "webdav");
+            assert_eq!(created["providerId"], "lifetimecloud");
+            assert_eq!(created["host"], "https://lifetimecloud.me/dav/alice/");
+            assert_eq!(created["port"], 443);
+            assert_eq!(created["username"], "alice");
+        }
     }
 }

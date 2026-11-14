@@ -1533,6 +1533,43 @@ export const PROVIDERS: ProviderConfig[] = [
         ],
     },
     {
+        id: 'lifetimecloud',
+        name: 'LifetimeCloud',
+        description: 'LifetimeCloud storage via WebDAV (1 GB trial, no card)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#2563EB',
+        stable: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'Your LifetimeCloud username',
+                helpText: 'Used to fill https://lifetimecloud.me/dav/{username}/ automatically',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'WebDAV token',
+                placeholder: 'Paste WebDAV token (not your LifetimeCloud account password)',
+                helpText: 'Profile > Enable WebDAV > Generate WebDAV token (not your LifetimeCloud account password)',
+            },
+        ],
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://lifetimecloud.me/',
+        passwordGenUrl: 'https://lifetimecloud.me/profile',
+        helpUrl: 'https://lifetimecloud.me/articles/rclone-webdav-guide.html',
+        signupUrl: 'https://lifetimecloud.me/register',
+        setupInstructions: [
+            'Sign in to your LifetimeCloud profile, enable WebDAV, and generate a WebDAV token (if compromised, regenerate it)',
+            'Enter that WebDAV token in the WebDAV token field above, not your LifetimeCloud account password',
+            'Plain WebDAV transfers are HTTPS-only without provider-side end-to-end encryption, and WebDAV deletes are permanent (no Trash)',
+            'Optional: enable an AeroCrypt or rclone-crypt overlay in this profile for client-side encryption',
+        ],
+    },
+    {
         id: 'koofr',
         name: 'Koofr',
         description: 'EU-based privacy-friendly cloud (10 GB free)',
