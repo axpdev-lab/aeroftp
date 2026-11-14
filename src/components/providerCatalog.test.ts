@@ -324,6 +324,18 @@ describe('commercial tier model: free / free-card / paid', () => {
         }
     });
 
+    it('Puter is listed with trial copy and never classified as free', () => {
+        // A 25 MB allowance is a trial, not a free plan (owner, 2026-11-14):
+        // without `paid` on its only method the WebDAV tab filed Puter under
+        // the Free tier filter.
+        const entry = PROVIDER_CATALOG.find(c => c.logoId === 'puter');
+        expect(entry).toBeDefined();
+        expect(entry!.freeStorageGb).toBeNull();
+        expect(entry!.freeNote).toBe('25 MB trial');
+        expect(companyTier(entry!)).toBe('paid');
+        expect(companyTierInCategory(entry!, 'webdav')).toBe('paid');
+    });
+
     it('LifetimeCloud is listed with trial copy and never classified as free', () => {
         const entry = PROVIDER_CATALOG.find(c => c.logoId === 'lifetimecloud');
         expect(entry).toBeDefined();

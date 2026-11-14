@@ -286,7 +286,7 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
     { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: null,
       freeNote: '25 MB trial', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav', paid: true }] },
     { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: null,
       freeNote: '1 GB trial', healthCheckUrl: 'https://lifetimecloud.me/',
       searchAliases: ['lifetimecloud', 'lifetimecloud.me', 'lifetime cloud'],

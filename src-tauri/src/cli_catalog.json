@@ -776,7 +776,7 @@
         "label": "WebDAV",
         "protocol": "webdav",
         "providerId": "puter-webdav",
-        "paid": false,
+        "paid": true,
         "category": "webdav",
         "note": null
       }
