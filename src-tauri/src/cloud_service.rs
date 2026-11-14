@@ -1654,6 +1654,13 @@ impl CloudService {
         direction: CompareDirection,
     ) {
         for key in prior.unverified_keys.clone() {
+            // A key an interrupted run fenced is unverified for another
+            // reason: equal copies do not say which of them the run wrote,
+            // so it stays an interrupted-sync conflict for the user, with no
+            // baseline and no receipt.
+            if prior.pending_recovery_keys.contains(&key) {
+                continue;
+            }
             let (Some(local), Some(remote)) = (locals.get(&key), remotes.get(&key)) else {
                 continue;
             };
@@ -4350,6 +4357,46 @@ mod baseline_tests {
             index.unverified_keys.clear();
             index = serde_json::from_str(&serde_json::to_string(&index).unwrap()).unwrap();
         }
+    }
+
+    /// A key fenced by an interrupted run sits in both `unverified_keys` and
+    /// `pending_recovery_keys`. Equal copies on both sides do not restore its
+    /// trust: its marker, its fence and its old baseline stay, while a key
+    /// that only a migration rewrote is verified beside it.
+    #[test]
+    fn a_pending_recovery_key_is_not_verified_as_a_migrated_baseline() {
+        let old = SyncIndexEntry {
+            size: 9,
+            modified: fi(9, 900).modified,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        for key in ["fenced.txt", "migrated.txt"] {
+            index.files.insert(key.into(), old.clone());
+            index.unverified_keys.insert(key.into());
+        }
+        index.pending_recovery_keys.insert("fenced.txt".into());
+        let files = HashMap::from([
+            ("fenced.txt".to_string(), fi(5, 1000)),
+            ("migrated.txt".to_string(), fi(5, 1000)),
+        ]);
+        CloudService::verify_migrated_baseline(
+            &mut index,
+            &files,
+            &files,
+            &CompareOptions::default(),
+            CompareDirection::LocalToRemote,
+        );
+        assert!(index.unverified_keys.contains("fenced.txt"));
+        assert!(index.pending_recovery_keys.contains("fenced.txt"));
+        assert_eq!(
+            index.files["fenced.txt"].size, 9,
+            "its baseline is untouched"
+        );
+        assert!(!index.unverified_keys.contains("migrated.txt"));
+        assert_eq!(index.files["migrated.txt"].size, 5);
+        assert!(index.cloud_receipts.is_empty());
     }
 
     #[test]
