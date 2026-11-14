@@ -122,6 +122,24 @@ impl ScanLedger {
         state.pending = None;
     }
 
+    /// The pair keyed `from` connected and is now keyed `to`: a `~/...`
+    /// remote folder placed under the login folder on this connect. What the
+    /// ledger knew under the old key moves to the new one, so a request made
+    /// before the placement is answered there, and nothing stays pending
+    /// under a key no pair has any more.
+    pub fn moved(&mut self, from: &str, to: &str) {
+        if from == to {
+            return;
+        }
+        let Some(old) = self.pairs.remove(from) else {
+            return;
+        };
+        let state = self.pairs.entry(to.to_string()).or_default();
+        state.last_full_scan = state.last_full_scan.max(old.last_full_scan);
+        state.traits = state.traits.or(old.traits);
+        state.pending = state.pending.take().or(old.pending);
+    }
+
     /// Remember what a connected provider said about scanning.
     pub fn learn(&mut self, key: &str, traits: ProviderScanTraits) {
         self.pairs.entry(key.to_string()).or_default().traits = Some(traits);
@@ -387,6 +405,47 @@ pub fn choose_pair_job(
 mod tests {
     use super::*;
     use crate::file_watcher::WatcherEventKind;
+
+    /// A pair whose `~/...` folder was placed on a connect moves to another
+    /// key: what the ledger held under the old one follows it, a scan
+    /// recorded after the move answers a request made before it, and the old
+    /// key keeps nothing pending.
+    #[test]
+    fn a_placed_pair_takes_its_scan_state_to_the_new_key() {
+        let now = Instant::now();
+        let traits = ProviderScanTraits {
+            min_full_scan_interval: Some(Duration::from_secs(1800)),
+            exact_sizes: true,
+        };
+        let mut ledger = ScanLedger::default();
+        ledger.learn("l|~/docs", traits);
+        ledger.request_full_scan("l|~/docs", "the watcher lost events");
+        ledger.moved("l|~/docs", "l|/home/u/docs");
+        assert!(!ledger.pairs.contains_key("l|~/docs"));
+        assert!(ledger.pending_full_scan_due("l|/home/u/docs", now));
+        assert_eq!(ledger.pairs["l|/home/u/docs"].traits, Some(traits));
+        ledger.record_full_scan("l|/home/u/docs", now);
+        assert!(!ledger.any_pending());
+        // The floor learned under the old key holds the next scan back.
+        assert!(!ledger.full_scan_allowed("l|/home/u/docs", now + Duration::from_secs(60)));
+
+        // Moving onto a key that knows more keeps the newer scan and its
+        // own request; a key that did not change moves nothing.
+        let mut ledger = ScanLedger::default();
+        ledger.record_full_scan("l|~/a", now);
+        ledger.record_full_scan("l|/h/a", now + Duration::from_secs(5));
+        ledger.request_full_scan("l|/h/a", "kept");
+        ledger.moved("l|~/a", "l|/h/a");
+        assert_eq!(
+            ledger.pairs["l|/h/a"].last_full_scan,
+            Some(now + Duration::from_secs(5))
+        );
+        assert_eq!(ledger.pairs["l|/h/a"].pending.as_deref(), Some("kept"));
+        ledger.moved("l|/h/a", "l|/h/a");
+        assert!(ledger.pairs.contains_key("l|/h/a"));
+        ledger.moved("l|missing", "l|/h/a");
+        assert_eq!(ledger.pairs.len(), 1);
+    }
 
     const HOUR: Duration = Duration::from_secs(3600);
     const FIVE_MIN: Duration = Duration::from_secs(300);

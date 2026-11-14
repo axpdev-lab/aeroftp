@@ -175,6 +175,40 @@ pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
 
+/// The background worker keeps the scan ledger on the key of the folder each
+/// cycle opened: before it records a scan or asks for one under the key a
+/// cycle reported, it moves what the ledger held under the key the pair had
+/// before the connect (a `~/...` folder placed there). The move itself is
+/// pinned by `a_placed_pair_takes_its_scan_state_to_the_new_key`.
+#[cfg(test)]
+mod background_scan_key_tests {
+    #[test]
+    fn every_scan_the_worker_records_moves_the_old_key_first() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("\nasync fn background_sync_worker(")
+            .expect("worker");
+        let body = &source[start..start + source[start..].find("\n}\n").expect("worker end")];
+        let mut writes = 0;
+        for (at, _) in body
+            .match_indices(".record_full_scan(")
+            .chain(body.match_indices(".request_full_scan(&e.placed_key"))
+        {
+            let before = &body[..at];
+            let line_start = before.rfind("\n").unwrap_or(0);
+            let previous = &before[before[..line_start].rfind("\n").unwrap_or(0)..line_start];
+            assert!(
+                previous.contains(".moved(&key,"),
+                "a scan is recorded without moving the old key first: {}",
+                &body[line_start..at + 40]
+            );
+            writes += 1;
+        }
+        assert_eq!(writes, 3, "the worker's scan records changed");
+        assert!(body.contains("ledger().moved(&key, &placed_key);"));
+    }
+}
+
 #[cfg(test)]
 mod only_main_window_tests {
     #[test]
@@ -17067,12 +17101,8 @@ async fn trigger_cloud_sync(
             }
         }
     }
-    // "Sync now" is a full scan: the background scheduler counts it, so a
-    // provider's floor between two scans spans it too.
-    cloud_scan_schedule::ledger().record_full_scan(
-        &cloud_scan_schedule::pair_key(&cfg),
-        std::time::Instant::now(),
-    );
+    // "Sync now" is a full scan, which `sync_one_config` records for the
+    // background scheduler under the key of the folder it opened.
     let result =
         cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
 
@@ -17742,7 +17772,10 @@ async fn background_sync_worker(app: AppHandle) {
                                 Ok(report) => report.placed_key.as_str(),
                                 Err(e) => e.placed_key.as_str(),
                             };
-                            ledger().record_full_scan(scan_key, started);
+                            let mut scans = ledger();
+                            scans.moved(&key, scan_key);
+                            scans.record_full_scan(scan_key, started);
+                            drop(scans);
                             // A scan that failed read nothing: the pair's changes
                             // stay in the backlog, for the next pass to try.
                             *run = if outcome.is_ok() {
@@ -17778,7 +17811,10 @@ async fn background_sync_worker(app: AppHandle) {
                                         }
                                     }
                                     if report.ran_full_scan {
-                                        ledger().record_full_scan(&report.placed_key, started);
+                                        let mut scans = ledger();
+                                        scans.moved(&key, &report.placed_key);
+                                        scans.record_full_scan(&report.placed_key, started);
+                                        drop(scans);
                                         *run = PairRun::Full;
                                     }
                                 }
@@ -17787,7 +17823,10 @@ async fn background_sync_worker(app: AppHandle) {
                                 // is discarded: the changes it carried are
                                 // covered by the full scan asked for here.
                                 Err(e) if e.needs_full_scan => {
-                                    ledger().request_full_scan(&e.placed_key, &e.message);
+                                    let mut scans = ledger();
+                                    scans.moved(&key, &e.placed_key);
+                                    scans.request_full_scan(&e.placed_key, &e.message);
+                                    drop(scans);
                                 }
                                 // Nothing ran (no connection): the paths come back.
                                 Err(e)
@@ -17806,11 +17845,18 @@ async fn background_sync_worker(app: AppHandle) {
                             None
                         }
                     };
-                    cycle_keys.push(match &outcome {
+                    let placed_key = match &outcome {
                         Some(Ok(report)) => report.placed_key.clone(),
                         Some(Err(e)) => e.placed_key.clone(),
                         None => key.clone(),
-                    });
+                    };
+                    // A `~/...` folder placed on this connect moved the pair
+                    // to another key: what the ledger held under the old one
+                    // (a request, a floor) follows it. A scan recorded above
+                    // moved it first, so the request it answered stays
+                    // answered.
+                    ledger().moved(&key, &placed_key);
+                    cycle_keys.push(placed_key);
                     match outcome {
                         Some(Ok(report)) => {
                             if let Some(traits) = report.traits {

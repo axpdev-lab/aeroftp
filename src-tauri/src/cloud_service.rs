@@ -3698,7 +3698,18 @@ pub async fn sync_one_config(
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
     let mut config = config;
+    let unplaced_key = crate::cloud_scan_schedule::pair_key(&config);
     let opened = open_aerocloud_connection(&mut config, store, !dry_run).await?;
+    if !dry_run {
+        // "Sync now" is a full scan: the background scheduler counts it, so
+        // a provider's floor between two scans spans it too. It is recorded
+        // under the key of the folder this connect opened, which a `~/...`
+        // folder placed here changed, and what the old key held moves there.
+        let placed_key = crate::cloud_scan_schedule::pair_key(&config);
+        let mut ledger = crate::cloud_scan_schedule::ledger();
+        ledger.moved(&unplaced_key, &placed_key);
+        ledger.record_full_scan(&placed_key, std::time::Instant::now());
+    }
     sync_opened_config(config, opened, app, dry_run).await
 }
 
@@ -8320,6 +8331,55 @@ mod baseline_tests {
             );
             let log = ftp.log.lock().unwrap().join("\n");
             assert!(!log.contains("STOR"), "no upload may happen:\n{log}");
+        });
+    }
+
+    /// A manual first "Sync now" on a `~/...` folder records its full scan
+    /// under the key of the folder the connect placed and saved, the key the
+    /// scheduler reads on its next tick: the interval and the provider's
+    /// floor hold the next scheduled scan back, and a full scan asked for
+    /// under the `~` key before the placement is answered, not left pending.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_manual_first_sync_records_its_scan_under_the_placed_key() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_manual", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            let config = aerocloud_config(local.path(), "~/docs", "srv_manual");
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = config.clone();
+                Ok(())
+            })
+            .unwrap();
+            let tilde_key = crate::cloud_scan_schedule::pair_key(&config);
+            crate::cloud_scan_schedule::ledger()
+                .request_full_scan(&tilde_key, "the watcher lost events");
+            let start = std::time::Instant::now();
+
+            sync_one_config(config.clone(), Some(&store), None, false)
+                .await
+                .unwrap_or_else(|e| panic!("{e}"));
+
+            let reloaded = cloud_config::load_cloud_config();
+            assert_eq!(reloaded.remote_folder, "/home/u/docs");
+            let placed_key = crate::cloud_scan_schedule::pair_key(&reloaded);
+            assert_ne!(placed_key, tilde_key);
+            let five_minutes = Duration::from_secs(5 * 60);
+            let ledger = crate::cloud_scan_schedule::ledger();
+            assert!(!ledger.scheduled_full_scan_due(&placed_key, start, five_minutes));
+            assert!(ledger.scheduled_full_scan_due(
+                &placed_key,
+                start + five_minutes + Duration::from_secs(60),
+                five_minutes
+            ));
+            assert!(!ledger.pending_full_scan_due(&placed_key, start + five_minutes));
+            // The ledger is shared by the process: only this pair's keys are read.
+            assert!(
+                !ledger.pending_full_scan_due(&tilde_key, start + five_minutes),
+                "nothing pends under the `~` key"
+            );
         });
     }
 
