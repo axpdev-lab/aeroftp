@@ -870,6 +870,7 @@ impl CryptOverlayProvider {
         path: &str,
         checked: &mut std::collections::HashSet<String>,
     ) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         self.map(path, true, AccessKind::Write)?;
         let child = format!("{}/.aeroftp-directory-probe", path.trim_end_matches('/'));
         if let Some(parent) = self
@@ -7319,6 +7320,19 @@ pub(crate) mod tests {
         }
         assert!(methods > 70, "parsed {methods} methods");
         assert!(checked.len() >= 28, "{checked:?}");
+        // The copy preflight maps a destination outside the trait, before
+        // any directory exists: it settles too.
+        let preflight = &source[source
+            .find("pub(crate) async fn check_directory_creation(")
+            .expect("preflight")..];
+        let preflight = &preflight[..preflight.find("\n    }\n").unwrap()];
+        let settle = preflight
+            .find("settle_scope_alias(")
+            .expect("preflight settles");
+        assert!(
+            settle < preflight.find("self.map(").unwrap(),
+            "check_directory_creation"
+        );
     }
 
     /// Every form a server resolves to the anchor or the alias is read as
