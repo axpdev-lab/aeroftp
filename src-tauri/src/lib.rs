@@ -14445,7 +14445,61 @@ struct DeltaServerIdentity {
 struct DeltaEligibilityProbeResult {
     eligible: bool,
     reason: Option<String>,
+    /// A refusal the run must not go past (a pinned key that is not the
+    /// login key, a rejected host key): the page stops before any write and
+    /// offers no "continue without delta" (C2).
+    hard_error: Option<String>,
     server_identity: Option<DeltaServerIdentity>,
+}
+
+impl DeltaEligibilityProbeResult {
+    /// The reply of `sftp_probe_delta_eligibility` for the gate's verdict:
+    /// its hard refusal is carried to the page, never dropped (C2).
+    fn from_verdict(
+        verdict: crate::delta_sync_rsync::DeltaEligibilityStatus,
+        server_identity: Option<DeltaServerIdentity>,
+    ) -> Self {
+        Self {
+            eligible: verdict.eligible,
+            reason: verdict.reason,
+            hard_error: verdict.hard_error,
+            server_identity,
+        }
+    }
+}
+
+#[cfg(test)]
+mod delta_probe_reply_tests {
+    use super::*;
+
+    /// C2: the command's reply carries the gate's hard refusal to the page,
+    /// as the page reads it (`hard_error`); an ordinary unavailability
+    /// carries none, and the page may offer to continue without delta.
+    #[test]
+    fn the_probe_reply_carries_the_gates_hard_refusal() {
+        let verdict = |hard_error: Option<&str>| crate::delta_sync_rsync::DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some("delta unavailable".into()),
+            hard_error: hard_error.map(str::to_string),
+        };
+        let hard = DeltaEligibilityProbeResult::from_verdict(
+            verdict(Some(
+                "PinnedKeyMismatch: the pinned key is not the login key",
+            )),
+            None,
+        );
+        let wire = serde_json::to_value(&hard).unwrap();
+        assert_eq!(
+            wire["hard_error"],
+            "PinnedKeyMismatch: the pinned key is not the login key"
+        );
+        let soft = serde_json::to_value(DeltaEligibilityProbeResult::from_verdict(
+            verdict(None),
+            None,
+        ))
+        .unwrap();
+        assert!(soft["hard_error"].is_null(), "{soft}");
+    }
 }
 
 #[tauri::command]
@@ -14583,6 +14637,7 @@ async fn sftp_probe_delta_eligibility(
         return Ok(DeltaEligibilityProbeResult {
             eligible: false,
             reason: Some(reason.to_string()),
+            hard_error: None,
             server_identity,
         });
     }
@@ -14603,11 +14658,10 @@ async fn sftp_probe_delta_eligibility(
             hard_error: None,
         });
 
-    Ok(DeltaEligibilityProbeResult {
-        eligible: verdict.eligible,
-        reason: verdict.reason,
+    Ok(DeltaEligibilityProbeResult::from_verdict(
+        verdict,
         server_identity,
-    })
+    ))
 }
 
 // ======================// Multi-Path Sync Commands (#52)

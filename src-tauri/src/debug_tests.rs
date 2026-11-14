@@ -425,8 +425,9 @@ fn quote_level(mut run: usize) -> usize {
 /// (Q3, A; the table is on the TS twin, `redactUrlUserinfo`, and the shared
 /// cases cover each cell). From the start of the text the open strings are
 /// tracked on a stack: a quote of level L ([`quote_level`]) closes the open
-/// string of level L, or opens one, structural when a JSON value starts
-/// there (after `{`, `[`, `:`, `,`, `=` or at the start) and prose otherwise.
+/// string of level L, or opens one, structural only when it provably opens
+/// a JSON value (a deeper level only inside a string whose content is a JSON
+/// document) and prose otherwise; over-masking a log field is accepted.
 /// A quote ends the authority only when its level is open as a structural
 /// string; a prose level is never trusted. Leaking is the only failure that
 /// matters: uncertain, the userinfo is masked to the last `@` before the first
@@ -447,20 +448,37 @@ fn redact_url_userinfo(text: &str) -> String {
             .take_while(|&&b| b == b'\\')
             .count()
     };
-    // Whether the quote whose escapes start at `from` opens a JSON value.
-    let opens_a_value = |from: usize| {
-        bytes[..from]
+    // Whether the text from `from`, spaces skipped, is a JSON document.
+    let starts_a_json_document = |from: usize| {
+        bytes[from.min(bytes.len())..]
             .iter()
-            .rev()
             .find(|&&b| !is_space(b))
-            .is_none_or(|&b| matches!(b, b'{' | b'[' | b':' | b',' | b'='))
+            .is_some_and(|&b| matches!(b, b'{' | b'['))
+    };
+    // Whether a quote of `level`, its escapes starting at `from`, opens a
+    // STRUCTURAL string inside `parent` (the innermost open one, as
+    // `(level, structural, content start)`). Not provably structural is
+    // prose (C3): level 0 with nothing open after `{ [ : , =` or at the
+    // start; a deeper level only inside a string whose content (the whole
+    // text when none is open) is a JSON document, after `{ [ : ,`.
+    let opens_a_value = |from: usize, level: usize, parent: Option<(usize, bool, usize)>| {
+        let before = bytes[..from].iter().rev().find(|&&b| !is_space(b)).copied();
+        let structural_spot = matches!(before, Some(b'{' | b'[' | b':' | b','));
+        if level == 0 && parent.is_none() {
+            return before.is_none() || structural_spot || before == Some(b'=');
+        }
+        if parent.is_some_and(|(parent_level, _, _)| parent_level + 1 != level) {
+            return false;
+        }
+        let document = starts_a_json_document(parent.map_or(0, |(_, _, content)| content));
+        document && (structural_spot || before.is_none())
     };
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
     let mut i = 0;
-    // The strings open at the scan's position, `(level, structural)`, from
-    // the quotes read outside the authorities (`untracked`).
-    let mut open: Vec<(usize, bool)> = Vec::new();
+    // The strings open at the scan's position, `(level, structural, content
+    // start)`, from the quotes read outside the authorities (`untracked`).
+    let mut open: Vec<(usize, bool, usize)> = Vec::new();
     let mut untracked = 0;
     while i + 3 <= bytes.len() {
         if bytes[i] == b'"' && i >= untracked {
@@ -468,10 +486,13 @@ fn redact_url_userinfo(text: &str) -> String {
             let level = quote_level(run);
             match open
                 .iter()
-                .rposition(|&(open_level, _)| open_level == level)
+                .rposition(|&(open_level, _, _)| open_level == level)
             {
                 Some(at) => open.truncate(at),
-                None => open.push((level, opens_a_value(i - run))),
+                None => {
+                    let structural = opens_a_value(i - run, level, open.last().copied());
+                    open.push((level, structural, i + 1));
+                }
             }
         }
         if &bytes[i..i + 3] != b"://" {
@@ -504,7 +525,7 @@ fn redact_url_userinfo(text: &str) -> String {
                 let quote = quote_level(run);
                 if open
                     .iter()
-                    .any(|&(level, structural)| structural && level == quote)
+                    .any(|&(level, structural, _)| structural && level == quote)
                 {
                     break;
                 }

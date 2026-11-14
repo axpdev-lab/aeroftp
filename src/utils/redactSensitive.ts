@@ -91,21 +91,49 @@ const quoteLevel = (run: number): number => {
     return level;
 };
 
-/** One open string: its escape level, and whether a JSON value opened it. */
+/** One open string: its escape level, whether a JSON value opened it, and
+ *  where its content starts. */
 interface OpenString {
     level: number;
     structural: boolean;
+    content: number;
 }
 
-// Whether the quote whose escapes start at `from` opens a JSON value: the
-// character before it, spaces skipped, is `{`, `[`, `:`, `,` or `=`, or there
-// is none. Anything else (a letter, `;`) is prose quoting a word.
-const opensAValue = (text: string, from: number): boolean => {
+// Whether the text from `from` (spaces skipped) is a serialized JSON
+// document: it starts with `{` or `[`.
+const startsAJsonDocument = (text: string, from: number): boolean => {
+    let k = from;
+    while (k < text.length && isSpace(text.charCodeAt(k))) k += 1;
+    const code = text.charCodeAt(k);
+    return code === 123 || code === 91;
+};
+
+// The character before the quote whose escapes start at `from`, spaces
+// skipped; -1 at the start of the text.
+const previousCode = (text: string, from: number): number => {
     let k = from - 1;
     while (k >= 0 && isSpace(text.charCodeAt(k))) k -= 1;
-    if (k < 0) return true;
-    const code = text.charCodeAt(k);
-    return code === 123 || code === 91 || code === 58 || code === 44 || code === 61;
+    return k < 0 ? -1 : text.charCodeAt(k);
+};
+
+/**
+ * Whether a quote of `level`, its escapes starting at `from`, opens a
+ * STRUCTURAL string (a JSON value), inside `parent` (the innermost open
+ * string, if any). Anything not provably structural is prose (C3):
+ * - level 0 with nothing open: a value after `{`, `[`, `:`, `,`, `=`, or at
+ *   the start of the text (`key: "..."`, `key="..."`, a JSON document);
+ * - a deeper level: only inside a serialized JSON document, i.e. the
+ *   enclosing string's content (the whole text when none is open) starts
+ *   with `{` or `[`, and only where JSON puts a value or a key (after `{`,
+ *   `[`, `:`, `,`). `"note: \"hello` is prose: its string is a sentence.
+ */
+const opensAValue = (text: string, from: number, level: number, parent: OpenString | undefined): boolean => {
+    const before = previousCode(text, from);
+    const structuralSpot = before === 123 || before === 91 || before === 58 || before === 44;
+    if (level === 0 && !parent) return before === -1 || structuralSpot || before === 61;
+    if (parent && parent.level !== level - 1) return false;
+    const document = parent ? startsAJsonDocument(text, parent.content) : startsAJsonDocument(text, 0);
+    return document && (structuralSpot || before === -1);
 };
 
 /**
@@ -123,8 +151,10 @@ const opensAValue = (text: string, from: number): boolean => {
  * is tracked on a stack of open strings. A quote of level L (0 `"`, 1 `\"`,
  * 2 `\\\"`, see `quoteLevel`) closes the open string of level L when there
  * is one (and any deeper one left open inside it); otherwise it opens one,
- * STRUCTURAL when a JSON value starts there (after `{`, `[`, `:`, `,`, `=` or
- * at the start of the text) and PROSE otherwise (`said \"hi\"`).
+ * STRUCTURAL only when it provably opens a JSON value (`opensAValue`: a
+ * deeper level only inside a string whose content is a JSON document) and
+ * PROSE otherwise (`said \"hi\"`, `note: \"hello`). Anything not provably
+ * structural is prose, and over-masking a log field is accepted.
  *
  * | strings open when the scheme starts        | a quote ends the authority          |
  * |--------------------------------------------|-------------------------------------|
@@ -158,7 +188,7 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
             let at = open.length - 1;
             while (at >= 0 && open[at].level !== level) at -= 1;
             if (at >= 0) open.length = at;
-            else open.push({ level, structural: opensAValue(text, i - run) });
+            else open.push({ level, structural: opensAValue(text, i - run, level, open[open.length - 1]), content: i + 1 });
         }
         if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;

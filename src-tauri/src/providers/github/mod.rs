@@ -747,9 +747,13 @@ impl GitHubProvider {
     /// A MERGED one is never written again. The cost is one listing, plus
     /// one compare per candidate that exists (and the pull-request lookup
     /// only for a diverged one): one request when there is none.
+    ///
+    /// `None` when every name is merged: only a refused write needing a new
+    /// branch reports that ([`Self::allocate_working_branch`]); discovery
+    /// at connect just finds nothing pending (C1).
     async fn current_working_branch(
         &mut self,
-    ) -> Result<(String, WorkingBranchState), ProviderError> {
+    ) -> Result<Option<(String, WorkingBranchState)>, ProviderError> {
         let own = self.own_working_branch()?;
         let base = self.active_branch().to_string();
         let existing = self.existing_working_branches(&own).await?;
@@ -766,19 +770,32 @@ impl GitHubProvider {
                 WorkingBranchState::Missing
             };
             if state == WorkingBranchState::Pending {
-                return Ok((name, state));
+                return Ok(Some((name, state)));
             }
             states.push((name, state));
         }
         for wanted in [WorkingBranchState::NotAhead, WorkingBranchState::Missing] {
             if let Some(found) = states.iter().find(|(_, state)| *state == wanted) {
-                return Ok(found.clone());
+                return Ok(Some(found.clone()));
             }
         }
-        Err(ProviderError::InvalidConfig(format!(
-            "The working branches {own} to {own}-{WORKING_BRANCH_CANDIDATES} were all merged and \
-             kept: delete the merged ones on GitHub to write again"
-        )))
+        Ok(None)
+    }
+
+    /// The branch a refused write goes to ([`Self::current_working_branch`]),
+    /// or the refusal when every name is merged: the one place that is
+    /// reported (C1).
+    async fn allocate_working_branch(&mut self) -> Result<String, ProviderError> {
+        match self.current_working_branch().await? {
+            Some((branch, _)) => Ok(branch),
+            None => {
+                let own = self.own_working_branch()?;
+                Err(ProviderError::InvalidConfig(format!(
+                    "The working branches {own} to {own}-{WORKING_BRANCH_CANDIDATES} were all \
+                     merged and kept: delete the merged ones on GitHub to write again"
+                )))
+            }
+        }
     }
 
     /// One decision, at connect (A1, point 1): a protected branch whose
@@ -791,8 +808,9 @@ impl GitHubProvider {
     /// session on the protected branch (R2, Q1, Q4). Any failed lookup fails
     /// the connect rather than guess.
     async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
-        let (branch, state) = self.current_working_branch().await?;
-        if state == WorkingBranchState::Pending {
+        // Nothing pending (every name merged included): the session stays
+        // on the protected branch; browsing and reads work (C1).
+        if let Some((branch, WorkingBranchState::Pending)) = self.current_working_branch().await? {
             self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
         }
         Ok(())
@@ -1715,7 +1733,7 @@ impl StorageProvider for GitHubProvider {
                     // The branch the walk names: a pending one as it is, an
                     // empty one moved up to the base, a missing one created
                     // from it; never a merged one's stale tip (Q1, Q4).
-                    let (workflow_branch, _) = self.current_working_branch().await?;
+                    let workflow_branch = self.allocate_working_branch().await?;
                     self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
                         .await
                         .map_err(|e2| {
@@ -2694,6 +2712,58 @@ mod tests {
                 );
                 server.abort();
             }
+        }
+
+        /// C1: nine merged candidates. Connect succeeds on the protected
+        /// branch and reads work; only a refused write that needs a new
+        /// working branch is refused, with the clear error.
+        #[tokio::test]
+        async fn nine_merged_candidates_fail_only_the_write_that_needs_a_new_branch() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let merged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls: vec![(true, TIP)],
+            };
+            let branches: Vec<_> = (1..=WORKING_BRANCH_CANDIDATES)
+                .map(|n| {
+                    let name = if n == 1 {
+                        own.clone()
+                    } else {
+                        format!("{own}-{n}")
+                    };
+                    (name, merged.clone())
+                })
+                .collect();
+            let (origin, log, server) = api_per_branch(branches, 200).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider.start_on_existing_working_branch().await.unwrap();
+            assert_eq!(provider.working_branch(), None);
+            // A read: the branch tip lookup answers.
+            assert!(provider
+                .client
+                .get_json::<GitHubBranch>(&provider.branch_api_url(&own))
+                .await
+                .is_ok());
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("a.txt");
+            std::fs::write(&file, b"a").unwrap();
+            let refused = provider
+                .upload(file.to_str().unwrap(), "/a.txt", None)
+                .await;
+            assert!(
+                matches!(&refused, Err(ProviderError::InvalidConfig(m)) if m.contains("were all")),
+                "{refused:?}"
+            );
+            let writes = log.lock().unwrap().clone();
+            assert!(
+                !writes
+                    .iter()
+                    .any(|w| w.starts_with("POST ") || w.contains(&own) && w.starts_with("PATCH ")),
+                "nothing written to a merged branch, no branch made: {writes:?}"
+            );
+            server.abort();
         }
 
         /// Q1, Q4: a pull-request lookup that fails fails the connect, never

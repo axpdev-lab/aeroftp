@@ -489,8 +489,33 @@
     "expected": "{\"m\":\"a ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2/x\"}"
   },
   {
-    "name": "A a url in nested escaped json after prose quotes keeps the next field",
+    "name": "C3 a url in escaped json after prose in the same string: not a json document, over-masked, never leaked",
     "input": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
-    "expected": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}"
+    "expected": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}\"}"
+  },
+  {
+    "name": "C3 a prose quote after a colon: note",
+    "input": "{\"message\":\"note: \\\"hello then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"note: \\\"hello then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "C3 a prose quote after a colon: warning",
+    "input": "{\"message\":\"warning: \\\"retry ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"warning: \\\"retry ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "C3 a brace-less sentence with a colon and quotes before the url",
+    "input": "{\"m\":\"status: \\\"ok\\\" and then ftp://bob:pa\\\":ss@host/x\"}",
+    "expected": "{\"m\":\"status: \\\"ok\\\" and then ftp://***REDACTED***@host/x\"}"
+  },
+  {
+    "name": "C3 a serialized json document inside a string after leading spaces keeps the next field",
+    "input": "{\"m\":\"  {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
+    "expected": "{\"m\":\"  {\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}"
+  },
+  {
+    "name": "C3 a string that starts with a brace but is not json: masked",
+    "input": "{\"m\":\"{not json \\\"x ftp://u:p\\\"w@h/\"}",
+    "expected": "{\"m\":\"{not json \\\"x ftp://***REDACTED***@h/\"}"
   }
 ]

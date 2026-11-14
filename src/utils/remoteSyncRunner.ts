@@ -28,7 +28,21 @@ import type {
     SyncIndex,
     SyncIndexEntry,
     SyncEcStatus,
+    DeltaEligibilityProbeResult,
 } from '../types';
+
+/**
+ * What the sync-start gate does with the delta probe's verdict (C2): a hard
+ * refusal stops the run before any write and offers no "continue without
+ * delta" (a transfer would only meet the same refusal, after folders were
+ * made and deletes done); an eligible session, or a profile that turned the
+ * question off, launches; otherwise the user is asked.
+ */
+export const deltaGateDecision = (
+    verdict: Pick<DeltaEligibilityProbeResult, 'eligible' | 'hard_error'>,
+    skipPrompt: boolean,
+): 'stop' | 'launch' | 'ask' =>
+    verdict.hard_error ? 'stop' : verdict.eligible || skipPrompt ? 'launch' : 'ask';
 
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
 export type SyncRunFileStatus =

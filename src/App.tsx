@@ -460,7 +460,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, deltaGateDecision, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -12807,7 +12807,9 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the probe entirely.
+    // unavailable. A saved per-server opt-out skips the question about
+    // continuing without delta, never the probe: a hard refusal stops the
+    // run before any write (C2, `deltaGateDecision`).
     const shouldProbe = protocol === 'sftp' && !!opts.profileId;
     if (!shouldProbe) {
       launchRun();
@@ -12816,16 +12818,19 @@ const App: React.FC = () => {
 
     void (async () => {
       try {
-        const stored = await loadSavedServerProfiles();
+        // The saved profiles only tell whether to ask; unreadable, the
+        // question stays on and the probe runs either way.
+        const stored = await loadSavedServerProfiles().catch(() => [] as Awaited<ReturnType<typeof loadSavedServerProfiles>>);
         const profile = stored.find((p) => p.id === opts.profileId);
-        if (profile?.skipDeltaEligibilityPrompt) {
-          launchRun();
-          return;
-        }
         const verdict = await invoke<DeltaEligibilityProbeResult>(
           'sftp_probe_delta_eligibility',
         );
-        if (verdict.eligible) {
+        const decision = deltaGateDecision(verdict, profile?.skipDeltaEligibilityPrompt === true);
+        if (decision === 'stop') {
+          notify.error(t('aerosync.title'), verdict.hard_error ?? '');
+          return;
+        }
+        if (decision === 'launch') {
           launchRun();
           return;
         }

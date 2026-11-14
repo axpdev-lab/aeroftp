@@ -8,6 +8,7 @@ import {
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
+    deltaGateDecision,
     type SyncRunFile,
     type SyncRunDirs,
     type RemoteSyncConfig,
@@ -2029,5 +2030,21 @@ describe('canonical Unicode paths (#1326)', () => {
         expect(savedIndex?.files?.[remoteRel]).toBeUndefined();
         expect(savedIndex?.files?.[localRel]).toMatchObject({ size: 9 });
         expect(savedIndex?.remote_spellings?.[localRel]).toBe(remoteRel);
+    });
+});
+
+// C2: the sync-start gate. A hard refusal stops the run (no question, no
+// launch), whatever the profile's opt-out; otherwise an eligible session or
+// an opted-out question launches, and an unavailable one asks.
+describe('deltaGateDecision', () => {
+    it.each([
+        [{ eligible: false, hard_error: 'PinnedKeyMismatch' }, false, 'stop'],
+        [{ eligible: false, hard_error: 'PinnedKeyMismatch' }, true, 'stop'],
+        [{ eligible: true, hard_error: 'HostKeyRejected' }, true, 'stop'],
+        [{ eligible: true, hard_error: null }, false, 'launch'],
+        [{ eligible: false, hard_error: null }, true, 'launch'],
+        [{ eligible: false }, false, 'ask'],
+    ] as const)('%j with skip=%s: %s', (verdict, skip, expected) => {
+        expect(deltaGateDecision(verdict, skip)).toBe(expected);
     });
 });
