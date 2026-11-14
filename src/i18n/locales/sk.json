@@ -64,6 +64,9 @@
             "name": "Názov",
             "size": "Veľkosť",
             "retry": "Skúsiť znova",
+            "settingsLoadFailed": "Tieto nastavenia sa nepodarilo načítať, preto cez ne nebude nič uložené: {error}",
+            "settingsRefreshFailed": "Nastavenia sa nepodarilo znova načítať, zobrazené údaje preto môžu byť zastarané: {error}",
+            "saveFailed": "Nepodarilo sa uložiť: {error}",
             "optional": "voliteľné",
             "check": "Check",
             "selectAll": "Vybrať všetko",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
             "updateOnlyHint": "Jednosmerná aktualizácia zachováva novšie cieľové súbory. Keď je prídavné zálohovanie vypnuté, odstránia sa iba nezmenené súbory, ktoré existujú výlučne v cieli a majú overený doklad o prenose cez AeroCloud. Ostatné súbory zostávajú na kontrolu v AeroSync. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené.",
-            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync."
+            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync.",
+            "remoteFolderNotPlain": "Vzdialený priečinok {folder} obsahuje krok \".\" alebo \"..\" alebo zdvojenú lomku. AeroCloud používa priečinok presne tak, ako je zapísaný, a tieto časti nevyhodnocuje. Vyberte podpriečinok bez nich alebo ich odstráňte z počiatočného priečinka či priečinka prekrytia v profile servera."
         },
         "statusBar": {
             "connected": "Pripojený",

@@ -16,6 +16,8 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener } from './useTauriListener';
 import { logger } from '../utils/logger';
+import { selectAeroCloudProfile } from '../utils/liveConnection';
+import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
 
@@ -27,6 +29,39 @@ interface UseCloudSyncOptions {
   isAppLocked: boolean;
   /** Called after sync completes: use to refresh file panels */
   onSyncComplete?: () => void;
+}
+
+/**
+ * Saves AeroCloud settings edited from `readAs`, the configuration the
+ * settings view read, and resolves to the configuration saved. The backend
+ * merges the draft over the file as it is then: what the file gained since
+ * `readAs` and the user did not edit (a folder a sync placed, the last sync
+ * time, the pause) is kept, and a save from a setup replaced meanwhile is
+ * refused. Every settings view saves through here.
+ */
+export async function saveCloudSettings<T extends object>(config: T, readAs: T): Promise<T | null> {
+  const saved = await invoke<T | null>('save_cloud_config_cmd', { config, readAs });
+  // A save emits no status event: the app's AeroCloud identity reads the
+  // file again, and drops any read that started before the save.
+  for (const reread of configRereads) reread();
+  return saved;
+}
+
+/** The config reads of every mounted `useCloudSync`, asked again after a save. */
+const configRereads = new Set<() => void>();
+
+/** What `get_cloud_config` returns that the app's AeroCloud identity shows. */
+interface CloudConfigRead {
+  enabled: boolean;
+  paused?: boolean;
+  cloud_name?: string;
+  server_profile?: string;
+  server_profile_id?: string | null;
+  last_sync?: string | null;
+  local_folder?: string;
+  remote_folder?: string;
+  public_url_base?: string | null;
+  protocol_type?: string;
 }
 
 export function useCloudSync(options: UseCloudSyncOptions) {
@@ -41,8 +76,64 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const [cloudLastSync, setCloudLastSync] = useState<string | null>(null);
   const [cloudLocalFolder, setCloudLocalFolder] = useState<string>('');
   const [cloudRemoteFolder, setCloudRemoteFolder] = useState<string>('');
+  // The saved profile AeroCloud syncs with, by id: the badges and the share
+  // link are offered only on a connection made with it.
+  const [cloudProfileId, setCloudProfileId] = useState<string | null>(null);
   const [cloudPublicUrlBase, setCloudPublicUrlBase] = useState<string>('');
   const [cloudProtocolType, setCloudProtocolType] = useState<string>('ftp');
+
+  // Every read of the config takes the next number, and so does anything
+  // that changes what the config says (a disable, a status event, a save,
+  // the folder an AeroCloud open listed): a reply is applied only while its
+  // read is the latest, so a read that started before the change cannot
+  // bring the older identity back, and an older read cannot land over a
+  // newer one.
+  const latestRead = useRef(0);
+  const rereadConfig = useRef<() => void>(() => {});
+
+  // The identity is set in these functions only, each from one source, and
+  // each sets every field it owns: a field the source does not provide is
+  // cleared, never left from an earlier configuration.
+  // An accepted config read, with the profile id it selects.
+  const applyConfigRead = (config: CloudConfigRead, profileId: string | null) => {
+    setIsCloudActive(config.enabled);
+    setIsCloudPaused(Boolean(config.paused));
+    setCloudServerName(config.cloud_name || config.server_profile || '');
+    setCloudLastSync(config.last_sync || null);
+    setCloudLocalFolder(config.local_folder || '');
+    setCloudRemoteFolder(config.remote_folder || '');
+    setCloudProfileId(profileId);
+    setCloudPublicUrlBase(config.public_url_base || '');
+    setCloudProtocolType(config.protocol_type || 'ftp');
+  };
+  // No configuration: AeroCloud disabled.
+  const applyNoConfig = () => {
+    latestRead.current += 1;
+    setIsCloudActive(false);
+    setIsCloudPaused(false);
+    setCloudServerName('');
+    setCloudLastSync(null);
+    setCloudLocalFolder('');
+    setCloudRemoteFolder('');
+    setCloudProfileId(null);
+    setCloudPublicUrlBase('');
+    setCloudProtocolType('ftp');
+  };
+  // A status event: what it says now, then the file read again.
+  const applyStatusEvent = (status: { active: boolean; paused?: boolean; lastSync?: string }) => {
+    setIsCloudActive(status.active);
+    if (status.paused !== undefined) setIsCloudPaused(status.paused);
+    if (status.lastSync !== undefined) setCloudLastSync(status.lastSync);
+    rereadConfig.current();
+  };
+  // The folder an AeroCloud open listed, on the profile it connected with,
+  // then the file read again.
+  const adoptOpenedCloudFolder = (opened: { remoteFolder: string; localFolder: string; profileId: string }) => {
+    setCloudRemoteFolder(opened.remoteFolder);
+    setCloudLocalFolder(opened.localFolder);
+    setCloudProfileId(opened.profileId);
+    rereadConfig.current();
+  };
 
   // Refs for callbacks to avoid stale closures without re-subscribing
   const callbacksRef = useRef({ activityLog, humanLog, t, checkForUpdate, cloudServerName, onSyncComplete: options.onSyncComplete });
@@ -57,36 +148,35 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
     };
 
-    // Check initial cloud config
+    // Read the cloud config: on mount, after a settings save, and again on
+    // every status event (a setup completing, a sync, a pause), so a setup
+    // after a disable brings its profile and folders back without opening
+    // the AeroCloud tab.
     const checkCloudConfig = async () => {
+      const read = ++latestRead.current;
+      const owns = () => read === latestRead.current;
       try {
-        const config = await invoke<{
-          enabled: boolean;
-          paused?: boolean;
-          cloud_name?: string;
-          server_profile?: string;
-          last_sync?: string;
-          local_folder?: string;
-          remote_folder?: string;
-          public_url_base?: string | null;
-          protocol_type?: string;
-        }>('get_cloud_config');
-        setIsCloudActive(config.enabled);
-        setIsCloudPaused(Boolean(config.paused));
-        if (config.cloud_name) {
-          setCloudServerName(config.cloud_name);
-        } else if (config.server_profile) {
-          setCloudServerName(config.server_profile);
+        const config = await invoke<CloudConfigRead>('get_cloud_config');
+        if (!owns()) return;
+        // A config saved before it carried the profile id names the profile
+        // only: it is resolved with the rule the AeroCloud tab and the backend
+        // select it by (`selectAeroCloudProfile`), so the badges and the share
+        // link are there before the tab is opened. An id it carries is kept as
+        // saved. The whole read is applied once the id is known: the folders
+        // and the link never show with the previous profile's id.
+        let profileId: string | null = config.server_profile_id || null;
+        if (config.enabled && !config.server_profile_id && config.server_profile) {
+          const profiles = await loadSavedServerProfiles().catch(() => []);
+          if (!owns()) return;
+          profileId = selectAeroCloudProfile(profiles, null, config.server_profile)?.id ?? null;
         }
-        if (config.last_sync) setCloudLastSync(config.last_sync);
-        if (config.local_folder) setCloudLocalFolder(config.local_folder);
-        if (config.remote_folder) setCloudRemoteFolder(config.remote_folder);
-        if (config.public_url_base) setCloudPublicUrlBase(config.public_url_base);
-        if (config.protocol_type) setCloudProtocolType(config.protocol_type);
+        applyConfigRead(config, config.enabled ? profileId : null);
       } catch (e) {
         console.error('Failed to check cloud config:', e);
       }
     };
+    rereadConfig.current = () => { void checkCloudConfig(); };
+    configRereads.add(rereadConfig.current);
     checkCloudConfig();
 
     // Debounce cloud sync status logs to avoid duplicates from React StrictMode
@@ -108,22 +198,18 @@ export function useCloudSync(options: UseCloudSyncOptions) {
 
       if (status === 'active') {
         setCloudSyncing(false);
-        setIsCloudActive(true);
-        setIsCloudPaused(false);
-        setCloudLastSync(new Date().toISOString());
+        applyStatusEvent({ active: true, paused: false, lastSync: new Date().toISOString() });
         // Don't update log here: cloud_sync_complete handles the summary log
         // to avoid duplicate entries. Just clear syncing state.
       } else if (status === 'idle') {
         setCloudSyncing(false);
-        setIsCloudActive(true);
+        applyStatusEvent({ active: true });
       } else if (status === 'paused') {
         setCloudSyncing(false);
-        setIsCloudActive(true);
-        setIsCloudPaused(true);
+        applyStatusEvent({ active: true, paused: true });
       } else if (status === 'syncing') {
         setCloudSyncing(true);
-        setIsCloudActive(true);
-        setIsCloudPaused(false);
+        applyStatusEvent({ active: true, paused: false });
         if (!cloudSyncLogId) {
           cloudSyncLogId = hl.logRaw('activity.sync_start', 'INFO', { server: csn }, 'running');
         } else {
@@ -146,13 +232,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         }
       } else if (status === 'disabled') {
         setCloudSyncing(false);
-        setIsCloudActive(false);
-        setIsCloudPaused(false);
-        setCloudServerName('');
-        setCloudLastSync(null);
-        setCloudLocalFolder('');
-        setCloudRemoteFolder('');
-        setCloudPublicUrlBase('');
+        applyNoConfig();
       }
     });
 
@@ -258,7 +338,12 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       callbacksRef.current.onSyncComplete?.();
     });
 
+    const reread = rereadConfig.current;
     return () => {
+      configRereads.delete(reread);
+      rereadConfig.current = () => {};
+      // A read still in flight belongs to this mount.
+      latestRead.current += 1;
       unlistenStatus();
       unlistenMenu();
       unlistenSyncComplete();
@@ -286,19 +371,14 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     setShowCloudPanel,
     cloudSyncing,
     isCloudActive,
-    setIsCloudActive,
     isCloudPaused,
-    setIsCloudPaused,
     cloudServerName,
-    setCloudServerName,
     cloudLastSync,
-    setCloudLastSync,
     cloudLocalFolder,
-    setCloudLocalFolder,
     cloudRemoteFolder,
-    setCloudRemoteFolder,
+    cloudProfileId,
     cloudPublicUrlBase,
-    setCloudPublicUrlBase,
     cloudProtocolType,
+    adoptOpenedCloudFolder,
   };
 }

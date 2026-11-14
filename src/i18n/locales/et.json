@@ -64,6 +64,9 @@
             "name": "Nimi",
             "size": "Suurus",
             "retry": "Proovi uuesti",
+            "settingsLoadFailed": "Neid seadeid ei õnnestunud lugeda, seega nende peale midagi ei salvestata: {error}",
+            "settingsRefreshFailed": "Seadeid ei õnnestunud uuesti lugeda, seega võib kuvatav olla aegunud: {error}",
+            "saveFailed": "Salvestamine ebaõnnestus: {error}",
             "optional": "valikuline",
             "check": "Check",
             "selectAll": "Vali kõik",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s tagasi",
             "conflictsCount": "Tähelepanu vajavad konfliktid: {count}",
             "updateOnlyHint": "Ühesuunaline uuendamine säilitab uuemad sihtfailid. Kui lisav varundamine on välja lülitatud, kustutatakse ainult muutmata failid, mis asuvad üksnes sihtkohas ja millel on kinnitatud AeroCloudi edastuskviitung. Muud failid jäävad AeroSyncis ülevaatamiseks. Konfliktireeglit eiratakse; tundmatud kuupäevad jäävad lahendamata.",
-            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle."
+            "untrackedDestinationFiles": "{count} sihtfaili säilitati ülevaatamiseks: nende edastusajalugu on kinnitamata või on neid pärast viimast AeroCloudi edastust muudetud. Vaata need AeroSyncis üle, enne kui otsustad kustutamise üle.",
+            "remoteFolderNotPlain": "Kaugkaust {folder} sisaldab sammu \".\" või \"..\" või topeltkaldkriipsu. AeroCloud kasutab kausta nii, nagu see on kirjutatud, ega lahenda neid. Valige alamkaust ilma nendeta või eemaldage need serveriprofiili algkaustast või kattekaustast."
         },
         "statusBar": {
             "connected": "Ühendatud",

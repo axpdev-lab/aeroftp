@@ -4,7 +4,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalSyncSuffixEqual, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, relativeSyncSegments, savedLocationProblem, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import locationCases from '../shared/path-location-cases.json';
+import syncNavigationSource from './syncNavigationPath.ts?raw';
+import overlayScopeSource from './overlayScope.ts?raw';
+import liveConnectionSource from './liveConnection.ts?raw';
+import wizardSource from '../components/CloudSetupWizard.tsx?raw';
 
 const nfd = 'εσωτερικο\u0301ς';
 const nfc = nfd.normalize('NFC');
@@ -23,7 +28,9 @@ const resolveSyncNavigationPath = (
 it('bounds relative suffixes by complete components and preserves literal names', () => {
     expect(relativeSyncSegments('/base-other/sub', '/base')).toBeNull();
     expect(relativeSyncSegments('/base/../escape', '/base')).toBeNull();
-    expect(relativeSyncSegments('/base/..\\kept', '/base')).toEqual(['..\\kept']);
+    // A `..` before a backslash is a parent step on a Windows panel the
+    // segments are joined to: refused, as every location (`locationProblem`).
+    expect(relativeSyncSegments('/base/..\\kept', '/base')).toBeNull();
     expect(relativeSyncSegments('/base/🇯🇵/dir\\name', '/base/')).toEqual(['🇯🇵', 'dir\\name']);
     expect(relativeSyncSegments('C:/sub', 'C:/')).toEqual(['sub']);
     expect(relativeSyncSegments('C:/', 'C:/')).toEqual([]);
@@ -125,4 +132,121 @@ describe.skipIf(process.platform !== 'linux')('real destination directory invent
             expect(readFileSync(join(right, nfc, 'same.txt'), 'utf8')).toBe('same bytes');
         } finally { rmSync(root, { recursive: true }); }
     });
+});
+
+describe('isWithinSyncFolder', () => {
+    it('reads a folder and what is under it at a component boundary', () => {
+        expect(isWithinSyncFolder('/docs', '/docs')).toBe(true);
+        expect(isWithinSyncFolder('/docs/a', '/docs')).toBe(true);
+        expect(isWithinSyncFolder('/docs/a', '/docs/')).toBe(true);
+        expect(isWithinSyncFolder('/docs2', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs2/a', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud\\a', 'C:\\Users\\u\\AeroCloud')).toBe(true);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud2', 'C:\\Users\\u\\AeroCloud')).toBe(false);
+        expect(isWithinSyncFolder('/a', '/')).toBe(true);
+        expect(isWithinSyncFolder('/a', '')).toBe(false);
+        expect(isWithinSyncFolder('', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('\\\\nas\\share\\sync\\a', '\\\\nas\\share\\sync')).toBe(true);
+    });
+
+    it('reads a path that is not plain as under no folder', () => {
+        expect(isWithinSyncFolder('/docs/../private/a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs/./a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs//a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/private/a.txt', '/docs/../private')).toBe(false);
+        expect(isWithinSyncFolder('C:\\sync\\..\\other', 'C:\\sync')).toBe(false);
+    });
+});
+
+describe('locationProblem', () => {
+    // The cases the backend's `location_problem` passes too
+    // (`util/path_location.rs`): both sides refuse the same paths.
+    it('refuses the paths of the shared table for the same reason', () => {
+        expect(locationCases.cases.length).toBeGreaterThanOrEqual(20);
+        for (const { path, problem } of locationCases.cases) {
+            expect(locationProblem(path), JSON.stringify(path)).toBe(problem);
+        }
+    });
+
+    it('refuses only a parent step or a NUL in a saved location, as the backend does', () => {
+        for (const { path, savedProblem } of locationCases.cases) {
+            expect(savedLocationProblem(path), JSON.stringify(path)).toBe(savedProblem);
+        }
+    });
+
+    it('takes no relative steps from a path that is not plain', () => {
+        expect(relativeSyncSegments('/docs/a/../../private', '/docs')).toBeNull();
+        expect(relativeSyncSegments('/docs//a', '/docs')).toBeNull();
+        expect(relativeSyncSegments('/private/a', '/docs/../private')).toBeNull();
+        expect(relativeSyncSegments('/docs/a/', '/docs/')).toEqual(['a']);
+    });
+});
+
+describe('every location site checks the path first', () => {
+    // Each function of these files that strips, slices or compares a path by
+    // its prefix calls `locationProblem` before it, or is listed with the
+    // reason it needs no check of its own. A new one fails here until it
+    // does one or the other; the backend twin is
+    // `every_location_site_checks_the_path_first` (util/path_location.rs).
+    const EXEMPT: Record<string, string> = {
+        rootPath: 'a helper of relativeSyncSegments, which checks first',
+        resolveSyncNavigationPath: 'takes the segments relativeSyncSegments checked',
+        isLoginRelativeScope: 'tells the `~` form apart, strips nothing',
+        loginRelativeForm: 'prefixes `~/`; every caller here checks the text first',
+        normalizeLoginRelative: 'a normalizer the checked functions call; keeps `..` as written',
+        hostOf: 'a host name, not a path',
+        profileRoot: 'the starting folder the server reads; aeroCloudBase checks the text it comes from',
+        aeroCloudRemoteFolder: 'joined only after aeroCloudFolderNotPlain refused (handleComplete)',
+        CloudSetupWizard: 'the label it shows, not a location it uses',
+        mayReuseForAeroCloud: 'tells an absolute folder apart, strips nothing; openAeroCloudFolder checks the folder it opens',
+    };
+    it('checks each path before it strips or compares it', () => {
+        const checked: string[] = [];
+        for (const source of [syncNavigationSource, overlayScopeSource, liveConnectionSource, wizardSource]) {
+            for (const part of source.split(/\n(?=export (?:async )?function |export const |function |const [a-zA-Z]+ = \()/u)) {
+                const name = /^(?:export )?(?:async )?(?:function |const )([A-Za-z0-9_]+)/u.exec(part)?.[1];
+                if (!name || name === 'locationProblem') continue;
+                const first = part.search(/\.startsWith\(|\.slice\(|\.replace\(\/\^/u);
+                if (first < 0 || name in EXEMPT) continue;
+                const check = part.indexOf('locationProblem(');
+                expect(check >= 0 && check < first, `${name} strips or compares a path before it checks it`).toBe(true);
+                checked.push(name);
+            }
+        }
+        // `aeroCloudFolderNotPlain` is no site: it checks the sub-folder as
+        // written and strips nothing (CloudSetupWizard.render.test.tsx).
+        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'isValidOverlayScope', 'resolveOverlayScope']));
+        // The exempt names still exist: a rename cannot hide a new site.
+        const all = syncNavigationSource + overlayScopeSource + liveConnectionSource + wizardSource;
+        for (const name of Object.keys(EXEMPT)) expect(all, name).toMatch(new RegExp(`(function|const) ${name}\\b`, 'u'));
+        // The wizard refuses before it builds the folder it saves, and the
+        // AeroCloud tab before it lists the saved one: both calls are there,
+        // the check first. A missing call is a failure, never an index of -1
+        // that reads as "first".
+        const complete = regionFrom(wizardSource, 'const handleComplete = async');
+        expect(checkedFirst(complete, 'aeroCloudFolderNotPlain(profile, subfolder)', 'aeroCloudRemoteFolder(')).toBe(true);
+        const open = regionFrom(liveConnectionSource, 'export async function openAeroCloudFolder');
+        expect(checkedFirst(open, 'savedLocationProblem(remoteFolder)', 'await place(')).toBe(true);
+        // The rule itself: without either call, or with the use first, it fails.
+        for (const [region, check, use] of [
+            [complete, 'aeroCloudFolderNotPlain(profile, subfolder)', 'aeroCloudRemoteFolder('],
+            [open, 'savedLocationProblem(remoteFolder)', 'await place('],
+        ]) {
+            expect(checkedFirst(region.split(check).join(''), check, use), `${check} removed`).toBe(false);
+            expect(checkedFirst(region.split(use).join(''), check, use), `${use} removed`).toBe(false);
+            expect(checkedFirst(`${use}\n${check}`, check, use), `${use} first`).toBe(false);
+        }
+    });
+    /** `source` from the first `marker`; the marker must be there. */
+    const regionFrom = (source: string, marker: string) => {
+        const at = source.indexOf(marker);
+        expect(at, marker).toBeGreaterThanOrEqual(0);
+        return source.slice(at);
+    };
+    /** Whether `source` has both calls, `check` before `use`. */
+    const checkedFirst = (source: string, check: string, use: string) => {
+        const checkAt = source.indexOf(check);
+        const useAt = source.indexOf(use);
+        return checkAt >= 0 && useAt >= 0 && checkAt < useAt;
+    };
 });

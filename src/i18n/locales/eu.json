@@ -64,6 +64,9 @@
             "name": "Izena",
             "size": "Tamaina",
             "retry": "Saiatu berriro",
+            "settingsLoadFailed": "Ezin izan dira ezarpen hauek irakurri, beraz ez da ezer gordeko haien gainean: {error}",
+            "settingsRefreshFailed": "Ezin izan dira ezarpenak berriro irakurri, beraz erakusten dena zaharkituta egon daiteke: {error}",
+            "saveFailed": "Ezin izan da gorde: {error}",
             "optional": "aukerakoa",
             "check": "Check",
             "selectAll": "Hautatu dena",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s duela",
             "conflictsCount": "Arreta behar duten gatazkak: {count}",
             "updateOnlyHint": "Noranzko bakarreko eguneratzeak helmugako fitxategi berriagoak mantentzen ditu. Babeskopia gehigarria desaktibatuta dagoenean, helmugan soilik dauden aldatu gabeko fitxategiak bakarrik ezabatzen dira, egiaztatutako AeroCloud transferentzia-agiria badute. Beste fitxategiak AeroSync-en berrikusteko geratzen dira. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira.",
-            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik."
+            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik.",
+            "remoteFolderNotPlain": "Urruneko {folder} karpetak \".\" edo \"..\" urrats bat edo barra bikoitz bat du. AeroCloud-ek karpeta idatzita dagoen bezala erabiltzen du eta ez ditu ebazten. Aukeratu horiek ez dituen azpikarpeta bat, edo kendu itzazu zerbitzari-profilaren hasierako karpetatik edo gainjartze-karpetatik."
         },
         "statusBar": {
             "connected": "Konektatuta",

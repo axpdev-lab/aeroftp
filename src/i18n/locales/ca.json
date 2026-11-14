@@ -64,6 +64,9 @@
             "name": "Nom",
             "size": "Mida",
             "retry": "Reintentar",
+            "settingsLoadFailed": "No s'ha pogut llegir aquesta configuració, així que no es desarà res a sobre: {error}",
+            "settingsRefreshFailed": "No s'ha pogut tornar a llegir la configuració, per tant el que es mostra pot estar desactualitzat: {error}",
+            "saveFailed": "No s'ha pogut desar: {error}",
             "optional": "opcional",
             "check": "Check",
             "selectAll": "Seleccionar Tot",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "fa {count}s",
             "conflictsCount": "Conflictes per revisar: {count}",
             "updateOnlyHint": "L’actualització unidireccional conserva els fitxers de destinació més nous. Amb la còpia de seguretat additiva desactivada, només se suprimeixen els fitxers exclusius de la destinació que no han canviat i tenen un comprovant de transferència d’AeroCloud verificat. Els altres fitxers queden per revisar a AeroSync. S’ignora la política de conflictes; les dates desconegudes queden sense resoldre.",
-            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir."
+            "untrackedDestinationFiles": "S’han conservat {count} fitxers de destinació per revisar-los: el seu historial de transferències no està verificat o han canviat després de l’última transferència d’AeroCloud. Revisa’ls a AeroSync abans de decidir si els vols suprimir.",
+            "remoteFolderNotPlain": "La carpeta remota {folder} conté un pas \".\" o \"..\" o una barra doble. AeroCloud fa servir la carpeta tal com està escrita i no els resol. Trieu una subcarpeta sense aquests elements o traieu-los de la carpeta inicial o de la carpeta de superposició del perfil del servidor."
         },
         "statusBar": {
             "connected": "Connectat",

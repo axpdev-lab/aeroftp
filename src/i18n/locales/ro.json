@@ -64,6 +64,9 @@
             "name": "Nume",
             "size": "Dimensiune",
             "retry": "Reîncercare",
+            "settingsLoadFailed": "Aceste setări nu au putut fi citite, așa că nu se va salva nimic peste ele: {error}",
+            "settingsRefreshFailed": "Setările nu au putut fi citite din nou, așa că ceea ce este afișat poate fi învechit: {error}",
+            "saveFailed": "Nu s-a putut salva: {error}",
             "optional": "opțional",
             "check": "Check",
             "selectAll": "Selectați tot",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "acum {count}s",
             "conflictsCount": "Conflicte care necesită atenție: {count}",
             "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele nemodificate care există exclusiv la destinație și au o confirmare verificată a transferului AeroCloud. Celelalte fișiere rămân pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
-            "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți."
+            "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți.",
+            "remoteFolderNotPlain": "Folderul la distanță {folder} conține un pas \".\" sau \"..\" ori o bară oblică dublă. AeroCloud folosește folderul exact așa cum este scris și nu le rezolvă. Alegeți un subfolder fără ele sau eliminați-le din folderul de pornire ori din folderul suprapunerii din profilul serverului."
         },
         "statusBar": {
             "connected": "Conectat",

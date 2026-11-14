@@ -64,6 +64,9 @@
             "name": "Jina",
             "size": "Ukubwa",
             "retry": "Jaribu tena",
+            "settingsLoadFailed": "Mipangilio hii haikuweza kusomwa, kwa hivyo hakuna kitakachohifadhiwa juu yake: {error}",
+            "settingsRefreshFailed": "Mipangilio haikuweza kusomwa tena, kwa hivyo kinachoonyeshwa kinaweza kuwa kimepitwa na wakati: {error}",
+            "saveFailed": "Imeshindwa kuhifadhi: {error}",
             "optional": "hiari",
             "check": "Check",
             "selectAll": "Chagua Zote",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "sekunde {count} zilizopita",
             "conflictsCount": "Migogoro inayohitaji umakini: {count}",
             "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zisizobadilika, zilizopo kwenye lengwa pekee na zenye risiti ya uhamishaji wa AeroCloud iliyothibitishwa tu zinazofutwa. Faili nyingine hubaki kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
-            "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta."
+            "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta.",
+            "remoteFolderNotPlain": "Folda ya mbali {folder} ina hatua ya \".\" au \"..\" au mkwaju maradufu. AeroCloud hutumia folda kama ilivyoandikwa na haizitatui. Chagua folda ndogo isiyo nazo, au uziondoe kwenye folda ya kuanzia au folda ya tabaka ya wasifu wa seva."
         },
         "statusBar": {
             "connected": "Imeunganishwa",

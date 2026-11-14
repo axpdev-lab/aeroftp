@@ -64,6 +64,9 @@
             "name": "Nafn",
             "size": "Stærð",
             "retry": "Reyna aftur",
+            "settingsLoadFailed": "Ekki tókst að lesa þessar stillingar, svo ekkert verður vistað yfir þær: {error}",
+            "settingsRefreshFailed": "Ekki tókst að lesa stillingarnar aftur, svo það sem birtist gæti verið úrelt: {error}",
+            "saveFailed": "Ekki tókst að vista: {error}",
             "optional": "valfrjálst",
             "check": "Check",
             "selectAll": "Velja allt",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "fyrir {count}sek",
             "conflictsCount": "Árekstrar sem þarfnast athygli: {count}",
             "updateOnlyHint": "Einstefnuuppfærsla heldur nýrri skrám á áfangastað. Þegar slökkt er á viðbótarafritun er aðeins eytt óbreyttum skrám sem eru eingöngu á áfangastað og hafa staðfesta AeroCloud-flutningskvittun. Aðrar skrár bíða yfirferðar í AeroSync. Árekstrareglan er hunsuð; óþekktar dagsetningar eru áfram óleystar.",
-            "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim."
+            "untrackedDestinationFiles": "{count} skrár á áfangastað voru varðveittar til yfirferðar: flutningssaga þeirra er óstaðfest eða þær hafa breyst frá síðasta AeroCloud-flutningi. Farðu yfir þær í AeroSync áður en þú ákveður hvort eyða eigi þeim.",
+            "remoteFolderNotPlain": "Fjartengda mappan {folder} inniheldur skrefið \".\" eða \"..\" eða tvöfalt skástrik. AeroCloud notar möppu eins og hún er skrifuð og leysir þau ekki upp. Veldu undirmöppu án þeirra eða fjarlægðu þau úr upphafsmöppu eða yfirlagsmöppu netþjónssniðsins."
         },
         "statusBar": {
             "connected": "Tengt",

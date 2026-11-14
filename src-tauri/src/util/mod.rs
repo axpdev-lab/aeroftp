@@ -11,9 +11,13 @@
 
 pub mod abort_on_drop;
 pub mod endpoint;
+pub mod json_error;
+pub mod path_location;
 pub mod profile_name;
 pub mod provider_guard;
 pub mod scratch;
+#[cfg(all(test, unix))]
+pub(crate) mod script_stub;
 pub mod shutdown;
 pub mod size;
 pub mod start_folder;
@@ -21,5 +25,6 @@ pub mod temp_name;
 
 pub use abort_on_drop::AbortOnDrop;
 pub use endpoint::endpoint_stays_on_this_machine;
+pub use json_error::describe_json_error;
 pub use provider_guard::ProviderGuard;
 pub use shutdown::{shutdown_signal, ShutdownSignal};

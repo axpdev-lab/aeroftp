@@ -64,6 +64,9 @@
             "name": "Navn",
             "size": "Størrelse",
             "retry": "Prøv igjen",
+            "settingsLoadFailed": "Disse innstillingene kunne ikke leses, så ingenting blir lagret over dem: {error}",
+            "settingsRefreshFailed": "Innstillingene kunne ikke leses på nytt, så det som vises kan være utdatert: {error}",
+            "saveFailed": "Kunne ikke lagre: {error}",
             "optional": "valgfritt",
             "check": "Check",
             "selectAll": "Velg alle",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s siden",
             "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
             "updateOnlyHint": "Enveisoppdatering beholder nyere målfiler. Når additiv sikkerhetskopiering er slått av, slettes bare uendrede filer som kun finnes på målet og har en bekreftet kvittering for en AeroCloud-overføring. Andre filer blir liggende til gjennomgang i AeroSync. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte.",
-            "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes."
+            "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes.",
+            "remoteFolderNotPlain": "Den eksterne mappen {folder} inneholder et \".\"- eller \"..\"-trinn eller en dobbel skråstrek. AeroCloud bruker mappen slik den er skrevet og løser dem ikke opp. Velg en undermappe uten dem, eller fjern dem fra startmappen eller overleggsmappen i serverprofilen."
         },
         "statusBar": {
             "connected": "Tilkoblet",

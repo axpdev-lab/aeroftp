@@ -64,6 +64,9 @@
             "name": "Nimi",
             "size": "Koko",
             "retry": "Yritä uudelleen",
+            "settingsLoadFailed": "Näitä asetuksia ei voitu lukea, joten niiden päälle ei tallenneta mitään: {error}",
+            "settingsRefreshFailed": "Asetuksia ei voitu lukea uudelleen, joten näytetyt tiedot voivat olla vanhentuneita: {error}",
+            "saveFailed": "Tallennus epäonnistui: {error}",
             "optional": "valinnainen",
             "check": "Check",
             "selectAll": "Valitse kaikki",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s sitten",
             "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
             "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain muuttumattomat, pelkästään kohteessa olevat tiedostot, joilla on vahvistettu AeroCloud-siirtokuitti, poistetaan. Muut tiedostot jäävät tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
-            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta."
+            "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta.",
+            "remoteFolderNotPlain": "Etäkansio {folder} sisältää vaiheen \".\" tai \"..\" tai kaksoiskauttaviivan. AeroCloud käyttää kansiota sellaisenaan eikä tulkitse niitä. Valitse alikansio ilman niitä tai poista ne palvelinprofiilin aloituskansiosta tai peitekansiosta."
         },
         "statusBar": {
             "connected": "Yhdistetty",

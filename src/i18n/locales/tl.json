@@ -64,6 +64,9 @@
             "name": "Pangalan",
             "size": "Laki",
             "retry": "Subukan muli",
+            "settingsLoadFailed": "Hindi mabasa ang mga setting na ito, kaya walang ise-save na papalit sa mga ito: {error}",
+            "settingsRefreshFailed": "Hindi muling nabasa ang mga setting, kaya maaaring luma na ang ipinapakita: {error}",
+            "saveFailed": "Hindi ma-save: {error}",
             "optional": "opsyonal",
             "check": "Check",
             "selectAll": "Piliin Lahat",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s nakalipas",
             "conflictsCount": "{count} salungatan ang nangangailangan ng pansin",
             "updateOnlyHint": "Pinapanatili ng isang direksiyong pag-update ang mas bagong mga file sa destinasyon. Kapag naka-off ang backup na nagdaragdag lang, tanging mga file na hindi nagbago, nasa destinasyon lang at may beripikadong resibo ng paglilipat sa AeroCloud ang binubura. Ang ibang mga file ay mananatili para sa pagsusuri sa AeroSync. Hindi sinusunod ang patakaran sa salungatan; nananatiling hindi nalulutas ang mga hindi kilalang petsa.",
-            "untrackedDestinationFiles": "Pinanatili ang {count} file sa destinasyon para sa pagsusuri: hindi pa nabeberipika ang kasaysayan ng paglilipat ng mga ito o nabago ang mga ito matapos ang huling paglilipat sa AeroCloud. Suriin ang mga ito sa AeroSync bago magpasya kung buburahin."
+            "untrackedDestinationFiles": "Pinanatili ang {count} file sa destinasyon para sa pagsusuri: hindi pa nabeberipika ang kasaysayan ng paglilipat ng mga ito o nabago ang mga ito matapos ang huling paglilipat sa AeroCloud. Suriin ang mga ito sa AeroSync bago magpasya kung buburahin.",
+            "remoteFolderNotPlain": "Ang remote folder na {folder} ay may hakbang na \".\" o \"..\" o dobleng slash. Ginagamit ng AeroCloud ang folder ayon sa pagkakasulat at hindi nito nireresolba ang mga ito. Pumili ng sub-folder na wala ang mga ito, o alisin ang mga ito sa panimulang folder o overlay folder ng profile ng server."
         },
         "statusBar": {
             "connected": "Nakakonekta",

@@ -175,6 +175,300 @@ pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
 
+/// Every command that saves a remote folder the user wrote refuses a `..`
+/// under the login folder before it writes: the settings, the pair list and
+/// a new pair. The files stay as they were.
+#[cfg(test)]
+mod remote_share_link_tests {
+    use super::{remote_share_link, share_link_connection_check};
+
+    /// The link is built only from the AeroCloud connection: another
+    /// server's session, a connection with no saved profile, a config that
+    /// selects none, or a session switched to another profile before the
+    /// command runs are refused.
+    #[test]
+    fn a_share_link_is_built_only_from_the_aerocloud_connection() {
+        assert!(share_link_connection_check(Some("srv_cloud"), Some("srv_cloud")).is_ok());
+        assert!(share_link_connection_check(Some("srv_other"), Some("srv_cloud")).is_err());
+        assert!(share_link_connection_check(None, Some("srv_cloud")).is_err());
+        assert!(share_link_connection_check(Some("srv_cloud"), None).is_err());
+        assert!(share_link_connection_check(None, None).is_err());
+    }
+
+    /// A file is shared from the folder it is under, at a component
+    /// boundary, in the form the session listed it.
+    #[test]
+    fn a_share_link_is_built_only_for_a_path_under_the_folder() {
+        let link = |root, path| remote_share_link("https://files.example/pub/", root, path);
+        assert_eq!(
+            link("/usr/home/u/docs", "/usr/home/u/docs/a/b.txt").unwrap(),
+            "https://files.example/pub/a/b.txt"
+        );
+        assert_eq!(
+            link("/docs/", "/docs/b.txt").unwrap(),
+            "https://files.example/pub/b.txt"
+        );
+        assert_eq!(
+            link("/docs", "/docs").unwrap(),
+            "https://files.example/pub/"
+        );
+        assert_eq!(
+            link("/", "/a.txt").unwrap(),
+            "https://files.example/pub/a.txt"
+        );
+        assert!(link("/docs", "/docs2/a.txt").is_err());
+        assert!(link("/home/u/docs", "/usr/home/u/docs/a.txt").is_err());
+        assert!(link("/docs", "/docs/../private/a.txt").is_err());
+        assert!(link("/docs", "/docs/a/../../private/a.txt").is_err());
+        assert!(link("/docs", "/docs/./a.txt").is_err());
+        assert!(link("/docs", "/docs/..").is_err());
+        assert!(link("/docs", "/docs//a.txt").is_err());
+        assert!(link("/docs/../private", "/private/a.txt").is_err());
+    }
+
+    /// The share link of any server with a public URL base: a path under
+    /// the web root at a component boundary is linked from it, any other
+    /// path whole, and a path that is not plain is refused.
+    #[test]
+    fn a_server_share_link_strips_the_root_only_at_a_folder_boundary() {
+        let link = |root, path| super::server_share_link("https://www.example/", root, path);
+        assert_eq!(
+            link("/var/www", "/var/www/a b.txt").unwrap(),
+            "https://www.example/a%20b.txt"
+        );
+        assert_eq!(
+            link("/docs", "/docs2/a.txt").unwrap(),
+            "https://www.example/docs2/a.txt"
+        );
+        assert_eq!(link("", "/a.txt").unwrap(), "https://www.example/a.txt");
+        assert!(link("/docs", "/docs").is_err());
+        for path in ["/docs/../private/a.txt", "/docs/./a.txt", "/docs//a.txt"] {
+            let err = link("/docs", path).unwrap_err();
+            assert!(err.contains(&format!("'{path}'")), "{err}");
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod parent_step_save_tests {
+    use super::*;
+
+    /// The configuration as the settings view would read it now.
+    fn on_disk() -> cloud_config::CloudConfig {
+        cloud_config::load_cloud_config_strict().unwrap()
+    }
+
+    /// Settings read with the folder `docs`; a sync then places it as
+    /// `/home/a/docs` and records its time. Saving another setting from that
+    /// read keeps the placed folder and the sync time; a folder the user
+    /// edited is theirs; a save from a read of another setup (another
+    /// profile, protocol, local folder, AeroCloud disabled) is refused and
+    /// the file keeps its bytes.
+    #[test]
+    fn a_settings_save_keeps_what_the_file_gained_since_it_was_read() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let read_as = cloud_config::CloudConfig {
+                enabled: true,
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                local_folder: "/sync/a".into(),
+                remote_folder: "docs".to_string(),
+                ..Default::default()
+            };
+            let placed = cloud_config::CloudConfig {
+                remote_folder: "/home/a/docs".to_string(),
+                last_sync: Some(chrono::Utc::now()),
+                ..read_as.clone()
+            };
+            let place = || cloud_config::save_cloud_config(&placed).unwrap();
+            let draft = cloud_config::CloudConfig {
+                update_only: !read_as.update_only,
+                ..read_as.clone()
+            };
+
+            place();
+            let saved = save_cloud_config_cmd_blocking(draft.clone(), read_as.clone()).unwrap();
+            assert_eq!(
+                serde_json::to_value(&saved).unwrap(),
+                serde_json::to_value(on_disk()).unwrap(),
+                "the configuration returned is the one saved"
+            );
+            assert_eq!(saved.remote_folder, "/home/a/docs", "the placed folder");
+            assert_eq!(saved.last_sync, placed.last_sync, "the sync time");
+            assert_eq!(saved.update_only, draft.update_only, "the edited setting");
+
+            place();
+            let moved = cloud_config::CloudConfig {
+                remote_folder: "/srv/docs".to_string(),
+                ..draft.clone()
+            };
+            save_cloud_config_cmd_blocking(moved, read_as.clone()).unwrap();
+            assert_eq!(on_disk().remote_folder, "/srv/docs", "the user's folder");
+
+            for replaced in [
+                cloud_config::CloudConfig {
+                    server_profile: "other".to_string(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    server_profile_id: Some("srv_b".to_string()),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    protocol_type: "ftp".to_string(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    local_folder: "/sync/b".into(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    connection_params: serde_json::json!({"port": 2222}),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    enabled: false,
+                    ..placed.clone()
+                },
+            ] {
+                cloud_config::save_cloud_config(&replaced).unwrap();
+                let bytes = std::fs::read(cloud_config::get_config_path()).unwrap();
+                let err =
+                    save_cloud_config_cmd_blocking(draft.clone(), read_as.clone()).unwrap_err();
+                assert!(
+                    err.contains("changed since these settings were opened"),
+                    "{err}"
+                );
+                assert_eq!(
+                    std::fs::read(cloud_config::get_config_path()).unwrap(),
+                    bytes,
+                    "{replaced:?}"
+                );
+            }
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
+    #[test]
+    fn the_save_commands_refuse_a_parent_step_under_the_login_folder() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let config = cloud_config::CloudConfig {
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                remote_folder: "~/docs/../shared".to_string(),
+                ..Default::default()
+            };
+            let err = save_cloud_config_cmd_blocking(config.clone(), on_disk()).unwrap_err();
+            assert!(err.contains("'~/docs/../shared'"), "{err}");
+            let pair = cloud_pairs::CloudPathPair::from_legacy(&config);
+            assert!(add_cloud_pair_blocking(pair.clone()).is_err());
+            assert!(
+                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                    pairs: vec![pair],
+                    ..Default::default()
+                })
+                .is_err()
+            );
+            assert!(!cloud_pairs::get_pairs_path().exists());
+            assert_eq!(
+                cloud_config::load_cloud_config_strict()
+                    .unwrap()
+                    .remote_folder,
+                cloud_config::CloudConfig::default().remote_folder
+            );
+            // The same folder without the step is saved.
+            let fine = cloud_config::CloudConfig {
+                remote_folder: "~/shared".to_string(),
+                ..config
+            };
+            save_cloud_config_cmd_blocking(fine.clone(), on_disk()).unwrap();
+            add_cloud_pair_blocking(cloud_pairs::CloudPathPair::from_legacy(&fine)).unwrap();
+
+            // A folder saved before the rule with a doubled slash keeps
+            // saving when another setting changes, and stays as saved; a new
+            // folder written that way is refused, and a `..` always is.
+            let old = cloud_config::CloudConfig {
+                remote_folder: "/backup//docs".to_string(),
+                ..fine.clone()
+            };
+            cloud_config::save_cloud_config(&old).unwrap();
+            let edited = cloud_config::CloudConfig {
+                update_only: !old.update_only,
+                ..old.clone()
+            };
+            save_cloud_config_cmd_blocking(edited.clone(), on_disk()).unwrap();
+            let stored = cloud_config::load_cloud_config_strict().unwrap();
+            assert_eq!(stored.remote_folder, "/backup//docs");
+            assert_eq!(stored.update_only, edited.update_only);
+            let moved = cloud_config::CloudConfig {
+                remote_folder: "/backup//other".to_string(),
+                ..edited.clone()
+            };
+            assert!(save_cloud_config_cmd_blocking(moved, on_disk()).is_err());
+            let mut pair = cloud_pairs::CloudPathPair::from_legacy(&old);
+            pair.id = "kept".to_string();
+            cloud_pairs::save_cloud_pairs_config(&cloud_pairs::CloudPairsConfig {
+                pairs: vec![pair.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+            pair.enabled = !pair.enabled;
+            save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                pairs: vec![pair.clone()],
+                ..Default::default()
+            })
+            .unwrap();
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config_strict().unwrap().pairs[0].remote_path,
+                "/backup//docs"
+            );
+            let mut renamed = pair.clone();
+            renamed.id = "new".to_string();
+            assert!(
+                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                    pairs: vec![renamed],
+                    ..Default::default()
+                })
+                .is_err()
+            );
+            cloud_config::save_cloud_config(&cloud_config::CloudConfig {
+                remote_folder: "/srv/../x".to_string(),
+                ..fine.clone()
+            })
+            .unwrap();
+            assert!(save_cloud_config_cmd_blocking(
+                cloud_config::CloudConfig {
+                    remote_folder: "/srv/../x".to_string(),
+                    ..fine
+                },
+                on_disk()
+            )
+            .is_err());
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+}
+
 #[cfg(test)]
 mod only_main_window_tests {
     #[test]
@@ -14612,18 +14906,16 @@ async fn sftp_probe_delta_eligibility(
 // ======================// Multi-Path Sync Commands (#52)
 // ======================
 #[tauri::command]
-async fn get_multi_path_config() -> sync::MultiPathConfig {
+async fn get_multi_path_config() -> Result<sync::MultiPathConfig, String> {
     tokio::task::spawn_blocking(get_multi_path_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_multi_path_config task failed: {err}");
-            sync::MultiPathConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_multi_path_config task failed: {err}")))
 }
 
 /// The body of `get_multi_path_config`, kept synchronous and run on the blocking pool.
-fn get_multi_path_config_blocking() -> sync::MultiPathConfig {
-    sync::load_multi_path_config()
+/// Strict, as `get_cloud_config_blocking`.
+fn get_multi_path_config_blocking() -> Result<sync::MultiPathConfig, String> {
+    sync::load_multi_path_config_strict()
 }
 
 #[tauri::command]
@@ -16187,51 +16479,69 @@ async fn ai_list_models(
 
 // ============ AeroCloud Commands =====
 #[tauri::command]
-async fn get_cloud_config() -> CloudConfig {
+async fn get_cloud_config() -> Result<CloudConfig, String> {
     tokio::task::spawn_blocking(get_cloud_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_cloud_config task failed: {err}");
-            CloudConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_cloud_config task failed: {err}")))
 }
 
 /// The body of `get_cloud_config`, kept synchronous and run on the blocking pool.
-fn get_cloud_config_blocking() -> CloudConfig {
-    cloud_config::load_cloud_config()
+/// Strict: a file that exists but cannot be read is an error, never defaults
+/// an editor could later save over it.
+fn get_cloud_config_blocking() -> Result<CloudConfig, String> {
+    cloud_config::load_cloud_config_strict()
 }
 
+/// Saves the settings edited from `read_as`, the configuration the settings
+/// view read, and returns the configuration saved ([`cloud_config::settings_save`]).
 #[tauri::command]
-async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<(), String> {
-    let enabled = config.enabled;
-    tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
-    tray_badge::set_tray_cloud_actions_enabled(&app, enabled);
-    Ok(())
+async fn save_cloud_config_cmd(
+    app: AppHandle,
+    config: CloudConfig,
+    read_as: CloudConfig,
+) -> Result<CloudConfig, String> {
+    let saved =
+        tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config, read_as))
+            .await
+            .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, saved.enabled);
+    Ok(saved)
 }
 
-/// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
-fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
-    cloud_config::save_cloud_config(&config)
+/// The body of `save_cloud_config_cmd`, kept synchronous and run on the
+/// blocking pool. The file is read, merged and written under the config
+/// write lock, so a placement written meanwhile is never lost; a file that
+/// cannot be read is an error and is not rewritten.
+fn save_cloud_config_cmd_blocking(
+    config: CloudConfig,
+    read_as: CloudConfig,
+) -> Result<CloudConfig, String> {
+    cloud_config::with_cloud_config_mut(|stored| {
+        let saved = cloud_config::settings_save(stored, &read_as, config)?;
+        // A folder kept as saved (another setting edited) follows the saved rule.
+        cloud_config::refuse_an_unusable_remote_folder(
+            &saved.remote_folder,
+            Some(stored.remote_folder.as_str()),
+        )?;
+        *stored = saved.clone();
+        Ok(saved)
+    })
 }
 
 // AeroCloud Pairs (Task 4 GUI): CRUD on the separate cloud_pairs.json store.
 // Mirrors the style of multi-path commands but targets CloudPathPair / CloudPairsConfig.
 // Seeding from legacy happens on first add via GUI (or CLI already supports).
 #[tauri::command]
-async fn get_cloud_pairs_config() -> cloud_pairs::CloudPairsConfig {
+async fn get_cloud_pairs_config() -> Result<cloud_pairs::CloudPairsConfig, String> {
     tokio::task::spawn_blocking(get_cloud_pairs_config_blocking)
         .await
-        .unwrap_or_else(|err| {
-            tracing::warn!("get_cloud_pairs_config task failed: {err}");
-            cloud_pairs::CloudPairsConfig::default()
-        })
+        .unwrap_or_else(|err| Err(format!("get_cloud_pairs_config task failed: {err}")))
 }
 
 /// The body of `get_cloud_pairs_config`, kept synchronous and run on the blocking pool.
-fn get_cloud_pairs_config_blocking() -> cloud_pairs::CloudPairsConfig {
-    cloud_pairs::load_cloud_pairs_config()
+/// Strict, as `get_cloud_config_blocking`.
+fn get_cloud_pairs_config_blocking() -> Result<cloud_pairs::CloudPairsConfig, String> {
+    cloud_pairs::load_cloud_pairs_config_strict()
 }
 
 #[tauri::command]
@@ -16245,6 +16555,22 @@ async fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> R
 fn save_cloud_pairs_config_cmd_blocking(
     config: cloud_pairs::CloudPairsConfig,
 ) -> Result<(), String> {
+    // A pair whose folder is kept as saved follows the saved rule.
+    let saved = cloud_pairs::load_cloud_pairs_config_strict().ok();
+    for pair in &config.pairs {
+        let kept = saved
+            .as_ref()
+            .and_then(|saved| saved.pairs.iter().find(|stored| stored.id == pair.id))
+            .map(|stored| stored.remote_path.as_str());
+        cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, kept)?;
+    }
+    // Each pair is saved with the protocol its profile speaks.
+    let mut config = config;
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        for pair in &mut config.pairs {
+            cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, pair);
+        }
+    }
     cloud_pairs::save_cloud_pairs_config(&config)
 }
 
@@ -16261,6 +16587,11 @@ async fn add_cloud_pair(
 fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, None)?;
+    let mut pair = pair;
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, &mut pair);
+    }
     cloud_pairs::with_cloud_pairs_mut(|config| {
         if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
             return Err("A pair with the same local and remote path already exists".to_string());
@@ -16580,15 +16911,36 @@ async fn sync_remove_empty_dir(
 async fn list_remote_folders_tree(
     max_depth: Option<u32>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let config = cloud_config::load_cloud_config();
+    let mut config = cloud_config::load_cloud_config();
     if !config.enabled {
         return Err("AeroCloud not configured".to_string());
+    }
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        cloud_provider_factory::apply_saved_profile_protocol(&store, &mut config);
     }
 
     let max_d = max_depth.unwrap_or(3).min(5);
     // `create_cloud_provider` returns the provider connected and standing in
     // the profile root; connecting again would reset it to the account root.
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    let opened = cloud_provider_factory::create_cloud_connection(&config).await?;
+    let mut provider = opened.provider;
+    // A `~/...` remote folder is placed under the login folder on this connect
+    // and persisted, as the sync cycles do.
+    let store = credential_store::CredentialStore::from_cache();
+    let resolution = cloud_service::ProfileResolution::for_connection(
+        store.as_ref(),
+        &config,
+        opened.profile_id.clone(),
+    )?;
+    let remote_folder = cloud_service::anchor_login_relative_remote_folder(
+        &mut *provider,
+        &config,
+        &resolution,
+        store.as_ref(),
+        opened.endpoint.as_deref(),
+    )
+    .await?
+    .unwrap_or_else(|| config.remote_folder.clone());
 
     // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
     // must show DECRYPTED folder names in the selective-sync tree (and match
@@ -16596,9 +16948,14 @@ async fn list_remote_folders_tree(
     // wrap the tree would list ciphertext directory names and exclusions would
     // never match. Mirrors the background-sync chokepoint.
     if let Some(store) = credential_store::CredentialStore::from_cache() {
+        // The overlay comes from the profile the connection used, never from
+        // a second resolution of the name, which could pick a homonym.
         provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
-            config.server_profile_id.as_deref(),
+            opened
+                .profile_id
+                .as_deref()
+                .or(config.server_profile_id.as_deref()),
             &config.server_profile,
             &store,
         )
@@ -16607,7 +16964,7 @@ async fn list_remote_folders_tree(
 
     let folders = walk_cloud_folder_tree(
         provider.as_mut(),
-        &config.remote_folder,
+        &remote_folder,
         max_d,
         &config.excluded_folders,
     )
@@ -16726,8 +17083,9 @@ async fn setup_aerocloud(
         let _ = std::fs::write(&aeroignore_path, sync_ignore::DEFAULT_AEROIGNORE_TEMPLATE);
     }
 
-    // Save configuration
-    cloud_config::save_cloud_config(&config)?;
+    // Save configuration. The wizard may overwrite even an unreadable file:
+    // setting up AeroCloud from scratch is the explicit intent.
+    cloud_config::save_cloud_config_unchecked(&config)?;
     tray_badge::set_tray_cloud_actions_enabled(&app, true);
 
     info!(
@@ -16838,7 +17196,8 @@ async fn disable_aerocloud(app: AppHandle) -> Result<(), String> {
         let _ = stop_background_sync(app.clone()).await;
     }
 
-    cloud_config::save_cloud_config(&CloudConfig::default())?;
+    // Explicit reset to defaults: may overwrite even an unreadable file.
+    cloud_config::save_cloud_config_unchecked(&CloudConfig::default())?;
     tray_badge::set_tray_cloud_actions_enabled(&app, false);
 
     let _ = app.emit(
@@ -16901,14 +17260,32 @@ fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
 
 /// Generate share link from remote path (when browsing remote files)
 #[tauri::command]
-async fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || generate_share_link_remote_blocking(remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
+async fn generate_share_link_remote(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    remote_path: String,
+    remote_root: Option<String>,
+) -> Result<String, String> {
+    // The connection as it stands when the link is asked for, not when the
+    // menu opened: a switch in between is refused below.
+    let connected = provider_state.connected_profile_id();
+    tokio::task::spawn_blocking(move || {
+        generate_share_link_remote_blocking(remote_path, remote_root, connected)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
 }
 
 /// The body of `generate_share_link_remote`, kept synchronous and run on the blocking pool.
-fn generate_share_link_remote_blocking(remote_path: String) -> Result<String, String> {
+///
+/// `remote_root` is the AeroCloud folder as the session listed it, the form
+/// `remote_path` comes in; without it the saved folder is used. `connected`
+/// is the saved profile of the connection on screen: the link is built only
+/// when it is the profile AeroCloud syncs with, as the config selects it.
+fn generate_share_link_remote_blocking(
+    remote_path: String,
+    remote_root: Option<String>,
+    connected: Option<String>,
+) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     if !config.enabled {
@@ -16920,25 +17297,53 @@ fn generate_share_link_remote_blocking(remote_path: String) -> Result<String, St
             .to_string()
     })?;
 
-    // Check if path is within AeroCloud remote folder
-    let remote_folder = config.remote_folder.trim_end_matches('/');
-    if !remote_path.starts_with(remote_folder) {
-        return Err("File is not in AeroCloud remote folder".to_string());
-    }
+    let store = credential_store::CredentialStore::from_cache()
+        .ok_or_else(|| "Credential vault not open".to_string())?;
+    let expected = cloud_provider_factory::aerocloud_profile_id(&store, &config)?;
+    share_link_connection_check(connected.as_deref(), expected.as_deref())?;
 
-    // Get relative path from remote folder
-    let relative_path = remote_path
-        .strip_prefix(remote_folder)
-        .unwrap_or(&remote_path)
-        .trim_start_matches('/');
-
-    // Construct public URL
-    let base = public_base.trim_end_matches('/');
-    let url = format!("{}/{}", base, relative_path);
+    let root = remote_root
+        .filter(|root| !root.trim().is_empty())
+        .unwrap_or_else(|| config.remote_folder.clone());
+    let url = remote_share_link(public_base, &root, &remote_path)?;
 
     info!("Generated share link (remote): {}", url);
 
     Ok(url)
+}
+
+/// A share link names a file on the AeroCloud server: the connection it is
+/// built from must be the saved profile AeroCloud syncs with. Another server
+/// can list the same path, and an unknown profile on either side matches
+/// nothing.
+fn share_link_connection_check(
+    connected: Option<&str>,
+    expected: Option<&str>,
+) -> Result<(), String> {
+    match (connected, expected) {
+        (Some(connected), Some(expected)) if connected == expected => Ok(()),
+        _ => Err(
+            "The connection on screen is not the AeroCloud server: no share link is built for it"
+                .to_string(),
+        ),
+    }
+}
+
+/// The public URL of `remote_path` under the AeroCloud folder `root`. The
+/// path must be `root` or under it at a component boundary: `/docs2/a` is
+/// not under `/docs`, and read as its `2/a` gave a link to another file.
+/// Both paths must be plain ([`util::path_location`]): `/docs/../private/a`
+/// starts with `/docs` and names a file outside it.
+fn remote_share_link(public_base: &str, root: &str, remote_path: &str) -> Result<String, String> {
+    util::path_location::refuse_an_unusable_location("AeroCloud folder", root)?;
+    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
+    let root = root.trim_end_matches('/');
+    let relative_path = match remote_path.strip_prefix(root) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.trim_start_matches('/'),
+        _ => return Err("File is not in AeroCloud remote folder".to_string()),
+    };
+    let base = public_base.trim_end_matches('/');
+    Ok(format!("{}/{}", base, relative_path))
 }
 
 /// Generate share link for any server with a configured public URL base.
@@ -16958,18 +17363,31 @@ fn generate_server_share_link(
         return Err("Public URL base must start with http:// or https://".to_string());
     }
 
+    server_share_link(&public_url_base, &initial_path, &remote_path)
+}
+
+/// The public URL of `remote_path` on a server whose web root is
+/// `initial_path`. A path under the root, at a component boundary, is linked
+/// from the root (`/docs2/a` is not under `/docs`, and read as its `2/a`
+/// gave a link to another file); any other path is linked whole. A path that
+/// is not plain ([`util::path_location`]) is refused: a `..` in a URL is
+/// resolved by the browser and named a file the path did not.
+fn server_share_link(
+    public_url_base: &str,
+    initial_path: &str,
+    remote_path: &str,
+) -> Result<String, String> {
+    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
     let root = initial_path.trim_end_matches('/');
     let base = public_url_base.trim_end_matches('/');
 
     // Strip server root from remote path to get relative path
-    let relative = if !root.is_empty() && remote_path.starts_with(root) {
-        remote_path
-            .strip_prefix(root)
-            .unwrap_or(&remote_path)
-            .trim_start_matches('/')
-    } else {
+    let relative = match remote_path.strip_prefix(root) {
+        Some(rest) if !root.is_empty() && (rest.is_empty() || rest.starts_with('/')) => {
+            rest.trim_start_matches('/')
+        }
         // No initial path or path doesn't match: use full remote path
-        remote_path.trim_start_matches('/')
+        _ => remote_path.trim_start_matches('/'),
     };
 
     if relative.is_empty() {
@@ -17036,24 +17454,10 @@ async fn trigger_cloud_sync(
     let store = credential_store::CredentialStore::from_cache();
     let mut cfg = config;
     if let Some(ref s) = store {
-        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(s) {
-            if let Some(proto) = crypt_overlay_provider::select_aerocloud_profile(
-                &profiles,
-                cfg.server_profile_id.as_deref(),
-                &cfg.server_profile,
-            )
-            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-            {
-                cfg.protocol_type = proto.to_string();
-            }
-        }
+        cloud_provider_factory::apply_saved_profile_protocol(s, &mut cfg);
     }
-    // "Sync now" is a full scan: the background scheduler counts it, so a
-    // provider's floor between two scans spans it too.
-    cloud_scan_schedule::ledger().record_full_scan(
-        &cloud_scan_schedule::pair_key(&cfg),
-        std::time::Instant::now(),
-    );
+    // "Sync now" is a full scan, which `sync_one_config` records for the
+    // background scheduler under the key of the folder it opened.
     let result =
         cloud_service::sync_one_config(cfg, store.as_ref(), Some(app.clone()), false).await;
 
@@ -17169,35 +17573,46 @@ const WATCHER_CHANNEL_CAPACITY: usize = 1024;
 /// The enabled AeroCloud pairs as sync configs: every enabled pair of
 /// `cloud_pairs.json`, or the legacy single config when there are none.
 ///
-/// FIX-1: resolve protocol_type per-pair from vault (same as CLI pair sync)
-/// before to_cloud_config(), so non-FTP pairs (SFTP/MEGA/S3/...) work in
-/// GUI background worker (not only explicit `aerocloud pair sync`).
+/// Each carries the protocol its saved profile speaks and that profile's id,
+/// at the one exit both branches leave by. The connect of a cycle takes the
+/// protocol from there ([`cloud_provider_factory::apply_saved_profile_protocol`]),
+/// and a watcher plan prepared from a config still storing another one (the
+/// default `"ftp"` of a config saved without the vault) never matched the
+/// connected config, so every pass was refused and answered with a full
+/// scan. The id keys the pair in the scheduler
+/// ([`cloud_scan_schedule::pair_key`]), as the connect then keys it.
 fn enabled_cloud_configs() -> Vec<cloud_config::CloudConfig> {
-    let mut pc = cloud_pairs::load_cloud_pairs_config();
-    if pc.pairs.is_empty() {
+    let pc = cloud_pairs::load_cloud_pairs_config();
+    let mut configs: Vec<cloud_config::CloudConfig> = if pc.pairs.is_empty() {
         let legacy = cloud_config::load_cloud_config();
-        return if legacy.enabled { vec![legacy] } else { vec![] };
-    }
+        if legacy.enabled {
+            vec![legacy]
+        } else {
+            vec![]
+        }
+    } else {
+        pc.pairs
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.to_cloud_config())
+            .collect()
+    };
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(&store) {
-            for p in &mut pc.pairs {
-                if let Some(proto) = profiles
-                    .iter()
-                    .find(|pr| {
-                        pr.get("name").and_then(|v| v.as_str()) == Some(p.server_profile.as_str())
-                    })
-                    .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                {
-                    p.protocol_type = proto.to_string();
-                }
-            }
+        for config in &mut configs {
+            cloud_provider_factory::apply_saved_profile_protocol(&store, config);
+            let unresolved = cloud_scan_schedule::pair_key(config);
+            cloud_provider_factory::resolve_scheduler_profile(Some(&store), config);
+            // A config read while the vault was locked was keyed by how it
+            // names its profile; resolved now, it takes what the ledger held
+            // there (a full scan the watcher asked for, the provider's floor),
+            // as a placed pair takes it to its new key. A no-op once moved.
+            // The backlog needs no move: a key it has not seen counts every
+            // pending change as not yet covered.
+            cloud_scan_schedule::ledger()
+                .moved(&unresolved, &cloud_scan_schedule::pair_key(config));
         }
     }
-    pc.pairs
-        .iter()
-        .filter(|p| p.enabled)
-        .map(|p| p.to_cloud_config())
-        .collect()
+    configs
 }
 
 /// The local folders the watchers cover: those of `configs`, leaving out a
@@ -17668,6 +18083,10 @@ async fn background_sync_worker(app: AppHandle) {
                 let mut retry_paths: Vec<std::path::PathBuf> = Vec::new();
                 let mut agg = empty_sync_result();
                 agg.errors.extend(prep_errors);
+                // The ledger key each run's writes belong to: the config the
+                // connection opened, which a `~/...` folder placed during
+                // connect can move away from the pre-cycle `pair_key`.
+                let mut cycle_keys: Vec<String> = Vec::with_capacity(runs.len());
 
                 if visible {
                     let trigger_label = if startup {
@@ -17706,15 +18125,20 @@ async fn background_sync_worker(app: AppHandle) {
                     let started = std::time::Instant::now();
                     let outcome = match std::mem::replace(run, PairRun::Settled) {
                         PairRun::Full => {
-                            // A full scan answers the floor whatever its outcome:
-                            // it is the traversal the floor spaces out.
-                            ledger().record_full_scan(&key, started);
                             let outcome = cloud_service::run_pair_full_cycle(
                                 cfg.clone(),
                                 store.as_ref(),
                                 Some(app.clone()),
                             )
                             .await;
+                            // A full scan answers the floor whatever its outcome:
+                            // it is the traversal the floor spaces out, recorded
+                            // under the key of the config it opened.
+                            let scan_key = match &outcome {
+                                Ok(report) => report.placed_key.as_str(),
+                                Err(e) => e.placed_key.as_str(),
+                            };
+                            ledger().record_full_scan(scan_key, started);
                             // A scan that failed read nothing: the pair's changes
                             // stay in the backlog, for the next pass to try.
                             *run = if outcome.is_ok() {
@@ -17750,9 +18174,16 @@ async fn background_sync_worker(app: AppHandle) {
                                         }
                                     }
                                     if report.ran_full_scan {
-                                        ledger().record_full_scan(&key, started);
+                                        ledger().record_full_scan(&report.placed_key, started);
                                         *run = PairRun::Full;
                                     }
+                                }
+                                // A plan the pair outgrew (the config moved,
+                                // e.g. a `~/...` folder placed on this connect)
+                                // is discarded: the changes it carried are
+                                // covered by the full scan asked for here.
+                                Err(e) if e.needs_full_scan => {
+                                    ledger().request_full_scan(&e.placed_key, &e.message);
                                 }
                                 // Nothing ran (no connection): the paths come back.
                                 Err(e)
@@ -17771,10 +18202,15 @@ async fn background_sync_worker(app: AppHandle) {
                             None
                         }
                     };
+                    cycle_keys.push(match &outcome {
+                        Some(Ok(report)) => report.placed_key.clone(),
+                        Some(Err(e)) => e.placed_key.clone(),
+                        None => key.clone(),
+                    });
                     match outcome {
                         Some(Ok(report)) => {
                             if let Some(traits) = report.traits {
-                                ledger().learn(&key, traits);
+                                ledger().learn(&report.placed_key, traits);
                             }
                             let r = report.result;
                             agg.uploaded += r.uploaded;
@@ -17789,7 +18225,7 @@ async fn background_sync_worker(app: AppHandle) {
                         }
                         Some(Err(e)) => {
                             if let Some(traits) = e.traits {
-                                ledger().learn(&key, traits);
+                                ledger().learn(&e.placed_key, traits);
                             }
                             agg.errors.push(e.message);
                         }
@@ -17802,13 +18238,14 @@ async fn background_sync_worker(app: AppHandle) {
                 // worth retrying comes back after a delay.
                 let roots: Vec<(String, &std::path::Path, PairJob)> = runs
                     .iter()
-                    .map(|(cfg, run)| {
+                    .zip(&cycle_keys)
+                    .map(|((cfg, run), key)| {
                         let covered = match run {
                             PairRun::Idle => PairJob::Idle,
                             PairRun::Full => PairJob::FullScan,
                             _ => PairJob::Changes,
                         };
-                        (pair_key(cfg), cfg.local_folder.as_path(), covered)
+                        (key.clone(), cfg.local_folder.as_path(), covered)
                     })
                     .collect();
                 backlog.settle(&roots, std_now);
@@ -26574,13 +27011,10 @@ mod privileged_update_staging_tests {
         std::fs::create_dir(&fake_bin).expect("fake bin");
         let fake_dpkg = fake_bin.join("dpkg");
         let dpkg_called = root.path().join("dpkg-called");
-        std::fs::write(
+        crate::util::script_stub::install(
             &fake_dpkg,
-            b"#!/bin/sh\ntouch \"$AEROFTP_TEST_DPKG_CALLED\"\n",
-        )
-        .expect("fake dpkg");
-        std::fs::set_permissions(&fake_dpkg, std::fs::Permissions::from_mode(0o755))
-            .expect("fake dpkg mode");
+            "#!/bin/sh\ntouch \"$AEROFTP_TEST_DPKG_CALLED\"\n",
+        );
         let path = format!(
             "{}:{}",
             fake_bin.display(),

@@ -170,6 +170,14 @@ impl ProviderState {
         }
     }
 
+    /// The saved profile the connected provider was opened with, if any.
+    pub(crate) fn connected_profile_id(&self) -> Option<String> {
+        self.connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
     /// Bind an optional restored-transfer generation before any remote I/O.
     /// Keep the returned guard through the whole command, including DAG lock
     /// releases and folder phases. Dropping/error/cancellation releases the pin.
@@ -1022,14 +1030,17 @@ fn emit_session_event(app: &AppHandle, kind: SessionEventKind, detail: impl Into
 /// subsequent retry of the user's operation sees the same path
 /// context as before the disconnect.
 ///
-/// Returns `Ok(restored_pwd)` on success. The caller is responsible
-/// for replaying the failed operation against the freshly-reconnected
-/// provider.
+/// Returns whether the session is back in the folder it was in: `false`
+/// when that folder was not known (its `pwd` failed) or could not be
+/// entered again. The caller is responsible for replaying the failed
+/// operation against the freshly-reconnected provider, and refuses a
+/// relative one after a `false` ([`replay_after_reconnect`]): it would run
+/// against the folder the new session opened in.
 async fn try_silent_reconnect(
     app: &AppHandle,
     provider: &mut Box<dyn StorageProvider>,
-) -> Result<String, ProviderError> {
-    let prev_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+) -> Result<bool, ProviderError> {
+    let prev_dir = provider.pwd().await.ok();
     emit_session_event(app, SessionEventKind::Reconnecting, "");
     tracing::warn!("Provider session lost; attempting silent reconnect");
 
@@ -1046,18 +1057,35 @@ async fn try_silent_reconnect(
         emit_session_event(app, SessionEventKind::SshTransport, transport);
     }
 
-    // Best-effort cwd restore. Failure here is not fatal: the caller's
-    // retry will hit the right error if the path is genuinely gone.
-    if prev_dir != "/" {
-        if let Err(e) = provider.cd(&prev_dir).await {
+    // Restore the cwd. A failure is not fatal for an absolute retry, which
+    // names its own target; the caller refuses a relative one.
+    let Some(prev_dir) = prev_dir else {
+        return Ok(false);
+    };
+    match provider.cd(&prev_dir).await {
+        Ok(()) => Ok(true),
+        Err(e) => {
             tracing::warn!(
                 "Reconnect succeeded but failed to restore previous dir {}: {}",
                 prev_dir,
                 e
             );
+            Ok(false)
         }
     }
-    Ok(prev_dir)
+}
+
+/// Whether `request` may be replayed after a silent reconnect that did
+/// (`restored`) or did not return to the folder the session was in: an
+/// absolute path names its own target; a relative one (`.`, `docs`, `..`)
+/// is resolved against the current folder, which after a `false` is the
+/// one the new session opened in, not the one the request was meant for.
+pub(crate) fn replay_after_reconnect(restored: bool, request: &str) -> Result<(), String> {
+    if restored || request.starts_with('/') {
+        Ok(())
+    } else {
+        Err("Reconnected, but could not return to the folder the session was in".to_string())
+    }
 }
 
 // ============ Request/Response Types ============
@@ -3078,9 +3106,10 @@ async fn provider_list_files_inner(
         Ok(files) => files,
         Err(e) if e.is_connection_lost() => {
             emit_session_event(app, SessionEventKind::Lost, e.to_string());
-            try_silent_reconnect(app, provider)
+            let restored = try_silent_reconnect(app, provider)
                 .await
                 .map_err(|err| format!("Failed to reconnect: {}", err))?;
+            replay_after_reconnect(restored, list_path)?;
             let files = provider
                 .list_for_display(list_path)
                 .await
@@ -3091,7 +3120,7 @@ async fn provider_list_files_inner(
         Err(e) => return Err(format!("Failed to list files: {}", e)),
     };
 
-    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let current_path = entered_folder(provider.pwd().await, list_path)?;
 
     Ok(ProviderListResponse {
         files,
@@ -3121,6 +3150,24 @@ pub async fn provider_change_dir(
         provider_change_dir_inner(&app, &state, path, expected_generation),
     )
     .await
+}
+
+/// The folder a change of directory entered, as the session reports it.
+/// When the server does not report it, an absolute request names that
+/// folder; a relative one (`docs`, `..`) does not, and the folder the
+/// caller would show and sync from is unknown, so the change fails rather
+/// than report the request as the folder.
+fn entered_folder(
+    reported: Result<String, ProviderError>,
+    requested: &str,
+) -> Result<String, String> {
+    match reported {
+        Ok(folder) => Ok(folder),
+        Err(_) if requested.starts_with('/') => Ok(requested.to_string()),
+        Err(e) => Err(format!(
+            "Changed directory, but the server did not report the folder entered: {e}"
+        )),
+    }
 }
 
 async fn provider_change_dir_inner(
@@ -3156,9 +3203,10 @@ async fn provider_change_dir_inner(
             });
         }
         emit_session_event(app, SessionEventKind::Lost, e.to_string());
-        try_silent_reconnect(app, provider)
+        let restored = try_silent_reconnect(app, provider)
             .await
             .map_err(|err| format!("Failed to reconnect: {}", err))?;
+        replay_after_reconnect(restored, &path)?;
         let retry = if path == ".." {
             provider.cd_up().await
         } else {
@@ -3179,7 +3227,7 @@ async fn provider_change_dir_inner(
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
 
-    let current_path = provider.pwd().await.unwrap_or_else(|_| path.clone());
+    let current_path = entered_folder(provider.pwd().await, &path)?;
 
     Ok(ProviderListResponse {
         files,
@@ -10562,6 +10610,7 @@ pub async fn opendrive_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10611,6 +10660,7 @@ pub async fn opendrive_set_path_access(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10669,6 +10719,7 @@ pub async fn fourshared_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let fourshared = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -14933,6 +14984,49 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A change of directory reports the folder the server says it entered.
+    /// When the server does not answer, only an absolute request names the
+    /// folder; a relative one fails instead of being shown as the folder.
+    #[test]
+    fn a_change_of_directory_reports_only_a_folder_it_knows() {
+        let silent = || Err(ProviderError::ServerError("PWD refused".into()));
+        assert_eq!(
+            entered_folder(Ok("/home/u/docs".into()), "docs"),
+            Ok("/home/u/docs".to_string())
+        );
+        assert_eq!(
+            entered_folder(silent(), "/home/u/docs"),
+            Ok("/home/u/docs".to_string())
+        );
+        for relative in ["docs", ".."] {
+            let refused = entered_folder(silent(), relative).unwrap_err();
+            assert!(refused.contains("did not report"), "{refused}");
+        }
+    }
+
+    /// After a silent reconnect that could not return to the session's
+    /// folder, only an absolute request is replayed: a relative one would
+    /// run against the folder the new session opened in.
+    #[test]
+    fn a_relative_request_is_replayed_only_in_the_folder_it_was_meant_for() {
+        assert!(replay_after_reconnect(true, "docs").is_ok());
+        assert!(replay_after_reconnect(false, "/home/u/docs").is_ok());
+        for relative in [".", "docs", ".."] {
+            assert!(
+                replay_after_reconnect(false, relative).is_err(),
+                "{relative}"
+            );
+        }
+        // Both replays of this file go through it.
+        let source = include_str!("provider_commands.rs");
+        assert_eq!(
+            source
+                .matches(concat!("replay_after_reconnect", "(restored, "))
+                .count(),
+            2
+        );
+    }
 
     /// The editor's remote read is bound to the connection it was opened on:
     /// refused once another connection took the slot, and while it holds the

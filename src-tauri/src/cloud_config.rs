@@ -8,7 +8,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 
 /// Serializes concurrent writes to the cloud config file
@@ -36,6 +36,15 @@ pub struct CloudConfig {
     /// the id was stored, which keeps resolving by exact name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_profile_id: Option<String>,
+    /// The id of the saved profile this config selects, as the connect
+    /// selects it: set where a config is read to sync (the background worker)
+    /// and by the connect from the profile it used. The scheduler keys a
+    /// pair by it ([`crate::cloud_scan_schedule::pair_key`]), so the same
+    /// profile is one key whether a config names it by id or by name, and two
+    /// profiles never share one. Never saved, and not part of a config's
+    /// identity.
+    #[serde(skip)]
+    pub resolved_profile_id: Option<String>,
     /// Sync interval in seconds (0 = disabled)
     pub sync_interval_secs: u64,
     /// Enable real-time sync on file changes
@@ -165,6 +174,7 @@ impl Default for CloudConfig {
             remote_folder: "/cloud/".to_string(),
             server_profile: String::new(),
             server_profile_id: None,
+            resolved_profile_id: None,
             sync_interval_secs: 86400, // 24 hours (watcher handles real-time, this is safety net)
             sync_on_change: true,
             sync_on_startup: false,
@@ -241,7 +251,7 @@ pub struct CloudStats {
 }
 
 /// Get the path to the cloud config file
-fn get_config_path() -> PathBuf {
+pub(crate) fn get_config_path() -> PathBuf {
     crate::portable::aeroftp_data_root()
         .unwrap_or_else(|| dirs::home_dir().unwrap_or_else(|| PathBuf::from(".")))
         .join("cloud_config.json")
@@ -260,7 +270,10 @@ fn load_cloud_config_unlocked() -> CloudConfig {
             Ok(content) => match serde_json::from_str(&content) {
                 Ok(config) => return config,
                 Err(e) => {
-                    tracing::warn!("Failed to parse cloud config: {}", e);
+                    tracing::warn!(
+                        "Failed to parse cloud config: {}",
+                        crate::util::describe_json_error(&e)
+                    );
                 }
             },
             Err(e) => {
@@ -272,24 +285,110 @@ fn load_cloud_config_unlocked() -> CloudConfig {
     CloudConfig::default()
 }
 
-/// Load → mutate → save under one write lock.
+/// Strict load for the write path at an explicit location: a missing file
+/// is the default, a file that exists but cannot be read or parsed is an
+/// error, so a mutator never treats it as empty and overwrites what it
+/// could not read. `exists()` is deliberately not used: it reports false on
+/// metadata errors too, which would pick the default and lose the file.
+fn load_cloud_config_strict_at(path: &Path) -> Result<CloudConfig, String> {
+    let content = match fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CloudConfig::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to read cloud config '{}': {}",
+                path.display(),
+                e
+            ));
+        }
+    };
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Failed to parse cloud config '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
+}
+
+/// Strict load at the real config path: callers that read-then-save outside
+/// [`with_cloud_config_mut`] (CLI commands, one-shot tools) use this so an
+/// unreadable file is an error instead of an empty config that a later save
+/// would write over the user's data.
+pub fn load_cloud_config_strict() -> Result<CloudConfig, String> {
+    load_cloud_config_strict_at(&get_config_path())
+}
+
+/// Load → mutate → save under one write lock, at an explicit path.
 ///
 /// Use this for every read-modify-write of `cloud_config.json`. Taking the lock
 /// only around `save_cloud_config` still allows two concurrent mutators on the
 /// blocking pool to both load the same snapshot and last-write-win (lost
 /// update). The main-thread command path used to serialise this for free;
 /// `spawn_blocking` does not.
-pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
+pub fn with_cloud_config_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudConfig) -> Result<T, String>,
 {
     let _lock = CONFIG_WRITE_LOCK
         .lock()
         .map_err(|_| "Config write lock poisoned".to_string())?;
-    let mut config = load_cloud_config_unlocked();
+    let mut config = load_cloud_config_strict_at(path)?;
+    let before = serde_json::to_value(&config).ok();
     let out = f(&mut config)?;
-    save_cloud_config_unlocked(&config)?;
+    // A mutation that changed nothing writes nothing: the file keeps its
+    // bytes, and a save that would fail cannot fail a no-op.
+    if before.is_none() || serde_json::to_value(&config).ok() != before {
+        save_cloud_config_unlocked_at(&config, path)?;
+    }
     Ok(out)
+}
+
+/// The configuration a settings save writes over `stored`, the file as it is
+/// now, from `draft`, the settings the user edited after reading them as
+/// `read_as`. What the file gained since that read and the user did not
+/// edit stays as stored: the remote folder a sync placed under the login
+/// folder, the time of the last sync, the pause. When the setup itself moved
+/// (AeroCloud enabled or disabled, another profile, local folder, protocol
+/// or connection parameters), the draft belongs to a configuration that was
+/// replaced, and the save is refused.
+pub fn settings_save(
+    stored: &CloudConfig,
+    read_as: &CloudConfig,
+    mut draft: CloudConfig,
+) -> Result<CloudConfig, String> {
+    let setup = |config: &CloudConfig| {
+        (
+            config.enabled,
+            config.server_profile_id.clone(),
+            config.server_profile.clone(),
+            config.local_folder.clone(),
+            config.protocol_type.clone(),
+            config.connection_params.clone(),
+        )
+    };
+    if setup(stored) != setup(read_as) {
+        return Err(
+            "The AeroCloud configuration changed since these settings were opened: open them \
+             again to edit it as it is now"
+                .to_string(),
+        );
+    }
+    if draft.remote_folder == read_as.remote_folder {
+        draft.remote_folder = stored.remote_folder.clone();
+    }
+    draft.last_sync = stored.last_sync;
+    draft.paused = stored.paused;
+    Ok(draft)
+}
+
+pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut CloudConfig) -> Result<T, String>,
+{
+    with_cloud_config_mut_at(&get_config_path(), f)
 }
 
 /// Save cloud configuration to disk (serialized via write lock, atomic temp+rename)
@@ -300,9 +399,50 @@ pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
     save_cloud_config_unlocked(config)
 }
 
-fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
-    let config_path = get_config_path();
+/// Save that may overwrite even an unreadable file. ONLY for explicit resets
+/// where starting from defaults is the user's intent: the setup wizard
+/// (`setup_aerocloud`) and `disable_aerocloud`. Every other save goes through
+/// [`save_cloud_config`], which refuses to destroy a file it cannot read.
+pub fn save_cloud_config_unchecked(config: &CloudConfig) -> Result<(), String> {
+    let _lock = CONFIG_WRITE_LOCK
+        .lock()
+        .map_err(|_| "Config write lock poisoned".to_string())?;
+    save_cloud_config_unlocked_at_force(config, &get_config_path())
+}
 
+fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
+    save_cloud_config_unlocked_at(config, &get_config_path())
+}
+
+fn save_cloud_config_unlocked_at(config: &CloudConfig, config_path: &Path) -> Result<(), String> {
+    // A full-file save built on a default config must never destroy a file
+    // that exists but cannot be read or parsed (same rule as the strict
+    // loaders: NotFound is the only "absent" that may be overwritten).
+    match fs::read_to_string(config_path) {
+        Ok(content) => {
+            if serde_json::from_str::<CloudConfig>(&content).is_err() {
+                return Err(format!(
+                    "Refusing to overwrite unreadable cloud config '{}'",
+                    config_path.display()
+                ));
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => {
+            return Err(format!(
+                "Cannot read existing cloud config '{}': {}",
+                config_path.display(),
+                e
+            ));
+        }
+    }
+    save_cloud_config_unlocked_at_force(config, config_path)
+}
+
+fn save_cloud_config_unlocked_at_force(
+    config: &CloudConfig,
+    config_path: &Path,
+) -> Result<(), String> {
     // Ensure parent directory exists
     if let Some(parent) = config_path.parent() {
         fs::create_dir_all(parent)
@@ -315,7 +455,7 @@ fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
     // Atomic write: temp file + rename to prevent corruption on crash
     let tmp_path = config_path.with_extension("tmp");
     fs::write(&tmp_path, content).map_err(|e| format!("Failed to write temp config: {}", e))?;
-    fs::rename(&tmp_path, &config_path)
+    fs::rename(&tmp_path, config_path)
         .map_err(|e| format!("Failed to rename temp config: {}", e))?;
 
     tracing::info!("Cloud config saved to {:?}", config_path);
@@ -339,6 +479,33 @@ const SERVER_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 
 /// Protocol types that require absolute remote paths
 const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
+
+/// A remote folder the user wrote is used as written: joined to the login
+/// folder, compared with the listing paths, the badges and the share link.
+/// A `.`, `..` or empty step (a doubled slash) would name another folder
+/// there, so every surface that saves one (the setup, the settings, the
+/// pairs, the CLI) refuses it, as written, on every protocol: it is never
+/// collapsed into the folder it might have meant
+/// ([`crate::util::path_location`]). `saved` is the folder already saved in
+/// that place: a save that keeps it unchanged (another setting edited) is
+/// refused only for a `..` step or a NUL, so a folder saved before this rule
+/// with a doubled slash or a `.` step keeps saving and syncing as before.
+pub fn refuse_an_unusable_remote_folder(
+    remote_folder: &str,
+    saved: Option<&str>,
+) -> Result<(), String> {
+    if saved == Some(remote_folder) {
+        return refuse_a_saved_remote_folder(remote_folder);
+    }
+    crate::util::path_location::refuse_an_unusable_location("remote folder", remote_folder)
+}
+
+/// A remote folder already saved, read again (a sync cycle, the picker): only
+/// a `..` step or a NUL is refused, which change where it points; `.` and
+/// empty steps are kept and sent to the server as saved.
+pub fn refuse_a_saved_remote_folder(remote_folder: &str) -> Result<(), String> {
+    crate::util::path_location::refuse_a_saved_location("remote folder", remote_folder)
+}
 
 /// Validate cloud configuration
 pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
@@ -381,12 +548,18 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
         return Err("Remote folder cannot be empty".to_string());
     }
 
-    // Only server protocols require absolute paths; cloud providers accept "/" or relative
+    // Only server protocols require absolute paths; cloud providers accept "/" or relative.
+    // A `~/...` folder is accepted on the login-relative protocols (SFTP, SCP,
+    // FTP, FTPS): it names a folder under the login folder and is placed to an
+    // absolute path on the first connect. WebDAV and a bare relative stay refused.
     if ABSOLUTE_PATH_PROTOCOLS.contains(&config.protocol_type.as_str())
         && !config.remote_folder.starts_with('/')
+        && !(crate::crypt_overlay_provider::is_login_relative_scope(&config.remote_folder)
+            && crate::crypt_overlay_provider::login_relative_protocol(&config.protocol_type))
     {
         return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
+    refuse_an_unusable_remote_folder(&config.remote_folder, None)?;
 
     Ok(())
 }
@@ -394,6 +567,207 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A `cloud_config.json` that exists but does not parse is an error on
+    /// the write path: the mutator reports it and the file bytes stay
+    /// untouched, never overwritten by an empty config.
+    /// A mutation that changes nothing writes nothing: the file keeps its
+    /// exact bytes (a save would rewrite them in its own layout). A change
+    /// is still saved.
+    #[test]
+    fn a_mutation_that_changes_nothing_leaves_the_config_file_alone() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let compact = serde_json::to_string(&CloudConfig::default()).unwrap();
+        std::fs::write(&path, &compact).unwrap();
+        with_cloud_config_mut_at(&path, |_| Ok(())).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), compact);
+        with_cloud_config_mut_at(&path, |config| {
+            config.remote_folder = "/placed".to_string();
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(
+            load_cloud_config_strict_at(&path).unwrap().remote_folder,
+            "/placed"
+        );
+    }
+
+    #[test]
+    fn an_unparseable_config_is_never_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = with_cloud_config_mut_at(&path, |_| Ok(())).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A full-file save must refuse to overwrite a config that exists but
+    /// does not parse: the GUI/settings save path would otherwise turn an
+    /// unreadable file into defaults.
+    /// The reset path really overwrites a config the guarded save refuses:
+    /// the setup wizard and `disable_aerocloud` must still work when the
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_config_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        std::fs::write(&path, r#"{"enabled": "SENTINEL-SECRET"}"#).unwrap();
+        let err = load_cloud_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
+    /// file is corrupt, since resetting it is how the user recovers.
+    #[test]
+    fn the_reset_save_overwrites_an_unparseable_config() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        std::fs::write(&path, b"{ not json").unwrap();
+        assert!(save_cloud_config_unlocked_at(&CloudConfig::default(), &path).is_err());
+        save_cloud_config_unlocked_at_force(&CloudConfig::default(), &path).unwrap();
+        assert!(load_cloud_config_strict_at(&path).is_ok());
+    }
+
+    /// Only the two explicit resets may bypass the guard: every caller of
+    /// `save_cloud_config_unchecked` in the crate sits inside
+    /// `setup_aerocloud` or `disable_aerocloud`. A new caller elsewhere
+    /// would silently reopen the overwrite-an-unreadable-file path.
+    #[test]
+    fn only_the_explicit_resets_call_the_unchecked_save() {
+        fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let mut callers = std::collections::BTreeSet::new();
+        for file in files {
+            if file.file_name().is_some_and(|n| n == "cloud_config.rs") {
+                continue;
+            }
+            let code = std::fs::read_to_string(&file).unwrap();
+            for (at, _) in code.match_indices("save_cloud_config_unchecked(") {
+                let before = &code[..at];
+                let fn_at = before.rfind("fn ").expect("call outside any fn");
+                let name: String = before[fn_at + 3..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                callers.insert(name);
+            }
+        }
+        let expected: std::collections::BTreeSet<String> = ["disable_aerocloud", "setup_aerocloud"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(callers, expected);
+    }
+
+    #[test]
+    fn a_save_refuses_to_overwrite_an_unparseable_config() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = save_cloud_config_unlocked_at(&CloudConfig::default(), &path).unwrap_err();
+        assert!(err.contains("Refusing to overwrite"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        // A parseable existing config may still be overwritten.
+        let good = serde_json::to_vec(&CloudConfig::default()).unwrap();
+        std::fs::write(&path, &good).unwrap();
+        save_cloud_config_unlocked_at(&CloudConfig::default(), &path).unwrap();
+        assert_ne!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guard on a metadata error: an unreadable FILE (permissions
+    /// removed from the file itself, directory still writable) makes the
+    /// save fail instead of overwriting it through tmp+rename.
+    #[cfg(unix)]
+    #[test]
+    fn a_save_refuses_when_the_config_file_is_unreadable() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the write, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        let bytes = b"{ \"enabled\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(save_cloud_config_unlocked_at(&CloudConfig::default(), &path).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// An absent `cloud_config.json` still takes the default-plus-save path.
+    #[test]
+    fn an_absent_config_still_saves() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("cloud_config.json");
+        with_cloud_config_mut_at(&path, |config| {
+            config.enabled = true;
+            Ok(())
+        })
+        .unwrap();
+        let saved: CloudConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.enabled);
+    }
+
+    /// A metadata error on the config (unreadable parent directory) is an
+    /// error, not a missing file: the closure never runs and nothing is
+    /// written back.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_config_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("cloud_config.json");
+        let bytes = b"{ \"enabled\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ran = false;
+        let err = with_cloud_config_mut_at(&path, |_| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!ran, "closure must not run on an unreadable config: {err}");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
 
     #[test]
     fn test_default_config() {
@@ -429,6 +803,43 @@ mod tests {
         // Should fail - relative path for FTP
         config.remote_folder = "cloud/".to_string();
         assert!(validate_config(&config).is_err());
+    }
+
+    /// A `..` under the login folder is refused where a folder is saved, in
+    /// every spelling, and kept as written in the message; an absolute
+    /// folder, or one on a protocol that does not open under the login
+    /// folder, is not this rule's.
+    #[test]
+    fn a_folder_that_is_not_plain_is_refused_on_every_protocol() {
+        for protocol in ["sftp", "scp", "ftp", "ftps", "webdav", "s3", "googledrive"] {
+            for folder in [
+                "~/..",
+                "~/docs/../shared",
+                "docs/../x",
+                "~/a\\..\\b",
+                "/srv/../etc",
+                "/docs/./a",
+                "~//docs",
+                "/docs//a",
+            ] {
+                let config = CloudConfig {
+                    server_profile: "nas".to_string(),
+                    protocol_type: protocol.to_string(),
+                    remote_folder: folder.to_string(),
+                    connection_params: serde_json::json!({"bucket": "b", "client_id": "c"}),
+                    ..CloudConfig::default()
+                };
+                assert!(validate_config(&config).is_err(), "{protocol} {folder}");
+                let err = refuse_an_unusable_remote_folder(folder, None).unwrap_err();
+                assert!(err.contains(&format!("'{folder}'")), "{err}");
+            }
+            for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/data/", "/", "~"] {
+                assert!(
+                    refuse_an_unusable_remote_folder(folder, None).is_ok(),
+                    "{protocol} {folder}"
+                );
+            }
+        }
     }
 
     #[test]

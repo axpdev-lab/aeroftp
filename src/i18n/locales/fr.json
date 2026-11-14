@@ -64,6 +64,9 @@
             "name": "Nom",
             "size": "Taille",
             "retry": "Réessayer",
+            "settingsLoadFailed": "Impossible de lire ces paramètres, donc rien ne sera enregistré à leur place : {error}",
+            "settingsRefreshFailed": "Les paramètres n'ont pas pu être relus, l'affichage n'est donc peut-être pas à jour : {error}",
+            "saveFailed": "Impossible d'enregistrer : {error}",
             "optional": "facultatif",
             "check": "Vérifier",
             "selectAll": "Tout Sélectionner",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "Il y a {count}s",
             "conflictsCount": "Conflits à traiter : {count}",
             "updateOnlyHint": "La mise à jour unidirectionnelle conserve les fichiers de destination plus récents. Lorsque la sauvegarde additive est désactivée, seuls les fichiers inchangés, présents uniquement à destination et disposant d’un reçu de transfert AeroCloud vérifié sont supprimés. Les autres fichiers restent à examiner dans AeroSync. La politique de conflit est ignorée ; les dates inconnues restent non résolues.",
-            "untrackedDestinationFiles": "{count} fichiers de destination ont été conservés pour examen : leur historique de transfert n’est pas vérifié ou ils ont été modifiés depuis le dernier transfert AeroCloud. Examinez-les dans AeroSync avant de décider de leur suppression."
+            "untrackedDestinationFiles": "{count} fichiers de destination ont été conservés pour examen : leur historique de transfert n’est pas vérifié ou ils ont été modifiés depuis le dernier transfert AeroCloud. Examinez-les dans AeroSync avant de décider de leur suppression.",
+            "remoteFolderNotPlain": "Le dossier distant {folder} contient une étape \".\" ou \"..\" ou une double barre oblique. AeroCloud utilise le dossier tel qu'il est écrit et ne les résout pas. Choisissez un sous-dossier sans ces éléments, ou retirez-les du dossier de départ ou du dossier de superposition du profil du serveur."
         },
         "statusBar": {
             "connected": "Connecté",

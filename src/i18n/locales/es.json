@@ -64,6 +64,9 @@
             "name": "Nombre",
             "size": "Tamaño",
             "retry": "Reintentar",
+            "settingsLoadFailed": "No se pudo leer esta configuración, así que no se guardará nada encima: {error}",
+            "settingsRefreshFailed": "No se pudo volver a leer la configuración, por lo que lo que se muestra puede estar desactualizado: {error}",
+            "saveFailed": "No se pudo guardar: {error}",
             "optional": "opcional",
             "check": "Verificar",
             "selectAll": "Seleccionar Todo",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "Hace {count}s",
             "conflictsCount": "Conflictos por revisar: {count}",
             "updateOnlyHint": "La actualización unidireccional conserva los archivos de destino más recientes. Con la copia de seguridad aditiva desactivada, solo se eliminan los archivos exclusivos del destino que no han cambiado y tienen un comprobante de transferencia de AeroCloud verificado. Los demás archivos quedan para revisarlos en AeroSync. Se ignora la política de conflictos; las fechas desconocidas quedan sin resolver.",
-            "untrackedDestinationFiles": "Se han conservado {count} archivos de destino para revisarlos: su historial de transferencias no está verificado o han cambiado desde la última transferencia de AeroCloud. Revísalos en AeroSync antes de decidir si quieres eliminarlos."
+            "untrackedDestinationFiles": "Se han conservado {count} archivos de destino para revisarlos: su historial de transferencias no está verificado o han cambiado desde la última transferencia de AeroCloud. Revísalos en AeroSync antes de decidir si quieres eliminarlos.",
+            "remoteFolderNotPlain": "La carpeta remota {folder} contiene un paso \".\" o \"..\" o una barra doble. AeroCloud usa la carpeta tal como está escrita y no los resuelve. Elige una subcarpeta sin ellos o quítalos de la carpeta inicial o de la carpeta de superposición del perfil del servidor."
         },
         "statusBar": {
             "connected": "Conectado",

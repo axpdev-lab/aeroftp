@@ -96,9 +96,14 @@ describe('resolveOverlayScope (#369 relative UX)', () => {
         expect(resolveOverlayScope('/other', '/data')).toBe('/data/other');
     });
 
-    it('neutralizes dot-segment traversal by treating it as relative input', () => {
-        expect(resolveOverlayScope('../sibling', '/data/vault')).toBe('/data/vault/sibling');
-        expect(resolveOverlayScope('/data/vault/../sibling', '/data/vault')).toBe('/data/vault/data/sibling');
+    it('keeps a dot step, a parent step or a doubled slash as typed, and refuses it', () => {
+        // Nested or normalized, `../sibling` became `/data/vault/sibling`, a
+        // folder the operator never named: the form refuses it instead.
+        for (const input of ['../sibling', '/data/vault/../sibling', './vault', 'sub//x', '/data/vault/./x']) {
+            expect(resolveOverlayScope(input, '/data/vault')).toBe(input);
+            expect(isValidOverlayScope(resolveOverlayScope(input, '/data/vault'), '/data/vault')).toBe(false);
+            expect(isValidOverlayScope(resolveOverlayScope(input, '/'), '/')).toBe(false);
+        }
     });
 
     it('keeps an already-absolute in-scope path verbatim', () => {
@@ -161,23 +166,30 @@ it('retains whitespace names through profile save and scope matching', () => {
 // only the session places it. The saved anchor keeps that form: `docs` and
 // `~/docs` were saved as `/docs` and `/~/docs`, folders the session never opened.
 describe('an overlay scope under the login folder', () => {
-    it('reads a relative path under the login folder on SFTP and SCP only', () => {
-        expect(loginRelativeForm('docs', 'sftp')).toBe('~/docs');
-        expect(loginRelativeForm('docs', 'scp')).toBe('~/docs');
-        expect(loginRelativeForm('docs', 'ftp')).toBe('docs');
+    it('reads a relative path under the login folder on SFTP, SCP, FTP and FTPS', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps']) {
+            expect(loginRelativeForm('docs', protocol)).toBe('~/docs');
+        }
+        expect(loginRelativeForm('docs', 'webdav')).toBe('docs');
         expect(loginRelativeForm('/docs', 'sftp')).toBe('/docs');
         expect(loginRelativeForm('~/docs', 'sftp')).toBe('~/docs');
         expect(loginRelativeForm('', 'sftp')).toBe('');
         expect(loginRelativeForm('~docs', 'sftp')).toBe('~/~docs');
+        // An omitted protocol is FTP (the ServerProfile default), not unknown.
+        expect(loginRelativeForm('docs', undefined)).toBe('~/docs');
     });
 
     it('saves the anchor in the login folder form', () => {
-        for (const protocol of ['sftp', 'scp']) {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps']) {
             expect(resolveOverlayScope('', 'docs', protocol)).toBe('~/docs');
             expect(resolveOverlayScope('', '~/docs/', protocol)).toBe('~/docs');
             expect(resolveOverlayScope('sub', 'docs', protocol)).toBe('~/docs/sub');
             expect(resolveOverlayScope('~/docs/sub', '~/docs', protocol)).toBe('~/docs/sub');
-            expect(resolveOverlayScope('../x', '~/docs', protocol)).toBe('~/docs/x');
+            // A `..` is kept as typed and refused, in either form.
+            for (const input of ['../x', '~/../vault', '~/docs/./x', '~//docs/x']) {
+                expect(resolveOverlayScope(input, '~/docs', protocol)).toBe(input);
+                expect(isValidOverlayScope(resolveOverlayScope(input, 'docs', protocol), 'docs', protocol)).toBe(false);
+            }
             expect(resolveOverlayScope('~/vault', '', protocol)).toBe('~/vault');
             expect(resolveOverlayScope('', '~', protocol)).toBe('~');
             // An absolute folder under an unplaced one is kept as typed and refused.
@@ -191,8 +203,8 @@ describe('an overlay scope under the login folder', () => {
             expect(isValidOverlayScope(resolveOverlayScope('~/../etc', '', protocol), '', protocol)).toBe(false);
         }
         // Elsewhere the old reading stays: a relative Remote Path is from the root.
-        expect(resolveOverlayScope('', 'docs', 'ftp')).toBe('/docs');
-        expect(resolveOverlayScope('~/vault', '', 'ftp')).toBe('/~/vault');
+        expect(resolveOverlayScope('', 'docs', 'webdav')).toBe('/docs');
+        expect(resolveOverlayScope('~/vault', '', 'webdav')).toBe('/~/vault');
     });
 
     it('normalizes an anchor in the form the backend reads', () => {

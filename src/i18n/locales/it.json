@@ -66,6 +66,9 @@
             "name": "Nome",
             "size": "Dimensione",
             "retry": "Riprova",
+            "settingsLoadFailed": "Impossibile leggere queste impostazioni, quindi non verrà salvato nulla al loro posto: {error}",
+            "settingsRefreshFailed": "Non è stato possibile rileggere le impostazioni, quindi quelle mostrate potrebbero non essere aggiornate: {error}",
+            "saveFailed": "Impossibile salvare: {error}",
             "check": "Verifica",
             "selectAll": "Seleziona Tutto",
             "required": "obbligatorio",
@@ -2108,7 +2111,8 @@
             "secondsAgo": "{count}s fa",
             "conflictsCount": "Conflitti da risolvere: {count}",
             "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
-            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
+            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli.",
+            "remoteFolderNotPlain": "La cartella remota {folder} contiene un passo \".\" o \"..\" oppure una doppia barra. AeroCloud usa la cartella così come è scritta e non li risolve. Scegli una sottocartella senza, oppure toglili dalla cartella iniziale o dalla cartella overlay del profilo del server."
         },
         "statusBar": {
             "connected": "Connesso",

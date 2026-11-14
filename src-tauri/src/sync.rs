@@ -5660,18 +5660,65 @@ fn load_multi_path_config_unlocked() -> MultiPathConfig {
     }
 }
 
-/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`).
-pub fn with_multi_path_config_mut<F, T>(f: F) -> Result<T, String>
+/// Strict load for the write path at an explicit location: a missing file
+/// is the default, a file that exists but cannot be read or parsed is an
+/// error, so a mutator never treats it as empty and overwrites what it
+/// could not read. `exists()` is deliberately not used: it reports false on
+/// metadata errors too, which would pick the default and lose the file.
+fn load_multi_path_config_strict_at(path: &Path) -> Result<MultiPathConfig, String> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(MultiPathConfig::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to read multi-path config '{}': {e}",
+                path.display()
+            ));
+        }
+    };
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Failed to parse multi-path config '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
+}
+
+/// Strict load at the real path, for the editor: an unreadable file is an
+/// error, so the editor never holds an empty list it could save over it.
+pub fn load_multi_path_config_strict() -> Result<MultiPathConfig, String> {
+    load_multi_path_config_strict_at(&multi_path_config_path()?)
+}
+
+fn multi_path_config_path() -> Result<PathBuf, String> {
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
+    Ok(dir.join("multi_path.json"))
+}
+
+/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`),
+/// at an explicit path.
+pub fn with_multi_path_config_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut MultiPathConfig) -> Result<T, String>,
 {
     let _lock = MULTI_PATH_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut config = load_multi_path_config_unlocked();
+    let mut config = load_multi_path_config_strict_at(path)?;
     let out = f(&mut config)?;
-    save_multi_path_config_unlocked(&config)?;
+    save_multi_path_config_unlocked_at(&config, path)?;
     Ok(out)
+}
+
+pub fn with_multi_path_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut MultiPathConfig) -> Result<T, String>,
+{
+    with_multi_path_config_mut_at(&multi_path_config_path()?, f)
 }
 
 /// Save multi-path config to disk (atomic temp+rename)
@@ -5683,11 +5730,20 @@ pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
 }
 
 fn save_multi_path_config_unlocked(config: &MultiPathConfig) -> Result<(), String> {
-    let dir = crate::portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    save_multi_path_config_unlocked_at(config, &multi_path_config_path()?)
+}
+
+fn save_multi_path_config_unlocked_at(config: &MultiPathConfig, path: &Path) -> Result<(), String> {
+    // A full-file save (the editor's Save) must never replace a file that
+    // exists but cannot be read or parsed: the editor shows an empty list for
+    // it, and saving that list would erase the stored pairs. NotFound is the
+    // only "absent" that may be written.
+    load_multi_path_config_strict_at(path)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    atomic_write(&dir.join("multi_path.json"), data.as_bytes())
+    atomic_write(path, data.as_bytes())
 }
 
 // =============================
@@ -6883,6 +6939,127 @@ mod narrow_tests {
 
 #[cfg(test)]
 mod tests {
+    /// A `multi_path.json` that exists but does not parse is an error on the
+    /// write path: the mutator reports it and the file bytes stay untouched,
+    /// never overwritten by an empty config.
+    #[test]
+    fn an_unparseable_multi_path_file_is_never_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = with_multi_path_config_mut_at(&path, |_| Ok(())).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// An absent `multi_path.json` still takes the default-plus-save path.
+    #[test]
+    fn an_absent_multi_path_file_still_saves() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        with_multi_path_config_mut_at(&path, |config| {
+            config.parallel_pairs = true;
+            Ok(())
+        })
+        .unwrap();
+        let saved: MultiPathConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.parallel_pairs);
+    }
+
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_multi_path_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        std::fs::write(
+            &path,
+            r#"{"pairs": [], "parallel_pairs": "SENTINEL-SECRET"}"#,
+        )
+        .unwrap();
+        let err = load_multi_path_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
+    /// The full-file save behind the editor's Save refuses to replace a
+    /// file it cannot parse: the editor shows an empty list for it, and
+    /// saving that list would erase the stored pairs. A missing file is
+    /// still created.
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unparseable_multi_path_file() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err =
+            save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let absent = data.path().join("absent").join("multi_path.json");
+        save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &absent).unwrap();
+        assert!(load_multi_path_config_strict_at(&absent).is_ok());
+    }
+
+    /// Same guard on a file that exists but cannot be read (write-only, so
+    /// a save that skipped the check would still succeed and replace it).
+    #[cfg(unix)]
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unreadable_multi_path_file() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let result = save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(result.is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A metadata error on the multi-path config (unreadable parent
+    /// directory) is an error, not a missing file: the closure never runs.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_multi_path_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("multi_path.json");
+        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ran = false;
+        let err = with_multi_path_config_mut_at(&path, |_| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!ran, "closure must not run on an unreadable config: {err}");
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
     /// #1506 row 164: an OS error is classified by its code, in any language.
     /// The text before "(os error N)" is the operating system's, translated
     /// (Windows always, glibc once GTK has set the locale), and the English

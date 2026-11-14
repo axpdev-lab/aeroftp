@@ -234,17 +234,18 @@ describe('profileOverlayScope', () => {
     expect(profileOverlayScope({ username: 'u', aeroCryptOverlay: overlay })).toBe('');
   });
 
-  // #1523 Greptile: SFTP and SCP open `docs` under the login folder, so the
-  // overlay folder is `~/docs` there; read from the root it was `/docs`.
-  it('reads a relative folder under the login folder on SFTP and SCP only', () => {
-    for (const protocol of ['sftp', 'scp'] as const) {
+  // #1523 Greptile: SFTP, SCP, FTP and FTPS open `docs` under the login
+  // folder, so the overlay folder is `~/docs` there; read from the root it
+  // was `/docs`.
+  it('reads a relative folder under the login folder on SFTP, SCP, FTP and FTPS', () => {
+    for (const protocol of ['sftp', 'scp', 'ftp', 'ftps'] as const) {
       expect(profileOverlayScope({ protocol, username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('~/docs');
       expect(profileOverlayScope({ protocol, username: 'u', initialPath: '/srv', aeroCryptOverlay: { ...overlay, remoteScope: 'enc' } })).toBe('~/enc');
       expect(profileOverlayScope({ protocol, username: 'u', initialPath: '/srv', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('/srv');
       expect(profileOverlayScope({ protocol, username: 'u', initialPath: '~/v', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('~/v');
       expect(profileOverlayScope({ protocol, username: 'u', aeroCryptOverlay: overlay })).toBe('');
     }
-    expect(profileOverlayScope({ protocol: 'ftp', username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('docs');
+    expect(profileOverlayScope({ protocol: 'webdav', username: 'u', initialPath: 'docs', aeroCryptOverlay: { ...overlay, remoteScope: '' } })).toBe('docs');
   });
 
   // #1523 Greptile: pin_transfer_owner compares the live overlay's absolute

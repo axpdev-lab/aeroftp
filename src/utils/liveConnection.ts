@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { ConnectionParams } from '../types';
+import { savedLocationProblem } from './syncNavigationPath';
 
 /** The part of a session tab this resolution reads. */
 export interface LiveConnectionSession {
@@ -148,4 +149,106 @@ export function isSameConnection(live: ConnectionParams, target: ConnectionParam
         if (JSON.stringify(a) !== JSON.stringify(b)) return false;
     }
     return true;
+}
+
+/**
+ * The saved profile the connection on screen was made with: the active
+ * session's, else the form's (the AeroCloud tab has no session of its own).
+ * A session that names none has none: the form's id can belong to an earlier
+ * connect, as in `resolveLiveConnectionParams`.
+ */
+export function liveSavedServerId(
+    sessions: ReadonlyArray<LiveConnectionSession & { savedServerId?: string }>,
+    activeSessionId: string | null | undefined,
+    formParams: ConnectionParams,
+): string | null {
+    if (activeSessionId) {
+        const active = sessions.find(session => session.id === activeSessionId);
+        return active?.savedServerId || active?.connectionParams?.savedServerId || null;
+    }
+    return formParams.savedServerId || null;
+}
+
+/**
+ * Whether the connection on screen is the one AeroCloud syncs with: the same
+ * saved profile, by id. A path or a display name says nothing about the
+ * server, and an unknown id on either side is not a match.
+ */
+export const isAeroCloudConnection = (liveId: string | null | undefined, cloudProfileId: string | null | undefined): boolean =>
+    !!liveId && !!cloudProfileId && liveId === cloudProfileId;
+
+/**
+ * The saved profile an AeroCloud config names, as the backend's
+ * `select_aerocloud_profile` selects it: by its id when the config carries
+ * one (an id that matches nothing selects nothing, never a homonym), else by
+ * exact name, else by the name taken as an id.
+ */
+export function selectAeroCloudProfile<P extends { id: string; name: string }>(
+    profiles: ReadonlyArray<P>,
+    profileId: string | null | undefined,
+    profileName: string,
+): P | undefined {
+    const id = profileId?.trim();
+    if (id) return profiles.find(p => p.id === id);
+    return profiles.find(p => p.name === profileName) ?? profiles.find(p => p.id === profileName);
+}
+
+
+/**
+ * Open the AeroCloud remote folder and return it as the session lists it.
+ * A `~/...` or relative folder saved before the first sync placed it is
+ * placed under the login folder first (`place`), and the folder comes back
+ * as the server reports it (a symlinked home lists `/usr/home/u/docs` for a
+ * saved `/home/u/docs`): Navigation Sync, the sync badges and the share link
+ * compare that form with the listing paths.
+ *
+ * When `place` cannot place it (null), a connect that opened the folder
+ * (`connectOpenedIt`: a provider connect, which takes it as its starting
+ * folder) lists the folder it stands in. Listed again as given, `docs` was
+ * resolved from there and named `docs/docs`. A connect that opened no folder
+ * (FTP's `connect_ftp`) lists it as given, from the login folder. A saved
+ * folder with a `..` step or a NUL (`savedLocationProblem`) is refused before
+ * anything is listed, named as written; a `.` or empty step is listed as
+ * saved. An open that no longer owns the session (`ownsTheSession`: a tab
+ * switch, another connect or a newer listing took the panel while the
+ * placement or the listing was awaited) stops as a cancelled listing: it lists nothing on the new
+ * connection and hands nothing back for the AeroCloud state.
+ */
+export async function openAeroCloudFolder(
+    remoteFolder: string,
+    connectOpenedIt: boolean,
+    place: (folder: string) => Promise<string | null>,
+    navigate: (folder: string) => Promise<string>,
+    ownsTheSession: () => boolean = () => true,
+): Promise<string> {
+    if (savedLocationProblem(remoteFolder)) {
+        throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '..' step or a NUL: set it again as a plain path`);
+    }
+    const placed = await place(remoteFolder);
+    if (!ownsTheSession()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+    const listed = await navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));
+    if (!ownsTheSession()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+    return listed;
+}
+
+/** A cancelled listing, as the app's `isListingCancelled` reads it. */
+export const AEROCLOUD_OPEN_SUPERSEDED = 'LISTING_CANCELLED: the AeroCloud folder open no longer owns the session';
+
+/**
+ * Whether the AeroCloud tab may keep the connection on screen instead of
+ * connecting again, past the same target (`isSameConnection`): made with the
+ * saved profile AeroCloud is pinned to (two profiles with the same target
+ * parameters are two accounts to the backend, and the share link follows
+ * the connected one), and a saved folder that names its place on its own.
+ * A relative or empty folder means "from where the connect starts", which a
+ * session that has moved since no longer is: `docs` from `/home/u/other`
+ * is another folder. Those connect again.
+ */
+export function mayReuseForAeroCloud(
+    liveProfileId: string | null,
+    cloudProfileId: string | null | undefined,
+    remoteFolder: string,
+): boolean {
+    if (cloudProfileId && liveProfileId !== cloudProfileId) return false;
+    return remoteFolder.startsWith('/');
 }

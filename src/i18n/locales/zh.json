@@ -64,6 +64,9 @@
             "name": "名称",
             "size": "大小",
             "retry": "重试",
+            "settingsLoadFailed": "无法读取这些设置，因此不会覆盖保存: {error}",
+            "settingsRefreshFailed": "无法重新读取设置，因此显示的内容可能已过时：{error}",
+            "saveFailed": "无法保存：{error}",
             "optional": "可选",
             "check": "检查",
             "selectAll": "全选",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}秒前",
             "conflictsCount": "{count} 个冲突需要处理",
             "updateOnlyHint": "单向更新会保留目标端较新的文件。关闭追加备份后，仅删除未更改、仅存在于目标端且具有已验证的 AeroCloud 传输凭证的文件。其他文件将留待在 AeroSync 中审核。冲突策略将被忽略；日期未知的项目将保持未解决状态。",
-            "untrackedDestinationFiles": "已保留 {count} 个目标文件以供审核：其传输历史尚未验证，或文件在上次 AeroCloud 传输后发生了更改。请先在 AeroSync 中审核，再决定是否删除。"
+            "untrackedDestinationFiles": "已保留 {count} 个目标文件以供审核：其传输历史尚未验证，或文件在上次 AeroCloud 传输后发生了更改。请先在 AeroSync 中审核，再决定是否删除。",
+            "remoteFolderNotPlain": "远程文件夹 {folder} 包含 \".\" 或 \"..\" 路径段或双斜杠。AeroCloud 按原样使用文件夹，不会解析它们。请选择不含这些内容的子文件夹，或从服务器配置文件的起始文件夹或覆盖层文件夹中删除它们。"
         },
         "statusBar": {
             "connected": "已连接",

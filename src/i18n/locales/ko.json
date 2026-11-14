@@ -64,6 +64,9 @@
             "name": "이름",
             "size": "크기",
             "retry": "재시도",
+            "settingsLoadFailed": "이 설정을 읽을 수 없어 그 위에 아무것도 저장하지 않습니다: {error}",
+            "settingsRefreshFailed": "설정을 다시 읽을 수 없어 표시된 내용이 최신이 아닐 수 있습니다: {error}",
+            "saveFailed": "저장할 수 없습니다: {error}",
             "optional": "선택 사항",
             "check": "확인",
             "selectAll": "모두 선택",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}초 전",
             "conflictsCount": "주의가 필요한 충돌 {count}개",
             "updateOnlyHint": "단방향 업데이트는 대상의 더 최신 파일을 유지합니다. 추가 백업을 끄면 대상에만 있는 파일 중 변경되지 않았으며 검증된 AeroCloud 전송 확인서가 있는 파일만 삭제됩니다. 다른 파일은 AeroSync에서 검토할 수 있도록 남습니다. 충돌 정책은 무시되며 알 수 없는 날짜는 미해결 상태로 남습니다.",
-            "untrackedDestinationFiles": "대상 파일 {count}개가 검토를 위해 유지되었습니다. 전송 기록이 확인되지 않았거나 마지막 AeroCloud 전송 이후 변경되었습니다. 삭제 여부를 결정하기 전에 AeroSync에서 검토하세요."
+            "untrackedDestinationFiles": "대상 파일 {count}개가 검토를 위해 유지되었습니다. 전송 기록이 확인되지 않았거나 마지막 AeroCloud 전송 이후 변경되었습니다. 삭제 여부를 결정하기 전에 AeroSync에서 검토하세요.",
+            "remoteFolderNotPlain": "원격 폴더 {folder}에 \".\" 또는 \"..\" 단계나 이중 슬래시가 포함되어 있습니다. AeroCloud는 폴더를 입력된 그대로 사용하며 이를 해석하지 않습니다. 이러한 요소가 없는 하위 폴더를 선택하거나 서버 프로필의 시작 폴더 또는 오버레이 폴더에서 제거하세요."
         },
         "statusBar": {
             "connected": "연결됨",

@@ -64,6 +64,9 @@
             "name": "Namn",
             "size": "Storlek",
             "retry": "Försök igen",
+            "settingsLoadFailed": "De här inställningarna kunde inte läsas, så inget sparas över dem: {error}",
+            "settingsRefreshFailed": "Inställningarna kunde inte läsas igen, så det som visas kan vara inaktuellt: {error}",
+            "saveFailed": "Det gick inte att spara: {error}",
             "optional": "valfritt",
             "check": "Check",
             "selectAll": "Markera alla",
@@ -1609,7 +1612,8 @@
             "secondsAgo": "{count}s sedan",
             "conflictsCount": "Konflikter som kräver åtgärd: {count}",
             "updateOnlyHint": "Envägsuppdatering behåller nyare målfiler. När additiv säkerhetskopiering är avstängd tas bara oförändrade filer som enbart finns på målet och har ett verifierat AeroCloud-överföringskvitto bort. Andra filer ligger kvar för granskning i AeroSync. Konfliktpolicyn ignoreras; okända datum förblir olösta.",
-            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning."
+            "untrackedDestinationFiles": "{count} målfiler behölls för granskning: deras överföringshistorik är inte verifierad eller så har de ändrats sedan den senaste AeroCloud-överföringen. Granska dem i AeroSync innan du beslutar om borttagning.",
+            "remoteFolderNotPlain": "Fjärrmappen {folder} innehåller ett \".\"- eller \"..\"-steg eller ett dubbelt snedstreck. AeroCloud använder mappen som den är skriven och löser inte upp dem. Välj en undermapp utan dem, eller ta bort dem från serverprofilens startmapp eller överlagringsmapp."
         },
         "statusBar": {
             "connected": "Ansluten",

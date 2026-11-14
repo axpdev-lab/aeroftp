@@ -339,13 +339,40 @@ pub(crate) fn norm_anchor(scope: &str) -> String {
     format!("/{}", segs.join("/"))
 }
 
-/// Normalize an absolute path: leading slash, no trailing slash.
-fn norm_abs(p: &str) -> String {
-    let trimmed = p.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return "/".to_string();
+/// The COMPARISON form of an absolute path: leading slash, no trailing
+/// slash, no empty or `.` segment. A filesystem server resolves `/a/./b` and
+/// `/a//b` as `/a/b`, so every comparison against the anchor or its alias
+/// goes through here. `..` is kept: callers that map a path refuse it.
+///
+/// Never the path sent for a target outside the anchor: an object store
+/// keeps `/a//b` apart from `/a/b`, and such a target goes to the provider
+/// as the caller wrote it ([`outside_wire_path`]). Below the anchor every
+/// segment is named by the overlay, empty and `.` segments dropped, so the
+/// wire path there is the encryption of this form, as it always was.
+pub(crate) fn comparison_path(p: &str) -> String {
+    let segs: Vec<&str> = p
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    format!("/{}", segs.join("/"))
+}
+
+/// `p` in the form a case-insensitive or Windows-backed server may resolve
+/// it to, for comparison only, in this order: backslashes read as
+/// separators, the path split into segments, empty and `.` segments
+/// dropped, then `None` when a segment is `..` (a parent step whose target
+/// is not known here), else the segments joined with ASCII case folded.
+/// The raw-write guard in `provider_commands` folds the same way.
+fn folded(p: &str) -> Option<String> {
+    let separated = p.replace('\\', "/");
+    let segments: Vec<&str> = separated
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    if segments.contains(&"..") {
+        return None;
     }
-    format!("/{}", trimmed.trim_start_matches('/'))
+    Some(format!("/{}", segments.join("/")).to_ascii_lowercase())
 }
 
 /// Encrypt a plaintext relative (or absolute) path component-by-component.
@@ -418,7 +445,7 @@ fn encode_plain_target(
     if scope.is_empty() {
         return encode_rel_path(keys, target, is_dir_leaf);
     }
-    let t = norm_abs(target);
+    let t = comparison_path(target);
     if t == scope {
         // The cleartext anchor root itself, no sub-components below it.
         return Ok(scope.to_string());
@@ -428,13 +455,21 @@ fn encode_plain_target(
         return Ok(format!("{}/{}", scope, enc_below));
     }
     if kind == AccessKind::Read {
-        return Ok(norm_abs(target));
+        return Ok(outside_wire_path(target));
     }
     // EF-01 Mixed mode (design 10-crypt-nav-design.md §3, owner-signed): edits
     // outside the Overlays Path pass through as plaintext, same as reads. The
     // strip_prefix("{scope}/") gate above still encrypts everything strictly
     // below the anchor; only provably out-of-scope targets reach here.
-    Ok(norm_abs(target))
+    Ok(outside_wire_path(target))
+}
+
+/// The wire path of an absolute target outside the anchor. [`comparison_path`] is
+/// for comparing: an object store keeps `/a//b` and `/a/./b` as keys apart
+/// from `/a/b`, so a path the overlay passes through keeps its inner
+/// segments as the caller wrote them, only its outer slashes trimmed.
+fn outside_wire_path(target: &str) -> String {
+    format!("/{}", target.trim_end_matches('/').trim_start_matches('/'))
 }
 
 /// Decrypt an on-wire path, decoding each component as a directory (every
@@ -494,13 +529,15 @@ fn decode_scoped(keys: &OverlayKeys, scope: &str, wire_path: &str, leaf_is_dir: 
     if scope.is_empty() || !wire_path.starts_with('/') {
         return decode_entry_path(keys, wire_path, leaf_is_dir);
     }
-    let w = norm_abs(wire_path);
+    let w = comparison_path(wire_path);
     if w == scope {
         return w;
     }
     match w.strip_prefix(&format!("{}/", scope)) {
         Some(below) => format!("{}/{}", scope, decode_entry_path(keys, below, leaf_is_dir)),
-        None => w,
+        // Outside the anchor the path is the provider's, byte for byte: an
+        // object store keeps `/a//b` and `/a/b` apart.
+        None => wire_path.to_string(),
     }
 }
 
@@ -514,6 +551,36 @@ pub struct CryptOverlayProvider {
     keys: OverlayKeys,
     /// Normalized plaintext anchor (`""` = whole remote is crypt).
     scope: String,
+    /// The server's own name for the anchor, when it differs: a `PWD` that
+    /// answers a `cd` into the anchor with the folder a symlink points to
+    /// (`/srv/docs` for `/home/u/docs`). Read as the anchor in every path
+    /// in and out, so a path the session builds from what the server
+    /// reported stays inside the overlay. Paths outside the anchor and its
+    /// alias pass through as before.
+    scope_alias: Option<String>,
+    /// A `cd` into the anchor whose report could not be read, or read as no
+    /// usable name for the anchor. Every later call that takes or returns a
+    /// path asks again first and fails while the answer is missing or
+    /// unusable, so a path under the server's name for the anchor is never
+    /// mapped as outside it. A `cd` to an absolute path or a new connection
+    /// replaces it.
+    alias_pending: Option<String>,
+}
+
+/// An error of the same kind as `error`, for each item of a batch that one
+/// failure refused: retry and reconnect decide by the variant, so it must not
+/// become a plain message.
+fn same_kind(error: &ProviderError) -> ProviderError {
+    match error {
+        ProviderError::NotConnected => ProviderError::NotConnected,
+        ProviderError::Timeout => ProviderError::Timeout,
+        ProviderError::ConnectionLost(m) => ProviderError::ConnectionLost(m.clone()),
+        ProviderError::ConnectionFailed(m) => ProviderError::ConnectionFailed(m.clone()),
+        ProviderError::NetworkError(m) => ProviderError::NetworkError(m.clone()),
+        ProviderError::ServerError(m) => ProviderError::ServerError(m.clone()),
+        ProviderError::InvalidPath(m) => ProviderError::InvalidPath(m.clone()),
+        other => ProviderError::Other(other.to_string()),
+    }
 }
 
 impl CryptOverlayProvider {
@@ -522,6 +589,7 @@ impl CryptOverlayProvider {
     /// Children already carry plaintext names, so never decode those again.
     fn breadcrumb_labels(&self, current_path: &str) -> std::collections::BTreeMap<String, String> {
         let mut labels = std::collections::BTreeMap::new();
+        let current_path = comparison_path(current_path);
         if self.scope.is_empty()
             || (current_path != self.scope
                 && !current_path.starts_with(&format!("{}/", self.scope)))
@@ -549,6 +617,7 @@ impl CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<(Vec<RemoteEntry>, usize, usize), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc_path = if path.is_empty() || path == "." {
             path.to_string()
         } else {
@@ -568,7 +637,12 @@ impl CryptOverlayProvider {
                     continue;
                 };
                 decrypted_rows += 1;
-                let plain_path = decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir);
+                let plain_path = decode_scoped(
+                    &self.keys,
+                    &self.scope,
+                    &self.unalias(&entry.path),
+                    entry.is_dir,
+                );
                 let size = if entry.is_dir {
                     0
                 } else {
@@ -594,7 +668,116 @@ impl CryptOverlayProvider {
             inner,
             keys,
             scope: norm_anchor(scope),
+            scope_alias: None,
+            alias_pending: None,
         }
+    }
+
+    /// `path` with the anchor's alias read as the anchor. Only an absolute
+    /// path that is the alias or below it changes.
+    fn unalias<'a>(&self, path: &'a str) -> std::borrow::Cow<'a, str> {
+        let Some(alias) = self.scope_alias.as_deref() else {
+            return std::borrow::Cow::Borrowed(path);
+        };
+        if !path.starts_with('/') {
+            return std::borrow::Cow::Borrowed(path);
+        }
+        let p = comparison_path(path);
+        if p == alias {
+            return std::borrow::Cow::Owned(self.scope.clone());
+        }
+        match p.strip_prefix(&format!("{alias}/")) {
+            Some(below) => std::borrow::Cow::Owned(format!("{}/{}", self.scope, below)),
+            None => std::borrow::Cow::Borrowed(path),
+        }
+    }
+
+    /// After a `cd` to `wire` (the anchor or a folder below it), learn the
+    /// anchor's alias from where the server says the session landed: the
+    /// reported folder ends with the same path below the anchor, so what
+    /// precedes it is the anchor under another name. Asked at every `cd`
+    /// into the anchor, so a name that changes is learned again. A report
+    /// that names no usable alias (the root, an ancestor or a descendant of
+    /// the anchor, a different tail) leaves the `cd` unresolved.
+    async fn learn_scope_alias(&mut self, wire: &str) {
+        self.alias_pending = None;
+        if self.below_scope(wire).is_none() {
+            return;
+        }
+        self.alias_pending = Some(wire.to_string());
+        if let Ok(reported) = self.inner.pwd().await {
+            let _ = self.note_reported_cwd(&reported);
+        }
+    }
+
+    /// Ask again where a `cd` with an unread report landed, before a call
+    /// that maps a path or returns paths the server built. While the answer
+    /// is missing or unusable the call fails: the overlay cannot tell a path
+    /// under the anchor's other name from one outside it.
+    async fn settle_scope_alias(&mut self) -> Result<(), ProviderError> {
+        if self.alias_pending.is_none() {
+            return Ok(());
+        }
+        let reported = self.inner.pwd().await?;
+        self.note_reported_cwd(&reported)
+    }
+
+    /// `reported` is where the server says the session is now: when a `cd`
+    /// into the anchor is still waiting for that answer, learn from it, or
+    /// fail when it names no usable alias.
+    fn note_reported_cwd(&mut self, reported: &str) -> Result<(), ProviderError> {
+        let Some(wire) = self.alias_pending.take() else {
+            return Ok(());
+        };
+        if self.learn_scope_alias_from(&wire, reported) {
+            return Ok(());
+        }
+        // The server's reply stays out of the message, which crosses IPC
+        // and the logs: only our own path is named.
+        let error = ProviderError::InvalidPath(format!(
+            "the server names the encrypted folder {wire} in a way that cannot be told apart from folders outside it; open a folder by its full path"
+        ));
+        self.alias_pending = Some(wire);
+        Err(error)
+    }
+
+    /// The part of the absolute `wire` below the anchor (`""` for the
+    /// anchor itself), or `None` when `wire` is not the anchor or below it.
+    fn below_scope(&self, wire: &str) -> Option<String> {
+        if self.scope.is_empty() || !wire.starts_with('/') {
+            return None;
+        }
+        let wire = comparison_path(wire);
+        if wire == self.scope {
+            return Some(String::new());
+        }
+        wire.strip_prefix(&self.scope)
+            .filter(|rest| rest.starts_with('/'))
+            .map(str::to_string)
+    }
+
+    /// Learn the alias from `reported`, the server's answer to where a
+    /// `cd` to `wire` landed. False when the report names no usable alias.
+    /// See [`Self::learn_scope_alias`].
+    fn learn_scope_alias_from(&mut self, wire: &str, reported: &str) -> bool {
+        let Some(below) = self.below_scope(wire) else {
+            return true;
+        };
+        let wire = comparison_path(wire);
+        let reported = comparison_path(reported);
+        if reported == wire {
+            self.scope_alias = None;
+            return true;
+        }
+        let Some(alias) = reported.strip_suffix(below.as_str()).map(comparison_path) else {
+            return false;
+        };
+        let related = |a: &str, b: &str| a == b || b.starts_with(&format!("{a}/"));
+        if alias == "/" || related(&alias, &self.scope) || related(&self.scope, &alias) {
+            return false;
+        }
+        self.scope_alias = Some(alias);
+        true
     }
 
     /// Map a caller plaintext path to the on-wire encrypted path.
@@ -605,8 +788,36 @@ impl CryptOverlayProvider {
         is_dir_leaf: bool,
         kind: AccessKind,
     ) -> Result<String, ProviderError> {
-        encode_plain_target(&self.keys, &self.scope, plain, is_dir_leaf, kind)
+        let plain = self.unalias(plain);
+        if kind == AccessKind::Write && self.write_may_land_in_the_anchor(&plain) {
+            return Err(ProviderError::InvalidPath(format!(
+                "refusing a plaintext write to {plain}: the server may read it as a path in the encrypted folder {}; write it by the folder's exact name",
+                self.scope
+            )));
+        }
+        encode_plain_target(&self.keys, &self.scope, &plain, is_dir_leaf, kind)
             .map_err(ProviderError::InvalidPath)
+    }
+
+    /// True for an absolute `plain` that passes through as plaintext by its
+    /// exact name, but names the anchor or a path below it (or below its
+    /// alias) once backslashes are read as separators and case is folded.
+    /// A server that resolves those forms would store the plaintext inside
+    /// the encrypted folder.
+    fn write_may_land_in_the_anchor(&self, plain: &str) -> bool {
+        if self.scope.is_empty() || !plain.starts_with('/') || self.below_scope(plain).is_some() {
+            return false;
+        }
+        // A parent step such as `\..\` is one only once backslashes are
+        // separators: where it lands is not known here, so it is refused.
+        let Some(target) = folded(plain) else {
+            return true;
+        };
+        let at_or_below = |root: &str| {
+            folded(root)
+                .is_some_and(|root| target == root || target.starts_with(&format!("{root}/")))
+        };
+        at_or_below(&self.scope) || self.scope_alias.as_deref().is_some_and(at_or_below)
     }
 
     /// #390 fail-closed guard. When a write into `plain_target` lands on an
@@ -645,7 +856,7 @@ impl CryptOverlayProvider {
         if !plain_target.starts_with('/') {
             return Ok(None);
         }
-        let t = norm_abs(plain_target);
+        let t = comparison_path(&self.unalias(plain_target));
         let parent = match t.rsplit_once('/') {
             Some((p, _)) if !p.is_empty() => p.to_string(),
             _ => return Ok(None), // leaf directly at the root: no below-anchor parent
@@ -689,6 +900,7 @@ impl CryptOverlayProvider {
         path: &str,
         checked: &mut std::collections::HashSet<String>,
     ) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         self.map(path, true, AccessKind::Write)?;
         let child = format!("{}/.aeroftp-directory-probe", path.trim_end_matches('/'));
         if let Some(parent) = self
@@ -710,7 +922,9 @@ impl CryptOverlayProvider {
     /// the folder is a genuine encrypted folder, and re-anchor to the scope/root
     /// only when the current folder would otherwise be hidden.
     pub async fn cwd_in_encrypted_view(&mut self) -> Result<bool, ProviderError> {
-        let enc_cwd = norm_abs(&self.inner.pwd().await?);
+        let reported = self.inner.pwd().await?;
+        self.note_reported_cwd(&reported)?;
+        let enc_cwd = comparison_path(&self.unalias(&reported));
         let below = if self.scope.is_empty() {
             enc_cwd.trim_start_matches('/').to_string()
         } else if enc_cwd == self.scope {
@@ -736,7 +950,7 @@ impl CryptOverlayProvider {
         if self.scope.is_empty() {
             return true;
         }
-        norm_abs(wire_path).starts_with(&format!("{}/", self.scope))
+        comparison_path(&self.unalias(wire_path)).starts_with(&format!("{}/", self.scope))
     }
 
     /// True for a caller plaintext target that is STRICTLY BELOW the anchor:
@@ -751,13 +965,14 @@ impl CryptOverlayProvider {
     /// encrypted here too; absolutizing it first would compare a fake `/name`
     /// against the anchor and hand ciphertext back as plaintext.
     fn target_is_encrypted(&self, plain_target: &str) -> bool {
+        let plain_target = &*self.unalias(plain_target);
         if !plain_target.starts_with('/') {
             return true;
         }
         if self.scope.is_empty() {
             return true;
         }
-        let t = norm_abs(plain_target);
+        let t = comparison_path(plain_target);
         if t == self.scope {
             return false;
         }
@@ -1119,10 +1334,16 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // A new session starts outside any `cd` and may name the anchor
+        // differently: what the old one reported does not carry over.
+        self.alias_pending = None;
+        self.scope_alias = None;
         self.inner.connect().await
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        self.alias_pending = None;
+        self.scope_alias = None;
         self.inner.disconnect().await
     }
 
@@ -1136,19 +1357,61 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         let enc = self.inner.pwd().await?;
-        Ok(decode_scoped(&self.keys, &self.scope, &enc, true))
+        self.note_reported_cwd(&enc)?;
+        Ok(decode_scoped(
+            &self.keys,
+            &self.scope,
+            &self.unalias(&enc),
+            true,
+        ))
+    }
+
+    fn login_folder_hint(&self) -> Option<String> {
+        self.inner.login_folder_hint()
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
         if path == ".." {
-            return self.inner.cd_up().await;
+            return self.cd_up().await;
+        }
+        // A relative target is relative to where the session is, which is
+        // unknown while a report is missing; an absolute one is not.
+        if !path.starts_with('/') {
+            self.settle_scope_alias().await?;
         }
         let enc = self.map(path, true, AccessKind::Read)?;
-        self.inner.cd(&enc).await
+        self.inner.cd(&enc).await?;
+        self.learn_scope_alias(&enc).await;
+        Ok(())
     }
 
+    /// At or below the anchor, Up goes to the parent of the folder the
+    /// session shows, as the panel's Up does with the displayed parent: from
+    /// the anchor of a home the server reports under another name
+    /// (`/usr/home/u/docs` for `/home/u/docs`), the inner `CDUP` went to the
+    /// physical parent, a folder the display never named. Outside the
+    /// anchor the inner provider goes up from the folder as it reports it,
+    /// byte for byte: on an object store `/plain/a//b/c` goes up to
+    /// `/plain/a//b`, never to `/plain/a/b`, another prefix. At the root, or
+    /// on a path with no `/`, the inner provider answers as before.
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
-        self.inner.cd_up().await
+        self.settle_scope_alias().await?;
+        let reported = self.inner.pwd().await?;
+        self.note_reported_cwd(&reported)?;
+        let wire = self.unalias(&reported).into_owned();
+        if self.below_scope(&wire).is_none() {
+            return self.inner.cd_up().await;
+        }
+        let shown = decode_scoped(&self.keys, &self.scope, &wire, true);
+        let shown = shown.trim_end_matches('/');
+        match shown.rfind('/') {
+            Some(0) if shown.len() > 1 => self.cd("/").await,
+            Some(at) if at > 0 => {
+                let parent = shown[..at].to_string();
+                self.cd(&parent).await
+            }
+            _ => self.inner.cd_up().await,
+        }
     }
 
     fn download_was_refused(&self) -> bool {
@@ -1169,6 +1432,7 @@ impl StorageProvider for CryptOverlayProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(remote_path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(remote_path);
         // Stage (for outside this holds plaintext; for inside: ciphertext).
@@ -1205,6 +1469,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(remote_path, false, AccessKind::Read)?;
         let data = self.inner.download_to_bytes(&enc).await?;
         if self.target_is_encrypted(remote_path) {
@@ -1222,6 +1487,7 @@ impl StorageProvider for CryptOverlayProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         crate::filesystem::validate_path(local_path).map_err(ProviderError::InvalidPath)?;
         let enc = self.map(remote_path, false, AccessKind::Write)?;
         let plaintext = tokio::fs::read(local_path)
@@ -1294,16 +1560,19 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.mkdir(&enc).await
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete(&enc).await
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         // Round 2 of the 4.2.1 review: the folder is judged through the
         // overlay first, so a file it holds refuses the removal. On the wire
@@ -1332,11 +1601,13 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Write)?;
         self.inner.rmdir_recursive(&enc).await
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Move/rename", from, to)?;
         // is_dir is unknown for a bare rename. The two leaf encodings differ
         // only under rclone `off`+suffix mode; `map_existing` resolves the
@@ -1353,6 +1624,7 @@ impl StorageProvider for CryptOverlayProvider {
     /// through exactly this wrapper, so a default here would have kept the
     /// defect alive where it matters most (G119).
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Replace", from, to)?;
         let (enc_from, from_is_dir) = self.map_existing(from, AccessKind::Write).await?;
         let enc_to = self.map(to, from_is_dir, AccessKind::Write)?;
@@ -1375,11 +1647,13 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<Option<std::time::Duration>, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         self.inner.wait_until_readable(&enc).await
     }
 
     async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         self.inner.prepare_file_move(&enc).await
     }
@@ -1400,6 +1674,13 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         paths: &[String],
     ) -> Vec<Result<Option<String>, ProviderError>> {
+        if let Err(error) = self.settle_scope_alias().await {
+            let mut out: Vec<_> = (1..paths.len()).map(|_| Err(same_kind(&error))).collect();
+            if !paths.is_empty() {
+                out.insert(0, Err(error));
+            }
+            return out;
+        }
         let mapped = paths
             .iter()
             .map(|path| self.map(path, false, AccessKind::Write))
@@ -1418,6 +1699,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         let mut entry = self.inner.stat(&enc).await?;
         let is_enc = self.target_is_encrypted(path);
@@ -1434,14 +1716,14 @@ impl StorageProvider for CryptOverlayProvider {
         // returns for it is decrypted in full too, except when that path lands
         // at or under the anchor: the anchor is a name on the server and stays
         // as it is, like in `list` (#1077, an anchor whose name is ciphertext).
+        let wire = self.unalias(&entry.path).into_owned();
         let plain_path = if !is_enc {
             entry.path
         } else if path.starts_with('/')
-            || (entry.path.starts_with('/')
-                && (norm_abs(&entry.path) == self.scope
-                    || self.wire_path_is_encrypted(&entry.path)))
+            || (wire.starts_with('/')
+                && (comparison_path(&wire) == self.scope || self.wire_path_is_encrypted(&wire)))
         {
-            decode_scoped(&self.keys, &self.scope, &entry.path, entry.is_dir)
+            decode_scoped(&self.keys, &self.scope, &wire, entry.is_dir)
         } else {
             decode_entry_path(&self.keys, &entry.path, entry.is_dir)
         };
@@ -1459,6 +1741,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let s = self.inner.size(&enc).await?;
         if self.target_is_encrypted(path) {
@@ -1469,6 +1752,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         if self.inner.exists(&enc).await? {
             return Ok(true);
@@ -1495,6 +1779,7 @@ impl StorageProvider for CryptOverlayProvider {
         path: &str,
         identity: Option<&str>,
     ) -> Result<bool, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc_file = self.map(path, false, AccessKind::Write)?;
         if self
             .inner
@@ -1514,6 +1799,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+        self.settle_scope_alias().await?;
         // Under rclone `off`+suffix a folder is `name` on the wire and a file
         // `name.bin`. No probe picks the form: an item purged from the trash
         // by the path it had is not live, and a live folder of the same name
@@ -1528,6 +1814,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Write).await?;
         self.inner.chmod(&enc, mode).await
     }
@@ -1545,6 +1832,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         // The ciphertext blob is self-contained (the content nonce is embedded,
         // not derived from the name), so copying it verbatim to a new encrypted
         // name stays decryptable. Map both ends; the content is untouched.
@@ -1558,6 +1846,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         self.refuse_crossing_the_anchor("Server-side copy", from, to)?;
         let enc_from = self.map(from, false, AccessKind::Write)?;
         let enc_to = self.map(to, false, AccessKind::Write)?;
@@ -1571,6 +1860,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.disk_usage(&enc).await
     }
@@ -1592,6 +1882,7 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let mut versions = self.inner.list_versions(&enc).await?;
         if self.target_is_encrypted(path) {
@@ -1608,6 +1899,7 @@ impl StorageProvider for CryptOverlayProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Read)?;
         let is_enc = self.target_is_encrypted(path);
         // Room check against the requested version's size when the backend
@@ -1657,11 +1949,13 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.restore_version(&enc, version_id).await
     }
 
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        self.settle_scope_alias().await?;
         let enc = self.map(path, false, AccessKind::Write)?;
         self.inner.delete_version(&enc, version_id).await
     }
@@ -1736,6 +2030,13 @@ impl StorageProvider for CryptOverlayProvider {
     /// digest is an ordinary plaintext one and is reported as such: the
     /// warning appears exactly where it is true.
     fn checksum_capability(&self, path: &str) -> ChecksumCapability {
+        // Synchronous, so it cannot ask the server: while a `cd` into the
+        // anchor waits for its answer, a path under the anchor's other name
+        // cannot be told from one outside it, and no digest is offered rather
+        // than a digest of ciphertext presented as one of plaintext.
+        if self.alias_pending.is_some() {
+            return ChecksumCapability::default();
+        }
         let inner = self.inner.checksum_capability(path);
         if inner.algorithms.is_empty() || !self.target_is_encrypted(path) {
             return inner;
@@ -1755,6 +2056,7 @@ impl StorageProvider for CryptOverlayProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         self.inner.stored_checksum(&enc).await
     }
@@ -1764,6 +2066,7 @@ impl StorageProvider for CryptOverlayProvider {
         path: &str,
         algorithm: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
+        self.settle_scope_alias().await?;
         let (enc, _) = self.map_existing(path, AccessKind::Read).await?;
         self.inner.stored_checksum_for(&enc, algorithm).await
     }
@@ -1929,14 +2232,21 @@ pub(crate) fn overlay_breadcrumb_labels(
 /// (an honest downcast target), so a raw `downcast_mut::<ConcreteProvider>()` on
 /// a wrapped box yields `None`; callers must peel first via this helper.
 /// Map the plaintext target before a provider-specific raw operation peels the
-/// decorator. Mixed-mode paths outside the anchor remain literal.
-pub(crate) fn physical_write_path(
+/// decorator. Mixed-mode paths outside the anchor remain literal. A `cd` into
+/// the anchor still waiting for the server's answer is settled first, as
+/// every trait method does: until then a path under the anchor's other name
+/// (`/srv/docs/secret.txt` for `/home/u/docs`) reads as outside it, and the
+/// raw operation would act on that plaintext namesake.
+pub(crate) async fn physical_write_path(
     provider: &mut dyn StorageProvider,
     path: &str,
     is_dir: bool,
 ) -> Result<String, ProviderError> {
     match provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
-        Some(overlay) => overlay.map(path, is_dir, AccessKind::Write),
+        Some(overlay) => {
+            overlay.settle_scope_alias().await?;
+            overlay.map(path, is_dir, AccessKind::Write)
+        }
         None => Ok(path.to_string()),
     }
 }
@@ -2603,33 +2913,7 @@ pub async fn wrap_connected_provider_for_profile_named(
         return Ok(inner);
     };
     let profile = aerocloud_overlay_profile(profile);
-    refuse_login_relative_aerocloud_scope(&profile)?;
     wrap_connected_provider_for_profile(inner, &profile, store).await
-}
-
-/// AeroCloud names its remote folders as absolute paths below the profile's
-/// starting folder, so an overlay bound under the login folder (`~/docs`, as
-/// the rclone import writes for `nas:docs`) has no folder AeroCloud can name:
-/// the session anchors the overlay at the resolved `/home/<user>/docs` while
-/// AeroCloud syncs `/~/docs`, outside it, in plaintext. Refused before any
-/// transfer, with the setting that fixes it.
-fn refuse_login_relative_aerocloud_scope(profile: &serde_json::Value) -> Result<(), String> {
-    let Some(binding) = overlay_binding_from_profile(profile) else {
-        return Ok(());
-    };
-    let ssh = matches!(
-        profile.get("protocol").and_then(|v| v.as_str()),
-        Some("sftp" | "scp")
-    );
-    let scope = login_relative_form(&binding.remote_scope, ssh);
-    if is_login_relative_scope(&scope) {
-        return Err(format!(
-            "the encrypted folder of this profile is {scope}, under the login folder, and AeroCloud \
-             syncs absolute folders only: set the profile's Overlays Path to the absolute \
-             folder (for example /home/<user>/docs) to sync it"
-        ));
-    }
-    Ok(())
 }
 
 /// The profile as AeroCloud wraps it: a binding without a folder of its own
@@ -2659,12 +2943,12 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
 /// binding without a folder as the whole remote, which anchored above the
 /// vault the app wrote at the starting folder.
 pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
-    // An empty username leaves the template as written, as the window does.
+    // The user name goes in exactly as saved, as the window inserts it
+    // (`resolveUsernameTemplate`); a blank one leaves the template as written.
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|u| !u.is_empty());
+        .filter(|u| !u.trim().is_empty());
     let field = |value: Option<&serde_json::Value>| {
         value
             .and_then(|v| v.as_str())
@@ -3602,7 +3886,10 @@ pub(crate) async fn resolve_home_scope(
     if !is_login_relative_scope(scope) {
         return Ok(None);
     }
-    let segments: Vec<&str> = scope.strip_prefix("~/").unwrap_or("").split('/').collect();
+    let segments: Vec<&str> = crate::util::path_location::login_relative_rest(scope)
+        .unwrap_or("")
+        .split('/')
+        .collect();
     if segments.contains(&"..") {
         return Err(format!(
             "the overlay folder {scope} leaves the login folder"
@@ -3618,21 +3905,46 @@ pub(crate) async fn resolve_home_scope(
     let rest = rest.as_str();
     let unresolved =
         |e: ProviderError| format!("the overlay folder {scope} could not be resolved: {e}");
-    let back = provider.pwd().await.map_err(unresolved)?;
-    provider.cd("~").await.map_err(unresolved)?;
-    let home = provider.pwd().await;
-    let restored = provider.cd(&back).await;
-    let home = home.map_err(unresolved)?;
-    // Left in the login folder, every later relative path would land there.
-    restored.map_err(|e| {
-        format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
-    })?;
-    // A server with no login folder may open `~` as a folder of that name.
-    if home == "~" || home.ends_with("/~") {
-        return Err(format!(
-            "the overlay folder {scope} could not be resolved: this server has no login folder"
-        ));
-    }
+    // A provider that recorded its login folder at connect (FTP keeps the
+    // post-login `PWD`, the only `~` it has) answers without a `cd("~")`:
+    // on FTP that command is not portable and can open a folder literally
+    // named `~`. Otherwise the login folder is read through the session, as
+    // before, and the provider's folder is restored.
+    let home = match provider.login_folder_hint() {
+        Some(home) => home,
+        None => {
+            // FTP and FTPS have no portable `~`: when the post-login `PWD`
+            // did not answer, the login folder is unknown and `cd("~")`
+            // could open a folder literally named `~`. Fail closed instead.
+            if matches!(
+                provider.provider_type(),
+                ProviderType::Ftp | ProviderType::Ftps
+            ) {
+                return Err(format!(
+                    "the overlay folder {scope} could not be resolved: the server did not report its login folder"
+                ));
+            }
+            let back = provider.pwd().await.map_err(unresolved)?;
+            provider.cd("~").await.map_err(unresolved)?;
+            let home = provider.pwd().await;
+            let restored = provider.cd(&back).await;
+            let home = home.map_err(unresolved)?;
+            // Left in the login folder, every later relative path would land there.
+            restored.map_err(|e| {
+                format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
+            })?;
+            // The probe opened `~` itself: a server with no login folder may
+            // have a folder literally named `~`, which `pwd` then reports.
+            // A recorded hint (the FTP post-login `PWD`) is a real folder
+            // name instead, `/srv/~` included, and is not held to this.
+            if home == "~" || home.ends_with("/~") {
+                return Err(format!(
+                    "the overlay folder {scope} could not be resolved: this server has no login folder"
+                ));
+            }
+            home
+        }
+    };
     // The window places a path the same way (`placeUnderLoginFolder`).
     let home = home.trim_end_matches('/');
     Ok(Some(if rest.is_empty() {
@@ -3700,13 +4012,24 @@ pub(crate) fn is_login_relative_scope(scope: &str) -> bool {
     scope == "~" || scope.starts_with("~/")
 }
 
-/// A scope as the protocol opens it. SFTP and SCP open a relative folder
-/// under the login folder ([`crate::providers::sftp::resolve_start_dir`]), as
-/// rclone's sftp does, so there `docs` is `~/docs`; read from the root it was
-/// `/docs`, a folder the session never opened. Anything else comes back as
-/// given. The window maps a scope the same way (`loginRelativeForm`).
-pub(crate) fn login_relative_form(scope: &str, ssh: bool) -> std::borrow::Cow<'_, str> {
-    if !ssh || scope.is_empty() || scope.starts_with('/') || is_login_relative_scope(scope) {
+/// Protocols that open a relative folder under the login folder: SFTP and SCP
+/// resolve it against home (`resolve_start_dir`), FTP and FTPS issue a
+/// relative `CWD` from the login directory, as rclone's sftp does. There
+/// `docs` is `~/docs`; read from the root it was `/docs`, a folder the
+/// session never opened.
+pub(crate) fn login_relative_protocol(protocol: &str) -> bool {
+    matches!(protocol, "sftp" | "scp" | "ftp" | "ftps")
+}
+
+/// A scope as the protocol opens it. On a login-relative protocol a relative
+/// folder is under the login folder
+/// ([`crate::providers::sftp::resolve_start_dir`] for SSH, the relative `CWD`
+/// for FTP), so there `docs` is `~/docs`; read from the root it was `/docs`,
+/// a folder the session never opened. Anything else comes back as given. The
+/// window maps a scope the same way (`loginRelativeForm`).
+pub(crate) fn login_relative_form(scope: &str, under_login: bool) -> std::borrow::Cow<'_, str> {
+    if !under_login || scope.is_empty() || scope.starts_with('/') || is_login_relative_scope(scope)
+    {
         return std::borrow::Cow::Borrowed(scope);
     }
     std::borrow::Cow::Owned(format!("~/{scope}"))
@@ -3720,11 +4043,11 @@ async fn binding_with_resolved_scope<'a>(
     provider: &mut dyn StorageProvider,
     binding: &'a OverlayUnlockParams,
 ) -> Result<std::borrow::Cow<'a, OverlayUnlockParams>, String> {
-    let ssh = matches!(
+    let under_login = matches!(
         provider.provider_type(),
-        ProviderType::Sftp | ProviderType::Scp
+        ProviderType::Sftp | ProviderType::Scp | ProviderType::Ftp | ProviderType::Ftps
     );
-    let scope = login_relative_form(&binding.remote_scope, ssh);
+    let scope = login_relative_form(&binding.remote_scope, under_login);
     Ok(match resolve_home_scope(provider, &scope).await? {
         Some(remote_scope) => std::borrow::Cow::Owned(OverlayUnlockParams {
             remote_scope,
@@ -4442,6 +4765,31 @@ pub(crate) mod tests {
         }
     }
 
+    /// A provider-specific raw command (OpenDrive privacy, 4shared) maps its
+    /// target through [`physical_write_path`] right after a `cd` into the
+    /// anchor whose report did not come back: the helper asks the server
+    /// first and reads the anchor's other name as the anchor, so the command
+    /// targets the encrypted object, never the plaintext namesake
+    /// `/srv/docs/secret.txt`.
+    #[tokio::test]
+    async fn a_raw_command_settles_the_anchor_alias_before_it_maps() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 1;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.alias_pending.is_some(), "{label}");
+            let wire = physical_write_path(&mut p, "/srv/docs/secret.txt", false)
+                .await
+                .unwrap();
+            assert_ne!(wire, "/srv/docs/secret.txt", "{label}");
+            assert!(wire.starts_with("/home/u/docs/"), "{label}: {wire}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+        }
+    }
+
     /// EF-01 Mixed mode (Option B, owner-signed): a Write to a target that is
     /// provably OUT OF SCOPE passes through RAW (identical to the Read arm),
     /// enabling plaintext edits OUTSIDE the anchor. It must NOT fail closed and
@@ -4457,7 +4805,9 @@ pub(crate) mod tests {
                         keys.clone(),
                         scope,
                     );
-                    let wire = physical_write_path(&mut overlay, &path, is_dir).unwrap();
+                    let wire = physical_write_path(&mut overlay, &path, is_dir)
+                        .await
+                        .unwrap();
                     assert_ne!(wire, path, "{label}: names must be encrypted");
                     assert_eq!(decode_scoped(&keys, scope, &wire, is_dir), path);
                     let raw = concrete_provider_mut(&mut overlay)
@@ -4474,7 +4824,9 @@ pub(crate) mod tests {
                     assert!(raw.raw_bytes(&wire).is_none());
                     if !scope.is_empty() {
                         assert_eq!(
-                            physical_write_path(&mut overlay, "/public/item", is_dir).unwrap(),
+                            physical_write_path(&mut overlay, "/public/item", is_dir)
+                                .await
+                                .unwrap(),
                             "/public/item"
                         );
                     }
@@ -4483,7 +4835,9 @@ pub(crate) mod tests {
         }
         let mut raw = MemProvider::new();
         assert_eq!(
-            physical_write_path(&mut raw, "/literal/item", false).unwrap(),
+            physical_write_path(&mut raw, "/literal/item", false)
+                .await
+                .unwrap(),
             "/literal/item"
         );
         // Both real command implementations must map before the raw downcast,
@@ -5162,7 +5516,7 @@ pub(crate) mod tests {
     /// DROPPED from the encrypted view, and that decision must not depend on the
     /// caller's exact path form. All three surfaces route through this one
     /// `CryptOverlayProvider::list`; `wire_path_is_encrypted` normalizes
-    /// `entry.path` via `norm_abs`, so the CLI's absolute anchor path and any
+    /// `entry.path` via `comparison_path`, so the CLI's absolute anchor path and any
     /// trailing-slash / equivalent form classify identically. This locks the
     /// fail-closed parity so the CLI can never resurface the raw plaintext folder
     /// the GUI hides (issue #386 EF-04).
@@ -5411,9 +5765,20 @@ pub(crate) mod tests {
         literal_tilde: bool,
         /// `cd` into this folder fails, as on a folder removed meanwhile.
         refuse_cd: Option<&'static str>,
+        /// The login folder the provider recorded at connect, as FTP keeps
+        /// the post-login `PWD`: `resolve_home_scope` uses it instead of a
+        /// `cd("~")` the protocol may not honour.
+        login_folder: Option<String>,
         /// What `provider_type` answers: SFTP and SCP read a relative scope
         /// under the login folder.
         kind: ProviderType,
+        /// `pwd` reports a folder under this other name (`from`, `to`), as
+        /// an FTP server answers with the folder a symlink points to; `list`
+        /// and `stat` then build their paths from that name, and `list(".")`
+        /// lists the current folder.
+        reports_as: Option<(&'static str, &'static str)>,
+        /// How many `pwd` calls fail before the next one answers.
+        pwd_failures: u32,
     }
 
     impl MemProvider {
@@ -5436,7 +5801,10 @@ pub(crate) mod tests {
                 identity_calls: Mutex::new(Vec::new()),
                 literal_tilde: false,
                 refuse_cd: None,
+                login_folder: None,
                 kind: ProviderType::Ftp,
+                reports_as: None,
+                pwd_failures: 0,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -5462,6 +5830,15 @@ pub(crate) mod tests {
             }
             let cwd = self.cwd.lock().unwrap();
             format!("{}/{}", cwd.trim_end_matches('/'), p)
+        }
+        /// `path` under the name `reports_as` gives it.
+        fn as_reported(&self, path: &str) -> String {
+            match self.reports_as {
+                Some((from, to)) if path == from || path.starts_with(&format!("{from}/")) => {
+                    format!("{to}{}", &path[from.len()..])
+                }
+                _ => path.to_string(),
+            }
         }
         fn raw_paths(&self) -> Vec<String> {
             self.files.lock().unwrap().keys().cloned().collect()
@@ -5552,6 +5929,9 @@ pub(crate) mod tests {
         fn provider_type(&self) -> ProviderType {
             self.kind
         }
+        fn login_folder_hint(&self) -> Option<String> {
+            self.login_folder.clone()
+        }
         fn display_name(&self) -> String {
             "mem".into()
         }
@@ -5573,6 +5953,12 @@ pub(crate) mod tests {
                     "Failed to list directory: {path}"
                 )));
             }
+            let path = if self.reports_as.is_some() && path == "." {
+                self.cwd.lock().unwrap().clone()
+            } else {
+                path.to_string()
+            };
+            let path = path.as_str();
             let prefix = if path.is_empty() || path == "." || path == "/" {
                 "/".to_string()
             } else {
@@ -5585,7 +5971,7 @@ pub(crate) mod tests {
                     if !rest.contains('/') && !self.hidden(p) {
                         out.push(RemoteEntry {
                             name: rest.to_string(),
-                            path: p.clone(),
+                            path: self.as_reported(p),
                             is_dir: false,
                             size: data.len() as u64,
                             modified: None,
@@ -5607,7 +5993,7 @@ pub(crate) mod tests {
                     if !rest.contains('/') && !rest.is_empty() {
                         out.push(RemoteEntry {
                             name: rest.to_string(),
-                            path: d.clone(),
+                            path: self.as_reported(d),
                             is_dir: true,
                             size: 0,
                             modified: None,
@@ -5625,7 +6011,12 @@ pub(crate) mod tests {
             Ok(out)
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok(self.cwd.lock().unwrap().clone())
+            if self.pwd_failures > 0 {
+                self.pwd_failures -= 1;
+                return Err(ProviderError::ConnectionLost("PWD timed out".into()));
+            }
+            let cwd = self.cwd.lock().unwrap().clone();
+            Ok(self.as_reported(&cwd))
         }
         async fn cd(&mut self, p: &str) -> Result<(), ProviderError> {
             let resolved = self.resolve(p);
@@ -5635,7 +6026,15 @@ pub(crate) mod tests {
             *self.cwd.lock().unwrap() = resolved;
             Ok(())
         }
+        /// `CDUP`: the last step of the folder as the server holds it, dropped
+        /// as written.
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            let mut cwd = self.cwd.lock().unwrap();
+            let parent = match cwd.trim_end_matches('/').rfind('/') {
+                Some(0) | None => "/".to_string(),
+                Some(at) => cwd[..at].to_string(),
+            };
+            *cwd = parent;
             Ok(())
         }
         async fn download(
@@ -5727,7 +6126,7 @@ pub(crate) mod tests {
             if let Some(data) = self.files.lock().unwrap().get(&p).cloned() {
                 return Ok(RemoteEntry {
                     name,
-                    path: p.to_string(),
+                    path: self.as_reported(&p),
                     is_dir: false,
                     size: data.len() as u64,
                     modified: None,
@@ -5743,7 +6142,7 @@ pub(crate) mod tests {
             if self.dirs.lock().unwrap().contains(&p) {
                 return Ok(RemoteEntry {
                     name,
-                    path: p.to_string(),
+                    path: self.as_reported(&p),
                     is_dir: true,
                     size: 0,
                     modified: None,
@@ -6259,6 +6658,1419 @@ pub(crate) mod tests {
             .is_some());
     }
 
+    /// An FTP server can answer `CWD /home/u/docs` with a `PWD` of the folder a
+    /// symlink points to (`/srv/docs`). The scope and the sync folder are both
+    /// the string placed from the login folder the server reported, and the
+    /// overlay decides on the path it is given, never on what `PWD` reports:
+    /// a file written under the placed folder, by its absolute path or by a
+    /// name relative to wherever the session stands, is encrypted.
+    #[tokio::test]
+    async fn a_placed_scope_encrypts_whatever_folder_the_server_reports() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.kind = ProviderType::Ftp;
+            mem.login_folder = Some("/home/u".to_string());
+            mem.seed_raw_dir("/home/u/docs");
+            let scope = resolve_home_scope(&mut mem, "~/docs")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(scope, "/home/u/docs", "{label}");
+            // The session stands where the server says the folder really is.
+            mem.cd("/srv/docs").await.unwrap();
+            let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, &scope);
+
+            let dir = std::env::temp_dir().join(format!("crypt_link_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            tokio::fs::write(&local, b"never in clear").await.unwrap();
+            provider
+                .upload(local.to_str().unwrap(), "/home/u/docs/secret.txt", None)
+                .await
+                .unwrap();
+            provider
+                .upload(local.to_str().unwrap(), "relative.txt", None)
+                .await
+                .unwrap();
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+
+            let mem = provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let files = mem.files.lock().unwrap();
+            assert_eq!(files.len(), 2, "{label}: {:?}", files.keys());
+            for (path, bytes) in files.iter() {
+                assert!(
+                    !path.contains("secret") && !path.contains("relative"),
+                    "{label}: a name reached the server in clear: {path}"
+                );
+                assert_ne!(bytes.as_slice(), b"never in clear", "{label}: {path}");
+            }
+            assert!(
+                files.keys().any(|p| p.starts_with("/home/u/docs/")),
+                "{label}: {:?}",
+                files.keys()
+            );
+        }
+    }
+
+    /// A server that answers `cd /home/u/docs` with `PWD /srv/docs` (a
+    /// symlink) gives the anchor a second name. The overlay learns it from
+    /// that `cd` and reads it as the anchor: the session reports the anchor,
+    /// and a write the window builds from the server's name for the folder
+    /// is encrypted. A folder that is really outside the anchor still passes
+    /// through as plaintext (mixed mode, unchanged).
+    #[tokio::test]
+    async fn the_anchor_under_the_name_the_server_reports_stays_encrypted() {
+        for (label, keys) in both_kinds() {
+            assert_the_alias_is_read_as_the_anchor(label, keys, 0).await;
+        }
+    }
+
+    /// The `PWD` that follows the `cd` fails (a timeout), and the next one
+    /// answers with the alias: that answer is read as the anchor's alias,
+    /// not handed to the caller as a folder outside the vault.
+    #[tokio::test]
+    async fn a_failed_alias_probe_is_resolved_by_the_next_pwd() {
+        for (label, keys) in both_kinds() {
+            assert_the_alias_is_read_as_the_anchor(label, keys, 1).await;
+        }
+    }
+
+    /// Both the probe and the caller's `PWD` fail: the overlay is not
+    /// marked as probed, so the next `cd` into the anchor asks again.
+    #[tokio::test]
+    async fn a_failed_alias_probe_is_asked_again_at_the_next_cd() {
+        for (label, keys) in both_kinds() {
+            assert_the_alias_is_read_as_the_anchor(label, keys, 2).await;
+        }
+    }
+
+    /// The probe after the `cd` fails, and the browser lists the folder
+    /// before it asks `pwd` (the order `provider_change_dir_inner` uses).
+    /// The listing, a relative `stat` and the encrypted-view check, which
+    /// read paths the server builds from its own name, ask again first, so
+    /// they answer under the anchor whichever comes first. A folder outside
+    /// the anchor still lists in plaintext.
+    #[tokio::test]
+    async fn a_failed_alias_probe_is_resolved_before_a_listing_or_stat() {
+        for first in 0..3 {
+            for (label, keys) in both_kinds() {
+                let label = format!("{label}, first step: {first}");
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.seed_raw_dir("/srv/other");
+                mem.seed_raw_file("/srv/other/plain.txt", b"in clear");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+                let dir =
+                    std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+                tokio::fs::create_dir_all(&dir).await.unwrap();
+                let local = dir.join("secret.txt");
+                tokio::fs::write(&local, b"never in clear").await.unwrap();
+                provider
+                    .upload(local.to_str().unwrap(), "/home/u/docs/secret.txt", None)
+                    .await
+                    .unwrap();
+                let _ = tokio::fs::remove_dir_all(&dir).await;
+                provider
+                    .inner
+                    .as_any_mut()
+                    .downcast_mut::<MemProvider>()
+                    .unwrap()
+                    .pwd_failures = 1;
+                provider.cd("/home/u/docs").await.unwrap();
+
+                for step in [first, (first + 1) % 3, (first + 2) % 3] {
+                    if step == 2 {
+                        assert!(provider.cwd_in_encrypted_view().await.unwrap(), "{label}");
+                    } else if step == 0 {
+                        let rows = provider.list(".").await.unwrap();
+                        let rows: Vec<(&str, &str)> = rows
+                            .iter()
+                            .map(|e| (e.name.as_str(), e.path.as_str()))
+                            .collect();
+                        assert_eq!(
+                            rows,
+                            vec![("secret.txt", "/home/u/docs/secret.txt")],
+                            "{label}"
+                        );
+                    } else {
+                        let entry = provider.stat("secret.txt").await.unwrap();
+                        assert_eq!(
+                            (entry.name.as_str(), entry.path.as_str(), entry.size),
+                            ("secret.txt", "/home/u/docs/secret.txt", 14),
+                            "{label}"
+                        );
+                    }
+                }
+                assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs", "{label}");
+                let outside = provider.list("/srv/other").await.unwrap();
+                let outside: Vec<(&str, &str)> = outside
+                    .iter()
+                    .map(|e| (e.name.as_str(), e.path.as_str()))
+                    .collect();
+                assert_eq!(
+                    outside,
+                    vec![("plain.txt", "/srv/other/plain.txt")],
+                    "{label}"
+                );
+            }
+        }
+    }
+
+    /// Every call that takes a remote path, run first after a `cd` whose
+    /// alias probe failed, with a path under the server's name for the
+    /// anchor. Each one must settle the probe before it maps the path: the
+    /// alias is learned, nothing is read or written under the alias on the
+    /// wire, and the calls the test provider implements act on the anchor.
+    #[tokio::test]
+    async fn every_path_call_settles_a_failed_alias_probe_first() {
+        const OPS: &[&str] = &[
+            "list",
+            "stat",
+            "download",
+            "download_to_bytes",
+            "upload",
+            "mkdir",
+            "delete",
+            "rmdir",
+            "rmdir_recursive",
+            "rename",
+            "replace",
+            "wait_until_readable",
+            "prepare_file_move",
+            "capture_trash_identities",
+            "size",
+            "exists",
+            "delete_permanent_with_identity",
+            "delete_permanent",
+            "chmod",
+            "server_copy",
+            "server_side_copy",
+            "disk_usage",
+            "list_versions",
+            "download_version",
+            "restore_version",
+            "delete_version",
+            "stored_checksum",
+            "stored_checksum_for",
+        ];
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        fn anchor_files(p: &mut CryptOverlayProvider) -> usize {
+            mem_of(p)
+                .raw_paths()
+                .iter()
+                .filter(|k| k.starts_with("/home/u/docs/"))
+                .count()
+        }
+        const SECRET: &str = "/srv/docs/secret.txt";
+        for op in OPS {
+            for (label, keys) in both_kinds() {
+                let label = format!("{label}, {op}");
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+                let dir =
+                    std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+                tokio::fs::create_dir_all(&dir).await.unwrap();
+                let local = dir.join("secret.txt");
+                let local = local.to_str().unwrap();
+                tokio::fs::write(local, b"never in clear").await.unwrap();
+                p.upload(local, "/home/u/docs/secret.txt", None)
+                    .await
+                    .unwrap();
+                mem_of(&mut p).pwd_failures = 1;
+                p.cd("/home/u/docs").await.unwrap();
+                assert_eq!(p.scope_alias, None, "{label}");
+                let out = dir.join("out.bin");
+                let out = out.to_str().unwrap();
+
+                match *op {
+                    "list" => {
+                        let rows = p.list("/srv/docs").await.unwrap();
+                        let rows: Vec<&str> = rows.iter().map(|e| e.path.as_str()).collect();
+                        assert_eq!(rows, vec!["/home/u/docs/secret.txt"], "{label}");
+                    }
+                    "stat" => {
+                        let entry = p.stat(SECRET).await.unwrap();
+                        assert_eq!(entry.path, "/home/u/docs/secret.txt", "{label}");
+                    }
+                    "download" => {
+                        p.download(SECRET, out, None).await.unwrap();
+                        assert_eq!(std::fs::read(out).unwrap(), b"never in clear", "{label}");
+                    }
+                    "download_to_bytes" => {
+                        let bytes = p.download_to_bytes(SECRET).await.unwrap();
+                        assert_eq!(bytes, b"never in clear", "{label}");
+                    }
+                    "upload" => {
+                        p.upload(local, "/srv/docs/new.txt", None).await.unwrap();
+                        assert_eq!(anchor_files(&mut p), 2, "{label}");
+                    }
+                    "mkdir" => {
+                        p.mkdir("/srv/docs/sub").await.unwrap();
+                        assert!(
+                            mem_of(&mut p)
+                                .raw_dirs()
+                                .iter()
+                                .any(|d| d.starts_with("/home/u/docs/")),
+                            "{label}"
+                        );
+                    }
+                    "delete" => {
+                        p.delete(SECRET).await.unwrap();
+                        assert_eq!(anchor_files(&mut p), 0, "{label}");
+                    }
+                    "delete_permanent" => {
+                        let _ = p.delete_permanent(SECRET).await;
+                    }
+                    "delete_permanent_with_identity" => {
+                        let _ = p.delete_permanent_with_identity(SECRET, None).await;
+                    }
+                    "rename" => {
+                        p.rename(SECRET, "/srv/docs/renamed.txt").await.unwrap();
+                        assert!(
+                            p.exists("/home/u/docs/renamed.txt").await.unwrap(),
+                            "{label}"
+                        );
+                        assert_eq!(anchor_files(&mut p), 1, "{label}");
+                    }
+                    "replace" => {
+                        let _ = p.replace(SECRET, "/srv/docs/replaced.txt").await;
+                    }
+                    "size" => {
+                        assert_eq!(p.size(SECRET).await.unwrap(), 14, "{label}");
+                    }
+                    "exists" => {
+                        assert!(p.exists(SECRET).await.unwrap(), "{label}");
+                    }
+                    "rmdir" => {
+                        let _ = p.rmdir("/srv/docs/empty").await;
+                    }
+                    "rmdir_recursive" => {
+                        let _ = p.rmdir_recursive("/srv/docs/empty").await;
+                    }
+                    "wait_until_readable" => {
+                        let _ = p.wait_until_readable(SECRET).await;
+                    }
+                    "prepare_file_move" => {
+                        let _ = p.prepare_file_move(SECRET).await;
+                    }
+                    "capture_trash_identities" => {
+                        let _ = p.capture_trash_identities(&[SECRET.to_string()]).await;
+                    }
+                    "chmod" => {
+                        let _ = p.chmod(SECRET, 0o600).await;
+                    }
+                    "server_copy" => {
+                        let _ = p.server_copy(SECRET, "/srv/docs/copy.txt").await;
+                    }
+                    "server_side_copy" => {
+                        let _ = p.server_side_copy(SECRET, "/srv/docs/copy.txt").await;
+                    }
+                    "disk_usage" => {
+                        let _ = p.disk_usage("/srv/docs").await;
+                    }
+                    "list_versions" => {
+                        let _ = p.list_versions(SECRET).await;
+                    }
+                    "download_version" => {
+                        let _ = p.download_version(SECRET, "v1", out).await;
+                    }
+                    "restore_version" => {
+                        let _ = p.restore_version(SECRET, "v1").await;
+                    }
+                    "delete_version" => {
+                        let _ = p.delete_version(SECRET, "v1").await;
+                    }
+                    "stored_checksum" => {
+                        let _ = p.stored_checksum(SECRET).await;
+                    }
+                    "stored_checksum_for" => {
+                        let _ = p.stored_checksum_for(SECRET, "sha256").await;
+                    }
+                    other => panic!("no case for {other}"),
+                }
+                let _ = tokio::fs::remove_dir_all(&dir).await;
+
+                assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+                let mem = mem_of(&mut p);
+                let under_alias: Vec<String> = mem
+                    .raw_paths()
+                    .into_iter()
+                    .chain(mem.raw_dirs())
+                    .filter(|k| k.starts_with("/srv/"))
+                    .collect();
+                assert!(under_alias.is_empty(), "{label}: {under_alias:?}");
+            }
+        }
+    }
+
+    /// Run one overlay call by name on a path under the anchor's alias,
+    /// keeping only whether it succeeded.
+    async fn run_path_call(
+        p: &mut CryptOverlayProvider,
+        op: &str,
+        local: &str,
+        out: &str,
+    ) -> Result<(), ProviderError> {
+        const SECRET: &str = "/srv/docs/secret.txt";
+        match op {
+            "cd" => p.cd("sub").await,
+            "cd_up" => p.cd_up().await,
+            "list" => p.list(".").await.map(drop),
+            "stat" => p.stat(SECRET).await.map(drop),
+            "download" => p.download(SECRET, out, None).await,
+            "download_to_bytes" => p.download_to_bytes(SECRET).await.map(drop),
+            "upload" => p.upload(local, "/srv/docs/new.txt", None).await,
+            "mkdir" => p.mkdir("/srv/docs/sub").await,
+            "delete" => p.delete(SECRET).await,
+            "rmdir" => p.rmdir("/srv/docs/empty").await,
+            "rmdir_recursive" => p.rmdir_recursive("/srv/docs/empty").await,
+            "rename" => p.rename(SECRET, "/srv/docs/renamed.txt").await,
+            "replace" => p.replace(SECRET, "/srv/docs/replaced.txt").await,
+            "wait_until_readable" => p.wait_until_readable(SECRET).await.map(drop),
+            "prepare_file_move" => p.prepare_file_move(SECRET).await,
+            "capture_trash_identities" => p
+                .capture_trash_identities(&[SECRET.to_string()])
+                .await
+                .remove(0)
+                .map(drop),
+            "size" => p.size(SECRET).await.map(drop),
+            "exists" => p.exists(SECRET).await.map(drop),
+            "delete_permanent_with_identity" => p
+                .delete_permanent_with_identity(SECRET, None)
+                .await
+                .map(drop),
+            "delete_permanent" => p.delete_permanent(SECRET).await.map(drop),
+            "chmod" => p.chmod(SECRET, 0o600).await,
+            "server_copy" => p.server_copy(SECRET, "/srv/docs/copy.txt").await,
+            "server_side_copy" => p.server_side_copy(SECRET, "/srv/docs/copy.txt").await,
+            "disk_usage" => p.disk_usage("/srv/docs").await.map(drop),
+            "list_versions" => p.list_versions(SECRET).await.map(drop),
+            "download_version" => p.download_version(SECRET, "v1", out).await,
+            "restore_version" => p.restore_version(SECRET, "v1").await,
+            "delete_version" => p.delete_version(SECRET, "v1").await,
+            "stored_checksum" => p.stored_checksum(SECRET).await.map(drop),
+            "stored_checksum_for" => p.stored_checksum_for(SECRET, "sha256").await.map(drop),
+            "cwd_in_encrypted_view" => p.cwd_in_encrypted_view().await.map(drop),
+            other => panic!("no case for {other}"),
+        }
+    }
+
+    /// The probe after the `cd` fails and so does the call's own retry: the
+    /// overlay cannot tell the anchor's other name from a folder outside it,
+    /// so every call that takes or returns a path, `cd` and `cd_up` included,
+    /// fails and touches nothing. Once the server answers, the alias maps to
+    /// the anchor and a folder that is really outside still takes plaintext.
+    #[tokio::test]
+    async fn every_path_call_refuses_while_the_server_does_not_say_where_it_is() {
+        const OPS: &[&str] = &[
+            "cd",
+            "cd_up",
+            "list",
+            "stat",
+            "cwd_in_encrypted_view",
+            "download",
+            "download_to_bytes",
+            "upload",
+            "mkdir",
+            "delete",
+            "rmdir",
+            "rmdir_recursive",
+            "rename",
+            "replace",
+            "wait_until_readable",
+            "prepare_file_move",
+            "capture_trash_identities",
+            "size",
+            "exists",
+            "delete_permanent_with_identity",
+            "delete_permanent",
+            "chmod",
+            "server_copy",
+            "server_side_copy",
+            "disk_usage",
+            "list_versions",
+            "download_version",
+            "restore_version",
+            "delete_version",
+            "stored_checksum",
+            "stored_checksum_for",
+        ];
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        for op in OPS {
+            for (label, keys) in both_kinds() {
+                let label = format!("{label}, {op}");
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.seed_raw_dir("/srv/other");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+                let dir =
+                    std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+                tokio::fs::create_dir_all(&dir).await.unwrap();
+                let local = dir.join("secret.txt");
+                let local = local.to_str().unwrap();
+                tokio::fs::write(local, b"never in clear").await.unwrap();
+                p.upload(local, "/home/u/docs/secret.txt", None)
+                    .await
+                    .unwrap();
+                let out = dir.join("out.bin");
+                let out = out.to_str().unwrap();
+                let before_files = {
+                    let mut v = mem_of(&mut p).raw_paths();
+                    v.sort();
+                    v
+                };
+                let before_dirs = mem_of(&mut p).raw_dirs();
+                let before_cwd = mem_of(&mut p).cwd.lock().unwrap().clone();
+                mem_of(&mut p).pwd_failures = 2;
+                p.cd("/home/u/docs").await.unwrap();
+                let cwd = mem_of(&mut p).cwd.lock().unwrap().clone();
+                assert_ne!(cwd, before_cwd, "{label}");
+
+                let outcome = run_path_call(&mut p, op, local, out).await;
+                assert!(outcome.is_err(), "{label}: {outcome:?}");
+                let mem = mem_of(&mut p);
+                let mut files = mem.raw_paths();
+                files.sort();
+                assert_eq!(files, before_files, "{label}");
+                assert_eq!(mem.raw_dirs(), before_dirs, "{label}");
+                assert_eq!(*mem.cwd.lock().unwrap(), cwd, "{label}");
+                assert!(!std::path::Path::new(out).exists(), "{label}");
+
+                assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+                assert_eq!(p.size("/srv/docs/secret.txt").await.unwrap(), 14, "{label}");
+                p.upload(local, "/srv/other/plain.txt", None).await.unwrap();
+                assert_eq!(
+                    mem_of(&mut p).raw_bytes("/srv/other/plain.txt").as_deref(),
+                    Some(&b"never in clear"[..]),
+                    "{label}"
+                );
+                let _ = tokio::fs::remove_dir_all(&dir).await;
+            }
+        }
+    }
+
+    /// The states the anchor's alias can be in, beyond a probe that fails
+    /// once (`a_failed_alias_probe_is_resolved_by_the_next_pwd`) or twice
+    /// (`every_path_call_refuses_while_the_server_does_not_say_where_it_is`),
+    /// each ending with paths under the alias mapped to the anchor or refused.
+    #[tokio::test]
+    async fn every_alias_state_ends_mapped_or_refused() {
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        fn overlay(keys: OverlayKeys) -> CryptOverlayProvider {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.seed_raw_dir("/srv/other");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs")
+        }
+        for (label, keys) in both_kinds() {
+            let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            let local = local.to_str().unwrap();
+            tokio::fs::write(local, b"never in clear").await.unwrap();
+            let encrypted_under_anchor = |p: &mut CryptOverlayProvider| -> usize {
+                p.inner
+                    .as_any_mut()
+                    .downcast_mut::<MemProvider>()
+                    .unwrap()
+                    .raw_paths()
+                    .iter()
+                    .filter(|k| k.starts_with("/home/u/docs/") && !k.contains("secret"))
+                    .count()
+            };
+
+            // Never probed: the overlay armed on a session already standing
+            // in the anchor under its alias. The view check says it is not
+            // in the encrypted view, which makes the window `cd` to the
+            // anchor (and so probe) before anything is shown or written.
+            let mut p = overlay(keys.clone());
+            *mem_of(&mut p).cwd.lock().unwrap() = "/home/u/docs".to_string();
+            assert!(!p.cwd_in_encrypted_view().await.unwrap(), "{label}");
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.cwd_in_encrypted_view().await.unwrap(), "{label}");
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+
+            // A different alias later: every `cd` into the anchor asks again.
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/mnt/docs"));
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            p.upload(local, "/mnt/docs/secret.txt", None).await.unwrap();
+            assert_eq!(encrypted_under_anchor(&mut p), 1, "{label}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/mnt/docs"), "{label}");
+            // ... and the server naming the anchor itself drops the alias.
+            mem_of(&mut p).reports_as = None;
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.scope_alias, None, "{label}");
+
+            // Disconnect and reconnect while a probe is pending: the new
+            // session starts with nothing learned or pending, and the `cd`
+            // that restores the folder probes again.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).pwd_failures = 1;
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.alias_pending.is_some(), "{label}");
+            p.disconnect().await.unwrap();
+            p.connect().await.unwrap();
+            assert!(
+                p.alias_pending.is_none() && p.scope_alias.is_none(),
+                "{label}"
+            );
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            // ... and a reconnect after the alias was learned forgets it too.
+            p.connect().await.unwrap();
+            assert_eq!(p.scope_alias, None, "{label}");
+
+            // The anchor removed on the server while a probe is pending: the
+            // next call still asks the server where the session is and maps
+            // by its answer; nothing depends on the folder still existing.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).pwd_failures = 1;
+            p.cd("/home/u/docs").await.unwrap();
+            mem_of(&mut p)
+                .dirs
+                .lock()
+                .unwrap()
+                .retain(|d| d != "/home/u/docs");
+            assert!(p.list(".").await.unwrap().is_empty(), "{label}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+
+            // A report that names no usable alias (here the root): every
+            // path call is refused, and a `cd` to a full path still works.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/"));
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.pwd().await.is_err(), "{label}");
+            assert!(p.list(".").await.is_err(), "{label}");
+            assert!(
+                p.upload(local, "/secret.txt", None).await.is_err(),
+                "{label}"
+            );
+            assert!(p.cd("sub").await.is_err(), "{label}");
+            assert!(mem_of(&mut p).raw_paths().is_empty(), "{label}");
+            p.cd("/srv/other").await.unwrap();
+            assert!(p.list("/srv/other").await.unwrap().is_empty(), "{label}");
+            p.upload(local, "/srv/other/plain.txt", None).await.unwrap();
+            assert_eq!(
+                mem_of(&mut p).raw_bytes("/srv/other/plain.txt").as_deref(),
+                Some(&b"never in clear"[..]),
+                "{label}"
+            );
+            // The refusal names our own path and never the server's reply.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/home/u/docs/server-said-zq"));
+            p.cd("/home/u/docs").await.unwrap();
+            let error = p.list(".").await.unwrap_err().to_string();
+            assert!(error.contains("/home/u/docs"), "{label}: {error}");
+            assert!(!error.contains("server-said-zq"), "{label}: {error}");
+
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
+    }
+
+    /// `checksum_capability` cannot ask the server (it is synchronous): while
+    /// a `cd` into the anchor waits for its answer it offers no digest, and
+    /// once the alias is known a path under it is marked as ciphertext.
+    #[tokio::test]
+    async fn no_digest_is_offered_while_the_anchor_alias_is_unknown() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 1;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            let offered = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(!offered.algorithms.is_empty(), "{label}: {offered:?}");
+            p.cd("/home/u/docs").await.unwrap();
+            let pending = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(pending.algorithms.is_empty(), "{label}: {pending:?}");
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            let known = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(
+                known.ciphertext && !known.algorithms.is_empty(),
+                "{label}: {known:?}"
+            );
+        }
+    }
+
+    /// A batch refused because the server did not say where the session is
+    /// keeps the kind of the server's error in every slot, so the caller
+    /// that reconnects on a lost connection still sees one.
+    #[tokio::test]
+    async fn a_refused_batch_keeps_the_kind_of_the_pwd_error() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 2;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            let paths: Vec<String> = ["a", "b", "c"]
+                .iter()
+                .map(|n| format!("/srv/docs/{n}.txt"))
+                .collect();
+            let out = p.capture_trash_identities(&paths).await;
+            assert_eq!(out.len(), 3, "{label}");
+            for slot in &out {
+                let error = slot.as_ref().unwrap_err();
+                assert!(error.is_connection_lost(), "{label}: {error:?}");
+            }
+        }
+    }
+
+    /// The overlay knows the anchor by the name in the profile and by the
+    /// name the server reports after a `cd` into it. A path that reaches the
+    /// anchor through any other name (another symlink, or the alias typed
+    /// before the server ever reported it) is outside by name, as EF-01
+    /// defines outside, and passes through as plaintext. A decision, pinned.
+    #[tokio::test]
+    async fn the_anchor_is_known_by_its_profile_name_and_the_name_the_server_reports() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("f.txt");
+            let local = local.to_str().unwrap();
+            tokio::fs::write(local, b"by name").await.unwrap();
+            // The alias typed before the server reported it.
+            p.upload(local, "/srv/docs/typed.txt", None).await.unwrap();
+            // Another name for the anchor the server never reports.
+            p.cd("/home/u/docs").await.unwrap();
+            p.upload(local, "/opt/docs/other.txt", None).await.unwrap();
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+            let mem = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            assert_eq!(
+                mem.raw_bytes("/srv/docs/typed.txt").as_deref(),
+                Some(&b"by name"[..]),
+                "{label}"
+            );
+            assert_eq!(
+                mem.raw_bytes("/opt/docs/other.txt").as_deref(),
+                Some(&b"by name"[..]),
+                "{label}"
+            );
+        }
+    }
+
+    /// Every method of the overlay's `StorageProvider` impl that maps or
+    /// classifies a path settles a pending alias probe before it does, so a
+    /// method added later cannot skip it unnoticed. `checksum_capability` is
+    /// synchronous and fails closed instead
+    /// (`no_digest_is_offered_while_the_anchor_alias_is_unknown`).
+    #[test]
+    fn every_path_mapping_method_settles_the_alias_first() {
+        let source = include_str!("crypt_overlay_provider.rs");
+        let start = source
+            .find("impl StorageProvider for CryptOverlayProvider {")
+            .expect("impl");
+        let end = start + source[start..].find("\n}\n").expect("impl end");
+        let body = &source[start..end];
+        const MAPPING: &[&str] = &[
+            "self.map(",
+            "map_existing(",
+            "target_is_encrypted(",
+            "unalias(",
+        ];
+        const SETTLES: &[&str] = &[
+            "settle_scope_alias(",
+            "note_reported_cwd(",
+            "list_counting(",
+        ];
+        let mut methods = 0;
+        let mut checked = Vec::new();
+        let async_methods = body.split("\n    async fn ").skip(1);
+        for chunk in async_methods.chain(body.split("\n    fn ").skip(1)) {
+            let name: String = chunk
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let method = chunk.split("\n    }\n").next().unwrap();
+            methods += 1;
+            let Some(first_map) = MAPPING.iter().filter_map(|m| method.find(m)).min() else {
+                continue;
+            };
+            if name == "checksum_capability" {
+                assert!(
+                    method.contains("alias_pending.is_some()"),
+                    "checksum_capability"
+                );
+                continue;
+            }
+            let first_settle = SETTLES.iter().filter_map(|m| method.find(m)).min();
+            assert!(
+                first_settle.is_some_and(|at| at < first_map),
+                "{name} maps a path before it settles the alias probe"
+            );
+            checked.push(name);
+        }
+        assert!(methods > 70, "parsed {methods} methods");
+        assert!(checked.len() >= 28, "{checked:?}");
+        // The copy preflight maps a destination outside the trait, before
+        // any directory exists: it settles too.
+        let preflight = &source[source
+            .find("pub(crate) async fn check_directory_creation(")
+            .expect("preflight")..];
+        let preflight = &preflight[..preflight.find("\n    }\n").unwrap()];
+        let settle = preflight
+            .find("settle_scope_alias(")
+            .expect("preflight settles");
+        assert!(
+            settle < preflight.find("self.map(").unwrap(),
+            "check_directory_creation"
+        );
+        // So does the helper the provider-specific raw commands (OpenDrive,
+        // 4shared) map through before they peel the decorator.
+        let raw = &source[source
+            .find("pub(crate) async fn physical_write_path(")
+            .expect("physical_write_path")..];
+        let raw = &raw[..raw.find("\n}\n").unwrap()];
+        assert!(
+            raw.find("settle_scope_alias(")
+                .expect("physical_write_path settles")
+                < raw.find("overlay.map(").unwrap(),
+            "physical_write_path"
+        );
+    }
+
+    /// Every form a server resolves to the anchor or the alias is read as
+    /// the anchor: `.` segments, repeated and trailing separators. `..` is
+    /// refused, a form only a case-insensitive or Windows-backed server
+    /// would resolve there is refused for a write, and a path genuinely
+    /// outside keeps its plaintext passthrough (EF-01).
+    #[tokio::test]
+    async fn every_form_of_an_encrypted_path_is_read_as_the_anchor() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+            let canonical = p
+                .map("/home/u/docs/s.txt", false, AccessKind::Write)
+                .unwrap();
+            assert!(canonical.starts_with("/home/u/docs/"), "{label}");
+            assert!(!canonical.contains("s.txt"), "{label}");
+            for form in [
+                "/home/u/./docs/s.txt",
+                "/home/u//docs/s.txt",
+                "//home/u/docs/s.txt",
+                "/home/u/docs/./s.txt",
+                "/home/u/docs//s.txt",
+                "/home/u/docs/s.txt/",
+                "/./home/u/docs/s.txt",
+                "/srv/./docs/s.txt",
+                "/srv//docs/s.txt",
+                "/srv/docs/./s.txt",
+                "/srv/docs//s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    let wire = p.map(form, false, kind).unwrap();
+                    assert_eq!(wire, canonical, "{label}: {form} {kind:?}");
+                }
+                assert!(p.target_is_encrypted(form), "{label}: {form}");
+                assert!(p.wire_path_is_encrypted(form), "{label}: {form}");
+                p.refuse_crossing_the_anchor("rename", form, "/srv/docs/b.txt")
+                    .unwrap_or_else(|e| panic!("{label}: {form}: {e}"));
+                assert!(
+                    p.refuse_crossing_the_anchor("rename", form, "/home/u/docs2/b.txt")
+                        .is_err(),
+                    "{label}: {form}"
+                );
+            }
+            for anchor in [
+                "/home/u/./docs",
+                "/home/u//docs/",
+                "/srv/./docs",
+                "/srv//docs/",
+            ] {
+                assert_eq!(
+                    p.map(anchor, true, AccessKind::Write).unwrap(),
+                    "/home/u/docs",
+                    "{label}: {anchor}"
+                );
+                assert!(!p.target_is_encrypted(anchor), "{label}: {anchor}");
+            }
+            for traversal in [
+                "/srv/docs/../docs/s.txt",
+                "/other/../home/u/docs/s.txt",
+                "/srv/other/../docs/s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    assert!(
+                        p.map(traversal, false, kind).is_err(),
+                        "{label}: {traversal} {kind:?}"
+                    );
+                }
+            }
+            for folded_in in [
+                "/HOME/u/docs/s.txt",
+                "/home/u/Docs",
+                "/home/u\\docs\\s.txt",
+                "/SRV/docs/s.txt",
+                "/srv\\docs/s.txt",
+                // Parent steps that are steps only once `\` is a separator.
+                "/home/u/other\\..\\docs/secret.txt",
+                "/home/u/other/..\\docs/secret.txt",
+                "/home/u/other\\../docs/secret.txt",
+                "/..\\home/u/docs/secret.txt",
+                "/opt/x\\..\\y/plain.txt",
+                "/HOME/U/Other\\..\\DOCS/secret.txt",
+                "/Srv/Other\\..\\docs/secret.txt",
+            ] {
+                assert!(
+                    p.map(folded_in, false, AccessKind::Write).is_err(),
+                    "{label}: {folded_in}"
+                );
+                // A read stores nothing: it stays the raw passthrough it was,
+                // the path sent as written.
+                assert_eq!(
+                    p.map(folded_in, false, AccessKind::Read).unwrap(),
+                    folded_in,
+                    "{label}: {folded_in}"
+                );
+            }
+            // `%5c` is no separator: the name is literal, outside, plaintext.
+            for literal in [
+                "/home/u/other%5c..%5cdocs/s.txt",
+                "/home/u/other%5C..%5Cdocs/s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    assert_eq!(
+                        p.map(literal, false, kind).unwrap(),
+                        literal,
+                        "{label}: {literal} {kind:?}"
+                    );
+                }
+            }
+            for outside in [
+                "/home/u/docs2/s.txt",
+                "/home/u/s.txt",
+                "/srv/other/s.txt",
+                "/srv/docsx/s.txt",
+                "/opt/docs/s.txt",
+            ] {
+                assert_eq!(
+                    p.map(outside, false, AccessKind::Write).unwrap(),
+                    outside,
+                    "{label}: {outside}"
+                );
+                assert!(!p.target_is_encrypted(outside), "{label}: {outside}");
+            }
+            // Outside the anchor the path is sent as written: an object store
+            // keeps `a//b` and `a/./b` apart from `a/b`.
+            for kind in [AccessKind::Read, AccessKind::Write] {
+                assert_eq!(
+                    p.map("/home/u/./docs2//s.txt", false, kind).unwrap(),
+                    "/home/u/./docs2//s.txt",
+                    "{label}"
+                );
+            }
+
+            let dir = std::env::temp_dir().join(format!("crypt_forms_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            tokio::fs::write(&local, b"never in clear").await.unwrap();
+            let local = local.to_str().unwrap();
+            p.upload(local, "/srv/./docs/secret.txt", None)
+                .await
+                .unwrap();
+            p.upload(local, "/home/u//docs/secret2.txt", None)
+                .await
+                .unwrap();
+            assert!(p.upload(local, "/SRV/docs/plain.txt", None).await.is_err());
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+            let mem = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            let files = mem.files.lock().unwrap();
+            assert_eq!(files.len(), 2, "{label}: {:?}", files.keys());
+            for (path, bytes) in files.iter() {
+                assert!(path.starts_with("/home/u/docs/"), "{label}: {path}");
+                assert!(!path.contains("secret"), "{label}: {path}");
+                assert_ne!(bytes.as_slice(), b"never in clear", "{label}: {path}");
+            }
+        }
+    }
+
+    /// A provider that records every path it is handed, as given, and
+    /// answers each call with an empty success.
+    #[derive(Default)]
+    struct WireLog {
+        seen: Mutex<Vec<String>>,
+        /// The folder a `cd` entered, as given (`/` before any); `cd_up`
+        /// drops its last step as written and is logged as `<cdup>`.
+        cwd: Option<String>,
+    }
+
+    impl WireLog {
+        fn saw(&self, paths: &[&str]) {
+            self.seen
+                .lock()
+                .unwrap()
+                .extend(paths.iter().map(|p| p.to_string()));
+        }
+        fn entry(path: &str) -> RemoteEntry {
+            RemoteEntry {
+                name: path.rsplit('/').next().unwrap_or_default().to_string(),
+                path: path.to_string(),
+                is_dir: false,
+                size: 0,
+                modified: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: HashMap::new(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for WireLog {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "wire log".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.saw(&[path]);
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok(self.cwd.clone().unwrap_or_else(|| "/".into()))
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            self.cwd = Some(path.to_string());
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.saw(&["<cdup>"]);
+            let cwd = self.cwd.clone().unwrap_or_else(|| "/".into());
+            self.cwd = Some(match cwd.rfind('/') {
+                Some(0) | None => "/".into(),
+                Some(at) => cwd[..at].to_string(),
+            });
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[remote_path]);
+            tokio::fs::write(local_path, b"plain").await?;
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.saw(&[remote_path]);
+            Ok(b"plain".to_vec())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[remote_path]);
+            Ok(())
+        }
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.saw(&[path]);
+            Ok(Self::entry(path))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.saw(&[path]);
+            Ok(5)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+        async fn wait_until_readable(
+            &mut self,
+            path: &str,
+        ) -> Result<Option<std::time::Duration>, ProviderError> {
+            self.saw(&[path]);
+            Ok(None)
+        }
+        async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn capture_trash_identities(
+            &mut self,
+            paths: &[String],
+        ) -> Vec<Result<Option<String>, ProviderError>> {
+            self.saw(&paths.iter().map(String::as_str).collect::<Vec<_>>());
+            paths.iter().map(|_| Ok(None)).collect()
+        }
+        async fn delete_permanent_with_identity(
+            &mut self,
+            path: &str,
+            _identity: Option<&str>,
+        ) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn chmod(&mut self, path: &str, _mode: u32) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.saw(&[path]);
+            Ok(0)
+        }
+        async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.saw(&[path]);
+            Ok(Vec::new())
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            tokio::fs::write(local_path, b"plain").await?;
+            Ok(())
+        }
+        async fn restore_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn delete_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn stored_checksum(
+            &mut self,
+            path: &str,
+        ) -> Result<HashMap<String, String>, ProviderError> {
+            self.saw(&[path]);
+            Ok(HashMap::new())
+        }
+        async fn stored_checksum_for(
+            &mut self,
+            path: &str,
+            _algorithm: &str,
+        ) -> Result<HashMap<String, String>, ProviderError> {
+            self.saw(&[path]);
+            Ok(HashMap::new())
+        }
+    }
+
+    /// A path outside the anchor reaches the provider byte for byte, through
+    /// every method that takes one: an object store keeps `/public/a//b.txt`
+    /// and `/public/./a` as keys apart from `/public/a/b.txt` and
+    /// `/public/a`, so the overlay's comparison form must never be the key
+    /// it sends.
+    #[tokio::test]
+    async fn an_outside_path_reaches_the_provider_as_written() {
+        const FILE: &str = "/public/a//b.txt";
+        const OTHER: &str = "/public/./a/c.txt";
+        const DIR: &str = "/public/./a";
+        const DEEP: &str = "/public/a//b/c";
+        for (label, keys) in both_kinds() {
+            let dir = std::env::temp_dir().join(format!("crypt_wire_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("in.txt");
+            tokio::fs::write(&local, b"plain").await.unwrap();
+            let local = local.to_str().unwrap().to_string();
+            let out = dir.join("out.bin").to_str().unwrap().to_string();
+            let mut p = CryptOverlayProvider::new(Box::new(WireLog::default()), keys, "/Vault");
+            macro_rules! sent {
+                ($call:expr, $want:expr) => {{
+                    $call
+                        .await
+                        .map(drop)
+                        .unwrap_or_else(|e| panic!("{label}: {}: {e}", stringify!($call)));
+                    let log = p.inner.as_any_mut().downcast_mut::<WireLog>().unwrap();
+                    let seen = std::mem::take(&mut *log.seen.lock().unwrap());
+                    let want: &[&str] = $want;
+                    assert!(
+                        !seen.is_empty(),
+                        "{label}: {} sent nothing",
+                        stringify!($call)
+                    );
+                    for path in &seen {
+                        assert!(
+                            want.contains(&path.as_str()),
+                            "{label}: {} sent {path:?}, not one of {want:?}",
+                            stringify!($call)
+                        );
+                    }
+                    for path in want {
+                        assert!(seen.iter().any(|s| s == path), "{label}: {path} never sent");
+                    }
+                }};
+            }
+            sent!(p.list(DIR), &[DIR]);
+            sent!(p.stat(FILE), &[FILE]);
+            sent!(p.download(FILE, &out, None), &[FILE]);
+            sent!(p.download_to_bytes(FILE), &[FILE]);
+            sent!(p.upload(&local, FILE, None), &[FILE]);
+            sent!(p.mkdir(DIR), &[DIR]);
+            sent!(p.delete(FILE), &[FILE]);
+            sent!(p.rmdir(DIR), &[DIR]);
+            sent!(p.rmdir_recursive(DIR), &[DIR]);
+            sent!(p.rename(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.replace(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.wait_until_readable(FILE), &[FILE]);
+            sent!(p.prepare_file_move(FILE), &[FILE]);
+            sent!(p.size(FILE), &[FILE]);
+            sent!(p.exists(FILE), &[FILE]);
+            sent!(p.delete_permanent_with_identity(FILE, None), &[FILE]);
+            sent!(p.delete_permanent(FILE), &[FILE]);
+            sent!(p.chmod(FILE, 0o600), &[FILE]);
+            sent!(p.server_copy(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.server_side_copy(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.disk_usage(DIR), &[DIR]);
+            sent!(p.list_versions(FILE), &[FILE]);
+            sent!(p.download_version(FILE, "v1", &out), &[FILE]);
+            sent!(p.restore_version(FILE, "v1"), &[FILE]);
+            sent!(p.delete_version(FILE, "v1"), &[FILE]);
+            sent!(p.stored_checksum(FILE), &[FILE]);
+            sent!(p.stored_checksum_for(FILE, "sha256"), &[FILE]);
+            // The folder shown and Up from it are the provider's own, byte for
+            // byte: the inner `CDUP` goes up from `/public/a//b/c`, never a
+            // `cd` to the comparison form `/public/a/b`.
+            for up in ["cd_up", ".."] {
+                sent!(p.cd(DEEP), &[DEEP]);
+                let shown = p.pwd().await.unwrap();
+                assert_eq!(shown, DEEP, "{label}");
+                // A delete built from the folder shown names the `//` key,
+                // never the object under `/public/a/b/c`.
+                sent!(
+                    p.delete(&format!("{shown}/x.txt")),
+                    &["/public/a//b/c/x.txt"]
+                );
+                if up == ".." {
+                    sent!(p.cd(".."), &["<cdup>"]);
+                } else {
+                    sent!(p.cd_up(), &["<cdup>"]);
+                }
+                assert_eq!(p.pwd().await.unwrap(), "/public/a//b", "{label} {up}");
+            }
+            let identities = p.capture_trash_identities(&[FILE.to_string()]).await;
+            assert!(identities[0].is_ok(), "{label}");
+            let log = p.inner.as_any_mut().downcast_mut::<WireLog>().unwrap();
+            assert_eq!(*log.seen.lock().unwrap(), vec![FILE.to_string()], "{label}");
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
+    }
+
+    /// Every production function that compares a path with the anchor or
+    /// its alias normalizes it first, so a comparison added later cannot
+    /// skip [`comparison_path`] unnoticed. The property itself is pinned by
+    /// `every_form_of_an_encrypted_path_is_read_as_the_anchor`.
+    #[test]
+    fn every_anchor_comparison_normalizes_the_path_first() {
+        let source = include_str!("crypt_overlay_provider.rs");
+        let production = &source[..source.find("\npub(crate) mod tests {").expect("tests")];
+        const COMPARES: &[&str] = &[
+            "== scope",
+            "== self.scope",
+            "!= self.scope",
+            "== alias",
+            "strip_prefix(&format!(",
+            "starts_with(&format!(",
+            "strip_prefix(&self.scope",
+        ];
+        const NORMALIZES: &[&str] = &["comparison_path(", "folded("];
+        let mut compared = Vec::new();
+        for chunk in production.split("fn ").skip(1) {
+            let name: String = chunk
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            // A chunk runs to the next `fn `, so it is this function's body.
+            let body = chunk;
+            let Some(first) = COMPARES.iter().filter_map(|c| body.find(c)).min() else {
+                continue;
+            };
+            if name == "comparison_path" || name == "norm_anchor" {
+                continue;
+            }
+            let normalized = NORMALIZES.iter().filter_map(|n| body.find(n)).min();
+            assert!(
+                normalized.is_some_and(|at| at < first),
+                "{name} compares a path with the anchor before it normalizes it"
+            );
+            compared.push(name);
+        }
+        assert!(compared.len() >= 10, "{compared:?}");
+    }
+
+    /// Up from the anchor of a home the server reports under another name
+    /// lands on the parent the display names, never the physical parent of
+    /// the other name, and `..` is the same move. Inside the vault and at the
+    /// root nothing changes.
+    #[tokio::test]
+    async fn up_from_the_anchor_goes_to_the_parent_the_display_names() {
+        async fn up(p: &mut CryptOverlayProvider, step: &str) -> Result<(), ProviderError> {
+            if step == ".." {
+                p.cd("..").await
+            } else {
+                p.cd_up().await
+            }
+        }
+        for (label, keys) in both_kinds() {
+            for step in ["cd_up", ".."] {
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut provider =
+                    CryptOverlayProvider::new(Box::new(mem), keys.clone(), "/home/u/docs");
+                provider.cd("/home/u/docs").await.unwrap();
+                provider.mkdir("/home/u/docs/sub").await.unwrap();
+                provider.cd("/home/u/docs/sub").await.unwrap();
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(
+                    provider.pwd().await.unwrap(),
+                    "/home/u/docs",
+                    "{label} {step}"
+                );
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(provider.pwd().await.unwrap(), "/home/u", "{label} {step}");
+                up(&mut provider, step).await.unwrap();
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(provider.pwd().await.unwrap(), "/", "{label} {step}");
+            }
+        }
+    }
+
+    async fn assert_the_alias_is_read_as_the_anchor(
+        label: &str,
+        keys: OverlayKeys,
+        pwd_failures: u32,
+    ) {
+        let mut mem = MemProvider::new();
+        mem.seed_raw_dir("/home/u/docs");
+        mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+        mem.pwd_failures = pwd_failures;
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+        provider.cd("/home/u/docs").await.unwrap();
+        for _ in 1..pwd_failures {
+            assert!(provider.pwd().await.is_err(), "{label}");
+            provider.cd("/home/u/docs").await.unwrap();
+        }
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs", "{label}");
+        assert!(provider.cwd_in_encrypted_view().await.unwrap(), "{label}");
+
+        let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+        tokio::fs::create_dir_all(&dir).await.unwrap();
+        let local = dir.join("secret.txt");
+        tokio::fs::write(&local, b"never in clear").await.unwrap();
+        provider
+            .upload(local.to_str().unwrap(), "/srv/docs/secret.txt", None)
+            .await
+            .unwrap();
+        provider
+            .upload(local.to_str().unwrap(), "/srv/other/plain.txt", None)
+            .await
+            .unwrap();
+        let _ = tokio::fs::remove_dir_all(&dir).await;
+
+        let mem = provider
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let files = mem.files.lock().unwrap();
+        let mut keys: Vec<&String> = files.keys().collect();
+        keys.sort();
+        assert_eq!(keys.len(), 2, "{label}: {keys:?}");
+        assert_eq!(keys[1], "/srv/other/plain.txt", "{label}");
+        assert_eq!(files["/srv/other/plain.txt"], b"never in clear", "{label}");
+        assert!(keys[0].starts_with("/home/u/docs/"), "{label}: {keys:?}");
+        assert!(!keys[0].contains("secret"), "{label}: {keys:?}");
+        assert_ne!(files[keys[0]].as_slice(), b"never in clear", "{label}");
+    }
+
     /// The rclone import writes `~/docs` for an SFTP crypt remote that opens
     /// under the login folder (`nas:docs`). The overlay anchors where the
     /// session resolves it, never at `/~/docs`, and the session stays where it
@@ -6266,6 +8078,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn a_login_folder_scope_anchors_under_the_login_folder() {
         let mut mem = MemProvider::new();
+        mem.kind = ProviderType::Sftp;
         mem.cd("/srv").await.unwrap();
         for (scope, expected) in [
             ("~/ docs", Some("/home/mem/ docs")),
@@ -6294,18 +8107,36 @@ pub(crate) mod tests {
         );
         // A server that opens `~` as a plain folder has no login folder.
         let mut literal = MemProvider::new();
+        literal.kind = ProviderType::Sftp;
         literal.cd("/srv").await.unwrap();
         literal.literal_tilde = true;
         assert!(resolve_home_scope(&mut literal, "~/docs").await.is_err());
         assert_eq!(literal.pwd().await.unwrap(), "/srv");
         // A session that cannot go back says so instead of staying at home.
         let mut stuck = MemProvider::new();
+        stuck.kind = ProviderType::Sftp;
         stuck.cd("/srv").await.unwrap();
         stuck.refuse_cd = Some("/srv");
         let err = resolve_home_scope(&mut stuck, "~/docs").await.unwrap_err();
         assert!(err.contains("could not return to /srv"), "{err}");
 
-        let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
+        // A recorded login folder may itself end in `~`: `/srv/~` is a real
+        // directory an FTP `PWD` can report. Only the `cd ~` probe treats a
+        // trailing `~` as "no login folder".
+        let mut tilde_home = MemProvider::new();
+        tilde_home.kind = ProviderType::Ftp;
+        tilde_home.login_folder = Some("/srv/~".to_string());
+        assert_eq!(
+            resolve_home_scope(&mut tilde_home, "~/docs")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("/srv/~/docs")
+        );
+
+        let mut inner_mem = MemProvider::new();
+        inner_mem.kind = ProviderType::Sftp;
+        let inner: Box<dyn StorageProvider> = Box::new(inner_mem);
         let binding = OverlayUnlockParams {
             kind: "rclone-crypt".to_string(),
             remote_scope: "~/docs".to_string(),
@@ -6330,7 +8161,9 @@ pub(crate) mod tests {
             .unwrap();
         assert_eq!(overlay.scope, "/home/mem/docs");
 
-        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(MemProvider::new()));
+        let mut slot_mem = MemProvider::new();
+        slot_mem.kind = ProviderType::Sftp;
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(slot_mem));
         apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, false, false)
             .await
             .unwrap();
@@ -6431,7 +8264,13 @@ pub(crate) mod tests {
             .await
             .is_err());
         }
-        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(on(ProviderType::Ftp)));
+        // FTP reads a relative scope under its login folder too: with the
+        // post-login `PWD` recorded it anchors there; without it the session
+        // fails closed rather than sending `CWD ~`.
+        let mut ftp_mem = MemProvider::new();
+        ftp_mem.kind = ProviderType::Ftp;
+        ftp_mem.login_folder = Some("/home/u".to_string());
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(ftp_mem));
         apply_overlay_in_place(
             &mut slot,
             &binding("docs"),
@@ -6449,7 +8288,19 @@ pub(crate) mod tests {
             .as_any_mut()
             .downcast_mut::<CryptOverlayProvider>()
             .unwrap();
-        assert_eq!(overlay.scope, "/docs");
+        assert_eq!(overlay.scope, "/home/u/docs");
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(on(ProviderType::Ftp)));
+        assert!(apply_overlay_in_place(
+            &mut slot,
+            &binding("docs"),
+            "pw",
+            "salt",
+            None,
+            false,
+            false,
+        )
+        .await
+        .is_err());
     }
 
     /// One fallback for every reader: the binding's folder, else the starting
@@ -6558,6 +8409,9 @@ pub(crate) mod tests {
             salt_form: None,
         };
         let mut mem = MemProvider::new();
+        // A protocol without a login folder: the literal-space scope stays
+        // relative to the root, as the vault was bootstrapped.
+        mem.kind = ProviderType::WebDav;
         unlock_overlay_keys_encrypting(
             &mut mem,
             &binding,
@@ -7923,6 +9777,7 @@ pub(crate) mod tests {
             "/home/mem/docs"
         );
         let mut at_root = MemProvider::new();
+        at_root.kind = ProviderType::Sftp;
         assert_eq!(
             place_start_folder(&mut at_root, "docs").await.unwrap(),
             "/docs"
@@ -7944,11 +9799,12 @@ pub(crate) mod tests {
         assert_eq!(at_root.pwd().await.unwrap(), "/");
     }
 
-    /// The import binds `nas:docs` at `~/docs`, which the session resolves and
-    /// AeroCloud cannot name: refused, never synced in plaintext beside it. An
-    /// absolute folder, a literal `~docs` and an unbound profile sync.
-    #[test]
-    fn aerocloud_refuses_an_overlay_under_the_login_folder() {
+    /// The rclone import binds `nas:docs` at `~/docs`: AeroCloud anchors it
+    /// where the session places it, like the window, instead of refusing it.
+    /// The binding keeps the `~` form; `binding_with_resolved_scope` resolves
+    /// it against the provider's login folder.
+    #[tokio::test]
+    async fn an_overlay_under_the_login_folder_anchors_on_aerocloud_too() {
         let bound_on = |protocol: &str, scope: &str, start: &str| {
             aerocloud_overlay_profile(&serde_json::json!({
                 "protocol": protocol,
@@ -7956,30 +9812,133 @@ pub(crate) mod tests {
                 "aeroCryptOverlay": { "enabled": true, "kind": "rclone-crypt", "remoteScope": scope }
             }))
         };
-        let bound = |scope: &str, start: &str| bound_on("sftp", scope, start);
-        for (scope, start) in [("~/docs", "~/docs"), ("", "~/docs"), ("~", "/")] {
-            let err = refuse_login_relative_aerocloud_scope(&bound(scope, start)).unwrap_err();
-            assert!(
-                err.contains("Overlays Path"),
-                "{scope:?} over {start:?}: {err}"
+        // The scope reaches the binding unresolved; the session places it.
+        for (scope, start) in [("~/docs", "docs"), ("", "docs")] {
+            let profile = bound_on("ftp", scope, start);
+            let binding = overlay_binding_from_profile(&profile).unwrap();
+            let mut mem = MemProvider::new();
+            mem.login_folder = Some("/home/u".to_string());
+            // A `cd("~")` would land on a literal folder: only the recorded
+            // login folder may answer.
+            mem.literal_tilde = true;
+            let resolved = binding_with_resolved_scope(&mut mem, &binding)
+                .await
+                .unwrap();
+            assert_eq!(
+                resolved.remote_scope, "/home/u/docs",
+                "{scope:?} over {start:?}"
             );
         }
-        // A relative folder is under the login folder on SFTP and SCP, where
-        // the session opens it: from the root it was `/docs`, beside it.
-        for protocol in ["sftp", "scp"] {
-            for (scope, start) in [("", "docs"), ("docs/sub", "docs")] {
-                let err = refuse_login_relative_aerocloud_scope(&bound_on(protocol, scope, start))
-                    .unwrap_err();
-                assert!(err.contains("is ~/docs"), "{protocol} {scope:?}: {err}");
-            }
-        }
-        // Elsewhere a relative folder keeps its meaning.
-        refuse_login_relative_aerocloud_scope(&bound_on("ftp", "", "docs")).unwrap();
-        for (scope, start) in [("/home/u/docs", "~/docs"), ("/~docs", "/"), ("", "/data")] {
-            refuse_login_relative_aerocloud_scope(&bound(scope, start)).unwrap();
-        }
-        refuse_login_relative_aerocloud_scope(&serde_json::json!({ "initialPath": "~/docs" }))
+        // A relative scope on FTP is under the login folder, as on SFTP.
+        let mut binding =
+            overlay_binding_from_profile(&bound_on("ftp", "docs/sub", "docs")).unwrap();
+        binding.remote_scope = "docs/sub".to_string();
+        let mut mem = MemProvider::new();
+        mem.login_folder = Some("/home/u".to_string());
+        mem.literal_tilde = true;
+        let resolved = binding_with_resolved_scope(&mut mem, &binding)
+            .await
             .unwrap();
+        assert_eq!(resolved.remote_scope, "/home/u/docs/sub");
+        // Without a recorded login folder an SSH session still resolves
+        // through `cd("~")`; FTP without its post-login `PWD` fails closed.
+        let mut mem = MemProvider::new();
+        mem.kind = ProviderType::Sftp;
+        let resolved = binding_with_resolved_scope(&mut mem, &binding)
+            .await
+            .unwrap();
+        assert_eq!(resolved.remote_scope, "/home/mem/docs/sub");
+        let mut ftp = MemProvider::new();
+        ftp.kind = ProviderType::Ftp;
+        let err = match binding_with_resolved_scope(&mut ftp, &binding).await {
+            Ok(_) => panic!("an FTP session without its login PWD must fail closed"),
+            Err(err) => err,
+        };
+        assert!(err.contains("did not report its login folder"), "{err}");
+    }
+
+    /// The row-202 defect end to end: an AeroCloud overlay bound to `~/docs`
+    /// on an FTP profile anchors under the recorded login folder, and a sync
+    /// upload lands encrypted below that absolute anchor, never in plaintext
+    /// and never relative to the root.
+    #[tokio::test]
+    async fn an_aerocloud_overlay_on_ftp_encrypts_uploads_below_the_login_anchor() {
+        let binding = OverlayUnlockParams {
+            kind: "rclone-crypt".to_string(),
+            remote_scope: "~/docs".to_string(),
+            filename_encryption: "standard".to_string(),
+            directory_name_encryption: true,
+            off_suffix: None,
+            profile_id: None,
+            local_config_json: None,
+            local_config_salt: None,
+            with_header: false,
+            use_default_salt: false,
+            password_form: None,
+            salt_form: None,
+        };
+        let mut ftp = MemProvider::new();
+        ftp.kind = ProviderType::Ftp;
+        ftp.login_folder = Some("/home/u".to_string());
+        ftp.dirs
+            .lock()
+            .unwrap()
+            .extend(["/home/u".to_string(), "/home/u/docs".to_string()]);
+        let mut slot: Option<Box<dyn StorageProvider>> = Some(Box::new(ftp));
+        apply_overlay_in_place(&mut slot, &binding, "pw", "salt", None, false, false)
+            .await
+            .expect("a ~/docs binding on FTP with a login PWD must anchor, not refuse");
+        {
+            let overlay = slot
+                .as_mut()
+                .unwrap()
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap();
+            assert_eq!(overlay.scope, "/home/u/docs");
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("note.txt");
+        let payload = b"sync payload";
+        std::fs::write(&local, payload).unwrap();
+        slot.as_mut()
+            .unwrap()
+            .upload(local.to_str().unwrap(), "/home/u/docs/note.txt", None)
+            .await
+            .unwrap();
+
+        let overlay = slot
+            .as_mut()
+            .unwrap()
+            .as_any_mut()
+            .downcast_mut::<CryptOverlayProvider>()
+            .unwrap();
+        let inner = overlay
+            .inner
+            .as_any_mut()
+            .downcast_mut::<MemProvider>()
+            .unwrap();
+        let raw = inner.raw_paths();
+        assert_eq!(raw.len(), 1, "{raw:?}");
+        assert!(
+            raw[0].starts_with("/home/u/docs/"),
+            "the wire path must sit below the placed anchor: {}",
+            raw[0]
+        );
+        assert!(
+            !raw[0].contains("note.txt"),
+            "the file name must be encrypted on the wire: {}",
+            raw[0]
+        );
+        assert_ne!(
+            inner.raw_bytes(&raw[0]).as_deref(),
+            Some(payload.as_slice()),
+            "the content must be encrypted on the wire"
+        );
+        // And the plaintext view reads it back under the anchor.
+        let listed = slot.as_mut().unwrap().list("/home/u/docs").await.unwrap();
+        assert!(listed.iter().any(|e| e.name == "note.txt"), "{listed:?}");
     }
 
     #[test]

@@ -15,8 +15,11 @@
 
 #[path = "support/scoped_env.rs"]
 mod scoped_env;
+#[path = "support/script_stub.rs"]
+mod script_stub;
 #[path = "support/ssh_exec_server.rs"]
 mod ssh_exec_server;
+use script_stub::fake_tool;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -1546,12 +1549,7 @@ async fn a_resume_upload_never_needs_a_remote_prefix_read() {
     let bin = fx.root.join("bin");
     std::fs::create_dir(&bin).unwrap();
     for tool in ["head", "dd", "cat"] {
-        std::fs::write(bin.join(tool), "#!/bin/sh\n: > prefix-read\nexit 1\n").unwrap();
-        std::fs::set_permissions(
-            bin.join(tool),
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
+        fake_tool(bin.join(tool), "#!/bin/sh\n: > prefix-read\nexit 1\n");
     }
     let mut options = fx.options(Sftp::Serve);
     options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
@@ -1586,15 +1584,10 @@ async fn a_resume_upload_never_appends_a_tail_to_a_replaced_path() {
         let fx = Fixture::new(&format!("scp-no-unbound-append-{fallback}"));
         let bin = fx.root.join("bin");
         std::fs::create_dir(&bin).unwrap();
-        std::fs::write(
+        fake_tool(
             bin.join("head"),
             "#!/bin/sh\n/usr/bin/head \"$@\"\nstatus=$?\nif [ \"$status\" = 0 ] && [ \"$2\" = 80000 ] && [ ! -e raced ]; then\n mv up verified-original\n mv foreign-candidate up\n : > raced\nfi\nexit \"$status\"\n",
-        ).unwrap();
-        std::fs::set_permissions(
-            bin.join("head"),
-            std::os::unix::fs::PermissionsExt::from_mode(0o755),
-        )
-        .unwrap();
+        );
         let mut options = fx.options(if fallback { Sftp::Refuse } else { Sftp::Serve });
         options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
         let (port, _) = start(options).await;
@@ -1667,16 +1660,10 @@ async fn an_optional_readlink_failure_keeps_the_symlink_edit_refusal() {
     let fx = Fixture::new("scp-readlink-refused");
     let bin = fx.root.join("bin");
     std::fs::create_dir(&bin).unwrap();
-    std::fs::write(
+    fake_tool(
         bin.join("readlink"),
         "#!/bin/sh\necho 'readlink refused' >&2\nexit 1\n",
-    )
-    .unwrap();
-    std::fs::set_permissions(
-        bin.join("readlink"),
-        std::os::unix::fs::PermissionsExt::from_mode(0o755),
-    )
-    .unwrap();
+    );
     let mut options = fx.options(Sftp::Serve);
     options.path = format!("{}:{}", s(&bin), std::env::var("PATH").unwrap());
     let (port, _) = start(options).await;

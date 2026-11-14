@@ -1148,9 +1148,17 @@ pub async fn run_pair_incremental_cycle(
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let opened = super::open_aerocloud_connection(&config, store)
-        .await
-        .map_err(PairCycleError::before_connecting)?;
+    let mut config = config;
+    let opened = match super::open_aerocloud_connection(&mut config, store, true).await {
+        Ok(opened) => opened,
+        Err(message) => {
+            return Err(PairCycleError::before_connecting(
+                message,
+                crate::cloud_scan_schedule::pair_key(&config),
+            ));
+        }
+    };
+    let placed_key = crate::cloud_scan_schedule::pair_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
@@ -1169,6 +1177,7 @@ pub async fn run_pair_incremental_cycle(
             ran_full_scan: false,
             traits: Some(traits),
             failed_paths,
+            placed_key: placed_key.clone(),
         }),
         Ok(IncrementalRun::TooLarge(partial)) => svc
             .perform_full_sync_with_provider(&mut *provider)
@@ -1181,15 +1190,26 @@ pub async fn run_pair_incremental_cycle(
                     ran_full_scan: true,
                     traits: Some(traits),
                     failed_paths: Vec::new(),
+                    placed_key: placed_key.clone(),
                 }
             }),
         Err(e) => Err(e),
     };
     let _ = provider.disconnect().await;
     report.map_err(|message| PairCycleError {
+        needs_full_scan: plan_discarded_for_rescan(&message),
         message,
         traits: Some(traits),
+        placed_key,
     })
+}
+
+/// True when an incremental pass refused a plan the pair outgrew (the config
+/// identity or the local root changed after the watcher prepared it): both
+/// refusals tell the caller to discard the plan and run a full scan, so the
+/// worker schedules one instead of settling the changes away.
+fn plan_discarded_for_rescan(message: &str) -> bool {
+    message.contains("discard plan")
 }
 
 #[cfg(test)]

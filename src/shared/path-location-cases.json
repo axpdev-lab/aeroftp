@@ -1,0 +1,237 @@
+{
+  "_comment": "Whether a remote path a user wrote or saved may be used as a location (joined to a root, stripped of a prefix, compared with a folder boundary). Read by the backend (src-tauri/src/util/path_location.rs, location_problem) and by the frontend (src/utils/syncNavigationPath.test.ts, locationProblem), so both refuse the same paths for the same reason. `/` and `\\` both end a step; a `.` step, a `..` step, an empty step (a doubled slash, except before a leading separator, the second one of a leading `\\\\` of a Windows UNC path, and after a single trailing separator) and a NUL are refused, never collapsed. A null problem means the path may be used. `savedProblem` is the reason a location ALREADY saved is refused (saved_location_problem / savedLocationProblem): only a `..` step and a NUL, which change where it points; its `.` and empty steps are left as saved. `secret` is a part of the path (a URL password, a token-like segment) that the backend's refusal message must not repeat: the message names the path as the debug redaction writes it.",
+  "cases": [
+    {
+      "path": "",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/docs/",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "docs/sub",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "~",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "~/",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "~/docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/home/u/docs/a.txt",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "docs..x",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "...",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/a/.hidden",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "C:\\Users\\u\\docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "/remote.php/dav/files/{username}/",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "..",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "../escape",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "docs/../shared",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "~/../vault",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/docs/../private/a.txt",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/docs/..",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "docs\\..\\x",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": ".",
+      "problem": "current",
+      "savedProblem": null
+    },
+    {
+      "path": "./docs",
+      "problem": "current",
+      "savedProblem": null
+    },
+    {
+      "path": "/docs/./a.txt",
+      "problem": "current",
+      "savedProblem": null
+    },
+    {
+      "path": "~/./docs",
+      "problem": "current",
+      "savedProblem": null
+    },
+    {
+      "path": "docs\\.\\x",
+      "problem": "current",
+      "savedProblem": null
+    },
+    {
+      "path": "//",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "//docs",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "~//docs",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "/docs//a",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "/docs//",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "docs//sub",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "docs\\\\sub",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "/docs/\\a",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "/docs/a\u0000b",
+      "problem": "nul",
+      "savedProblem": "nul"
+    },
+    {
+      "path": "\\\\nas\\share\\sync",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "\\\\\\nas",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "//nas/share",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "\\\\nas\\..\\x",
+      "problem": "parent",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/srv/./a/../b",
+      "problem": "current",
+      "savedProblem": "parent"
+    },
+    {
+      "path": "/backup//docs",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "/home/a\\b/docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "//docs//",
+      "problem": "empty",
+      "savedProblem": null
+    },
+    {
+      "path": "https://u:s3cr3t-Pa55@host/a/../b",
+      "problem": "empty",
+      "savedProblem": "parent",
+      "secret": "s3cr3t-Pa55"
+    },
+    {
+      "path": "/share/0123456789abcdef0123456789abcdef/../x",
+      "problem": "parent",
+      "savedProblem": "parent",
+      "secret": "0123456789abcdef0123456789abcdef"
+    }
+  ]
+}
