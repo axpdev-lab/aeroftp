@@ -99,6 +99,11 @@ pub fn classify_fallback(err: &AerorsyncError, committed: bool) -> FallbackVerdi
         // any other method (`none` above all) could reach another account
         // or root.
         AerorsyncErrorKind::PinnedPasswordMismatch => FallbackVerdict::HardError,
+        // Security (X1): the server refused, on the delta login, the
+        // credential the session logged in with. The account, the key or
+        // the server's rules changed since; a classic write on the first
+        // connection would go on as if they had not.
+        AerorsyncErrorKind::PinnedLoginRefused => FallbackVerdict::HardError,
 
         // Protocol / internal consistency: hard errors. These indicate
         // a bug in the prototype (or a malformed remote): silently
@@ -153,6 +158,7 @@ mod tests {
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {
@@ -185,6 +191,14 @@ mod tests {
         assert_eq!(
             matrix_row(AerorsyncErrorKind::PinnedPasswordMismatch, false),
             FallbackVerdict::HardError,
+        );
+    }
+
+    #[test]
+    fn pre_commit_pinned_login_refused_is_hard_error_never_fallback() {
+        assert_eq!(
+            matrix_row(AerorsyncErrorKind::PinnedLoginRefused, false),
+            FallbackVerdict::HardError
         );
     }
 
@@ -250,6 +264,7 @@ mod tests {
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
         ];
         for kind in all {

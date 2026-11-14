@@ -2648,7 +2648,9 @@ const App: React.FC = () => {
     for (const warning of warnings) {
       if (typeof warning !== 'string' || !warning) continue;
       notify.warning(t('common.warning'), warning);
-      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'pending');
+      // A finished, informational line: 'pending' would count as a running
+      // operation and leave the activity badge active after the connect.
+      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'success');
     }
   }, [humanLog, notify, t]);
 

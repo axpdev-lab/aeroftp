@@ -242,11 +242,62 @@ const decodeStringToken = (text: string, from: number, end: number): [decoded: s
     return [units.join(''), raw];
 };
 
+const BODY_ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' };
+
+/** Text that is not JSON as a whole, read as ONE string body (X2): the
+ *  escapes JSON defines (`\/`, `\\`, `\"`, the letters, `\uXXXX` with
+ *  four hex digits) are decoded, each decoded code unit mapped to the raw
+ *  escape or character it comes from (one more entry: the end); any other
+ *  backslash is literal. One pass, linear. `null` when nothing decodes,
+ *  which ends the recursion. */
+const decodeBody = (text: string): [decoded: string, raw: number[]] | null => {
+    const units: string[] = [];
+    const raw: number[] = [];
+    let changed = false;
+    let k = 0;
+    while (k < text.length) {
+        raw.push(k);
+        if (text.charCodeAt(k) === 92 && k + 1 < text.length) {
+            const escape = text[k + 1];
+            const simple = BODY_ESCAPES[escape];
+            if (simple !== undefined) {
+                units.push(simple);
+                k += 2;
+                changed = true;
+                continue;
+            }
+            const hex = text.slice(k + 2, k + 6);
+            if (escape === 'u' && /^[0-9a-fA-F]{4}$/.test(hex)) {
+                units.push(String.fromCharCode(parseInt(hex, 16)));
+                k += 6;
+                changed = true;
+                continue;
+            }
+        }
+        units.push(text[k]);
+        k += 1;
+    }
+    raw.push(text.length);
+    return changed ? [units.join(''), raw] : null;
+};
+
 /** The userinfo spans `[start, end)` of `text`, in order (see
  *  `redactUrlUserinfo`). */
 const userinfoSpans = (text: string): Array<[number, number]> => {
     const json = isJsonDocument(text);
     const spans: Array<[number, number]> = [];
+    if (!json) {
+        // X2: no whole-document JSON gates a mask. Text that is not JSON as
+        // a whole (a prefix before a JSON dump, a suffix after it, a trailing
+        // comma, single quotes) is also scanned decoded, as one string body,
+        // by these same rules, and the spans are mapped back; the raw scan
+        // below still runs, so decoding never masks less.
+        const body = decodeBody(text);
+        if (body) {
+            const [decoded, raw] = body;
+            for (const [a, b] of userinfoSpans(decoded)) spans.push([raw[a], raw[b]]);
+        }
+    }
     let i = 0;
     // The string token the scan is in (valid JSON only): its closing quote.
     let tokenEnd = -1;
@@ -304,7 +355,9 @@ const userinfoSpans = (text: string): Array<[number, number]> => {
  * (`host:443`) stays.
  *
  * Where the authority ends (D1). Structure is never inferred from
- * characters; the real parser decides once whether the WHOLE text is JSON:
+ * characters; the real parser decides once whether the WHOLE text is JSON
+ * (which decides only where an authority ends, never whether escapes are
+ * decoded):
  * - valid JSON (`JSON.parse`): a plain string tokenizer, exact on valid
  *   JSON, gives each URL the string token it sits in. The authority ends at
  *   `/`, `?`, `#`, or the end of that token; inside the token no quote ends
@@ -318,8 +371,15 @@ const userinfoSpans = (text: string): Array<[number, number]> => {
  * `\"`...) is also scanned DECODED, by these same rules, so a document
  * serialized inside it is decoded in turn, once per level (S1). The
  * userinfo found there is mapped back onto the raw characters and escapes
- * it was written with. The token is scanned raw as well, and the union of
- * both is masked, so decoding never masks less than the raw text did.
+ * it was written with. Text that is not JSON as a whole is scanned decoded
+ * too, all of it read as one string body (X2): `log: {"url":"https:\/\/
+ * bob:pw@host"}` is masked although no `://` is written in it. Malformed
+ * escapes are literal. Each level is one linear pass and the recursion
+ * stops at the first level that decodes nothing; a level is shorter than
+ * the one before by one character per escape, so a line full of
+ * backslashes, halved at every level, costs twice its length in all. The
+ * raw text is scanned as well, and the union of both is masked, so
+ * decoding never masks less than the raw text did.
  * Accepted consequence: a URL with no path followed by a later `@` before
  * the next `/`, `?`, `#` (in its JSON token, or anywhere in text that is
  * not JSON as a whole) over-masks into what follows, the words and fields
