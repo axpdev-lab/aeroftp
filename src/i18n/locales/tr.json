@@ -1612,7 +1612,8 @@
             "secondsAgo": "{count}sn önce",
             "conflictsCount": "{count} çakışma müdahale gerektiriyor",
             "updateOnlyHint": "Tek Yönlü Güncelleme daha yeni hedef dosyaları korur. Eklemeli yedekleme kapalıyken yalnızca hedefte bulunan, değişmemiş ve doğrulanmış bir AeroCloud aktarım makbuzu olan dosyalar silinir. Diğer dosyalar AeroSync içinde incelenmek üzere kalır. Çakışma ilkesi yok sayılır; bilinmeyen tarihler çözümsüz kalır.",
-            "untrackedDestinationFiles": "{count} hedef dosya inceleme için korundu: aktarım geçmişleri doğrulanmamış veya son AeroCloud aktarımından sonra değişmişler. Silmeye karar vermeden önce bunları AeroSync içinde inceleyin."
+            "untrackedDestinationFiles": "{count} hedef dosya inceleme için korundu: aktarım geçmişleri doğrulanmamış veya son AeroCloud aktarımından sonra değişmişler. Silmeye karar vermeden önce bunları AeroSync içinde inceleyin.",
+            "remoteFolderParentStep": "{folder} uzak klasörü \"..\" içeriyor ve bu, AeroCloud'un çalıştığı klasörün dışına çıkar. \"..\" içermeyen bir alt klasör seçin veya bunu sunucu profilinin başlangıç klasöründen kaldırın."
         },
         "statusBar": {
             "connected": "Bağlı",

@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { aeroCloudBase, aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
+import { aeroCloudBase, aeroCloudFolderLeavesBase, aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
 import { profileMatchesQuery } from './common/ProfileRail';
 import { profileOverlayScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import type { ServerProfile } from '../types';
@@ -129,6 +129,43 @@ describe('aeroCloudRemoteFolder', () => {
         const disabled = { enabled: false, kind: 'aerocrypt', remoteScope: '/enc' } as ServerProfile['aeroCryptOverlay'];
         expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: disabled }), 'cloud'))
             .toBe('/data/cloud/');
+    });
+});
+
+describe('aeroCloudFolderLeavesBase', () => {
+    const overlay = (remoteScope?: string) =>
+        ({ enabled: true, kind: 'aerocrypt', remoteScope }) as ServerProfile['aeroCryptOverlay'];
+
+    it('refuses a starting folder that steps out of the login folder, as written', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps', undefined]) {
+            for (const initialPath of ['docs/../shared', '~/docs/../shared', '..', '~/..', 'a\\..\\b']) {
+                const p = profile({ protocol, initialPath } as Partial<ServerProfile>);
+                expect(aeroCloudFolderLeavesBase(p, 'cloud'), `${protocol} ${initialPath}`).toBe(true);
+                // The base keeps the `..`: nothing reads it as another folder.
+                expect(aeroCloudBase(p)).toContain('..');
+            }
+            expect(aeroCloudFolderLeavesBase(profile({ protocol, initialPath: 'docs' } as Partial<ServerProfile>), 'cloud')).toBe(false);
+            expect(aeroCloudFolderLeavesBase(profile({ protocol, initialPath: 'docs..x' } as Partial<ServerProfile>), 'cloud')).toBe(false);
+        }
+    });
+
+    it('reads the folder the base comes from: the overlay folder when it names one', () => {
+        // A `..` in the overlay folder is refused; one in a starting folder the
+        // overlay folder replaces is not the base.
+        expect(aeroCloudFolderLeavesBase(profile({ protocol: 'sftp', initialPath: 'docs', aeroCryptOverlay: overlay('docs/../x') }), 'cloud')).toBe(true);
+        expect(aeroCloudFolderLeavesBase(profile({ protocol: 'sftp', initialPath: 'a/../b', aeroCryptOverlay: overlay('enc') }), 'cloud')).toBe(false);
+        expect(aeroCloudFolderLeavesBase(profile({ protocol: 'sftp', initialPath: 'a/../b', aeroCryptOverlay: overlay() }), 'cloud')).toBe(true);
+    });
+
+    it('leaves an absolute base on its own rules, and refuses a sub-folder with `..` on every protocol', () => {
+        expect(aeroCloudFolderLeavesBase(profile({ protocol: 'sftp', initialPath: '/srv/../data' }), 'cloud')).toBe(false);
+        expect(aeroCloudFolderLeavesBase(profile({ protocol: 'webdav', initialPath: 'a/../b' }), 'cloud')).toBe(false);
+        for (const protocol of ['sftp', 'webdav', 's3']) {
+            for (const sub of ['..', '../x', 'a/../../b', ' a\\..\\b ']) {
+                expect(aeroCloudFolderLeavesBase(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(true);
+            }
+            expect(aeroCloudFolderLeavesBase(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), 'a..b')).toBe(false);
+        }
     });
 });
 

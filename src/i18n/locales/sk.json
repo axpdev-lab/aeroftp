@@ -1612,7 +1612,8 @@
             "secondsAgo": "pred {count}s",
             "conflictsCount": "Konflikty vyžadujúce pozornosť: {count}",
             "updateOnlyHint": "Jednosmerná aktualizácia zachováva novšie cieľové súbory. Keď je prídavné zálohovanie vypnuté, odstránia sa iba nezmenené súbory, ktoré existujú výlučne v cieli a majú overený doklad o prenose cez AeroCloud. Ostatné súbory zostávajú na kontrolu v AeroSync. Zásady konfliktov sa ignorujú; neznáme dátumy zostávajú nevyriešené.",
-            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync."
+            "untrackedDestinationFiles": "{count} cieľových súborov bolo zachovaných na kontrolu: ich história prenosov nie je overená alebo sa zmenili od posledného prenosu cez AeroCloud. Pred rozhodnutím o odstránení ich skontrolujte v AeroSync.",
+            "remoteFolderParentStep": "Vzdialený priečinok {folder} obsahuje \"..\", čo by opustilo priečinok, v ktorom AeroCloud pracuje. Vyberte podpriečinok bez \"..\" alebo to odstráňte z východiskového priečinka profilu servera."
         },
         "statusBar": {
             "connected": "Pripojený",

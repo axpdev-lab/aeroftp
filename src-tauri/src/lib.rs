@@ -175,6 +175,63 @@ pub mod peer_commands;
 pub mod peer_identity;
 pub mod portable;
 
+/// Every command that saves a remote folder the user wrote refuses a `..`
+/// under the login folder before it writes: the settings, the pair list and
+/// a new pair. The files stay as they were.
+#[cfg(test)]
+mod parent_step_save_tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_save_commands_refuse_a_parent_step_under_the_login_folder() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let config = cloud_config::CloudConfig {
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                remote_folder: "~/docs/../shared".to_string(),
+                ..Default::default()
+            };
+            let err = save_cloud_config_cmd_blocking(config.clone()).unwrap_err();
+            assert!(err.contains("'~/docs/../shared'"), "{err}");
+            let pair = cloud_pairs::CloudPathPair::from_legacy(&config);
+            assert!(add_cloud_pair_blocking(pair.clone()).is_err());
+            assert!(
+                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+                    pairs: vec![pair],
+                    ..Default::default()
+                })
+                .is_err()
+            );
+            assert!(!cloud_pairs::get_pairs_path().exists());
+            assert_eq!(
+                cloud_config::load_cloud_config_strict()
+                    .unwrap()
+                    .remote_folder,
+                cloud_config::CloudConfig::default().remote_folder
+            );
+            // The same folder without the step is saved.
+            let fine = cloud_config::CloudConfig {
+                remote_folder: "~/shared".to_string(),
+                ..config
+            };
+            save_cloud_config_cmd_blocking(fine.clone()).unwrap();
+            add_cloud_pair_blocking(cloud_pairs::CloudPathPair::from_legacy(&fine)).unwrap();
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+}
+
 #[cfg(test)]
 mod only_main_window_tests {
     #[test]
@@ -16210,6 +16267,7 @@ async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<()
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
 fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
+    cloud_config::refuse_a_parent_step_under_login(&config.remote_folder, &config.protocol_type)?;
     cloud_config::save_cloud_config(&config)
 }
 
@@ -16240,6 +16298,9 @@ async fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> R
 fn save_cloud_pairs_config_cmd_blocking(
     config: cloud_pairs::CloudPairsConfig,
 ) -> Result<(), String> {
+    for pair in &config.pairs {
+        cloud_config::refuse_a_parent_step_under_login(&pair.remote_path, &pair.protocol_type)?;
+    }
     cloud_pairs::save_cloud_pairs_config(&config)
 }
 
@@ -16256,6 +16317,7 @@ async fn add_cloud_pair(
 fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    cloud_config::refuse_a_parent_step_under_login(&pair.remote_path, &pair.protocol_type)?;
     cloud_pairs::with_cloud_pairs_mut(|config| {
         if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
             return Err("A pair with the same local and remote path already exists".to_string());

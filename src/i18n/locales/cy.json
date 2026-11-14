@@ -1612,7 +1612,8 @@
             "secondsAgo": "{count}e yn ôl",
             "conflictsCount": "{count} gwrthdaro angen sylw",
             "updateOnlyHint": "Mae diweddaru unffordd yn cadw ffeiliau mwy newydd yn y gyrchfan. Pan fydd copïo wrth gefn ychwanegol wedi’i ddiffodd, dim ond ffeiliau sydd yn y gyrchfan yn unig, sydd heb newid ac sydd â derbynneb trosglwyddo AeroCloud wedi’i dilysu sy’n cael eu dileu. Mae ffeiliau eraill yn aros i’w hadolygu yn AeroSync. Anwybyddir y polisi gwrthdaro; mae dyddiadau anhysbys yn aros heb eu datrys.",
-            "untrackedDestinationFiles": "Cadwyd {count} o ffeiliau yn y gyrchfan i’w hadolygu: nid yw eu hanes trosglwyddo wedi’i ddilysu neu maent wedi newid ers y trosglwyddiad AeroCloud diwethaf. Adolygwch nhw yn AeroSync cyn penderfynu a ddylid eu dileu."
+            "untrackedDestinationFiles": "Cadwyd {count} o ffeiliau yn y gyrchfan i’w hadolygu: nid yw eu hanes trosglwyddo wedi’i ddilysu neu maent wedi newid ers y trosglwyddiad AeroCloud diwethaf. Adolygwch nhw yn AeroSync cyn penderfynu a ddylid eu dileu.",
+            "remoteFolderParentStep": "Mae'r ffolder anghysbell {folder} yn cynnwys \"..\", a fyddai'n gadael y ffolder y mae AeroCloud yn gweithio ynddi. Dewiswch is-ffolder heb \"..\", neu tynnwch ef o ffolder gychwynnol proffil y gweinydd."
         },
         "statusBar": {
             "connected": "Wedi cysylltu",

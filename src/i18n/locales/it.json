@@ -2111,7 +2111,8 @@
             "secondsAgo": "{count}s fa",
             "conflictsCount": "Conflitti da risolvere: {count}",
             "updateOnlyHint": "L’aggiornamento unidirezionale conserva i file di destinazione più recenti. Con il backup additivo disattivato, vengono eliminati solo i file invariati presenti esclusivamente nella destinazione e con una ricevuta di trasferimento AeroCloud verificata. Gli altri file restano da esaminare in AeroSync. La politica dei conflitti viene ignorata; le date sconosciute restano irrisolte.",
-            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli."
+            "untrackedDestinationFiles": "{count} file di destinazione sono stati conservati per la revisione: la cronologia dei trasferimenti non è verificata oppure sono stati modificati dopo l’ultimo trasferimento AeroCloud. Esaminali in AeroSync prima di decidere se eliminarli.",
+            "remoteFolderParentStep": "La cartella remota {folder} contiene \"..\", che uscirebbe dalla cartella in cui lavora AeroCloud. Scegli una sottocartella senza \"..\", oppure toglilo dalla cartella iniziale del profilo server."
         },
         "statusBar": {
             "connected": "Connesso",

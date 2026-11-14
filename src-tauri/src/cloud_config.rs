@@ -432,6 +432,30 @@ const SERVER_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 /// Protocol types that require absolute remote paths
 const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 
+/// A remote folder under the login folder (`~/...`, or relative, on SFTP,
+/// SCP, FTP and FTPS) with a `..` segment would leave the login folder, and
+/// the placement refuses it at the first connect. Every surface that saves a
+/// folder the user wrote (the setup, the settings, the pairs, the CLI)
+/// refuses it there instead, as written: it is never collapsed into the
+/// folder it might have meant.
+pub fn refuse_a_parent_step_under_login(
+    remote_folder: &str,
+    protocol_type: &str,
+) -> Result<(), String> {
+    if crate::crypt_overlay_provider::login_relative_protocol(protocol_type)
+        && !remote_folder.starts_with('/')
+        && remote_folder
+            .split(['/', '\\'])
+            .any(|segment| segment == "..")
+    {
+        return Err(format!(
+            "The remote folder '{remote_folder}' contains '..', which would leave the login \
+             folder: choose a folder inside it"
+        ));
+    }
+    Ok(())
+}
+
 /// Validate cloud configuration
 pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     // Server-based protocols require a server_profile for credential lookup
@@ -484,6 +508,7 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     {
         return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
+    refuse_a_parent_step_under_login(&config.remote_folder, &config.protocol_type)?;
 
     Ok(())
 }
@@ -726,6 +751,41 @@ mod tests {
 
         // Should fail - relative path for FTP
         config.remote_folder = "cloud/".to_string();
+        assert!(validate_config(&config).is_err());
+    }
+
+    /// A `..` under the login folder is refused where a folder is saved, in
+    /// every spelling, and kept as written in the message; an absolute
+    /// folder, or one on a protocol that does not open under the login
+    /// folder, is not this rule's.
+    #[test]
+    fn a_parent_step_under_the_login_folder_is_refused() {
+        for protocol in ["sftp", "scp", "ftp", "ftps"] {
+            for folder in [
+                "~/..",
+                "~/docs/../shared",
+                "~/docs/..",
+                "docs/../x",
+                "~/a\\..\\b",
+            ] {
+                let err = refuse_a_parent_step_under_login(folder, protocol)
+                    .expect_err(&format!("{protocol} {folder}"));
+                assert!(err.contains(&format!("'{folder}'")), "{err}");
+            }
+            for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/../etc", "~"] {
+                assert!(
+                    refuse_a_parent_step_under_login(folder, protocol).is_ok(),
+                    "{protocol} {folder}"
+                );
+            }
+        }
+        assert!(refuse_a_parent_step_under_login("docs/../x", "webdav").is_ok());
+        let config = CloudConfig {
+            server_profile: "nas".to_string(),
+            protocol_type: "sftp".to_string(),
+            remote_folder: "~/docs/../shared/cloud/".to_string(),
+            ..CloudConfig::default()
+        };
         assert!(validate_config(&config).is_err());
     }
 

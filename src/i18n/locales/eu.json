@@ -1612,7 +1612,8 @@
             "secondsAgo": "{count}s duela",
             "conflictsCount": "Arreta behar duten gatazkak: {count}",
             "updateOnlyHint": "Noranzko bakarreko eguneratzeak helmugako fitxategi berriagoak mantentzen ditu. Babeskopia gehigarria desaktibatuta dagoenean, helmugan soilik dauden aldatu gabeko fitxategiak bakarrik ezabatzen dira, egiaztatutako AeroCloud transferentzia-agiria badute. Beste fitxategiak AeroSync-en berrikusteko geratzen dira. Gatazka-politika ez da kontuan hartzen; data ezezagunak ebatzi gabe geratzen dira.",
-            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik."
+            "untrackedDestinationFiles": "Helmugako {count} fitxategi berrikusteko mantendu dira: haien transferentzia-historia ez dago egiaztatuta edo azken AeroCloud transferentziaren ondoren aldatu dira. Berrikusi AeroSync-en, ezabatzea erabaki aurretik.",
+            "remoteFolderParentStep": "{folder} urruneko karpetak \"..\" dauka, eta horrek AeroCloud-ek lan egiten duen karpetatik kanpora aterako luke. Aukeratu \"..\" gabeko azpikarpeta bat, edo kendu zerbitzari-profilaren hasierako karpetatik."
         },
         "statusBar": {
             "connected": "Konektatuta",

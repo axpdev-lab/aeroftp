@@ -90,6 +90,33 @@ export function aeroCloudRemoteFolder(profile: ServerProfile, subfolder: string)
     return sub ? `${base}/${sub}/` : `${base}/`;
 }
 
+const hasParentStep = (path: string | null | undefined): boolean =>
+    (path || '').split(/[\\/]/).includes('..');
+
+/**
+ * Whether the remote folder the wizard would save steps out with `..`: a
+ * sub-folder never does, and on SFTP, SCP, FTP and FTPS neither does the
+ * base under the login folder, which the backend refuses to place. The base
+ * is checked as written, before any normalization: `~/docs/../shared` is
+ * refused, never read as `~/shared`.
+ */
+export function aeroCloudFolderLeavesBase(profile: ServerProfile, subfolder: string): boolean {
+    if (hasParentStep(subfolder.trim())) return true;
+    if (!loginRelativeProtocol(profile.protocol)) return false;
+    // The text `aeroCloudBase` reads: the overlay folder when it names one,
+    // else the starting folder.
+    const rawScope = getServerCryptOverlay(profile)
+        ? resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username) || ''
+        : '';
+    // An absolute folder names where it is on the server and follows the
+    // absolute-path rules; only one under the login folder is refused here,
+    // as the backend's `refuse_a_parent_step_under_login` refuses it.
+    const underLogin = (path: string | null | undefined) => !!path && !path.startsWith('/') && hasParentStep(path);
+    if (underLogin(rawScope)) return true;
+    const scope = rawScope ? normalizeOverlayAnchor(loginRelativeForm(rawScope, profile.protocol)) : '';
+    return !scope && underLogin(resolveUsernameTemplate(profile.initialPath, profile.username));
+}
+
 const STEPS = ['cloud.stepFolder', 'cloud.stepServer', 'cloud.stepSettings'] as const;
 
 interface CloudSetupWizardProps {
@@ -138,12 +165,13 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
         if (selected) setLocalFolder(selected as string);
     };
 
-    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile;
     const rootLabel = `${profile ? aeroCloudBase(profile) : ''}/`;
     const remoteLabel = `${rootLabel}${subfolder.trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
+    const leavesBase = !!profile && aeroCloudFolderLeavesBase(profile, subfolder);
+    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !leavesBase;
 
     const handleComplete = async () => {
-        if (!profile) return;
+        if (!profile || aeroCloudFolderLeavesBase(profile, subfolder)) return;
         setSaving(true);
         setError(null);
         try {
@@ -299,6 +327,11 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     className={`${INPUT_CLASS} rounded-l-none font-mono min-w-0`} />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>
+                            {leavesBase && (
+                                <p role="alert" className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400 mt-1">
+                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderParentStep', { folder: remoteLabel })}</span>
+                                </p>
+                            )}
                         </div>
                         {caveat && (
                             <p className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -367,7 +400,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} disabled={saving} className={PRIMARY_BUTTON_CLASS}>
+                        <button onClick={handleComplete} disabled={saving || leavesBase} className={PRIMARY_BUTTON_CLASS}>
                             {saving ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>

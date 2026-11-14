@@ -15987,6 +15987,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 return 5;
             }
 
+            if let Err(e) = cloud_config::refuse_a_parent_step_under_login(
+                &config.remote_folder,
+                &config.protocol_type,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
             match cloud_config::save_cloud_config(&config) {
                 Ok(()) => {
                     aerocloud_print_show(&config, format);
@@ -16139,6 +16146,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
             // until first resolution; the worker always corrects it before dispatch.
 
+            if let Err(e) = cloud_config::refuse_a_parent_step_under_login(
+                &new_pair.remote_path,
+                &new_pair.protocol_type,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
             pairs_cfg.pairs.push(new_pair);
             if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
                 print_error(format, &e, 11);
