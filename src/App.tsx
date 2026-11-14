@@ -18,6 +18,7 @@ import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
 import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
+import { isTargetChangedRefusal } from './utils/targetChanged';
 import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
@@ -6335,7 +6336,7 @@ const App: React.FC = () => {
       const landing = normLandingPath(opts.initialLandingPath);
       if (landing === '') {
         // Remote Path is the on-wire root.
-        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
         await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
@@ -6348,7 +6349,7 @@ const App: React.FC = () => {
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope, ownership);
     if (normCryptScope(appliedScope) === '') {
-      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
       assertOverlayActivationCurrent(ownership);
     }
   };
@@ -11524,7 +11525,7 @@ const App: React.FC = () => {
         try {
           await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
         } catch (error) {
-          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          if (isTargetChangedRefusal(error)) refuse();
           throw error;
         }
         humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
@@ -19033,7 +19034,7 @@ const App: React.FC = () => {
               // switch that lands after the check above is refused there too.
               await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
             } catch (e) {
-              if (String(e).includes('CONNECTION_CHANGED')) sessionChanged();
+              if (isTargetChangedRefusal(e)) sessionChanged();
               else notify.error(t('common.failed'), String(e));
               return;
             } finally {

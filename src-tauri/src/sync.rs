@@ -4656,9 +4656,11 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     // the caller's path is taken out of it: the path is removed as a
     // substring, so a file named `a` used to strip the words the branches
     // below look for and leave `connection`, which is retryable. The marker
-    // counts wherever it stands: the operation that failed, or the window,
-    // may have put its own words in front (`upload failed: ...`). The refusal
-    // is final for this session: the same write is refused again.
+    // counts where the text starts or behind wrappers only: the operation
+    // that failed, or the window, may have put its own words in front
+    // (`upload failed: ...`). A marker inside something the error names, a
+    // remote path for one, is not the refusal. The refusal is final for this
+    // session: the same write is refused again.
     if crate::providers::types::is_target_changed_text(raw, file_path) {
         return SyncErrorInfo {
             kind: SyncErrorKind::Auth,
@@ -7827,6 +7829,37 @@ mod tests {
         // And a refusal about that very file is still the refusal.
         let both = classify_sync_error(&format!("upload failed: {text} ({named})"), Some(named));
         assert!(!both.retryable);
+        // CodeRabbit 4575757882, second round: the marker inside a path the
+        // error names is not the refusal, whichever path the caller gives.
+        // The FTP upload executor gives the local path while the server's
+        // text names the remote one.
+        let reset = "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt";
+        for path in [
+            Some("/home/user/sync/file.txt"),
+            Some("/CONNECTION_CHANGED: archive/file.txt"),
+            Some("/home/user/CONNECTION_CHANGED: archive/file.txt"),
+            None,
+        ] {
+            for raw in [reset.to_string(), format!("upload failed: {reset}")] {
+                let info = classify_sync_error(&raw, path);
+                assert_eq!(info.kind, SyncErrorKind::Network, "{path:?}: {raw}");
+                assert!(info.retryable, "{path:?}: {raw}");
+            }
+        }
+        // CodeRabbit 4575991602: a file whose name is the marker and nothing
+        // else does not take the refusal's own first word out of the text.
+        let refused = crate::providers::ProviderError::TargetChanged.to_string();
+        for path in [
+            crate::providers::types::TARGET_CHANGED_MARKER,
+            "/srv/CONNECTION_CHANGED:",
+            "CONNECTION_CHANGED:/notes.txt",
+        ] {
+            for raw in [refused.clone(), format!("upload failed: {refused}")] {
+                let info = classify_sync_error(&raw, Some(path));
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
+                assert!(!info.retryable, "{path}: {raw}");
+            }
+        }
         // The two spellings of the marker in the crate are one family.
         assert_eq!(
             crate::providers::types::TARGET_CHANGED_MARKER,
