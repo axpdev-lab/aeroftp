@@ -217,6 +217,7 @@ import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
 import { loginRelativeForm, normalizeOverlayAnchor } from './utils/overlayScope';
+import { connectStartFolder } from './utils/usernameTemplate';
 import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -8218,6 +8219,16 @@ const App: React.FC = () => {
     return () => window.removeEventListener('aeroftp-cancel-totp-autoretry', cancel);
   }, []);
 
+  // A sign-in in the connection form (OAuthConnect, FourSharedConnect) swaps
+  // the backend before the form decides; when the form then stops short of
+  // handing the connect over (a gate, a failed save, a throw), it says so here
+  // and the live tab is put aside, as the connect itself would have done.
+  useEffect(() => {
+    const abandoned = () => parkActiveSession();
+    window.addEventListener('aeroftp-sign-in-abandoned', abandoned);
+    return () => window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
+  }, []);
+
   // FTP operations
   const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
@@ -8261,6 +8272,12 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
+    if (isOAuth) {
+      // An OAuth connect arrives after the connection form's sign-in swapped
+      // the backend: the live tab is put aside before any lookup, await or exit
+      // below, so none of them leaves it live over another account's backend.
+      parkActiveSession();
+    }
     const isProvider = !!protocol && !isOAuth && usesProviderApi(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
@@ -8317,10 +8334,18 @@ const App: React.FC = () => {
     }
 
     if (isOAuth) {
+      // A start folder the user name cannot fill is refused before the view
+      // or the session changes (connectStartFolder).
+      let oauthStartFolder: string | null;
+      try {
+        oauthStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
+      } catch (error) {
+        notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+        setLoading(false);
+        return;
+      }
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
-      // Just switch to file manager view. The component replaced the backend,
-      // so the live tab is put aside first.
-      parkActiveSession();
+      // Just switch to file manager view; the live tab was put aside above.
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
@@ -8335,7 +8360,7 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      let oauthInitialPath = resolveUsernameTemplate(remoteDirInput, effectiveParams.username) || '/';
+      let oauthInitialPath = oauthStartFolder || '/';
       let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
@@ -8561,6 +8586,8 @@ const App: React.FC = () => {
       const logId = opts?.existingLogId ?? humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
+        // Refused before any state change or request (connectStartFolder).
+        const providerStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
         // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
         // asked before the current connection ends, so a refused key leaves
         // it as it was.
@@ -8588,7 +8615,7 @@ const App: React.FC = () => {
         // doc comment. Then strip the literal Nextcloud WebDAV root for
         // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
-        const qcTemplateResolved = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
+        const qcTemplateResolved = providerStartFolder;
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
           qcTemplateResolved,
           effectiveParams.providerId,
@@ -8769,6 +8796,8 @@ const App: React.FC = () => {
     const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
+      // Refused before any state change or request (connectStartFolder).
+      const ftpStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
       // The live tab is put aside before its backend goes.
       parkActiveSession();
       // First disconnect any active OAuth provider to avoid conflicts
@@ -8802,7 +8831,7 @@ const App: React.FC = () => {
       // resolution (Nextcloud-based presets) happens here too, mirroring the
       // provider-API path above.
       let ftpResponse: FileListResponse | null = null;
-      const ftpResolvedRemoteDir = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
+      const ftpResolvedRemoteDir = ftpStartFolder;
       if (ftpResolvedRemoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
@@ -19721,6 +19750,18 @@ const App: React.FC = () => {
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
 
                 if (isOAuth) {
+                  // My Servers put the live tab aside (onParkActiveSession)
+                  // before its sign-in swapped the backend, so the refusal
+                  // below leaves no tab live over another account's backend.
+                  // A start folder the user name cannot fill is refused before
+                  // the view or the session changes (connectStartFolder).
+                  let savedOauthStartFolder: string | null;
+                  try {
+                    savedOauthStartFolder = connectStartFolder(initialPath, normalizedParams.username);
+                  } catch (error) {
+                    notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+                    return 'failed' as const;
+                  }
                   // OAuth provider is already connected via SavedServers/FourSharedConnect component
                   // Just switch to file manager view
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -19737,7 +19778,7 @@ const App: React.FC = () => {
                   // unlocked (no decrypted names, no path-bar overlay badge/button).
                   const savedOverlaySavedId = normalizedParams.savedServerId;
                   let savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
-                  let savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
+                  let savedOauthInitialPath = savedOauthStartFolder || '/';
                   let savedOauthResp: FileListResponse | null = null;
                   if (savedOverlayHint && savedOverlaySavedId) {
                     // Probe the configured landing, but never let a transient
@@ -19869,6 +19910,8 @@ const App: React.FC = () => {
                   const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
                   try {
+                    // Refused before any state change or request (connectStartFolder).
+                    const savedProviderStartFolder = connectStartFolder(initialPath, normalizedParams.username);
                     // SEC-P1-06: TOFU host key check for SFTP and SCP (one
                     // known_hosts), asked before the current connection
                     // ends, so a refused key leaves it as it was.
@@ -19887,7 +19930,7 @@ const App: React.FC = () => {
                     // Then strip the literal Nextcloud WebDAV root for
                     // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles
                     // saved before basePath was dropped from the preset.
-                    const templateResolved = resolveUsernameTemplate(initialPath, normalizedParams.username);
+                    const templateResolved = savedProviderStartFolder;
                     const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
                         templateResolved,
                         normalizedParams.providerId,
@@ -20049,6 +20092,8 @@ const App: React.FC = () => {
                 const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
+                  // Refused before any state change or request (connectStartFolder).
+                  const savedFtpStartFolder = connectStartFolder(initialPath, params.username);
                   // The live tab is put aside before its backend goes.
                   parkActiveSession();
                   // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
@@ -20073,7 +20118,7 @@ const App: React.FC = () => {
                   // Get the actual remote path after connection. {username}
                   // template resolution mirrors the provider-API branch above.
                   let savedFtpResponse: FileListResponse | null = null;
-                  const ftpResolvedInitialPath = resolveUsernameTemplate(initialPath, params.username);
+                  const ftpResolvedInitialPath = savedFtpStartFolder;
                   if (ftpResolvedInitialPath) {
                     // Pass the protocol explicitly to avoid using stale state from previous session
                     await connectScope.step(() => changeRemoteDirectory(ftpResolvedInitialPath, params.protocol || 'ftp'));

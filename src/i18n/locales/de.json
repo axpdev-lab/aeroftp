@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
             "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
             "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibler Speicher pro Projekt-Branch (5 GB kostenlos pro Projekt)",
+            "discoverPuter": "Puter-Cloudspeicher über WebDAV (25 MB kostenlos, ohne Karte)",
+            "discoverLifetimeCloud": "LifetimeCloud-Speicher über WebDAV (1 GB kostenlos, ohne Karte)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

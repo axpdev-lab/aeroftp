@@ -65,6 +65,7 @@ pub struct CyberduckExportServer {
     #[serde(default)]
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub host: String,
     pub port: u32,
     pub username: String,
@@ -1204,5 +1205,82 @@ mod tests {
             second.contains("<string>b.example.com</string>"),
             "{second}"
         );
+    }
+
+    #[test]
+    fn lifetimecloud_cyberduck_export_resolves_username_for_omitted_blank_and_string_fields() {
+        let servers: Vec<CyberduckExportServer> = vec![
+            serde_json::from_value(serde_json::json!({
+                "id": "lc-omitted",
+                "name": "lc-omitted",
+                "port": 443,
+                "username": "alice",
+                "protocol": "webdav",
+                "providerId": "lifetimecloud"
+            }))
+            .expect("omitted host deserializes"),
+            serde_json::from_value(serde_json::json!({
+                "id": "lc-blank",
+                "name": "lc-blank",
+                "host": "   ",
+                "port": 443,
+                "username": "alice",
+                "protocol": "webdav",
+                "providerId": "lifetimecloud",
+                "initialPath": ""
+            }))
+            .expect("blank host deserializes"),
+            serde_json::from_value(serde_json::json!({
+                "id": "lc-template",
+                "name": "lc-template",
+                "host": "https://lifetimecloud.me/dav/{username}/",
+                "port": 443,
+                "username": "alice",
+                "protocol": "webdav",
+                "providerId": "lifetimecloud",
+                "initialPath": "/"
+            }))
+            .expect("template host deserializes"),
+            serde_json::from_value(serde_json::json!({
+                "id": "lc-expanded",
+                "name": "lc-expanded",
+                "host": "https://lifetimecloud.me/dav/alice/",
+                "port": 443,
+                "username": "alice",
+                "protocol": "webdav",
+                "providerId": "lifetimecloud"
+            }))
+            .expect("expanded host deserializes"),
+        ];
+
+        let dir = tempfile::tempdir().unwrap();
+        let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
+        assert_eq!(outcome.exported, 4, "{:?}", outcome.skipped);
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+
+        for name in ["lc-omitted", "lc-blank", "lc-template", "lc-expanded"] {
+            let duck = std::fs::read_to_string(dir.path().join(format!("{name}.duck"))).unwrap();
+            assert!(!duck.contains("{username}"), "{name}:\n{duck}");
+            assert!(
+                duck.contains("<key>Protocol</key>\n\t<string>davs</string>"),
+                "{name}:\n{duck}"
+            );
+            assert!(
+                duck.contains("<key>Hostname</key>\n\t<string>lifetimecloud.me</string>"),
+                "{name}:\n{duck}"
+            );
+            assert!(
+                duck.contains("<key>Port</key>\n\t<string>443</string>"),
+                "{name}:\n{duck}"
+            );
+            assert!(
+                duck.contains("<key>Username</key>\n\t<string>alice</string>"),
+                "{name}:\n{duck}"
+            );
+            assert!(
+                duck.contains("<key>Path</key>\n\t<string>/dav/alice/</string>"),
+                "{name}:\n{duck}"
+            );
+        }
     }
 }

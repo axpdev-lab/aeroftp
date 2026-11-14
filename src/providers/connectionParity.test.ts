@@ -36,4 +36,47 @@ describe('connection metadata used by saved profiles', () => {
         expect(getDefaultPort('scp')).toBe(22);
         expect(connectionProfileDefaults('scp')).toMatchObject({ port: 22, server: '', options: {} });
     });
+
+    it('puter-webdav documents 2FA expiration and token auth guidance in credential helpText', () => {
+        const puter = PROVIDERS.find(p => p.id === 'puter-webdav');
+        expect(puter).toBeDefined();
+        const userField = puter?.fields?.find(f => f.key === 'username');
+        const passField = puter?.fields?.find(f => f.key === 'password');
+        expect(userField?.helpText).toContain('-token');
+        expect(passField?.helpText).toMatch(/appended verification codes expire and may stop authenticating/i);
+        expect(passField?.helpText).toMatch(/-token/);
+        expect(passField?.helpText).toMatch(/persistent connections/i);
+    });
+
+    it('LifetimeCloud WebDAV preset is declared in manifest and registry as a free plan with token onboarding', () => {
+        const manifestPreset = connectionManifest.presets.find(p => p.id === 'lifetimecloud');
+        expect(manifestPreset).toMatchObject({
+            id: 'lifetimecloud',
+            protocol: 'webdav',
+            generic: false,
+            defaults: {
+                server: 'https://lifetimecloud.me/dav/{username}/',
+                port: 443,
+            },
+        });
+
+        const provider = PROVIDERS.find(p => p.id === 'lifetimecloud');
+        expect(provider).toBeDefined();
+        expect(provider!.protocol).toBe('webdav');
+        expect(provider!.category).toBe('webdav');
+        expect(provider!.features).toEqual({ shareLink: false, sync: true });
+        // A free plan with no time limit and usage limits:
+        // the description says free, never trial, and the setup notes give the
+        // limits before the user saves the profile.
+        expect((provider!.description ?? '').toLowerCase()).toContain('free');
+        expect((provider!.description ?? '').toLowerCase()).not.toContain('trial');
+        expect((provider!.setupInstructions ?? []).join(' ')).toMatch(/50 MB per file and 50 files/);
+        const pwField = provider!.fields.find(f => f.key === 'password');
+        expect(pwField?.label).toBe('WebDAV token');
+        expect(pwField?.placeholder?.toLowerCase()).toContain('not your lifetimecloud account password');
+        expect(provider!.passwordGenUrl).toBe('https://lifetimecloud.me/profile');
+        expect(provider!.helpUrl).toBe('https://lifetimecloud.me/articles/rclone-webdav-guide.html');
+        expect(provider!.signupUrl).toBe('https://lifetimecloud.me/register');
+        expect(provider!.healthCheckUrl).toBe('https://lifetimecloud.me/');
+    });
 });

@@ -311,9 +311,9 @@ const JSX_NEUTRAL: Record<string, string[]> = {
     'src/components/Preview/controls/WebGLVisualizer.tsx': ['GL'],
     // Provider names as logo alt text.
     'src/components/ProviderLogos.tsx': [
-        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Fastly', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
+        'Koofr', 'OpenDrive', 'Filebase', 'Tigris', 'Fastly', 'Neon', 'Puter', 'Yandex Disk', 'Proton Drive', 'Jianguoyun', 'PixelUnion', 'Twake Drive',
         'DriveHQ', 'FileLu', 'Felicloud', 'S3Drive', 'Blomp', 'AWS', 'MinIO', 'Quotaless', 'Hetzner', 'ASPnix',
-        'ImageKit', 'Uploadcare', 'Cloudinary', 'IBM Cloud', 'Mail.ru Cloud',
+        'ImageKit', 'Uploadcare', 'Cloudinary', 'IBM Cloud', 'Mail.ru Cloud', 'LifetimeCloud',
     ],
     // The PRO tier badge and the S3/Azure badge.
     'src/components/ProvidersDialog.tsx': [
@@ -321,9 +321,9 @@ const JSX_NEUTRAL: Record<string, string[]> = {
         'MEGA (MEGAcmd)', 'Filen', 'Internxt', 'kDrive', 'Jottacloud', 'FileLu', 'Twake Drive', 'Koofr', 'OpenDrive',
         'Yandex Disk', '4shared', 'GitHub', 'GitLab', 'Immich', 'PixelUnion', 'Google Photos', 'ImageKit',
         'Uploadcare', 'Cloudinary', 'Amazon Web Services (AWS)', 'Backblaze B2', 'Cloudflare R2', 'Wasabi',
-        'IDrive e2', 'Filebase', 'Tigris', 'Fastly Object Storage', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
-        'FileLu S5', 'MEGA S4 Object Storage', 'MinIO', 'CloudMe', 'DriveHQ', 'Koofr (WebDAV)', 'Jianguoyun',
-        'InfiniCloud', 'Seafile', 'FileLu WebDAV', 'Nextcloud', 'Felicloud', 'Hetzner Storage Box', 'Blomp', 'Drime',
+        'IDrive e2', 'Filebase', 'Tigris', 'Fastly Object Storage', 'Neon', 'Storj', 'DigitalOcean Spaces', 'Oracle Cloud', 'Alibaba OSS', 'Tencent COS',
+        'FileLu S5', 'MEGA S4 Object Storage', 'MinIO', 'CloudMe', 'Puter', 'DriveHQ', 'Koofr (WebDAV)', 'Jianguoyun',
+        'InfiniCloud', 'Seafile', 'FileLu WebDAV', 'Nextcloud', 'Felicloud', 'LifetimeCloud', 'Hetzner Storage Box', 'Blomp', 'Drime',
     ],
     // The protocol id shown when a session has no provider.
     'src/components/SessionTabs.tsx': ['FTP'],

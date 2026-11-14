@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: almacenamiento distribuido globalmente compatible con S3, sin cargos por salida de datos (5 GB gratis)",
             "trustPasvAddress": "Usar la dirección pasiva indicada por el servidor",
             "trustPasvAddressHelp": "Desactivado: las conexiones de datos van al host al que te has conectado, como hace curl. Actívalo solo para un servidor que envía los datos desde otra dirección.",
-            "discoverFastly": "Fastly Object Storage: almacenamiento compatible con S3 en 12 regiones (5 GB gratis, requiere tarjeta)"
+            "discoverFastly": "Fastly Object Storage: almacenamiento compatible con S3 en 12 regiones (5 GB gratis, requiere tarjeta)",
+            "discoverNeon": "Neon Object Storage: almacenamiento compatible con S3 por rama de proyecto (5 GB gratis por proyecto)",
+            "discoverPuter": "Almacenamiento en la nube Puter vía WebDAV (25 MB gratis, sin tarjeta)",
+            "discoverLifetimeCloud": "Almacenamiento LifetimeCloud mediante WebDAV (1 GB gratis, sin tarjeta)"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

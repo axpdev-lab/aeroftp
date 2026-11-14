@@ -3764,12 +3764,58 @@ fn native_proton_provider(
 pub const NATIVE_PROTON_UNAVAILABLE: &str =
     "This build does not include the native Proton Drive client. Switch the profile to the Proton Drive CLI, or use a build with the native client.";
 
+/// The config every provider builder receives: the start folder with
+/// `{username}` filled, once, here. A folder the user name cannot fill is
+/// refused before any provider is built and so before any request. Every
+/// connect that carries the folder as a parameter passes here (the window's
+/// `provider_connect`, AeroCloud, the CLI and MCP); a builder never sees the
+/// template, so FTP, SFTP and the native providers open the folder the user
+/// name names (the WebDAV config's own fill then finds nothing to fill).
+/// `connect_ftp` and `oauth2_connect` take no start folder (the window opens
+/// it afterwards as an ordinary change of folder, which must stay able to
+/// reach a real folder of that name), so the window's `connectStartFolder` is
+/// their gate.
+fn with_filled_start_folder(
+    config: &ProviderConfig,
+) -> Result<std::borrow::Cow<'_, ProviderConfig>, ProviderError> {
+    let Some(folder) = config.initial_path.as_deref() else {
+        return Ok(std::borrow::Cow::Borrowed(config));
+    };
+    if !folder.contains(crate::connection_manifest::USERNAME_TEMPLATE) {
+        return Ok(std::borrow::Cow::Borrowed(config));
+    }
+    let username = config.username.as_deref().unwrap_or("");
+    let filled = crate::connection_manifest::expand_username_in_path(folder, username)
+        .unwrap_or_else(|_| folder.to_string());
+    crate::connection_manifest::refuse_unresolved_username_template(&filled)
+        .map_err(ProviderError::InvalidConfig)?;
+    let mut config = config.clone();
+    config.initial_path = Some(filled);
+    Ok(std::borrow::Cow::Owned(config))
+}
+
 /// Provider factory for creating provider instances
 pub struct ProviderFactory;
 
 impl ProviderFactory {
     /// Create a new provider instance based on configuration
     pub fn create(config: &ProviderConfig) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        let mut filled = with_filled_start_folder(config)?;
+        let built = Self::build(filled.as_ref());
+        // The filled copy carries the password and every secret in `extra`
+        // (key passphrases, API keys, tokens): all cleared once the provider
+        // holds its own, as the callers clear theirs.
+        if let std::borrow::Cow::Owned(copy) = &mut filled {
+            use zeroize::Zeroize;
+            copy.zeroize_password();
+            for value in copy.extra.values_mut() {
+                value.zeroize();
+            }
+        }
+        built
+    }
+
+    fn build(config: &ProviderConfig) -> Result<Box<dyn StorageProvider>, ProviderError> {
         match config.provider_type {
             ProviderType::Ftp | ProviderType::Ftps => {
                 let ftp_config = FtpConfig::from_provider_config(config)?;
@@ -4678,6 +4724,122 @@ mod http_resume_tests {
 
 #[cfg(test)]
 mod tests {
+    /// A start folder the user name cannot fill is refused by the factory for
+    /// every family, before a provider exists (so no request can be sent); a
+    /// folder the user name fills, or one with no template, still builds.
+    #[test]
+    fn the_factory_refuses_a_start_folder_the_user_name_cannot_fill() {
+        use super::{ProviderConfig, ProviderError, ProviderFactory, ProviderType};
+        let config = |provider_type: ProviderType, user: &str, folder: &str| ProviderConfig {
+            name: "template".into(),
+            provider_type,
+            host: "files.example.test".into(),
+            port: None,
+            username: Some(user.into()),
+            password: Some("pw".into()),
+            initial_path: Some(folder.into()),
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "b".to_string()),
+                ("region".to_string(), "us-east-1".to_string()),
+            ]),
+        };
+        let families = [
+            ProviderType::Ftp,
+            ProviderType::Sftp,
+            ProviderType::S3,
+            ProviderType::GoogleDrive,
+            ProviderType::WebDav,
+        ];
+        for family in families {
+            for user in ["", "   ", "{username}", "a/b", ".."] {
+                match ProviderFactory::create(&config(family, user, "/files/{username}/")) {
+                    Err(ProviderError::InvalidConfig(message)) => assert_eq!(
+                        message,
+                        crate::connection_manifest::USERNAME_TEMPLATE_UNRESOLVED,
+                        "{family:?} {user:?}"
+                    ),
+                    Err(other) => panic!("{family:?} {user:?}: refused as {other:?}"),
+                    Ok(_) => panic!("{family:?} {user:?}: built with an unresolved start folder"),
+                }
+            }
+        }
+        // The gate refuses only what cannot be filled, and every builder gets
+        // the filled folder: a builder that does not fill it itself (FTP, SFTP,
+        // S3, the native providers) would open a folder named after the
+        // placeholder.
+        for family in families {
+            let raw = config(family, "alice ", "/files/{username}/docs");
+            let filled = super::with_filled_start_folder(&raw).unwrap();
+            assert_eq!(
+                filled.initial_path.as_deref(),
+                Some("/files/alice /docs"),
+                "{family:?}"
+            );
+            let plain = config(family, "alice", "/files/alice/");
+            assert!(matches!(
+                super::with_filled_start_folder(&plain).unwrap(),
+                std::borrow::Cow::Borrowed(_)
+            ));
+        }
+        let ftp = config(ProviderType::Ftp, "alice", "/files/{username}/");
+        let filled = super::with_filled_start_folder(&ftp).unwrap();
+        assert_eq!(
+            super::FtpConfig::from_provider_config(&filled)
+                .unwrap()
+                .initial_path
+                .as_deref(),
+            Some("/files/alice/")
+        );
+        assert!(ProviderFactory::create(&ftp).is_ok());
+        let dav = config(
+            ProviderType::WebDav,
+            "alice",
+            "/remote.php/dav/files/{username}/",
+        );
+        let filled = super::with_filled_start_folder(&dav).unwrap();
+        assert_eq!(
+            super::WebDavConfig::from_provider_config(&filled)
+                .unwrap()
+                .initial_path
+                .as_deref(),
+            Some("/remote.php/dav/files/alice/")
+        );
+        assert!(ProviderFactory::create(&dav).is_ok());
+        // `create` hands every builder the filled copy: a provider built from
+        // the caller's config would open the template (FTP's own config does
+        // not fill it), and that is not visible from outside the provider.
+        let source = include_str!("mod.rs");
+        let start = source
+            .find("pub fn create(config: &ProviderConfig)")
+            .unwrap();
+        let body = &source[start..start + source[start..].find("fn build(").unwrap()];
+        assert_eq!(body.matches("Self::build(").count(), 1, "{body}");
+        assert!(body.contains("Self::build(filled.as_ref())"), "{body}");
+        // The copy carries the password and the secrets in `extra`: it never
+        // leaves `create`, and both are cleared after the build whatever its
+        // outcome (the build's result is held, not returned early with `?`).
+        let code: String = body
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(code.matches("filled").count(), 4, "{code}");
+        assert!(!code.contains("Self::build(filled.as_ref())?"), "{code}");
+        assert!(
+            !code.contains("return"),
+            "an early return skips the clearing: {code}"
+        );
+        assert!(code.contains("copy.zeroize_password();"), "{code}");
+        assert!(
+            code.contains("for value in copy.extra.values_mut()"),
+            "{code}"
+        );
+        assert!(
+            code.trim_end().ends_with("built\n    }") || code.contains("        built\n"),
+            "{code}"
+        );
+    }
+
     #[test]
     fn a_local_date_reads_in_whole_seconds_in_rfc3339() {
         let dir = tempfile::tempdir().unwrap();

@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
             "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
             "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
-            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
+            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)",
+            "discoverNeon": "Neon Object Storage: S3-compatibele opslag per projectbranch (5 GB gratis per project)",
+            "discoverPuter": "Puter-cloudopslag via WebDAV (25 MB gratis, zonder kaart)",
+            "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB gratis, geen kaart)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

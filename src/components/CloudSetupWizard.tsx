@@ -6,6 +6,7 @@
 // through saved profiles, so there is no connection form here: a user without
 // a compatible profile is sent to My Servers before the wizard starts.
 
+import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -33,12 +34,12 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
-    // Every occurrence, as the backend resolves it (`replaceAll` needs ES2021).
-    const base = (profile.initialPath || '')
-        .split('{username}').join(profile.username || '')
-        .trim()
-        .replace(/\/+$/, '');
-    if (!base) return '';
+    // The same expansion as the backend's (`expand_username_in_path`), with
+    // the folder used as written (#1449) as the overlay anchor reads it: a
+    // trimmed root sat outside its own encrypted folder. Only a blank folder
+    // means the server root.
+    const base = expandUsernameInPath(profile.initialPath || '', profile.username).replace(/\/+$/, '');
+    if (!base.trim()) return '';
     return base.startsWith('/') ? base : `/${base}`;
 }
 
@@ -50,7 +51,10 @@ export function profileRoot(profile: ServerProfile): string {
  * encrypted folder.
  */
 export function aeroCloudBase(profile: ServerProfile): string {
-    const scope = getServerCryptOverlay(profile) ? normCryptScope(profile.aeroCryptOverlay?.remoteScope) : '';
+    // The overlay folder fills `{username}` as the backend's overlay scope does.
+    const scope = getServerCryptOverlay(profile)
+        ? normCryptScope(expandUsernameInPath(profile.aeroCryptOverlay?.remoteScope || '', profile.username))
+        : '';
     return scope || profileRoot(profile);
 }
 
@@ -113,12 +117,19 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
         if (selected) setLocalFolder(selected as string);
     };
 
-    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile;
-    const rootLabel = `${profile ? aeroCloudBase(profile) : ''}/`;
+    // A base the user name cannot fill still holds the placeholder: shown as a
+    // refusal and never saved, as the backend refuses it before any request.
+    const unresolvedBase = !!profile && hasUnresolvedUsernameTemplate(aeroCloudBase(profile));
+    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !unresolvedBase;
+    const rootLabel = `${profile && !unresolvedBase ? aeroCloudBase(profile) : ''}/`;
     const remoteLabel = `${rootLabel}${subfolder.trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
 
     const handleComplete = async () => {
         if (!profile) return;
+        if (unresolvedBase) {
+            setError(t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED }));
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -274,6 +285,11 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     className={`${INPUT_CLASS} rounded-l-none font-mono min-w-0`} />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>
+                            {unresolvedBase && (
+                                <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                    {t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED })}
+                                </p>
+                            )}
                         </div>
                         {caveat && (
                             <p className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -342,7 +358,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} disabled={saving} className={PRIMARY_BUTTON_CLASS}>
+                        <button onClick={handleComplete} disabled={saving || unresolvedBase} className={PRIMARY_BUTTON_CLASS}>
                             {saving ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>

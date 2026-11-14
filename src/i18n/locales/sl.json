@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: globalno porazdeljeno shranjevanje, združljivo s S3, brez stroškov izhodnega prenosa (5 GB brezplačno)",
             "trustPasvAddress": "Uporabi pasivni naslov, ki ga poda strežnik",
             "trustPasvAddressHelp": "Izklopljeno: podatkovne povezave gredo na gostitelja, s katerim ste se povezali, kot počne curl. Vklopite le za strežnik, ki pošilja podatke z drugega naslova.",
-            "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)"
+            "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)",
+            "discoverNeon": "Neon Object Storage: shrambe, združljive s S3, za vsako vejo projekta (5 GB brezplačno na projekt)",
+            "discoverPuter": "Puter oblaka shranjevanje prek WebDAV-a (25 MB brezplačno, brez kartice)",
+            "discoverLifetimeCloud": "Shramba LifetimeCloud prek WebDAV (1 GB brezplačno, brez kartice)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

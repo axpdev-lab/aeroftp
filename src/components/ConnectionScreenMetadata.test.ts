@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import React, { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,8 +17,8 @@ vi.mock('../i18n', () => ({
 vi.mock('../hooks/useActivityLog', () => ({ useActivityLog: () => ({ log: mocks.log }) }));
 // Keep the real QuickConnect controls and save handlers, without signing in.
 vi.mock('./OAuthConnect', () => ({
-    OAuthConnect: ({ rightColumn, onConnected }: { rightColumn: React.ReactNode; onConnected: (name: string) => void }) =>
-        React.createElement('div', null, rightColumn,
+    OAuthConnect: ({ rightColumn, onConnected, disabled }: { rightColumn: React.ReactNode; onConnected: (name: string) => void; disabled?: boolean }) =>
+        React.createElement('div', { 'data-sign-in-disabled': String(!!disabled) }, rightColumn,
             React.createElement('button', { onClick: () => onConnected('Account') }, 'Test OAuth sign-in')),
 }));
 vi.mock('./IconPickerDialog', () => ({
@@ -44,6 +45,9 @@ let profiles: ServerProfile[];
 let container: HTMLDivElement;
 let root: Root;
 let onFormSaved: ReturnType<typeof vi.fn<() => void>>;
+let onConnectSpy: ReturnType<typeof vi.fn<(overrideParams?: ConnectionParams) => void>>;
+let abandoned: number;
+const countAbandoned = () => { abandoned += 1; };
 
 beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -51,6 +55,9 @@ beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.log.mockReset();
     onFormSaved = vi.fn<() => void>();
+    onConnectSpy = vi.fn<(overrideParams?: ConnectionParams) => void>();
+    abandoned = 0;
+    window.addEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     mocks.invoke.mockImplementation(async (command: string, args?: { profiles?: ServerProfile[]; expectedUserId?: number }) => {
         if (command === 'user_partitions_load_active_server_profiles') return structuredClone(profiles);
         if (command === 'user_partitions_load_active_server_profiles_scoped') return { userId: 1, profiles: structuredClone(profiles) };
@@ -71,6 +78,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    window.removeEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
@@ -95,7 +103,7 @@ async function renderEditor() {
         return React.createElement(ConnectionScreen, {
             connectionParams: params, quickConnectDirs: dirs, loading: false,
             onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
-            onConnect: vi.fn(), editingProfile: profile, onFormSaved,
+            onConnect: onConnectSpy, editingProfile: profile, onFormSaved,
         });
     }
     await act(async () => root.render(React.createElement(Harness)));
@@ -437,5 +445,235 @@ describe('IntroHub form drafts across tab switches', () => {
         const tab = [...container.querySelectorAll('span')].find(element => element.textContent === 'New backup')!.parentElement!;
         await act(async () => tab.querySelector<HTMLButtonElement>('button[title="common.close"]')!.click());
         expect(draft.isConnected).toBe(false);
+    });
+});
+
+describe('Puter WebDAV credential guidance and Advanced Server override', () => {
+    async function renderPuterNewConnection() {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'puter-webdav',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+    }
+
+    it('renders username and password helpText for puter-webdav', async () => {
+        await renderPuterNewConnection();
+        const text = container.textContent || '';
+        expect(text).toContain('Token auth: use -token as the username (literal)');
+        expect(text).toMatch(/appended verification codes expire and may stop authenticating/i);
+        expect(text).toContain('-token');
+    });
+
+    it('allows unlocking and overriding Server under Advanced Options for token auth', async () => {
+        await renderPuterNewConnection();
+        const toggle = button('protocol.advanced');
+        await act(async () => toggle.click());
+
+        const serverInput = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
+        expect(serverInput).toBeDefined();
+        expect(serverInput.disabled).toBe(true);
+
+        const editBtn = button('common.edit');
+        await act(async () => editBtn.click());
+
+        const unlockBtn = button('protocol.advancedUnlock');
+        await act(async () => unlockBtn.click());
+
+        expect(serverInput.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(serverInput, 'https://dav.puter.com/myuser');
+            serverInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(serverInput.value).toBe('https://dav.puter.com/myuser');
+    });
+});
+
+describe('LifetimeCloud WebDAV credential helpText and overlay defaults', () => {
+    it('renders username and password helpText for lifetimecloud and keeps crypt overlay opt-in', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'lifetimecloud',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const text = container.textContent || '';
+        expect(text).toContain('Used to fill https://lifetimecloud.me/dav/{username}/ automatically');
+        expect(text).toContain('Profile > Enable WebDAV > Generate WebDAV token (not your LifetimeCloud account password)');
+        expect(container.querySelector('input[placeholder="connection.passwordPlaceholder"]')).not.toBeNull();
+    });
+});
+
+describe('A crypt overlay folder the user name cannot fill', () => {
+    it('shows the refusal and blocks Save until the user name fills it', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                username: '',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/remote.php/dav/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        // Blank user name: the overlay would anchor at a folder named after the
+        // placeholder, so the form shows the refusal.
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        // A user name that fills the folder clears it.
+        const user = container.querySelector<HTMLInputElement>('input[placeholder="connection.usernamePlaceholder"]')
+            ?? [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].find(i => i.value === '')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+    });
+
+    it('checks a relative Overlays Path on the scope it saves, under the templated Remote Path', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                // A backslash cannot fill a folder path: the scope keeps the placeholder.
+                username: 'DOMAIN\\alice',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        const overlayPath = container.querySelector<HTMLInputElement>('input[placeholder="/"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(overlayPath, 'crypt');
+            overlayPath.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // `crypt` alone holds no placeholder, but it is saved as
+        // `/files/{username}/crypt`, which the backend refuses to unlock.
+        expect(overlayPath.value).toBe('crypt');
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const save = () => [...container.querySelectorAll('button')].find(b => ['common.save', 'common.connect'].includes(b.textContent?.trim() ?? ''))!;
+        expect(save().disabled).toBe(true);
+        // A user name that fills the folder clears the refusal and enables Save.
+        const user = [...container.querySelectorAll<HTMLInputElement>('input')].find(i => i.value === 'DOMAIN\\alice')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        expect(save().disabled).toBe(false);
+    });
+
+    it('lets an OAuth sign-in write nothing while the overlay folder is unresolved', async () => {
+        // An OAuth profile has no user name, so a `{username}` folder cannot be filled.
+        profiles = [{
+            id: 'edited', name: 'Account', host: '', port: 443, username: '',
+            protocol: 'googledrive', initialPath: '/vault/{username}', localInitialPath: '/local',
+        }];
+        await renderEditor();
+        await act(async () => button('aerocryptProfile.overlaysSection').click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const before = structuredClone(profiles);
+        mocks.invoke.mockClear();
+        await act(async () => button('Test OAuth sign-in').click());
+        const writes = mocks.invoke.mock.calls.map(([command]) => command)
+            .filter(command => /save_active_server_profiles|store_credential|credential_store|aerocrypt/.test(String(command)));
+        expect(writes).toEqual([]);
+        expect(profiles).toEqual(before);
+        // The sign-in is offered disabled, and the swapped backend is reported
+        // so App puts the live tab aside.
+        expect(container.querySelector('[data-sign-in-disabled]')!.getAttribute('data-sign-in-disabled')).toBe('true');
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+});
+
+describe('A sign-in that swapped the backend', () => {
+    // OAuthConnect and FourSharedConnect swap the backend before the form
+    // decides: every exit either hands the connect to App, which parks the
+    // live tab first, or reports the abandoned sign-in so App parks it.
+    it('hands an OAuth sign-in to App and reports nothing', async () => {
+        await openEditor('googledrive');
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).toHaveBeenCalledOnce();
+        expect(abandoned).toBe(0);
+    });
+
+    it('reports an OAuth sign-in whose profile read fails', async () => {
+        await openEditor('googledrive');
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return previous(command, args);
+        });
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+
+    it('reports a 4shared connect whose profile read fails', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? true : previous(command, args));
+        await openEditor('fourshared');
+        const withTokens = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return withTokens(command, args);
+        });
+        await act(async () => button('connection.fourshared.connectTo4shared').click());
+        expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_connect')).toBe(true);
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
     });
 });

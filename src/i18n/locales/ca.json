@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: emmagatzematge distribuït globalment compatible amb S3, sense càrrecs per sortida de dades (5 GB gratis)",
             "trustPasvAddress": "Usa l'adreça passiva indicada pel servidor",
             "trustPasvAddressHelp": "Desactivat: les connexions de dades van al host al qual t'has connectat, com fa curl. Activa'l només per a un servidor que envia les dades des d'una altra adreça.",
-            "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratis, cal targeta)"
+            "discoverFastly": "Fastly Object Storage: emmagatzematge compatible amb S3 en 12 regions (5 GB gratis, cal targeta)",
+            "discoverNeon": "Neon Object Storage: emmagatzematge compatible amb S3 per branca de projecte (5 GB gratuïts per projecte)",
+            "discoverPuter": "Emmagatzematge al núvol Puter via WebDAV (25 MB gratis, sense targeta)",
+            "discoverLifetimeCloud": "Emmagatzematge LifetimeCloud mitjançant WebDAV (1 GB gratuït, sense targeta)"
         },
         "shortcuts": {
             "title": "Dreceres de Teclat",

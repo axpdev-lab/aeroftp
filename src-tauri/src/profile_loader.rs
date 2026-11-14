@@ -310,6 +310,12 @@ pub fn profile_connection_extra(
     }
 
     let mut resolved_host = host.to_string();
+    if provider_type == ProviderType::WebDav {
+        let provider_id = profile.get("providerId").and_then(|v| v.as_str());
+        if let Some(default_server) = apply_webdav_profile_defaults(provider_id, &resolved_host) {
+            resolved_host = default_server;
+        }
+    }
     if provider_type == ProviderType::Swift && !host.contains("://") {
         if let Some(endpoint) = extra
             .get("endpoint")
@@ -544,6 +550,25 @@ fn s3_profile_endpoint_template(provider_id: &str) -> Option<&'static str> {
         .defaults
         .get("endpointTemplate")?
         .as_str()
+}
+
+/// Resolve the default server URL template from the connection manifest when a
+/// named WebDAV preset profile leaves `host` omitted or blank.
+pub fn apply_webdav_profile_defaults(provider_id: Option<&str>, host: &str) -> Option<String> {
+    if !host.trim().is_empty() {
+        return None;
+    }
+    let preset = crate::connection_manifest::preset(provider_id?)?;
+    if preset.protocol != "webdav" || preset.generic {
+        return None;
+    }
+    preset
+        .defaults
+        .get("server")?
+        .as_str()
+        .map(str::trim)
+        .filter(|server| !server.is_empty())
+        .map(str::to_string)
 }
 
 /// Resolve S3 preset defaults (region, path_style, endpoint) from the provider

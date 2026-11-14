@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: globalno distribuirana pohrana kompatibilna sa S3, bez naknada za izlazni promet (5 GB besplatno)",
             "trustPasvAddress": "Koristi pasivnu adresu koju navede poslužitelj",
             "trustPasvAddressHelp": "Isključeno: podatkovne veze idu na host s kojim ste se povezali, kao što radi curl. Uključite samo za poslužitelj koji šalje podatke s druge adrese.",
-            "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno, potrebna kartica)"
+            "discoverFastly": "Fastly Object Storage: pohrana kompatibilna sa S3 u 12 regija (5 GB besplatno, potrebna kartica)",
+            "discoverNeon": "Neon Object Storage: pohrana kompatibilna sa S3 za svaku granu projekta (5 GB besplatno po projektu)",
+            "discoverPuter": "Puter oblaka pohrana putem WebDAV-a (25 MB besplatno, bez kartice)",
+            "discoverLifetimeCloud": "LifetimeCloud pohrana putem WebDAV-a (1 GB besplatno, bez kartice)"
         },
         "shortcuts": {
             "title": "Tipkovnički prečaci",

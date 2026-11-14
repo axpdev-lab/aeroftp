@@ -161,6 +161,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'filebase': 'protocol.discoverFilebase',
     'tigris': 'protocol.discoverTigris',
     'fastly': 'protocol.discoverFastly',
+    'neon-s3': 'protocol.discoverNeon',
     'yandex-storage': 'protocol.discoverYandexStorage',
     'digitalocean-spaces': 'protocol.discoverDigitalOceanSpaces',
     'oracle-cloud': 'protocol.discoverOracleCloud',
@@ -180,6 +181,8 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'quotaless-webdav': 'protocol.discoverQuotalessWebdav',
     'nextcloud': 'protocol.discoverNextcloud',
     'pcloud-webdav': 'protocol.discoverPCloudWebdav',
+    'puter-webdav': 'protocol.discoverPuter',
+    'lifetimecloud': 'protocol.discoverLifetimeCloud',
     // FTP registry providers
     'hetzner-storage-box': 'protocol.discoverHetzner',
     'sourceforge': 'protocol.discoverSourceForge',

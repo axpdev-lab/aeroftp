@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: küresel olarak dağıtık, S3 uyumlu depolama, çıkış ücreti yok (5 GB ücretsiz)",
             "trustPasvAddress": "Sunucunun verdiği pasif adresi kullan",
             "trustPasvAddressHelp": "Kapalı: veri bağlantıları, curl gibi bağlandığınız ana makineye gider. Yalnızca verileri başka bir adresten gönderen sunucu için açın.",
-            "discoverFastly": "Fastly Object Storage: 12 bölgede S3 uyumlu depolama (5 GB ücretsiz, kart gerekli)"
+            "discoverFastly": "Fastly Object Storage: 12 bölgede S3 uyumlu depolama (5 GB ücretsiz, kart gerekli)",
+            "discoverNeon": "Neon Object Storage: proje dalı başına S3 uyumlu depolama (proje başına 5 GB ücretsiz)",
+            "discoverPuter": "WebDAV üzerinden Puter bulut depolama (25 MB ücretsiz, kart yok)",
+            "discoverLifetimeCloud": "WebDAV üzerinden LifetimeCloud depolama (1 GB ücretsiz, kart gerekmez)"
         },
         "shortcuts": {
             "title": "Klavye Kısayolları",

@@ -33,4 +33,8 @@ describe('Quick Connect docs links', () => {
         }
         expect(mismatches).toEqual([]);
     });
+
+    it('resolves LifetimeCloud WebDAV preset to providers/lifetimecloud', () => {
+        expect(getProviderDocsUrl('lifetimecloud', 'webdav')).toBe('https://docs.aeroftp.app/providers/lifetimecloud');
+    });
 });

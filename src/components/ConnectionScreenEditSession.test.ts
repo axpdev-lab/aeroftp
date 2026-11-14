@@ -37,15 +37,43 @@ describe('ConnectionScreen edit sessions', () => {
         }
     });
 
-    it('blocks every save while exactly one rclone-crypt form is recorded', () => {
-        for (const fn of ['saveToServers', 'handleSaveAsNew', 'handleConvertMode']) {
-            expect(bodyOf(fn), fn).toContain('if (cryptFormsHalfRecorded) return;');
+    it('hands every sign-in that swapped the backend to App or reports it', () => {
+        // OAuthConnect and FourSharedConnect swap the backend before their
+        // onConnected runs: each goes through afterBackendSwap, whose finally
+        // reports an exit that did not hand the connect over.
+        const handlers = source.match(/onConnected=\{/g) ?? [];
+        const wrapped = source.match(/onConnected=\{afterBackendSwap\(/g) ?? [];
+        expect(handlers.length).toBeGreaterThanOrEqual(2);
+        expect(wrapped).toHaveLength(handlers.length);
+        expect(bodyOf('afterBackendSwap')).toContain("window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned'))");
+        // Neither sign-in can start while the form would refuse its connect.
+        expect(source.match(/disabled=\{remotePathEscapesOverlay \|\| overlaySaveBlocked\}\n\s+(provider=|rightColumn=)/g) ?? []).toHaveLength(2);
+    });
+
+    it('gates every path that writes overlay fields on the one overlay predicate', () => {
+        // The predicate holds every overlay state a save must not persist,
+        // the rclone-crypt form recorded for one secret only among them.
+        expect(source).toMatch(/const overlaySaveBlocked = [^;]*\bcryptFormsHalfRecorded\b/);
+        expect(source).toMatch(/const overlaySaveBlocked = [^;]*\boverlaysRemotePathError\b/);
+        expect(source).toMatch(/const overlaySaveBlocked = [^;]*\baeroCryptConfirmMismatch\b/);
+        expect(source).toMatch(/const overlaySaveBlocked = [^;]*\bdefaultSaltEntropyMismatch\b/);
+        // Every call that builds the overlay fields of a profile to write sits
+        // in a handler that returned on the predicate first: the nearest
+        // handler start above the call must hold the check before the call.
+        const definition = source.indexOf('const aeroCryptOverlayFields = ');
+        const starts = [...source.matchAll(/const handle\w+ = async|const saveToServers = async|onConnected=\{async/g)].map(m => m.index!);
+        const calls = [...source.matchAll(/aeroCryptOverlayFields\(/g)].map(m => m.index!).filter(i => i > definition + 40);
+        expect(calls.length).toBeGreaterThanOrEqual(8);
+        for (const call of calls) {
+            const start = Math.max(...starts.filter(s => s < call));
+            const line = source.slice(0, call).split('\n').length;
+            expect(source.slice(start, call), `overlay fields built at line ${line}`).toMatch(/overlaySaveBlocked\) return;/);
         }
-        // The OAuth edit Save goes through this gate instead of saveToServers.
-        expect(source).toMatch(/const oauthOverlaySaveBlocked = [^;]*\bcryptFormsHalfRecorded\b/);
-        // And the buttons say so before a click.
-        expect(source).toMatch(/disabled=\{saveOverride \? [^\n]*\bcryptFormsHalfRecorded\b/);
-        expect(source).toContain('disabled={remotePathEscapesOverlay || cryptFormsHalfRecorded}');
+        // And every save button says so before a click: Save as new and the
+        // mode conversion (both footers), and the main Save.
+        expect(source.match(/disabled=\{loading \|\| remotePathEscapesOverlay \|\| overlaySaveBlocked\}/g)).toHaveLength(2);
+        expect(source).toContain('<button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay || overlaySaveBlocked}');
+        expect(source).toMatch(/disabled=\{saveOverride \? [^\n]*\boverlaySaveBlocked\b/);
     });
 
     it('compares the OAuth edit Save against profiles loaded on mount', () => {

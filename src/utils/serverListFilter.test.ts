@@ -134,6 +134,30 @@ describe('deriveProviderId Tigris host boundary', () => {
     });
 });
 
+describe('deriveProviderId Neon and Puter host boundaries', () => {
+    const s3 = (host: string) => ({ name: 's', host, username: '', protocol: 's3' as const });
+    const webdav = (host: string) => ({ name: 's', host, username: '', protocol: 'webdav' as const });
+
+    it('classifies Neon per-branch endpoints', () => {
+        expect(deriveProviderId(s3('br-misty-pine-bagvej1p.storage.c-8.eu-central-1.aws.neon.tech'))).toBe('neon-s3');
+        expect(deriveProviderId(s3('https://br-x.storage.c-1.us-east-1.aws.neon.tech:443/bucket'))).toBe('neon-s3');
+    });
+
+    it('rejects Neon lookalikes', () => {
+        expect(deriveProviderId(s3('aws.neon.tech.example.com'))).toBeUndefined();
+        expect(deriveProviderId(s3('notaws.neon.tech'))).toBeUndefined();
+        expect(deriveProviderId(s3('neon.tech'))).toBeUndefined();
+    });
+
+    it('classifies the Puter WebDAV host and rejects lookalikes', () => {
+        expect(deriveProviderId(webdav('dav.puter.com'))).toBe('puter-webdav');
+        expect(deriveProviderId(webdav('https://dav.puter.com/user'))).toBe('puter-webdav');
+        expect(deriveProviderId(webdav('dav.puter.com.evil.com'))).not.toBe('puter-webdav');
+        expect(deriveProviderId(webdav('notdav.puter.com'))).not.toBe('puter-webdav');
+        expect(deriveProviderId(webdav('puter.com'))).not.toBe('puter-webdav');
+    });
+});
+
 describe('select all on a filtered checklist', () => {
     const all = ids(LAB);
 
@@ -183,5 +207,65 @@ describe('select all on a filtered checklist', () => {
         expect(selectShownLabel(new Set(shown), shown, true)).toEqual({ key: 'settings.deselectShown', params: { count: 3 } });
         expect(selectShownLabel(new Set(), all, false)).toEqual({ key: 'settings.selectAll' });
         expect(selectShownLabel(new Set(all), all, false)).toEqual({ key: 'settings.deselectAll' });
+    });
+});
+
+describe('deriveProviderId LifetimeCloud host boundary', () => {
+    const dav = (host: string) => ({ name: 'd', host, username: 'alice', protocol: 'webdav' as const });
+
+    it('matches exact lifetimecloud.me and real subdomains before the cloud. Nextcloud rule', () => {
+        expect(deriveProviderId(dav('https://lifetimecloud.me/dav/alice/'))).toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://webdav.lifetimecloud.me/dav/{username}/'))).toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://user@lifetimecloud.me:443/dav/alice?foo=bar'))).toBe('lifetimecloud');
+    });
+
+    it('rejects lookalike hosts and keeps Nextcloud hosts on nextcloud', () => {
+        expect(deriveProviderId(dav('https://notlifetimecloud.me/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://lifetimecloud.me.example/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://evil-lifetimecloud.me/dav/alice/'))).not.toBe('lifetimecloud');
+        expect(deriveProviderId(dav('https://lifetimecloud-host.example/dav/alice/'))).toBeUndefined();
+        expect(deriveProviderId(dav('https://cloud.example.com/remote.php/dav/files/alice/'))).toBe('nextcloud');
+        expect(deriveProviderId(dav('https://nextcloud.example.com/'))).toBe('nextcloud');
+    });
+});
+
+describe('deriveProviderId preset host rules cannot shadow one another', () => {
+    const dav = (host: string) => ({ name: 'd', host, username: 'alice', protocol: 'webdav' as const });
+    // Every rule keyword, as it could appear in a user name or a folder of the
+    // URL path. A host-bound rule claims its host whatever the path says.
+    const KEYWORDS = ['koofr', 'mail.ru', 'dav.puter.com', 'lifetimecloud.me', 'nextcloud', 'cloud.', 'seafile',
+        'jianguoyun', 'cloudme', 'drivehq', 'teracloud', 'filelu', 'felicloud', 'tab.digital'];
+    const HOST_RULES: Array<[string, string]> = [
+        ['app.koofr.net', 'koofr-webdav'],
+        ['webdav.cloud.mail.ru', 'mailru-cloud'],
+        ['dav.puter.com', 'puter-webdav'],
+        ['lifetimecloud.me', 'lifetimecloud'],
+    ];
+
+    it('claims each preset host whatever its path names', () => {
+        for (const [host, id] of HOST_RULES) {
+            for (const kw of KEYWORDS) {
+                expect(deriveProviderId(dav(`https://${host}/dav/${kw}/`)), `${host} /${kw}/`).toBe(id);
+            }
+        }
+        expect(deriveProviderId(dav('https://app.koofr.net/dav/Koofr'))).toBe('koofr-webdav');
+    });
+
+    it('claims Koofr on its domain only', () => {
+        expect(deriveProviderId(dav('https://app.koofr.net/dav/Koofr'))).toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://koofr.net/dav/'))).toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://koofr.evil.example/dav/'))).not.toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://notkoofr.net/dav/'))).not.toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://app.koofr.net.evil.example/dav/'))).not.toBe('koofr-webdav');
+    });
+
+    it('never gives a host-bound preset to a keyword found only in the path', () => {
+        // The remaining substring rules still read the whole URL on purpose
+        // (a self-hosted Nextcloud under a sub-path); the host-bound ones never do.
+        const hostBound = HOST_RULES.map(([, id]) => id);
+        for (const kw of KEYWORDS) {
+            const got = deriveProviderId(dav(`https://nas.example/dav/${kw}/`));
+            expect(hostBound, `/${kw}/ gave ${got}`).not.toContain(got);
+        }
     });
 });

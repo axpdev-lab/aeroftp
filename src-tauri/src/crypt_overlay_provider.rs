@@ -2659,24 +2659,29 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
 /// binding without a folder as the whole remote, which anchored above the
 /// vault the app wrote at the starting folder.
 pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
-    // An empty username leaves the template as written, as the window does.
+    // The user name as stored, never trimmed, as the window fills it: a
+    // trimmed name put the encrypted folder somewhere else than the one the
+    // window writes to. A blank or refused name leaves the template as written.
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|u| !u.is_empty());
-    let field = |value: Option<&serde_json::Value>| {
-        value
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| match username {
-                Some(u) => s.replace("{username}", u),
-                None => s.to_string(),
-            })
+        .unwrap_or("");
+    let field = |value: Option<&str>| {
+        value.filter(|s| !s.is_empty()).map(|s| {
+            crate::connection_manifest::expand_username_in_path(s, username)
+                .unwrap_or_else(|_| s.to_string())
+        })
     };
-    field(profile.pointer("/aeroCryptOverlay/remoteScope"))
-        .or_else(|| field(profile.get("initialPath")))
-        .unwrap_or_default()
+    // Both folders are read as written, as the AeroCloud root reads the
+    // starting folder (`profile_root`): with no folder of its own the anchor
+    // is the root, edge spaces included (#1449).
+    field(
+        profile
+            .pointer("/aeroCryptOverlay/remoteScope")
+            .and_then(|v| v.as_str()),
+    )
+    .or_else(|| field(profile.get("initialPath").and_then(|v| v.as_str())))
+    .unwrap_or_default()
 }
 
 /// AeroCrypt overlay builder for the AeroCloud stack.
@@ -3108,6 +3113,11 @@ async fn unlock_overlay_keys_encrypting_in_scope(
     keyfile_digest: Option<&[u8; 32]>,
     context: OverlayUnlockContext<'_>,
 ) -> Result<OverlayUnlockOutcome, String> {
+    // An overlay folder still holding the `{username}` placeholder is not
+    // where the files go: anchored there, every upload to the real folder
+    // would fall outside the anchor and go up unencrypted. Refused before
+    // any request, on every activation path (window, CLI, MCP, AeroCloud).
+    crate::connection_manifest::refuse_unresolved_username_template(&params.remote_scope)?;
     let OverlayUnlockContext {
         allow_init,
         with_header,
@@ -6481,6 +6491,133 @@ pub(crate) mod tests {
         }
     }
 
+    /// The window reads an overlay folder from the same case table
+    /// (`profileOverlayScope` in src/utils/cryptScope.ts): the user name as
+    /// stored, never trimmed, or the template when the name is refused.
+    #[test]
+    fn the_overlay_scope_fills_the_username_as_the_window_does() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let template = table["pathTemplate"].as_str().unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let p = serde_json::json!({
+                "username": user,
+                "aeroCryptOverlay": { "remoteScope": template }
+            });
+            let expected = case["path"].as_str().unwrap_or(template);
+            assert_eq!(profile_overlay_scope(&p), expected, "{user:?}");
+        }
+    }
+
+    /// Every pair of twin readers composes one profile alike: the AeroCloud
+    /// root (`profile_root`) and the overlay anchor run the shared table's
+    /// `compositions`, which the TS twins run too. A root outside its own
+    /// anchor was a plaintext upload in mixed mode, so the folder the root
+    /// names is written through the overlay and must land encrypted.
+    #[tokio::test]
+    async fn the_root_and_the_anchor_compose_one_profile_alike() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let bare = |p: &str| p.trim_end_matches('/').to_string();
+        let cases = table["compositions"].as_array().unwrap();
+        assert!(cases.len() >= 8);
+        for case in cases {
+            let name = case["case"].as_str().unwrap();
+            let mut binding = serde_json::json!({ "kind": "aerocrypt" });
+            if let Some(scope) = case.get("remoteScope") {
+                binding["remoteScope"] = scope.clone();
+            }
+            let profile = serde_json::json!({
+                "protocol": "webdav",
+                "initialPath": case["initialPath"],
+                "username": case["user"],
+                "aeroCryptOverlay": binding,
+            });
+            let root = crate::cloud_provider_factory::profile_root(&profile);
+            let scope = profile_overlay_scope(&profile);
+            match case["root"].as_str() {
+                Some(expected) => assert_eq!(
+                    root.as_deref().ok().map(bare),
+                    Some(bare(expected)),
+                    "{name}"
+                ),
+                None => assert!(root.is_err(), "{name}: {root:?}"),
+            }
+            let Some(expected_scope) = case["scope"].as_str() else {
+                assert!(
+                    scope.contains(crate::connection_manifest::USERNAME_TEMPLATE),
+                    "{name}: {scope:?}"
+                );
+                continue;
+            };
+            assert_eq!(bare(&scope), bare(expected_scope), "{name}");
+            if case.get("remoteScope").is_some() {
+                continue;
+            }
+            // With no folder of its own the anchor is the root, and a folder
+            // AeroCloud makes there is written encrypted.
+            let root = root.unwrap();
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), &scope);
+            provider
+                .mkdir(&format!("{}/cloud", bare(&root)))
+                .await
+                .expect("mkdir under the root");
+            let mem = provider
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap()
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let dirs = mem.raw_dirs();
+            assert!(
+                !dirs.iter().any(|d| d.ends_with("/cloud")),
+                "{name}: the root's folder went up in plaintext: {dirs:?}"
+            );
+            // A file the wizard-produced folder receives is stored encrypted:
+            // neither its name nor its bytes reach the server in plaintext.
+            let plaintext = b"AeroCloud plaintext that must never be stored as is";
+            let local = tempfile::NamedTempFile::new().unwrap();
+            std::fs::write(local.path(), plaintext).unwrap();
+            provider
+                .upload(
+                    &local.path().to_string_lossy(),
+                    &format!("{}/cloud/doc.txt", bare(&root)),
+                    None,
+                )
+                .await
+                .expect("upload under the root");
+            let mem = provider
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap()
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let stored = mem.raw_paths();
+            assert!(!stored.is_empty(), "{name}: nothing was stored");
+            for path in &stored {
+                assert!(
+                    !path.ends_with("doc.txt"),
+                    "{name}: plaintext name stored: {path}"
+                );
+                let bytes = mem.raw_bytes(path).unwrap_or_default();
+                assert!(
+                    !bytes.windows(plaintext.len()).any(|w| w == plaintext),
+                    "{name}: plaintext bytes stored at {path}"
+                );
+            }
+        }
+    }
+
     #[tokio::test]
     async fn factory_aerocrypt_fails_closed_on_missing_config() {
         let inner: Box<dyn StorageProvider> = Box::new(MemProvider::new());
@@ -6502,6 +6639,84 @@ pub(crate) mod tests {
         // back.
         let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "", None).await;
         assert!(res.is_err(), "missing config must fail closed");
+    }
+
+    /// An overlay folder the user name cannot fill keeps the `{username}`
+    /// template, and every activation refuses it before any request: anchored
+    /// at the literal folder, uploads to the real one would go up unencrypted.
+    /// Runs the shared case table's refused names (and a user literally named
+    /// `{username}`), for both overlay kinds, through the unlock every path
+    /// uses and through the wrap the CLI, MCP and AeroCloud use.
+    #[tokio::test]
+    async fn an_overlay_folder_the_user_name_cannot_fill_is_never_unlocked() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let template = "/users/{username}/vault";
+        let mut users: Vec<&str> = table["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["path"].is_null())
+            .map(|c| c["user"].as_str().unwrap())
+            .collect();
+        users.push("{username}");
+        for kind in ["aerocrypt", "rclone-crypt"] {
+            for user in &users {
+                let profile = serde_json::json!({
+                    "username": user,
+                    "aeroCryptOverlay": { "enabled": true, "kind": kind, "remoteScope": template }
+                });
+                let scope = profile_overlay_scope(&profile);
+                assert!(scope.contains("{username}"), "{kind} {user:?}: {scope}");
+                let binding = OverlayUnlockParams {
+                    kind: kind.to_string(),
+                    remote_scope: scope,
+                    filename_encryption: String::new(),
+                    directory_name_encryption: true,
+                    off_suffix: None,
+                    profile_id: None,
+                    local_config_json: None,
+                    local_config_salt: None,
+                    with_header: false,
+                    use_default_salt: false,
+                    password_form: None,
+                    salt_form: None,
+                };
+                let mem = MemProvider::new();
+                let mut probe = MemProvider::new();
+                let refused = match unlock_overlay_keys_encrypting(
+                    &mut probe, &binding, "pw", "", None, true, true,
+                )
+                .await
+                {
+                    Ok(_) => panic!("{kind} {user:?}: unlocked"),
+                    Err(e) => e,
+                };
+                assert_eq!(
+                    refused,
+                    crate::connection_manifest::USERNAME_TEMPLATE_UNRESOLVED,
+                    "{kind} {user:?}"
+                );
+                assert!(
+                    probe.files.lock().unwrap().is_empty(),
+                    "{kind} {user:?}: the refused unlock wrote to the remote"
+                );
+                let wrapped = wrap_provider_with_overlay_if_bound(
+                    Box::new(mem),
+                    Some(&binding),
+                    "pw",
+                    "",
+                    None,
+                )
+                .await;
+                assert!(
+                    wrapped.is_err(),
+                    "{kind} {user:?}: the wrap handed back a provider"
+                );
+            }
+        }
     }
 
     #[tokio::test]

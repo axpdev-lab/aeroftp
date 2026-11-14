@@ -84,8 +84,8 @@ pub fn classify(protocol: &str) -> ProtocolClass {
     }
 }
 
-/// Lowercase, trim, strip leading scheme + `www.` and trailing path. Mirrors
-/// the TS `normalizeHost` helper.
+/// Lowercase, trim, strip scheme, userinfo, `www.`, path, query and fragment.
+/// Mirrors the TS `normalizeHost` helper.
 pub fn normalize_host(raw: &str) -> String {
     let mut s = raw.trim().to_ascii_lowercase();
     for scheme in ["https://", "http://", "webdavs://", "webdav://"] {
@@ -94,16 +94,72 @@ pub fn normalize_host(raw: &str) -> String {
             break;
         }
     }
+    // The authority ends at the path, the query or the fragment; none of
+    // them names the server, and a query can carry a credential that a
+    // dedup key printed by the logs must never hold.
+    if let Some(end) = s.find(['/', '?', '#']) {
+        s.truncate(end);
+    }
+    // URL userinfo (`user:pass@host`) is never part of the server identity
+    // either.
+    if let Some(at) = s.rfind('@') {
+        s = s[at + 1..].to_string();
+    }
     if let Some(stripped) = s.strip_prefix("www.") {
         s = stripped.to_string();
     }
-    if let Some(idx) = s.find('/') {
-        s.truncate(idx);
-    }
-    while s.ends_with('/') {
-        s.pop();
-    }
     s
+}
+
+/// The port a WebDAV host with no port of its own connects to: 80 for a clear
+/// scheme (`http://`, and `webdav://`, which `normalize_host` reads the same
+/// way), 443 for `https://`, `webdavs://` and a host with no scheme (the
+/// connect opens those over https). Read from the host as written, before
+/// `normalize_host` drops the scheme. Mirrors the TS `defaultWebDavPort`.
+pub fn default_webdav_port(raw_host: &str) -> u64 {
+    let s = raw_host.trim().to_ascii_lowercase();
+    if s.starts_with("http://") || s.starts_with("webdav://") {
+        80
+    } else {
+        443
+    }
+}
+
+/// First path segment of the server URL: for `https://dav.puter.com/alice`
+/// that is `alice`, the Puter account the WebDAV root belongs to. Token auth
+/// uses the literal username `-token` for every account, so without this the
+/// dedup key cannot tell two Puter drives apart. Mirrors the TS `puterAccount`.
+pub fn puter_account(raw_host: &str) -> String {
+    let mut s = raw_host.trim().to_ascii_lowercase();
+    for scheme in ["https://", "http://", "webdavs://", "webdav://"] {
+        if let Some(rest) = s.strip_prefix(scheme) {
+            s = rest.to_string();
+            break;
+        }
+    }
+    // A query or fragment is not part of the path: an account named only
+    // inside it is no account.
+    if let Some(query) = s.find(['?', '#']) {
+        s.truncate(query);
+    }
+    let Some(idx) = s.find('/') else {
+        return String::new();
+    };
+    let raw = s[idx + 1..].split('/').next().unwrap_or("");
+    // The URL holds the account percent-encoded (`a%40b`), the user name
+    // decoded (`a@b`): decoded, both spellings of one account key alike.
+    // Lowercased again after decoding: `%41lice` and `alice` are one account.
+    let segment = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|d| d.into_owned())
+        .unwrap_or_else(|_| raw.to_string())
+        .to_lowercase();
+    // The form saves the default `https://dav.puter.com/{username}` as it
+    // is: the placeholder names no account, the profile's user name does.
+    if segment.contains("{username}") {
+        return String::new();
+    }
+    segment
 }
 
 /// Lowercase + trim. Returns `None` for opaque tokens (long random strings)
@@ -153,6 +209,14 @@ pub fn access_key_hash(access_key: &str) -> String {
     hex[..12].to_string()
 }
 
+/// WebDAV presets whose server URL is chosen by the user (self-hosted or
+/// per-user node): nextcloud, seafile, infinicloud. Their dedup key must
+/// carry the normalised host or the same user name on two servers collapses
+/// into one drive. Mirrors the TS `USER_HOSTED_WEBDAV_PRESETS`.
+pub fn is_user_hosted_webdav_preset(provider_id: Option<&str>) -> bool {
+    matches!(provider_id, Some("nextcloud" | "seafile" | "infinicloud"))
+}
+
 /// Identify cloud-preset WebDAV providers (Koofr, InfiniCloud, Nextcloud, ...)
 /// vs custom self-hosted WebDAV servers. The list mirrors `deriveProviderId`
 /// and the registry presets recognised by the GUI.
@@ -173,6 +237,8 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
                 | "jianguoyun"
                 | "filelu-webdav"
                 | "felicloud-webdav"
+                | "puter-webdav"
+                | "lifetimecloud"
         )
     )
 }
@@ -199,6 +265,7 @@ pub fn is_s3_preset(provider_id: Option<&str>) -> bool {
                 | "ibm-cos"
                 | "tigris"
                 | "fastly"
+                | "neon-s3"
         )
     )
 }
@@ -313,6 +380,46 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
     }
 
     if proto == "webdav" {
+        if profile.provider_id == Some("puter-webdav") {
+            let account = puter_account(profile.host);
+            // The account path is the drive identity, whichever auth method
+            // the profile uses: password and token profiles of one account
+            // must produce the same key.
+            if !account.is_empty() {
+                return format!("webdav:puter-webdav:{}", account);
+            }
+            // Token auth shares the literal username `-token`; with no
+            // account path two Puter profiles cannot be told apart, so they
+            // must not collapse into one drive.
+            if user_norm.as_deref() == Some("-token") {
+                return format!("id:{}", profile.id);
+            }
+            return format!("webdav:puter-webdav:{}", user_or_id());
+        }
+        if is_user_hosted_webdav_preset(profile.provider_id) {
+            let pid = profile.provider_id.unwrap_or(proto);
+            // An embedded `:port` in the host and the port field name the
+            // same endpoint: take the embedded one as effective and keep it
+            // out of the host portion so both spellings key alike.
+            let normalized = normalize_host(profile.host);
+            let (host, embedded_port) = match normalized.rsplit_once(':') {
+                Some((h, p)) if !h.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
+                    (h.to_string(), p.parse::<u64>().ok())
+                }
+                _ => (normalized, None),
+            };
+            let port = embedded_port.unwrap_or(if profile.port == 0 {
+                default_webdav_port(profile.host)
+            } else {
+                profile.port
+            });
+            let port_part = if port == 443 {
+                String::new()
+            } else {
+                format!(":{port}")
+            };
+            return format!("webdav:{}:{}{}:{}", pid, host, port_part, user_or_id());
+        }
         if is_webdav_preset(profile.provider_id) {
             let pid = profile.provider_id.unwrap_or(proto);
             return format!("webdav:{}:{}", pid, user_or_id());
@@ -545,6 +652,8 @@ mod tests {
             "jianguoyun",
             "filelu-webdav",
             "felicloud-webdav",
+            "puter-webdav",
+            "lifetimecloud",
         ] {
             assert!(
                 is_webdav_preset(Some(preset)),
@@ -575,6 +684,7 @@ mod tests {
             "ibm-cos",
             "tigris",
             "fastly",
+            "neon-s3",
         ] {
             assert!(is_s3_preset(Some(preset)), "{preset} must be an S3 preset");
         }
@@ -815,6 +925,508 @@ mod tests {
     }
 
     #[test]
+    fn puter_token_profiles_of_two_accounts_stay_two_drives() {
+        // Token auth uses the literal username `-token` for every account;
+        // the account lives in the server URL path, so the key must carry it
+        // or alice and bob collapse into one drive.
+        let profiles = [
+            p(
+                "p1",
+                "webdav",
+                Some("puter-webdav"),
+                "https://dav.puter.com/alice",
+                443,
+                "-token",
+                Some(1_000_000),
+                Some(25_000_000),
+            ),
+            p(
+                "p2",
+                "webdav",
+                Some("puter-webdav"),
+                "dav.puter.com/bob",
+                443,
+                "-token",
+                Some(2_000_000),
+                Some(25_000_000),
+            ),
+        ];
+        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice");
+        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob");
+        // Password auth of the same account produces the same key: the
+        // account path is the identity, not the auth username.
+        let alice_password = p(
+            "p1b",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/alice",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&alice_password), dedup_key(&profiles[0]));
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 2);
+        assert_eq!(summary.total_used, 3_000_000);
+    }
+
+    #[test]
+    fn every_spelling_of_one_puter_account_counts_once() {
+        // `/Alice`, `/%41lice` and the template with the user name `Alice`
+        // decode to one account: one key, one quota.
+        let spellings = [
+            ("s1", "https://dav.puter.com/Alice", "-token"),
+            ("s2", "https://dav.puter.com/%41lice", "-token"),
+            ("s3", "https://dav.puter.com/{username}", "Alice"),
+        ];
+        let profiles: Vec<_> = spellings
+            .iter()
+            .map(|(id, host, user)| {
+                p(
+                    id,
+                    "webdav",
+                    Some("puter-webdav"),
+                    host,
+                    443,
+                    user,
+                    Some(1_000),
+                    Some(25_000_000),
+                )
+            })
+            .collect();
+        for profile in &profiles {
+            assert_eq!(dedup_key(profile), "webdav:puter-webdav:alice");
+        }
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 1);
+        assert_eq!(summary.total_used, 1_000);
+    }
+
+    #[test]
+    fn a_percent_encoded_puter_account_keys_like_its_user_name() {
+        // The connect writes `a@b` into the URL as `a%40b` when it fills the
+        // template; a profile saved with that URL and one saved with the
+        // template plus the user name `a@b` are the same drive.
+        let encoded = p(
+            "e1",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/a%40b",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        let template = p(
+            "e2",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/{username}",
+            443,
+            "a@b",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&encoded), "webdav:puter-webdav:a@b");
+        assert_eq!(dedup_key(&encoded), dedup_key(&template));
+    }
+
+    #[test]
+    fn the_unchanged_puter_default_url_keys_by_the_user_name() {
+        // The form saves `https://dav.puter.com/{username}` unchanged, so
+        // the placeholder must not become the account of every profile.
+        let template = "https://dav.puter.com/{username}";
+        let puter = |id: &'static str, host: &'static str, user: &'static str, used| {
+            p(
+                id,
+                "webdav",
+                Some("puter-webdav"),
+                host,
+                443,
+                user,
+                Some(used),
+                Some(25_000_000),
+            )
+        };
+        let profiles = [
+            puter("t1", template, "alice", 1_000_000),
+            puter("t2", template, "bob", 2_000_000),
+        ];
+        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice");
+        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob");
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 2);
+        assert_eq!(summary.total_used, 3_000_000);
+        // The same account written with the expanded URL is the same drive.
+        let expanded = puter("t3", "https://dav.puter.com/alice", "alice", 0);
+        assert_eq!(dedup_key(&expanded), dedup_key(&profiles[0]));
+        // The percent-encoded spelling of the placeholder is the same case.
+        let encoded = puter("t4", "https://dav.puter.com/%7Busername%7D", "alice", 0);
+        assert_eq!(dedup_key(&encoded), dedup_key(&profiles[0]));
+        // Under token auth the placeholder resolves to `-token`, which names
+        // no account: each profile keeps its own id.
+        let token = puter("t5", template, "-token", 0);
+        assert_eq!(dedup_key(&token), "id:t5");
+    }
+
+    #[test]
+    fn a_puter_token_profile_with_no_account_path_never_dedups() {
+        // Without the account in the URL two `-token` profiles are
+        // indistinguishable, so each falls back to its own id.
+        let a = p(
+            "p3",
+            "webdav",
+            Some("puter-webdav"),
+            "dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        let b = p(
+            "p4",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&a), "id:p3");
+        assert_eq!(dedup_key(&b), "id:p4");
+        // Password auth still keys by the real username even without a path.
+        let c = p(
+            "p5",
+            "webdav",
+            Some("puter-webdav"),
+            "dav.puter.com",
+            443,
+            "carol",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&c), "webdav:puter-webdav:carol");
+        // Side by side, the same account with no account path: the password
+        // profile keys by its user name, the token profile cannot name the
+        // account at all (`-token` is shared by every account), so it keys by
+        // its own id. Merging them would need the account path; without it
+        // they stay two entries.
+        let carol_token_no_path = p(
+            "p9",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&carol_token_no_path), "id:p9");
+        assert_ne!(dedup_key(&carol_token_no_path), dedup_key(&c));
+        assert_eq!(
+            aggregate(&[c.clone(), carol_token_no_path.clone()]).unique_count,
+            2
+        );
+        // The password profile with no path and the token profile with the
+        // account path name the same drive, so they share one key.
+        let carol_token = p(
+            "p6",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/carol",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&carol_token), dedup_key(&c));
+        // An account written only in the query or fragment is no account
+        // path: the key falls back as if there were none.
+        let query_only = p(
+            "p7",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com?next=/carol",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&query_only), "id:p7");
+        let fragment_only = p(
+            "p8",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com#/carol",
+            443,
+            "dave",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&fragment_only), "webdav:puter-webdav:dave");
+    }
+
+    #[test]
+    fn the_default_port_follows_the_scheme_as_the_ts_twin_does() {
+        // The table lives once, in the TS twin's test, between two markers.
+        let source = include_str!("../../src/utils/storageDedup.test.ts");
+        let start = source.find("/* dedup-port-cases:begin */").unwrap();
+        let end = source.find("/* dedup-port-cases:end */").unwrap();
+        let block = &source[start..end];
+        let json = &block[block.find("= [").unwrap() + 2..=block.rfind(']').unwrap()];
+        let cases: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+        assert!(cases.len() >= 10);
+        for c in cases {
+            let host = c["host"].as_str().unwrap();
+            let port = c["port"].as_u64().unwrap();
+            let profile = p(
+                "n",
+                "webdav",
+                Some("nextcloud"),
+                host,
+                port,
+                "alice",
+                None,
+                None,
+            );
+            assert_eq!(
+                dedup_key(&profile),
+                c["key"].as_str().unwrap(),
+                "{host} port {port}"
+            );
+        }
+    }
+
+    #[test]
+    fn user_hosted_webdav_presets_key_by_host_too() {
+        // nextcloud, seafile and infinicloud take the server URL from the
+        // user: the same user name on two servers is two drives, while case
+        // and the default port do not split one.
+        let a = p(
+            "n1",
+            "webdav",
+            Some("nextcloud"),
+            "https://Cloud-A.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let b = p(
+            "n2",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-b.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&a), "webdav:nextcloud:cloud-a.example.com:alice");
+        assert_eq!(dedup_key(&b), "webdav:nextcloud:cloud-b.example.com:alice");
+        let summary = aggregate(&[a.clone(), b.clone()]);
+        assert_eq!(summary.unique_count, 2);
+        // Same host spelled differently, and the implicit vs explicit 443,
+        // are the same drive.
+        let c = p(
+            "n3",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com",
+            0,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&c), dedup_key(&a));
+        // A non-default port is a different endpoint.
+        let d = p(
+            "n4",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com",
+            8443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(
+            dedup_key(&d),
+            "webdav:nextcloud:cloud-a.example.com:8443:alice"
+        );
+        // seafile and infinicloud follow the same rule.
+        let s = p(
+            "s1",
+            "webdav",
+            Some("seafile"),
+            "https://seafile.example.com",
+            443,
+            "bob",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&s), "webdav:seafile:seafile.example.com:bob");
+        let i = p(
+            "i1",
+            "webdav",
+            Some("infinicloud"),
+            "https://alice-node.teracloud.jp",
+            443,
+            "alice@example.com",
+            None,
+            None,
+        );
+        assert_eq!(
+            dedup_key(&i),
+            "webdav:infinicloud:alice-node.teracloud.jp:alice@example.com"
+        );
+        // An embedded `:port` in the host and the port field name the same
+        // endpoint: both spellings, and the explicit-443 forms, key alike.
+        let embedded = p(
+            "n5",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com:8443",
+            8443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&embedded), dedup_key(&d));
+        let embedded443 = p(
+            "n6",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud-a.example.com:443",
+            0,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&embedded443), dedup_key(&a));
+    }
+
+    #[test]
+    fn normalize_host_strips_url_userinfo_so_secrets_never_reach_a_key() {
+        assert_eq!(
+            normalize_host("https://user:pass@nas.example.com:8080/dav"),
+            "nas.example.com:8080"
+        );
+        assert_eq!(
+            normalize_host("user:pass@nas.example.com/dav"),
+            "nas.example.com"
+        );
+    }
+
+    #[test]
+    fn normalize_host_strips_the_query_and_fragment_so_secrets_never_reach_a_key() {
+        assert_eq!(
+            normalize_host("https://cloud.example.com?access_token=SECRET"),
+            "cloud.example.com"
+        );
+        assert_eq!(
+            normalize_host("cloud.example.com:8443#SECRET"),
+            "cloud.example.com:8443"
+        );
+        assert_eq!(
+            normalize_host("https://cloud.example.com/dav?access_token=SECRET"),
+            "cloud.example.com"
+        );
+        // An `@` inside the query is not userinfo: the host stays.
+        assert_eq!(
+            normalize_host("https://cloud.example.com?next=a@b.example"),
+            "cloud.example.com"
+        );
+        let with_query = p(
+            "q1",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud.example.com?access_token=SECRET",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let plain = p(
+            "q2",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert!(!dedup_key(&with_query).contains("secret"));
+        assert_eq!(dedup_key(&with_query), dedup_key(&plain));
+        // Generic WebDAV: the `webdav-host:` key.
+        let dav = p(
+            "q5",
+            "webdav",
+            None,
+            "https://dav.example.com/remote?token=SECRET",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let dav_plain = p(
+            "q6",
+            "webdav",
+            None,
+            "https://dav.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&dav), "webdav-host:dav.example.com:alice");
+        assert_eq!(dedup_key(&dav), dedup_key(&dav_plain));
+        // Custom S3: the `s3-host:` key.
+        let s3_plain = p(
+            "q7",
+            "s3",
+            None,
+            "https://s3.example.com",
+            443,
+            "AKIAEXAMPLE",
+            None,
+            None,
+        );
+        let s3 = p(
+            "q3",
+            "s3",
+            None,
+            "https://s3.example.com?X-Amz-Signature=SECRET",
+            443,
+            "AKIAEXAMPLE",
+            None,
+            None,
+        );
+        assert!(dedup_key(&s3).starts_with("s3-host:s3.example.com:"));
+        assert!(!dedup_key(&s3).contains("secret"));
+        assert_eq!(dedup_key(&s3), dedup_key(&s3_plain));
+        // FTP: the `host:` key.
+        let ftp_plain = p("q8", "ftp", None, "ftp.example.com", 21, "bob", None, None);
+        let ftp = p(
+            "q4",
+            "ftp",
+            None,
+            "ftp.example.com#SECRET",
+            21,
+            "bob",
+            None,
+            None,
+        );
+        assert!(dedup_key(&ftp).starts_with("host:"));
+        assert!(dedup_key(&ftp).ends_with(":ftp.example.com:21:bob"));
+        assert!(!dedup_key(&ftp).contains("secret"));
+        assert_eq!(dedup_key(&ftp), dedup_key(&ftp_plain));
+    }
+
+    #[test]
     fn a_stored_preset_alias_keys_like_its_preset() {
         // fastly-object-storage, backblaze-b2 and azure-blob are manifest
         // aliases. One account spelled both ways is one drive, and its cached
@@ -973,5 +1585,72 @@ mod tests {
         assert_eq!(classify("aerocloud"), ProtocolClass::AeroCloud);
         assert_eq!(classify("koofr"), ProtocolClass::Api);
         assert_eq!(classify("github"), ProtocolClass::Api);
+    }
+
+    #[test]
+    fn lifetimecloud_webdav_dedup_keys_match_contract() {
+        assert!(is_webdav_preset(Some("lifetimecloud")));
+
+        let alice_tmpl = p(
+            "lc-alice-tmpl",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            "alice",
+            Some(100),
+            Some(1_000),
+        );
+        let alice_exp = p(
+            "lc-alice-exp",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/alice/",
+            443,
+            "alice",
+            Some(200),
+            Some(1_000),
+        );
+        let bob_tmpl = p(
+            "lc-bob-tmpl",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            "bob",
+            Some(50),
+            Some(1_000),
+        );
+        let tok_user = "deadbeef".repeat(8);
+        let tok_a = p(
+            "lc-tok-a",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            &tok_user,
+            None,
+            None,
+        );
+        let tok_b = p(
+            "lc-tok-b",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            &tok_user,
+            None,
+            None,
+        );
+
+        assert_eq!(dedup_key(&alice_tmpl), "webdav:lifetimecloud:alice");
+        assert_eq!(dedup_key(&alice_exp), "webdav:lifetimecloud:alice");
+        assert_eq!(dedup_key(&bob_tmpl), "webdav:lifetimecloud:bob");
+        assert_eq!(dedup_key(&tok_a), "webdav:lifetimecloud:id:lc-tok-a");
+        assert_eq!(dedup_key(&tok_b), "webdav:lifetimecloud:id:lc-tok-b");
+        assert_eq!(
+            aggregate(&[alice_tmpl, alice_exp, bob_tmpl]).unique_count,
+            2
+        );
     }
 }

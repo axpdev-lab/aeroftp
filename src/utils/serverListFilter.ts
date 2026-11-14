@@ -34,13 +34,20 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         if (match) return match;
     }
     if (proto === 'webdav') {
-        if (host.includes('koofr')) return 'koofr-webdav';
         // Domain-boundary match (same pattern as the filebase S3 rule above):
         // exact mail.ru or *.mail.ru subdomains, so webdav.cloud.mail.ru is not
         // swallowed by the generic 'cloud.' Nextcloud rule below, and lookalikes
-        // like gmail.ru are rejected.
-        const davHost = host.replace(/^https?:\/\//, '').split(/[:/]/)[0];
+        // like gmail.ru are rejected. Similarly, lifetimecloud.me contains
+        // 'cloud.' and must match on a real domain boundary before Nextcloud.
+        const davHost = host.replace(/^https?:\/\//, '').split(/[/?#]/)[0].split('@').pop()!.split(':')[0];
         if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
+        // Puter WebDAV: exact dav.puter.com or a subdomain of it.
+        if (davHost === 'dav.puter.com' || davHost.endsWith('.dav.puter.com')) return 'puter-webdav';
+        if (davHost === 'lifetimecloud.me' || davHost.endsWith('.lifetimecloud.me')) return 'lifetimecloud';
+        // Koofr on its own domain, after the exact-host rules: matched as a
+        // substring of the whole URL it claimed a Puter or LifetimeCloud drive
+        // whose user name is `koofr` (`https://dav.puter.com/koofr`).
+        if (davHost === 'koofr.net' || davHost.endsWith('.koofr.net')) return 'koofr-webdav';
         if (host.includes('nextcloud') || host.includes('cloud.')) return 'nextcloud';
         if (host.includes('seafile')) return 'seafile';
         if (host.includes('jianguoyun')) return 'jianguoyun';

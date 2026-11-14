@@ -852,7 +852,10 @@
             "allowScpFallbackHint": "Se il server non ha SFTP, prosegue con SCP sulla stessa connessione, come fa WinSCP.",
             "discoverScp": "Copia di file via SSH per i server senza SFTP",
             "discoverTigris": "Tigris: archiviazione distribuita globalmente compatibile con S3, senza costi di egress (5 GB gratis)",
-            "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)"
+            "discoverFastly": "Fastly Object Storage: archiviazione compatibile con S3 in 12 regioni (5 GB gratis, carta richiesta)",
+            "discoverNeon": "Neon Object Storage: archiviazione compatibile con S3 per branch di progetto (5 GB gratis per progetto)",
+            "discoverPuter": "Archiviazione cloud Puter via WebDAV (25 MB gratis, senza carta)",
+            "discoverLifetimeCloud": "Archiviazione LifetimeCloud tramite WebDAV (1 GB gratis, senza carta)"
         },
         "browser": {
             "remote": "Remoto",

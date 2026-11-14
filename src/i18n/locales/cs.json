@@ -2379,7 +2379,10 @@
             "discoverTigris": "Tigris: globálně distribuované úložiště kompatibilní s S3, bez poplatků za odchozí data (5 GB zdarma)",
             "trustPasvAddress": "Použít pasivní adresu zadanou serverem",
             "trustPasvAddressHelp": "Vypnuto: datová spojení směřují na hostitele, ke kterému jste se připojili, stejně jako u curl. Zapněte jen pro server, který posílá data z jiné adresy.",
-            "discoverFastly": "Fastly Object Storage: úložiště kompatibilní s S3 ve 12 regionech (5 GB zdarma, vyžaduje kartu)"
+            "discoverFastly": "Fastly Object Storage: úložiště kompatibilní s S3 ve 12 regionech (5 GB zdarma, vyžaduje kartu)",
+            "discoverNeon": "Neon Object Storage: úložiště kompatibilní se S3 pro každou větev projektu (5 GB zdarma pro projekt)",
+            "discoverPuter": "Cloudové úložiště Puter přes WebDAV (25 MB zdarma, bez karty)",
+            "discoverLifetimeCloud": "Úložiště LifetimeCloud přes WebDAV (1 GB zdarma, bez karty)"
         },
         "shortcuts": {
             "title": "Klávesové zkratky",

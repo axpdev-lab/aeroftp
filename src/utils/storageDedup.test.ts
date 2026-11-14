@@ -196,6 +196,286 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profile)).toBe('webdav:mailru-cloud:aeroftp@mail.ru');
     });
 
+    it('case 4c2: Puter token profiles of two accounts stay two drives', () => {
+        // Token auth uses the literal username `-token` for every account;
+        // the account lives in the server URL path, so the key must carry it
+        // or alice and bob collapse into one drive.
+        const alice = make({
+            id: 'p1', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/alice', port: 443,
+            username: '-token',
+            used: 1_000_000, total: 25_000_000,
+        });
+        const bob = make({
+            id: 'p2', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com/bob', port: 443,
+            username: '-token',
+            used: 2_000_000, total: 25_000_000,
+        });
+        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice');
+        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob');
+        // Password auth of the same account produces the same key: the
+        // account path is the identity, not the auth username.
+        const alicePassword = make({
+            id: 'p1b', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/alice', port: 443,
+            username: 'alice',
+        });
+        expect(getStorageDedupKey(alicePassword)).toBe(getStorageDedupKey(alice));
+        const summary = aggregateByDedupKey([alice, bob]);
+        expect(summary.uniqueCount).toBe(2);
+        expect(summary.totalUsed).toBe(3_000_000);
+    });
+
+    it('case 4c7: every spelling of one Puter account counts once', () => {
+        // `/Alice`, `/%41lice` and the template with the user name `Alice`
+        // decode to one account: one key, one quota.
+        const profiles = [
+            ['s1', 'https://dav.puter.com/Alice', '-token'],
+            ['s2', 'https://dav.puter.com/%41lice', '-token'],
+            ['s3', 'https://dav.puter.com/{username}', 'Alice'],
+        ].map(([id, host, username]) => make({
+            id, protocol: 'webdav', providerId: 'puter-webdav', host, port: 443, username,
+            used: 1_000, total: 25_000_000,
+        }));
+        for (const profile of profiles) {
+            expect(getStorageDedupKey(profile)).toBe('webdav:puter-webdav:alice');
+        }
+        const summary = aggregateByDedupKey(profiles);
+        expect(summary.uniqueCount).toBe(1);
+        expect(summary.totalUsed).toBe(1_000);
+    });
+
+    it('case 4c6: a percent-encoded Puter account keys like its user name', () => {
+        // The connect writes `a@b` into the URL as `a%40b` when it fills the
+        // template; both spellings of the account are one drive.
+        const encoded = make({
+            id: 'e1', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/a%40b', port: 443, username: '-token',
+        });
+        const template = make({
+            id: 'e2', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/{username}', port: 443, username: 'a@b',
+        });
+        expect(getStorageDedupKey(encoded)).toBe('webdav:puter-webdav:a@b');
+        expect(getStorageDedupKey(encoded)).toBe(getStorageDedupKey(template));
+    });
+
+    it('case 4c5: the unchanged Puter default URL keys by the user name', () => {
+        // The form saves `https://dav.puter.com/{username}` unchanged, so
+        // the placeholder must not become the account of every profile.
+        const template = 'https://dav.puter.com/{username}';
+        const puter = (id: string, host: string, username: string, used = 0) => make({
+            id, protocol: 'webdav', providerId: 'puter-webdav',
+            host, port: 443, username, used, total: 25_000_000,
+        });
+        const alice = puter('t1', template, 'alice', 1_000_000);
+        const bob = puter('t2', template, 'bob', 2_000_000);
+        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice');
+        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob');
+        const summary = aggregateByDedupKey([alice, bob]);
+        expect(summary.uniqueCount).toBe(2);
+        expect(summary.totalUsed).toBe(3_000_000);
+        // The same account written with the expanded URL is the same drive.
+        expect(getStorageDedupKey(puter('t3', 'https://dav.puter.com/alice', 'alice')))
+            .toBe(getStorageDedupKey(alice));
+        // The percent-encoded spelling of the placeholder is the same case.
+        expect(getStorageDedupKey(puter('t4', 'https://dav.puter.com/%7Busername%7D', 'alice')))
+            .toBe(getStorageDedupKey(alice));
+        // Under token auth the placeholder resolves to `-token`, which names
+        // no account: each profile keeps its own id.
+        expect(getStorageDedupKey(puter('t5', template, '-token'))).toBe('id:t5');
+    });
+
+    it('case 4c3: a Puter token profile with no account path never dedups', () => {
+        // Without the account in the URL two `-token` profiles are
+        // indistinguishable, so each falls back to its own id.
+        const a = make({
+            id: 'p3', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com', port: 443, username: '-token',
+        });
+        const b = make({
+            id: 'p4', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(a)).toBe('id:p3');
+        expect(getStorageDedupKey(b)).toBe('id:p4');
+        // Password auth still keys by the real username even without a path.
+        const c = make({
+            id: 'p5', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com', port: 443, username: 'carol',
+        });
+        expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav:carol');
+        // Side by side, the same account with no account path: the password
+        // profile keys by its user name, the token profile cannot name the
+        // account at all (`-token` is shared by every account), so it keys by
+        // its own id. Merging them would need the account path; without it
+        // they stay two entries.
+        const carolTokenNoPath = make({
+            id: 'p9', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(carolTokenNoPath)).toBe('id:p9');
+        expect(getStorageDedupKey(carolTokenNoPath)).not.toBe(getStorageDedupKey(c));
+        expect(aggregateByDedupKey([c, carolTokenNoPath]).uniqueCount).toBe(2);
+        // The password profile with no path and the token profile with the
+        // account path name the same drive, so they share one key.
+        const carolToken = make({
+            id: 'p6', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/carol', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(carolToken)).toBe(getStorageDedupKey(c));
+        // An account written only in the query or fragment is no account
+        // path: the key falls back as if there were none.
+        const queryOnly = make({
+            id: 'p7', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com?next=/carol', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(queryOnly)).toBe('id:p7');
+        const fragmentOnly = make({
+            id: 'p8', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com#/carol', port: 443, username: 'dave',
+        });
+        expect(getStorageDedupKey(fragmentOnly)).toBe('webdav:puter-webdav:dave');
+    });
+
+    // One table for both twins: the Rust test reads the JSON between the
+    // markers (`the_default_port_follows_the_scheme_as_the_ts_twin_does`).
+    /* dedup-port-cases:begin */
+    const DEDUP_PORT_CASES: Array<{ host: string; port: number; key: string }> = [
+        { "host": "http://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "http://nas.example:80", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "http://nas.example", "port": 80, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": " HTTP://NAS.example/dav/", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "webdav://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "https://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "https://nas.example:443", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "webdavs://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "https://nas.example:80", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "https://nas.example", "port": 8443, "key": "webdav:nextcloud:nas.example:8443:alice" }
+    ];
+    /* dedup-port-cases:end */
+
+    it('a user-hosted WebDAV host with no port keys with the port its scheme connects to', () => {
+        // `http://nas.example` connects to port 80: keyed with 443 it was two
+        // drives beside `http://nas.example:80`, and the quota counted twice.
+        for (const c of DEDUP_PORT_CASES) {
+            const key = getStorageDedupKey(make({
+                id: 'n', protocol: 'webdav', providerId: 'nextcloud', host: c.host, port: c.port, username: 'alice',
+            }));
+            expect(key, `${c.host} port ${c.port}`).toBe(c.key);
+        }
+    });
+
+    it('case 4c4: user-hosted WebDAV presets key by host too', () => {
+        // nextcloud, seafile and infinicloud take the server URL from the
+        // user: the same user name on two servers is two drives, while case
+        // and the default port do not split one.
+        const a = make({
+            id: 'n1', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://Cloud-A.example.com', port: 443, username: 'alice',
+        });
+        const b = make({
+            id: 'n2', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-b.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(a)).toBe('webdav:nextcloud:cloud-a.example.com:alice');
+        expect(getStorageDedupKey(b)).toBe('webdav:nextcloud:cloud-b.example.com:alice');
+        const summary = aggregateByDedupKey([a, b]);
+        expect(summary.uniqueCount).toBe(2);
+        // Same host spelled differently, and the implicit vs explicit 443,
+        // are the same drive.
+        const c = make({
+            id: 'n3', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com', port: 0, username: 'alice',
+        });
+        expect(getStorageDedupKey(c)).toBe(getStorageDedupKey(a));
+        // A non-default port is a different endpoint.
+        const d = make({
+            id: 'n4', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com', port: 8443, username: 'alice',
+        });
+        expect(getStorageDedupKey(d)).toBe('webdav:nextcloud:cloud-a.example.com:8443:alice');
+        // seafile and infinicloud follow the same rule.
+        const s = make({
+            id: 's1', protocol: 'webdav', providerId: 'seafile',
+            host: 'https://seafile.example.com', port: 443, username: 'bob',
+        });
+        expect(getStorageDedupKey(s)).toBe('webdav:seafile:seafile.example.com:bob');
+        const i = make({
+            id: 'i1', protocol: 'webdav', providerId: 'infinicloud',
+            host: 'https://alice-node.teracloud.jp', port: 443, username: 'alice@example.com',
+        });
+        expect(getStorageDedupKey(i)).toBe('webdav:infinicloud:alice-node.teracloud.jp:alice@example.com');
+        // An embedded `:port` in the host and the port field name the same
+        // endpoint: both spellings, and the explicit-443 forms, key alike.
+        const embedded = make({
+            id: 'n5', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com:8443', port: 8443, username: 'alice',
+        });
+        expect(getStorageDedupKey(embedded)).toBe(getStorageDedupKey(d));
+        const embedded443 = make({
+            id: 'n6', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud-a.example.com:443', port: 0, username: 'alice',
+        });
+        expect(getStorageDedupKey(embedded443)).toBe(getStorageDedupKey(a));
+    });
+
+    it('normalizeHost strips URL userinfo so secrets never reach a key', () => {
+        expect(normalizeHost('https://user:pass@nas.example.com:8080/dav')).toBe('nas.example.com:8080');
+        expect(normalizeHost('user:pass@nas.example.com/dav')).toBe('nas.example.com');
+    });
+
+    it('normalizeHost strips the query and fragment so secrets never reach a key', () => {
+        expect(normalizeHost('https://cloud.example.com?access_token=SECRET')).toBe('cloud.example.com');
+        expect(normalizeHost('cloud.example.com:8443#SECRET')).toBe('cloud.example.com:8443');
+        expect(normalizeHost('https://cloud.example.com/dav?access_token=SECRET')).toBe('cloud.example.com');
+        // An `@` inside the query is not userinfo: the host stays.
+        expect(normalizeHost('https://cloud.example.com?next=a@b.example')).toBe('cloud.example.com');
+        const withQuery = make({
+            id: 'q1', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud.example.com?access_token=SECRET', port: 443, username: 'alice',
+        });
+        const plain = make({
+            id: 'q2', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(withQuery)).not.toContain('secret');
+        expect(getStorageDedupKey(withQuery)).toBe(getStorageDedupKey(plain));
+        // Generic WebDAV: the `webdav-host:` key.
+        const dav = make({
+            id: 'q5', protocol: 'webdav', host: 'https://dav.example.com/remote?token=SECRET',
+            port: 443, username: 'alice',
+        });
+        const davPlain = make({
+            id: 'q6', protocol: 'webdav', host: 'https://dav.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(dav)).toBe('webdav-host:dav.example.com:alice');
+        expect(getStorageDedupKey(dav)).toBe(getStorageDedupKey(davPlain));
+        // Custom S3: the `s3-host:` key.
+        const s3 = make({
+            id: 'q3', protocol: 's3', host: 'https://s3.example.com?X-Amz-Signature=SECRET',
+            port: 443, username: 'AKIAEXAMPLE',
+        });
+        const s3Plain = make({
+            id: 'q7', protocol: 's3', host: 'https://s3.example.com', port: 443, username: 'AKIAEXAMPLE',
+        });
+        expect(getStorageDedupKey(s3)).toMatch(/^s3-host:s3\.example\.com:/);
+        expect(getStorageDedupKey(s3)).not.toContain('secret');
+        expect(getStorageDedupKey(s3)).toBe(getStorageDedupKey(s3Plain));
+        // FTP: the `host:` key.
+        const ftp = make({
+            id: 'q4', protocol: 'ftp', host: 'ftp.example.com#SECRET', port: 21, username: 'bob',
+        });
+        const ftpPlain = make({
+            id: 'q8', protocol: 'ftp', host: 'ftp.example.com', port: 21, username: 'bob',
+        });
+        expect(getStorageDedupKey(ftp)).toMatch(/^host:[^:]+:ftp\.example\.com:21:bob$/);
+        expect(getStorageDedupKey(ftp)).not.toContain('secret');
+        expect(getStorageDedupKey(ftp)).toBe(getStorageDedupKey(ftpPlain));
+    });
+
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
         // The frontend S3 mirror missed 'ibm-cos', so same-key profiles in
         // different regions keyed by host (two drives) while Rust keyed by
@@ -368,5 +648,55 @@ describe('storageDedup', () => {
         expect(normalizeUser('deadbeef'.repeat(8))).toBeUndefined(); // hex 64 char
         expect(normalizeUser('')).toBeUndefined();
         expect(normalizeUser(undefined)).toBeUndefined();
+    });
+
+    it('LifetimeCloud WebDAV dedup keys template and expanded URLs identically, separates users, and skips opaque tokens', () => {
+        const aliceTemplate = make({
+            id: 'lc-alice-tmpl',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'alice',
+        });
+        const aliceExpanded = make({
+            id: 'lc-alice-exp',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/alice/',
+            port: 443,
+            username: 'alice',
+        });
+        const bobTemplate = make({
+            id: 'lc-bob-tmpl',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'bob',
+        });
+        const opaqueA = make({
+            id: 'lc-tok-a',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'deadbeef'.repeat(8),
+        });
+        const opaqueB = make({
+            id: 'lc-tok-b',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'deadbeef'.repeat(8),
+        });
+
+        expect(getStorageDedupKey(aliceTemplate)).toBe('webdav:lifetimecloud:alice');
+        expect(getStorageDedupKey(aliceExpanded)).toBe('webdav:lifetimecloud:alice');
+        expect(getStorageDedupKey(bobTemplate)).toBe('webdav:lifetimecloud:bob');
+        expect(getStorageDedupKey(opaqueA)).toBe('webdav:lifetimecloud:id:lc-tok-a');
+        expect(getStorageDedupKey(opaqueB)).toBe('webdav:lifetimecloud:id:lc-tok-b');
+        expect(aggregateByDedupKey([aliceTemplate, aliceExpanded, bobTemplate]).uniqueCount).toBe(2);
     });
 });
