@@ -2232,7 +2232,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
             debugMode: false,
             loadSavedServerProfiles: async () => [],
             setDeltaEligibilityPrompt: vi.fn(),
-            aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'p1' } },
+            aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'p1' }, connection: null as unknown },
             setAeroSync: vi.fn(),
             buildMirrorSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
             buildRemoteSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
@@ -2242,9 +2242,13 @@ describe('the sync actions read the generation at the action (E1)', () => {
             canaryRunningRef: { current: false },
             setCanaryResult: (shown: { onApprove: () => void } | null) => { approve = shown?.onApprove; },
         };
-        const actions = new Function(...Object.keys(ctx), `${await compile()}; return { ${ACTIONS.join(', ')} };`)(
+        const state = ctx.aeroSync as { connection: unknown };
+        const actions = new Function(...Object.keys(ctx), `${await compile()}; return { ${ACTIONS.join(', ')}, connectionAtAction };`)(
             ...Object.values(ctx),
-        ) as Record<Action, (...args: unknown[]) => void>;
+        ) as Record<Action, (...args: unknown[]) => void> & { connectionAtAction: () => unknown };
+        // The dialog's comparison, as `openAeroSync` builds its state: the
+        // connection every plan of this state comes from, stored with it.
+        state.connection = actions.connectionAtAction();
         return {
             actions,
             ctx: ctx as { runRemoteSync: ReturnType<typeof vi.fn>; notify: { error: ReturnType<typeof vi.fn> }; invoke: ReturnType<typeof vi.fn> },
@@ -2254,6 +2258,7 @@ describe('the sync actions read the generation at the action (E1)', () => {
             finishCanary: () => finishCanary({ sampled: 1 }),
             approve: () => approve?.(),
             approvalShown: () => approve !== undefined,
+            state,
         };
     };
     const runtime = (canary: boolean) => ({
@@ -2317,13 +2322,84 @@ describe('the sync actions read the generation at the action (E1)', () => {
         // Its only read is the gate's "now"; the "requested" one is the caller's.
         expect(run.split("'provider_connection_generation'").length - 1).toBe(1);
         expect(run).toContain("generation: () => invoke<number>('provider_connection_generation'),");
-        expect(run).toContain('requested: opts.requestedConnection.generation,');
+        expect(run).toContain('requested: opts.requestedConnection?.generation');
         // E3: no launch path around the gate, and the probe follows the
         // action's protocol.
         expect(run.split('launch: launchRun').length - 1).toBe(1);
         expect(run.split('launchRun()').length - 1).toBe(0);
         expect(run).toContain("probeDelta: protocol === 'sftp',");
-        expect(run).toContain('const protocol = opts.requestedConnection.protocol;');
+        expect(run).toContain('const protocol = opts.requestedConnection?.protocol;');
+    });
+
+    // P1: the connection moves after the compare and before the click (an
+    // overlay armed or cleared, a reconnect: the dialog stays open). Every
+    // action's plan comes from that compare, so nothing launches.
+    it.each([
+        ['the preset run', (s: Awaited<ReturnType<typeof station>>) => s.actions.executeSyncPresetPlan(preset, runtime(false))],
+        ['the left-to-right mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }])],
+        ['the right-to-left mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorRightToLeft([{ relativePath: 'a.txt' }])],
+        ['the journal resume', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined })],
+    ] as const)('%s launches nothing after a switch between the compare and the click', async (_name, act) => {
+        const s = await station();
+        s.switchConnection();
+        act(s);
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    // P1: a Rescan builds a new state with its own capture; the click on
+    // the entries still displayed acts on the state they belong to, whose
+    // connection is the earlier one: nothing launches.
+    it('launches nothing from the entries of a comparison whose rescan started on another connection', async () => {
+        const s = await station();
+        const earlier = s.state.connection;
+        // The rescan on B: openAeroSync captures B into the NEW state only.
+        s.switchConnection();
+        const rescan = { connection: s.actions.connectionAtAction() };
+        expect(rescan.connection).not.toBe(earlier);
+        expect(s.state.connection).toBe(earlier);
+        s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }]);
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['no connection captured', (): unknown => null],
+        ['a generation read that rejected', (): unknown => {
+            const generation = Promise.reject(new Error('read failed'));
+            generation.catch(() => undefined);
+            return { generation, protocol: 'sftp' };
+        }],
+    ] as const)('fails closed with %s', async (_name, capture) => {
+        for (const act of ACTIONS) {
+            const s = await station();
+            s.state.connection = capture();
+            if (act === 'executeSyncPresetPlan') s.actions.executeSyncPresetPlan(preset, runtime(false));
+            else if (act === 'handleResumeJournal') s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined });
+            else s.actions[act]([{ relativePath: 'a.txt' }]);
+            await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+            await tick();
+            expect(s.ctx.runRemoteSync, act).not.toHaveBeenCalled();
+        }
+    });
+
+    it('stores the connection with the comparison openAeroSync builds, and every action reads it there', () => {
+        const open = block('  const openAeroSync = useLatestCallback(', '  // GAP-5: shared connected-remote sync launcher.');
+        expect(open).toContain('const connection = connectionAtAction();');
+        // Replaced together: the remote state carries this call's capture,
+        // the others none; nothing else writes it.
+        const states = open.split('\n').filter(line => /^\s+connection(: null)?,$/.test(line));
+        expect(states.map(line => line.trim()).sort()).toEqual(['connection,', 'connection: null,', 'connection: null,']);
+        expect(APP).not.toMatch(/\.connection = /);
+        expect(APP.split('const requestedConnection = aeroSync?.connection ?? null;').length - 1).toBe(4);
+        // The context hook keeps the comparison's own connection.
+        expect(APP).toContain('useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);');
+        expect(APP).toContain("return next ? { ...next, connection: prev?.connection ?? null } : null;");
+        // No fallback to a read at the click.
+        const run = block('  const runConnectedRemoteSync = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.');
+        expect(run).toContain("?? Promise.reject(new Error('no connection was captured with this comparison')),");
     });
 
     // E3: the connection switches to another protocol while the canary

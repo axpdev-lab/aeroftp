@@ -23,7 +23,7 @@ import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelec
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
@@ -97,24 +97,27 @@ interface ConnectedRemoteRunOptions {
   /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
   errorCorrection?: { enabled: boolean; pct: number } | null;
   /**
-   * E1, E3: the connection as the CALLER saw it at the start of the user's
-   * action (`connectionAtAction`), before the run's plan is built and before
-   * anything the action waits on (a canary trial and its approval). The
-   * sync-start gate compares the generation with the current one before ANY
-   * launch, whatever the protocol; the delta probe is chosen from this
-   * protocol, never the latest one. A run reads neither for itself.
-   * Required, so no caller can omit it.
+   * E1, E3, P1: the connection the plan's comparison was taken on, captured
+   * by `openAeroSync` (`connectionAtAction`) before the compare and the
+   * journal load, and stored with that comparison; so before the plan is
+   * built and before anything the action waits on (a canary trial and its
+   * approval). The sync-start gate compares the generation with the current
+   * one before ANY launch, whatever the protocol; the delta probe is chosen
+   * from this protocol, never the latest one. A run reads neither for
+   * itself. Required, so no caller can omit it; null (none captured) fails
+   * closed at the gate.
    */
-  requestedConnection: ConnectionAtAction;
+  requestedConnection: ConnectionAtAction | null;
 }
 
-/** The connection a sync action was started on (E3). */
+/** The connection a comparison, and every sync action on it, was started on
+ *  (E3, P1). */
 interface ConnectionAtAction {
-  /** `provider_connection_generation`, asked for at the action, for every
+  /** `provider_connection_generation`, asked for at the capture, for every
    *  protocol: every remote session is a provider whose connect, disconnect
    *  and tab switch move it. */
   generation: Promise<number>;
-  /** The session's protocol at the action. */
+  /** The session's protocol at the capture. */
   protocol: ProviderType | undefined;
 }
 
@@ -264,7 +267,7 @@ import {
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
-import { useAeroSyncContextActions } from './components/AeroSync/useAeroSyncContextActions';
+import { useAeroSyncContextActions, type AeroSyncState } from './components/AeroSync/useAeroSyncContextActions';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
@@ -1111,6 +1114,13 @@ const App: React.FC = () => {
   const [aeroSync, setAeroSync] = useState<{
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
+    /**
+     * P1: the connection the comparison in `context` was taken on, captured
+     * by the `openAeroSync` call that built this state (null for a pair with
+     * no remote). Every plan an action builds comes from this comparison or
+     * its journal, so the sync-start gate compares this generation.
+     */
+    connection: ConnectionAtAction | null;
   } | null>(null);
   // A sync or a restore runs inside the window, which owns their state.
   const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
@@ -12425,6 +12435,12 @@ const App: React.FC = () => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
+    // P1: the connection this comparison is taken on, read before the
+    // compare and the journal load start. It is stored in the state this call
+    // builds, beside the context, so entries, journal and connection are
+    // replaced together; a click acts on one state, never on a newer
+    // connection with older entries.
+    const connection = connectionAtAction();
     const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
 
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
@@ -12452,6 +12468,7 @@ const App: React.FC = () => {
 
       setAeroSync({
         initialTab,
+        connection: null,
         context: {
           compareResult: canRecurse
             ? null
@@ -12568,6 +12585,7 @@ const App: React.FC = () => {
       // responsive while the recursive scan runs.
       setAeroSync({
         initialTab,
+        connection,
         context: {
           compareResult: null,
           compareLoading: startScan,
@@ -12684,6 +12702,7 @@ const App: React.FC = () => {
 
     setAeroSync({
       initialTab,
+      connection: null,
       context: {
         compareResult: null,
         leftLabel: currentLocalPath || t('browser.local'),
@@ -12707,12 +12726,12 @@ const App: React.FC = () => {
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
   //
-  // E1 (D2, Q5), E3: the connection, asked for first by every user action
-  // that may start a connected sync, before the run's plan is built from the
-  // current panels and before any wait (a canary trial and its approval):
-  // its generation, for every protocol, and its protocol. The run carries
-  // both to the sync-start gate, which compares the generation with the
-  // current one before any launch, SFTP or not.
+  // E1 (D2, Q5), E3, P1: the connection, asked for by `openAeroSync` before
+  // it starts the comparison every plan comes from, so before the plan is
+  // built and before any wait (a canary trial and its approval): its
+  // generation, for every protocol, and its protocol. It is stored with the
+  // comparison; a run carries it to the sync-start gate, which compares the
+  // generation with the current one before any launch, SFTP or not.
   const connectionAtAction = useLatestCallback((): ConnectionAtAction => {
     const generation = invoke<number>('provider_connection_generation');
     // An unread rejection would surface as unhandled when no gate awaits it.
@@ -12740,7 +12759,7 @@ const App: React.FC = () => {
 
     // E3: the protocol of the action's connection. A later one belongs to
     // another connection, which the gate refuses.
-    const protocol = opts.requestedConnection.protocol;
+    const protocol = opts.requestedConnection?.protocol;
     // AeroSync runner routing must match how the connection was actually
     // dialled. A modern FTP/FTPS session lives in `state.provider` (the
     // StorageProvider impl), exactly like SFTP and the cloud providers, and
@@ -12852,7 +12871,10 @@ const App: React.FC = () => {
     // generation with the current one before any launch; only a run whose
     // action saw an SFTP session probes.
     void runDeltaGate({
-      requested: opts.requestedConnection.generation,
+      // No connection captured with the comparison: nothing to compare
+      // with, so the gate reports a change and launches nothing (P1).
+      requested: opts.requestedConnection?.generation
+        ?? Promise.reject(new Error('no connection was captured with this comparison')),
       probeDelta: protocol === 'sftp',
       generation: () => invoke<number>('provider_connection_generation'),
       skipPrompt: async () => !opts.profileId || (await loadSavedServerProfiles())
@@ -12984,8 +13006,9 @@ const App: React.FC = () => {
   });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
-    // E1: first, before the plan is built from the entries.
-    const requestedConnection = connectionAtAction();
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13021,14 +13044,14 @@ const App: React.FC = () => {
     }
   }, [
     aeroSync,
-    connectionAtAction,
     runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
-    // E1: first, before the plan is built from the entries.
-    const requestedConnection = connectionAtAction();
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13060,7 +13083,6 @@ const App: React.FC = () => {
     }
   }, [
     aeroSync,
-    connectionAtAction,
     runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
@@ -13071,8 +13093,9 @@ const App: React.FC = () => {
   // local-local pair resumes through `runLocalLocalSync`, every other pair
   // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
-    // E1: first, before the plan is rebuilt from the journal.
-    const requestedConnection = connectionAtAction();
+    // E1, P1: the connection the journal was loaded on, captured with the
+    // comparison by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
@@ -13094,10 +13117,20 @@ const App: React.FC = () => {
       profileId: context.activeProfileId,
       requestedConnection,
     });
-  }, [aeroSync, connectionAtAction, runConnectedRemoteSync, runLocalLocalSync]);
+  }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
+
+  // The context hook edits the comparison it was given; the connection that
+  // comparison was taken on travels with it unchanged (P1).
+  const setAeroSyncComparison = useCallback<Dispatch<SetStateAction<AeroSyncState | null>>>((action) => {
+    setAeroSync((prev) => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next === prev) return prev;
+      return next ? { ...next, connection: prev?.connection ?? null } : null;
+    });
+  }, []);
 
   const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
-    useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
+    useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);
 
 
   /**
@@ -13111,10 +13144,11 @@ const App: React.FC = () => {
    * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
-    // E1: first, before the plan is built and before a canary trial and its
-    // approval wait: a run approved after a connection switch is the earlier
-    // connection's plan, and the gate must see that.
-    const requestedConnection = connectionAtAction();
+    // E1, P1: the connection of the comparison the plan comes from, captured
+    // by the openAeroSync call that built this state, before the compare: a
+    // run approved after a connection switch (a canary wait included) is the
+    // earlier connection's plan, and the gate must see that.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13241,7 +13275,6 @@ const App: React.FC = () => {
     debugMode,
     currentLocalPath,
     currentRemotePath,
-    connectionAtAction,
     runConnectedRemoteSync,
     runLocalLocalSync,
   ]);
