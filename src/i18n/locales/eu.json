@@ -65,6 +65,7 @@
             "size": "Tamaina",
             "retry": "Saiatu berriro",
             "settingsLoadFailed": "Ezin izan dira ezarpen hauek irakurri, beraz ez da ezer gordeko haien gainean: {error}",
+            "settingsRefreshFailed": "Ezin izan dira ezarpenak berriro irakurri, beraz erakusten dena zaharkituta egon daiteke: {error}",
             "saveFailed": "Ezin izan da gorde: {error}",
             "optional": "aukerakoa",
             "check": "Check",

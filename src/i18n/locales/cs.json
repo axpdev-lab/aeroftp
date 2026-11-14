@@ -65,6 +65,7 @@
             "size": "Velikost",
             "retry": "Zkusit znovu",
             "settingsLoadFailed": "Tato nastavení se nepodařilo načíst, proto přes ně nebude nic uloženo: {error}",
+            "settingsRefreshFailed": "Nastavení se nepodařilo znovu načíst, zobrazené údaje proto mohou být zastaralé: {error}",
             "saveFailed": "Nelze uložit: {error}",
             "optional": "volitelné",
             "check": "Check",

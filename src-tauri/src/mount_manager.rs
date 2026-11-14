@@ -276,16 +276,29 @@ fn registry_from_vault_store(store: &CredentialStore) -> Result<MountRegistry, S
     vault_registry_from_get(store.get(VAULT_REGISTRY_KEY))
 }
 
+/// The registry stored in the vault. The vault is read only when the sidecar
+/// says Vault mode, so that is its mode whatever the payload claims: a payload
+/// without the field (which defaults to Sidecar) or naming Sidecar would send
+/// the next save into the plaintext sidecar and make a switch to Sidecar a
+/// no-op that migrates nothing.
+fn parse_vault_registry(json: &str) -> Result<MountRegistry, String> {
+    let registry: MountRegistry = serde_json::from_str(json).map_err(|e| {
+        format!(
+            "Mount registry vault parse: {}",
+            crate::util::describe_json_error(&e)
+        )
+    })?;
+    Ok(MountRegistry {
+        storage_mode: StorageMode::Vault,
+        ..registry
+    })
+}
+
 /// [`registry_from_vault_store`] core on the raw `store.get` result, pure so
 /// the NotFound-vs-error rule is testable without a vault.
 fn vault_registry_from_get(get: Result<String, CredentialError>) -> Result<MountRegistry, String> {
     match get {
-        Ok(json) => serde_json::from_str(&json).map_err(|e| {
-            format!(
-                "Mount registry vault parse: {}",
-                crate::util::describe_json_error(&e)
-            )
-        }),
+        Ok(json) => parse_vault_registry(&json),
         Err(CredentialError::NotFound(_)) => Ok(MountRegistry {
             storage_mode: StorageMode::Vault,
             mounts: Vec::new(),
@@ -297,12 +310,7 @@ fn vault_registry_from_get(get: Result<String, CredentialError>) -> Result<Mount
 fn load_from_vault_with(store: Option<&CredentialStore>) -> Result<MountRegistry, String> {
     let store = store.ok_or("Vault is locked")?;
     match store.get(VAULT_REGISTRY_KEY) {
-        Ok(json) => serde_json::from_str(&json).map_err(|e| {
-            format!(
-                "Mount registry vault parse: {}",
-                crate::util::describe_json_error(&e)
-            )
-        }),
+        Ok(json) => parse_vault_registry(&json),
         Err(_) => Ok(MountRegistry {
             storage_mode: StorageMode::Vault,
             mounts: Vec::new(),
@@ -1207,6 +1215,25 @@ mod tests {
         .unwrap();
         let err = registry_from_vault_store(&store).unwrap_err();
         assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
+    /// A vault payload is in Vault mode whatever it says: an omitted mode
+    /// (the Sidecar default) or an explicit Sidecar would route the next save
+    /// to the plaintext sidecar.
+    #[test]
+    fn a_vault_registry_is_always_in_vault_mode() {
+        let vault_dir = tempfile::tempdir().unwrap();
+        let store = test_vault(vault_dir.path(), 17);
+        for payload in [
+            r#"{"mounts": []}"#,
+            r#"{"storage_mode": "sidecar", "mounts": []}"#,
+        ] {
+            let parsed = vault_registry_from_get(Ok(payload.to_string())).unwrap();
+            assert_eq!(parsed.storage_mode, StorageMode::Vault, "{payload}");
+            store.store(VAULT_REGISTRY_KEY, payload).unwrap();
+            let read = load_from_vault_with(Some(&store)).unwrap();
+            assert_eq!(read.storage_mode, StorageMode::Vault, "{payload}");
+        }
     }
 
     fn test_vault(dir: &Path, key: u8) -> CredentialStore {

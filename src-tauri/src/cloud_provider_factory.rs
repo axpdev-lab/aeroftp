@@ -373,6 +373,13 @@ async fn enter_profile_root(
         return Ok(None);
     };
     let login_relative = crate::crypt_overlay_provider::is_login_relative_scope(root);
+    if login_relative && opened_relative_to_login(provider) {
+        let placed = provider
+            .pwd()
+            .await
+            .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
+        return Ok(Some(placed));
+    }
     if login_relative && root.split('/').any(|segment| segment == "..") {
         // A profile may open `docs/../shared`, which the overlay scope rule
         // refuses: the session resolves it from the login folder, as the
@@ -393,6 +400,19 @@ async fn enter_profile_root(
         .await
         .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
     Ok(placed_root)
+}
+
+/// An FTP session whose login folder is unknown (no post-login `PWD`, or a
+/// Windows `C:\\Users\\u` one no absolute path extends) opened a `~/...`
+/// start path relative to where the login left it, the only place FTP can
+/// resolve it from (`place_initial_path`). The session already stands in that
+/// folder and reports it; placing it again needs the login folder it lacks.
+fn opened_relative_to_login(provider: &dyn StorageProvider) -> bool {
+    provider.login_folder_hint().is_none()
+        && matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        )
 }
 
 /// Enter a login-relative root the server resolves itself: the login folder
@@ -639,7 +659,14 @@ async fn create_via_factory(
     // the absolute folder the session opened, as for a profile root.
     if let Some(initial) = provider_config.initial_path.clone() {
         if crate::crypt_overlay_provider::is_login_relative_scope(&initial) {
-            if let Some(placed) =
+            if opened_relative_to_login(&*provider) {
+                provider_config.initial_path = Some(
+                    provider
+                        .pwd()
+                        .await
+                        .map_err(|e| format!("Cannot open the folder '{}': {}", initial, e))?,
+                );
+            } else if let Some(placed) =
                 crate::crypt_overlay_provider::resolve_home_scope(&mut *provider, &initial).await?
             {
                 provider_config.initial_path = Some(placed);
@@ -1329,7 +1356,7 @@ mod tests {
     /// A scripted FTP server logged in at `/home/u` that resolves `CWD`
     /// arguments the way a server does, `..` included, and opens only the
     /// listed folders.
-    async fn scripted_login_ftp(folders: &'static [&'static str]) -> u16 {
+    async fn scripted_login_ftp(folders: &'static [&'static str], answers_login_pwd: bool) -> u16 {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
         use tokio::net::TcpListener;
 
@@ -1362,12 +1389,20 @@ mod tests {
                         return;
                     }
                     let mut cwd = "/home/u".to_string();
+                    let mut pwd_calls = 0;
                     while let Ok(Some(line)) = lines.next_line().await {
                         let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
                         let reply = match cmd.to_uppercase().as_str() {
                             "USER" => "331 password please\r\n".to_string(),
                             "PASS" => "230 logged in\r\n".to_string(),
-                            "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                            "PWD" => {
+                                pwd_calls += 1;
+                                if !answers_login_pwd && pwd_calls == 1 {
+                                    "500 PWD refused\r\n".to_string()
+                                } else {
+                                    format!("257 \"{cwd}\" is current\r\n")
+                                }
+                            }
                             "CWD" => {
                                 let target = resolve(&cwd, argument);
                                 if target == "/home/u" || folders.contains(&target.as_str()) {
@@ -1415,7 +1450,8 @@ mod tests {
     /// folder, not `/`. The placed path is what the target identity carries.
     #[tokio::test]
     async fn profile_roots_open_the_folder_the_connect_opens() {
-        let port = scripted_login_ftp(&["/home/u/docs", "/home/u/shared", "/home/u/  "]).await;
+        let port =
+            scripted_login_ftp(&["/home/u/docs", "/home/u/shared", "/home/u/  "], true).await;
 
         let root = profile_root(
             &serde_json::json!({ "protocol": "ftp", "initialPath": "docs/../shared" }),
@@ -1436,6 +1472,26 @@ mod tests {
             .unwrap();
         assert_eq!(placed.as_deref(), Some("/home/u/  "));
         assert_eq!(provider.pwd().await.unwrap(), "/home/u/  ");
+
+        // A server that did not report its login folder (no post-login `PWD`,
+        // or a Windows drive path) still opens a relative start folder: the
+        // connect sent it relative from the login folder, and the root is the
+        // folder the session reports, not a refusal.
+        let port = scripted_login_ftp(&["/home/u/docs", "/home/u/shared"], false).await;
+        for (initial, opened) in [
+            ("docs", "/home/u/docs"),
+            ("docs/../shared", "/home/u/shared"),
+        ] {
+            let root =
+                profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": initial }));
+            let mut provider = connected_ftp(port, &root).await;
+            assert_eq!(provider.login_folder_hint(), None);
+            let placed = enter_profile_root(&mut provider, Some(&root))
+                .await
+                .unwrap();
+            assert_eq!(placed.as_deref(), Some(opened), "{initial}");
+            assert_eq!(provider.pwd().await.unwrap(), opened, "{initial}");
+        }
     }
 
     #[test]
@@ -1620,7 +1676,7 @@ mod tests {
                 let resolution = crate::cloud_service::ProfileResolution::for_connection(
                     Some(&store),
                     &config,
-                    opened.profile_id,
+                    opened.profile_id.clone(),
                 )?;
                 let remote_folder = crate::cloud_service::anchor_login_relative_remote_folder(
                     &mut *provider,
@@ -1631,7 +1687,10 @@ mod tests {
                 .unwrap_or_else(|| config.remote_folder.clone());
                 let mut provider = crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
                     provider,
-                    config.server_profile_id.as_deref(),
+                    opened
+                        .profile_id
+                        .as_deref()
+                        .or(config.server_profile_id.as_deref()),
                     name,
                     &store,
                 )

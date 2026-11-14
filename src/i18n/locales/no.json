@@ -65,6 +65,7 @@
             "size": "Størrelse",
             "retry": "Prøv igjen",
             "settingsLoadFailed": "Disse innstillingene kunne ikke leses, så ingenting blir lagret over dem: {error}",
+            "settingsRefreshFailed": "Innstillingene kunne ikke leses på nytt, så det som vises kan være utdatert: {error}",
             "saveFailed": "Kunne ikke lagre: {error}",
             "optional": "valgfritt",
             "check": "Check",

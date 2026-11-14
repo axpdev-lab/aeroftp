@@ -4,6 +4,7 @@ import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CloudPanel } from './CloudPanel';
+import en from '../i18n/locales/en.json';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Map<string, (event: { payload: unknown }) => void>(), setupResult: null as unknown }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
@@ -213,9 +214,12 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         await React.act(async () => resolveSync('done'));
         await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
         // Only a full load replaces the configuration: the failed refresh
-        // leaves the draft open and says the file could not be read.
+        // leaves the draft open and says the file could not be read again.
+        // Save stays available, so the warning is not the one that promises
+        // nothing will be saved.
         expect(remoteFolder()?.value).toBe('/typed');
-        expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.settingsRefreshFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).not.toContain('common.settingsLoadFailed');
 
         // A save the backend refuses keeps the settings open and says so.
         mocks.invoke.mockImplementation(async (command: string) => {
@@ -233,8 +237,15 @@ describe('AeroCloud Update settings and cycle reporting', () => {
             return [];
         });
         await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.retry')!.click());
-        expect(host.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('common.settingsRefreshFailed');
         expect(remoteFolder()?.value).toBe('/typed');
+    });
+
+    it('words the refresh warning without promising that nothing will be saved', () => {
+        const common = en.translations.common;
+        expect(common.settingsLoadFailed).toMatch(/nothing will be saved/);
+        expect(common.settingsRefreshFailed).toContain('{error}');
+        expect(common.settingsRefreshFailed).not.toMatch(/sav/i);
     });
 
     it('keeps an open settings draft when the post-sync refresh only moves last_sync', async () => {

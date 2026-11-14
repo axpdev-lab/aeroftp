@@ -65,6 +65,7 @@
             "size": "Størrelse",
             "retry": "Prøv igen",
             "settingsLoadFailed": "Disse indstillinger kunne ikke læses, så intet bliver gemt oven i dem: {error}",
+            "settingsRefreshFailed": "Indstillingerne kunne ikke læses igen, så det viste kan være forældet: {error}",
             "saveFailed": "Kunne ikke gemme: {error}",
             "optional": "valgfri",
             "check": "Check",

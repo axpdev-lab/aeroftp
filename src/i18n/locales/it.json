@@ -67,6 +67,7 @@
             "size": "Dimensione",
             "retry": "Riprova",
             "settingsLoadFailed": "Impossibile leggere queste impostazioni, quindi non verrà salvato nulla al loro posto: {error}",
+            "settingsRefreshFailed": "Non è stato possibile rileggere le impostazioni, quindi quelle mostrate potrebbero non essere aggiornate: {error}",
             "saveFailed": "Impossibile salvare: {error}",
             "check": "Verifica",
             "selectAll": "Seleziona Tutto",

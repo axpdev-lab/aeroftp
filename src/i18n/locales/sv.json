@@ -65,6 +65,7 @@
             "size": "Storlek",
             "retry": "Försök igen",
             "settingsLoadFailed": "De här inställningarna kunde inte läsas, så inget sparas över dem: {error}",
+            "settingsRefreshFailed": "Inställningarna kunde inte läsas igen, så det som visas kan vara inaktuellt: {error}",
             "saveFailed": "Det gick inte att spara: {error}",
             "optional": "valfritt",
             "check": "Check",

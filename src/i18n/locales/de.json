@@ -65,6 +65,7 @@
             "size": "Größe",
             "retry": "Wiederholen",
             "settingsLoadFailed": "Diese Einstellungen konnten nicht gelesen werden, daher wird nichts darüber gespeichert: {error}",
+            "settingsRefreshFailed": "Die Einstellungen konnten nicht erneut gelesen werden, daher ist die Anzeige möglicherweise veraltet: {error}",
             "saveFailed": "Speichern fehlgeschlagen: {error}",
             "optional": "optional",
             "check": "Prüfen",

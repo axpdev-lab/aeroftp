@@ -65,6 +65,7 @@
             "size": "Velikost",
             "retry": "Poskusi znova",
             "settingsLoadFailed": "Teh nastavitev ni bilo mogoče prebrati, zato čeznje ne bo nič shranjeno: {error}",
+            "settingsRefreshFailed": "Nastavitev ni bilo mogoče znova prebrati, zato je prikazano morda zastarelo: {error}",
             "saveFailed": "Shranjevanje ni uspelo: {error}",
             "optional": "neobvezno",
             "check": "Check",

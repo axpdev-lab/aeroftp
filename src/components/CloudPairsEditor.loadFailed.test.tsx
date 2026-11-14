@@ -78,4 +78,32 @@ describe('CloudPairsEditor after a failed load', () => {
         expect(host.textContent).not.toContain('cloud.importLegacy');
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('add_cloud_pair');
     });
+
+    it('keeps a failed reload when an earlier load finishes after it', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let finishFirst!: (config: unknown) => void;
+        let calls = 0;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_pairs_config') {
+                calls += 1;
+                if (calls === 1) return new Promise(resolve => { finishFirst = resolve; });
+                throw new Error('permission denied');
+            }
+            return undefined;
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        const render = (isOpen: boolean) => React.act(async () => root!.render(<CloudPairsEditor isOpen={isOpen} onClose={vi.fn()} />));
+        // The first opening's read is still pending when the editor reopens
+        // and the second read fails.
+        await render(true);
+        await render(false);
+        await render(true);
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+
+        await React.act(async () => finishFirst({ pairs: [{ id: 'stale', local_folder: '/stale', remote_folder: '/r', server_profile: 'nas', enabled: true }], parallel_pairs: false }));
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.innerHTML).not.toContain('/stale');
+        const save = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'common.save')!;
+        expect(save.disabled).toBe(true);
+    });
 });

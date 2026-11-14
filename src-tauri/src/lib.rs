@@ -16590,7 +16590,7 @@ async fn list_remote_folders_tree(
     let resolution = cloud_service::ProfileResolution::for_connection(
         credential_store::CredentialStore::from_cache().as_ref(),
         &config,
-        opened.profile_id,
+        opened.profile_id.clone(),
     )?;
     let remote_folder =
         cloud_service::anchor_login_relative_remote_folder(&mut *provider, &config, &resolution)
@@ -16603,9 +16603,14 @@ async fn list_remote_folders_tree(
     // wrap the tree would list ciphertext directory names and exclusions would
     // never match. Mirrors the background-sync chokepoint.
     if let Some(store) = credential_store::CredentialStore::from_cache() {
+        // The overlay comes from the profile the connection used, never from
+        // a second resolution of the name, which could pick a homonym.
         provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
-            config.server_profile_id.as_deref(),
+            opened
+                .profile_id
+                .as_deref()
+                .or(config.server_profile_id.as_deref()),
             &config.server_profile,
             &store,
         )

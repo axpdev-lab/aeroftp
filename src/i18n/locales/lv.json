@@ -65,6 +65,7 @@
             "size": "Izmērs",
             "retry": "Mēģināt vēlreiz",
             "settingsLoadFailed": "Šos iestatījumus nevarēja nolasīt, tāpēc tiem pāri nekas netiks saglabāts: {error}",
+            "settingsRefreshFailed": "Iestatījumus neizdevās nolasīt vēlreiz, tāpēc parādītais var būt novecojis: {error}",
             "saveFailed": "Neizdevās saglabāt: {error}",
             "optional": "neobligāts",
             "check": "Check",

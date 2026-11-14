@@ -65,6 +65,7 @@
             "size": "Boyut",
             "retry": "Tekrar dene",
             "settingsLoadFailed": "Bu ayarlar okunamadı, bu yüzden üzerlerine hiçbir şey kaydedilmeyecek: {error}",
+            "settingsRefreshFailed": "Ayarlar yeniden okunamadı, bu nedenle gösterilenler güncel olmayabilir: {error}",
             "saveFailed": "Kaydedilemedi: {error}",
             "optional": "isteğe bağlı",
             "check": "Check",

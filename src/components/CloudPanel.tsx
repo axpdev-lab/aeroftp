@@ -912,7 +912,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         <div role="alert" className="mx-6 mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-sm text-red-700 dark:text-red-300 break-words space-y-2">
                             {refreshError && (
                                 <div className="flex items-start justify-between gap-3">
-                                    <span>{t('common.settingsLoadFailed', { error: refreshError })}</span>
+                                    <span>{t('common.settingsRefreshFailed', { error: refreshError })}</span>
                                     <button onClick={() => void loadConfig(true)} disabled={savingSettings} className="shrink-0 underline disabled:opacity-50">{t('common.retry')}</button>
                                 </div>
                             )}

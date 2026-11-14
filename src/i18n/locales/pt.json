@@ -65,6 +65,7 @@
             "size": "Tamanho",
             "retry": "Tentar novamente",
             "settingsLoadFailed": "Não foi possível ler estas definições, por isso nada será guardado por cima delas: {error}",
+            "settingsRefreshFailed": "Não foi possível ler novamente as definições, por isso o que é mostrado pode estar desatualizado: {error}",
             "saveFailed": "Não foi possível salvar: {error}",
             "optional": "opcional",
             "check": "Verificar",

@@ -105,15 +105,19 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     useEffect(() => {
         if (!isOpen) return;
         setLoading(true);
+        // A load from an earlier opening may finish after a later one: only
+        // the latest load writes the editor's state.
+        let active = true;
 
         (async () => {
             try {
                 // Load pairs
                 const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(e => {
                     logger.error('[CloudPairsEditor] get_cloud_pairs_config failed:', e);
-                    setLoadError(String(e));
+                    if (active) setLoadError(String(e));
                     return null;
                 });
+                if (!active) return;
                 if (cfg) setLoadError(null);
                 // On a failed load both are empty, so the failure itself does
                 // not mark the editor dirty.
@@ -123,10 +127,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
 
                 // Load saved servers for profile picker
                 const servers = await loadSavedServerProfiles().catch(() => []);
+                if (!active) return;
                 setSavedServers(servers || []);
 
                 // Load legacy for possible import
                 const leg = await invoke<any>('get_cloud_config').catch(() => null);
+                if (!active) return;
                 if (cfg && leg && leg.enabled && (cfg.pairs || []).length === 0) {
                     setLegacyConfig(leg);
                 } else {
@@ -134,13 +140,15 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                 }
             } catch (e) {
                 logger.error('[CloudPairsEditor] load failed:', e);
+                if (!active) return;
                 setLoadError(String(e));
                 setPairs([]);
                 setPersistedPairs([]);
             } finally {
-                setLoading(false);
+                if (active) setLoading(false);
             }
         })();
+        return () => { active = false; };
     }, [isOpen]);
 
     const handleAdd = async () => {

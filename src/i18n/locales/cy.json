@@ -65,6 +65,7 @@
             "size": "Maint",
             "retry": "Ailgeisio",
             "settingsLoadFailed": "Methwyd darllen y gosodiadau hyn, felly ni fydd dim yn cael ei gadw drostynt: {error}",
+            "settingsRefreshFailed": "Nid oedd modd darllen y gosodiadau eto, felly gall yr hyn a ddangosir fod wedi dyddio: {error}",
             "saveFailed": "Methwyd cadw: {error}",
             "optional": "dewisol",
             "check": "Check",

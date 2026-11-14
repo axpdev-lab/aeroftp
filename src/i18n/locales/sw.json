@@ -65,6 +65,7 @@
             "size": "Ukubwa",
             "retry": "Jaribu tena",
             "settingsLoadFailed": "Mipangilio hii haikuweza kusomwa, kwa hivyo hakuna kitakachohifadhiwa juu yake: {error}",
+            "settingsRefreshFailed": "Mipangilio haikuweza kusomwa tena, kwa hivyo kinachoonyeshwa kinaweza kuwa kimepitwa na wakati: {error}",
             "saveFailed": "Imeshindwa kuhifadhi: {error}",
             "optional": "hiari",
             "check": "Check",

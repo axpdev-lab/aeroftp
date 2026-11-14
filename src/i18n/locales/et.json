@@ -65,6 +65,7 @@
             "size": "Suurus",
             "retry": "Proovi uuesti",
             "settingsLoadFailed": "Neid seadeid ei õnnestunud lugeda, seega nende peale midagi ei salvestata: {error}",
+            "settingsRefreshFailed": "Seadeid ei õnnestunud uuesti lugeda, seega võib kuvatav olla aegunud: {error}",
             "saveFailed": "Salvestamine ebaõnnestus: {error}",
             "optional": "valikuline",
             "check": "Check",

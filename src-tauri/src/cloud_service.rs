@@ -3824,13 +3824,23 @@ fn same_server_profile(
 
 /// Where a `~/...` remote folder lands under the login folder on the
 /// connected provider, written nowhere: a preview syncs against it without
-/// changing the saved target. A `/~/...` value names a literal `~` directory:
-/// it is refused with the correction, never synced. `None` when the remote
-/// folder is already absolute.
+/// changing the saved target. On a protocol with a login folder (SFTP, SCP,
+/// FTP, FTPS) a `/~/...` value names a literal `~` directory written by
+/// mistake: it is refused with the correction, never synced. Elsewhere `~`
+/// has no meaning and the folder is used as written. `None` when there is
+/// nothing to place.
 pub(crate) async fn place_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
 ) -> Result<Option<String>, String> {
+    // The connected provider decides, not the config's protocol field, which a
+    // legacy config may leave empty.
+    if !matches!(
+        provider.provider_type(),
+        ProviderType::Sftp | ProviderType::Scp | ProviderType::Ftp | ProviderType::Ftps
+    ) {
+        return Ok(None);
+    }
     let remote = config.remote_folder.as_str();
     if remote == "/~" || remote.starts_with("/~/") {
         return Err(format!(
@@ -3974,9 +3984,14 @@ async fn open_aerocloud_connection(
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
     }
 
+    // The overlay comes from the profile the connection used, never from a
+    // second resolution of the name, which could pick a homonym.
     provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
         provider,
-        config.server_profile_id.as_deref(),
+        opened
+            .profile_id
+            .as_deref()
+            .or(config.server_profile_id.as_deref()),
         &config.server_profile,
         store,
     )
@@ -7408,6 +7423,30 @@ mod baseline_tests {
         });
     }
 
+    /// Without a login folder (WebDAV here) `~` is an ordinary name: a
+    /// `/~/docs` or `~/docs` target is used as written, neither refused nor
+    /// placed.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_tilde_is_an_ordinary_name_without_a_login_folder() {
+        with_scratch_index(async {
+            let mut provider = MemoryProvider {
+                kind: Some(crate::providers::ProviderType::WebDav),
+                ..Default::default()
+            };
+            for remote in ["/~/docs", "~/docs"] {
+                let config = CloudConfig {
+                    remote_folder: remote.to_string(),
+                    ..Default::default()
+                };
+                let placed = place_login_relative_remote_folder(&mut provider, &config)
+                    .await
+                    .unwrap();
+                assert_eq!(placed, None, "{remote}");
+            }
+        });
+    }
+
     /// An FTP session whose post-login `PWD` did not answer cannot place a
     /// `~/...` remote folder: `cd("~")` is not portable there, so the anchor
     /// fails closed and nothing is persisted.
@@ -7841,7 +7880,11 @@ mod baseline_tests {
     /// A watcher plan prepared while the remote folder still read `~/docs`
     /// is refused once the connect places it: the pass fails closed before
     /// any write, asks for a full scan, and the next full cycle syncs the
-    /// placed absolute folder.
+    /// placed absolute folder. The history kept under `~/docs` belongs to the
+    /// folder an older build opened by sending `~/docs` as written, which many
+    /// servers open as a folder literally named `~`: a file it lists that is
+    /// missing from `/home/u/docs` is uploaded, never deleted locally. The
+    /// placement is saved, so the passes after the scan stay incremental.
     #[test]
     #[cfg(target_os = "linux")]
     fn incremental_plan_prepared_on_the_tilde_form_is_refused_then_full_scanned() {
@@ -7852,7 +7895,15 @@ mod baseline_tests {
             let local = tempfile::tempdir().unwrap();
             // A baseline the pair would have from before placement existed,
             // keyed on the `~` form, plus a local file the watcher reports.
+            // `old.txt` is unchanged since that baseline, so read against it
+            // the file would only be missing remotely.
             std::fs::write(local.path().join("old.txt"), b"old").unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(local.path().join("old.txt"))
+                .unwrap()
+                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000))
+                .unwrap();
             let mut index = crate::sync::SyncIndex::new(
                 local.path().to_string_lossy().into_owned(),
                 "~/docs".to_string(),
@@ -7870,6 +7921,11 @@ mod baseline_tests {
             std::fs::write(local.path().join("new.txt"), b"new").unwrap();
 
             let config = aerocloud_config(local.path(), "~/docs", "srv_plan");
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = config.clone();
+                Ok(())
+            })
+            .unwrap();
             let changes = LocalChanges {
                 paths: vec![local.path().join("new.txt")],
                 renames: Vec::new(),
@@ -7958,6 +8014,48 @@ mod baseline_tests {
             let log = ftp.log.lock().unwrap().join("\n");
             assert!(log.contains("/home/u/docs"), "commands:\n{log}");
             assert!(!log.contains('~'), "commands:\n{log}");
+            // The file the `~` history lists, unchanged locally and absent
+            // from the placed folder, is uploaded, never deleted locally.
+            assert!(local.path().join("old.txt").exists());
+            assert!(
+                log.lines()
+                    .any(|command| command.starts_with("STOR") && command.contains("old.txt")),
+                "commands:\n{log}"
+            );
+
+            // The connect saved the placed folder, so the watcher's next
+            // plans carry its identity and run as incremental passes.
+            let stored = cloud_config::load_cloud_config_strict().unwrap();
+            assert_eq!(stored.remote_folder, "/home/u/docs");
+            for name in ["second.txt", "third.txt"] {
+                std::fs::write(local.path().join(name), name.as_bytes()).unwrap();
+                let changes = LocalChanges {
+                    paths: vec![local.path().join(name)],
+                    renames: Vec::new(),
+                };
+                let plan = match prepare_incremental(
+                    &stored,
+                    &changes,
+                    IncrementalHints { compare_size: true },
+                )
+                .unwrap()
+                {
+                    IncrementalPrep::Work { plan, .. } => plan,
+                    _ => panic!("{name}: expected a work plan"),
+                };
+                let report =
+                    run_pair_incremental_cycle(stored.clone(), Some(&store), None, plan, false)
+                        .await
+                        .unwrap_or_else(|e| panic!("{name}: {}", e.message));
+                assert!(!report.ran_full_scan, "{name}");
+                assert_eq!(report.placed_key, placed_key, "{name}");
+            }
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(
+                log.lines()
+                    .any(|command| command.starts_with("STOR") && command.contains("third.txt")),
+                "commands:\n{log}"
+            );
         });
     }
 

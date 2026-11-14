@@ -65,6 +65,7 @@
             "size": "Tamaño",
             "retry": "Reintentar",
             "settingsLoadFailed": "Non se puido ler esta configuración, así que non se gardará nada por riba: {error}",
+            "settingsRefreshFailed": "Non se puido volver ler a configuración, polo que o que se amosa pode estar desactualizado: {error}",
             "saveFailed": "Non se puido gardar: {error}",
             "optional": "opcional",
             "check": "Check",

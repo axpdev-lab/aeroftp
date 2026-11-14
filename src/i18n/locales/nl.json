@@ -65,6 +65,7 @@
             "size": "Grootte",
             "retry": "Opnieuw",
             "settingsLoadFailed": "Deze instellingen konden niet worden gelezen, dus er wordt niets overheen opgeslagen: {error}",
+            "settingsRefreshFailed": "De instellingen konden niet opnieuw worden gelezen, dus wat wordt getoond is mogelijk verouderd: {error}",
             "saveFailed": "Kan niet opslaan: {error}",
             "optional": "optioneel",
             "check": "Check",

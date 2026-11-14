@@ -65,6 +65,7 @@
             "size": "Saiz",
             "retry": "Cuba lagi",
             "settingsLoadFailed": "Tetapan ini tidak dapat dibaca, jadi tiada apa-apa akan disimpan menggantikannya: {error}",
+            "settingsRefreshFailed": "Tetapan tidak dapat dibaca semula, jadi yang dipaparkan mungkin sudah lapuk: {error}",
             "saveFailed": "Tidak dapat menyimpan: {error}",
             "optional": "pilihan",
             "check": "Check",

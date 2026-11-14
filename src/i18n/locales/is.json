@@ -65,6 +65,7 @@
             "size": "Stærð",
             "retry": "Reyna aftur",
             "settingsLoadFailed": "Ekki tókst að lesa þessar stillingar, svo ekkert verður vistað yfir þær: {error}",
+            "settingsRefreshFailed": "Ekki tókst að lesa stillingarnar aftur, svo það sem birtist gæti verið úrelt: {error}",
             "saveFailed": "Ekki tókst að vista: {error}",
             "optional": "valfrjálst",
             "check": "Check",

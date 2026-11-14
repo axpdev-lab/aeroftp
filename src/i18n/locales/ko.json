@@ -65,6 +65,7 @@
             "size": "크기",
             "retry": "재시도",
             "settingsLoadFailed": "이 설정을 읽을 수 없어 그 위에 아무것도 저장하지 않습니다: {error}",
+            "settingsRefreshFailed": "설정을 다시 읽을 수 없어 표시된 내용이 최신이 아닐 수 있습니다: {error}",
             "saveFailed": "저장할 수 없습니다: {error}",
             "optional": "선택 사항",
             "check": "확인",

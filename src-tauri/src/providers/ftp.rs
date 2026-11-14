@@ -298,28 +298,28 @@ impl FtpProvider {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
     }
 
-    /// The `initial_path` as a `CWD` argument. `~` and `~/...` name folders
-    /// under the login folder, the only `~` FTP has: `CWD ~` is not portable
-    /// (many servers have no such folder), so the path is placed against the
-    /// `PWD` read right after login, the same rule `resolve_start_dir`
-    /// applies for SFTP. A relative path stays relative: the server resolves
-    /// it against the login directory, which is where the session is.
-    fn place_initial_path(&self, path: &str) -> Result<String, ProviderError> {
+    /// The `initial_path` as a `CWD` argument, `None` when the session already
+    /// stands there. `~` and `~/...` name folders under the login folder, the
+    /// only `~` FTP has: `CWD ~` is not portable (many servers have no such
+    /// folder), so the path is placed against the `PWD` read right after
+    /// login, the same rule `resolve_start_dir` applies for SFTP. Without that
+    /// `PWD` (refused, or a Windows `C:\Users\u` one no absolute path can
+    /// extend) the rest is sent relative: the session has not moved since the
+    /// login, so the server resolves it under the login folder, as it always
+    /// did for a relative start path. A relative path stays relative.
+    fn place_initial_path(&self, path: &str) -> Option<String> {
         let Some(rest) = path.strip_prefix('~') else {
-            return Ok(path.to_string());
+            return Some(path.to_string());
         };
         if !rest.is_empty() && !rest.starts_with('/') {
-            return Ok(path.to_string());
+            return Some(path.to_string());
         }
-        let home = self.login_folder.as_deref().ok_or_else(|| {
-            ProviderError::InvalidPath(format!(
-                "the start folder '{path}' is under the login folder, which this \
-                 server did not report"
-            ))
-        })?;
-        let home = home.trim_end_matches('/');
         let rest = rest.trim_start_matches('/');
-        Ok(if rest.is_empty() {
+        let Some(home) = self.login_folder.as_deref() else {
+            return (!rest.is_empty()).then(|| rest.to_string());
+        };
+        let home = home.trim_end_matches('/');
+        Some(if rest.is_empty() {
             if home.is_empty() {
                 "/".to_string()
             } else {
@@ -1872,11 +1872,12 @@ impl StorageProvider for FtpProvider {
         // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() && initial_path != "/" {
-                let target = self.place_initial_path(initial_path)?;
-                stream
-                    .cwd(&target)
-                    .await
-                    .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                if let Some(target) = self.place_initial_path(initial_path) {
+                    stream
+                        .cwd(&target)
+                        .await
+                        .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                }
             }
         }
 
@@ -8485,6 +8486,31 @@ mod rename_contract_tests {
         );
     }
 
+    /// A relative start folder (`docs`, which the profile reads as `~/docs`)
+    /// still opens on a server whose login `PWD` is a Windows path: the rest
+    /// is sent relative from the login folder, never as `CWD ~`.
+    #[tokio::test]
+    async fn a_login_relative_start_opens_without_an_absolute_login_folder() {
+        let (mut provider, log) = provider_on_server_full(
+            &["C:\\Users\\u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("C:\\Users\\u"),
+                log_commands: true,
+                ..Default::default()
+            },
+            Some("~/docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
+        assert_eq!(provider.pwd().await.unwrap(), "C:/Users/u/docs");
+        let log = log.lock().unwrap();
+        assert!(log.iter().any(|command| command == "CWD docs"), "{log:?}");
+        assert!(
+            !log.iter().any(|command| command.starts_with("CWD ~")),
+            "{log:?}"
+        );
+    }
+
     /// On a chrooted account whose login folder is `/`, `~/docs` is `/docs`.
     #[tokio::test]
     async fn overlay_scope_resolution_places_under_a_root_login_folder() {
@@ -8497,7 +8523,8 @@ mod rename_contract_tests {
 
     /// `place_initial_path`: a relative path stays relative (the server
     /// resolves it under the login directory), `~` forms are placed against
-    /// the recorded login folder, and without one they fail closed.
+    /// the recorded login folder, and without one the rest goes relative from
+    /// where the login left the session, never as `CWD ~`.
     #[test]
     fn place_initial_path_keeps_relative_and_places_login_relative() {
         let config = || FtpConfig {
@@ -8512,20 +8539,18 @@ mod rename_contract_tests {
         };
         let mut provider = FtpProvider::new(config());
         provider.login_folder = Some("/home/u".to_string());
-        assert_eq!(provider.place_initial_path("docs").unwrap(), "docs");
-        assert_eq!(provider.place_initial_path("docs/sub").unwrap(), "docs/sub");
-        assert_eq!(
-            provider.place_initial_path("~/docs").unwrap(),
-            "/home/u/docs"
-        );
-        assert_eq!(provider.place_initial_path("~").unwrap(), "/home/u");
-        assert_eq!(provider.place_initial_path("/abs").unwrap(), "/abs");
+        let placed = |provider: &FtpProvider, path: &str| provider.place_initial_path(path);
+        assert_eq!(placed(&provider, "docs").as_deref(), Some("docs"));
+        assert_eq!(placed(&provider, "docs/sub").as_deref(), Some("docs/sub"));
+        assert_eq!(placed(&provider, "~/docs").as_deref(), Some("/home/u/docs"));
+        assert_eq!(placed(&provider, "~").as_deref(), Some("/home/u"));
+        assert_eq!(placed(&provider, "/abs").as_deref(), Some("/abs"));
         // `~docs` is not the login folder notation: it stays a literal name.
-        assert_eq!(provider.place_initial_path("~docs").unwrap(), "~docs");
+        assert_eq!(placed(&provider, "~docs").as_deref(), Some("~docs"));
         provider.login_folder = None;
-        assert!(provider.place_initial_path("~/docs").is_err());
-        assert!(provider.place_initial_path("~").is_err());
-        assert_eq!(provider.place_initial_path("docs").unwrap(), "docs");
+        assert_eq!(placed(&provider, "~/docs").as_deref(), Some("docs"));
+        assert_eq!(placed(&provider, "~").as_deref(), None);
+        assert_eq!(placed(&provider, "docs").as_deref(), Some("docs"));
     }
 
     #[tokio::test]

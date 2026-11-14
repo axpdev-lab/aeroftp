@@ -6281,6 +6281,64 @@ pub(crate) mod tests {
             .is_some());
     }
 
+    /// An FTP server can answer `CWD /home/u/docs` with a `PWD` of the folder a
+    /// symlink points to (`/srv/docs`). The scope and the sync folder are both
+    /// the string placed from the login folder the server reported, and the
+    /// overlay decides on the path it is given, never on what `PWD` reports:
+    /// a file written under the placed folder, by its absolute path or by a
+    /// name relative to wherever the session stands, is encrypted.
+    #[tokio::test]
+    async fn a_placed_scope_encrypts_whatever_folder_the_server_reports() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.kind = ProviderType::Ftp;
+            mem.login_folder = Some("/home/u".to_string());
+            mem.seed_raw_dir("/home/u/docs");
+            let scope = resolve_home_scope(&mut mem, "~/docs")
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(scope, "/home/u/docs", "{label}");
+            // The session stands where the server says the folder really is.
+            mem.cd("/srv/docs").await.unwrap();
+            let mut provider = CryptOverlayProvider::new(Box::new(mem), keys, &scope);
+
+            let dir = std::env::temp_dir().join(format!("crypt_link_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            tokio::fs::write(&local, b"never in clear").await.unwrap();
+            provider
+                .upload(local.to_str().unwrap(), "/home/u/docs/secret.txt", None)
+                .await
+                .unwrap();
+            provider
+                .upload(local.to_str().unwrap(), "relative.txt", None)
+                .await
+                .unwrap();
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+
+            let mem = provider
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let files = mem.files.lock().unwrap();
+            assert_eq!(files.len(), 2, "{label}: {:?}", files.keys());
+            for (path, bytes) in files.iter() {
+                assert!(
+                    !path.contains("secret") && !path.contains("relative"),
+                    "{label}: a name reached the server in clear: {path}"
+                );
+                assert_ne!(bytes.as_slice(), b"never in clear", "{label}: {path}");
+            }
+            assert!(
+                files.keys().any(|p| p.starts_with("/home/u/docs/")),
+                "{label}: {:?}",
+                files.keys()
+            );
+        }
+    }
+
     /// The rclone import writes `~/docs` for an SFTP crypt remote that opens
     /// under the login folder (`nas:docs`). The overlay anchors where the
     /// session resolves it, never at `/~/docs`, and the session stays where it

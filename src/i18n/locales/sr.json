@@ -65,6 +65,7 @@
             "size": "Величина",
             "retry": "Покушај поново",
             "settingsLoadFailed": "Ova podešavanja nije moguće pročitati, pa se preko njih neće ništa sačuvati: {error}",
+            "settingsRefreshFailed": "Подешавања није било могуће поново прочитати, па приказано можда није ажурно: {error}",
             "saveFailed": "Чување није успело: {error}",
             "optional": "опционално",
             "check": "Провери",
