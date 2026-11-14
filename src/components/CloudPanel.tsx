@@ -173,13 +173,15 @@ const CloudDashboard: React.FC<{
     status: CloudSyncStatus;
     onSyncNow: () => void;
     onPause: () => void;
+    /** A Pause, Resume or Disable is in flight: the three wait for it. */
+    lifecycleBusy?: boolean;
     onResume: () => void;
     onDisable: () => void;
     onOpenFolder: () => void;
     onSettings: () => void;
     onManagePairs: () => void;
     settingsDisabled?: boolean;
-}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs, settingsDisabled }) => {
+}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs, settingsDisabled, lifecycleBusy }) => {
     const t = useTranslation();
     const caveatFor = useAeroCloudCaveat();
     const [countdown, setCountdown] = useState<string>('');
@@ -345,20 +347,20 @@ const CloudDashboard: React.FC<{
                 </button>
 
                 {status.type === 'paused' ? (
-                    <button onClick={onResume} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 border border-gray-300 dark:border-gray-600">
+                    <button onClick={onResume} disabled={lifecycleBusy} className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
                         <Play size={16} /> {t('cloud.resume')}
                     </button>
                 ) : (
                     <button
                         onClick={onPause}
                         className="px-4 py-2 text-sm rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center gap-1.5 border border-gray-300 dark:border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                        disabled={status.type === 'not_configured' || status.type === 'error'}
+                        disabled={lifecycleBusy || status.type === 'not_configured' || status.type === 'error'}
                     >
                         <Pause size={16} /> {t('cloud.pause')}
                     </button>
                 )}
 
-                <button onClick={onDisable} className="px-4 py-2 text-sm rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-1.5 border border-red-200 dark:border-red-500/30">
+                <button onClick={onDisable} disabled={lifecycleBusy} className="px-4 py-2 text-sm rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors flex items-center gap-1.5 border border-red-200 dark:border-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed">
                     <CloudOff size={16} /> {t('cloud.disable')}
                 </button>
             </div>
@@ -660,8 +662,25 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         }
     };
 
-    const handlePause = async () => {
+    // Pause, Resume and Disable run one at a time: each replaces the
+    // configuration, so a second one started meanwhile asked under an
+    // identity the first moves on, and its reply (a successful Disable
+    // included) was dropped. A ref, not the pending count, so two clicks in
+    // the same tick are both caught; the buttons are disabled meanwhile.
+    const lifecycleRunning = useRef(false);
+    const runLifecycle = async (command: () => Promise<void>) => {
+        if (lifecycleRunning.current) return;
+        lifecycleRunning.current = true;
         setPendingLifecycle(c => c + 1);
+        try {
+            await command();
+        } finally {
+            lifecycleRunning.current = false;
+            setPendingLifecycle(c => c - 1);
+        }
+    };
+
+    const handlePause = () => runLifecycle(async () => {
         const asked = configIdentity.current;
         try {
             const updated = await invoke<CloudConfig>('pause_aerocloud');
@@ -671,13 +690,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('Sync paused');
         } catch (error) {
             console.error('Failed to pause sync:', error);
-        } finally {
-            setPendingLifecycle(c => c - 1);
         }
-    };
+    });
 
-    const handleResume = async () => {
-        setPendingLifecycle(c => c + 1);
+    const handleResume = () => runLifecycle(async () => {
         const asked = configIdentity.current;
         try {
             const updated = await invoke<CloudConfig>('resume_aerocloud');
@@ -687,22 +703,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('Sync resumed');
         } catch (error) {
             console.error('Failed to resume sync:', error);
-        } finally {
-            setPendingLifecycle(c => c - 1);
         }
-    };
+    });
 
     const handleDisable = () => {
         // Disable is destructive: it wipes the AeroCloud configuration and
         // forces the user to run the setup wizard again. Confirm before acting.
         // The `t(...) || '...'` this used to carry protected nothing: `t()`
         // returns the key when it does not resolve, and a key is truthy.
+        if (lifecycleRunning.current) return;
         setPendingDisableConfirm(true);
     };
 
-    const performDisable = async () => {
+    const performDisable = () => runLifecycle(async () => {
         setPendingDisableConfirm(false);
-        setPendingLifecycle(c => c + 1);
         const asked = configIdentity.current;
         try {
             await invoke('disable_aerocloud');
@@ -712,10 +726,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             logger.debug('AeroCloud disabled');
         } catch (error) {
             logger.error('Failed to disable:', error);
-        } finally {
-            setPendingLifecycle(c => c - 1);
         }
-    };
+    });
 
     const handleOpenFolder = async () => {
         if (config?.local_folder) {
@@ -1123,6 +1135,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     onPause={handlePause}
                     onResume={handleResume}
                     onDisable={handleDisable}
+                    lifecycleBusy={pendingLifecycle > 0}
                     onOpenFolder={handleOpenFolder}
                     onSettings={openSettings}
                     onManagePairs={() => setShowCloudPairs(true)}

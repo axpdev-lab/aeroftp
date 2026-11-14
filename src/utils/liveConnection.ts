@@ -209,17 +209,48 @@ export function selectAeroCloudProfile<P extends { id: string; name: string }>(
  * (FTP's `connect_ftp`) lists it as given, from the login folder. A saved
  * folder with a `..` step or a NUL (`savedLocationProblem`) is refused before
  * anything is listed, named as written; a `.` or empty step is listed as
- * saved.
+ * saved. An open that no longer owns the session (`ownsTheSession`: a tab
+ * switch or another connect took it over while the placement or the listing
+ * was awaited) stops as a cancelled listing: it lists nothing on the new
+ * connection and hands nothing back for the AeroCloud state.
  */
 export async function openAeroCloudFolder(
     remoteFolder: string,
     connectOpenedIt: boolean,
     place: (folder: string) => Promise<string | null>,
     navigate: (folder: string) => Promise<string>,
+    ownsTheSession: () => boolean = () => true,
 ): Promise<string> {
     if (savedLocationProblem(remoteFolder)) {
         throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '..' step or a NUL: set it again as a plain path`);
     }
     const placed = await place(remoteFolder);
-    return navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));
+    if (!ownsTheSession()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+    const listed = await navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));
+    if (!ownsTheSession()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+    return listed;
+}
+
+/** A cancelled listing, as the app's `isListingCancelled` reads it. */
+export const AEROCLOUD_OPEN_SUPERSEDED = 'LISTING_CANCELLED: the AeroCloud folder open no longer owns the session';
+
+/**
+ * Whether the AeroCloud tab may keep the connection on screen instead of
+ * connecting again: the same target (`isSameConnection`), made with the
+ * saved profile AeroCloud is pinned to (two profiles with the same target
+ * parameters are two accounts to the backend, and the share link follows
+ * the connected one), and a saved folder that names its place on its own.
+ * A relative or empty folder means "from where the connect starts", which a
+ * session that has moved since no longer is: `docs` from `/home/u/other`
+ * is another folder. Those connect again.
+ */
+export function mayReuseForAeroCloud(
+    sameTarget: boolean,
+    liveProfileId: string | null,
+    cloudProfileId: string | null | undefined,
+    remoteFolder: string,
+): boolean {
+    if (!sameTarget) return false;
+    if (cloudProfileId && liveProfileId !== cloudProfileId) return false;
+    return remoteFolder.startsWith('/');
 }

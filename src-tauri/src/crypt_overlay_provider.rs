@@ -535,7 +535,9 @@ fn decode_scoped(keys: &OverlayKeys, scope: &str, wire_path: &str, leaf_is_dir: 
     }
     match w.strip_prefix(&format!("{}/", scope)) {
         Some(below) => format!("{}/{}", scope, decode_entry_path(keys, below, leaf_is_dir)),
-        None => w,
+        // Outside the anchor the path is the provider's, byte for byte: an
+        // object store keeps `/a//b` and `/a/b` apart.
+        None => wire_path.to_string(),
     }
 }
 
@@ -1383,15 +1385,24 @@ impl StorageProvider for CryptOverlayProvider {
         Ok(())
     }
 
-    /// Up goes to the parent of the folder the session shows, as the panel's
-    /// Up does with the displayed parent: from the anchor of a home the
-    /// server reports under another name (`/usr/home/u/docs` for
-    /// `/home/u/docs`), the inner `CDUP` went to the physical parent, a
-    /// folder the display never named. At the root, or on a path with no
-    /// `/`, the inner provider answers as before.
+    /// At or below the anchor, Up goes to the parent of the folder the
+    /// session shows, as the panel's Up does with the displayed parent: from
+    /// the anchor of a home the server reports under another name
+    /// (`/usr/home/u/docs` for `/home/u/docs`), the inner `CDUP` went to the
+    /// physical parent, a folder the display never named. Outside the
+    /// anchor the inner provider goes up from the folder as it reports it,
+    /// byte for byte: on an object store `/plain/a//b/c` goes up to
+    /// `/plain/a//b`, never to `/plain/a/b`, another prefix. At the root, or
+    /// on a path with no `/`, the inner provider answers as before.
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         self.settle_scope_alias().await?;
-        let shown = self.pwd().await?;
+        let reported = self.inner.pwd().await?;
+        self.note_reported_cwd(&reported)?;
+        let wire = self.unalias(&reported).into_owned();
+        if self.below_scope(&wire).is_none() {
+            return self.inner.cd_up().await;
+        }
+        let shown = decode_scoped(&self.keys, &self.scope, &wire, true);
         let shown = shown.trim_end_matches('/');
         match shown.rfind('/') {
             Some(0) if shown.len() > 1 => self.cd("/").await,
@@ -2221,14 +2232,21 @@ pub(crate) fn overlay_breadcrumb_labels(
 /// (an honest downcast target), so a raw `downcast_mut::<ConcreteProvider>()` on
 /// a wrapped box yields `None`; callers must peel first via this helper.
 /// Map the plaintext target before a provider-specific raw operation peels the
-/// decorator. Mixed-mode paths outside the anchor remain literal.
-pub(crate) fn physical_write_path(
+/// decorator. Mixed-mode paths outside the anchor remain literal. A `cd` into
+/// the anchor still waiting for the server's answer is settled first, as
+/// every trait method does: until then a path under the anchor's other name
+/// (`/srv/docs/secret.txt` for `/home/u/docs`) reads as outside it, and the
+/// raw operation would act on that plaintext namesake.
+pub(crate) async fn physical_write_path(
     provider: &mut dyn StorageProvider,
     path: &str,
     is_dir: bool,
 ) -> Result<String, ProviderError> {
     match provider.as_any_mut().downcast_mut::<CryptOverlayProvider>() {
-        Some(overlay) => overlay.map(path, is_dir, AccessKind::Write),
+        Some(overlay) => {
+            overlay.settle_scope_alias().await?;
+            overlay.map(path, is_dir, AccessKind::Write)
+        }
         None => Ok(path.to_string()),
     }
 }
@@ -4747,6 +4765,31 @@ pub(crate) mod tests {
         }
     }
 
+    /// A provider-specific raw command (OpenDrive privacy, 4shared) maps its
+    /// target through [`physical_write_path`] right after a `cd` into the
+    /// anchor whose report did not come back: the helper asks the server
+    /// first and reads the anchor's other name as the anchor, so the command
+    /// targets the encrypted object, never the plaintext namesake
+    /// `/srv/docs/secret.txt`.
+    #[tokio::test]
+    async fn a_raw_command_settles_the_anchor_alias_before_it_maps() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 1;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.alias_pending.is_some(), "{label}");
+            let wire = physical_write_path(&mut p, "/srv/docs/secret.txt", false)
+                .await
+                .unwrap();
+            assert_ne!(wire, "/srv/docs/secret.txt", "{label}");
+            assert!(wire.starts_with("/home/u/docs/"), "{label}: {wire}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+        }
+    }
+
     /// EF-01 Mixed mode (Option B, owner-signed): a Write to a target that is
     /// provably OUT OF SCOPE passes through RAW (identical to the Read arm),
     /// enabling plaintext edits OUTSIDE the anchor. It must NOT fail closed and
@@ -4762,7 +4805,9 @@ pub(crate) mod tests {
                         keys.clone(),
                         scope,
                     );
-                    let wire = physical_write_path(&mut overlay, &path, is_dir).unwrap();
+                    let wire = physical_write_path(&mut overlay, &path, is_dir)
+                        .await
+                        .unwrap();
                     assert_ne!(wire, path, "{label}: names must be encrypted");
                     assert_eq!(decode_scoped(&keys, scope, &wire, is_dir), path);
                     let raw = concrete_provider_mut(&mut overlay)
@@ -4779,7 +4824,9 @@ pub(crate) mod tests {
                     assert!(raw.raw_bytes(&wire).is_none());
                     if !scope.is_empty() {
                         assert_eq!(
-                            physical_write_path(&mut overlay, "/public/item", is_dir).unwrap(),
+                            physical_write_path(&mut overlay, "/public/item", is_dir)
+                                .await
+                                .unwrap(),
                             "/public/item"
                         );
                     }
@@ -4788,7 +4835,9 @@ pub(crate) mod tests {
         }
         let mut raw = MemProvider::new();
         assert_eq!(
-            physical_write_path(&mut raw, "/literal/item", false).unwrap(),
+            physical_write_path(&mut raw, "/literal/item", false)
+                .await
+                .unwrap(),
             "/literal/item"
         );
         // Both real command implementations must map before the raw downcast,
@@ -5977,7 +6026,15 @@ pub(crate) mod tests {
             *self.cwd.lock().unwrap() = resolved;
             Ok(())
         }
+        /// `CDUP`: the last step of the folder as the server holds it, dropped
+        /// as written.
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            let mut cwd = self.cwd.lock().unwrap();
+            let parent = match cwd.trim_end_matches('/').rfind('/') {
+                Some(0) | None => "/".to_string(),
+                Some(at) => cwd[..at].to_string(),
+            };
+            *cwd = parent;
             Ok(())
         }
         async fn download(
@@ -7379,6 +7436,18 @@ pub(crate) mod tests {
             settle < preflight.find("self.map(").unwrap(),
             "check_directory_creation"
         );
+        // So does the helper the provider-specific raw commands (OpenDrive,
+        // 4shared) map through before they peel the decorator.
+        let raw = &source[source
+            .find("pub(crate) async fn physical_write_path(")
+            .expect("physical_write_path")..];
+        let raw = &raw[..raw.find("\n}\n").unwrap()];
+        assert!(
+            raw.find("settle_scope_alias(")
+                .expect("physical_write_path settles")
+                < raw.find("overlay.map(").unwrap(),
+            "physical_write_path"
+        );
     }
 
     /// Every form a server resolves to the anchor or the alias is read as
@@ -7545,6 +7614,9 @@ pub(crate) mod tests {
     #[derive(Default)]
     struct WireLog {
         seen: Mutex<Vec<String>>,
+        /// The folder a `cd` entered, as given (`/` before any); `cd_up`
+        /// drops its last step as written and is logged as `<cdup>`.
+        cwd: Option<String>,
     }
 
     impl WireLog {
@@ -7597,13 +7669,20 @@ pub(crate) mod tests {
             Ok(Vec::new())
         }
         async fn pwd(&mut self) -> Result<String, ProviderError> {
-            Ok("/".into())
+            Ok(self.cwd.clone().unwrap_or_else(|| "/".into()))
         }
         async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
             self.saw(&[path]);
+            self.cwd = Some(path.to_string());
             Ok(())
         }
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.saw(&["<cdup>"]);
+            let cwd = self.cwd.clone().unwrap_or_else(|| "/".into());
+            self.cwd = Some(match cwd.rfind('/') {
+                Some(0) | None => "/".into(),
+                Some(at) => cwd[..at].to_string(),
+            });
             Ok(())
         }
         async fn download(
@@ -7774,6 +7853,7 @@ pub(crate) mod tests {
         const FILE: &str = "/public/a//b.txt";
         const OTHER: &str = "/public/./a/c.txt";
         const DIR: &str = "/public/./a";
+        const DEEP: &str = "/public/a//b/c";
         for (label, keys) in both_kinds() {
             let dir = std::env::temp_dir().join(format!("crypt_wire_{}", uuid::Uuid::new_v4()));
             tokio::fs::create_dir_all(&dir).await.unwrap();
@@ -7835,6 +7915,26 @@ pub(crate) mod tests {
             sent!(p.delete_version(FILE, "v1"), &[FILE]);
             sent!(p.stored_checksum(FILE), &[FILE]);
             sent!(p.stored_checksum_for(FILE, "sha256"), &[FILE]);
+            // The folder shown and Up from it are the provider's own, byte for
+            // byte: the inner `CDUP` goes up from `/public/a//b/c`, never a
+            // `cd` to the comparison form `/public/a/b`.
+            for up in ["cd_up", ".."] {
+                sent!(p.cd(DEEP), &[DEEP]);
+                let shown = p.pwd().await.unwrap();
+                assert_eq!(shown, DEEP, "{label}");
+                // A delete built from the folder shown names the `//` key,
+                // never the object under `/public/a/b/c`.
+                sent!(
+                    p.delete(&format!("{shown}/x.txt")),
+                    &["/public/a//b/c/x.txt"]
+                );
+                if up == ".." {
+                    sent!(p.cd(".."), &["<cdup>"]);
+                } else {
+                    sent!(p.cd_up(), &["<cdup>"]);
+                }
+                assert_eq!(p.pwd().await.unwrap(), "/public/a//b", "{label} {up}");
+            }
             let identities = p.capture_trash_identities(&[FILE.to_string()]).await;
             assert!(identities[0].is_ok(), "{label}");
             let log = p.inner.as_any_mut().downcast_mut::<WireLog>().unwrap();

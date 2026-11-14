@@ -802,6 +802,38 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(host.querySelector('input[placeholder="/cloud/"]')).toBeTruthy();
     });
 
+    it('runs Pause, Resume and Disable one at a time, so a Disable after a Pause is applied', async () => {
+        let resolvePause!: (v: unknown) => void;
+        const pausePromise = new Promise(res => { resolvePause = res; });
+        await mount([]);
+        const disables: string[] = [];
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'pause_aerocloud') return pausePromise;
+            if (command === 'disable_aerocloud') { disables.push(command); return null; }
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        const button = (label: string) => [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === label);
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.pause'))!.click());
+        // While Pause is in flight Disable waits: its button is disabled and
+        // a click that reaches it anyway opens nothing.
+        expect(button('cloud.disable')!.disabled).toBe(true);
+        await React.act(async () => button('cloud.disable')!.click());
+        expect(host.querySelector('[aria-label="cloud.disableConfirm"]')).toBeNull();
+        await React.act(async () => resolvePause({ enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [], paused: true }));
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        // Then Disable runs, and its success is what the panel shows.
+        expect(button('cloud.disable')!.disabled).toBe(false);
+        await React.act(async () => button('cloud.disable')!.click());
+        const confirmOverlay = host.querySelector('[aria-label="cloud.disableConfirm"]')!;
+        await React.act(async () => [...confirmOverlay.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(disables).toEqual(['disable_aerocloud']);
+        expect(host.textContent).not.toContain('/remote');
+    });
+
     it('keeps the re-authorize entry from opening Settings while a Pause request is in flight', async () => {
         // The re-authorize banner is the second way into Settings: left open,
         // a Pause resolving later would replace the configuration under a draft.
@@ -872,6 +904,9 @@ describe('every reply the panel applies belongs to the panel that asked', () => 
         ["const updated = await invoke<CloudConfig>('pause_aerocloud');", 'if (asked !== configIdentity.current) return;'],
         ["const updated = await invoke<CloudConfig>('resume_aerocloud');", 'if (asked !== configIdentity.current) return;'],
         ["await invoke('disable_aerocloud');", 'if (asked !== configIdentity.current) return;'],
+        // The lifecycle runner: its `finally` only releases the latch and the
+        // pending count, owed whoever owns the panel now.
+        ['await command();', null],
         ["await invoke('open_in_file_manager', { path: config.local_folder });", null],
         ["await invoke('update_excluded_folders', { excludedFolders: folders });", 'if (asked !== configIdentity.current) return;'],
         ["await invoke('save_cloud_config_cmd', { config });", 'if (asked !== configIdentity.current) return;'],

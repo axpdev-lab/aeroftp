@@ -15493,18 +15493,7 @@ fn aerocloud_protocol_for_profile(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     config: &ftp_client_gui_lib::cloud_config::CloudConfig,
 ) -> Option<String> {
-    if config.server_profile_id.is_none() && config.server_profile.is_empty() {
-        return None;
-    }
-    let profiles =
-        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store).ok()?;
-    ftp_client_gui_lib::crypt_overlay_provider::select_aerocloud_profile(
-        &profiles,
-        config.server_profile_id.as_deref(),
-        &config.server_profile,
-    )
-    .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-    .map(str::to_string)
+    ftp_client_gui_lib::cloud_provider_factory::saved_profile_protocol(store, config)
 }
 
 /// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
@@ -16140,12 +16129,17 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 new_pair.compress_level = *level;
             }
 
-            // FIX-1 (partial): pair add is intentionally vault-less (profile name is just a
-            // string label at this point). Protocol resolution for non-FTP happens in the
-            // worker (see lib.rs batch builder using mcp_list_active_server_profiles) and
-            // in explicit `pair sync` (which does open the vault). This keeps `add` usable
-            // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
-            // until first resolution; the worker always corrects it before dispatch.
+            // The pair is saved with the protocol its profile speaks when the vault
+            // opens. Without it (a locked vault in a script) the default 'ftp' is
+            // stored, and every reader corrects it through
+            // `cloud_provider_factory::apply_saved_profile_protocol_to_pair`: the
+            // connect, the worker, `pair sync` and the placement check alike.
+            if let Ok(store) = open_vault(cli) {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store,
+                    &mut new_pair,
+                );
+            }
 
             if let Err(e) = ftp_client_gui_lib::cloud_config::refuse_an_unusable_remote_folder(
                 &new_pair.remote_path,
@@ -16226,21 +16220,10 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
 
             // Resolve protocol_type for each (same logic as single aerocloud sync).
-            if let Ok(profiles) =
-                ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
-            {
-                for p in &mut pairs_cfg.pairs {
-                    if let Some(proto) = profiles
-                        .iter()
-                        .find(|pr| {
-                            pr.get("name").and_then(|v| v.as_str())
-                                == Some(p.server_profile.as_str())
-                        })
-                        .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                    {
-                        p.protocol_type = proto.to_string();
-                    }
-                }
+            for p in &mut pairs_cfg.pairs {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store, p,
+                );
             }
 
             let targets: Vec<_> = if let Some(only_id) = id {

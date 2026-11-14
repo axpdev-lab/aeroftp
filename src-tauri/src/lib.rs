@@ -16440,6 +16440,13 @@ fn save_cloud_pairs_config_cmd_blocking(
             .map(|stored| stored.remote_path.as_str());
         cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, kept)?;
     }
+    // Each pair is saved with the protocol its profile speaks.
+    let mut config = config;
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        for pair in &mut config.pairs {
+            cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, pair);
+        }
+    }
     cloud_pairs::save_cloud_pairs_config(&config)
 }
 
@@ -16457,6 +16464,10 @@ fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
     cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, None)?;
+    let mut pair = pair;
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, &mut pair);
+    }
     cloud_pairs::with_cloud_pairs_mut(|config| {
         if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
             return Err("A pair with the same local and remote path already exists".to_string());
@@ -16776,9 +16787,12 @@ async fn sync_remove_empty_dir(
 async fn list_remote_folders_tree(
     max_depth: Option<u32>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let config = cloud_config::load_cloud_config();
+    let mut config = cloud_config::load_cloud_config();
     if !config.enabled {
         return Err("AeroCloud not configured".to_string());
+    }
+    if let Some(store) = credential_store::CredentialStore::from_cache() {
+        cloud_provider_factory::apply_saved_profile_protocol(&store, &mut config);
     }
 
     let max_d = max_depth.unwrap_or(3).min(5);
@@ -17316,17 +17330,7 @@ async fn trigger_cloud_sync(
     let store = credential_store::CredentialStore::from_cache();
     let mut cfg = config;
     if let Some(ref s) = store {
-        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(s) {
-            if let Some(proto) = crypt_overlay_provider::select_aerocloud_profile(
-                &profiles,
-                cfg.server_profile_id.as_deref(),
-                &cfg.server_profile,
-            )
-            .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-            {
-                cfg.protocol_type = proto.to_string();
-            }
-        }
+        cloud_provider_factory::apply_saved_profile_protocol(s, &mut cfg);
     }
     // "Sync now" is a full scan, which `sync_one_config` records for the
     // background scheduler under the key of the folder it opened.
@@ -17455,18 +17459,8 @@ fn enabled_cloud_configs() -> Vec<cloud_config::CloudConfig> {
         return if legacy.enabled { vec![legacy] } else { vec![] };
     }
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        if let Ok(profiles) = user_partitions::mcp_list_active_server_profiles(&store) {
-            for p in &mut pc.pairs {
-                if let Some(proto) = profiles
-                    .iter()
-                    .find(|pr| {
-                        pr.get("name").and_then(|v| v.as_str()) == Some(p.server_profile.as_str())
-                    })
-                    .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                {
-                    p.protocol_type = proto.to_string();
-                }
-            }
+        for p in &mut pc.pairs {
+            cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, p);
         }
     }
     pc.pairs

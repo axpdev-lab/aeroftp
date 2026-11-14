@@ -142,15 +142,18 @@ fn endpoint_fingerprint(config: &ProviderConfig) -> String {
 }
 
 /// The endpoint the saved settings name now for `config`, read as
-/// [`create_cloud_connection`] reads them; `None` for a protocol that does
-/// not connect through the direct-auth builder. Compared with
+/// [`create_cloud_connection`] reads them, with the protocol of the saved
+/// profile ([`saved_profile_protocol`]) as every connect takes it; `None`
+/// for a protocol that does not connect through the direct-auth builder. Compared with
 /// [`OpenedCloudProvider::endpoint`] to tell whether a connection still
 /// stands for the saved settings.
 pub(crate) fn current_endpoint_fingerprint(
     store: &credential_store::CredentialStore,
     config: &CloudConfig,
 ) -> Result<Option<String>, String> {
-    let Some(provider_type) = direct_provider_type(&config.protocol_type) else {
+    let protocol = saved_profile_protocol(store, config);
+    let protocol = protocol.as_deref().unwrap_or(&config.protocol_type);
+    let Some(provider_type) = direct_provider_type(protocol) else {
         return Ok(None);
     };
     let (_, mut provider_config) = direct_provider_config(store, config, provider_type)?;
@@ -373,6 +376,46 @@ fn saved_profile(
         &config.server_profile,
     )
     .cloned())
+}
+
+/// The protocol the saved profile `config` selects speaks, selected as the
+/// connection selects it; `None` when it names no saved profile or the list
+/// cannot be read. A config or a pair saved without the vault (`aerocloud set
+/// --profile`, `aerocloud pair add`, a pair added before its profile was
+/// chosen) stores the default `"ftp"`, so every reader that connects, and
+/// every check that compares with a connection, takes the protocol from here.
+pub fn saved_profile_protocol(
+    store: &credential_store::CredentialStore,
+    config: &CloudConfig,
+) -> Option<String> {
+    saved_profile(store, config)
+        .ok()
+        .flatten()?
+        .get("protocol")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Set `config.protocol_type` to [`saved_profile_protocol`], when there is
+/// one.
+pub fn apply_saved_profile_protocol(
+    store: &credential_store::CredentialStore,
+    config: &mut CloudConfig,
+) {
+    if let Some(protocol) = saved_profile_protocol(store, config) {
+        config.protocol_type = protocol;
+    }
+}
+
+/// [`apply_saved_profile_protocol`] for a folder pair, which selects its
+/// profile by name.
+pub fn apply_saved_profile_protocol_to_pair(
+    store: &credential_store::CredentialStore,
+    pair: &mut crate::cloud_pairs::CloudPathPair,
+) {
+    if let Some(protocol) = saved_profile_protocol(store, &pair.to_cloud_config()) {
+        pair.protocol_type = protocol;
+    }
 }
 
 /// The id of the saved profile an AeroCloud config names, selected as the

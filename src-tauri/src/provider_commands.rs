@@ -10570,6 +10570,7 @@ pub async fn opendrive_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10619,6 +10620,7 @@ pub async fn opendrive_set_path_access(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10677,6 +10679,7 @@ pub async fn fourshared_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let fourshared = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)

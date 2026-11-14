@@ -198,6 +198,7 @@ describe('every location site checks the path first', () => {
         profileRoot: 'the starting folder the server reads; aeroCloudBase checks the text it comes from',
         aeroCloudRemoteFolder: 'joined only after aeroCloudFolderNotPlain refused (handleComplete)',
         CloudSetupWizard: 'the label it shows, not a location it uses',
+        mayReuseForAeroCloud: 'tells an absolute folder apart, strips nothing; openAeroCloudFolder checks the folder it opens',
     };
     it('checks each path before it strips or compares it', () => {
         const checked: string[] = [];

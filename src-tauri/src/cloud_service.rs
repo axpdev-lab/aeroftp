@@ -3869,7 +3869,7 @@ fn same_server_profile(
     }
 }
 
-/// Where a `~/...` remote folder lands under the login folder on the
+/// Where a `~/...` or bare relative remote folder lands under the login folder on the
 /// connected provider, written nowhere: a preview syncs against it without
 /// changing the saved target. On a protocol with a login folder (SFTP, SCP,
 /// FTP, FTPS) a `/~/...` value names a literal `~` directory written by
@@ -3900,10 +3900,15 @@ pub(crate) async fn place_login_relative_remote_folder(
             remote.trim_start_matches('/')
         ));
     }
-    if !crate::crypt_overlay_provider::is_login_relative_scope(remote) {
+    // A bare relative folder (`docs`) is opened under the login folder on
+    // these protocols, as `~/docs` is: placed now, before any `cd`, so no
+    // relative `CWD` is ever sent from a folder the session moved to (a
+    // probe that entered `docs` then read the scan's `docs` as `docs/docs`).
+    let form = crate::crypt_overlay_provider::login_relative_form(remote, true);
+    if !crate::crypt_overlay_provider::is_login_relative_scope(&form) {
         return Ok(None);
     }
-    crate::crypt_overlay_provider::resolve_home_scope(provider, remote)
+    crate::crypt_overlay_provider::resolve_home_scope(provider, &form)
         .await?
         .ok_or_else(|| format!("the remote folder '{remote}' could not be placed"))
         .map(Some)
@@ -4136,6 +4141,8 @@ async fn open_aerocloud_connection(
             .to_string()
     })?;
 
+    // The protocol the saved profile speaks, as the placement check reads it.
+    cloud_provider_factory::apply_saved_profile_protocol(store, config);
     let opened = cloud_provider_factory::create_cloud_connection(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
@@ -7915,6 +7922,11 @@ mod baseline_tests {
                     let _ = write.write_all(b"220 AeroFTP test server\r\n").await;
                     let mut reader = BufReader::new(read);
                     let mut data: Option<tokio::net::TcpListener> = None;
+                    // The folder the session stands in, as a server keeps it:
+                    // a relative `CWD` is joined to it and logged resolved as
+                    // `=CWD <folder>`; one that leaves the login folder is
+                    // refused.
+                    let mut cwd = login_dir.to_string();
                     let mut line = String::new();
                     loop {
                         line.clear();
@@ -7923,7 +7935,7 @@ mod baseline_tests {
                         }
                         let cmd = line.trim_end_matches(['\r', '\n']).to_string();
                         let verb = cmd.split_whitespace().next().unwrap_or("").to_uppercase();
-                        task_log.lock().unwrap().push(cmd);
+                        task_log.lock().unwrap().push(cmd.clone());
                         if matches!(
                             verb.as_str(),
                             "MLSD" | "MLST" | "LIST" | "NLST" | "RETR" | "STOR" | "APPE"
@@ -7953,8 +7965,36 @@ mod baseline_tests {
                         let reply = match verb.as_str() {
                             "USER" => "331 Password required".to_string(),
                             "PASS" => "230 Logged in".to_string(),
-                            "PWD" | "XPWD" => format!("257 \"{login_dir}\""),
-                            "CWD" | "XCWD" | "CDUP" | "XCUP" => "250 OK".to_string(),
+                            "PWD" | "XPWD" => format!("257 \"{cwd}\""),
+                            "CWD" | "XCWD" => {
+                                let arg = cmd.split_once(' ').map(|(_, a)| a).unwrap_or("");
+                                let target = if arg.starts_with('/') {
+                                    arg.trim_end_matches('/').to_string()
+                                } else {
+                                    format!("{}/{}", cwd.trim_end_matches('/'), arg)
+                                };
+                                let target = if target.is_empty() {
+                                    "/".into()
+                                } else {
+                                    target
+                                };
+                                task_log.lock().unwrap().push(format!("=CWD {target}"));
+                                if !arg.starts_with('/')
+                                    && !target.starts_with(&format!("{login_dir}/"))
+                                {
+                                    "550 No such directory".to_string()
+                                } else {
+                                    cwd = target;
+                                    "250 OK".to_string()
+                                }
+                            }
+                            "CDUP" | "XCUP" => {
+                                cwd = match cwd.rfind('/') {
+                                    Some(0) | None => "/".to_string(),
+                                    Some(at) => cwd[..at].to_string(),
+                                };
+                                "250 OK".to_string()
+                            }
                             "TYPE" | "OPTS" | "PBSZ" | "PROT" | "NOOP" => "200 OK".to_string(),
                             "SYST" => "215 UNIX Type: L8".to_string(),
                             "FEAT" => "211-Features:\r\n UTF8\r\n211 End".to_string(),
@@ -8145,6 +8185,54 @@ mod baseline_tests {
         });
     }
 
+    /// A bare relative saved folder (`docs`) is placed under the login folder
+    /// like `~/docs`, before any `cd`: the server never receives a relative
+    /// `CWD` from a folder the session already moved to (a probe entered
+    /// `docs`, then the scan's `cd("docs")` reached `docs/docs`), the file
+    /// lands in `/home/u/docs` and the saved config reads that folder.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn full_cycle_places_a_bare_relative_folder_before_any_cwd() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_bare", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "docs", "srv_bare");
+            let stored = config.clone();
+            cloud_config::with_cloud_config_mut(move |disk| {
+                *disk = stored;
+                Ok(())
+            })
+            .unwrap();
+
+            let report = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap();
+            assert!(
+                report.result.errors.is_empty(),
+                "{:?}",
+                report.result.errors
+            );
+            assert_eq!(report.result.uploaded, 1);
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(
+                log.contains("STOR /home/u/docs/note.txt"),
+                "commands:\n{log}"
+            );
+            assert!(!log.contains("docs/docs"), "commands:\n{log}");
+            assert!(
+                !log.lines().any(|l| l == "CWD docs"),
+                "a relative CWD was sent:\n{log}"
+            );
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/u/docs"
+            );
+        });
+    }
+
     /// A preview places a `~/...` folder for its own run only: both saved
     /// files keep their exact bytes, and the preview still reads the placed
     /// folder, never a literal `~`.
@@ -8198,11 +8286,19 @@ mod baseline_tests {
     /// account's list once the first read migrated the vault), by the same
     /// writer the GUI uses, which takes the profile list lock.
     fn set_saved_profiles(store: &credential_store::CredentialStore, profiles: &[(&str, &str)]) {
+        set_saved_profiles_speaking(store, profiles, "ftp");
+    }
+
+    fn set_saved_profiles_speaking(
+        store: &credential_store::CredentialStore,
+        profiles: &[(&str, &str)],
+        protocol: &str,
+    ) {
         let list: Vec<serde_json::Value> = profiles
             .iter()
             .map(|(id, name)| {
                 serde_json::json!({
-                    "id": id, "name": name, "protocol": "ftp", "host": "127.0.0.1",
+                    "id": id, "name": name, "protocol": protocol, "host": "127.0.0.1",
                     "port": 21, "username": "u", "options": {"tlsMode": "none"},
                 })
             })
@@ -8257,6 +8353,70 @@ mod baseline_tests {
                 .remote_path
                 .clone(),
         )
+    }
+
+    /// A pair added without the vault (`aerocloud pair add` in a script)
+    /// stores the default `"ftp"`; on an SFTP profile its connect speaks
+    /// SFTP, and the placement check reads the pair through the same
+    /// correction, so the placed folder IS saved. Before, the check
+    /// fingerprinted the stored FTP value, which never matched the SFTP
+    /// connection, and the pair kept `~/docs` on disk forever. A pair added
+    /// with the vault open is saved with the protocol its profile speaks.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_pair_saved_as_ftp_on_an_sftp_profile_saves_its_placement() {
+        with_scratch_index(async {
+            let (_vault_dir, store, _guard) = open_test_vault();
+            set_saved_profiles_speaking(&store, &[("srv_s", "nas")], "sftp");
+            let _ = std::fs::remove_file(cloud_config::get_config_path());
+            for vault_open_at_add in [false, true] {
+                let mut pair = cloud_pairs::new_cloud_path_pair(
+                    "p1".into(),
+                    "docs".into(),
+                    "/sync/a".into(),
+                    "~/docs".into(),
+                    "nas".into(),
+                );
+                if vault_open_at_add {
+                    cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, &mut pair);
+                    assert_eq!(pair.protocol_type, "sftp");
+                } else {
+                    assert_eq!(pair.protocol_type, "ftp", "stored as the CLI stores it");
+                }
+                cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                    pairs.pairs = vec![pair.clone()];
+                    Ok(())
+                })
+                .unwrap();
+                // The connection, as `open_aerocloud_connection` makes it.
+                let mut config = pair.to_cloud_config();
+                cloud_provider_factory::apply_saved_profile_protocol(&store, &mut config);
+                assert_eq!(config.protocol_type, "sftp");
+                let resolution =
+                    ProfileResolution::for_connection(Some(&store), &config, Some("srv_s".into()))
+                        .unwrap();
+                let mut provider = MemoryProvider {
+                    kind: Some(crate::providers::ProviderType::Sftp),
+                    login_folder: Some("/home/u".to_string()),
+                    ..Default::default()
+                };
+                let placed = anchor_login_relative_remote_folder(
+                    &mut provider,
+                    &config,
+                    &resolution,
+                    Some(&store),
+                    connected_endpoint(&store, &config).as_deref(),
+                )
+                .await
+                .unwrap();
+                assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+                assert_eq!(
+                    cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                    "/home/u/docs",
+                    "vault open at add: {vault_open_at_add}"
+                );
+            }
+        });
     }
 
     /// The name check and the placement write happen while the saved profile
