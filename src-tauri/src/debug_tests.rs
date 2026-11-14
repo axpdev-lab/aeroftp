@@ -266,7 +266,12 @@ pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestRe
 /// What a rule puts where it matches.
 #[derive(Clone, Copy)]
 enum Replacement {
+    /// A credential: the match, its kept label (`$1`) left out, becomes the
+    /// text (`$1` expanded).
     Text(&'static str),
+    /// The same for an identity rule (an address, a home folder, a hash):
+    /// see [`redact`].
+    Identity(&'static str),
     /// The userinfo of a URL, masked by [`redact_url_userinfo`].
     UrlUserinfo,
     /// Every IPv4 address except the loopback and unspecified ones, which the
@@ -306,11 +311,9 @@ macro_rules! secret_value {
 }
 
 const REDACTION_RULES: &[(&str, Replacement)] = &[
-    // Inline credentials in URLs, FIRST of all (S1b): a later rule can
-    // consume a delimiter of the authority (`x-api-key: foo@host` eats the
-    // `@`), and the userinfo before it would then stay. A linear scan, not a
-    // pattern (see `redact_url_userinfo`); the pattern only names the rule.
-    // The TS list starts with it too.
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redact_url_userinfo`); the pattern only names the rule. Read on the
+    // original text like every rule (T3).
     (r"://", Replacement::UrlUserinfo),
     // Authorization first, ahead of every key and Bearer rule below, so
     // `Authorization: Bearer sk-...` is one marker. Shared with
@@ -376,18 +379,21 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     ),
     (
         r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
-        Replacement::Text("***@***"),
+        Replacement::Identity("***@***"),
     ),
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
-    (r"/home/[A-Za-z0-9._-]+", Replacement::Text("/home/***")),
-    (r"/Users/[A-Za-z0-9._-]+", Replacement::Text("/Users/***")),
+    (r"/home/[A-Za-z0-9._-]+", Replacement::Identity("/home/***")),
+    (
+        r"/Users/[A-Za-z0-9._-]+",
+        Replacement::Identity("/Users/***"),
+    ),
     (
         r"(?i)C:\\Users\\[^\\]+",
-        Replacement::Text("C:\\Users\\***"),
+        Replacement::Identity("C:\\Users\\***"),
     ),
     (
         r"\b[A-Fa-f0-9]{32,}\b",
-        Replacement::Text("***HEX-REDACTED***"),
+        Replacement::Identity("***HEX-REDACTED***"),
     ),
 ];
 
@@ -559,6 +565,8 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
 /// `@` in it, the userinfo is everything up to the LAST `@`, and all of it
 /// becomes the placeholder. Both twins run src/shared/redaction-cases.json,
 /// the parser-agreement and escape cases included.
+// What `redact` does with the URL rule alone; the tests time and check it.
+#[cfg(test)]
 fn redact_url_userinfo(text: &str) -> String {
     // The decoded and the raw scan of a token can find the same userinfo, or
     // overlapping ones: their union is masked once.
@@ -582,23 +590,137 @@ fn redact_url_userinfo(text: &str) -> String {
     out
 }
 
-pub(crate) fn redact(s: &str) -> String {
-    let mut out = s.to_owned();
-    for (re, replacement) in redaction_patterns() {
-        out = match replacement {
-            Replacement::Text(text) => re.replace_all(&out, *text).into_owned(),
-            Replacement::UrlUserinfo => redact_url_userinfo(&out),
-            Replacement::Ipv4 => re
-                .replace_all(&out, |caps: &regex::Captures<'_>| {
-                    if matches!(&caps[0], "127.0.0.1" | "0.0.0.0") {
-                        caps[0].to_owned()
-                    } else {
-                        "***.***.***.***".to_owned()
-                    }
-                })
-                .into_owned(),
-        };
+/// A part of the original text a rule masks, and what replaces it.
+struct Span {
+    start: usize,
+    end: usize,
+    replacement: String,
+}
+
+/// The spans of one pattern rule, read on the ORIGINAL text (T3): each match,
+/// the leading part its replacement repeats (a field's label, `$1`) left out,
+/// so the label stays visible.
+fn pattern_spans(re: &regex::Regex, text: &str, template: &str) -> Vec<Span> {
+    re.captures_iter(text)
+        .filter_map(|caps| {
+            let whole = caps.get(0)?;
+            let replaced = template.replace("$1", caps.get(1).map_or("", |g| g.as_str()));
+            let kept: usize = whole
+                .as_str()
+                .chars()
+                .zip(replaced.chars())
+                .take_while(|(a, b)| a == b)
+                .map(|(a, _)| a.len_utf8())
+                .sum();
+            let span = Span {
+                start: whole.start() + kept,
+                end: whole.end(),
+                replacement: replaced[kept..].to_string(),
+            };
+            (span.end > span.start || !span.replacement.is_empty()).then_some(span)
+        })
+        .collect()
+}
+
+/// The identity spans that no credential span overlaps ([`redact_with`]), in
+/// time linear in the spans after the sort: the TS twin's
+/// `uncoveredIdentity`. The credentials are merged once into sorted disjoint
+/// ranges, then the identity spans are walked in start order with one index
+/// that only moves forward. `steps`, for the tests, counts the comparisons.
+fn uncovered_identity(
+    mut identity: Vec<Span>,
+    credentials: &[Span],
+    steps: &mut usize,
+) -> Vec<Span> {
+    let mut sorted: Vec<&Span> = credentials.iter().collect();
+    sorted.sort_by_key(|span| span.start);
+    let mut covered: Vec<(usize, usize)> = Vec::new();
+    for span in sorted {
+        *steps += 1;
+        if span.end <= span.start {
+            continue;
+        }
+        match covered.last_mut() {
+            Some(last) if span.start <= last.1 => last.1 = last.1.max(span.end),
+            _ => covered.push((span.start, span.end)),
+        }
     }
+    identity.sort_by_key(|span| span.start);
+    let mut next = 0;
+    identity.retain(|span| {
+        while next < covered.len() && covered[next].1 <= span.start {
+            *steps += 1;
+            next += 1;
+        }
+        *steps += 1;
+        !(next < covered.len() && covered[next].0 < span.end)
+    });
+    identity
+}
+
+/// Every rule's spans, all read on the original text, masked once: the TS
+/// twin's `applyRules` (T3). No rule sees another's output, so none can
+/// consume a delimiter another needs, and the order of the rules changes
+/// nothing. The credential spans (every rule but the identity ones) are
+/// masked as their UNION; an identity span that overlaps a credential span
+/// is dropped (the credential covers that part, and a `token@host` inside a
+/// URL's authority keeps its host). Overlapping spans merge into one,
+/// replaced by the replacement of the span that starts first; on equal
+/// starts, of the longer one; then of the replacement that sorts first.
+pub(crate) fn redact(s: &str) -> String {
+    redact_with(s, redaction_patterns())
+}
+
+fn redact_with(s: &str, rules: &[(regex::Regex, Replacement)]) -> String {
+    let mut credentials = Vec::new();
+    let mut identity = Vec::new();
+    for (re, replacement) in rules {
+        match replacement {
+            Replacement::Text(text) => credentials.extend(pattern_spans(re, s, text)),
+            Replacement::UrlUserinfo => {
+                credentials.extend(userinfo_spans(s).into_iter().map(|(start, end)| Span {
+                    start,
+                    end,
+                    replacement: "***REDACTED***".to_string(),
+                }))
+            }
+            Replacement::Identity(text) => identity.extend(pattern_spans(re, s, text)),
+            Replacement::Ipv4 => identity.extend(
+                re.find_iter(s)
+                    .filter(|m| !matches!(m.as_str(), "127.0.0.1" | "0.0.0.0"))
+                    .map(|m| Span {
+                        start: m.start(),
+                        end: m.end(),
+                        replacement: "***.***.***.***".to_string(),
+                    }),
+            ),
+        }
+    }
+    let identity = uncovered_identity(identity, &credentials, &mut 0);
+    let mut spans = credentials;
+    spans.extend(identity);
+    spans.sort_by(|a, b| {
+        a.start
+            .cmp(&b.start)
+            .then(b.end.cmp(&a.end))
+            .then(a.replacement.cmp(&b.replacement))
+    });
+    let mut out = String::with_capacity(s.len());
+    let mut copied = 0;
+    let mut n = 0;
+    while n < spans.len() {
+        let first = &spans[n];
+        let mut end = first.end;
+        n += 1;
+        while n < spans.len() && spans[n].start < end {
+            end = end.max(spans[n].end);
+            n += 1;
+        }
+        out.push_str(&s[copied..first.start]);
+        out.push_str(&first.replacement);
+        copied = end;
+    }
+    out.push_str(&s[copied..]);
     out
 }
 
@@ -874,19 +996,70 @@ mod tests {
 
     /// The policy once lost its IPv4 rule without a word: `regex` rejects the
     /// look-around it was written with and the rule was dropped on the error.
-    /// S1b: no rule may consume a delimiter of a URL's authority before its
-    /// userinfo is masked, so the URL pass is the first rule, and the only
-    /// one of its kind.
+    /// T3: the identity spans a credential covers are dropped in one walk.
+    /// 20k URLs whose `secret@host` is also an e-mail, and 20k e-mails beside
+    /// them; and the walk's comparisons, counted: linear in the spans.
     #[test]
-    fn the_url_userinfo_pass_runs_before_every_other_rule() {
-        assert!(matches!(REDACTION_RULES[0].1, Replacement::UrlUserinfo));
+    fn the_identity_spans_a_credential_covers_are_dropped_in_linear_time() {
+        let n = 20_000;
+        let input = (0..n)
+            .map(|k| format!("ftp://user{k}:secret@host{k}.example/x"))
+            .chain((0..n).map(|k| format!("mail{k}@x{k}.example")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let started = std::time::Instant::now();
+        let out = redact(&input);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(!out.contains("secret") && !out.contains("user1:"));
         assert_eq!(
-            REDACTION_RULES
-                .iter()
-                .filter(|(_, replacement)| matches!(replacement, Replacement::UrlUserinfo))
+            regex::Regex::new(r"ftp://\*\*\*REDACTED\*\*\*@host\d+\.example/x")
+                .unwrap()
+                .find_iter(&out)
                 .count(),
-            1
+            n
         );
+        assert_eq!(out.matches(" ***@***").count(), n);
+
+        let span = |start: usize, end: usize| Span {
+            start,
+            end,
+            replacement: "x".to_string(),
+        };
+        let credentials: Vec<Span> = (0..n).map(|k| span(10 * k, 10 * k + 5)).collect();
+        let identity: Vec<Span> = (0..2 * n).map(|k| span(5 * k, 5 * k + 3)).collect();
+        let mut steps = 0;
+        assert_eq!(
+            uncovered_identity(identity, &credentials, &mut steps).len(),
+            n
+        );
+        assert!(steps <= 2 * (n + 2 * n), "{steps} comparisons");
+    }
+
+    /// T3: every rule reads the original text, so the order of the rules
+    /// means nothing: any order gives the same output on every shared case.
+    #[test]
+    fn the_order_of_the_rules_changes_nothing() {
+        let rules: Vec<(regex::Regex, Replacement)> = redaction_patterns()
+            .iter()
+            .map(|(re, replacement)| (re.clone(), *replacement))
+            .collect();
+        // A fixed shuffle, so a failure can be replayed.
+        let mut seed: u64 = 7;
+        for _ in 0..8 {
+            let mut shuffled = rules.clone();
+            for i in (1..shuffled.len()).rev() {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                shuffled.swap(i, (seed % (i as u64 + 1)) as usize);
+            }
+            for case in redaction_cases() {
+                assert_eq!(
+                    redact_with(&case.input, &shuffled),
+                    redact(&case.input),
+                    "{}",
+                    case.name
+                );
+            }
+        }
     }
 
     #[test]

@@ -130,7 +130,11 @@ impl GitHubConfig {
 }
 
 /// How long a working branch's classification answers for the writes that
-/// follow it, while they succeed (`refuse_stale_write`, S2 b).
+/// follow it, while they succeed (`refuse_stale_write`, S2 b). The price of
+/// the bound: writes inside this window can land on a branch whose pull
+/// request was merged inside it. Those commits stay on the working branch
+/// (they are in no pull request yet), and the first write after the window
+/// is refused.
 const BRANCH_CHECK_WINDOW: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How many working-branch names a walk tries (`name`, `name-2` ...).
@@ -154,8 +158,54 @@ enum WorkingBranchState {
     Merged,
 }
 
+/// Whether `error`, what a write request that was sent ended with, PROVES
+/// the write did not happen (T4): a refusal the server itself sent for this
+/// request. Everything else may have landed: a timeout (`timed_out_or` makes
+/// it `ApiError { status: 408 }`, which a server's own 408 is treated as
+/// too), a lost or unreadable answer, a 5xx, and every error produced
+/// locally. The match has no catch-all: a variant added later does not
+/// compile until it is placed here, and
+/// `only_a_refusal_the_server_sent_disarms_the_poison` pins each one.
+fn proves_not_written(error: &GitHubError) -> bool {
+    match error {
+        // What `classify_api_error` makes of a 4xx the server sent, and the
+        // rate limits `execute` reads off the server's answer.
+        GitHubError::Unauthorized
+        | GitHubError::TokenExpired
+        | GitHubError::InsufficientPermissions(_)
+        | GitHubError::ProtectedBranch(_)
+        | GitHubError::RequiredPullRequest
+        | GitHubError::RepoNotFound
+        | GitHubError::PathNotFound(_)
+        | GitHubError::StaleObject { .. }
+        | GitHubError::DuplicateAsset(_)
+        | GitHubError::FileTooLarge { .. }
+        | GitHubError::Unprocessable(_)
+        | GitHubError::PrimaryRateLimit { .. }
+        | GitHubError::SecondaryRateLimit { .. } => true,
+        // A status the server sent, but not 408, which a local timeout
+        // produces too.
+        GitHubError::ApiError { status, .. } => (400..500).contains(status) && *status != 408,
+        // Produced locally (before or after sending), a 5xx, a lost or
+        // unreadable answer, or a GraphQL answer that does not say the
+        // mutation was refused: the write may have landed.
+        GitHubError::TargetChanged
+        | GitHubError::PermissionDenied(_)
+        | GitHubError::BranchNotFound(_)
+        | GitHubError::NotFound(_)
+        | GitHubError::ReleaseNotFound(_)
+        | GitHubError::NetworkError(_)
+        | GitHubError::ServerError(_)
+        | GitHubError::PayloadTooLarge(_)
+        | GitHubError::GraphQLError { .. }
+        | GitHubError::ParseError(_)
+        | GitHubError::InvalidInput(_) => false,
+    }
+}
+
 /// Raises the session's poison when dropped, unless the write it guards was
-/// refused by an answer (`refused`): the fallback write (S2 d).
+/// refused by an answer (`refused`, only after [`proves_not_written`]): the
+/// fallback write (S2 d, T4).
 struct PoisonUnlessRefused(Option<std::sync::Arc<std::sync::atomic::AtomicBool>>);
 
 impl PoisonUnlessRefused {
@@ -660,12 +710,15 @@ impl GitHubProvider {
     /// adds at most one classification per window, whatever its number of
     /// files, and nothing between.
     ///
-    /// What the window cannot see: a merge or deletion inside it, after the
-    /// check. Writes until the window ends can land on that branch (a
-    /// deleted one fails them, which ends the window); the first write after
-    /// it is refused. Below the window, a merge in the instant between a
-    /// check and its write cannot be excluded either: the contents API takes
-    /// no expected branch head.
+    /// What the window cannot see: a merge (or deletion) of the branch
+    /// inside it, after its check. Every write until the window ends can
+    /// then land on the merged branch, not only one in the instant between a
+    /// check and its write: those commits stay on the working branch, outside
+    /// the merged pull request, and the first write after the window is
+    /// refused and poisons the session. A deleted branch fails those writes
+    /// instead, which ends the window at once. Without the window, the
+    /// instant between a check and its write would remain all the same: the
+    /// contents API takes no expected branch head.
     async fn refuse_stale_write(&mut self) -> Result<(), ProviderError> {
         Self::refuse_when_poisoned(self)?;
         let GitHubWriteMode::BranchWorkflow { branch } = &self.write_mode else {
@@ -878,9 +931,12 @@ impl GitHubProvider {
     /// The branch a refused write goes to ([`Self::current_working_branch`]),
     /// or the refusal when every name is merged: the one place that is
     /// reported (C1).
-    async fn allocate_working_branch(&mut self, base_tip: &str) -> Result<String, ProviderError> {
+    async fn allocate_working_branch(
+        &mut self,
+        base_tip: &str,
+    ) -> Result<(String, WorkingBranchState), ProviderError> {
         match self.current_working_branch(base_tip).await? {
-            Some((branch, _)) => Ok(branch),
+            Some(found) => Ok(found),
             None => {
                 let own = self.own_working_branch()?;
                 Err(ProviderError::InvalidConfig(format!(
@@ -943,43 +999,66 @@ impl GitHubProvider {
         )
     }
 
-    async fn ensure_branch_exists_from_sha(
+    /// The working branch a refused write goes to, made ready against ONE
+    /// base tip (S3b, T1): the walk classifies every candidate against
+    /// `base_tip`; a PENDING one is written as it is, a NOT AHEAD one is
+    /// fast-forwarded to `base_tip` (no force), a MISSING one is created at
+    /// it. When GitHub answers that another client changed the branch in
+    /// between (the create refused because it now exists, the fast-forward
+    /// refused because it moved), the walk runs again against the same tip:
+    /// a branch behind is fast-forwarded, a merged one gives the next name or
+    /// the refusal, a diverged pending one is adopted. Nothing is ever taken
+    /// as ready on the strength of a lookup alone. The walks are bounded:
+    /// each extra one follows such an answer, and if the branch keeps
+    /// changing the write is refused with nothing written.
+    async fn prepare_working_branch(&mut self, base_tip: &str) -> Result<String, ProviderError> {
+        for _ in 0..=WORKING_BRANCH_CANDIDATES {
+            let (branch, state) = self.allocate_working_branch(base_tip).await?;
+            let ready = match state {
+                WorkingBranchState::Pending => true,
+                WorkingBranchState::NotAhead => self.fast_forward_to(&branch, base_tip).await?,
+                WorkingBranchState::Missing => self.create_branch_at(&branch, base_tip).await?,
+                // The walk never names a merged branch.
+                WorkingBranchState::Merged => {
+                    return Err(ProviderError::InvalidConfig(format!(
+                        "The working branch {branch} is merged"
+                    )))
+                }
+            };
+            if ready {
+                return Ok(branch);
+            }
+        }
+        Err(ProviderError::TransferFailed(
+            "The working branch kept changing on GitHub while it was being prepared; \
+             nothing was written. Try again."
+                .to_string(),
+        ))
+    }
+
+    /// Create `branch` at `base_sha`: `true` when created. GitHub refuses a
+    /// ref that already exists with a 422, which the client maps to
+    /// `ApiError { status: 422 }`; the branch is looked up again instead of
+    /// reading the message (#1506 row 164). There now: `false`, another
+    /// client made it, and [`Self::prepare_working_branch`] classifies it
+    /// again (T1). Not there: the refusal stands. Any other failure of the
+    /// lookup (a timeout, a login) is the caller's to handle, not hidden
+    /// behind the refusal (CodeRabbit, #1520).
+    async fn create_branch_at(
         &mut self,
         branch: &str,
         base_sha: &str,
-    ) -> Result<(), ProviderError> {
-        match self
-            .client
-            .get_json::<GitHubBranch>(&self.branch_api_url(branch))
-            .await
-        {
-            Ok(_) => return self.fast_forward_if_behind(branch, base_sha).await,
-            Err(
-                GitHubError::PathNotFound(_)
-                | GitHubError::RepoNotFound
-                | GitHubError::BranchNotFound(_)
-                | GitHubError::NotFound(_),
-            ) => {}
-            Err(e) => return Err(ProviderError::from(e)),
-        }
-
+    ) -> Result<bool, ProviderError> {
         let body = serde_json::json!({
             "ref": format!("refs/heads/{}", branch),
             "sha": base_sha,
         });
-
         match self
             .client
             .post_json::<serde_json::Value>(&format!("{}/git/refs", self.repo_url()), &body)
             .await
         {
-            Ok(_) => Ok(()),
-            // GitHub refuses a ref that already exists with a 422, which the
-            // client maps to `ApiError { status: 422 }`: the arm that read
-            // "reference already exists" off `Unprocessable` never matched,
-            // and a branch created meanwhile (another device, another tab)
-            // failed the write. The branch is looked up again instead of
-            // reading the message. #1506 row 164.
+            Ok(_) => Ok(true),
             Err(
                 refused @ (GitHubError::Unprocessable(_)
                 | GitHubError::ApiError { status: 422, .. }),
@@ -988,10 +1067,7 @@ impl GitHubProvider {
                 .get_json::<GitHubBranch>(&self.branch_api_url(branch))
                 .await
             {
-                Ok(_) => Ok(()),
-                // Not there: the refusal stands. Any other failure of the
-                // lookup (a timeout, a login) is the caller's to handle, not
-                // hidden behind the refusal (CodeRabbit, #1520).
+                Ok(_) => Ok(false),
                 Err(
                     GitHubError::PathNotFound(_)
                     | GitHubError::RepoNotFound
@@ -1004,34 +1080,43 @@ impl GitHubProvider {
         }
     }
 
-    /// A working branch that exists but holds nothing the base does not (its
-    /// pull request merged, the branch kept) is behind the base: a write
-    /// there would land on an older tree. It is moved up to `base_sha` first,
-    /// a plain update with no force, which GitHub accepts only as a fast
-    /// forward (R2). A branch ahead of the base keeps its own commits.
-    async fn fast_forward_if_behind(
+    /// Move a NOT AHEAD working branch up to `base_sha` (R2): a write on a
+    /// branch behind the base would land on an older tree. A plain update
+    /// with no force, which GitHub accepts only as a fast forward. `true`
+    /// when the branch is at `base_sha` (moved, or already there). `false`
+    /// when it changed since its classification (now ahead, deleted, or the
+    /// update refused as not a fast forward): [`Self::prepare_working_branch`]
+    /// classifies it again against the same tip (T1).
+    async fn fast_forward_to(
         &mut self,
         branch: &str,
         base_sha: &str,
-    ) -> Result<(), ProviderError> {
+    ) -> Result<bool, ProviderError> {
         let Some(compare) = self.compare_with(base_sha, branch).await? else {
-            return Err(ProviderError::from(GitHubError::BranchNotFound(
-                branch.to_string(),
-            )));
+            return Ok(false);
         };
-        if compare.ahead_by > 0 || compare.behind_by == 0 {
-            return Ok(());
+        if compare.ahead_by > 0 {
+            return Ok(false);
+        }
+        if compare.behind_by == 0 {
+            return Ok(true);
         }
         let url = format!(
             "{}/git/refs/heads/{}",
             self.repo_url(),
             urlencoding::encode(branch)
         );
-        self.client
+        match self
+            .client
             .patch_json(&url, &serde_json::json!({"sha": base_sha, "force": false}))
             .await
-            .map(drop)
-            .map_err(ProviderError::from)
+        {
+            Ok(_) => Ok(true),
+            Err(GitHubError::Unprocessable(_) | GitHubError::ApiError { status: 422, .. }) => {
+                Ok(false)
+            }
+            Err(e) => Err(ProviderError::from(e)),
+        }
     }
 
     /// Return the current working branch when branch workflow mode is active.
@@ -1843,17 +1928,18 @@ impl StorageProvider for GitHubProvider {
                     // The branch the walk names: a pending one as it is, an
                     // empty one moved up to the base, a missing one created
                     // from it; never a merged one's stale tip (Q1, Q4).
-                    let workflow_branch = self.allocate_working_branch(&base_sha).await?;
-                    self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
-                        .await
-                        .map_err(|e2| {
-                            crate::providers::keep_timeout(e2, |e2| {
-                                ProviderError::TransferFailed(format!(
-                                    "Cannot create working branch '{}': {}",
-                                    workflow_branch, e2
-                                ))
-                            })
-                        })?;
+                    let workflow_branch =
+                        self.prepare_working_branch(&base_sha)
+                            .await
+                            .map_err(|e2| match e2 {
+                                // Every name merged: the refusal as it is (C1).
+                                refusal @ ProviderError::InvalidConfig(_) => refusal,
+                                e2 => crate::providers::keep_timeout(e2, |e2| {
+                                    ProviderError::TransferFailed(format!(
+                                        "Cannot prepare the working branch: {e2}"
+                                    ))
+                                }),
+                            })?;
                     // QA-GH-019: Mutate the existing body in-place: no clone of the
                     // large base64 content. `body` is already a serde_json::Value on the stack.
                     // The upload goes to the working branch by name; the
@@ -1861,20 +1947,16 @@ impl StorageProvider for GitHubProvider {
                     if let Some(obj) = body.as_object_mut() {
                         obj.insert("branch".to_string(), serde_json::json!(workflow_branch));
                     }
-                    // Until the answer says the write was refused, it may
-                    // have landed (S2 d): a lost or unreadable answer, a
-                    // 5xx, or this future dropped while it waits leaves the
-                    // session poisoned, as a landed write does.
+                    // Until the answer proves the write was refused, it may
+                    // have landed (S2 d, T4): only `proves_not_written`
+                    // disarms the guard; a timeout, a lost or unreadable
+                    // answer, a 5xx, or this future dropped while it waits
+                    // leaves the session poisoned, as a landed write does.
                     let pending = PoisonUnlessRefused(Some(self.poison.clone()));
                     let written = match self.client.put_json(&url, &body).await {
                         Ok(written) => written,
                         Err(e) => {
-                            if !matches!(
-                                e,
-                                GitHubError::NetworkError(_)
-                                    | GitHubError::ServerError(_)
-                                    | GitHubError::ParseError(_)
-                            ) {
+                            if proves_not_written(&e) {
                                 pending.refused();
                             }
                             return Err(ProviderError::from(e));
@@ -3306,6 +3388,23 @@ mod tests {
                         if method == axum::http::Method::PUT
                             && body.contains(&format!("\"branch\":\"{own}\""))
                         {
+                            if put_own.1 == "STALL" {
+                                // The answer starts, then its body never ends.
+                                use futures_util::StreamExt as _;
+                                let first = futures_util::stream::once(async {
+                                    Ok::<_, std::io::Error>(axum::body::Bytes::from_static(
+                                        b"{\"content\":",
+                                    ))
+                                });
+                                return (
+                                    axum::http::StatusCode::OK,
+                                    [(axum::http::header::CONTENT_TYPE, "application/json")],
+                                    axum::body::Body::from_stream(
+                                        first.chain(futures_util::stream::pending()),
+                                    ),
+                                )
+                                    .into_response();
+                            }
                             return raw(put_own.0, put_own.1.to_string());
                         }
                         if method == axum::http::Method::POST && path.ends_with("/git/refs") {
@@ -3526,6 +3625,289 @@ mod tests {
             server.abort();
         }
 
+        /// What the T1 API holds for one working-branch name.
+        #[derive(Clone, Copy, Debug)]
+        struct Held {
+            ahead: u64,
+            behind: u64,
+            /// A pull request from it merged at its tip.
+            merged: bool,
+        }
+
+        /// A GitHub API for T1: `main` protected at `BASE`; the working
+        /// branch `own` (and `own-2`) held as given, or missing. The first
+        /// create of `own` is refused with a 422 when `created_meanwhile`
+        /// says what another client made of it; the first fast-forward of
+        /// `own` is refused with a 422 when `moved_meanwhile` says what it
+        /// became. Every write is logged.
+        async fn contested(
+            own: String,
+            held: Option<Held>,
+            created_meanwhile: Option<Held>,
+            moved_meanwhile: Option<Held>,
+        ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
+            struct Remote {
+                own: Option<Held>,
+                second: Option<Held>,
+                created_meanwhile: Option<Held>,
+                moved_meanwhile: Option<Held>,
+            }
+            let remote = Arc::new(Mutex::new(Remote {
+                own: held,
+                second: None,
+                created_meanwhile,
+                moved_meanwhile,
+            }));
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let seen = log.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                    let (remote, seen, own) = (remote.clone(), seen.clone(), own.clone());
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let query = urlencoding::decode(uri.query().unwrap_or(""))
+                            .unwrap()
+                            .into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (axum::http::StatusCode::from_u16(status).unwrap(), axum::Json(json))
+                                .into_response()
+                        };
+                        if method != axum::http::Method::GET {
+                            seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                        }
+                        let second = format!("{own}-2");
+                        let mut remote = remote.lock().unwrap();
+                        let held = |remote: &Remote, name: &str| {
+                            if name == own {
+                                remote.own
+                            } else if name == second {
+                                remote.second
+                            } else {
+                                None
+                            }
+                        };
+                        let not_found = serde_json::json!({"message": "Not Found"});
+                        if path.ends_with("/branches/main") {
+                            return reply(200, serde_json::json!({
+                                "name": "main", "protected": true, "commit": {"sha": BASE}
+                            }));
+                        }
+                        if path.contains("/git/matching-refs/heads/") {
+                            let refs: Vec<_> = [own.clone(), second.clone()]
+                                .into_iter()
+                                .filter(|name| held(&remote, name).is_some())
+                                .map(|name| serde_json::json!({"ref": format!("refs/heads/{name}")}))
+                                .collect();
+                            return reply(200, serde_json::json!(refs));
+                        }
+                        if let Some(name) = path.split_once("/branches/").map(|(_, n)| n.to_string()) {
+                            return match held(&remote, &name) {
+                                Some(_) => reply(200, serde_json::json!({
+                                    "name": name, "protected": false, "commit": {"sha": TIP}
+                                })),
+                                None => reply(404, not_found),
+                            };
+                        }
+                        if let Some((_, range)) = path.split_once("/compare/") {
+                            let head = range.split_once("...").map(|(_, h)| h).unwrap_or("");
+                            return match held(&remote, head) {
+                                Some(h) => reply(200, serde_json::json!({"ahead_by": h.ahead, "behind_by": h.behind})),
+                                None => reply(404, not_found),
+                            };
+                        }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            let head = query
+                                .split('&')
+                                .find_map(|kv| kv.strip_prefix("head=o:"))
+                                .unwrap_or("")
+                                .to_string();
+                            let merged = held(&remote, &head).is_some_and(|h| h.merged);
+                            let pulls = if merged {
+                                serde_json::json!([{
+                                    "number": 1, "title": "t", "state": "closed",
+                                    "html_url": "u", "created_at": "c", "mergeable": null,
+                                    "merged_at": "2026-11-01T00:00:00Z",
+                                    "head": {"ref": head, "sha": TIP},
+                                    "base": {"ref": "main", "sha": "b"},
+                                    "user": {"login": "alice", "email": null, "name": null},
+                                }])
+                            } else {
+                                serde_json::json!([])
+                            };
+                            return reply(200, pulls);
+                        }
+                        if method == axum::http::Method::POST && path.ends_with("/git/refs") {
+                            if body.contains(&format!("refs/heads/{own}\"")) {
+                                if let Some(made) = remote.created_meanwhile.take() {
+                                    remote.own = Some(made);
+                                    return reply(422, serde_json::json!({"message": "Reference already exists"}));
+                                }
+                                remote.own = Some(Held { ahead: 0, behind: 0, merged: false });
+                            } else {
+                                remote.second = Some(Held { ahead: 0, behind: 0, merged: false });
+                            }
+                            return reply(201, serde_json::json!({"ref": "r"}));
+                        }
+                        if method == axum::http::Method::PATCH {
+                            if path.ends_with(&format!("/git/refs/heads/{own}")) {
+                                if let Some(moved) = remote.moved_meanwhile.take() {
+                                    remote.own = Some(moved);
+                                    return reply(422, serde_json::json!({"message": "Update is not a fast forward"}));
+                                }
+                                remote.own = remote.own.map(|h| Held { behind: 0, ..h });
+                            }
+                            return reply(200, serde_json::json!({"ref": "r"}));
+                        }
+                        if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"") {
+                            return reply(403, serde_json::json!({"message": "Protected branch update failed"}));
+                        }
+                        if method == axum::http::Method::PUT {
+                            return reply(200, serde_json::json!({"content": {"sha": "abc123"}}));
+                        }
+                        reply(404, not_found)
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}"), log, server)
+        }
+
+        const BASE: &str = "3333333333333333333333333333333333333333";
+
+        /// T1: GitHub answers that another client changed the working branch
+        /// between its classification and its preparation. The branch goes
+        /// back through the classification against the SAME base tip, never
+        /// taken as ready on a lookup alone:
+        /// - missing, then created meanwhile and behind (the bot's 404, 422,
+        ///   existing-behind sequence): fast-forwarded to the tip, then
+        ///   written;
+        /// - created meanwhile and merged: the next name;
+        /// - created meanwhile and diverged with pending work: adopted;
+        /// - behind, then moved before the fast-forward (the PATCH refused):
+        ///   classified again, adopted as now pending.
+        #[tokio::test]
+        async fn a_working_branch_changed_meanwhile_is_classified_again_against_the_same_tip() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let behind = Held {
+                ahead: 0,
+                behind: 1,
+                merged: false,
+            };
+            let merged = Held {
+                ahead: 3,
+                behind: 2,
+                merged: true,
+            };
+            let diverged = Held {
+                ahead: 2,
+                behind: 1,
+                merged: false,
+            };
+            let (_dir, file) = a_file();
+            for (case, held, created, moved, written_to, fast_forwarded) in [
+                (
+                    "created meanwhile, behind",
+                    None,
+                    Some(behind),
+                    None,
+                    own.clone(),
+                    true,
+                ),
+                (
+                    "created meanwhile, merged",
+                    None,
+                    Some(merged),
+                    None,
+                    format!("{own}-2"),
+                    false,
+                ),
+                (
+                    "created meanwhile, pending",
+                    None,
+                    Some(diverged),
+                    None,
+                    own.clone(),
+                    false,
+                ),
+                (
+                    "fast-forward refused, now pending",
+                    Some(behind),
+                    None,
+                    Some(diverged),
+                    own.clone(),
+                    false,
+                ),
+                (
+                    "fast-forward refused, now merged",
+                    Some(behind),
+                    None,
+                    Some(merged),
+                    format!("{own}-2"),
+                    false,
+                ),
+            ] {
+                let (origin, log, server) = contested(own.clone(), held, created, moved).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider
+                    .upload(&file, "/a.txt", None)
+                    .await
+                    .unwrap_or_else(|e| panic!("{case}: {e}"));
+                let writes = log.lock().unwrap().clone();
+                let put = writes
+                    .iter()
+                    .position(|w| {
+                        w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{written_to}\""))
+                    })
+                    .unwrap_or_else(|| panic!("{case}: the write to {written_to}: {writes:?}"));
+                let patches: Vec<usize> = writes
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, w)| {
+                        w.starts_with("PATCH ") && w.contains(&format!("/git/refs/heads/{own}"))
+                    })
+                    .map(|(n, _)| n)
+                    .collect();
+                if fast_forwarded {
+                    let last = *patches
+                        .last()
+                        .unwrap_or_else(|| panic!("{case}: {writes:?}"));
+                    assert!(
+                        last < put && writes[last].contains(BASE),
+                        "{case}: {writes:?}"
+                    );
+                    assert!(
+                        writes[last].contains("\"force\":false"),
+                        "{case}: {writes:?}"
+                    );
+                }
+                if case.starts_with("fast-forward refused") {
+                    assert_eq!(
+                        patches.len(),
+                        1,
+                        "{case}: refused once, never forced: {writes:?}"
+                    );
+                } else if !fast_forwarded {
+                    assert!(patches.is_empty(), "{case}: {writes:?}");
+                }
+                // Nothing went to a merged branch, and nothing was forced.
+                if case.contains("merged") {
+                    assert!(
+                        !writes.iter().any(|w| w.starts_with("PUT ")
+                            && w.contains(&format!("\"branch\":\"{own}\""))),
+                        "{case}: {writes:?}"
+                    );
+                }
+                assert!(
+                    !writes.iter().any(|w| w.contains("\"force\":true")),
+                    "{case}: {writes:?}"
+                );
+                server.abort();
+            }
+        }
+
         /// S2 (c): the branch deleted (or replaced, or merged) in the instant
         /// between the check and the PUT. The contents API takes no expected
         /// head, so this cannot be excluded; what holds is that the write
@@ -3567,11 +3949,18 @@ mod tests {
             for (case, put_own, poisoned) in [
                 ("lost answer", (200, "garbled, not json"), true),
                 ("server error", (502, r#"{"message": "Bad gateway"}"#), true),
+                // T4: the body stalls past the read timeout (the client
+                // reports a 408 of its own).
+                ("stalled answer", (200, "STALL"), true),
                 ("refused", (422, r#"{"message": "Invalid request"}"#), false),
             ] {
                 let (origin, log, server) =
                     scripted(own.clone(), false, (0, 0), false, put_own).await;
                 let mut provider = GitHubProvider::protected_for_test(origin);
+                provider.client.client = reqwest::Client::builder()
+                    .read_timeout(std::time::Duration::from_millis(300))
+                    .build()
+                    .unwrap();
                 assert!(
                     provider.upload(&file, "/a.txt", None).await.is_err(),
                     "{case}"
@@ -3894,7 +4283,8 @@ mod tests {
 
     /// #1506 row 164: a branch that appears between the lookup and the
     /// create (422 from git/refs) is found by a second lookup, not by the
-    /// message; a 422 for any other reason still fails.
+    /// message, and goes back to the classification (T1); a 422 for any
+    /// other reason still fails.
     #[tokio::test]
     async fn a_branch_created_meanwhile_is_found_again_not_read_from_the_refusal() {
         use axum::response::IntoResponse;
@@ -3954,12 +4344,16 @@ mod tests {
             .unwrap();
             provider.connected = true;
             provider.client.api_origin_override = Some(format!("http://{addr}"));
+            // The lookup that found the branch missing came before the
+            // create, in the walk (T1): this one is the one after the 422.
+            lookups.store(1, Ordering::SeqCst);
             let outcome = provider
-                .ensure_branch_exists_from_sha(
-                    "aeroftp/u/main",
-                    "0123456789abcdef0123456789abcdef01234567",
-                )
+                .create_branch_at("aeroftp/u/main", "0123456789abcdef0123456789abcdef01234567")
                 .await;
+            // Found again: not created by us, so classified again (T1).
+            if second == "found" {
+                assert!(matches!(outcome, Ok(false)), "{outcome:?}");
+            }
             server.abort();
             assert_eq!(outcome.is_ok(), expect_ok, "{second}: {outcome:?}");
             if second == "unauthorized" {
@@ -4418,6 +4812,98 @@ mod tests {
             GitHubProvider::normalise_path("../../etc/passwd"),
             "etc/passwd"
         );
+    }
+
+    /// T4: only a refusal the server sent for the request disarms the
+    /// fallback's poison guard; a timeout (the client's own 408), a lost
+    /// answer, a 5xx and every local error keep it armed. `listed` names
+    /// every variant: one added later fails to compile here until its row is
+    /// written, as it does in `proves_not_written`.
+    #[test]
+    fn only_a_refusal_the_server_sent_disarms_the_poison() {
+        use GitHubError as E;
+        fn listed(e: &GitHubError) {
+            match e {
+                E::TargetChanged
+                | E::Unauthorized
+                | E::TokenExpired
+                | E::InsufficientPermissions(_)
+                | E::PermissionDenied(_)
+                | E::RepoNotFound
+                | E::BranchNotFound(_)
+                | E::PathNotFound(_)
+                | E::NotFound(_)
+                | E::ProtectedBranch(_)
+                | E::RequiredPullRequest
+                | E::StaleObject { .. }
+                | E::DuplicateAsset(_)
+                | E::ReleaseNotFound(_)
+                | E::PrimaryRateLimit { .. }
+                | E::SecondaryRateLimit { .. }
+                | E::NetworkError(_)
+                | E::ApiError { .. }
+                | E::ServerError(_)
+                | E::FileTooLarge { .. }
+                | E::PayloadTooLarge(_)
+                | E::GraphQLError { .. }
+                | E::ParseError(_)
+                | E::InvalidInput(_)
+                | E::Unprocessable(_) => {}
+            }
+        }
+        let x = || "x".to_string();
+        let api = |status| E::ApiError {
+            status,
+            message: x(),
+        };
+        let table = [
+            (E::Unauthorized, true),
+            (E::TokenExpired, true),
+            (E::InsufficientPermissions(x()), true),
+            (E::ProtectedBranch(x()), true),
+            (E::RequiredPullRequest, true),
+            (E::RepoNotFound, true),
+            (E::PathNotFound(x()), true),
+            (
+                E::StaleObject {
+                    path: x(),
+                    expected_sha: x(),
+                },
+                true,
+            ),
+            (E::DuplicateAsset(x()), true),
+            (E::FileTooLarge { size: 1, max: 1 }, true),
+            (E::Unprocessable(x()), true),
+            (E::PrimaryRateLimit { reset_at: 0 }, true),
+            (E::SecondaryRateLimit { retry_after: 1 }, true),
+            (api(400), true),
+            (api(404), true),
+            (api(422), true),
+            (api(408), false),
+            (api(500), false),
+            (api(302), false),
+            (E::TargetChanged, false),
+            (E::PermissionDenied(x()), false),
+            (E::BranchNotFound(x()), false),
+            (E::NotFound(x()), false),
+            (E::ReleaseNotFound(x()), false),
+            (E::NetworkError(x()), false),
+            (E::ServerError(x()), false),
+            (E::PayloadTooLarge(x()), false),
+            (
+                E::GraphQLError {
+                    error_type: x(),
+                    message: x(),
+                },
+                false,
+            ),
+            (E::ParseError(x()), false),
+            (E::InvalidInput(x()), false),
+        ];
+        for (error, refused) in &table {
+            listed(error);
+            assert_eq!(proves_not_written(error), *refused, "{error:?}");
+        }
     }
 
     /// S3a: a session on its working branch reads the branch it writes.

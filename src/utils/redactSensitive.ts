@@ -54,13 +54,114 @@ const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|pass
 // bare word up to the next delimiter.
 const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
-// The rules for credentials only. `REDACTION_PATTERNS` starts with them, in
-// this order, and `redactCredentials` applies them without the identity rules.
-/** A rule: a pattern and its replacement, or a function of the whole text. */
-type RedactionRule = { pattern: RegExp; replacement: string } | { apply: (text: string) => string };
+// The rules for credentials only. `REDACTION_PATTERNS` holds them and the
+// identity rules; `redactCredentials` applies them without the identity rules.
+/**
+ * A rule: a pattern and its replacement (`$1`, the kept label, is the only
+ * reference), or a scan that gives its spans and one replacement for each.
+ */
+export type RedactionRule = (
+    | { pattern: RegExp; replacement: string }
+    | { spans: (text: string) => Array<[number, number]>; replacement: string }
+) & {
+    /** An identity rule (an address, a home folder, a hash), not a
+     *  credential: see `applyRules`. */
+    identity?: true;
+};
 
-const applyRule = (text: string, rule: RedactionRule): string =>
-    'apply' in rule ? rule.apply(text) : text.replace(rule.pattern, rule.replacement);
+/** A part of the original text a rule masks, and what replaces it. */
+export type Span = { start: number; end: number; replacement: string };
+
+/**
+ * The spans one rule masks, read on the ORIGINAL text (T3). A match keeps the
+ * leading part of it the replacement repeats (a field's label, `$1`), so that
+ * part is not a span: the label stays visible, as it did.
+ */
+const spansOf = (text: string, rule: RedactionRule): Span[] => {
+    if ('spans' in rule) {
+        return rule.spans(text).map(([start, end]) => ({ start, end, replacement: rule.replacement }));
+    }
+    const spans: Span[] = [];
+    for (const match of text.matchAll(rule.pattern)) {
+        const replaced = rule.replacement.replace(/\$1/g, () => match[1] ?? '');
+        const whole = match[0];
+        let kept = 0;
+        while (kept < whole.length && kept < replaced.length && whole[kept] === replaced[kept]) kept += 1;
+        const start = (match.index ?? 0) + kept;
+        const span = { start, end: (match.index ?? 0) + whole.length, replacement: replaced.slice(kept) };
+        if (span.end > span.start || span.replacement) spans.push(span);
+    }
+    return spans;
+};
+
+/**
+ * The identity spans that no credential span overlaps (`applyRules`), in
+ * time linear in the spans after the sort: the credentials are merged once
+ * into sorted disjoint ranges, then the identity spans are walked in start
+ * order with one index that only moves forward. `steps`, for the tests,
+ * counts the comparisons.
+ */
+export const uncoveredIdentity = (
+    identity: ReadonlyArray<Span>,
+    credentials: ReadonlyArray<Span>,
+    steps = { count: 0 },
+): Span[] => {
+    const covered: Array<[number, number]> = [];
+    for (const span of [...credentials].sort((a, b) => a.start - b.start)) {
+        steps.count += 1;
+        if (span.end <= span.start) continue;
+        const last = covered[covered.length - 1];
+        if (last && span.start <= last[1]) last[1] = Math.max(last[1], span.end);
+        else covered.push([span.start, span.end]);
+    }
+    const kept: Span[] = [];
+    let next = 0;
+    for (const span of [...identity].sort((a, b) => a.start - b.start)) {
+        while (next < covered.length && covered[next][1] <= span.start) {
+            steps.count += 1;
+            next += 1;
+        }
+        steps.count += 1;
+        if (!(next < covered.length && covered[next][0] < span.end)) kept.push(span);
+    }
+    return kept;
+};
+
+/**
+ * Every rule's spans, all read on the original text, masked once (T3). No
+ * rule sees another's output, so none can consume a delimiter another needs,
+ * in either direction (a `key: value` rule eating a URL's `@`, the URL scan
+ * eating a `password=` label), and the order of the rules changes nothing.
+ * - Credentials (every rule but the identity ones): the masked part is the
+ *   UNION of their spans, so a credential any rule finds is masked whole.
+ * - Identity rules (addresses, home folders, hashes): a span of theirs that
+ *   overlaps a credential span is dropped, as the credential already covers
+ *   that part: an e-mail-shaped `token@host` inside a URL's authority is the
+ *   URL's userinfo, masked as such, and its host stays.
+ * Spans that overlap merge into one, replaced by the replacement of the
+ * span that starts first; on equal starts, of the longer one; then of the
+ * replacement that sorts first.
+ */
+export const applyRules = (text: string, rules: ReadonlyArray<RedactionRule>): string => {
+    const credentials = rules.filter((rule) => !rule.identity).flatMap((rule) => spansOf(text, rule));
+    const identity = uncoveredIdentity(
+        rules.filter((rule) => rule.identity).flatMap((rule) => spansOf(text, rule)),
+        credentials,
+    );
+    const spans = [...credentials, ...identity]
+        .sort((a, b) => a.start - b.start || b.end - a.end
+            || (a.replacement < b.replacement ? -1 : a.replacement > b.replacement ? 1 : 0));
+    let out = '';
+    let copied = 0;
+    for (let n = 0; n < spans.length;) {
+        const first = spans[n];
+        let end = first.end;
+        for (n += 1; n < spans.length && spans[n].start < end; n += 1) end = Math.max(end, spans[n].end);
+        out += text.slice(copied, first.start) + first.replacement;
+        copied = end;
+    }
+    return out + text.slice(copied);
+};
 
 /** Whether the whole text is one valid JSON value, by the real parser
  *  (validation only: nothing is re-serialized, the output keeps the input). */
@@ -223,16 +324,15 @@ export function redactUrlUserinfo(text: string): string {
 }
 
 const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
-    // Inline credentials in URLs, FIRST of all (S1b): a later rule can
-    // consume a delimiter of the authority (`x-api-key: foo@host` eats the
-    // `@`, `password=abc@host/x` the `@` and the `/`), and the userinfo
-    // before it would then stay. A linear scan, not a pattern (see
-    // `redactUrlUserinfo`); the Rust list starts with it too.
-    { apply: redactUrlUserinfo },
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redactUrlUserinfo`). Read on the original text like every rule, so no
+    // other rule can take its `@` and it takes no other rule's label (T3).
+    { spans: userinfoSpans, replacement: '***REDACTED***' },
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
-    // password. First of all, ahead of the key and Bearer rules, so
-    // `Authorization: Bearer sk-...` becomes one marker. The Rust scrubs apply
+    // password. Its span covers the whole value, so `Authorization: Bearer
+    // sk-...` becomes one marker: the Bearer and key spans inside it merge
+    // into it, which starts first (T3). The Rust scrubs apply
     // the same three rules (src-tauri/src/authorization_redaction.rs).
     // JSON inside a string: the value ends at the first lone `\"`, and a Digest
     // parameter's `\\\"` belongs to it.
@@ -277,27 +377,24 @@ export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Email addresses. The local part is at most 64 characters (RFC 5321), which
     // also keeps a long run of such characters without an `@` (a hex or base64url
     // dump) from costing a quadratic scan on every start position.
-    { pattern: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***' },
+    { pattern: /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, replacement: '***@***', identity: true },
     // IPv4 addresses, but keep loopback / unspecified for local-debug clarity
     {
         pattern: /\b(?!127\.0\.0\.1\b|0\.0\.0\.0\b)((?:\d{1,3}\.){3}\d{1,3})\b/g,
         replacement: '***.***.***.***',
+        identity: true,
     },
     // Home directories
-    { pattern: /\/home\/[A-Za-z0-9._-]+/g, replacement: '/home/***' },
-    { pattern: /\/Users\/[A-Za-z0-9._-]+/g, replacement: '/Users/***' },
-    { pattern: /C:\\Users\\[^\\]+/gi, replacement: 'C:\\Users\\***' },
+    { pattern: /\/home\/[A-Za-z0-9._-]+/g, replacement: '/home/***', identity: true },
+    { pattern: /\/Users\/[A-Za-z0-9._-]+/g, replacement: '/Users/***', identity: true },
+    { pattern: /C:\\Users\\[^\\]+/gi, replacement: 'C:\\Users\\***', identity: true },
     // Generic high-entropy hex blobs (likely keys / hashes / nonces), 32+ chars
-    { pattern: /\b[A-Fa-f0-9]{32,}\b/g, replacement: '***HEX-REDACTED***' },
+    { pattern: /\b[A-Fa-f0-9]{32,}\b/g, replacement: '***HEX-REDACTED***', identity: true },
 ];
 
 export function redactSensitive(msg: string): string {
     if (!msg) return msg;
-    let result = msg;
-    for (const rule of REDACTION_PATTERNS) {
-        result = applyRule(result, rule);
-    }
-    return result;
+    return applyRules(msg, REDACTION_PATTERNS);
 }
 
 // Signed URL parameters and the userinfo of any URL. They are not part of
@@ -315,11 +412,9 @@ const SIGNED_URL_PATTERNS: ReadonlyArray<RedactionRule> = [
  * or status line) and keeps the rest of it: paths, hosts, codes and the error
  * wording. Unlike `redactSensitive`, emails, addresses, home folders and hashes stay.
  */
+export const CREDENTIAL_RULES: ReadonlyArray<RedactionRule> = [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS];
+
 export function redactCredentials(msg: string): string {
     if (!msg) return msg;
-    let result = msg;
-    for (const rule of [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS]) {
-        result = applyRule(result, rule);
-    }
-    return result;
+    return applyRules(msg, CREDENTIAL_RULES);
 }

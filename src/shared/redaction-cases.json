@@ -339,9 +339,9 @@
     "expected": "{\"url\":\"ftp://***REDACTED***@host/file\"}"
   },
   {
-    "name": "url user name ending in a backslash, password holding a colon",
+    "name": "url user name ending in a backslash, password holding a colon (over-masked by policy: the `secret:` field value runs through the at sign and takes the host)",
     "input": "open ftp://bob\\:secret:tail@host/file",
-    "expected": "open ftp://***REDACTED***@host/file"
+    "expected": "open ftp://***REDACTED***"
   },
   {
     "name": "url token as user name, no colon",
@@ -639,23 +639,48 @@
     "expected": "{\"u\":\"ftp://***REDACTED***@host\"}"
   },
   {
-    "name": "S1b the url userinfo is masked before a rule can consume its at sign: x-api-key inside the userinfo",
+    "name": "S1b/T3 x-api-key inside the userinfo: the userinfo and the field's value are masked as one (over-masked by policy: the value takes the host)",
     "input": "https://tokenvalue123:x-api-key: foo@host/path",
-    "expected": "https://***REDACTED***@host/path"
+    "expected": "https://***REDACTED***"
   },
   {
-    "name": "S1b the same with a key=value secret inside the userinfo",
+    "name": "S1b/T3 a key=value secret inside the userinfo, masked with it (over-masked by policy)",
     "input": "https://tok:password=abc@host/path",
-    "expected": "https://***REDACTED***@host/path"
+    "expected": "https://***REDACTED***"
   },
   {
-    "name": "S1b the same with an authorization header inside the userinfo",
+    "name": "S1b/T3 an authorization header inside the userinfo, masked with it (over-masked by policy)",
     "input": "https://tok:authorization: Basic abc@host/x",
-    "expected": "https://***REDACTED***@host/x"
+    "expected": "https://***REDACTED***"
   },
   {
     "name": "S1b a space in a password does not end the userinfo",
     "input": "ftp://bob:pass word@host/x",
     "expected": "ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "T3 the bot's input: a password field after a url with no path keeps nothing of its value",
+    "input": "connect https://example.com password=\\\"prefix@sensitive/suffix\\\"",
+    "expected": "connect https://***REDACTED***"
+  },
+  {
+    "name": "T3 the same with plain quotes",
+    "input": "connect https://example.com password=\"prefix@sensitive/suffix\"",
+    "expected": "connect https://***REDACTED***"
+  },
+  {
+    "name": "T3 a secret field after a url with no path: the field's value and the userinfo are masked as one",
+    "input": "fetch https://host token=abc@x done",
+    "expected": "fetch https://***REDACTED*** done"
+  },
+  {
+    "name": "T3 a url inside a secret field's value",
+    "input": "password=https://u:p@h/x next",
+    "expected": "password=***REDACTED*** next"
+  },
+  {
+    "name": "T3 two secret fields that overlap",
+    "input": "x-api-key: token=abc rest",
+    "expected": "x-api-key: ***REDACTED*** rest"
   }
 ]

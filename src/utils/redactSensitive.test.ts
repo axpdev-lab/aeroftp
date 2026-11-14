@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { REDACTION_PATTERNS, redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
+import { CREDENTIAL_RULES, REDACTION_PATTERNS, applyRules, redactCredentials, redactSensitive, redactUrlUserinfo, uncoveredIdentity, type Span } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -71,13 +71,32 @@ describe('redactSensitive matrix', () => {
         for (const line of unchanged) expect(redactSensitive(line)).toBe(line);
     });
 
-    // S1b, the class: no rule may consume a delimiter of a URL's authority
-    // before the userinfo is masked. The URL pass runs first of all, and
-    // every secret field and Authorization form of the matrix, put inside a
-    // URL's userinfo, leaves nothing of it (a form holding `/`, `?` or `#`
-    // ends the authority itself and is not one).
-    it('runs the URL userinfo pass before every other rule', () => {
-        expect(REDACTION_PATTERNS[0]).toEqual({ apply: redactUrlUserinfo });
+    // T3, the class: every rule reads the original text, so no rule can
+    // consume another's delimiter and the order of the rules means nothing.
+    // Any order of either list gives the same output on every shared case;
+    // and every secret field and Authorization form of the matrix, put
+    // inside a URL's userinfo, leaves nothing of it (a form holding `/`, `?`
+    // or `#` ends the authority itself and is not one).
+    it('gives the same output whatever the order of the rules', () => {
+        // A fixed shuffle, so a failure can be replayed.
+        let seed = 7;
+        const shuffled = <T>(list: ReadonlyArray<T>): T[] => {
+            const out = [...list];
+            for (let i = out.length - 1; i > 0; i -= 1) {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                const j = seed % (i + 1);
+                [out[i], out[j]] = [out[j], out[i]];
+            }
+            return out;
+        };
+        for (let round = 0; round < 8; round += 1) {
+            const sensitive = shuffled(REDACTION_PATTERNS);
+            const credentials = shuffled(CREDENTIAL_RULES);
+            for (const { name, input } of cases) {
+                expect(applyRules(input, sensitive), name).toBe(redactSensitive(input));
+                expect(applyRules(input, credentials), name).toBe(redactCredentials(input));
+            }
+        }
     });
 
     it('masks the whole userinfo of a URL that holds any secret field or Authorization form', () => {
@@ -94,8 +113,15 @@ describe('redactSensitive matrix', () => {
         let checked = 0;
         for (const userinfo of userinfos.filter((u) => !/[/?#]/.test(u))) {
             const input = `https://tok:${userinfo}@host/x`;
-            expect(redactSensitive(input), input).toBe('https://***REDACTED***@host/x');
-            expect(redactCredentials(input), input).toBe('https://***REDACTED***@host/x');
+            for (const out of [redactSensitive(input), redactCredentials(input)]) {
+                // The whole userinfo, from the token to the field's value, is
+                // gone (the field's value may take the host with it: over-
+                // masking), and a second pass changes nothing.
+                expect(out.startsWith('https://***REDACTED***'), `${input} -> ${out}`).toBe(true);
+                expect(out, input).not.toContain(secret);
+                expect(out, input).not.toContain('tok:');
+                expect(redactSensitive(out), out).toBe(out);
+            }
             checked += 1;
         }
         expect(checked).toBeGreaterThan(100);
@@ -106,6 +132,29 @@ describe('redactSensitive on a long line', () => {
     // Far above a linear scan even on a loaded machine, and far below the minutes
     // a quadratic one takes: a tighter bound failed under a parallel build.
     const LINEAR_BOUND_MS = 15_000;
+
+    // T3: the identity spans a credential covers are dropped in one walk.
+    // 20k URLs whose `secret@host` is also an e-mail, and 20k e-mails beside
+    // them; and the walk's comparisons, counted: linear in the spans.
+    it('drops the identity spans a credential covers in linear time', () => {
+        const n = 20_000;
+        const urls = Array.from({ length: n }, (_, k) => `ftp://user${k}:secret@host${k}.example/x`);
+        const mails = Array.from({ length: n }, (_, k) => `mail${k}@x${k}.example`);
+        const input = [...urls, ...mails].join(' ');
+        const started = performance.now();
+        const out = redactSensitive(input);
+        expect(performance.now() - started).toBeLessThan(LINEAR_BOUND_MS);
+        expect(out).not.toMatch(/secret|user\d+:/);
+        expect(out.match(/ftp:\/\/\*\*\*REDACTED\*\*\*@host\d+\.example\/x/g)).toHaveLength(n);
+        expect(out.match(/(^| )\*\*\*@\*\*\*/g)).toHaveLength(n);
+
+        const span = (start: number, end: number): Span => ({ start, end, replacement: 'x' });
+        const credentials = Array.from({ length: n }, (_, k) => span(10 * k, 10 * k + 5));
+        const identity = Array.from({ length: 2 * n }, (_, k) => span(5 * k, 5 * k + 3));
+        const steps = { count: 0 };
+        expect(uncoveredIdentity(identity, credentials, steps)).toHaveLength(n);
+        expect(steps.count).toBeLessThanOrEqual(2 * (credentials.length + identity.length));
+    });
 
     // A run of address characters with no "@" (a hex or base64url dump) once
     // cost a scan from every start position: quadratic, minutes for 200 KB.
