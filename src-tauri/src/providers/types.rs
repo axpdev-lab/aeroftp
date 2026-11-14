@@ -2163,12 +2163,22 @@ pub(crate) fn without_unclassified_items(raw: &str) -> &str {
     }
 }
 
+/// How the display text of [`ProviderError::TargetChanged`] starts. A caller
+/// that only has the rendered text recognises the refusal by this prefix,
+/// before it reads anything else in the message.
+pub const TARGET_CHANGED_MARKER: &str = "CONNECTION_CHANGED:";
+
 /// Provider error type
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum ProviderError {
-    /// The installed session must not adopt another account's authorization.
-    #[error("CONNECTION_CHANGED: the authorization changed; reconnect and compare again")]
+    /// What the session acts on is no longer what the caller's plan was made
+    /// for: another account's authorization, or a write target that moved
+    /// (a GitHub session that left its protected branch). The text starts
+    /// with [`TARGET_CHANGED_MARKER`] and claims no more than that.
+    #[error(
+        "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again"
+    )]
     TargetChanged,
 
     /// An FTP reply that refused the command, by the status the reply parser

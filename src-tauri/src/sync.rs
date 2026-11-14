@@ -5672,6 +5672,22 @@ pub fn classify_ipc_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
 }
 
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    // A changed target is decided by its marker, on the text as given, before
+    // the caller's path is taken out of it: the path is removed as a
+    // substring, so a file named `a` used to strip the words the branches
+    // below look for and leave `connection`, which is retryable. The refusal
+    // is final for this session: the same write is refused again.
+    if raw
+        .trim_start()
+        .starts_with(crate::providers::types::TARGET_CHANGED_MARKER)
+    {
+        return SyncErrorInfo {
+            kind: SyncErrorKind::Auth,
+            message: raw.to_string(),
+            retryable: false,
+            file_path: file_path.map(|s| s.to_string()),
+        };
+    }
     let lower = classification_text(raw, file_path);
 
     // An OS error is classified by its code before any text: the text is the
@@ -9681,6 +9697,42 @@ mod tests {
         let status = compare_file_pair(Some(&local), None, &options);
 
         assert_eq!(status, SyncStatus::LocalOnly);
+    }
+
+    /// The refusal of a changed target is final for the session, whatever
+    /// the file is called: the caller's path is taken out of the text as a
+    /// substring, and a path such as `a` used to remove the words the
+    /// classifier looks for and leave `connection`, a retryable kind. The
+    /// text also claims no more than the code: it does not say that the
+    /// authorization changed, since a moved write target gives it too.
+    #[test]
+    fn a_changed_target_is_not_retried_whatever_the_file_is_called() {
+        let text = crate::providers::ProviderError::TargetChanged.to_string();
+        assert!(text.starts_with(crate::providers::types::TARGET_CHANGED_MARKER));
+        assert!(!text.contains("authorization"), "{text}");
+        assert!(text.contains("write target"), "{text}");
+        for path in [
+            None,
+            Some("a"),
+            Some("e"),
+            Some("o"),
+            Some("connection"),
+            Some("target"),
+        ] {
+            for raw in [text.clone(), format!("  {text}")] {
+                let info = classify_sync_error(&raw, path);
+                assert!(!info.retryable, "{path:?}: {raw}");
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path:?}: {raw}");
+                assert_eq!(info.message, raw);
+            }
+        }
+        // A message that only mentions the marker later is not that refusal.
+        let mentioned = classify_sync_error(
+            "Connection reset while reading CONNECTION_CHANGED: notes.txt",
+            Some("a"),
+        );
+        assert_eq!(mentioned.kind, SyncErrorKind::Network);
+        assert!(mentioned.retryable);
     }
 
     #[test]

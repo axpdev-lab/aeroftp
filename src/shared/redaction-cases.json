@@ -717,5 +717,40 @@
     "name": "U1 an identity span straddling a credential on both sides keeps its mask and joins the union",
     "input": "C:\\Users\\bob-token=abc,def",
     "expected": "C:\\Users\\***"
+  },
+  {
+    "name": "X2 the bot's line: escaped URL delimiters after a prefix, the text not JSON as a whole",
+    "input": "log: {\"url\":\"https:\\/\\/bob:hunter2@host/path\"}",
+    "expected": "log: {\"url\":\"https:\\/\\/***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "X2 the same with unicode escapes",
+    "input": "log: {\"url\":\"https\\u003a\\u002f\\u002fbob:hunter2\\u0040host\\u002fpath\"}",
+    "expected": "log: {\"url\":\"https\\u003a\\u002f\\u002f***REDACTED***\\u0040host\\u002fpath\"}"
+  },
+  {
+    "name": "X2 two levels deep after a prefix",
+    "input": "log: {\"a\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/bob:hunter2@host\\\\\\/p\\\"}\"}",
+    "expected": "log: {\"a\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/***REDACTED***@host\\\\\\/p\\\"}\"}"
+  },
+  {
+    "name": "X2 a prefix and a suffix around the JSON",
+    "input": "GET 500 {\"url\":\"https:\\/\\/bob:hunter2@host/p\"} took 3ms",
+    "expected": "GET 500 {\"url\":\"https:\\/\\/***REDACTED***@host/p\"} took 3ms"
+  },
+  {
+    "name": "X2 JSON with a trailing comma, invalid, still masked",
+    "input": "{\"url\":\"https:\\/\\/bob:hunter2@host/p\",}",
+    "expected": "{\"url\":\"https:\\/\\/***REDACTED***@host/p\",}"
+  },
+  {
+    "name": "X2 JSON with single quotes, invalid, still masked",
+    "input": "{'url':'https:\\/\\/bob:hunter2@host/p'}",
+    "expected": "{'url':'https:\\/\\/***REDACTED***@host/p'}"
+  },
+  {
+    "name": "X2 malformed escapes are literal, the escaped URL beside them is masked",
+    "input": "C:\\tmp\\x1 https:\\/\\/bob:hunter2\\u12@host/p",
+    "expected": "C:\\tmp\\x1 https:\\/\\/***REDACTED***@host/p"
   }
 ]

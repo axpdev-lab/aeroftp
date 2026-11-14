@@ -84,8 +84,10 @@ fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError
 /// Render a failed probe as the application error.
 ///
 /// The rule is the application's, not the module's, and it is kept
-/// verbatim: a host key rejection, or a pinned session key that is not the
-/// key the session logged in with, is surfaced as a hard rejection so the
+/// verbatim: a host key rejection, a pinned session key that is not the
+/// key the session logged in with, a password pin the delta login cannot
+/// repeat, or the server's refusal of the pinned credential itself (X1),
+/// is surfaced as a hard rejection so the
 /// user sees why the native path refused, and everything else collapses
 /// into "remote not available", which is the verdict the probe cache in
 /// `delta_sync_rsync` memoises for five minutes.
@@ -95,6 +97,7 @@ pub fn probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
         AerorsyncErrorKind::HostKeyRejected
             | AerorsyncErrorKind::PinnedKeyMismatch
             | AerorsyncErrorKind::PinnedPasswordMismatch
+            | AerorsyncErrorKind::PinnedLoginRefused
     ) {
         return map_native_error_to_rsync(err, false);
     }
@@ -200,6 +203,7 @@ mod tests {
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {

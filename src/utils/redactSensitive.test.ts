@@ -244,6 +244,17 @@ describe('S1: both entry points, every scheme and every escape form', () => {
         }
     });
 
+    // X2 (CodeRabbit 4574777429): escaped URL delimiters in text that is not
+    // JSON as a whole (a prefix, a suffix, a trailing comma, single quotes).
+    it('masks each X2 shared case the same way through redactCredentials', () => {
+        const x2 = cases.filter(({ name }) => name.startsWith('X2 '));
+        expect(x2.length).toBeGreaterThanOrEqual(7);
+        for (const { name, input, expected } of x2) {
+            expect(redactCredentials(input), name).toBe(expected);
+            expect(redactCredentials(input), name).not.toContain('hunter2');
+        }
+    });
+
     it('masks every URL of a 20k escaped-token document, each at its own token', () => {
         const input = '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']';
         const masked = redactUrlUserinfo(input);
@@ -306,11 +317,25 @@ describe('redactUrlUserinfo (H9: linear by construction)', () => {
             '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']',
             JSON.stringify({ log: JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)) }),
             Array.from({ length: 12 }).reduce<string>((inner) => JSON.stringify({ v: inner }), 'ftp://u:p@h/' + 'x'.repeat(1000)),
+            // X2: long lines that are not JSON, full of backslashes, decoded
+            // as a string body at every level: a run halves at each one.
+            'log: ' + '\\'.repeat(400_000) + ' https:\\/\\/bob:hunter2@h/p',
+            'log: ' + 'x\\y'.repeat(100_000) + ' https:\\/\\/bob:hunter2@h/p',
+            'log: ' + '\\/'.repeat(200_000),
+            'log: ' + '\\u00'.repeat(100_000) + '\\u0040',
+            'log: {"a":"' + 'x'.repeat(200_000) + '\\\\\\\\\\\\\\\\' + '"',
         ];
         for (const input of inputs) {
             const started = performance.now();
             redactUrlUserinfo(input);
             expect(performance.now() - started).toBeLessThan(1000);
+        }
+        // X2: masked at its level, whatever the backslashes before it.
+        for (const run of ['\\'.repeat(400_000), 'x\\y'.repeat(100_000)]) {
+            const line = `log: ${run} https:\\/\\/bob:hunter2@h/p`;
+            const started = performance.now();
+            expect(redactCredentials(line)).not.toContain('hunter2');
+            expect(performance.now() - started).toBeLessThan(2000);
         }
         // The input of the finding, through the whole pipeline.
         const finding = 'ftp://bob:' + '\\'.repeat(20_000) + 'x';

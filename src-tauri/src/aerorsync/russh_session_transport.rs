@@ -170,16 +170,25 @@ async fn authenticate_none(
 /// that does NOT include the password value. The username is included
 /// because it is part of the public auth identity (the same string the
 /// remote logs in its own auth log).
+///
+/// `pinned`: the session logged in with this password, so the server's
+/// refusal of it is a [`AerorsyncError::pinned_login_refused`] (X1, see
+/// [`RusshSessionTransport::connect`]); an unpinned refusal only says the
+/// delta login cannot log in.
 async fn authenticate_password(
     handle: &mut Handle<RusshHandler>,
     username: &str,
     password: &secrecy::SecretString,
+    pinned: bool,
 ) -> Result<(), AerorsyncError> {
     match handle
         .authenticate_password(username, password.expose_secret())
         .await
     {
         Ok(AuthResult::Success) => Ok(()),
+        Ok(AuthResult::Failure { .. }) if pinned => Err(AerorsyncError::pinned_login_refused(
+            format!("the server refused the password {username} logged in with"),
+        )),
         Ok(AuthResult::Failure { .. }) => Err(AerorsyncError::transport(format!(
             "russh password auth {username} rejected by server"
         ))),
@@ -221,6 +230,9 @@ async fn authenticate_publickey_with_rsa_fallbacks(
     };
 
     let mut last_error: Option<String> = None;
+    // Whether the server answered a refusal to any form of the key: its
+    // authentication result, not the text of a transport error, decides.
+    let mut refused = false;
     for hash in attempts {
         let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
         match handle
@@ -228,7 +240,10 @@ async fn authenticate_publickey_with_rsa_fallbacks(
             .await
         {
             Ok(AuthResult::Success) => return Ok(()),
-            Ok(AuthResult::Failure { .. }) => continue,
+            Ok(AuthResult::Failure { .. }) => {
+                refused = true;
+                continue;
+            }
             Err(e) => {
                 last_error = Some(e.to_string());
                 continue;
@@ -236,6 +251,14 @@ async fn authenticate_publickey_with_rsa_fallbacks(
         }
     }
 
+    // X1: the session logged in with this key, and the server refuses it
+    // now (see `RusshSessionTransport::connect`).
+    if refused && config.pinned_private_key.is_some() {
+        return Err(AerorsyncError::pinned_login_refused(format!(
+            "the server refused the key {} logged in with",
+            config.username
+        )));
+    }
     let detail = last_error.unwrap_or_else(|| "auth rejected by server".to_string());
     Err(AerorsyncError::transport(format!(
         "russh pubkey auth {} failed after RSA SHA-512/256/1 negotiation attempts: {detail}",
@@ -333,6 +356,37 @@ impl RusshSessionTransport {
     /// `config.host_key_policy` and authenticate: `none` first, then exactly
     /// one configured credential (password, else agent, else key file).
     /// Returns a transport whose `handshake_count` is 1.
+    ///
+    /// X1, every way this second login can be refused after the session's
+    /// first one logged in, and the verdict (hard: the sync stops before
+    /// any write, at the gate or at the transfer; unavailable: the sync goes
+    /// on over the first connection, which is still logged in as the user
+    /// approved):
+    /// - the host key is not the pinned one (`russh::Error::UnknownKey` at
+    ///   connect): hard, `HostKeyRejected`;
+    /// - the pinned key is not the login key (local fingerprint check,
+    ///   nothing offered): hard, `PinnedKeyMismatch`;
+    /// - a password pin this login cannot repeat: hard,
+    ///   `PinnedPasswordMismatch`;
+    /// - the server answers `Failure` to the pinned key (every RSA hash
+    ///   form) or the pinned password: hard, `PinnedLoginRefused`. SSH gives
+    ///   the same answer for a revoked key, a changed password, a disabled
+    ///   or locked account and a server that now wants another factor
+    ///   (`partial_success`): each is that refusal;
+    /// - too many authentication failures: the server disconnects; after a
+    ///   `Failure` it answered, that is the refusal above (hard); a
+    ///   disconnect, a timeout or a dropped connection with no refusal
+    ///   answered is unavailable (`TransportFailure`): an unanswered
+    ///   credential says nothing about it;
+    /// - an unpinned login refused (no recorded method: the CLI, a profile
+    ///   without one): unavailable, there is no pin it breaks;
+    /// - an ssh-agent login: never pinned (no agent identity is recorded at
+    ///   login, and the GUI's SFTP session has no agent method, so no delta
+    ///   login of a GUI session goes through the agent); a refused agent
+    ///   identity, or no agent at all, is unavailable;
+    /// - a keyboard-interactive or `none` session makes no second login at
+    ///   all (`SftpProvider::rsync_config_for_delta` gives it none): it
+    ///   stays on the pinned SFTP path.
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
         // A pinned key that is not the login key is refused before the
         // socket opens, so the server sees no connection from it at all.
@@ -417,11 +471,11 @@ impl RusshSessionTransport {
             let password = config.usable_password().ok_or_else(|| {
                 AerorsyncError::pinned_password_mismatch("the password pin has no password")
             })?;
-            authenticate_password(&mut handle, &config.username, password).await?;
+            authenticate_password(&mut handle, &config.username, password, true).await?;
         } else if authenticate_none(&mut handle, &config.username).await? {
             tracing::info!("aerorsync: server accepted the account with no credential");
         } else if let Some(password) = config.usable_password() {
-            authenticate_password(&mut handle, &config.username, password).await?;
+            authenticate_password(&mut handle, &config.username, password, false).await?;
         } else if config.auth_agent {
             authenticate_agent(&mut handle, &config.username).await?;
         } else {
@@ -1809,7 +1863,17 @@ mod tests {
         .await
         .err()
         .expect("the server refuses the pinned key");
-        assert!(err.to_string().contains("russh pubkey auth"), "{err}");
+        // X1: by the server's answer, a refusal of the session's own login,
+        // which stops the sync (never a fallback to classic SFTP).
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::PinnedLoginRefused,
+            "{err}"
+        );
+        assert_eq!(
+            crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+            crate::aerorsync::fallback_policy::FallbackVerdict::HardError
+        );
         let offered = log.offered.lock().unwrap().clone();
         assert_eq!(offered, vec![session_fingerprint]);
         assert_eq!(log.nones.load(Ordering::SeqCst), 0);

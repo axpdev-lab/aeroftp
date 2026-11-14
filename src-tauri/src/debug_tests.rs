@@ -493,12 +493,96 @@ fn decode_string_token(text: &str, from: usize, end: usize) -> (String, Vec<usiz
     (decoded, raw)
 }
 
+/// Text that is not JSON as a whole, read as ONE string body (X2): the
+/// escapes JSON defines (`\/`, `\\`, `\"`, the letters, `\uXXXX` with four
+/// hex digits, a surrogate pair joined, a lone one U+FFFD as in
+/// [`decode_string_token`]) are decoded, each decoded byte mapped to the
+/// raw escape or character it comes from (one more entry: the end); any
+/// other backslash is literal. One pass, linear. `None` when nothing
+/// decodes, which ends the recursion.
+fn decode_body(text: &str) -> Option<(String, Vec<usize>)> {
+    let bytes = text.as_bytes();
+    let hex = |at: usize| {
+        text.get(at..at + 4)
+            .filter(|h| h.bytes().all(|b| b.is_ascii_hexdigit()))
+            .and_then(|h| u32::from_str_radix(h, 16).ok())
+    };
+    let mut decoded = String::with_capacity(text.len());
+    let mut raw = Vec::with_capacity(text.len() + 1);
+    let mut changed = false;
+    let mut k = 0;
+    while k < bytes.len() {
+        let start = k;
+        let escaped = if bytes[k] == b'\\' {
+            match bytes.get(k + 1) {
+                Some(b'"') => Some((2, '"')),
+                Some(b'\\') => Some((2, '\\')),
+                Some(b'/') => Some((2, '/')),
+                Some(b'b') => Some((2, '\u{8}')),
+                Some(b'f') => Some((2, '\u{c}')),
+                Some(b'n') => Some((2, '\n')),
+                Some(b'r') => Some((2, '\r')),
+                Some(b't') => Some((2, '\t')),
+                Some(b'u') => hex(k + 2).map(|unit| {
+                    let low = (bytes.get(k + 6) == Some(&b'\\') && bytes.get(k + 7) == Some(&b'u'))
+                        .then(|| hex(k + 8))
+                        .flatten()
+                        .filter(|low| {
+                            (0xD800..0xDC00).contains(&unit) && (0xDC00..0xE000).contains(low)
+                        });
+                    match low {
+                        Some(low) => (
+                            12,
+                            char::from_u32(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00))
+                                .unwrap_or('\u{FFFD}'),
+                        ),
+                        None => (6, char::from_u32(unit).unwrap_or('\u{FFFD}')),
+                    }
+                }),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        let ch = match escaped {
+            Some((len, ch)) => {
+                k += len;
+                changed = true;
+                ch
+            }
+            None => {
+                let ch = text[k..].chars().next().unwrap_or('\u{FFFD}');
+                k += ch.len_utf8();
+                ch
+            }
+        };
+        raw.extend(std::iter::repeat_n(start, ch.len_utf8()));
+        decoded.push(ch);
+    }
+    raw.push(bytes.len());
+    changed.then_some((decoded, raw))
+}
+
 /// The userinfo spans `[start, end)` of `text`, in order (see
 /// [`redact_url_userinfo`]).
 fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
     let json = serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok();
     let mut spans = Vec::new();
+    if !json {
+        // X2: no whole-document JSON gates a mask. Text that is not JSON as
+        // a whole (a prefix before a JSON dump, a suffix after it, a trailing
+        // comma, single quotes) is also scanned decoded, as one string body,
+        // by these same rules, and the spans are mapped back; the raw scan
+        // below still runs, so decoding never masks less.
+        if let Some((decoded, raw)) = decode_body(text) {
+            spans.extend(
+                userinfo_spans(&decoded)
+                    .into_iter()
+                    .map(|(a, b)| (raw[a], raw[b])),
+            );
+        }
+    }
     let mut i = 0;
     // The string token the scan is in (valid JSON only): its closing quote.
     let mut token_end: Option<usize> = None;
@@ -567,7 +651,14 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
 /// holds an escape is also scanned decoded by these same rules, a document
 /// serialized inside it decoded in turn, and the userinfo found there is
 /// mapped back onto the raw characters and escapes; the token is scanned raw
-/// as well and the union of both is masked (S1). With an
+/// as well and the union of both is masked (S1). Text that is not JSON as a
+/// whole is scanned decoded too, all of it read as one string body
+/// ([`decode_body`], X2), so a prefix, a suffix, a trailing comma or single
+/// quotes around an escaped URL never leave it unmasked; malformed escapes
+/// are literal. Each level is one linear pass and the recursion stops at the
+/// first level that decodes nothing; a level is shorter than the one before
+/// by one character per escape, so a line full of backslashes, halved at
+/// every level, costs twice its length in all. With an
 /// `@` in it, the userinfo is everything up to the LAST `@`, and all of it
 /// becomes the placeholder. Both twins run src/shared/redaction-cases.json,
 /// the parser-agreement and escape cases included.
@@ -975,10 +1066,31 @@ mod tests {
             (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(1000)), |inner, _| {
                 serde_json::json!({ "v": inner }).to_string()
             }),
+            // X2: long lines that are not JSON, full of backslashes, decoded
+            // as a string body at every level: a run halves at each one.
+            format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(400_000)),
+            format!(
+                "log: {} https:\\/\\/bob:hunter2@h/p",
+                "x\\y".repeat(100_000)
+            ),
+            format!("log: {}", "\\/".repeat(200_000)),
+            format!("log: {}\\u0040", "\\u00".repeat(100_000)),
+            format!(
+                "log: {{\"a\":\"{}{}\"",
+                "x".repeat(200_000),
+                "\\".repeat(16)
+            ),
         ];
         for input in &inputs {
             let started = std::time::Instant::now();
             redact_url_userinfo(input);
+            assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        }
+        // X2: masked at its level, whatever the backslashes before it.
+        for run in ["\\".repeat(400_000), "x\\y".repeat(100_000)] {
+            let line = format!("log: {run} https:\\/\\/bob:hunter2@h/p");
+            let started = std::time::Instant::now();
+            assert!(!redact(&line).contains("hunter2"));
             assert!(started.elapsed() < std::time::Duration::from_secs(2));
         }
         let finding = format!("ftp://bob:{}x", "\\".repeat(20_000));

@@ -1358,6 +1358,164 @@ mod tests {
         assert_eq!(stuck.transfers.load(Ordering::SeqCst), 0);
     }
 
+    /// CodeRabbit 4574777425 (X1), end to end: the session logged in with a
+    /// key (or a password) and the server refuses that credential on the
+    /// delta login, through the real native transport and a real SSH
+    /// server. The sync-start gate reports a hard error, and the transfer
+    /// answers one too, with no classic fallback (which would write over the
+    /// first connection), fresh and cached; nothing is opened on the server
+    /// after the refusal. Control: the same refusal of an unpinned login is
+    /// only "delta unavailable".
+    #[cfg(feature = "aerorsync")]
+    #[tokio::test]
+    async fn a_server_refusal_of_the_pinned_login_stops_the_sync_before_any_write() {
+        use crate::aerorsync::delta_transport_impl::AerorsyncDeltaTransport;
+        use crate::aerorsync::ssh_transport::{PinnedPrivateKey, SshTransportConfig};
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        /// Refuses every key and every password; counts what it was asked.
+        #[derive(Clone, Default)]
+        struct Refusing {
+            offers: Arc<AtomicU32>,
+            sessions: Arc<AtomicU32>,
+        }
+        impl russh::server::Handler for Refusing {
+            type Error = russh::Error;
+            async fn auth_publickey_offered(
+                &mut self,
+                _user: &str,
+                _offer: russh::server::PublicKeyOffer<'_>,
+            ) -> Result<russh::server::Auth, Self::Error> {
+                self.offers.fetch_add(1, Ordering::SeqCst);
+                Ok(russh::server::Auth::reject())
+            }
+            async fn auth_password(
+                &mut self,
+                _user: &str,
+                _password: &str,
+            ) -> Result<russh::server::Auth, Self::Error> {
+                self.offers.fetch_add(1, Ordering::SeqCst);
+                Ok(russh::server::Auth::reject())
+            }
+            async fn channel_open_session(
+                &mut self,
+                _channel: russh::Channel<russh::server::Msg>,
+                _reply: russh::server::ChannelOpenHandle,
+                _session: &mut russh::server::Session,
+            ) -> Result<(), Self::Error> {
+                // Counted, and refused: the reply dropped unanswered.
+                self.sessions.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }
+        }
+        let server = Refusing::default();
+        let host_key =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .unwrap();
+        let config = Arc::new(russh::server::Config {
+            auth_rejection_time_initial: Some(std::time::Duration::ZERO),
+            auth_rejection_time: std::time::Duration::ZERO,
+            keys: vec![host_key],
+            ..Default::default()
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handler = server.clone();
+        let accept = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let (cfg, handler) = (config.clone(), handler.clone());
+                tokio::spawn(async move {
+                    let _ = russh::server::run_stream(cfg, stream, handler).await;
+                });
+            }
+        });
+
+        let session_key =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .unwrap();
+        let login = PinnedPrivateKey::fingerprint_of(&session_key);
+        let base = SshTransportConfig {
+            port,
+            ..crate::aerorsync::russh_session_transport::test_dummy_config()
+        };
+        let pinned_key = SshTransportConfig {
+            pinned_private_key: Some(PinnedPrivateKey::new(Arc::new(session_key), login)),
+            ..base.clone()
+        };
+        let pinned_password = SshTransportConfig {
+            auth_password: Some(secrecy::SecretString::from("old".to_string())),
+            pinned_password: true,
+            ..base.clone()
+        };
+        let unpinned_password = SshTransportConfig {
+            auth_password: Some(secrecy::SecretString::from("old".to_string())),
+            ..base.clone()
+        };
+        // Never pinned: refused by this server, or no agent reachable at all,
+        // it is "unavailable" either way.
+        let agent = SshTransportConfig {
+            auth_agent: true,
+            ..base.clone()
+        };
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        for (case, ssh, hard) in [
+            ("pinned key", pinned_key, true),
+            ("pinned password", pinned_password, true),
+            ("unpinned password", unpinned_password, false),
+            ("ssh-agent", agent, false),
+        ] {
+            let transport = AerorsyncDeltaTransport::new(ssh, 0);
+            let key = format!("test-x1-{case}");
+            let gate = check_delta_eligibility_with_transport(&transport, &key).await;
+            assert!(!gate.eligible, "{case}");
+            assert_eq!(
+                gate.hard_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("PinnedLoginRefused")),
+                hard,
+                "{case}: {gate:?}"
+            );
+            for attempt in ["fresh", "cached"] {
+                if attempt == "fresh" {
+                    invalidate_session_cache(&key).await;
+                }
+                let r = transfer_with_delta(
+                    &transport,
+                    SyncDirection::Upload,
+                    Path::new("/tmp/x1-nope"),
+                    "/remote/x1-nope",
+                    &key,
+                    None,
+                )
+                .await
+                .expect("a refusal is a typed result");
+                assert!(!r.used_delta, "{case} {attempt}");
+                if hard {
+                    assert!(
+                        r.fallback_reason.is_none(),
+                        "{case} {attempt}: no classic write"
+                    );
+                    assert!(
+                        r.hard_error
+                            .as_deref()
+                            .is_some_and(|e| e.contains("PinnedLoginRefused")),
+                        "{case} {attempt}: {r:?}"
+                    );
+                } else {
+                    assert!(r.hard_error.is_none(), "{case} {attempt}: {r:?}");
+                    assert!(r.fallback_reason.is_some(), "{case} {attempt}");
+                }
+            }
+        }
+        // Each pinned login offered its one credential and nothing more,
+        // and no session channel was opened on the server: nothing ran.
+        assert_eq!(server.sessions.load(Ordering::SeqCst), 0);
+        accept.abort();
+    }
+
     /// A probe that refuses a pinned key that is not the login key must stop
     /// the transfer, on the first file (fresh probe) and on every later file
     /// (cached probe): neither may fall back to classic SFTP.
