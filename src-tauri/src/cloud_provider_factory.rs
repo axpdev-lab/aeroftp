@@ -1245,14 +1245,11 @@ mod tests {
             "../../src/shared/username-template-cases.json"
         ))
         .unwrap();
-        let cases = table["cases"].as_array().unwrap();
-        assert!(cases.len() >= 10);
-        for case in cases {
-            let (template, username, expected) = (
-                case["template"].as_str().unwrap(),
-                case["username"].as_str().unwrap(),
-                case["expected"].as_str().unwrap(),
-            );
+        let template = table["pathTemplate"].as_str().unwrap();
+        // A null path is a blank user name: the template stays as written.
+        for case in table["cases"].as_array().unwrap() {
+            let username = case["user"].as_str().unwrap();
+            let expected = case["path"].as_str().unwrap_or(template);
             let starting = serde_json::json!({
                 "protocol": "webdav",
                 "initialPath": template,

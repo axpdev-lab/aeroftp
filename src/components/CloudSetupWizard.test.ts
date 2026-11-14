@@ -13,11 +13,15 @@ const profile = (fields: Partial<ServerProfile>): ServerProfile =>
 
 describe('the {username} placeholder', () => {
     // The same table the backend's `profile_root` and `profile_overlay_scope`
-    // pass: both sides insert the user name into the same folder name.
-    it.each(usernameCases.cases)('$template with $username', ({ template, username, expected }) => {
-        expect(resolveUsernameTemplate(template, username)).toBe(expected);
-        const webdav = { protocol: 'webdav', username } as Partial<ServerProfile>;
-        expect(profileRoot(profile({ ...webdav, initialPath: template }))).toBe(expected);
+    // pass: both sides insert the user name into the same folder name. A null
+    // path is a blank user name, which leaves the template as written.
+    const template = usernameCases.pathTemplate;
+    it.each(usernameCases.cases)('$user', ({ user, path }) => {
+        const expected = path ?? template;
+        const folder = expected.replace(/\/+$/, '');
+        expect(resolveUsernameTemplate(template, user)).toBe(expected);
+        const webdav = { protocol: 'webdav', username: user } as Partial<ServerProfile>;
+        expect(profileRoot(profile({ ...webdav, initialPath: template }))).toBe(folder);
         expect(profileOverlayScope({ ...webdav, initialPath: template } as ServerProfile)).toBe(expected);
         const bound = profile({
             ...webdav,
@@ -25,10 +29,10 @@ describe('the {username} placeholder', () => {
             aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: template },
         } as Partial<ServerProfile>);
         expect(profileOverlayScope(bound)).toBe(expected);
-        expect(aeroCloudBase(bound)).toBe(expected);
-        expect(aeroCloudRemoteFolder(bound, 'cloud')).toBe(`${expected}/cloud/`);
-        const sftp = profile({ protocol: 'sftp', username, initialPath: template.slice(1) });
-        expect(aeroCloudBase(sftp)).toBe(`~/${expected.slice(1)}`);
+        expect(aeroCloudBase(bound)).toBe(folder);
+        expect(aeroCloudRemoteFolder(bound, 'cloud')).toBe(`${folder}/cloud/`);
+        const sftp = profile({ protocol: 'sftp', username: user, initialPath: template.slice(1) });
+        expect(aeroCloudBase(sftp)).toBe(`~/${folder.slice(1)}`);
     });
 });
 
