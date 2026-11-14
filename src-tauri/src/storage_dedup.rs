@@ -94,6 +94,12 @@ pub fn normalize_host(raw: &str) -> String {
             break;
         }
     }
+    // URL userinfo (`user:pass@host`) is never part of the server identity
+    // and must not reach a dedup key that logs can print.
+    let authority_end = s.find('/').unwrap_or(s.len());
+    if let Some(at) = s[..authority_end].rfind('@') {
+        s = s[at + 1..].to_string();
+    }
     if let Some(stripped) = s.strip_prefix("www.") {
         s = stripped.to_string();
     }
@@ -347,18 +353,33 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
     if proto == "webdav" {
         if profile.provider_id == Some("puter-webdav") {
             let account = puter_account(profile.host);
+            // The account path is the drive identity, whichever auth method
+            // the profile uses: password and token profiles of one account
+            // must produce the same key.
+            if !account.is_empty() {
+                return format!("webdav:puter-webdav:{}", account);
+            }
             // Token auth shares the literal username `-token`; with no
             // account path two Puter profiles cannot be told apart, so they
             // must not collapse into one drive.
-            if account.is_empty() && user_norm.as_deref() == Some("-token") {
+            if user_norm.as_deref() == Some("-token") {
                 return format!("id:{}", profile.id);
             }
-            return format!("webdav:puter-webdav:{}:{}", account, user_or_id());
+            return format!("webdav:puter-webdav:{}", user_or_id());
         }
         if is_user_hosted_webdav_preset(profile.provider_id) {
             let pid = profile.provider_id.unwrap_or(proto);
-            let host = normalize_host(profile.host);
-            let port = if profile.port == 0 { 443 } else { profile.port };
+            // An embedded `:port` in the host and the port field name the
+            // same endpoint: take the embedded one as effective and keep it
+            // out of the host portion so both spellings key alike.
+            let normalized = normalize_host(profile.host);
+            let (host, embedded_port) = match normalized.rsplit_once(':') {
+                Some((h, p)) if !h.is_empty() && p.chars().all(|c| c.is_ascii_digit()) => {
+                    (h.to_string(), p.parse::<u64>().ok())
+                }
+                _ => (normalized, None),
+            };
+            let port = embedded_port.unwrap_or(if profile.port == 0 { 443 } else { profile.port });
             let port_part = if port == 443 {
                 String::new()
             } else {
@@ -896,8 +917,21 @@ mod tests {
                 Some(25_000_000),
             ),
         ];
-        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice:-token");
-        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob:-token");
+        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice");
+        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob");
+        // Password auth of the same account produces the same key: the
+        // account path is the identity, not the auth username.
+        let alice_password = p(
+            "p1b",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/alice",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&alice_password), dedup_key(&profiles[0]));
         let summary = aggregate(&profiles);
         assert_eq!(summary.unique_count, 2);
         assert_eq!(summary.total_used, 3_000_000);
@@ -940,7 +974,7 @@ mod tests {
             None,
             None,
         );
-        assert_eq!(dedup_key(&c), "webdav:puter-webdav::carol");
+        assert_eq!(dedup_key(&c), "webdav:puter-webdav:carol");
     }
 
     #[test]
@@ -1025,6 +1059,42 @@ mod tests {
         assert_eq!(
             dedup_key(&i),
             "webdav:infinicloud:alice-node.teracloud.jp:alice@example.com"
+        );
+        // An embedded `:port` in the host and the port field name the same
+        // endpoint: both spellings, and the explicit-443 forms, key alike.
+        let embedded = p(
+            "n5",
+            "webdav",
+            Some("nextcloud"),
+            "cloud-a.example.com:8443",
+            8443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&embedded), dedup_key(&d));
+        let embedded443 = p(
+            "n6",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud-a.example.com:443",
+            0,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&embedded443), dedup_key(&a));
+    }
+
+    #[test]
+    fn normalize_host_strips_url_userinfo_so_secrets_never_reach_a_key() {
+        assert_eq!(
+            normalize_host("https://user:pass@nas.example.com:8080/dav"),
+            "nas.example.com:8080"
+        );
+        assert_eq!(
+            normalize_host("user:pass@nas.example.com/dav"),
+            "nas.example.com"
         );
     }
 

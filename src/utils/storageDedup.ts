@@ -99,6 +99,14 @@ export const normalizeHost = (raw: string | undefined): string => {
             break;
         }
     }
+    // URL userinfo (`user:pass@host`) is never part of the server identity
+    // and must not reach a dedup key that logs can print.
+    const authorityEnd = s.indexOf('/');
+    const authority = authorityEnd === -1 ? s : s.slice(0, authorityEnd);
+    const at = authority.lastIndexOf('@');
+    if (at !== -1) {
+        s = s.slice(at + 1);
+    }
     if (s.startsWith('www.')) {
         s = s.slice(4);
     }
@@ -277,15 +285,26 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
     if (proto === 'webdav') {
         if (providerId === 'puter-webdav') {
             const account = puterAccount(server.host);
+            // The account path is the drive identity, whichever auth method
+            // the profile uses: password and token profiles of one account
+            // must produce the same key.
+            if (account) return `webdav:puter-webdav:${account}`;
             // Token auth shares the literal username `-token`; with no
             // account path two Puter profiles cannot be told apart, so they
             // must not collapse into one drive.
-            if (!account && userNorm === '-token') return `id:${server.id}`;
-            return `webdav:puter-webdav:${account}:${userOrId}`;
+            if (userNorm === '-token') return `id:${server.id}`;
+            return `webdav:puter-webdav:${userOrId}`;
         }
         if (isUserHostedWebDavPreset(providerId)) {
-            const host = normalizeHost(server.host);
-            const port = server.port || 443;
+            // An embedded `:port` in the host and the port field name the
+            // same endpoint: take the embedded one as effective and keep it
+            // out of the host portion so both spellings key alike.
+            const normalized = normalizeHost(server.host);
+            const embedded = /:(\d+)$/.exec(normalized);
+            const host = embedded ? normalized.slice(0, embedded.index) : normalized;
+            const port = embedded
+                ? Number(embedded[1])
+                : server.port || 443;
             const portPart = port === 443 ? '' : `:${port}`;
             return `webdav:${providerId}:${host}${portPart}:${userOrId}`;
         }

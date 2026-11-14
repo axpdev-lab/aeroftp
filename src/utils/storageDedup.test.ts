@@ -212,8 +212,16 @@ describe('storageDedup', () => {
             username: '-token',
             used: 2_000_000, total: 25_000_000,
         });
-        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice:-token');
-        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob:-token');
+        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice');
+        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob');
+        // Password auth of the same account produces the same key: the
+        // account path is the identity, not the auth username.
+        const alicePassword = make({
+            id: 'p1b', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/alice', port: 443,
+            username: 'alice',
+        });
+        expect(getStorageDedupKey(alicePassword)).toBe(getStorageDedupKey(alice));
         const summary = aggregateByDedupKey([alice, bob]);
         expect(summary.uniqueCount).toBe(2);
         expect(summary.totalUsed).toBe(3_000_000);
@@ -237,7 +245,7 @@ describe('storageDedup', () => {
             id: 'p5', protocol: 'webdav', providerId: 'puter-webdav',
             host: 'dav.puter.com', port: 443, username: 'carol',
         });
-        expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav::carol');
+        expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav:carol');
     });
 
     it('case 4c4: user-hosted WebDAV presets key by host too', () => {
@@ -280,6 +288,23 @@ describe('storageDedup', () => {
             host: 'https://alice-node.teracloud.jp', port: 443, username: 'alice@example.com',
         });
         expect(getStorageDedupKey(i)).toBe('webdav:infinicloud:alice-node.teracloud.jp:alice@example.com');
+        // An embedded `:port` in the host and the port field name the same
+        // endpoint: both spellings, and the explicit-443 forms, key alike.
+        const embedded = make({
+            id: 'n5', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'cloud-a.example.com:8443', port: 8443, username: 'alice',
+        });
+        expect(getStorageDedupKey(embedded)).toBe(getStorageDedupKey(d));
+        const embedded443 = make({
+            id: 'n6', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud-a.example.com:443', port: 0, username: 'alice',
+        });
+        expect(getStorageDedupKey(embedded443)).toBe(getStorageDedupKey(a));
+    });
+
+    it('normalizeHost strips URL userinfo so secrets never reach a key', () => {
+        expect(normalizeHost('https://user:pass@nas.example.com:8080/dav')).toBe('nas.example.com:8080');
+        expect(normalizeHost('user:pass@nas.example.com/dav')).toBe('nas.example.com');
     });
 
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
