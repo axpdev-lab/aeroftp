@@ -48,6 +48,11 @@ pub struct GitHubHttpClient {
     /// raised, every request that writes the tree is refused before it is
     /// sent (see `writes_the_tree`).
     pub(super) poison: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Whether the last request that writes the tree (`writes_the_tree`)
+    /// got a success answer. Lowered before each such request is sent, so a
+    /// write that failed, or was never answered (its future dropped), leaves
+    /// it down: what lets `refuse_stale_write` skip a check (S2 b).
+    pub(super) last_tree_write_ok: bool,
 }
 
 /// A request that writes the repository's files or refs: the contents API,
@@ -135,6 +140,7 @@ impl GitHubHttpClient {
             #[cfg(test)]
             api_origin_override: None,
             poison: None,
+            last_tree_write_ok: false,
         })
     }
 
@@ -161,6 +167,14 @@ impl GitHubHttpClient {
         builder: RequestBuilder,
         path_hint: Option<&str>,
     ) -> Result<Response, GitHubError> {
+        // A request that cannot be read back is taken as a tree write.
+        let tree_write = builder
+            .try_clone()
+            .and_then(|clone| clone.build().ok())
+            .is_none_or(|request| writes_the_tree(request.method(), request.url().path()));
+        if tree_write {
+            self.last_tree_write_ok = false;
+        }
         let response = self.execute_unchecked(builder).await?;
 
         // Check for secondary rate limit (Retry-After header).
@@ -178,6 +192,9 @@ impl GitHubHttpClient {
 
         let status = response.status();
         if status.is_success() {
+            if tree_write {
+                self.last_tree_write_ok = true;
+            }
             return Ok(response);
         }
 

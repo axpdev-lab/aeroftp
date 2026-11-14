@@ -55,11 +55,9 @@ pub enum GitHubWriteMode {
     /// User has push access and branch is not protected: direct commits allowed.
     DirectWrite,
     /// Branch is protected but user/app has bypass: direct commits allowed.
-    /// Falls back to BranchWorkflow if the first write is rejected.
-    DirectWriteProtected {
-        /// SHA of the protected branch tip (for fallback branch creation).
-        base_sha: String,
-    },
+    /// Falls back to BranchWorkflow if the first write is rejected; the
+    /// fallback reads the base's tip then, not at connect (S3b).
+    DirectWriteProtected {},
     /// Branch is protected; provider will auto-create a working branch.
     BranchWorkflow { branch: String },
     /// Token only has read access.
@@ -131,6 +129,10 @@ impl GitHubConfig {
     }
 }
 
+/// How long a working branch's classification answers for the writes that
+/// follow it, while they succeed (`refuse_stale_write`, S2 b).
+const BRANCH_CHECK_WINDOW: std::time::Duration = std::time::Duration::from_secs(10);
+
 /// How many working-branch names a walk tries (`name`, `name-2` ...).
 const WORKING_BRANCH_CANDIDATES: u32 = 9;
 
@@ -140,12 +142,34 @@ const WORKING_BRANCH_CANDIDATES: u32 = 9;
 enum WorkingBranchState {
     /// No such branch.
     Missing,
-    /// Nothing the base lacks (merged with a merge commit, or empty).
+    /// Nothing the base lacks (merged with a merge commit, or empty). Such
+    /// a branch IS reused (R2): its history is already in the base, and it
+    /// is fast-forwarded to the base before a write.
     NotAhead,
     /// Work the base does not hold yet.
     Pending,
-    /// Squash- or rebase-merged, its tip the merged head: never written again.
+    /// Squash- or rebase-merged, its tip the merged head: never written
+    /// again (its commits are not in the base, so a write would revive
+    /// them). This is the only kind of merged branch that is not reused.
     Merged,
+}
+
+/// Raises the session's poison when dropped, unless the write it guards was
+/// refused by an answer (`refused`): the fallback write (S2 d).
+struct PoisonUnlessRefused(Option<std::sync::Arc<std::sync::atomic::AtomicBool>>);
+
+impl PoisonUnlessRefused {
+    fn refused(mut self) {
+        self.0 = None;
+    }
+}
+
+impl Drop for PoisonUnlessRefused {
+    fn drop(&mut self) {
+        if let Some(poison) = &self.0 {
+            poison.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
 }
 
 /// GitHub storage provider implementing the [`StorageProvider`] trait.
@@ -176,6 +200,9 @@ pub struct GitHubProvider {
     /// `StorageProvider::target_poison`. Never lowered: a new connection is a
     /// new provider.
     poison: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// When the working branch was last classified as still writable
+    /// (`refuse_stale_write`).
+    last_branch_check: Option<std::time::Instant>,
 }
 
 impl std::fmt::Debug for GitHubProvider {
@@ -217,6 +244,7 @@ impl GitHubProvider {
             is_bot_token: false,
             default_branch: String::from("main"),
             poison,
+            last_branch_check: None,
         })
     }
 
@@ -381,7 +409,7 @@ impl GitHubProvider {
         additions: &[(String, Vec<u8>)],
         deletions: &[String],
     ) -> Result<String, ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         let branch = self.content_branch().to_string();
         let head_oid = graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, &branch)
             .await
@@ -446,6 +474,12 @@ impl GitHubProvider {
         urlencoding::encode(self.content_branch()).into_owned()
     }
 
+    /// The branch every content read and write of the session uses: the
+    /// working branch in the branch workflow, else the active one (S3a).
+    /// The base (`active_branch`) is read only for what concerns the base
+    /// itself: its protection, pull requests into it, the working-branch
+    /// name and classification, and the session summary
+    /// (`a_content_read_never_names_the_base_branch` keeps it so).
     fn content_branch(&self) -> &str {
         match &self.write_mode {
             GitHubWriteMode::BranchWorkflow { branch } => branch.as_str(),
@@ -560,9 +594,7 @@ impl GitHubProvider {
         };
         let mut provider = Self::connected_for_test(&config, "alice", "main");
         provider.client.api_origin_override = Some(api_origin);
-        provider.write_mode = GitHubWriteMode::DirectWriteProtected {
-            base_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
-        };
+        provider.write_mode = GitHubWriteMode::DirectWriteProtected {};
         provider
     }
 
@@ -606,6 +638,58 @@ impl GitHubProvider {
             "work".to_string()
         } else {
             trimmed.to_string()
+        }
+    }
+
+    /// Before every tree write (S2 b): the poison, then, on the working
+    /// branch, whether it is still there and not merged. A pull request
+    /// merged while the session stayed open (or the branch deleted) would
+    /// take the next write onto a branch whose work is done, reviving its
+    /// commits: the session is poisoned and refuses, and the next connection
+    /// starts afresh. Only in the branch workflow.
+    ///
+    /// The bound. The check is the full classification, because nothing
+    /// cheaper sees a merge: a squash or rebase merge moves the BASE, never
+    /// the working branch's own ref. It costs one request for a branch that
+    /// is only ahead (the comparison), and for one that diverged the
+    /// comparison, its tip and one request per 100 pull requests. A write
+    /// skips it when the classification is younger than
+    /// [`BRANCH_CHECK_WINDOW`] AND the session's last tree-write request got
+    /// a success answer (`last_tree_write_ok`: a failed or unanswered write
+    /// forces the next check). So while writes succeed, a run of any length
+    /// adds at most one classification per window, whatever its number of
+    /// files, and nothing between.
+    ///
+    /// What the window cannot see: a merge or deletion inside it, after the
+    /// check. Writes until the window ends can land on that branch (a
+    /// deleted one fails them, which ends the window); the first write after
+    /// it is refused. Below the window, a merge in the instant between a
+    /// check and its write cannot be excluded either: the contents API takes
+    /// no expected branch head.
+    async fn refuse_stale_write(&mut self) -> Result<(), ProviderError> {
+        Self::refuse_when_poisoned(self)?;
+        let GitHubWriteMode::BranchWorkflow { branch } = &self.write_mode else {
+            return Ok(());
+        };
+        let recent = self.client.last_tree_write_ok
+            && self
+                .last_branch_check
+                .is_some_and(|at| at.elapsed() < BRANCH_CHECK_WINDOW);
+        if recent {
+            return Ok(());
+        }
+        let branch = branch.clone();
+        let base = self.active_branch().to_string();
+        match self.classify_working_branch(&base, &branch).await? {
+            WorkingBranchState::Pending | WorkingBranchState::NotAhead => {
+                self.last_branch_check = Some(std::time::Instant::now());
+                Ok(())
+            }
+            WorkingBranchState::Merged | WorkingBranchState::Missing => {
+                self.last_branch_check = None;
+                self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
+                Err(ProviderError::TargetChanged)
+            }
         }
     }
 
@@ -673,6 +757,8 @@ impl GitHubProvider {
         base: &str,
         branch: &str,
     ) -> Result<WorkingBranchState, ProviderError> {
+        // `base` is a branch name or a tip SHA (S3b); the pull requests are
+        // always looked up against the base's name.
         let Some(compare) = self.compare_with(base, branch).await? else {
             return Ok(WorkingBranchState::Missing);
         };
@@ -689,27 +775,32 @@ impl GitHubProvider {
             .map_err(ProviderError::from)?
             .commit
             .sha;
-        let url = format!(
-            "{}/pulls?state=all&head={}&base={}&per_page=100",
-            self.repo_url(),
-            urlencoding::encode(&format!("{}:{}", self.owner, branch)),
-            urlencoding::encode(base),
-        );
-        let pulls: Vec<GitHubPullRequest> = self
-            .client
-            .get_json(&url)
-            .await
-            .map_err(ProviderError::from)?;
-        Ok(
+        // Every page (S2 a): a merged pull request on a later page is as
+        // merged as one on the first. A page shorter than asked is the last.
+        const PER_PAGE: usize = 100;
+        for page in 1.. {
+            let url = format!(
+                "{}/pulls?state=all&head={}&base={}&per_page={PER_PAGE}&page={page}",
+                self.repo_url(),
+                urlencoding::encode(&format!("{}:{}", self.owner, branch)),
+                urlencoding::encode(self.active_branch()),
+            );
+            let pulls: Vec<GitHubPullRequest> = self
+                .client
+                .get_json(&url)
+                .await
+                .map_err(ProviderError::from)?;
             if pulls
                 .iter()
                 .any(|pr| pr.merged_at.is_some() && pr.head.sha == tip)
             {
-                WorkingBranchState::Merged
-            } else {
-                WorkingBranchState::Pending
-            },
-        )
+                return Ok(WorkingBranchState::Merged);
+            }
+            if pulls.len() < PER_PAGE {
+                break;
+            }
+        }
+        Ok(WorkingBranchState::Pending)
     }
 
     /// The candidate working branches that exist: one
@@ -744,7 +835,9 @@ impl GitHubProvider {
     /// rule: the first PENDING candidate, if any (connect adopts it, a
     /// refused write goes there); with none pending, the first empty one
     /// (fast-forwarded), else the first missing name (created from the base).
-    /// A MERGED one is never written again. The cost is one listing, plus
+    /// A MERGED one (squash- or rebase-merged) is never written again; one
+    /// merged with a merge commit is NOT AHEAD and is reused, fast-forwarded
+    /// first (R2). The cost is one listing, plus
     /// one compare per candidate that exists (and the pull-request lookup
     /// only for a diverged one): one request when there is none.
     ///
@@ -753,9 +846,9 @@ impl GitHubProvider {
     /// at connect just finds nothing pending (C1).
     async fn current_working_branch(
         &mut self,
+        base: &str,
     ) -> Result<Option<(String, WorkingBranchState)>, ProviderError> {
         let own = self.own_working_branch()?;
-        let base = self.active_branch().to_string();
         let existing = self.existing_working_branches(&own).await?;
         let mut states = Vec::new();
         for n in 1..=WORKING_BRANCH_CANDIDATES {
@@ -765,7 +858,7 @@ impl GitHubProvider {
                 format!("{own}-{n}")
             };
             let state = if existing.contains(&name) {
-                self.classify_working_branch(&base, &name).await?
+                self.classify_working_branch(base, &name).await?
             } else {
                 WorkingBranchState::Missing
             };
@@ -785,8 +878,8 @@ impl GitHubProvider {
     /// The branch a refused write goes to ([`Self::current_working_branch`]),
     /// or the refusal when every name is merged: the one place that is
     /// reported (C1).
-    async fn allocate_working_branch(&mut self) -> Result<String, ProviderError> {
-        match self.current_working_branch().await? {
+    async fn allocate_working_branch(&mut self, base_tip: &str) -> Result<String, ProviderError> {
+        match self.current_working_branch(base_tip).await? {
             Some((branch, _)) => Ok(branch),
             None => {
                 let own = self.own_working_branch()?;
@@ -810,7 +903,10 @@ impl GitHubProvider {
     async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
         // Nothing pending (every name merged included): the session stays
         // on the protected branch; browsing and reads work (C1).
-        if let Some((branch, WorkingBranchState::Pending)) = self.current_working_branch().await? {
+        let base = self.active_branch().to_string();
+        if let Some((branch, WorkingBranchState::Pending)) =
+            self.current_working_branch(&base).await?
+        {
             self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
         }
         Ok(())
@@ -819,14 +915,25 @@ impl GitHubProvider {
     /// The one place a working branch is named (P7, P8):
     /// `aeroftp/<login>/<base>-<tag>`. The login is the authenticated one
     /// (GitHub logins are unique and case-insensitive, so lowercasing keeps
-    /// them apart). The readable base is sanitised, which maps `release/x`,
-    /// `release-x` and `Release-X` to one string, so `<tag>`, the first 16
-    /// hex digits of the SHA-256 of the EXACT base name, tells them apart.
+    /// them apart). The readable login and base are sanitised, which maps
+    /// `release/x`, `release-x` and `Release-X` to one string, and a GitHub
+    /// App's `x[bot]` to a user's `x-bot`, so `<tag>`, the first 16 hex
+    /// digits of the SHA-256 of the login (lowercased) and the EXACT base
+    /// name (S2 e), tells them apart.
     /// A branch named under the earlier scheme (display name, no tag) is
     /// neither adopted nor written again.
     fn workflow_branch_name(user_login: &str, base_branch: &str) -> String {
         use sha2::Digest;
-        let digest = sha2::Sha256::digest(base_branch.as_bytes());
+        // The login AND the exact base (S2 e): a GitHub App's
+        // `x[bot]` and a user `x-bot` sanitise to one readable login, and
+        // the tag still tells them apart. A NUL cannot occur in either.
+        // The login lowercased: GitHub logins are case-insensitive, so
+        // `Alice` and `alice` are one account and one branch.
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(user_login.to_ascii_lowercase().as_bytes());
+        hasher.update([0]);
+        hasher.update(base_branch.as_bytes());
+        let digest = hasher.finalize();
         let tag: String = digest.iter().take(8).map(|b| format!("{b:02x}")).collect();
         format!(
             "aeroftp/{}/{}-{}",
@@ -1302,9 +1409,7 @@ impl StorageProvider for GitHubProvider {
                             "GitHub: branch '{}' is protected: will attempt direct write (bypass), fallback to working branch if rejected",
                             self.active_branch()
                         );
-                        self.write_mode = GitHubWriteMode::DirectWriteProtected {
-                            base_sha: branch_info.commit.sha,
-                        };
+                        self.write_mode = GitHubWriteMode::DirectWriteProtected {};
                         self.start_on_existing_working_branch().await?;
                     } else {
                         self.write_mode = GitHubWriteMode::DirectWrite;
@@ -1636,7 +1741,7 @@ impl StorageProvider for GitHubProvider {
         // A release (an asset, a tag) is not the session's tree: it was
         // dispatched above, and only a tree write is refused after a
         // fallback (Q2), as the client's own check allows it.
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
 
         // Enforce write mode.
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
@@ -1723,17 +1828,22 @@ impl StorageProvider for GitHubProvider {
                 );
                 if is_protected_rejection {
                     log::info!("GitHub: direct push rejected on protected branch: falling back to working branch");
-                    let base_sha = if let GitHubWriteMode::DirectWriteProtected { ref base_sha } =
-                        self.write_mode
-                    {
-                        base_sha.clone()
-                    } else {
-                        unreachable!()
-                    };
+                    // One fresh tip of the base, read now, for the
+                    // classification and the preparation alike (S3b): the
+                    // base can have moved since connect, and a branch
+                    // compared with one tip and prepared from another would
+                    // take the write onto an older tree.
+                    let base_sha = self
+                        .client
+                        .get_json::<GitHubBranch>(&self.branch_api_url(self.active_branch()))
+                        .await
+                        .map_err(ProviderError::from)?
+                        .commit
+                        .sha;
                     // The branch the walk names: a pending one as it is, an
                     // empty one moved up to the base, a missing one created
                     // from it; never a merged one's stale tip (Q1, Q4).
-                    let workflow_branch = self.allocate_working_branch().await?;
+                    let workflow_branch = self.allocate_working_branch(&base_sha).await?;
                     self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
                         .await
                         .map_err(|e2| {
@@ -1751,22 +1861,37 @@ impl StorageProvider for GitHubProvider {
                     if let Some(obj) = body.as_object_mut() {
                         obj.insert("branch".to_string(), serde_json::json!(workflow_branch));
                     }
-                    let written = self
-                        .client
-                        .put_json(&url, &body)
-                        .await
-                        .map_err(ProviderError::from)?;
+                    // Until the answer says the write was refused, it may
+                    // have landed (S2 d): a lost or unreadable answer, a
+                    // 5xx, or this future dropped while it waits leaves the
+                    // session poisoned, as a landed write does.
+                    let pending = PoisonUnlessRefused(Some(self.poison.clone()));
+                    let written = match self.client.put_json(&url, &body).await {
+                        Ok(written) => written,
+                        Err(e) => {
+                            if !matches!(
+                                e,
+                                GitHubError::NetworkError(_)
+                                    | GitHubError::ServerError(_)
+                                    | GitHubError::ParseError(_)
+                            ) {
+                                pending.refused();
+                            }
+                            return Err(ProviderError::from(e));
+                        }
+                    };
                     // Written: the session is on another branch from here,
                     // another tree than the one any plan of it was made
                     // against, so the switch poisons it in the same step (no
                     // await between): every later write of this session is
                     // refused, and the next connection starts on the working
-                    // branch. An upload dropped or refused while it waits
-                    // leaves the session wholly on the protected branch.
+                    // branch. Only an upload refused by its answer leaves the
+                    // session wholly on the protected branch.
                     self.write_mode = GitHubWriteMode::BranchWorkflow {
                         branch: workflow_branch,
                     };
                     self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
+                    drop(pending);
                     written
                 } else {
                     return Err(ProviderError::from(result.unwrap_err()));
@@ -1791,7 +1916,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1860,7 +1985,7 @@ impl StorageProvider for GitHubProvider {
         // A release (an asset, a tag) is not the session's tree: it was
         // dispatched above, and only a tree write is refused after a
         // fallback (Q2), as the client's own check allows it.
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
 
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -1929,7 +2054,7 @@ impl StorageProvider for GitHubProvider {
         // A release (an asset, a tag) is not the session's tree: it was
         // dispatched above, and only a tree write is refused after a
         // fallback (Q2), as the client's own check allows it.
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         self.refuse_non_empty_dir(path).await?;
 
         // GitHub has no empty-dir concept; delete all contents recursively.
@@ -1959,7 +2084,7 @@ impl StorageProvider for GitHubProvider {
         // A release (an asset, a tag) is not the session's tree: it was
         // dispatched above, and only a tree write is refused after a
         // fallback (Q2), as the client's own check allows it.
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         // Each child's path is built from a name the API gave: every one
         // must be inside the folder before any of them is deleted.
         let entries = crate::sync_core::listing_to_remove(&resolved, self.list(path).await?)?;
@@ -1975,7 +2100,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         if self.parse_virtual_path(&self.resolve_path(from)).is_some()
             || self.parse_virtual_path(&self.resolve_path(to)).is_some()
         {
@@ -2238,7 +2363,8 @@ impl StorageProvider for GitHubProvider {
             "https://api.github.com/repos/{}/{}/git/trees/{}?recursive=1",
             self.owner,
             self.repo,
-            urlencoding::encode(self.active_branch())
+            // S3a: the tree the writers write, not the base.
+            urlencoding::encode(self.content_branch())
         );
 
         #[derive(serde::Deserialize)]
@@ -2543,11 +2669,19 @@ mod tests {
                                 .split('&')
                                 .find_map(|kv| kv.strip_prefix("head=o:"))
                                 .unwrap_or("");
+                            // 100 to a page, as the lookup asks (S2 a).
+                            let page: usize = query
+                                .split('&')
+                                .find_map(|kv| kv.strip_prefix("page="))
+                                .and_then(|p| p.parse().ok())
+                                .unwrap_or(1);
                             let pulls: Vec<_> = named(head)
                                 .map(|b| b.pulls)
                                 .unwrap_or_default()
                                 .into_iter()
                                 .enumerate()
+                                .skip((page - 1) * 100)
+                                .take(100)
                                 .map(|(n, (merged, sha))| {
                                     serde_json::json!({
                                         "number": n + 1, "title": "t",
@@ -2950,14 +3084,587 @@ mod tests {
                     let patch = patch.expect("the working branch is fast-forwarded");
                     assert!(patch < written, "{writes:?}");
                     assert!(writes[patch].contains("\"force\":false"), "{writes:?}");
+                    // The base's tip read at the write (S3b), which this API
+                    // serves for every branch.
                     assert!(
-                        writes[patch].contains("0123456789abcdef0123456789abcdef01234567"),
+                        writes[patch].contains("fedcba9876543210fedcba9876543210fedcba98"),
                         "{writes:?}"
                     );
                 } else {
                     assert_eq!(patch, None, "{writes:?}");
                 }
                 server.abort();
+            }
+        }
+
+        /// S3b: the base moved after connect (T1 then, T2 now). The fallback
+        /// reads the tip at the write and uses it for the classification and
+        /// the preparation alike: a working branch level with T1 but behind
+        /// T2 is fast-forwarded to T2 before the write, a missing one is
+        /// created from T2. Never from the tip read at connect.
+        #[tokio::test]
+        async fn the_fallback_prepares_its_branch_from_the_base_tip_at_the_write() {
+            const T1: &str = "0123456789abcdef0123456789abcdef01234567";
+            const T2: &str = "2222222222222222222222222222222222222222";
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            for exists in [true, false] {
+                let log = Arc::new(Mutex::new(Vec::<String>::new()));
+                let seen = log.clone();
+                let own_name = own.clone();
+                let app = axum::Router::new().fallback(axum::routing::any(
+                    move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                        let (seen, own) = (seen.clone(), own_name.clone());
+                        async move {
+                            use axum::response::IntoResponse;
+                            let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                            let reply = |status: u16, json: serde_json::Value| {
+                                (axum::http::StatusCode::from_u16(status).unwrap(), axum::Json(json))
+                                    .into_response()
+                            };
+                            if method != axum::http::Method::GET {
+                                seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                            }
+                            if path.ends_with("/branches/main") {
+                                return reply(200, serde_json::json!({
+                                    "name": "main", "protected": true, "commit": {"sha": T2}
+                                }));
+                            }
+                            if let Some((_, matching)) = path.split_once("/git/matching-refs/heads/") {
+                                let refs = if exists {
+                                    serde_json::json!([{"ref": format!("refs/heads/{matching}")}])
+                                } else {
+                                    serde_json::json!([])
+                                };
+                                return reply(200, refs);
+                            }
+                            if path.ends_with(&format!("/branches/{own}")) {
+                                return if exists {
+                                    reply(200, serde_json::json!({
+                                        "name": own, "protected": false, "commit": {"sha": T1}
+                                    }))
+                                } else {
+                                    reply(404, serde_json::json!({"message": "Branch not found"}))
+                                };
+                            }
+                            // Level with T1, one behind T2 (or the name `main`).
+                            if let Some((_, range)) = path.split_once("/compare/") {
+                                let base = range.split_once("...").map(|(b, _)| b).unwrap_or("");
+                                if !exists {
+                                    return reply(404, serde_json::json!({"message": "Not Found"}));
+                                }
+                                let behind = u64::from(base != T1);
+                                return reply(200, serde_json::json!({"ahead_by": 0, "behind_by": behind}));
+                            }
+                            if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"") {
+                                return reply(403, serde_json::json!({"message": "Protected branch update failed"}));
+                            }
+                            if method == axum::http::Method::POST && path.ends_with("/git/refs") {
+                                return reply(201, serde_json::json!({"ref": "r"}));
+                            }
+                            if method == axum::http::Method::PUT || method == axum::http::Method::PATCH {
+                                return reply(200, serde_json::json!({"content": {"sha": "abc123"}}));
+                            }
+                            reply(404, serde_json::json!({"message": "Not Found"}))
+                        }
+                    },
+                ));
+                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                let addr = listener.local_addr().unwrap();
+                let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                let dir = tempfile::tempdir().unwrap();
+                let file = dir.path().join("a.txt");
+                std::fs::write(&file, b"a").unwrap();
+                provider
+                    .upload(file.to_str().unwrap(), "/a.txt", None)
+                    .await
+                    .unwrap();
+                let writes = log.lock().unwrap().clone();
+                let written = writes
+                    .iter()
+                    .position(|w| {
+                        w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{own}\""))
+                    })
+                    .expect("the write to the working branch");
+                let prepared = writes
+                    .iter()
+                    .position(|w| {
+                        if exists {
+                            w.starts_with("PATCH ") && w.contains(&format!("/git/refs/heads/{own}"))
+                        } else {
+                            w.starts_with("POST ") && w.contains("/git/refs")
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        panic!("exists={exists}: the branch is prepared: {writes:?}")
+                    });
+                assert!(prepared < written, "{writes:?}");
+                assert!(writes[prepared].contains(T2), "exists={exists}: {writes:?}");
+                assert!(
+                    !writes.iter().any(|w| w.contains(T1)),
+                    "exists={exists}: {writes:?}"
+                );
+                server.abort();
+            }
+        }
+
+        /// The S2 API: `main` protected at its tip; the working branch `own`
+        /// (when `exists`) at `TIP`, `ahead`/`behind` of `main`, with one
+        /// pull request merged at `TIP` when `merged_at_tip`; the PUT to
+        /// `own` answered with `put_own` (status, raw body); every write
+        /// logged.
+        async fn scripted(
+            own: String,
+            exists: bool,
+            (ahead, behind): (u64, u64),
+            merged_at_tip: bool,
+            put_own: (u16, &'static str),
+        ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let seen = log.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                    let (seen, own) = (seen.clone(), own.clone());
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let raw = |status: u16, body: String| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                [(axum::http::header::CONTENT_TYPE, "application/json")],
+                                body,
+                            )
+                                .into_response()
+                        };
+                        let reply =
+                            |status: u16, json: serde_json::Value| raw(status, json.to_string());
+                        if method != axum::http::Method::GET {
+                            seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                        }
+                        let not_found = serde_json::json!({"message": "Not Found"});
+                        if path.ends_with("/branches/main") {
+                            return reply(
+                                200,
+                                serde_json::json!({
+                                    "name": "main", "protected": true,
+                                    "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                }),
+                            );
+                        }
+                        if path.contains("/git/matching-refs/heads/") {
+                            let refs = if exists {
+                                serde_json::json!([{"ref": format!("refs/heads/{own}")}])
+                            } else {
+                                serde_json::json!([])
+                            };
+                            return reply(200, refs);
+                        }
+                        if path.ends_with(&format!("/branches/{own}")) {
+                            return if exists {
+                                reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": own, "protected": false, "commit": {"sha": TIP}
+                                    }),
+                                )
+                            } else {
+                                reply(404, not_found)
+                            };
+                        }
+                        if path.contains("/compare/") {
+                            return if exists {
+                                reply(
+                                    200,
+                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                                )
+                            } else {
+                                reply(404, not_found)
+                            };
+                        }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            let pulls = if merged_at_tip {
+                                serde_json::json!([{
+                                    "number": 1, "title": "t", "state": "closed",
+                                    "html_url": "u", "created_at": "c", "mergeable": null,
+                                    "merged_at": "2026-11-01T00:00:00Z",
+                                    "head": {"ref": own, "sha": TIP},
+                                    "base": {"ref": "main", "sha": "b"},
+                                    "user": {"login": "alice", "email": null, "name": null},
+                                }])
+                            } else {
+                                serde_json::json!([])
+                            };
+                            return reply(200, pulls);
+                        }
+                        if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"")
+                        {
+                            return reply(
+                                403,
+                                serde_json::json!({"message": "Protected branch update failed"}),
+                            );
+                        }
+                        if method == axum::http::Method::PUT
+                            && body.contains(&format!("\"branch\":\"{own}\""))
+                        {
+                            return raw(put_own.0, put_own.1.to_string());
+                        }
+                        if method == axum::http::Method::POST && path.ends_with("/git/refs") {
+                            return reply(201, serde_json::json!({"ref": "r"}));
+                        }
+                        if method == axum::http::Method::PATCH {
+                            return reply(200, serde_json::json!({"ref": "r"}));
+                        }
+                        reply(404, not_found)
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}"), log, server)
+        }
+
+        const WRITTEN: &str = r#"{"content": {"sha": "abc123"}}"#;
+
+        fn a_file() -> (tempfile::TempDir, String) {
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("a.txt");
+            std::fs::write(&file, b"a").unwrap();
+            let path = file.to_str().unwrap().to_string();
+            (dir, path)
+        }
+
+        /// S2 (b): a working branch adopted at connect, then merged (its pull
+        /// request merged at its tip) or deleted while the session stays
+        /// open: the next write is refused before any request writes, and
+        /// the session is poisoned. Still pending, the write goes on.
+        #[tokio::test]
+        async fn a_working_branch_merged_or_deleted_while_the_session_is_open_refuses_the_next_write(
+        ) {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let (_dir, file) = a_file();
+            for (case, exists, compare, merged, refused) in [
+                ("merged", true, (3, 2), true, true),
+                ("deleted", false, (0, 0), false, true),
+                ("pending", true, (1, 0), false, false),
+            ] {
+                let (origin, log, server) =
+                    scripted(own.clone(), exists, compare, merged, (200, WRITTEN)).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                    branch: own.clone(),
+                };
+                let answer = provider.upload(&file, "/a.txt", None).await;
+                let writes = log.lock().unwrap().clone();
+                if refused {
+                    assert!(
+                        matches!(answer, Err(ProviderError::TargetChanged)),
+                        "{case}: {answer:?}"
+                    );
+                    assert!(writes.is_empty(), "{case}: {writes:?}");
+                    assert!(provider.refuse_when_poisoned().is_err(), "{case}: poisoned");
+                    // And the next write sends nothing at all.
+                    assert!(provider.upload(&file, "/b.txt", None).await.is_err());
+                    assert!(log.lock().unwrap().is_empty(), "{case}");
+                } else {
+                    answer.unwrap();
+                    assert!(
+                        writes
+                            .iter()
+                            .any(|w| w.starts_with("PUT ") && w.contains(&own)),
+                        "{case}: {writes:?}"
+                    );
+                }
+                server.abort();
+            }
+        }
+
+        /// S2 (b), the bound: N writes in a row on an unchanged pending
+        /// branch cost N PUTs and ONE classification (one comparison), not N.
+        /// A merge between two writes farther apart than the window is
+        /// refused at the next write; one inside the window is refused at the
+        /// latest by the first write after the window. A failed write forces
+        /// the next check.
+        #[tokio::test]
+        async fn the_working_branch_check_costs_one_classification_per_window() {
+            use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let merged = Arc::new(AtomicBool::new(false));
+            let fail_put = Arc::new(AtomicBool::new(false));
+            let (compares, puts) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+            let state = (
+                merged.clone(),
+                fail_put.clone(),
+                compares.clone(),
+                puts.clone(),
+                own.clone(),
+            );
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let (merged, fail_put, compares, puts, own) = state.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        let merged = merged.load(SeqCst);
+                        if path.contains("/compare/") {
+                            compares.fetch_add(1, SeqCst);
+                            let (ahead, behind) = if merged { (3, 2) } else { (1, 0) };
+                            return reply(
+                                200,
+                                serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                            );
+                        }
+                        if path.ends_with(&format!("/branches/{own}")) {
+                            return reply(
+                                200,
+                                serde_json::json!({
+                                    "name": own, "protected": false, "commit": {"sha": TIP}
+                                }),
+                            );
+                        }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            return reply(
+                                200,
+                                serde_json::json!([{
+                                    "number": 1, "title": "t", "state": "closed",
+                                    "html_url": "u", "created_at": "c", "mergeable": null,
+                                    "merged_at": "2026-11-01T00:00:00Z",
+                                    "head": {"ref": own, "sha": TIP},
+                                    "base": {"ref": "main", "sha": "b"},
+                                    "user": {"login": "alice", "email": null, "name": null},
+                                }]),
+                            );
+                        }
+                        if method == axum::http::Method::PUT {
+                            puts.fetch_add(1, SeqCst);
+                            if fail_put.load(SeqCst) {
+                                return reply(409, serde_json::json!({"message": "conflict"}));
+                            }
+                            return reply(200, serde_json::json!({"content": {"sha": "abc123"}}));
+                        }
+                        reply(404, serde_json::json!({"message": "Not Found"}))
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+            provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: own.clone(),
+            };
+            let (_dir, file) = a_file();
+            // The window ran out: as if the last check were older than it.
+            let age = |provider: &mut GitHubProvider| {
+                provider.last_branch_check = provider.last_branch_check.map(|at| {
+                    at.checked_sub(BRANCH_CHECK_WINDOW + std::time::Duration::from_secs(1))
+                        .unwrap()
+                });
+            };
+
+            const N: usize = 20;
+            for n in 0..N {
+                provider
+                    .upload(&file, &format!("/f{n}.txt"), None)
+                    .await
+                    .unwrap();
+            }
+            assert_eq!((puts.load(SeqCst), compares.load(SeqCst)), (N, 1));
+
+            // Unchanged after the window: one more classification, then quiet.
+            age(&mut provider);
+            provider.upload(&file, "/g.txt", None).await.unwrap();
+            provider.upload(&file, "/h.txt", None).await.unwrap();
+            assert_eq!((puts.load(SeqCst), compares.load(SeqCst)), (N + 2, 2));
+
+            // A failed write forces the next check, inside the window too.
+            fail_put.store(true, SeqCst);
+            assert!(provider.upload(&file, "/x.txt", None).await.is_err());
+            fail_put.store(false, SeqCst);
+            provider.upload(&file, "/y.txt", None).await.unwrap();
+            assert_eq!(compares.load(SeqCst), 3);
+
+            // Merged inside the window: that window's writes can land, and
+            // the first write after it is refused, with nothing sent.
+            merged.store(true, SeqCst);
+            provider.upload(&file, "/inside.txt", None).await.unwrap();
+            let landed = puts.load(SeqCst);
+            age(&mut provider);
+            assert!(matches!(
+                provider.upload(&file, "/after.txt", None).await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(
+                puts.load(SeqCst),
+                landed,
+                "nothing written after the window"
+            );
+
+            // Merged between two writes farther apart than the window: the
+            // next write is refused.
+            let mut later = GitHubProvider::protected_for_test(format!("http://{addr}"));
+            later.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: own.clone(),
+            };
+            merged.store(false, SeqCst);
+            later.upload(&file, "/a.txt", None).await.unwrap();
+            merged.store(true, SeqCst);
+            age(&mut later);
+            let before = puts.load(SeqCst);
+            assert!(matches!(
+                later.upload(&file, "/b.txt", None).await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(puts.load(SeqCst), before);
+            server.abort();
+        }
+
+        /// S2 (c): the branch deleted (or replaced, or merged) in the instant
+        /// between the check and the PUT. The contents API takes no expected
+        /// head, so this cannot be excluded; what holds is that the write
+        /// fails alone: no other branch is created or written.
+        #[tokio::test]
+        async fn a_working_branch_gone_between_the_check_and_the_write_fails_that_write_only() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let (_dir, file) = a_file();
+            let (origin, log, server) = scripted(
+                own.clone(),
+                true,
+                (1, 0),
+                false,
+                (404, r#"{"message": "Branch not found"}"#),
+            )
+            .await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: own.clone(),
+            };
+            assert!(provider.upload(&file, "/a.txt", None).await.is_err());
+            let writes = log.lock().unwrap().clone();
+            assert_eq!(writes.len(), 1, "{writes:?}");
+            assert!(
+                writes[0].starts_with("PUT ") && writes[0].contains(&own),
+                "{writes:?}"
+            );
+            server.abort();
+        }
+
+        /// S2 (d): the fallback write landed but its answer is lost
+        /// (unreadable): the session is poisoned all the same, and the next
+        /// write sends nothing. A write refused by its answer leaves the
+        /// session on the protected branch, unpoisoned.
+        #[tokio::test]
+        async fn a_fallback_write_whose_answer_is_lost_poisons_the_session() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let (_dir, file) = a_file();
+            for (case, put_own, poisoned) in [
+                ("lost answer", (200, "garbled, not json"), true),
+                ("server error", (502, r#"{"message": "Bad gateway"}"#), true),
+                ("refused", (422, r#"{"message": "Invalid request"}"#), false),
+            ] {
+                let (origin, log, server) =
+                    scripted(own.clone(), false, (0, 0), false, put_own).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                assert!(
+                    provider.upload(&file, "/a.txt", None).await.is_err(),
+                    "{case}"
+                );
+                assert_eq!(provider.refuse_when_poisoned().is_err(), poisoned, "{case}");
+                if poisoned {
+                    let before = log.lock().unwrap().len();
+                    assert!(
+                        provider.upload(&file, "/b.txt", None).await.is_err(),
+                        "{case}"
+                    );
+                    assert_eq!(
+                        log.lock().unwrap().len(),
+                        before,
+                        "{case}: nothing more sent"
+                    );
+                }
+                server.abort();
+            }
+            // A dropped write (its future gone while it waits) poisons too.
+            let poison = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            drop(PoisonUnlessRefused(Some(poison.clone())));
+            assert!(poison.load(std::sync::atomic::Ordering::SeqCst));
+            let poison = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            PoisonUnlessRefused(Some(poison.clone())).refused();
+            assert!(!poison.load(std::sync::atomic::Ordering::SeqCst));
+        }
+
+        /// S2 (a): a merged pull request on the second page of the lookup
+        /// is found: 100 unmerged ones first, then the one merged at the tip.
+        /// The branch is not adopted, and a refused write takes the next name.
+        #[tokio::test]
+        async fn a_merged_pull_request_beyond_the_first_page_is_found() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let mut pulls = vec![(false, "2222222222222222222222222222222222222222"); 100];
+            pulls.push((true, TIP));
+            let merged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls,
+            };
+            let (origin, log, server) = api_per_branch(vec![(own.clone(), merged)], 200).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider.start_on_existing_working_branch().await.unwrap();
+            assert_eq!(provider.working_branch(), None);
+            let (_dir, file) = a_file();
+            provider.upload(&file, "/a.txt", None).await.unwrap();
+            let writes = log.lock().unwrap().clone();
+            assert!(
+                writes.iter().any(
+                    |w| w.starts_with("PUT ") && w.contains(&format!("\"branch\":\"{own}-2\""))
+                ),
+                "{writes:?}"
+            );
+            assert!(
+                !writes
+                    .iter()
+                    .any(|w| w.contains(&format!("\"branch\":\"{own}\""))),
+                "{writes:?}"
+            );
+            server.abort();
+        }
+
+        /// S2 (e): logins that sanitise alike (a GitHub App's `x[bot]` and a
+        /// user `x-bot`) get different working branches on the same base,
+        /// as two bases that sanitise alike do.
+        #[test]
+        fn logins_and_bases_that_sanitise_alike_get_different_working_branches() {
+            let app = GitHubProvider::workflow_branch_name("x[bot]", "main");
+            let user = GitHubProvider::workflow_branch_name("x-bot", "main");
+            assert!(app.starts_with("aeroftp/x-bot/main-"), "{app}");
+            assert!(user.starts_with("aeroftp/x-bot/main-"), "{user}");
+            assert_ne!(app, user);
+            assert_ne!(
+                GitHubProvider::workflow_branch_name("alice", "release/x"),
+                GitHubProvider::workflow_branch_name("alice", "release-x")
+            );
+        }
+
+        /// S2 (b), the class: every tree write goes through the one check.
+        #[test]
+        fn every_tree_write_checks_the_working_branch_first() {
+            for (source, writes) in [
+                (include_str!("mod.rs"), 7),
+                (include_str!("repo_mode.rs"), 4),
+            ] {
+                let code = source.split("#[cfg(test)]\nmod tests").next().unwrap();
+                assert_eq!(code.matches("self.refuse_when_poisoned()").count(), 0);
+                assert_eq!(
+                    code.matches("self.refuse_stale_write().await?").count(),
+                    writes
+                );
             }
         }
 
@@ -3486,10 +4193,15 @@ mod tests {
     }
 
     /// The tag `workflow_branch_name` appends: the first 16 hex digits of
-    /// the SHA-256 of the exact base name.
-    fn base_tag(base: &str) -> String {
+    /// the SHA-256 of the lowercased login, a NUL and the exact base name.
+    fn base_tag(login: &str, base: &str) -> String {
         use sha2::Digest;
-        sha2::Sha256::digest(base.as_bytes())
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(login.to_ascii_lowercase().as_bytes());
+        hasher.update([0]);
+        hasher.update(base.as_bytes());
+        hasher
+            .finalize()
             .iter()
             .take(8)
             .map(|b| format!("{b:02x}"))
@@ -3502,10 +4214,10 @@ mod tests {
             GitHubProvider::workflow_branch_name("AxPNet", "release/2026.03"),
             format!(
                 "aeroftp/axpnet/release-2026.03-{}",
-                base_tag("release/2026.03")
+                base_tag("AxPNet", "release/2026.03")
             )
         );
-        assert_eq!(base_tag("main").len(), 16);
+        assert_eq!(base_tag("alice", "main").len(), 16);
     }
 
     /// P7, P8: one working branch per authenticated login and EXACT base.
@@ -3530,7 +4242,10 @@ mod tests {
             .all(|b| b.starts_with("aeroftp/alice/release-x-")));
         assert_eq!(
             name("aeroftp[bot]", "main"),
-            format!("aeroftp/aeroftp-bot/main-{}", base_tag("main"))
+            format!(
+                "aeroftp/aeroftp-bot/main-{}",
+                base_tag("aeroftp[bot]", "main")
+            )
         );
         // Two accounts with the same display name, or none: their logins.
         let config = provider_config("o/r", Some("main"), Some("/"));
@@ -3661,7 +4376,7 @@ mod tests {
             GitHubProvider::workflow_branch_name("user@email", "feat/new thing!"),
             format!(
                 "aeroftp/user-email/feat-new-thing-{}",
-                base_tag("feat/new thing!")
+                base_tag("user@email", "feat/new thing!")
             )
         );
     }
@@ -3672,7 +4387,10 @@ mod tests {
         // consecutive valid chars. Hyphens are valid in branch names.
         assert_eq!(
             GitHubProvider::workflow_branch_name("user", "release---v2"),
-            format!("aeroftp/user/release---v2-{}", base_tag("release---v2"))
+            format!(
+                "aeroftp/user/release---v2-{}",
+                base_tag("user", "release---v2")
+            )
         );
     }
 
@@ -3701,4 +4419,201 @@ mod tests {
             "etc/passwd"
         );
     }
+
+    /// S3a: a session on its working branch reads the branch it writes.
+    /// `main` and the working branch `work` hold different versions of
+    /// `a.txt` (their SHA and body name the branch; `main`'s tree lacks the
+    /// file). The repo-mode listing, stat and download, the update's SHA,
+    /// and `find` all get the working branch's.
+    #[tokio::test]
+    async fn a_session_on_its_working_branch_reads_that_branch() {
+        use std::sync::{Arc, Mutex};
+        let log = Arc::new(Mutex::new(Vec::<String>::new()));
+        let seen = log.clone();
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                let seen = seen.clone();
+                async move {
+                    use axum::response::IntoResponse;
+                    let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                    let query = urlencoding::decode(uri.query().unwrap_or(""))
+                        .unwrap()
+                        .into_owned();
+                    let json = |v: serde_json::Value| axum::Json(v).into_response();
+                    if method != axum::http::Method::GET {
+                        seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                        return json(serde_json::json!({"content": {"sha": "new"}}));
+                    }
+                    let file = |b: &str| {
+                        serde_json::json!({
+                            "name": "a.txt", "path": "a.txt", "type": "file", "size": 12,
+                            "sha": format!("sha-{b}"), "content": null, "html_url": null,
+                            "download_url": format!("https://raw.githubusercontent.com/o/r/{b}/a.txt"),
+                        })
+                    };
+                    let branch = query
+                        .split('&')
+                        .find_map(|kv| kv.strip_prefix("ref="))
+                        .map(str::to_string);
+                    match (path.as_str(), branch) {
+                        ("/repos/o/r/contents/a.txt", Some(b)) => return json(file(&b)),
+                        ("/repos/o/r/contents" | "/repos/o/r/contents/", Some(b)) => {
+                            return json(serde_json::json!([file(&b)]))
+                        }
+                        _ => {}
+                    }
+                    // The working branch is pending: every write checks it.
+                    if path.contains("/compare/") {
+                        return json(serde_json::json!({"ahead_by": 1, "behind_by": 0}));
+                    }
+                    if let Some(b) = path.strip_prefix("/repos/o/r/git/trees/") {
+                        let tree = if b == "main" {
+                            serde_json::json!([])
+                        } else {
+                            serde_json::json!([{
+                                "path": "a.txt", "mode": "100644", "type": "blob",
+                                "size": 12, "sha": format!("sha-{b}"),
+                            }])
+                        };
+                        return json(serde_json::json!({"sha": "t", "truncated": false, "tree": tree}));
+                    }
+                    if let Some(rest) = path.strip_prefix("/o/r/") {
+                        let b = rest.rsplit_once('/').map(|(b, _)| b).unwrap_or("");
+                        return format!("content-{b}").into_response();
+                    }
+                    (
+                        axum::http::StatusCode::NOT_FOUND,
+                        axum::Json(serde_json::json!({"message": "Not Found"})),
+                    )
+                        .into_response()
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+        provider.write_mode = GitHubWriteMode::BranchWorkflow {
+            branch: "work".to_string(),
+        };
+        let sha = |entry: &RemoteEntry| entry.metadata.get("sha").cloned();
+
+        let listed = provider.list_contents("/").await.unwrap();
+        assert_eq!(
+            listed.iter().map(sha).collect::<Vec<_>>(),
+            [Some("sha-work".to_string())]
+        );
+        provider.sha_cache.clear();
+        let stat = provider.stat_file("/a.txt").await.unwrap();
+        assert_eq!(sha(&stat).as_deref(), Some("sha-work"));
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        provider
+            .download_file("/a.txt", local.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "content-work");
+        let found = provider.find("/", "a.txt").await.unwrap();
+        assert_eq!(
+            found.len(),
+            1,
+            "find reads the working branch's tree: {found:?}"
+        );
+
+        // The update of an existing file names the working branch's SHA.
+        provider.sha_cache.clear();
+        std::fs::write(&local, b"new body").unwrap();
+        provider
+            .upload_file(local.to_str().unwrap(), "/a.txt", Some("update"))
+            .await
+            .unwrap();
+        let writes = log.lock().unwrap().clone();
+        assert!(
+            writes.iter().any(|w| w.starts_with("PUT ")
+                && w.contains("\"sha\":\"sha-work\"")
+                && w.contains("\"branch\":\"work\"")),
+            "{writes:?}"
+        );
+        assert!(!writes.iter().any(|w| w.contains("sha-main")), "{writes:?}");
+        server.abort();
+    }
+
+    /// S3a, the class: a content read never names the base branch. In
+    /// repository mode nothing reads `self.branch` or `active_branch()`; in
+    /// the provider, `active_branch()` is read only where the base itself is
+    /// meant (its protection, the pull requests into it, the working
+    /// branch's name and classification, the session summary), and
+    /// `self.branch` only where the configured branch is defined.
+    #[test]
+    fn a_content_read_never_names_the_base_branch() {
+        /// The functions of `source`, its tests left out, whose code names
+        /// `needle`.
+        fn functions_naming(source: &str, needle: &str) -> std::collections::BTreeSet<String> {
+            let code = source.split("#[cfg(test)]\nmod tests").next().unwrap();
+            let mut current = String::new();
+            let mut found = std::collections::BTreeSet::new();
+            for line in code.lines() {
+                let text = line.trim_start();
+                if text.starts_with("//") {
+                    continue;
+                }
+                if let Some((_, after)) = text.split_once("fn ") {
+                    if text.starts_with("fn ")
+                        || text.starts_with("pub")
+                        || text.starts_with("async ")
+                    {
+                        current = after.split(['(', '<']).next().unwrap_or("").to_string();
+                    }
+                }
+                // `needle` as a whole name: `self.branch_api_url` is not
+                // `self.branch`.
+                let named = line.match_indices(needle).any(|(at, _)| {
+                    !line[at + needle.len()..]
+                        .starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+                });
+                if named {
+                    found.insert(current.clone());
+                }
+            }
+            found
+        }
+        let set = |names: &[&str]| names.iter().map(|n| n.to_string()).collect();
+        let repo_mode = include_str!("repo_mode.rs");
+        assert_eq!(functions_naming(repo_mode, "self.branch"), set(&[]));
+        assert_eq!(functions_naming(repo_mode, "active_branch()"), set(&[]));
+        let provider = include_str!("mod.rs");
+        assert_eq!(
+            functions_naming(provider, "self.branch"),
+            set(&["active_branch", "connect", "fmt"])
+        );
+        assert_eq!(
+            functions_naming(provider, "active_branch()"),
+            set(&ACTIVE_BRANCH_READERS)
+        );
+    }
+
+    /// Where the provider reads the base branch, and why: see
+    /// `a_content_read_never_names_the_base_branch`. A new entry is a
+    /// reader of the base; anything that reads content uses
+    /// `content_branch()`.
+    const ACTIVE_BRANCH_READERS: [&str; 11] = [
+        // Its protection and the write mode it gives.
+        "connect",
+        "encoded_branch_for_path",
+        // The branch content is read from when no working branch is active.
+        "content_branch",
+        // Pull requests into the base, the merged one looked up by name.
+        "classify_working_branch",
+        "create_pull_request",
+        "ensure_pull_request",
+        // The working branch's name, and the base it is compared with at
+        // connect, before every write (S2 b) and at the fallback (whose tip
+        // `upload` reads, S3b).
+        "own_working_branch",
+        "refuse_stale_write",
+        "start_on_existing_working_branch",
+        "upload",
+        // The session summary names both.
+        "server_info",
+    ];
 }

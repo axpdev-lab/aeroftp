@@ -150,7 +150,8 @@ impl GitHubProvider {
 
         let http = self.client.client.clone();
         let token = format!("Bearer {}", self.client.token.expose_secret());
-        let branch = self.branch.clone();
+        // S3a: the dates of the tree being listed, the content branch's.
+        let branch = self.content_branch().to_string();
 
         // Collect (index, repo_path) pairs: strip leading "/" from entry paths
         let tasks: Vec<(usize, String)> = entries
@@ -221,7 +222,10 @@ impl GitHubProvider {
         if norm.is_empty() {
             format!(
                 "{}/repos/{}/{}/contents?ref={}",
-                API_BASE, self.owner, self.repo, self.branch
+                API_BASE,
+                self.owner,
+                self.repo,
+                self.encoded_content_branch_for_query()
             )
         } else {
             {
@@ -232,7 +236,11 @@ impl GitHubProvider {
                     .join("/");
                 format!(
                     "{}/repos/{}/{}/contents/{}?ref={}",
-                    API_BASE, self.owner, self.repo, encoded_path, self.branch
+                    API_BASE,
+                    self.owner,
+                    self.repo,
+                    encoded_path,
+                    self.encoded_content_branch_for_query()
                 )
             }
         }
@@ -243,7 +251,10 @@ impl GitHubProvider {
         let norm = normalize_path(path);
         format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            self.owner, self.repo, self.branch, norm
+            self.owner,
+            self.repo,
+            self.content_branch(),
+            norm
         )
     }
 
@@ -311,7 +322,10 @@ impl GitHubProvider {
     async fn fetch_full_tree(&mut self) -> Result<Vec<GitTreeEntry>, ProviderError> {
         let url = format!(
             "{}/repos/{}/{}/git/trees/{}?recursive=1",
-            API_BASE, self.owner, self.repo, self.branch
+            API_BASE,
+            self.owner,
+            self.repo,
+            urlencoding::encode(self.content_branch())
         );
 
         gh_log(&format!("Fetching full tree: {}", url));
@@ -499,7 +513,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -587,7 +601,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -643,7 +657,7 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -697,7 +711,7 @@ impl GitHubProvider {
         path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
-        self.refuse_when_poisoned()?;
+        self.refuse_stale_write().await?;
         let resolved = self.resolve_path(path);
 
         if let Some(virtual_path) = self.parse_virtual_path(&resolved) {
@@ -840,12 +854,18 @@ impl GitHubProvider {
         if is_private {
             format!(
                 "https://github.com/{}/{}/blob/{}/{}",
-                self.owner, self.repo, self.branch, norm
+                self.owner,
+                self.repo,
+                self.content_branch(),
+                norm
             )
         } else {
             format!(
                 "https://raw.githubusercontent.com/{}/{}/{}/{}",
-                self.owner, self.repo, self.branch, norm
+                self.owner,
+                self.repo,
+                self.content_branch(),
+                norm
             )
         }
     }
@@ -854,7 +874,10 @@ impl GitHubProvider {
     pub async fn get_head_sha(&mut self) -> Result<String, ProviderError> {
         let url = format!(
             "{}/repos/{}/{}/git/ref/heads/{}",
-            API_BASE, self.owner, self.repo, self.branch
+            API_BASE,
+            self.owner,
+            self.repo,
+            self.content_branch()
         );
 
         gh_log(&format!("get_head_sha: {}", url));
@@ -867,7 +890,8 @@ impl GitHubProvider {
 
         gh_log(&format!(
             "HEAD sha for {}: {}",
-            self.branch, ref_resp.object.sha
+            self.content_branch(),
+            ref_resp.object.sha
         ));
 
         Ok(ref_resp.object.sha)
