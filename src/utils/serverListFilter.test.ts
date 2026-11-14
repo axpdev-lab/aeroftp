@@ -228,3 +228,44 @@ describe('deriveProviderId LifetimeCloud host boundary', () => {
         expect(deriveProviderId(dav('https://nextcloud.example.com/'))).toBe('nextcloud');
     });
 });
+
+describe('deriveProviderId preset host rules cannot shadow one another', () => {
+    const dav = (host: string) => ({ name: 'd', host, username: 'alice', protocol: 'webdav' as const });
+    // Every rule keyword, as it could appear in a user name or a folder of the
+    // URL path. A host-bound rule claims its host whatever the path says.
+    const KEYWORDS = ['koofr', 'mail.ru', 'dav.puter.com', 'lifetimecloud.me', 'nextcloud', 'cloud.', 'seafile',
+        'jianguoyun', 'cloudme', 'drivehq', 'teracloud', 'filelu', 'felicloud', 'tab.digital'];
+    const HOST_RULES: Array<[string, string]> = [
+        ['app.koofr.net', 'koofr-webdav'],
+        ['webdav.cloud.mail.ru', 'mailru-cloud'],
+        ['dav.puter.com', 'puter-webdav'],
+        ['lifetimecloud.me', 'lifetimecloud'],
+    ];
+
+    it('claims each preset host whatever its path names', () => {
+        for (const [host, id] of HOST_RULES) {
+            for (const kw of KEYWORDS) {
+                expect(deriveProviderId(dav(`https://${host}/dav/${kw}/`)), `${host} /${kw}/`).toBe(id);
+            }
+        }
+        expect(deriveProviderId(dav('https://app.koofr.net/dav/Koofr'))).toBe('koofr-webdav');
+    });
+
+    it('claims Koofr on its domain only', () => {
+        expect(deriveProviderId(dav('https://app.koofr.net/dav/Koofr'))).toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://koofr.net/dav/'))).toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://koofr.evil.example/dav/'))).not.toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://notkoofr.net/dav/'))).not.toBe('koofr-webdav');
+        expect(deriveProviderId(dav('https://app.koofr.net.evil.example/dav/'))).not.toBe('koofr-webdav');
+    });
+
+    it('never gives a host-bound preset to a keyword found only in the path', () => {
+        // The remaining substring rules still read the whole URL on purpose
+        // (a self-hosted Nextcloud under a sub-path); the host-bound ones never do.
+        const hostBound = HOST_RULES.map(([, id]) => id);
+        for (const kw of KEYWORDS) {
+            const got = deriveProviderId(dav(`https://nas.example/dav/${kw}/`));
+            expect(hostBound, `/${kw}/ gave ${got}`).not.toContain(got);
+        }
+    });
+});
