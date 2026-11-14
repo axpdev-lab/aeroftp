@@ -521,13 +521,12 @@ pub struct CryptOverlayProvider {
     /// reported stays inside the overlay. Paths outside the anchor and its
     /// alias pass through as before.
     scope_alias: Option<String>,
-    /// Whether the server already said where a `cd` into the anchor
-    /// landed: one report per overlay, not one per folder change.
-    alias_probed: bool,
-    /// A `cd` into the anchor whose report could not be read. Every later
-    /// call that takes or returns a path asks again first and fails with the
-    /// server's error while the answer stays unread, so a path under the
-    /// server's name for the anchor is never mapped as outside it.
+    /// A `cd` into the anchor whose report could not be read, or read as no
+    /// usable name for the anchor. Every later call that takes or returns a
+    /// path asks again first and fails while the answer is missing or
+    /// unusable, so a path under the server's name for the anchor is never
+    /// mapped as outside it. A `cd` to an absolute path or a new connection
+    /// replaces it.
     alias_pending: Option<String>,
 }
 
@@ -616,7 +615,6 @@ impl CryptOverlayProvider {
             keys,
             scope: norm_anchor(scope),
             scope_alias: None,
-            alias_probed: false,
             alias_pending: None,
         }
     }
@@ -643,39 +641,47 @@ impl CryptOverlayProvider {
     /// After a `cd` to `wire` (the anchor or a folder below it), learn the
     /// anchor's alias from where the server says the session landed: the
     /// reported folder ends with the same path below the anchor, so what
-    /// precedes it is the anchor under another name. Asked once per overlay.
-    /// A report that is not such an alias (the root, an ancestor or a
-    /// descendant of the anchor, a different tail) teaches nothing.
+    /// precedes it is the anchor under another name. Asked at every `cd`
+    /// into the anchor, so a name that changes is learned again. A report
+    /// that names no usable alias (the root, an ancestor or a descendant of
+    /// the anchor, a different tail) leaves the `cd` unresolved.
     async fn learn_scope_alias(&mut self, wire: &str) {
         self.alias_pending = None;
-        if self.alias_probed || self.below_scope(wire).is_none() {
+        if self.below_scope(wire).is_none() {
             return;
         }
-        match self.inner.pwd().await {
-            Ok(reported) => self.learn_scope_alias_from(wire, &reported),
-            Err(_) => self.alias_pending = Some(wire.to_string()),
+        self.alias_pending = Some(wire.to_string());
+        if let Ok(reported) = self.inner.pwd().await {
+            let _ = self.note_reported_cwd(&reported);
         }
     }
 
     /// Ask again where a `cd` with an unread report landed, before a call
     /// that maps a path or returns paths the server built. While the answer
-    /// stays unread the call fails with the server's error: the overlay
-    /// cannot tell a path under the anchor's other name from one outside it.
+    /// is missing or unusable the call fails: the overlay cannot tell a path
+    /// under the anchor's other name from one outside it.
     async fn settle_scope_alias(&mut self) -> Result<(), ProviderError> {
         if self.alias_pending.is_none() {
             return Ok(());
         }
         let reported = self.inner.pwd().await?;
-        self.note_reported_cwd(&reported);
-        Ok(())
+        self.note_reported_cwd(&reported)
     }
 
     /// `reported` is where the server says the session is now: when a `cd`
-    /// into the anchor is still waiting for that answer, learn from it.
-    fn note_reported_cwd(&mut self, reported: &str) {
-        if let Some(wire) = self.alias_pending.take() {
-            self.learn_scope_alias_from(&wire, reported);
+    /// into the anchor is still waiting for that answer, learn from it, or
+    /// fail when it names no usable alias.
+    fn note_reported_cwd(&mut self, reported: &str) -> Result<(), ProviderError> {
+        let Some(wire) = self.alias_pending.take() else {
+            return Ok(());
+        };
+        if self.learn_scope_alias_from(&wire, reported) {
+            return Ok(());
         }
+        self.alias_pending = Some(wire.clone());
+        Err(ProviderError::InvalidPath(format!(
+            "the server reports the encrypted folder {wire} as {reported}, which cannot be told apart from folders outside it; open a folder by its full path"
+        )))
     }
 
     /// The part of the absolute `wire` below the anchor (`""` for the
@@ -694,25 +700,27 @@ impl CryptOverlayProvider {
     }
 
     /// Learn the alias from `reported`, the server's answer to where a
-    /// `cd` to `wire` landed. See [`Self::learn_scope_alias`].
-    fn learn_scope_alias_from(&mut self, wire: &str, reported: &str) {
+    /// `cd` to `wire` landed. False when the report names no usable alias.
+    /// See [`Self::learn_scope_alias`].
+    fn learn_scope_alias_from(&mut self, wire: &str, reported: &str) -> bool {
         let Some(below) = self.below_scope(wire) else {
-            return;
+            return true;
         };
-        self.alias_probed = true;
         let wire = norm_abs(wire);
         let reported = norm_abs(reported);
         if reported == wire {
-            return;
+            self.scope_alias = None;
+            return true;
         }
         let Some(alias) = reported.strip_suffix(below.as_str()).map(norm_abs) else {
-            return;
+            return false;
         };
         let related = |a: &str, b: &str| a == b || b.starts_with(&format!("{a}/"));
         if alias == "/" || related(&alias, &self.scope) || related(&self.scope, &alias) {
-            return;
+            return false;
         }
         self.scope_alias = Some(alias);
+        true
     }
 
     /// Map a caller plaintext path to the on-wire encrypted path.
@@ -835,7 +843,7 @@ impl CryptOverlayProvider {
     /// only when the current folder would otherwise be hidden.
     pub async fn cwd_in_encrypted_view(&mut self) -> Result<bool, ProviderError> {
         let reported = self.inner.pwd().await?;
-        self.note_reported_cwd(&reported);
+        self.note_reported_cwd(&reported)?;
         let enc_cwd = norm_abs(&self.unalias(&reported));
         let below = if self.scope.is_empty() {
             enc_cwd.trim_start_matches('/').to_string()
@@ -1246,10 +1254,16 @@ impl StorageProvider for CryptOverlayProvider {
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
+        // A new session starts outside any `cd` and may name the anchor
+        // differently: what the old one reported does not carry over.
+        self.alias_pending = None;
+        self.scope_alias = None;
         self.inner.connect().await
     }
 
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
+        self.alias_pending = None;
+        self.scope_alias = None;
         self.inner.disconnect().await
     }
 
@@ -1263,7 +1277,7 @@ impl StorageProvider for CryptOverlayProvider {
 
     async fn pwd(&mut self) -> Result<String, ProviderError> {
         let enc = self.inner.pwd().await?;
-        self.note_reported_cwd(&enc);
+        self.note_reported_cwd(&enc)?;
         Ok(decode_scoped(
             &self.keys,
             &self.scope,
@@ -1280,7 +1294,11 @@ impl StorageProvider for CryptOverlayProvider {
         if path == ".." {
             return self.cd_up().await;
         }
-        self.settle_scope_alias().await?;
+        // A relative target is relative to where the session is, which is
+        // unknown while a report is missing; an absolute one is not.
+        if !path.starts_with('/') {
+            self.settle_scope_alias().await?;
+        }
         let enc = self.map(path, true, AccessKind::Read)?;
         self.inner.cd(&enc).await?;
         self.learn_scope_alias(&enc).await;
@@ -6979,6 +6997,121 @@ pub(crate) mod tests {
                 );
                 let _ = tokio::fs::remove_dir_all(&dir).await;
             }
+        }
+    }
+
+    /// The states the anchor's alias can be in, beyond a probe that fails
+    /// once (`a_failed_alias_probe_is_resolved_by_the_next_pwd`) or twice
+    /// (`every_path_call_refuses_while_the_server_does_not_say_where_it_is`),
+    /// each ending with paths under the alias mapped to the anchor or refused.
+    #[tokio::test]
+    async fn every_alias_state_ends_mapped_or_refused() {
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        fn overlay(keys: OverlayKeys) -> CryptOverlayProvider {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.seed_raw_dir("/srv/other");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs")
+        }
+        for (label, keys) in both_kinds() {
+            let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            let local = local.to_str().unwrap();
+            tokio::fs::write(local, b"never in clear").await.unwrap();
+            let encrypted_under_anchor = |p: &mut CryptOverlayProvider| -> usize {
+                p.inner
+                    .as_any_mut()
+                    .downcast_mut::<MemProvider>()
+                    .unwrap()
+                    .raw_paths()
+                    .iter()
+                    .filter(|k| k.starts_with("/home/u/docs/") && !k.contains("secret"))
+                    .count()
+            };
+
+            // Never probed: the overlay armed on a session already standing
+            // in the anchor under its alias. The view check says it is not
+            // in the encrypted view, which makes the window `cd` to the
+            // anchor (and so probe) before anything is shown or written.
+            let mut p = overlay(keys.clone());
+            *mem_of(&mut p).cwd.lock().unwrap() = "/home/u/docs".to_string();
+            assert!(!p.cwd_in_encrypted_view().await.unwrap(), "{label}");
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.cwd_in_encrypted_view().await.unwrap(), "{label}");
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+
+            // A different alias later: every `cd` into the anchor asks again.
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/mnt/docs"));
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            p.upload(local, "/mnt/docs/secret.txt", None).await.unwrap();
+            assert_eq!(encrypted_under_anchor(&mut p), 1, "{label}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/mnt/docs"), "{label}");
+            // ... and the server naming the anchor itself drops the alias.
+            mem_of(&mut p).reports_as = None;
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.scope_alias, None, "{label}");
+
+            // Disconnect and reconnect while a probe is pending: the new
+            // session starts with nothing learned or pending, and the `cd`
+            // that restores the folder probes again.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).pwd_failures = 1;
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.alias_pending.is_some(), "{label}");
+            p.disconnect().await.unwrap();
+            p.connect().await.unwrap();
+            assert!(
+                p.alias_pending.is_none() && p.scope_alias.is_none(),
+                "{label}"
+            );
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            // ... and a reconnect after the alias was learned forgets it too.
+            p.connect().await.unwrap();
+            assert_eq!(p.scope_alias, None, "{label}");
+
+            // The anchor removed on the server while a probe is pending: the
+            // next call still asks the server where the session is and maps
+            // by its answer; nothing depends on the folder still existing.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).pwd_failures = 1;
+            p.cd("/home/u/docs").await.unwrap();
+            mem_of(&mut p)
+                .dirs
+                .lock()
+                .unwrap()
+                .retain(|d| d != "/home/u/docs");
+            assert!(p.list(".").await.unwrap().is_empty(), "{label}");
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+
+            // A report that names no usable alias (here the root): every
+            // path call is refused, and a `cd` to a full path still works.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/"));
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.pwd().await.is_err(), "{label}");
+            assert!(p.list(".").await.is_err(), "{label}");
+            assert!(
+                p.upload(local, "/secret.txt", None).await.is_err(),
+                "{label}"
+            );
+            assert!(p.cd("sub").await.is_err(), "{label}");
+            assert!(mem_of(&mut p).raw_paths().is_empty(), "{label}");
+            p.cd("/srv/other").await.unwrap();
+            assert!(p.list("/srv/other").await.unwrap().is_empty(), "{label}");
+            p.upload(local, "/srv/other/plain.txt", None).await.unwrap();
+            assert_eq!(
+                mem_of(&mut p).raw_bytes("/srv/other/plain.txt").as_deref(),
+                Some(&b"never in clear"[..]),
+                "{label}"
+            );
+
+            let _ = tokio::fs::remove_dir_all(&dir).await;
         }
     }
 
