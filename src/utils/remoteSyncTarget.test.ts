@@ -1465,3 +1465,78 @@ it('deletes nothing when Stop comes while the commit message is asked (K5)', asy
     const destructive = invoke.mock.calls.filter(([cmd]) => /delete/.test(cmd));
     expect(destructive).toEqual([]);
 });
+
+/**
+ * E2: every command a run issues after the sync-start gate carries the run's
+ * target: folder creation, backup moves, bulk and single transfers, deletes,
+ * folder removal and EC, on a provider (single and bulk) and on a legacy FTP
+ * session. The backend refuses each one when that target is no longer the
+ * live one (`every_run_command_after_the_gate_refuses_a_switched_target`,
+ * `stale_gui_bulk_is_refused_before_the_replacement_provider_is_used`).
+ */
+describe('the target every run command carries (E2)', () => {
+    const AFTER_GATE = new Set([
+        'provider_mkdir', 'create_remote_folder', 'create_local_folder',
+        'sync_backup_archive_remote', 'sync_backup_archive_local', 'sync_backup_verify_receipt',
+        'provider_sync_transfer_bulk', 'provider_upload_file', 'provider_download_file', 'upload_file', 'download_file',
+        'provider_delete_file', 'delete_remote_file', 'delete_local_file', 'sync_remove_empty_dir',
+        'sync_ec_generate', 'sync_ec_verify_repair',
+    ]);
+    const run = async (extra: Partial<RemoteSyncConfig>, bulk: boolean, sent: { cmd: string; target: unknown }[]) => {
+        const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+            if (AFTER_GATE.has(cmd)) {
+                const params = args?.params as Record<string, unknown> | undefined;
+                sent.push({ cmd, target: params ? params.expected_gui_target : args?.expectedGuiTarget });
+            }
+            switch (cmd) {
+                case 'sync_backup_run_stamp': return 'stamp' as T;
+                case 'sync_backup_archive_remote':
+                case 'sync_backup_archive_local': return `/kept/${String(args?.rel)}` as T;
+                case 'sync_backup_verify_receipt': return true as T;
+                case 'sync_remove_empty_dir': return 'removed' as T;
+                case 'sync_ec_generate': return { status: 'generated' } as T;
+                case 'sync_ec_verify_repair': return { status: 'verified' } as T;
+                case 'provider_bulk_support': return { upload: bulk, download: bulk } as T;
+                case 'provider_sync_transfer_bulk': return (args?.items as unknown[]).map(() => ({ status: 'completed' })) as T;
+                case 'local_target_problems': return [] as T;
+                default: return undefined as T;
+            }
+        };
+        const report = await runRemoteSync([
+            file('up.txt', 'upload', { overwritesExisting: true }),
+            file('docs/new.txt', 'upload'),
+            file('down.txt', 'download', { overwritesExisting: true }),
+            file('sub/fetched.txt', 'download'),
+            file('gone.txt', 'delete-remote'),
+            file('old.txt', 'delete-local'),
+            file('emptied', 'delete-remote', { isDir: true }),
+        ], { remote: ['made-remote'], local: ['made-local'] },
+        config({ errorCorrection: { enabled: true, pct: 10 }, ...extra }), {}, {
+            invoke: wrapIntentInvoke(invoke), remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => {} },
+            delay: async () => {}, now: () => 0, makeId: () => 'e2-target', writeIndex: true,
+        });
+        return report;
+    };
+
+    it.each([
+        ['a provider, file by file', {}, false, ['provider_mkdir', 'create_local_folder', 'sync_backup_archive_remote', 'sync_backup_archive_local',
+            'provider_upload_file', 'provider_download_file', 'provider_delete_file', 'delete_local_file', 'sync_remove_empty_dir', 'sync_ec_generate', 'sync_ec_verify_repair']],
+        ['a provider, in bulk', {}, true, ['provider_mkdir', 'create_local_folder', 'sync_backup_archive_remote', 'sync_backup_archive_local',
+            'provider_sync_transfer_bulk', 'provider_delete_file', 'delete_local_file', 'sync_remove_empty_dir', 'sync_ec_generate', 'sync_ec_verify_repair']],
+        ['a legacy FTP session', { isProvider: false, isFtp: true }, false, ['create_remote_folder', 'create_local_folder', 'sync_backup_archive_remote',
+            'sync_backup_archive_local', 'upload_file', 'download_file', 'delete_remote_file', 'delete_local_file', 'sync_remove_empty_dir',
+            'sync_ec_generate', 'sync_ec_verify_repair']],
+    ] as const)('on %s', async (_name, extra, bulk, expected) => {
+        // With a versioned backup a replaced or deleted file is moved into
+        // it; without one it is deleted: both runs, one list of calls.
+        const sent: { cmd: string; target: unknown }[] = [];
+        for (const versionedBackup of [{ dir: '.versions' }, null]) {
+            const report = await run({ versionedBackup, ...extra }, bulk, sent);
+            expect(report.errors).toEqual([]);
+        }
+        // The run reached every command family it has for this session.
+        expect([...new Set(sent.map(call => call.cmd))].sort()).toEqual([...expected].sort());
+        // And each call of each carries the run's target.
+        expect(sent.filter(call => call.target !== 1)).toEqual([]);
+    });
+});

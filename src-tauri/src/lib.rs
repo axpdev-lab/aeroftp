@@ -3814,8 +3814,8 @@ async fn download_file(
     )
 }
 
-async fn download_file_for_ipc(
-    app: AppHandle,
+async fn download_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadParams,
@@ -4008,8 +4008,8 @@ pub(crate) async fn run_owning_admission<T: Send + 'static>(
     .map_err(|e| format!("The command's work ended abnormally: {e}"))
 }
 
-async fn upload_file_for_ipc(
-    app: AppHandle,
+async fn upload_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,

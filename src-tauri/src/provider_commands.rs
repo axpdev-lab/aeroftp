@@ -19703,6 +19703,448 @@ mod tests {
         );
     }
 
+    /// The connection a sync run was gated on is replaced after the gate:
+    /// every call of B is counted, and any is a write to the wrong server.
+    struct Replacement(Arc<AtomicUsize>);
+
+    impl Replacement {
+        fn touched(&self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for Replacement {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "replacement".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.touched();
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            self.touched();
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.touched();
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.touched();
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            self.touched();
+            Ok(1)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            self.touched();
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            self.touched();
+            Ok("replacement".to_string())
+        }
+    }
+
+    /// E2: the connection a sync run was gated on (GUI target 0) is replaced
+    /// by B after the gate, under the owner gate as every connect does. Each
+    /// command the runner issues after the gate is called as the webview
+    /// calls it, with the run's expected target (`expectedGuiTarget`, or
+    /// `params.expected_gui_target` for the legacy transfers): directory
+    /// creation, backup moves, single transfers, deletes, folder removal and
+    /// EC. Each is refused with the owner change, and neither B, the legacy
+    /// FTP session nor the local filesystem is touched. The bulk transfer is
+    /// `provider_bulk_commands::stale_gui_bulk_is_refused_before_the_replacement_provider_is_used`.
+    #[tokio::test]
+    async fn every_run_command_after_the_gate_refuses_a_switched_target() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_state = ProviderState::new();
+        {
+            let _switch = provider_state
+                .transfer_owner_write(Duration::from_secs(1))
+                .await
+                .unwrap();
+            *provider_state.provider.lock().await = Some(Box::new(Replacement(calls.clone())));
+            provider_state.advance_gui_target();
+        }
+        app.manage(provider_state);
+        app.manage(crate::AppState::new());
+        let handle = app.handle().clone();
+        // The run's target, read at the gate.
+        let gated = Some(0);
+        let dir = tempfile::tempdir().unwrap();
+        let local = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
+        std::fs::write(local("kept.txt"), b"kept").unwrap();
+        std::fs::create_dir(local("empty")).unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+        let stamp = "20260925T070000Z".to_string();
+        let versions = ".aeroftp-versions".to_string();
+        let ec = |relative: &str| {
+            (
+                local(relative),
+                format!("/remote/{relative}"),
+                relative.to_string(),
+            )
+        };
+
+        let mut answers: Vec<(&str, Result<(), String>)> = Vec::new();
+        // Directory creation.
+        answers.push((
+            "provider_mkdir",
+            provider_mkdir(app.state(), "/remote/d".into(), None, gated, None).await,
+        ));
+        answers.push((
+            "create_remote_folder",
+            crate::create_remote_folder(app.state(), app.state(), "/remote/d".into(), gated, None)
+                .await,
+        ));
+        answers.push((
+            "create_local_folder",
+            crate::create_local_folder(local("made"), app.state(), gated, Some(true), None).await,
+        ));
+        // Backup moves.
+        answers.push((
+            "sync_backup_archive_remote",
+            crate::sync_backup_archive_remote(
+                app.state(),
+                app.state(),
+                true,
+                "/remote".into(),
+                versions.clone(),
+                stamp.clone(),
+                "docs/a.txt".into(),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_backup_archive_local",
+            crate::sync_backup_archive_local(
+                app.state(),
+                gated,
+                Some(true),
+                root.clone(),
+                versions.clone(),
+                stamp.clone(),
+                "kept.txt".into(),
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_backup_verify_receipt",
+            crate::sync_backup_verify_receipt(
+                app.state(),
+                app.state(),
+                "provider".into(),
+                "/remote".into(),
+                versions.clone(),
+                stamp.clone(),
+                "docs/a.txt".into(),
+                format!("/remote/{versions}/{stamp}/docs/a.txt"),
+                gated,
+            )
+            .await
+            .map(drop),
+        ));
+        // Single transfers, provider and legacy FTP.
+        answers.push((
+            "provider_upload_file",
+            provider_upload_file(
+                handle.clone(),
+                app.state(),
+                local("kept.txt"),
+                "/remote/up.txt".into(),
+                None,
+                Some(false),
+                None,
+                None,
+                gated,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "provider_download_file",
+            provider_download_file(
+                handle.clone(),
+                app.state(),
+                "/remote/down.txt".into(),
+                local("down.txt"),
+                None,
+                Some(false),
+                None,
+                None,
+                gated,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "upload_file",
+            ipc_result(
+                "upload_file",
+                crate::upload_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    app.state(),
+                    crate::UploadParams {
+                        expected_gui_target: gated,
+                        local_path: local("kept.txt"),
+                        remote_path: "/remote/up.txt".into(),
+                        use_delta: false,
+                    },
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        answers.push((
+            "download_file",
+            ipc_result(
+                "download_file",
+                crate::download_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    app.state(),
+                    crate::DownloadParams {
+                        expected_gui_target: gated,
+                        remote_path: "/remote/down.txt".into(),
+                        local_path: local("legacy-down.txt"),
+                        modified: None,
+                        use_delta: false,
+                    },
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        // Deletes and folder removal.
+        answers.push((
+            "provider_delete_file",
+            ipc_result(
+                "provider_delete_file",
+                delete_file_for_ipc(
+                    &app.state::<ProviderState>(),
+                    "/remote/a".into(),
+                    None,
+                    gated,
+                    None,
+                )
+                .await,
+            ),
+        ));
+        answers.push((
+            "delete_remote_file",
+            ipc_result(
+                "delete_remote_file",
+                crate::delete_remote_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    Arc::new(AtomicBool::new(false)),
+                    app.state(),
+                    "/remote/a".into(),
+                    false,
+                    gated,
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        answers.push((
+            "delete_local_file",
+            crate::delete_local_file_with(
+                handle.clone(),
+                app.state(),
+                local("kept.txt"),
+                app.state(),
+                gated,
+                Some(true),
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        for target in ["provider", "local"] {
+            let path = if target == "local" {
+                local("empty")
+            } else {
+                "/remote/empty".into()
+            };
+            answers.push((
+                "sync_remove_empty_dir",
+                ipc_result(
+                    "sync_remove_empty_dir",
+                    crate::sync_remove_empty_dir_for_ipc(
+                        app.state(),
+                        app.state(),
+                        target.into(),
+                        path,
+                        gated,
+                        crate::sync_run_lease::admit(None).unwrap(),
+                    )
+                    .await,
+                )
+                .map(drop),
+            ));
+        }
+        // EC sidecars.
+        let (ec_local, ec_remote, ec_relative) = ec("kept.txt");
+        answers.push((
+            "sync_ec_generate",
+            crate::sync_ec_generate(
+                app.state(),
+                app.state(),
+                ec_local.clone(),
+                ec_remote.clone(),
+                ec_relative.clone(),
+                Some(10),
+                None,
+                Some(true),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_ec_verify_repair",
+            crate::sync_ec_verify_repair(
+                app.state(),
+                app.state(),
+                ec_local,
+                ec_remote,
+                ec_relative,
+                None,
+                None,
+                Some(true),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+
+        assert_eq!(answers.len(), 17);
+        // Every command that was not refused by the target, listed at once.
+        let not_refused: Vec<String> = answers
+            .iter()
+            .filter_map(|(command, answer)| match answer {
+                Err(error) if error.contains(CONNECTION_CHANGED_MARKER) => None,
+                Err(error) => Some(format!("{command}: {error}")),
+                Ok(()) => Some(format!("{command}: ran")),
+            })
+            .collect();
+        assert!(
+            not_refused.is_empty(),
+            "not refused by the switched target: {not_refused:#?}"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "the replacement was used");
+        // Nothing local was created, moved or deleted.
+        let mut left: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["empty", "kept.txt"]);
+        assert_eq!(std::fs::read(local("kept.txt")).unwrap(), b"kept");
+        // The same target read after the switch is accepted: the refusal is
+        // the epoch, not the commands.
+        assert!(app
+            .state::<ProviderState>()
+            .pin_gui_target(Some(1))
+            .await
+            .is_ok());
+    }
+
     /// A provider whose mkdir fails with a given error and whose folder is
     /// or is not there, for `folder_is_there_after_failed_mkdir`.
     struct MkdirRefusal {
