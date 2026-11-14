@@ -69,128 +69,73 @@ const isAsciiLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 9
 const isSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
 const isSchemeChar = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57)
     || code === 43 || code === 45 || code === 46;
-/** Backslashes that run back from just before `end`. */
-const backslashesBefore = (text: string, end: number): number => {
-    let n = 0;
-    while (end - 1 - n >= 0 && text.charCodeAt(end - 1 - n) === 92) n += 1;
-    return n;
-};
-
-/**
- * The escape level of a quote preceded by `run` backslashes: 0 a real quote,
- * 1 a quote of JSON inside a string (`\"`), 2 one more level down
- * (`\\\"`). Each odd run is one escape; an even run is escaped backslashes
- * before a quote of that level (`\\"` is level 0).
- */
-const quoteLevel = (run: number): number => {
-    let level = 0;
-    while (run % 2 === 1) {
-        level += 1;
-        run = (run - 1) / 2;
+/** Whether the whole text is one valid JSON value, by the real parser
+ *  (validation only: nothing is re-serialized, the output keeps the input). */
+const isJsonDocument = (text: string): boolean => {
+    try {
+        JSON.parse(text);
+        return true;
+    } catch {
+        return false;
     }
-    return level;
 };
 
-/** One open string: its escape level, whether a JSON value opened it, and
- *  where its content starts. */
-interface OpenString {
-    level: number;
-    structural: boolean;
-    content: number;
-}
-
-// Whether the text from `from` (spaces skipped) is a serialized JSON
-// document: it starts with `{` or `[`.
-const startsAJsonDocument = (text: string, from: number): boolean => {
+/** In valid JSON, the index of the quote that ends the string token whose
+ *  content starts at `from` (a backslash escapes the next character). */
+const stringTokenEnd = (text: string, from: number): number => {
     let k = from;
-    while (k < text.length && isSpace(text.charCodeAt(k))) k += 1;
-    const code = text.charCodeAt(k);
-    return code === 123 || code === 91;
-};
-
-// The character before the quote whose escapes start at `from`, spaces
-// skipped; -1 at the start of the text.
-const previousCode = (text: string, from: number): number => {
-    let k = from - 1;
-    while (k >= 0 && isSpace(text.charCodeAt(k))) k -= 1;
-    return k < 0 ? -1 : text.charCodeAt(k);
-};
-
-/**
- * Whether a quote of `level`, its escapes starting at `from`, opens a
- * STRUCTURAL string (a JSON value), inside `parent` (the innermost open
- * string, if any). Anything not provably structural is prose (C3):
- * - level 0 with nothing open: a value after `{`, `[`, `:`, `,`, `=`, or at
- *   the start of the text (`key: "..."`, `key="..."`, a JSON document);
- * - a deeper level: only inside a serialized JSON document, i.e. the
- *   enclosing string's content (the whole text when none is open) starts
- *   with `{` or `[`, and only where JSON puts a value or a key (after `{`,
- *   `[`, `:`, `,`). `"note: \"hello` is prose: its string is a sentence.
- */
-const opensAValue = (text: string, from: number, level: number, parent: OpenString | undefined): boolean => {
-    const before = previousCode(text, from);
-    const structuralSpot = before === 123 || before === 91 || before === 58 || before === 44;
-    if (level === 0 && !parent) return before === -1 || structuralSpot || before === 61;
-    if (parent && parent.level !== level - 1) return false;
-    const document = parent ? startsAJsonDocument(text, parent.content) : startsAJsonDocument(text, 0);
-    return document && (structuralSpot || before === -1);
+    while (k < text.length) {
+        const code = text.charCodeAt(k);
+        if (code === 92) {
+            k += 2;
+            continue;
+        }
+        if (code === 34) return k;
+        k += 1;
+    }
+    return text.length;
 };
 
 /**
  * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
  * URLs in one pass over the text, so its time is linear whatever the input.
- * After `scheme://` the authority runs to the first `/`, `?`, `#`, ASCII
- * space or unescaped double quote (a backslash escapes the next character,
- * as inside a JSON string). Which quote ends it is decided by the strings
- * open around the URL (Q3, A; the cases of src/shared/redaction-cases.json
- * cover each cell). Leaking is the only failure that matters: when the
- * state is uncertain, the userinfo is masked to the last `@` before the
- * first terminator that is certain.
+ * With an `@` in the authority, the userinfo is everything up to the LAST
+ * `@`, and all of it becomes the placeholder, user name included: a token is
+ * often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An authority
+ * without `@` (`host:443`) stays.
  *
- * From the start of the text, every quote outside an authority already read
- * is tracked on a stack of open strings. A quote of level L (0 `"`, 1 `\"`,
- * 2 `\\\"`, see `quoteLevel`) closes the open string of level L when there
- * is one (and any deeper one left open inside it); otherwise it opens one,
- * STRUCTURAL only when it provably opens a JSON value (`opensAValue`: a
- * deeper level only inside a string whose content is a JSON document) and
- * PROSE otherwise (`said \"hi\"`, `note: \"hello`). Anything not provably
- * structural is prose, and over-masking a log field is accepted.
- *
- * | strings open when the scheme starts        | a quote ends the authority          |
- * |--------------------------------------------|-------------------------------------|
- * | none (bare text, or between JSON values)   | never: only `/ ? # space` do        |
- * | structural level 0 (plain JSON)            | `"`; `\"` is the value's            |
- * | structural level 1 (JSON in a string)      | `\"` or `"`; `\\\"` is the value's  |
- * | structural level 2                         | a quote of level 2, 1 or 0          |
- * | a prose level on top (`he said \"hi then`) | only one closing a structural level |
- *
- * A quote ends the authority when its level is open as a STRUCTURAL string:
- * it is certainly that string's end. A prose level is never trusted: an
- * unbalanced `\"` in a sentence cannot cut a password short.
- * With an `@` in it, the userinfo is everything up
- * to the LAST `@`, and all of it becomes the placeholder, user name included:
- * a token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
- * authority without `@` (`host:443`) stays.
- * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs.
+ * Where the authority ends (D1). Structure is never inferred from
+ * characters; the real parser decides once whether the WHOLE text is JSON:
+ * - valid JSON (`JSON.parse`): a plain string tokenizer, exact on valid
+ *   JSON, gives each URL the string token it sits in. The authority ends at
+ *   `/`, `?`, `#`, whitespace, or the end of that token; inside the token
+ *   no quote ends it (they are all escaped content);
+ * - anything else is plain text: no quote ever ends the authority, only
+ *   `/`, `?`, `#`, whitespace or the end of the text.
+ * Accepted consequence: in text that is not JSON as a whole (a log prefix
+ * before JSON, raw escaped JSON), a URL with no path followed by a later
+ * `@` in the same unbroken run over-masks into what follows. Nothing can
+ * leak: leaking is the only failure that matters. No `key=` / `key:` rule
+ * remains: in plain text the quote around such a value never ends the
+ * authority, and the space or `/` after it does.
+ * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs;
+ * both run src/shared/redaction-cases.json.
  */
 export function redactUrlUserinfo(text: string, anyScheme = false): string {
+    const json = isJsonDocument(text);
     let out = '';
     let copied = 0;
     let i = 0;
-    // The strings open at the scan's position, from the quotes read outside
-    // the authorities (`untracked`).
-    const open: OpenString[] = [];
-    let untracked = 0;
+    // The string token the scan is in (valid JSON only): its closing quote.
+    let tokenEnd = -1;
     while (i + 3 <= text.length) {
-        if (text.charCodeAt(i) === 34 && i >= untracked) {
-            const run = backslashesBefore(text, i);
-            const level = quoteLevel(run);
-            let at = open.length - 1;
-            while (at >= 0 && open[at].level !== level) at -= 1;
-            if (at >= 0) open.length = at;
-            else open.push({ level, structural: opensAValue(text, i - run, level, open[open.length - 1]), content: i + 1 });
+        const code = text.charCodeAt(i);
+        if (json && i > tokenEnd && code === 34) {
+            tokenEnd = stringTokenEnd(text, i + 1);
+            i += 1;
+            continue;
         }
-        if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
+        if (code !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;
             continue;
         }
@@ -208,29 +153,19 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
             continue;
         }
         const authority = i + 3;
+        const limit = json && i < tokenEnd ? tokenEnd : text.length;
         let k = authority;
-        let run = 0;
         let lastAt = -1;
-        while (k < text.length) {
-            const code = text.charCodeAt(k);
-            if (code === 47 || code === 63 || code === 35 || isSpace(code)) break;
-            if (code === 34) {
-                const quote = quoteLevel(run);
-                if (open.some((string) => string.structural && string.level === quote)) break;
-            }
-            if (code === 64) lastAt = k;
-            run = code === 92 ? run + 1 : 0;
+        while (k < limit) {
+            const c = text.charCodeAt(k);
+            if (c === 47 || c === 63 || c === 35 || isSpace(c)) break;
+            if (c === 64) lastAt = k;
             k += 1;
         }
-        // The quotes of this authority are the value's: they never set the
-        // level for a later URL.
-        untracked = k;
         if (lastAt < 0) {
-            // No userinfo: go on right after this `://`. The authority ended
-            // at a `/`, and a scheme whose `://` starts just before it (one
-            // past an escaped JSON quote, `\",\"b\":\"https://`) is still
-            // scanned (L7). Nothing between holds a `://`, so each character
-            // is read at most twice.
+            // No userinfo: go on right after this `://`. Nothing between it
+            // and the authority's end holds a `://` that matters twice, so
+            // each character is read at most twice.
             i = authority;
             continue;
         }

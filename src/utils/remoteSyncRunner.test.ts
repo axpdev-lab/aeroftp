@@ -9,6 +9,8 @@ import {
     filesFromJournal,
     retryPolicyForSpeed,
     deltaGateDecision,
+    runDeltaGate,
+    type DeltaGateDeps,
     type SyncRunFile,
     type SyncRunDirs,
     type RemoteSyncConfig,
@@ -2046,5 +2048,96 @@ describe('deltaGateDecision', () => {
         [{ eligible: false }, false, 'ask'],
     ] as const)('%j with skip=%s: %s', (verdict, skip, expected) => {
         expect(deltaGateDecision(verdict, skip)).toBe(expected);
+    });
+});
+
+// D2: the gate around the probe. The generation read at the request is
+// compared before every way out; a changed connection launches nothing,
+// and a failed probe launches nothing either (fail closed).
+describe('runDeltaGate', () => {
+    type Verdict = Awaited<ReturnType<DeltaGateDeps['probe']>>;
+    const eligible: Verdict = { eligible: true, reason: null, hard_error: null, server_identity: null };
+    const unavailable: Verdict = { eligible: false, reason: 'no rsync', hard_error: null, server_identity: null };
+
+    /** A gate whose probe answers only when the test releases it. */
+    const gate = (verdict: Verdict | Error, skip: boolean) => {
+        let generation = 1;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        let onContinue: (() => void) | undefined;
+        const deps = {
+            requested: Promise.resolve(1),
+            generation: vi.fn(async () => generation),
+            skipPrompt: vi.fn(async () => skip),
+            probe: vi.fn(async () => {
+                await held;
+                if (verdict instanceof Error) throw verdict;
+                return verdict;
+            }),
+            launch: vi.fn(),
+            refuse: vi.fn(),
+            failed: vi.fn(),
+            changed: vi.fn(),
+            ask: vi.fn((_verdict: Verdict, answer: () => void) => { onContinue = answer; }),
+        } satisfies DeltaGateDeps;
+        return { deps, switchConnection: () => { generation += 1; }, release, answer: () => onContinue?.() };
+    };
+
+    it.each([
+        ['an opted-out profile', unavailable, true],
+        ['an eligible verdict', eligible, false],
+        ['a failed probe', new Error('probe failed'), false],
+        ['an unavailable verdict (no question shown)', unavailable, false],
+    ] as const)('launches nothing and asks nothing after a switch, for %s', async (_case, verdict, skip) => {
+        const g = gate(verdict, skip);
+        const pending = runDeltaGate(g.deps);
+        await vi.waitFor(() => expect(g.deps.probe).toHaveBeenCalled());
+        g.switchConnection();
+        g.release();
+        await pending;
+        expect(g.deps.launch).not.toHaveBeenCalled();
+        expect(g.deps.ask).not.toHaveBeenCalled();
+        expect(g.deps.failed).not.toHaveBeenCalled();
+        expect(g.deps.changed).toHaveBeenCalledTimes(1);
+    });
+
+    it('launches nothing from Continue answered after a switch', async () => {
+        const g = gate(unavailable, false);
+        g.release();
+        await runDeltaGate(g.deps);
+        expect(g.deps.ask).toHaveBeenCalledTimes(1);
+        g.switchConnection();
+        g.answer();
+        await vi.waitFor(() => expect(g.deps.changed).toHaveBeenCalledTimes(1));
+        expect(g.deps.launch).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the probe command fails, on the same connection', async () => {
+        const g = gate(new Error('probe failed'), true);
+        g.release();
+        await runDeltaGate(g.deps);
+        expect(g.deps.failed).toHaveBeenCalledTimes(1);
+        expect(g.deps.launch).not.toHaveBeenCalled();
+    });
+
+    it('launches on the same connection, and stops on a refusal even without a profile', async () => {
+        for (const [verdict, skip] of [[eligible, false], [unavailable, true]] as const) {
+            const g = gate(verdict, skip);
+            g.release();
+            await runDeltaGate(g.deps);
+            expect(g.deps.launch).toHaveBeenCalledTimes(1);
+        }
+        const answered = gate(unavailable, false);
+        answered.release();
+        await runDeltaGate(answered.deps);
+        answered.answer();
+        await vi.waitFor(() => expect(answered.deps.launch).toHaveBeenCalledTimes(1));
+        // An ad-hoc session (no saved profile: the question is off) still
+        // stops on a hard refusal.
+        const adHoc = gate({ ...unavailable, hard_error: 'PinnedKeyMismatch' }, true);
+        adHoc.release();
+        await runDeltaGate(adHoc.deps);
+        expect(adHoc.deps.refuse).toHaveBeenCalledWith('PinnedKeyMismatch');
+        expect(adHoc.deps.launch).not.toHaveBeenCalled();
     });
 });

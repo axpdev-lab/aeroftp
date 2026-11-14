@@ -460,7 +460,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, deltaGateDecision, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, runDeltaGate, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -12691,6 +12691,14 @@ const App: React.FC = () => {
     runDirs: SyncRunDirs,
     opts: ConnectedRemoteRunOptions,
   ): void => {
+    // D2 (Q5): the connection generation, asked for first, before the run's
+    // plan is built from the current panels; the gate compares it before
+    // anything is launched. Read only for an SFTP run (the one that waits).
+    const generationAtRequest = activeUnifiedRemoteProfile?.protocol === 'sftp'
+      ? invoke<number>('provider_connection_generation')
+      : Promise.resolve(0);
+    // An unread rejection would surface as unhandled when no gate awaits it.
+    generationAtRequest.catch(() => undefined);
     const nothingToRun =
       runFiles.length === 0
       && runDirs.remote.length === 0
@@ -12807,33 +12815,35 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the question about
-    // continuing without delta, never the probe: a hard refusal stops the
-    // run before any write (C2, `deltaGateDecision`).
-    const shouldProbe = protocol === 'sftp' && !!opts.profileId;
-    if (!shouldProbe) {
+    // unavailable. Every SFTP session is probed, an ad-hoc one (no saved
+    // profile) too: it reaches native delta and pins its login key like any
+    // other. A saved per-server opt-out, or having no saved profile, skips
+    // the question about continuing without delta, never the probe: a hard
+    // refusal stops the run before any write (C2, D2, `runDeltaGate`).
+    if (protocol !== 'sftp') {
       launchRun();
       return;
     }
-
-    void (async () => {
-      try {
-        // The saved profiles only tell whether to ask; unreadable, the
-        // question stays on and the probe runs either way.
-        const stored = await loadSavedServerProfiles().catch(() => [] as Awaited<ReturnType<typeof loadSavedServerProfiles>>);
-        const profile = stored.find((p) => p.id === opts.profileId);
-        const verdict = await invoke<DeltaEligibilityProbeResult>(
-          'sftp_probe_delta_eligibility',
+    void runDeltaGate({
+      requested: generationAtRequest,
+      generation: () => invoke<number>('provider_connection_generation'),
+      skipPrompt: async () => !opts.profileId || (await loadSavedServerProfiles())
+        .find((p) => p.id === opts.profileId)?.skipDeltaEligibilityPrompt === true,
+      probe: () => invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility'),
+      launch: launchRun,
+      refuse: (message) => notify.error(t('aerosync.title'), message),
+      failed: (err) => {
+        if (debugMode) {
+          // eslint-disable-next-line no-console
+          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
+        }
+        notify.error(
+          t('aerosync.deltaEligibility.title'),
+          `${t('aerosync.deltaEligibility.heading')} ${t('common.retry')}`,
         );
-        const decision = deltaGateDecision(verdict, profile?.skipDeltaEligibilityPrompt === true);
-        if (decision === 'stop') {
-          notify.error(t('aerosync.title'), verdict.hard_error ?? '');
-          return;
-        }
-        if (decision === 'launch') {
-          launchRun();
-          return;
-        }
+      },
+      changed: () => notify.error(t('aerosync.title'), t('toast.remoteTargetChanged')),
+      ask: (verdict, onContinue) => {
         const reason = verdict.reason
           || t('aerosync.deltaEligibility.heading')
           || 'Delta sync unavailable for this server.';
@@ -12844,17 +12854,10 @@ const App: React.FC = () => {
           reason,
           serverLabel,
           profileId: opts.profileId!,
-          onContinue: () => { launchRun(); },
+          onContinue,
         });
-      } catch (err) {
-        // Probe failures should not block the run; log and proceed.
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
-        }
-        launchRun();
-      }
-    })();
+      },
+    });
   });
 
   // GAP-10: shared local-local sync launcher. A dual-local AeroFile pair has

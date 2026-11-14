@@ -405,95 +405,46 @@ fn redaction_patterns() -> &'static [(regex::Regex, Replacement)] {
     })
 }
 
-/// The escape level of a quote preceded by `run` backslashes: 0 a real
-/// quote, 1 a quote of JSON inside a string (`\"`), 2 one more level down
-/// (`\\\"`). Each odd run is one escape; an even run is escaped backslashes
-/// before a quote of that level (`\\"` is level 0).
-fn quote_level(mut run: usize) -> usize {
-    let mut level = 0;
-    while run % 2 == 1 {
-        level += 1;
-        run = (run - 1) / 2;
+/// In valid JSON, the index of the quote that ends the string token whose
+/// content starts at `from` (a backslash escapes the next byte).
+fn string_token_end(bytes: &[u8], from: usize) -> usize {
+    let mut k = from;
+    while k < bytes.len() {
+        match bytes[k] {
+            b'\\' => k += 2,
+            b'"' => return k,
+            _ => k += 1,
+        }
     }
-    level
+    bytes.len()
 }
 
 /// Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and
 /// `webdav` URLs in one pass over the text, so its time is linear whatever the
-/// input. After `scheme://` the authority runs to the first `/`, `?`, `#`,
-/// ASCII space or a quote that certainly ends the string the URL sits in
-/// (Q3, A; the table is on the TS twin, `redactUrlUserinfo`, and the shared
-/// cases cover each cell). From the start of the text the open strings are
-/// tracked on a stack: a quote of level L ([`quote_level`]) closes the open
-/// string of level L, or opens one, structural only when it provably opens
-/// a JSON value (a deeper level only inside a string whose content is a JSON
-/// document) and prose otherwise; over-masking a log field is accepted.
-/// A quote ends the authority only when its level is open as a structural
-/// string; a prose level is never trusted. Leaking is the only failure that
-/// matters: uncertain, the userinfo is masked to the last `@` before the first
-/// certain terminator. With an `@` in it, the userinfo is everything up to
-/// the LAST `@`, and all of it becomes the placeholder, user name included: a
-/// token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
-/// authority without `@` (`host:443`) stays. Both twins run
-/// src/shared/redaction-cases.json.
+/// input. Where the authority ends is the TS twin's rule (`redactUrlUserinfo`,
+/// D1): the real parser decides once whether the WHOLE text is JSON
+/// (`serde_json` into `IgnoredAny`: syntax only, nothing is built or
+/// re-serialized). In valid JSON the authority ends at `/`, `?`, `#`,
+/// whitespace or the end of its string token; anything else is plain text,
+/// where no quote ever ends it. With an `@` in it, the userinfo is everything
+/// up to the LAST `@`, and all of it becomes the placeholder. Both twins run
+/// src/shared/redaction-cases.json, the parser-agreement cases included.
 fn redact_url_userinfo(text: &str) -> String {
     const SCHEMES: [&str; 7] = ["ftp", "ftps", "sftp", "scp", "http", "https", "webdav"];
     let bytes = text.as_bytes();
     let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
     let is_space = |b: u8| b == b' ' || (b'\t'..=b'\r').contains(&b);
-    let backslashes_before = |end: usize| {
-        bytes[..end]
-            .iter()
-            .rev()
-            .take_while(|&&b| b == b'\\')
-            .count()
-    };
-    // Whether the text from `from`, spaces skipped, is a JSON document.
-    let starts_a_json_document = |from: usize| {
-        bytes[from.min(bytes.len())..]
-            .iter()
-            .find(|&&b| !is_space(b))
-            .is_some_and(|&b| matches!(b, b'{' | b'['))
-    };
-    // Whether a quote of `level`, its escapes starting at `from`, opens a
-    // STRUCTURAL string inside `parent` (the innermost open one, as
-    // `(level, structural, content start)`). Not provably structural is
-    // prose (C3): level 0 with nothing open after `{ [ : , =` or at the
-    // start; a deeper level only inside a string whose content (the whole
-    // text when none is open) is a JSON document, after `{ [ : ,`.
-    let opens_a_value = |from: usize, level: usize, parent: Option<(usize, bool, usize)>| {
-        let before = bytes[..from].iter().rev().find(|&&b| !is_space(b)).copied();
-        let structural_spot = matches!(before, Some(b'{' | b'[' | b':' | b','));
-        if level == 0 && parent.is_none() {
-            return before.is_none() || structural_spot || before == Some(b'=');
-        }
-        if parent.is_some_and(|(parent_level, _, _)| parent_level + 1 != level) {
-            return false;
-        }
-        let document = starts_a_json_document(parent.map_or(0, |(_, _, content)| content));
-        document && (structural_spot || before.is_none())
-    };
+    let json = serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok();
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
     let mut i = 0;
-    // The strings open at the scan's position, `(level, structural, content
-    // start)`, from the quotes read outside the authorities (`untracked`).
-    let mut open: Vec<(usize, bool, usize)> = Vec::new();
-    let mut untracked = 0;
+    // The string token the scan is in (valid JSON only): its closing quote.
+    let mut token_end: Option<usize> = None;
     while i + 3 <= bytes.len() {
-        if bytes[i] == b'"' && i >= untracked {
-            let run = backslashes_before(i);
-            let level = quote_level(run);
-            match open
-                .iter()
-                .rposition(|&(open_level, _, _)| open_level == level)
-            {
-                Some(at) => open.truncate(at),
-                None => {
-                    let structural = opens_a_value(i - run, level, open.last().copied());
-                    open.push((level, structural, i + 1));
-                }
-            }
+        if json && token_end.is_none_or(|end| i > end) && bytes[i] == b'"' {
+            token_end = Some(string_token_end(bytes, i + 1));
+            i += 1;
+            continue;
         }
         if &bytes[i..i + 3] != b"://" {
             i += 1;
@@ -513,37 +464,25 @@ fn redact_url_userinfo(text: &str) -> String {
             continue;
         }
         let authority = i + 3;
+        let limit = match token_end {
+            Some(end) if json && i < end => end,
+            _ => bytes.len(),
+        };
         let mut k = authority;
-        let mut run = 0usize;
         let mut last_at = None;
-        while k < bytes.len() {
+        while k < limit {
             let b = bytes[k];
             if matches!(b, b'/' | b'?' | b'#') || is_space(b) {
                 break;
             }
-            if b == b'"' {
-                let quote = quote_level(run);
-                if open
-                    .iter()
-                    .any(|&(level, structural, _)| structural && level == quote)
-                {
-                    break;
-                }
-            }
             if b == b'@' {
                 last_at = Some(k);
             }
-            run = if b == b'\\' { run + 1 } else { 0 };
             k += 1;
         }
-        // The quotes of this authority are the value's: they never set the
-        // level for a later URL.
-        untracked = k;
         let Some(at) = last_at else {
-            // No userinfo: go on right after this `://`. The authority ended
-            // at a `/`, and a scheme whose `://` starts just before it (one
-            // past an escaped JSON quote) is still scanned (L7). Nothing
-            // between holds a `://`, so each byte is read at most twice.
+            // No userinfo: go on right after this `://`; each byte is read at
+            // most twice.
             i = authority;
             continue;
         };
@@ -755,6 +694,23 @@ mod tests {
             format!("ftp://{}", ":".repeat(200_000)),
             format!("{}{}", "x".repeat(100_000), "://".repeat(100_000)),
             "ftp://ftp://".repeat(50_000),
+            // D1: long whitespace and many strings, valid JSON and not, and
+            // a large valid JSON document with URLs throughout.
+            format!("{{\"a\":\"{}ftp://u:p@h\"}}", " ".repeat(200_000)),
+            serde_json::to_string(
+                &(0..20_000)
+                    .map(|n| format!("ftp://u{n}:p@h{n}/x"))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
+            serde_json::to_string(&vec!["s"; 20_000]).unwrap() + " tail",
+            "\"".repeat(200_000) + "ftp://u:p@h",
+            serde_json::json!({ "rows": (0..20_000).map(|n| serde_json::json!({
+                "id": n,
+                "url": format!("https://user{n}:secret@host{n}.example/p"),
+                "note": "x@y",
+            })).collect::<Vec<_>>() })
+            .to_string(),
         ];
         for input in &inputs {
             let started = std::time::Instant::now();

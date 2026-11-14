@@ -44,6 +44,78 @@ export const deltaGateDecision = (
 ): 'stop' | 'launch' | 'ask' =>
     verdict.hard_error ? 'stop' : verdict.eligible || skipPrompt ? 'launch' : 'ask';
 
+/** What the sync-start gate needs (D2). */
+export interface DeltaGateDeps {
+    /** `provider_connection_generation`, read at the very start of the
+     *  request, before the run's plan was built (Q5). */
+    requested: Promise<number>;
+    /** The same read, now. It moves on every connect, disconnect and tab
+     *  switch. */
+    generation: () => Promise<number>;
+    /** Whether the question about continuing without delta is off: the
+     *  saved profile turned it off, or the session has no saved profile (an
+     *  ad-hoc connection, which has no place to keep the answer). */
+    skipPrompt: () => Promise<boolean>;
+    /** `sftp_probe_delta_eligibility`. */
+    probe: () => Promise<DeltaEligibilityProbeResult>;
+    launch: () => void;
+    /** A refusal the run must not go past. */
+    refuse: (message: string) => void;
+    /** The probe command itself failed: stop, and ask to try again. */
+    failed: (error: unknown) => void;
+    /** The connection changed since the request: the existing notice. */
+    changed: () => void;
+    ask: (verdict: DeltaEligibilityProbeResult, onContinue: () => void) => void;
+}
+
+/**
+ * The sync-start gate (D2). The probe waits on the network and the question
+ * on the user; the run's plan belongs to the connection of the request.
+ * Every way out checks the generation read at the request against the
+ * current one first: before the question (Q7), before every launch, in the
+ * question's Continue, and on the error path. A changed connection launches
+ * nothing. A probe that failed launches nothing either (fail closed): the
+ * refusal it might have carried is unknown. The run itself carrying the
+ * generation to the backend is #1561's target binding (Q6).
+ */
+export async function runDeltaGate(deps: DeltaGateDeps): Promise<void> {
+    let requested: number;
+    try {
+        requested = await deps.requested;
+    } catch {
+        deps.changed();
+        return;
+    }
+    const sameConnection = async (): Promise<boolean> =>
+        (await deps.generation().catch(() => undefined)) === requested;
+    let skip = false;
+    let verdict: DeltaEligibilityProbeResult;
+    try {
+        skip = await deps.skipPrompt().catch(() => false);
+        verdict = await deps.probe();
+    } catch (error) {
+        if (!(await sameConnection())) deps.changed();
+        else deps.failed(error);
+        return;
+    }
+    if (!(await sameConnection())) {
+        deps.changed();
+        return;
+    }
+    const decision = deltaGateDecision(verdict, skip);
+    if (decision === 'stop') {
+        deps.refuse(verdict.hard_error ?? '');
+        return;
+    }
+    if (decision === 'launch') {
+        deps.launch();
+        return;
+    }
+    deps.ask(verdict, () => {
+        void sameConnection().then((same) => (same ? deps.launch() : deps.changed()));
+    });
+}
+
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
 export type SyncRunFileStatus =
     | 'pending'

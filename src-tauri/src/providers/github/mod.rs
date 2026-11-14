@@ -2443,6 +2443,17 @@ mod tests {
             branches: Vec<(String, Branch)>,
             pulls_status: u16,
         ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
+            api_per_branch_with(branches, pulls_status, false).await
+        }
+
+        /// [`api_per_branch`], also serving what `connect` reads (the user
+        /// `alice`, the repository `o/r` with push, `main` protected) and a
+        /// root listing; with `bypass`, a direct write to `main` succeeds.
+        async fn api_per_branch_with(
+            branches: Vec<(String, Branch)>,
+            pulls_status: u16,
+            bypass: bool,
+        ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
             let log = Arc::new(Mutex::new(Vec::new()));
             let seen = log.clone();
             let branches = Arc::new(branches);
@@ -2471,6 +2482,37 @@ mod tests {
                                 .map(|(_, b)| b.clone())
                         };
                         let not_found = serde_json::json!({"message": "Not Found"});
+                        if method == axum::http::Method::GET {
+                            if path.ends_with("/user") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({"login": "alice", "email": null, "name": "Same Name"}),
+                                );
+                            }
+                            if path.ends_with("/repos/o/r") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "full_name": "o/r", "private": false, "default_branch": "main",
+                                        "size": 1, "permissions": {"push": true, "pull": true, "admin": false}
+                                    }),
+                                );
+                            }
+                            if path.ends_with("/branches/main") {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": "main", "protected": true,
+                                        "commit": {"sha": "0123456789abcdef0123456789abcdef01234567"}
+                                    }),
+                                );
+                            }
+                            // The root listing only: a file's own lookup (an
+                            // upload's existence check) stays a 404.
+                            if path.ends_with("/contents") || path.ends_with("/contents/") {
+                                return reply(200, serde_json::json!([]));
+                            }
+                        }
                         if let Some((_, prefix)) = path.split_once("/git/matching-refs/heads/") {
                             let refs: Vec<_> = branches
                                 .iter()
@@ -2532,7 +2574,9 @@ mod tests {
                                 None => reply(404, not_found),
                             };
                         }
-                        if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"")
+                        if !bypass
+                            && method == axum::http::Method::PUT
+                            && body.contains("\"branch\":\"main\"")
                         {
                             return reply(
                                 403,
@@ -2714,9 +2758,11 @@ mod tests {
             }
         }
 
-        /// C1: nine merged candidates. Connect succeeds on the protected
-        /// branch and reads work; only a refused write that needs a new
-        /// working branch is refused, with the clear error.
+        /// C1, D3: nine merged candidates. The real `connect` succeeds on the
+        /// protected branch, which reads through the provider; a refused
+        /// write that needs a new working branch is refused with the clear
+        /// error, nothing written; a user who may write the protected
+        /// branch (bypass) writes there and never needs a name.
         #[tokio::test]
         async fn nine_merged_candidates_fail_only_the_write_that_needs_a_new_branch() {
             let own = GitHubProvider::workflow_branch_name("alice", "main");
@@ -2736,34 +2782,66 @@ mod tests {
                     (name, merged.clone())
                 })
                 .collect();
-            let (origin, log, server) = api_per_branch(branches, 200).await;
-            let mut provider = GitHubProvider::protected_for_test(origin);
-            provider.start_on_existing_working_branch().await.unwrap();
-            assert_eq!(provider.working_branch(), None);
-            // A read: the branch tip lookup answers.
-            assert!(provider
-                .client
-                .get_json::<GitHubBranch>(&provider.branch_api_url(&own))
-                .await
-                .is_ok());
             let dir = tempfile::tempdir().unwrap();
             let file = dir.path().join("a.txt");
             std::fs::write(&file, b"a").unwrap();
-            let refused = provider
-                .upload(file.to_str().unwrap(), "/a.txt", None)
-                .await;
-            assert!(
-                matches!(&refused, Err(ProviderError::InvalidConfig(m)) if m.contains("were all")),
-                "{refused:?}"
-            );
-            let writes = log.lock().unwrap().clone();
-            assert!(
-                !writes
-                    .iter()
-                    .any(|w| w.starts_with("POST ") || w.contains(&own) && w.starts_with("PATCH ")),
-                "nothing written to a merged branch, no branch made: {writes:?}"
-            );
-            server.abort();
+            for bypass in [false, true] {
+                let (origin, log, server) =
+                    api_per_branch_with(branches.clone(), 200, bypass).await;
+                let mut extra = HashMap::new();
+                extra.insert("branch".to_string(), "main".to_string());
+                let config = ProviderConfig {
+                    name: "repo".to_string(),
+                    provider_type: ProviderType::GitHub,
+                    host: "o/r".to_string(),
+                    port: Some(443),
+                    username: None,
+                    password: Some("token".to_string()),
+                    initial_path: Some("/".to_string()),
+                    extra,
+                };
+                let mut provider =
+                    GitHubProvider::new(GitHubConfig::from_provider_config(&config).unwrap())
+                        .unwrap();
+                provider.client.api_origin_override = Some(origin);
+                provider.connect().await.expect("connect succeeds");
+                assert_eq!(provider.working_branch(), None);
+                provider
+                    .list("/")
+                    .await
+                    .expect("the protected branch reads");
+                let outcome = provider
+                    .upload(file.to_str().unwrap(), "/a.txt", None)
+                    .await;
+                let writes = log.lock().unwrap().clone();
+                assert!(
+                    !writes
+                        .iter()
+                        .any(|w| w.starts_with("POST ") && w.contains("/git/refs")),
+                    "no working branch is made: {writes:?}"
+                );
+                if bypass {
+                    outcome.expect("the bypass write lands on main");
+                    assert!(
+                        writes
+                            .iter()
+                            .any(|w| w.starts_with("PUT ") && w.contains("\"branch\":\"main\"")),
+                        "{writes:?}"
+                    );
+                } else {
+                    assert!(
+                        matches!(&outcome, Err(ProviderError::InvalidConfig(m)) if m.contains("were all")),
+                        "{outcome:?}"
+                    );
+                    assert!(
+                        !writes
+                            .iter()
+                            .any(|w| w.starts_with("PUT ") && w.contains(&own)),
+                        "nothing on a merged branch: {writes:?}"
+                    );
+                }
+                server.abort();
+            }
         }
 
         /// Q1, Q4: a pull-request lookup that fails fails the connect, never

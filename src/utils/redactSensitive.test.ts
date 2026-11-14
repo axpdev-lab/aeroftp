@@ -162,9 +162,12 @@ describe('redactCredentials: one URL rule, any scheme, never past a field (T11)'
     it('keeps the field after an authority without userinfo', () => {
         expect(redactCredentials('{"a":"https://host:443","b":"x@y"}')).toBe('{"a":"https://host:443","b":"x@y"}');
     });
-    it('keeps it in JSON escaped inside a string too', () => {
+    // D1: raw escaped JSON is not JSON as a whole: plain text, where no quote
+    // ends an authority, so a path-less URL over-masks into the next field
+    // by policy; nothing leaks.
+    it('over-masks, never leaks, in JSON escaped without its outer string', () => {
         const escaped = '{\\"a\\":\\"https://host:443\\",\\"b\\":\\"x@y\\"}';
-        expect(redactCredentials(escaped)).toBe(escaped);
+        expect(redactCredentials(escaped)).toBe('{\\"a\\":\\"https://***REDACTED***@y\\"}');
     });
     it('still masks the userinfo of other schemes', () => {
         expect(redactCredentials('get s3://AKIAEXAMPLE:secretkey@bucket/key failed'))
@@ -196,6 +199,13 @@ describe('redactUrlUserinfo (H9: linear by construction)', () => {
             'ftp://' + ':'.repeat(200_000),
             'x'.repeat(100_000) + '://'.repeat(100_000),
             'ftp://ftp://'.repeat(50_000),
+            // D1: long whitespace and many strings, valid JSON and not.
+            '{"a":"' + ' '.repeat(200_000) + 'ftp://u:p@h"}',
+            JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)),
+            JSON.stringify(Array.from({ length: 20_000 }, () => 's')) + ' tail',
+            '"'.repeat(200_000) + 'ftp://u:p@h',
+            // D1: a large valid JSON document, URLs throughout.
+            JSON.stringify({ rows: Array.from({ length: 20_000 }, (_, n) => ({ id: n, url: `https://user${n}:secret@host${n}.example/p`, note: 'x@y' })) }),
         ];
         for (const input of inputs) {
             const started = performance.now();

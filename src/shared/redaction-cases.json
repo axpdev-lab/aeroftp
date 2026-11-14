@@ -394,14 +394,14 @@
     "expected": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://***REDACTED***@host/x\\\"}"
   },
   {
-    "name": "a url without userinfo in an escaped json string keeps the next field",
+    "name": "a url without userinfo in an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}",
-    "expected": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}"
+    "expected": "{\\\"a\\\":\\\"https://***REDACTED***@y\\\"}"
   },
   {
-    "name": "url password in an escaped json string ends at its field",
+    "name": "url password in an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}",
-    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}"
   },
   {
     "name": "url password holding an escaped quote and a comma in plain json",
@@ -409,9 +409,9 @@
     "expected": "{\"url\":\"https://***REDACTED***@host/path\"}"
   },
   {
-    "name": "url password holding a deeper escaped quote inside an escaped json string",
+    "name": "url password holding a deeper escaped quote inside an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\\\"u\\\":\\\"ftp://bob:pa\\\\\\\",ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
-    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}"
   },
   {
     "name": "url password holding an escaped quote and a comma in a sentence",
@@ -439,14 +439,14 @@
     "expected": "{\"m\":\"see ftp://mirror.example\",\"b\":\"x@y\"}"
   },
   {
-    "name": "Q3 cell escaped json mid-string: a deeper quote and colon in a password, next field kept",
+    "name": "Q3 cell escaped json mid-string: a deeper quote and colon in a password (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\\\"m\\\":\\\"upload to ftp://bob:pa\\\\\\\":ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
-    "expected": "{\\\"m\\\":\\\"upload to ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+    "expected": "{\\\"m\\\":\\\"upload to ftp://***REDACTED***@y\\\"}"
   },
   {
-    "name": "Q3 cell two levels down: masked, next field kept",
+    "name": "Q3 cell two levels down: masked (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://bob:pw@host\\\\\\\",\\\\\\\"b\\\\\\\":\\\\\\\"x@y\\\\\\\"}",
-    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@host\\\\\\\",\\\\\\\"b\\\\\\\":\\\\\\\"x@y\\\\\\\"}"
+    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@y\\\\\\\"}"
   },
   {
     "name": "Q3 cell two levels down: a three-level quote in a password",
@@ -509,13 +509,58 @@
     "expected": "{\"m\":\"status: \\\"ok\\\" and then ftp://***REDACTED***@host/x\"}"
   },
   {
-    "name": "C3 a serialized json document inside a string after leading spaces keeps the next field",
+    "name": "C3 a serialized json document inside a string after leading spaces (over-masked by policy: one string token or not JSON as a whole)",
     "input": "{\"m\":\"  {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
-    "expected": "{\"m\":\"  {\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}"
+    "expected": "{\"m\":\"  {\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}\"}"
   },
   {
     "name": "C3 a string that starts with a brace but is not json: masked",
     "input": "{\"m\":\"{not json \\\"x ftp://u:p\\\"w@h/\"}",
     "expected": "{\"m\":\"{not json \\\"x ftp://***REDACTED***@h/\"}"
+  },
+  {
+    "name": "D1 a leading brace in a sentence is not json either",
+    "input": "{\"message\":\"{warning: \\\"retry ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"{warning: \\\"retry ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "D1 valid json: an authority without userinfo keeps the next field exactly",
+    "input": "{\"a\":\"https://host:443\",\"b\":\"x@y\"}",
+    "expected": "{\"a\":\"https://host:443\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 valid json: a password ends at its own string token, the next field kept",
+    "input": "{\"u\":\"ftp://bob:pw@host\",\"b\":\"x@y\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 a log prefix before json is not json as a whole (over-masked by policy)",
+    "input": "log: {\"u\":\"ftp://host:443\",\"b\":\"x@y\"}",
+    "expected": "log: {\"u\":\"ftp://***REDACTED***@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: duplicate keys are valid json",
+    "input": "{\"u\":\"ftp://bob:pw@host\",\"u\":\"x@y\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\",\"u\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: a number past the double range is valid json",
+    "input": "{\"n\":1e400,\"u\":\"ftp://host\",\"b\":\"x@y\"}",
+    "expected": "{\"n\":1e400,\"u\":\"ftp://host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: a lone surrogate escape is valid json",
+    "input": "{\"s\":\"\\ud800\",\"u\":\"ftp://host\",\"b\":\"x@y\"}",
+    "expected": "{\"s\":\"\\ud800\",\"u\":\"ftp://host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: trailing whitespace is valid json",
+    "input": "{\"u\":\"ftp://host\",\"b\":\"x@y\"}  \n",
+    "expected": "{\"u\":\"ftp://host\",\"b\":\"x@y\"}  \n"
+  },
+  {
+    "name": "D1 parsers agree: a raw tab inside a string is not json, read as plain text (the tab ends the authority)",
+    "input": "{\"u\":\"ftp://host\",\"b\":\"x\t@y\"}",
+    "expected": "{\"u\":\"ftp://host\",\"b\":\"x\t@y\"}"
   }
 ]
