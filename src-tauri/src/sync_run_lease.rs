@@ -1078,10 +1078,12 @@ mod tests {
         let report = page_load_selftest::run(builder, ROUNDS, std::time::Duration::from_secs(180))
             .unwrap_or_else(|error| panic!("{engine} page-load self-test: {error}"));
         let counts = &report.counts;
+        let last = report.seen.last().map_or("", |event| event.url.as_str());
         println!(
-            "{engine} page-load self-test: {} events; {counts}",
+            "{engine} page-load self-test: {} events, last {last}; {counts}",
             report.seen.len()
         );
+        assert!(!last.is_empty(), "the last page load names no document");
         assert!(
             report.seen.iter().filter(|event| event.finished).count() >= ROUNDS as usize,
             "fewer page loads than rounds: {:?}",
