@@ -65,6 +65,7 @@
             "size": "আকার",
             "retry": "পুনরায় চেষ্টা করুন",
             "settingsLoadFailed": "এই সেটিংস পড়া যায়নি, তাই এগুলোর উপর কিছুই সংরক্ষণ করা হবে না: {error}",
+            "saveFailed": "সংরক্ষণ করা যায়নি: {error}",
             "optional": "ঐচ্ছিক",
             "check": "Check",
             "selectAll": "সব নির্বাচন করুন",

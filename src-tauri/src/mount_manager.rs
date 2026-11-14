@@ -1194,6 +1194,21 @@ mod tests {
         }
     }
 
+    /// A vault database that does not parse fails the strict registry read
+    /// with the kind and position, never a value quoted from the file.
+    #[test]
+    fn a_corrupt_vault_database_error_does_not_quote_its_values() {
+        let vault_dir = tempfile::tempdir().unwrap();
+        let store = test_vault(vault_dir.path(), 13);
+        std::fs::write(
+            vault_dir.path().join("vault.db"),
+            r#"{"entries": "SENTINEL-SECRET"}"#,
+        )
+        .unwrap();
+        let err = registry_from_vault_store(&store).unwrap_err();
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
     fn test_vault(dir: &Path, key: u8) -> CredentialStore {
         let path = dir.join("vault.db");
         CredentialStore::write_test_vault(&path, &[key; 32]);

@@ -2561,7 +2561,10 @@ impl CredentialStore {
             )));
         }
         let data = with_acl_repair(path, || std::fs::read(path))?;
-        serde_json::from_slice(&data).map_err(|e| CredentialError::Serialization(e.to_string()))
+        // The kind and position only: serde's own text quotes the offending
+        // value, which must not reach an error string.
+        serde_json::from_slice(&data)
+            .map_err(|e| CredentialError::Serialization(crate::util::describe_json_error(&e)))
     }
 
     fn write_vault(

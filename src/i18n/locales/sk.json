@@ -65,6 +65,7 @@
             "size": "Veľkosť",
             "retry": "Skúsiť znova",
             "settingsLoadFailed": "Tieto nastavenia sa nepodarilo načítať, preto cez ne nebude nič uložené: {error}",
+            "saveFailed": "Nepodarilo sa uložiť: {error}",
             "optional": "voliteľné",
             "check": "Check",
             "selectAll": "Vybrať všetko",

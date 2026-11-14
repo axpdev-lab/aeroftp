@@ -65,6 +65,7 @@
             "size": "Laki",
             "retry": "Subukan muli",
             "settingsLoadFailed": "Hindi mabasa ang mga setting na ito, kaya walang ise-save na papalit sa mga ito: {error}",
+            "saveFailed": "Hindi ma-save: {error}",
             "optional": "opsyonal",
             "check": "Check",
             "selectAll": "Piliin Lahat",

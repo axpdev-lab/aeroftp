@@ -65,6 +65,7 @@
             "size": "Dydis",
             "retry": "Bandyti dar kartą",
             "settingsLoadFailed": "Šių nustatymų nepavyko perskaityti, todėl ant jų nieko nebus įrašyta: {error}",
+            "saveFailed": "Nepavyko įrašyti: {error}",
             "optional": "neprivaloma",
             "check": "Check",
             "selectAll": "Pasirinkti viską",

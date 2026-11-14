@@ -65,6 +65,7 @@
             "size": "Tamaño",
             "retry": "Reintentar",
             "settingsLoadFailed": "No se pudo leer esta configuración, así que no se guardará nada encima: {error}",
+            "saveFailed": "No se pudo guardar: {error}",
             "optional": "opcional",
             "check": "Verificar",
             "selectAll": "Seleccionar Todo",

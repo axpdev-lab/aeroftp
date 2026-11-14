@@ -65,6 +65,7 @@
             "size": "Kích thước",
             "retry": "Thử lại",
             "settingsLoadFailed": "Không thể đọc các cài đặt này, vì vậy sẽ không có gì được lưu đè lên chúng: {error}",
+            "saveFailed": "Không thể lưu: {error}",
             "optional": "tùy chọn",
             "check": "Check",
             "selectAll": "Chọn tất cả",

@@ -35,7 +35,7 @@ describe('CloudPairsEditor after a failed load', () => {
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('save_cloud_pairs_config_cmd');
     });
 
-    it('does not let a toggle write a locally added pair over the file it could not read', async () => {
+    it('adds no pair while the pairs file could not be read', async () => {
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
         mocks.invoke.mockImplementation(async (command: string) => {
             if (command === 'get_cloud_pairs_config' || command === 'add_cloud_pair') throw new Error('permission denied');
@@ -43,10 +43,11 @@ describe('CloudPairsEditor after a failed load', () => {
         });
         host = document.createElement('div'); document.body.append(host); root = createRoot(host);
         await React.act(async () => root!.render(<CloudPairsEditor isOpen onClose={vi.fn()} />));
-        // A failed add falls back to a local-only pair, which brings a toggle on screen.
-        await React.act(async () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('cloud.pairsAdd'))!.click());
-        const toggle = host.querySelector<HTMLButtonElement>('button[title="cloud.disable"]')!;
-        await React.act(async () => toggle.click());
-        expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('save_cloud_pairs_config_cmd');
+        // A failed add would fall back to a local-only pair that Save may not write.
+        const add = Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('cloud.pairsAdd'))!;
+        expect(add.disabled).toBe(true);
+        await React.act(async () => add.click());
+        expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('add_cloud_pair');
+        expect(host.querySelector('button[title="cloud.disable"]')).toBeNull();
     });
 });

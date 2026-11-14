@@ -65,6 +65,7 @@
             "size": "サイズ",
             "retry": "再試行",
             "settingsLoadFailed": "これらの設定を読み取れなかったため、上書き保存は行われません: {error}",
+            "saveFailed": "保存できませんでした: {error}",
             "optional": "任意",
             "check": "確認",
             "selectAll": "すべて選択",

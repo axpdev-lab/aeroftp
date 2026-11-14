@@ -213,9 +213,28 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         await React.act(async () => resolveSync('done'));
         await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
         // Only a full load replaces the configuration: the failed refresh
-        // leaves the draft open and shows no load error.
+        // leaves the draft open and says the file could not be read.
         expect(remoteFolder()?.value).toBe('/typed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.settingsLoadFailed');
+
+        // A save the backend refuses keeps the settings open and says so.
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'save_cloud_config_cmd') throw new Error('refusing to overwrite');
+            if (command === 'get_cloud_config') throw new Error('permission denied');
+            return [];
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.save common.settings')!.click());
+        expect(remoteFolder()?.value).toBe('/typed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.saveFailed');
+
+        // Retry reads the file again: once it is readable the error clears.
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            return [];
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.retry')!.click());
         expect(host.querySelector('[role="alert"]')?.textContent ?? '').not.toContain('common.settingsLoadFailed');
+        expect(remoteFolder()?.value).toBe('/typed');
     });
 
     it('keeps an open settings draft when the post-sync refresh only moves last_sync', async () => {

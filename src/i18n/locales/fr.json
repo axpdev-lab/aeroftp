@@ -65,6 +65,7 @@
             "size": "Taille",
             "retry": "Réessayer",
             "settingsLoadFailed": "Impossible de lire ces paramètres, donc rien ne sera enregistré à leur place : {error}",
+            "saveFailed": "Impossible d'enregistrer : {error}",
             "optional": "facultatif",
             "check": "Vérifier",
             "selectAll": "Tout Sélectionner",

@@ -65,6 +65,7 @@
             "size": "Grootte",
             "retry": "Opnieuw",
             "settingsLoadFailed": "Deze instellingen konden niet worden gelezen, dus er wordt niets overheen opgeslagen: {error}",
+            "saveFailed": "Kan niet opslaan: {error}",
             "optional": "optioneel",
             "check": "Check",
             "selectAll": "Alles Selecteren",

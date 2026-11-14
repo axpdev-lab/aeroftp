@@ -1446,9 +1446,12 @@ mod tests {
                 // A `~/...` remote folder is placed under the login folder on
                 // this connect, as the sync cycles do, before the overlay
                 // wraps the provider and the listing reads it.
+                let resolution =
+                    crate::cloud_service::ProfileResolution::for_config(Some(&store), &config)?;
                 let remote_folder = crate::cloud_service::anchor_login_relative_remote_folder(
                     &mut *provider,
                     &config,
+                    &resolution,
                 )
                 .await?
                 .unwrap_or_else(|| config.remote_folder.clone());

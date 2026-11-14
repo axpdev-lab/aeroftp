@@ -3759,13 +3759,83 @@ pub(crate) struct ConnectedCloudProvider {
     identity: Option<String>,
 }
 
-/// Whether a stored profile reference names the same profile the running
-/// config resolved to: by id when both carry one (names are not unique), by
-/// exact name otherwise, as `select_aerocloud_profile` does.
-fn same_server_profile(stored_id: Option<&str>, stored_name: &str, config: &CloudConfig) -> bool {
-    match (stored_id, config.server_profile_id.as_deref()) {
-        (Some(stored), Some(running)) => stored == running,
-        _ => stored_name == config.server_profile,
+/// A profile id as `select_aerocloud_profile` reads it: blank means none.
+fn pinned_profile_id(id: Option<&str>) -> Option<&str> {
+    id.map(str::trim).filter(|id| !id.is_empty())
+}
+
+/// The saved profiles a connection's references reach, as
+/// `select_aerocloud_profile` resolves them: `connected` is the profile the
+/// running config selected (by id when pinned, by name otherwise), `by_name`
+/// the one a reference carrying only the config's profile name selects.
+/// Names are not unique, so the two differ when the config is pinned to a
+/// homonym that is not the first of its name.
+pub(crate) struct ProfileResolution {
+    pub(crate) connected: Option<String>,
+    pub(crate) by_name: Option<String>,
+}
+
+impl ProfileResolution {
+    /// Resolve `config`'s references against the saved profiles. Without an
+    /// unlocked vault nothing can be proven, so nothing resolves and a
+    /// placement is used for the call but persisted nowhere.
+    pub(crate) fn for_config(
+        store: Option<&credential_store::CredentialStore>,
+        config: &CloudConfig,
+    ) -> Result<Self, String> {
+        match store {
+            Some(store) => Ok(Self::of(
+                &crate::user_partitions::mcp_list_active_server_profiles(store)?,
+                config,
+            )),
+            None => Ok(Self {
+                connected: None,
+                by_name: None,
+            }),
+        }
+    }
+
+    fn of(profiles: &[serde_json::Value], config: &CloudConfig) -> Self {
+        let id_of = |profile: Option<&serde_json::Value>| {
+            profile
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        Self {
+            connected: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
+                profiles,
+                config.server_profile_id.as_deref(),
+                &config.server_profile,
+            )),
+            by_name: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
+                profiles,
+                None,
+                &config.server_profile,
+            )),
+        }
+    }
+}
+
+/// Whether a stored profile reference reaches the profile the running config
+/// connected to: a reference pinned by id when it is that id, a reference by
+/// name when it is the running config's name and that name selects the
+/// connected profile. A homonymous profile's login folder never lands in an
+/// entry that resolves elsewhere; that entry's own connect places it.
+fn same_server_profile(
+    stored_id: Option<&str>,
+    stored_name: &str,
+    config: &CloudConfig,
+    resolution: &ProfileResolution,
+) -> bool {
+    let Some(connected) = resolution.connected.as_deref() else {
+        return false;
+    };
+    match pinned_profile_id(stored_id) {
+        Some(stored) => stored == connected,
+        None => {
+            stored_name == config.server_profile && resolution.by_name.as_deref() == Some(connected)
+        }
     }
 }
 
@@ -3778,6 +3848,7 @@ fn same_server_profile(stored_id: Option<&str>, stored_name: &str, config: &Clou
 pub(crate) async fn anchor_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
+    resolution: &ProfileResolution,
 ) -> Result<Option<String>, String> {
     let remote = config.remote_folder.as_str();
     if remote == "/~" || remote.starts_with("/~/") {
@@ -3806,14 +3877,17 @@ pub(crate) async fn anchor_login_relative_remote_folder(
                 stored.server_profile_id.as_deref(),
                 &stored.server_profile,
                 config,
+                resolution,
             )
     };
     // Profile names are not unique: the local folder is part of the pair's
     // identity (`pair_key`), so an homonymous pair on another machine keeps
     // its own `~` form until its own connect places it.
+    // A pair names its profile without an id, so it resolves by name: a
+    // connection pinned by id may have reached another homonymous profile.
     let pair_unplaced = |pair: &cloud_pairs::CloudPathPair| {
         pair.remote_path == unresolved
-            && pair.server_profile == config.server_profile
+            && same_server_profile(None, &pair.server_profile, config, resolution)
             && pair.local_path == config.local_folder
     };
     // Both files are read before either is written, so an unreadable one
@@ -3885,7 +3959,9 @@ async fn open_aerocloud_connection(
     // raw provider (through the overlay `~` is a ciphertext name), and the
     // absolute value persisted: the cycle below, its index identity and every
     // later connect read the placed folder, never the `~` form.
-    let remote_folder = anchor_login_relative_remote_folder(&mut *provider, config).await?;
+    let resolution = ProfileResolution::for_config(Some(store), config)?;
+    let remote_folder =
+        anchor_login_relative_remote_folder(&mut *provider, config, &resolution).await?;
     if let Some(placed) = remote_folder {
         config.remote_folder = placed;
     }
@@ -7099,9 +7175,10 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
-                .await
-                .unwrap();
+            let placed =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap();
             assert_eq!(placed.as_deref(), Some("/home/u/docs"));
 
             let pairs = cloud_pairs::load_cloud_pairs_config();
@@ -7115,10 +7192,108 @@ mod baseline_tests {
                 remote_folder: "/home/u/docs".to_string(),
                 ..config
             };
-            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
+            let placed =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap();
+            assert_eq!(placed, None);
+        });
+    }
+
+    /// A connection whose profile name selects the profile it connected to.
+    fn resolved_as(id: &str) -> ProfileResolution {
+        ProfileResolution {
+            connected: Some(id.to_string()),
+            by_name: Some(id.to_string()),
+        }
+    }
+
+    /// Profile names are not unique: an entry is placed only when its own
+    /// reference reaches the profile the connection used. A reference pinned
+    /// by id must be that id; a reference by name must select it. A
+    /// homonymous profile's login folder never lands in another profile's
+    /// configuration.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn anchor_places_only_entries_that_reach_the_connected_profile() {
+        with_scratch_index(async {
+            let local = std::path::PathBuf::from("/sync/a");
+            let by_name = CloudConfig {
+                enabled: true,
+                local_folder: local.clone(),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let reset = || {
+                cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                    pairs.pairs = vec![crate::cloud_pairs::CloudPathPair::from_legacy(&by_name)];
+                    Ok(())
+                })
+                .unwrap();
+                cloud_config::with_cloud_config_mut(|stored| {
+                    stored.remote_folder = "~/docs".to_string();
+                    stored.server_profile = "nas".to_string();
+                    stored.server_profile_id = Some("id-a".to_string());
+                    stored.local_folder = local.clone();
+                    Ok(())
+                })
+                .unwrap();
+            };
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+
+            // Connected by name to id-b, the first profile named "nas": the
+            // pair (by name) is placed, the configuration pinned to id-a is not.
+            reset();
+            anchor_login_relative_remote_folder(&mut provider, &by_name, &resolved_as("id-b"))
                 .await
                 .unwrap();
-            assert_eq!(placed, None);
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                "/home/u/docs"
+            );
+            assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
+
+            // Pinned to id-a while "nas" selects id-b: the configuration is
+            // placed, the pair (by name, so id-b) keeps its `~` form.
+            reset();
+            let by_id = CloudConfig {
+                server_profile_id: Some("id-a".to_string()),
+                ..by_name.clone()
+            };
+            let homonym = ProfileResolution {
+                connected: Some("id-a".to_string()),
+                by_name: Some("id-b".to_string()),
+            };
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym)
+                .await
+                .unwrap();
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                "~/docs"
+            );
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/u/docs"
+            );
+
+            // Pinned to id-a and "nas" selects id-a: both reach it, both placed.
+            reset();
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &resolved_as("id-a"))
+                .await
+                .unwrap();
+            assert_eq!(
+                cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
+                "/home/u/docs"
+            );
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/u/docs"
+            );
         });
     }
 
@@ -7151,9 +7326,10 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let err = anchor_login_relative_remote_folder(&mut provider, &config)
-                .await
-                .unwrap_err();
+            let err =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap_err();
             assert!(err.contains("parse"), "{err}");
             assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
             assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
@@ -7198,9 +7374,10 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let placed = anchor_login_relative_remote_folder(&mut provider, &config)
-                .await
-                .unwrap();
+            let placed =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap();
             assert_eq!(placed.as_deref(), Some("/home/u/docs"));
             assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
             assert!(!config_path.exists());
@@ -7218,9 +7395,10 @@ mod baseline_tests {
                 ..Default::default()
             };
             let mut provider = MemoryProvider::default();
-            let err = anchor_login_relative_remote_folder(&mut provider, &config)
-                .await
-                .unwrap_err();
+            let err =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap_err();
             assert!(err.contains("literal '~' directory"), "{err}");
             assert!(err.contains("~/docs"), "{err}");
         });
@@ -7253,9 +7431,10 @@ mod baseline_tests {
                 login_folder: None,
                 ..Default::default()
             };
-            let err = anchor_login_relative_remote_folder(&mut provider, &config)
-                .await
-                .unwrap_err();
+            let err =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap_err();
             assert!(err.contains("did not report its login folder"), "{err}");
             assert_eq!(
                 cloud_config::load_cloud_config().remote_folder,

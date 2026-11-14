@@ -65,6 +65,7 @@
             "size": "Suurus",
             "retry": "Proovi uuesti",
             "settingsLoadFailed": "Neid seadeid ei õnnestunud lugeda, seega nende peale midagi ei salvestata: {error}",
+            "saveFailed": "Salvestamine ebaõnnestus: {error}",
             "optional": "valikuline",
             "check": "Check",
             "selectAll": "Vali kõik",

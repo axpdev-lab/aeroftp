@@ -65,6 +65,7 @@
             "size": "Méret",
             "retry": "Újra",
             "settingsLoadFailed": "Ezeket a beállításokat nem sikerült beolvasni, ezért semmi sem lesz föléjük mentve: {error}",
+            "saveFailed": "Nem sikerült menteni: {error}",
             "optional": "nem kötelező",
             "check": "Check",
             "selectAll": "Összes kijelölése",

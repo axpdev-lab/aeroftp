@@ -65,6 +65,7 @@
             "size": "Rozmiar",
             "retry": "Ponów",
             "settingsLoadFailed": "Nie udało się odczytać tych ustawień, więc nic nie zostanie na nich zapisane: {error}",
+            "saveFailed": "Nie można zapisać: {error}",
             "optional": "opcjonalne",
             "check": "Check",
             "selectAll": "Zaznacz wszystko",

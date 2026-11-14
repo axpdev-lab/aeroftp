@@ -144,7 +144,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     }, [isOpen]);
 
     const handleAdd = async () => {
-        if (pairs.length >= MAX_CLOUD_PAIRS) return;
+        // After a failed load an add that also failed would leave a local-only
+        // pair that Save may not write: nothing is added until a load succeeds.
+        if (loadError || pairs.length >= MAX_CLOUD_PAIRS) return;
 
         // Seed sensible defaults; prefer legacy values if present for first pair UX
         const base = legacyConfig || {};
@@ -200,7 +202,6 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleToggle = async (pairId: string) => {
-        if (loadError) return;
         const previous = pairs;
         const updated = pairs.map(p =>
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
@@ -569,7 +570,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                     <button
                         className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 hover:bg-cyan-500/25 disabled:opacity-40"
                         onClick={handleAdd}
-                        disabled={pairs.length >= MAX_CLOUD_PAIRS}
+                        disabled={loadError !== null || pairs.length >= MAX_CLOUD_PAIRS}
                     >
                         <Plus size={12} /> {t('cloud.pairsAdd') || 'Add pair'}
                     </button>

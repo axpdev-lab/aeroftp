@@ -359,6 +359,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // An unreadable config file is not "not configured": showing the setup
     // wizard, or keeping an older config editable, would let a save replace it.
     const [configLoadError, setConfigLoadError] = useState<string | null>(null);
+    // A failed post-sync refresh keeps the draft, and a refused save keeps the
+    // settings open: both are shown in the settings view, not only logged.
+    const [refreshError, setRefreshError] = useState<string | null>(null);
+    const [settingsSaveError, setSettingsSaveError] = useState<string | null>(null);
     const [showSettings, setShowSettings] = useState(false);
     const [showVersionBrowser, setShowVersionBrowser] = useState(false);
     const [showCloudPairs, setShowCloudPairs] = useState(false);
@@ -381,6 +385,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // the re-authorize banner) goes through here.
     const openSettings = () => {
         if (pendingLifecycle > 0) return;
+        setSettingsSaveError(null);
         setSettingsBaseline(config);
         setShowSettings(true);
     };
@@ -478,12 +483,15 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 // A failed refresh leaves the configuration and an open draft
                 // as they are; a failed full load clears them, so nothing
                 // older stays editable over the unreadable file.
-                if (!refresh) {
+                if (refresh) {
+                    setRefreshError(String(error));
+                } else {
                     replaceConfig(null);
                     setConfigLoadError(String(error));
                 }
                 return;
             }
+            setRefreshError(null);
             if (refresh) {
                 // A sync only moves last_sync (the folders are inputs, not
                 // outputs), so merge that persisted field into the draft and
@@ -900,6 +908,18 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                         </section>
                     </fieldset>
 
+                    {(refreshError || settingsSaveError) && (
+                        <div role="alert" className="mx-6 mt-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-sm text-red-700 dark:text-red-300 break-words space-y-2">
+                            {refreshError && (
+                                <div className="flex items-start justify-between gap-3">
+                                    <span>{t('common.settingsLoadFailed', { error: refreshError })}</span>
+                                    <button onClick={() => void loadConfig(true)} disabled={savingSettings} className="shrink-0 underline disabled:opacity-50">{t('common.retry')}</button>
+                                </div>
+                            )}
+                            {settingsSaveError && <div>{t('common.saveFailed', { error: settingsSaveError })}</div>}
+                        </div>
+                    )}
+
                     {/* Footer: full width */}
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button
@@ -917,10 +937,12 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                                 });
                                             }
                                         } catch { /* scheduler may not be initialized yet */ }
+                                        setSettingsSaveError(null);
                                         setShowSettings(false);
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);
+                                        setSettingsSaveError(String(e));
                                     } finally {
                                         setSavingSettings(false);
                                     }
