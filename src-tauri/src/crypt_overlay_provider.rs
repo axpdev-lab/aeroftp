@@ -339,13 +339,24 @@ pub(crate) fn norm_anchor(scope: &str) -> String {
     format!("/{}", segs.join("/"))
 }
 
-/// Normalize an absolute path: leading slash, no trailing slash.
+/// Normalize an absolute path: leading slash, no trailing slash, no empty
+/// or `.` segment. A server resolves `/a/./b` and `/a//b` as `/a/b`, so
+/// every comparison against the anchor or its alias goes through here.
+/// `..` is kept: callers that map a path refuse it.
 pub(crate) fn norm_abs(p: &str) -> String {
-    let trimmed = p.trim_end_matches('/');
-    if trimmed.is_empty() {
-        return "/".to_string();
-    }
-    format!("/{}", trimmed.trim_start_matches('/'))
+    let segs: Vec<&str> = p
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    format!("/{}", segs.join("/"))
+}
+
+/// `p` in the form a case-insensitive or Windows-backed server may resolve
+/// it to: backslashes read as separators, ASCII case folded. Used only to
+/// refuse a plaintext write that such a server could place in the
+/// encrypted folder, as the raw-write guard in `provider_commands` does.
+fn folded(p: &str) -> String {
+    norm_abs(&p.replace('\\', "/")).to_ascii_lowercase()
 }
 
 /// Encrypt a plaintext relative (or absolute) path component-by-component.
@@ -552,6 +563,7 @@ impl CryptOverlayProvider {
     /// Children already carry plaintext names, so never decode those again.
     fn breadcrumb_labels(&self, current_path: &str) -> std::collections::BTreeMap<String, String> {
         let mut labels = std::collections::BTreeMap::new();
+        let current_path = norm_abs(current_path);
         if self.scope.is_empty()
             || (current_path != self.scope
                 && !current_path.starts_with(&format!("{}/", self.scope)))
@@ -750,14 +762,32 @@ impl CryptOverlayProvider {
         is_dir_leaf: bool,
         kind: AccessKind,
     ) -> Result<String, ProviderError> {
-        encode_plain_target(
-            &self.keys,
-            &self.scope,
-            &self.unalias(plain),
-            is_dir_leaf,
-            kind,
-        )
-        .map_err(ProviderError::InvalidPath)
+        let plain = self.unalias(plain);
+        if kind == AccessKind::Write && self.write_may_land_in_the_anchor(&plain) {
+            return Err(ProviderError::InvalidPath(format!(
+                "refusing a plaintext write to {plain}: the server may read it as a path in the encrypted folder {}; write it by the folder's exact name",
+                self.scope
+            )));
+        }
+        encode_plain_target(&self.keys, &self.scope, &plain, is_dir_leaf, kind)
+            .map_err(ProviderError::InvalidPath)
+    }
+
+    /// True for an absolute `plain` that passes through as plaintext by its
+    /// exact name, but names the anchor or a path below it (or below its
+    /// alias) once backslashes are read as separators and case is folded.
+    /// A server that resolves those forms would store the plaintext inside
+    /// the encrypted folder.
+    fn write_may_land_in_the_anchor(&self, plain: &str) -> bool {
+        if self.scope.is_empty() || !plain.starts_with('/') || self.below_scope(plain).is_some() {
+            return false;
+        }
+        let target = folded(plain);
+        let at_or_below = |root: &str| {
+            let root = folded(root);
+            target == root || target.starts_with(&format!("{root}/"))
+        };
+        at_or_below(&self.scope) || self.scope_alias.as_deref().is_some_and(at_or_below)
     }
 
     /// #390 fail-closed guard. When a write into `plain_target` lands on an
@@ -7289,6 +7319,181 @@ pub(crate) mod tests {
         }
         assert!(methods > 70, "parsed {methods} methods");
         assert!(checked.len() >= 28, "{checked:?}");
+    }
+
+    /// Every form a server resolves to the anchor or the alias is read as
+    /// the anchor: `.` segments, repeated and trailing separators. `..` is
+    /// refused, a form only a case-insensitive or Windows-backed server
+    /// would resolve there is refused for a write, and a path genuinely
+    /// outside keeps its plaintext passthrough (EF-01).
+    #[tokio::test]
+    async fn every_form_of_an_encrypted_path_is_read_as_the_anchor() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            assert_eq!(p.scope_alias.as_deref(), Some("/srv/docs"), "{label}");
+            let canonical = p
+                .map("/home/u/docs/s.txt", false, AccessKind::Write)
+                .unwrap();
+            assert!(canonical.starts_with("/home/u/docs/"), "{label}");
+            assert!(!canonical.contains("s.txt"), "{label}");
+            for form in [
+                "/home/u/./docs/s.txt",
+                "/home/u//docs/s.txt",
+                "//home/u/docs/s.txt",
+                "/home/u/docs/./s.txt",
+                "/home/u/docs//s.txt",
+                "/home/u/docs/s.txt/",
+                "/./home/u/docs/s.txt",
+                "/srv/./docs/s.txt",
+                "/srv//docs/s.txt",
+                "/srv/docs/./s.txt",
+                "/srv/docs//s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    let wire = p.map(form, false, kind).unwrap();
+                    assert_eq!(wire, canonical, "{label}: {form} {kind:?}");
+                }
+                assert!(p.target_is_encrypted(form), "{label}: {form}");
+                assert!(p.wire_path_is_encrypted(form), "{label}: {form}");
+                p.refuse_crossing_the_anchor("rename", form, "/srv/docs/b.txt")
+                    .unwrap_or_else(|e| panic!("{label}: {form}: {e}"));
+                assert!(
+                    p.refuse_crossing_the_anchor("rename", form, "/home/u/docs2/b.txt")
+                        .is_err(),
+                    "{label}: {form}"
+                );
+            }
+            for anchor in [
+                "/home/u/./docs",
+                "/home/u//docs/",
+                "/srv/./docs",
+                "/srv//docs/",
+            ] {
+                assert_eq!(
+                    p.map(anchor, true, AccessKind::Write).unwrap(),
+                    "/home/u/docs",
+                    "{label}: {anchor}"
+                );
+                assert!(!p.target_is_encrypted(anchor), "{label}: {anchor}");
+            }
+            for traversal in [
+                "/srv/docs/../docs/s.txt",
+                "/other/../home/u/docs/s.txt",
+                "/srv/other/../docs/s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    assert!(
+                        p.map(traversal, false, kind).is_err(),
+                        "{label}: {traversal} {kind:?}"
+                    );
+                }
+            }
+            for folded_in in [
+                "/HOME/u/docs/s.txt",
+                "/home/u/Docs",
+                "/home/u\\docs\\s.txt",
+                "/SRV/docs/s.txt",
+                "/srv\\docs/s.txt",
+            ] {
+                assert!(
+                    p.map(folded_in, false, AccessKind::Write).is_err(),
+                    "{label}: {folded_in}"
+                );
+                // Reading it raw stores nothing.
+                assert!(
+                    p.map(folded_in, false, AccessKind::Read).is_ok(),
+                    "{label}: {folded_in}"
+                );
+            }
+            for outside in [
+                "/home/u/docs2/s.txt",
+                "/home/u/s.txt",
+                "/srv/other/s.txt",
+                "/srv/docsx/s.txt",
+                "/opt/docs/s.txt",
+            ] {
+                assert_eq!(
+                    p.map(outside, false, AccessKind::Write).unwrap(),
+                    outside,
+                    "{label}: {outside}"
+                );
+                assert!(!p.target_is_encrypted(outside), "{label}: {outside}");
+            }
+            assert_eq!(
+                p.map("/home/u/./docs2//s.txt", false, AccessKind::Write)
+                    .unwrap(),
+                "/home/u/docs2/s.txt",
+                "{label}"
+            );
+
+            let dir = std::env::temp_dir().join(format!("crypt_forms_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            tokio::fs::write(&local, b"never in clear").await.unwrap();
+            let local = local.to_str().unwrap();
+            p.upload(local, "/srv/./docs/secret.txt", None)
+                .await
+                .unwrap();
+            p.upload(local, "/home/u//docs/secret2.txt", None)
+                .await
+                .unwrap();
+            assert!(p.upload(local, "/SRV/docs/plain.txt", None).await.is_err());
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+            let mem = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            let files = mem.files.lock().unwrap();
+            assert_eq!(files.len(), 2, "{label}: {:?}", files.keys());
+            for (path, bytes) in files.iter() {
+                assert!(path.starts_with("/home/u/docs/"), "{label}: {path}");
+                assert!(!path.contains("secret"), "{label}: {path}");
+                assert_ne!(bytes.as_slice(), b"never in clear", "{label}: {path}");
+            }
+        }
+    }
+
+    /// Every production function that compares a path with the anchor or
+    /// its alias normalizes it first, so a comparison added later cannot
+    /// skip [`norm_abs`] unnoticed. The property itself is pinned by
+    /// `every_form_of_an_encrypted_path_is_read_as_the_anchor`.
+    #[test]
+    fn every_anchor_comparison_normalizes_the_path_first() {
+        let source = include_str!("crypt_overlay_provider.rs");
+        let production = &source[..source.find("\npub(crate) mod tests {").expect("tests")];
+        const COMPARES: &[&str] = &[
+            "== scope",
+            "== self.scope",
+            "!= self.scope",
+            "== alias",
+            "strip_prefix(&format!(",
+            "starts_with(&format!(",
+            "strip_prefix(&self.scope",
+        ];
+        const NORMALIZES: &[&str] = &["norm_abs(", "folded("];
+        let mut compared = Vec::new();
+        for chunk in production.split("fn ").skip(1) {
+            let name: String = chunk
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            // A chunk runs to the next `fn `, so it is this function's body.
+            let body = chunk;
+            let Some(first) = COMPARES.iter().filter_map(|c| body.find(c)).min() else {
+                continue;
+            };
+            if name == "norm_abs" || name == "norm_anchor" {
+                continue;
+            }
+            let normalized = NORMALIZES.iter().filter_map(|n| body.find(n)).min();
+            assert!(
+                normalized.is_some_and(|at| at < first),
+                "{name} compares a path with the anchor before it normalizes it"
+            );
+            compared.push(name);
+        }
+        assert!(compared.len() >= 10, "{compared:?}");
     }
 
     async fn assert_the_alias_is_read_as_the_anchor(
