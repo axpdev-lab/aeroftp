@@ -18,6 +18,9 @@ import { useTranslation } from '../i18n';
 import { logger } from '../utils/logger';
 import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import { pickFile } from '../utils/pickPath';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 const MAX_CLOUD_PAIRS = 32;
 
@@ -79,13 +82,22 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     const [saving, setSaving] = useState(false);
     const [savedServers, setSavedServers] = useState<any[]>([]);
     const [legacyConfig, setLegacyConfig] = useState<any>(null);
+    const [persistedPairs, setPersistedPairs] = useState<CloudPathPair[]>([]);
+    // A save already sent goes on after a close, and pair edits not yet saved would be lost by one: the backdrop
+    // is inert in both cases and the X asks first (Discussion #1527).
+    const pairsChanged = !loading && JSON.stringify(pairs) !== JSON.stringify(persistedPairs);
+    // Add, remove, toggle and the legacy import persist on their own, without
+    // Save: they count as busy too, so a stray click cannot close the editor
+    // before their result or error shows (Discussion #1527).
+    const requests = useInFlight<string>();
+    const guarded = useGuardedClose({ guard: saving || requests.count > 0 ? 'busy' : pairsChanged ? 'dirty' : null, onClose });
 
     useEffect(() => {
         if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') guarded.requestClose(); };
         window.addEventListener('keydown', handler);
         return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    }, [isOpen, guarded.requestClose]);
 
     useEffect(() => {
         if (!isOpen) return;
@@ -95,7 +107,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             try {
                 // Load pairs
                 const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(() => ({ pairs: [], parallel_pairs: false } as CloudPairsConfig));
-                setPairs((cfg.pairs || []).map(normalizePair));
+                const loaded = (cfg.pairs || []).map(normalizePair);
+                setPairs(loaded);
+                setPersistedPairs(loaded);
 
                 // Load saved servers for profile picker
                 const servers = await loadSavedServerProfiles().catch(() => []);
@@ -143,25 +157,33 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             last_sync: null,
         };
 
+        requests.begin(newPair.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: newPair });
             setPairs(updated.pairs || []);
+            setPersistedPairs(updated.pairs || []);
             // Clear legacy hint after first real add
             if (legacyConfig) setLegacyConfig(null);
         } catch (e) {
             logger.error('[CloudPairsEditor] add_cloud_pair failed:', e);
             // fallback local add (will save on explicit Save)
             setPairs(prev => [...prev, newPair]);
+        } finally {
+            requests.end(newPair.id);
         }
     };
 
     const handleRemove = async (pairId: string) => {
+        requests.begin(pairId);
         try {
             const updated = await invoke<CloudPairsConfig>('remove_cloud_pair', { pairId });
             setPairs(updated.pairs || []);
+            setPersistedPairs(updated.pairs || []);
         } catch (e) {
             logger.error('[CloudPairsEditor] remove_cloud_pair failed:', e);
             setPairs(prev => prev.filter(p => p.id !== pairId));
+        } finally {
+            requests.end(pairId);
         }
     };
 
@@ -171,14 +193,18 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
         );
         setPairs(updated);
+        requests.begin(pairId);
         try {
             // persist immediately for toggle (like multi path)
             await invoke('save_cloud_pairs_config_cmd', {
                 config: { pairs: updated, parallel_pairs: false },
             });
+            setPersistedPairs(updated);
         } catch (e) {
             logger.error('[CloudPairsEditor] toggle save failed, rolling back:', e);
             setPairs(previous);
+        } finally {
+            requests.end(pairId);
         }
     };
 
@@ -219,6 +245,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleSave = async () => {
+        // Save writes the whole pair list: sent while an add, remove or
+        // toggle is still in flight it would revert that change on disk.
+        if (requests.count > 0) return;
         setSaving(true);
         try {
             await invoke('save_cloud_pairs_config_cmd', {
@@ -255,14 +284,18 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             exclude_patterns: legacyConfig.exclude_patterns || [],
             last_sync: legacyConfig.last_sync || null,
         };
+        requests.begin(imported.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: imported });
             setPairs(updated.pairs || []);
+            setPersistedPairs(updated.pairs || []);
             setLegacyConfig(null);
         } catch (e) {
             logger.error('[CloudPairsEditor] import legacy failed:', e);
             setPairs(prev => [...prev, imported]);
             setLegacyConfig(null);
+        } finally {
+            requests.end(imported.id);
         }
     };
 
@@ -274,7 +307,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         t('cloud.directionReceiveOnly') || 'Receive only';
 
     return (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.pairsEditorLabel')}>
+        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4" onClick={guarded.onBackdropClick} role="dialog" aria-modal="true" aria-label={t('cloud.pairsEditorLabel')}>
             <div
                 className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-scale-in"
                 onClick={e => e.stopPropagation()}
@@ -286,7 +319,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                         <h3 className="font-semibold text-sm">{t('cloud.pairsTitle') || 'AeroCloud Pairs'}</h3>
                         <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-600 dark:text-cyan-400">{pairs.length} / {MAX_CLOUD_PAIRS}</span>
                     </div>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-200">
+                    <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-200">
                         <X size={18} />
                     </button>
                 </div>
@@ -524,7 +557,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                     <div className="flex items-center gap-2">
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
-                            onClick={onClose}
+                            onClick={guarded.requestClose}
                             disabled={saving}
                         >
                             {t('common.cancel')}
@@ -532,13 +565,16 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50"
                             onClick={handleSave}
-                            disabled={saving || loading}
+                            disabled={saving || loading || requests.count > 0}
                         >
                             {saving ? (t('common.saving')) : t('common.save')}
                         </button>
                     </div>
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+              <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+            )}
         </div>
     );
 };

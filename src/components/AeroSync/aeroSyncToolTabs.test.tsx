@@ -12,6 +12,7 @@ import english from '../../i18n/locales/en.json';
 import { AeroSyncDialog } from './AeroSyncDialog';
 import { useAeroSyncContextActions, type AeroSyncState } from './useAeroSyncContextActions';
 import { compareEntries, type CompareResult } from '../../utils/compareEndpoints';
+import { isEscapeClaimed } from '../../hooks/useGuardedClose';
 import { MultiPathEditor } from '../Sync/MultiPathEditor';
 import type { AeroSyncContext, AeroSyncDialogProps } from './types';
 
@@ -110,10 +111,12 @@ it('places all five named tools after Compare/Plan with one divider and mounts t
     }
     expect(invoke).toHaveBeenCalledWith('get_multi_path_config', { localPath: '/local', remotePath: '/remote' });
     expect(invoke).toHaveBeenCalledWith('get_sync_schedule_cmd');
-    // Embedded panes do not register the old child-dialog Escape callbacks.
+    // Embedded panes do not register the old child-dialog Escape callbacks:
+    // ESC switches no tab, and only the dialog's own ESC answers, closing it
+    // once (Discussion #1527 gave AeroSync its ESC).
     await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
     expect(tab('Scheduler').getAttribute('aria-selected')).toBe('true');
-    expect(props.onClose).not.toHaveBeenCalled();
+    expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 
 it('preserves an unsaved Multi-Path draft across tabs, and saves the displayed pair', async () => {
@@ -304,6 +307,11 @@ it.each(['success', 'failure'])('blocks close and stale Plan through restore %s 
     });
     expect(props.onClose).not.toHaveBeenCalled();
     expect(invoke).not.toHaveBeenCalledWith('local_sync_cancel');
+    // A restore cannot be stopped: ESC opens no "stop" confirm that would
+    // stop nothing and close nothing (Discussion #1527).
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(host.querySelector('[role=alertdialog]')).toBeNull();
+    expect(props.onClose).not.toHaveBeenCalled();
     await choose('Plan');
     expect(visibleButtons().some(b => b.textContent === 'Start comparison')).toBe(false);
     const execute = visibleButtons().find(b => b.textContent === 'Execute plan')!;
@@ -321,6 +329,76 @@ it.each(['success', 'failure'])('blocks close and stale Plan through restore %s 
     expect(props.onClose).toHaveBeenCalledTimes(1);
 });
 
+
+it('keeps claiming ESC while a restore runs, without answering it', async () => {
+    let resolveRestore!: (result: unknown) => void;
+    const restoring = new Promise(resolve => { resolveRestore = resolve; });
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        if (command === 'restore_sync_snapshot_cmd') return restoring;
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    const restoreButtons = visibleButtons().filter(b => b.textContent?.trim() === 'Restore');
+    await act(async () => restoreButtons[restoreButtons.length - 1].click());
+    expect(invoke).toHaveBeenCalledWith('restore_sync_snapshot_cmd', expect.anything());
+    // The restore cannot be stopped, but the modal stays in the ESC stack so
+    // the app-wide shortcut cannot act underneath it; it answers no press.
+    expect(isEscapeClaimed()).toBe(true);
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(host.querySelector('[role=alertdialog]')).toBeNull();
+    await act(async () => resolveRestore({ restored_from_remote: 0, restored_to_remote: 1, skipped: 0, failed: [] }));
+    // Restore over: the idle dialog answers ESC again and closes.
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
+
+it('lets ESC close only the restore confirm and leaves AeroSync open', async () => {
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    // The pane's confirmation overlay is now open over the snapshot row.
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(2);
+    // The confirm owns ESC: one press cancels only the confirm (Discussion #1527).
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).not.toHaveBeenCalled();
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(1);
+    // With the confirm gone the modal answers ESC again and closes.
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
+
+
+it('drops the restore confirm when its pane is hidden, so ESC reaches AeroSync again', async () => {
+    // Switching tabs kept the hidden Rollback pane mounted with its confirm
+    // open: the next ESC dismissed that invisible confirm instead of closing
+    // the AeroSync dialog on screen.
+    vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'list_sync_snapshots_cmd') return [{ id: 'snapshot-a', name: 'Snapshot A',
+            created_at: '2026-10-29T19:00:00Z', files: {} }];
+        return [];
+    });
+    await renderAppContext({ ...context, compareResult: compareEntries([], []) });
+    await choose('Rollback snapshots');
+    await act(async () => panel().querySelector<HTMLElement>('[class*=cursor-pointer]')!.click());
+    await clickVisible('Restore');
+    expect(visibleButtons().filter(b => b.textContent?.trim() === 'Restore')).toHaveLength(2);
+    await choose('Plan');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(props.onClose).toHaveBeenCalledTimes(1);
+});
 
 it('refreshes an already-active History pane only after journal dismissal settles', async () => {
     const journal = { local_path: '/local', remote_path: '/remote', updated_at: '2026-10-29T19:00:00Z',

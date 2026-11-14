@@ -54,8 +54,12 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [vaultPath, setVaultPath] = useState(initialVaultPath || '');
     const [entries, setEntries] = useState<CryptomatorEntry[]>([]);
     const [breadcrumb, setBreadcrumb] = useState<BreadcrumbItem[]>([{ name: t('cryptomator.root'), dirId: '' }]);
-    const [loading, setLoading] = useState(false);
-    const [decrypting, setDecrypting] = useState(false);
+    // Overlapping operations (two decrypts can start before the list hides)
+    // share these counters: the first to settle must not drop the busy guard
+    // or the spinner while another is still running.
+    const [loadingCount, setLoadingCount] = useState(0);
+    const loading = loadingCount > 0;
+    const [pendingDecrypts, setPendingDecrypts] = useState(0);
     const [error, setError] = useState<string | null>(null);
     const [success, setSuccess] = useState<string | null>(null);
     // Save-All (#322): live export of the whole decrypted tree to folder/zip/.aerozip.
@@ -63,7 +67,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
     const [savingAll, setSavingAll] = useState(false);
     const [saveProgress, setSaveProgress] = useState<{ percentage: number; transferred: number; total: number } | null>(null);
     // Real byte-true decrypt progress (>=10MB plaintext only).
-    const progress = useArchiveProgress(decrypting);
+    const progress = useArchiveProgress(pendingDecrypts > 0);
 
     // Drive the Save-All bar from the backend's `vault_progress` events while a
     // bulk export runs (the single-file path uses `archive_progress` above).
@@ -76,7 +80,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         return () => { alive = false; un?.(); };
     }, [savingAll]);
     // Lock the modal during a decrypt or bulk export so a reflexive X can't abandon it.
-    const guarded = useGuardedClose({ guard: (decrypting || savingAll) ? 'busy' : null, onClose });
+    const guarded = useGuardedClose({ guard: (pendingDecrypts > 0 || savingAll) ? 'busy' : null, onClose });
 
     const currentDirId = breadcrumb[breadcrumb.length - 1].dirId;
 
@@ -99,7 +103,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     const handleUnlock = async () => {
         if (!vaultPath || !password) return;
-        setLoading(true);
+        setLoadingCount(c => c + 1);
         setError(null);
         try {
             const info = await invoke<VaultInfo>('cryptomator_unlock', { vaultPath, password });
@@ -109,7 +113,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            setLoadingCount(c => c - 1);
         }
     };
 
@@ -126,7 +130,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
 
     const navigateToDir = async (name: string, dirId: string) => {
         if (!vaultInfo) return;
-        setLoading(true);
+        setLoadingCount(c => c + 1);
         setError(null);
         try {
             const list = await invoke<CryptomatorEntry[]>('cryptomator_list', { vaultId: vaultInfo.vaultId, dirId });
@@ -135,14 +139,14 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            setLoadingCount(c => c - 1);
         }
     };
 
     const navigateToBreadcrumb = async (index: number) => {
         if (!vaultInfo) return;
         const target = breadcrumb[index];
-        setLoading(true);
+        setLoadingCount(c => c + 1);
         setError(null);
         try {
             const list = await invoke<CryptomatorEntry[]>('cryptomator_list', { vaultId: vaultInfo.vaultId, dirId: target.dirId });
@@ -151,7 +155,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            setLoadingCount(c => c - 1);
         }
     };
 
@@ -160,8 +164,8 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         const savePath = await pickSave({ defaultPath: entry.name });
         if (!savePath) return;
 
-        setLoading(true);
-        setDecrypting(true);
+        setLoadingCount(c => c + 1);
+        setPendingDecrypts(c => c + 1);
         setError(null);
         try {
             await invoke('cryptomator_decrypt_file', {
@@ -174,8 +178,8 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
-            setDecrypting(false);
+            setLoadingCount(c => c - 1);
+            setPendingDecrypts(c => c - 1);
         }
     };
 
@@ -198,7 +202,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         }
         if (!destPath) return;
 
-        setLoading(true);
+        setLoadingCount(c => c + 1);
         setSavingAll(true);
         setError(null);
         try {
@@ -216,7 +220,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            setLoadingCount(c => c - 1);
             setSavingAll(false);
         }
     };
@@ -226,7 +230,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         const selected = await pickFile({ multiple: false });
         if (!selected) return;
 
-        setLoading(true);
+        setLoadingCount(c => c + 1);
         setError(null);
         try {
             await invoke('cryptomator_encrypt_file', {
@@ -241,7 +245,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
         } catch (e) {
             setError(String(e));
         } finally {
-            setLoading(false);
+            setLoadingCount(c => c - 1);
         }
     };
 
@@ -513,6 +517,7 @@ export const CryptomatorBrowser: React.FC<CryptomatorBrowserProps> = ({ onClose,
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />

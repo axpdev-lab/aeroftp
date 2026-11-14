@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, Folder, File, CheckSquare, Square } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import type { RemoteFile } from '../types';
@@ -26,6 +28,8 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A restore or delete already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: actionLoading !== null ? 'busy' : null, onClose });
   const [pendingEmptyConfirm, setPendingEmptyConfirm] = useState(false);
 
   const loadTrash = useCallback(async () => {
@@ -46,13 +50,17 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
     loadTrash();
   }, [loadTrash]);
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (pendingEmptyConfirm) { setPendingEmptyConfirm(false); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose, pendingEmptyConfirm]);
 
 
   const toggleSelectAll = () => {
@@ -145,7 +153,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
   );
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[680px] max-h-[80vh] flex flex-col animate-scale-in"
@@ -172,7 +180,7 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
             >
               <X size={14} />
@@ -269,6 +277,9 @@ export function PCloudTrashManager({ onClose, onRefreshFiles }: PCloudTrashManag
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
       )}
     </div>
   );

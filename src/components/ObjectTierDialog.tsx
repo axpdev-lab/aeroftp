@@ -8,6 +8,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
   AZURE_ACCESS_TIERS,
   S3_RESTORE_TIERS,
@@ -49,12 +51,14 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
   const [days, setDays] = useState(7);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A class change, restore or tier change already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: busy ? 'busy' : null, onClose });
 
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') guarded.requestClose(); };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   const title = mode === 's3-class' ? t('s3.storageClass') : mode === 's3-restore' ? t('s3.restoreFromGlacier') : t('azure.accessTier');
   const options: readonly string[] = mode === 's3-class' ? S3_STORAGE_CLASSES : mode === 's3-restore' ? S3_RESTORE_TIERS : AZURE_ACCESS_TIERS;
@@ -84,7 +88,7 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         ref={panelRef}
@@ -98,7 +102,7 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
             {mode === 's3-restore' ? <Snowflake size={16} className="text-cyan-500" /> : <Layers size={16} className="text-cyan-500" />}
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
             <X size={16} className="text-gray-500" />
           </button>
         </div>
@@ -132,7 +136,7 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
           {error && <p className="text-xs text-red-500">{error}</p>}
         </div>
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
+          <button onClick={onClose} disabled={busy} className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
             {t('common.cancel')}
           </button>
           <button
@@ -145,6 +149,9 @@ export function ObjectTierDialog({ mode, path, name, current, onClose, onDone }:
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }
