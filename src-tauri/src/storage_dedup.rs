@@ -1019,6 +1019,27 @@ mod tests {
             None,
         );
         assert_eq!(dedup_key(&c), "webdav:puter-webdav:carol");
+        // Side by side, the same account with no account path: the password
+        // profile keys by its user name, the token profile cannot name the
+        // account at all (`-token` is shared by every account), so it keys by
+        // its own id. Merging them would need the account path; without it
+        // they stay two entries.
+        let carol_token_no_path = p(
+            "p9",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&carol_token_no_path), "id:p9");
+        assert_ne!(dedup_key(&carol_token_no_path), dedup_key(&c));
+        assert_eq!(
+            aggregate(&[c.clone(), carol_token_no_path.clone()]).unique_count,
+            2
+        );
         // The password profile with no path and the token profile with the
         // account path name the same drive, so they share one key.
         let carol_token = p(
@@ -1220,6 +1241,40 @@ mod tests {
         );
         assert!(!dedup_key(&with_query).contains("secret"));
         assert_eq!(dedup_key(&with_query), dedup_key(&plain));
+        // Generic WebDAV: the `webdav-host:` key.
+        let dav = p(
+            "q5",
+            "webdav",
+            None,
+            "https://dav.example.com/remote?token=SECRET",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let dav_plain = p(
+            "q6",
+            "webdav",
+            None,
+            "https://dav.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&dav), "webdav-host:dav.example.com:alice");
+        assert_eq!(dedup_key(&dav), dedup_key(&dav_plain));
+        // Custom S3: the `s3-host:` key.
+        let s3_plain = p(
+            "q7",
+            "s3",
+            None,
+            "https://s3.example.com",
+            443,
+            "AKIAEXAMPLE",
+            None,
+            None,
+        );
         let s3 = p(
             "q3",
             "s3",
@@ -1230,7 +1285,11 @@ mod tests {
             None,
             None,
         );
+        assert!(dedup_key(&s3).starts_with("s3-host:s3.example.com:"));
         assert!(!dedup_key(&s3).contains("secret"));
+        assert_eq!(dedup_key(&s3), dedup_key(&s3_plain));
+        // FTP: the `host:` key.
+        let ftp_plain = p("q8", "ftp", None, "ftp.example.com", 21, "bob", None, None);
         let ftp = p(
             "q4",
             "ftp",
@@ -1241,7 +1300,10 @@ mod tests {
             None,
             None,
         );
+        assert!(dedup_key(&ftp).starts_with("host:"));
+        assert!(dedup_key(&ftp).ends_with(":ftp.example.com:21:bob"));
         assert!(!dedup_key(&ftp).contains("secret"));
+        assert_eq!(dedup_key(&ftp), dedup_key(&ftp_plain));
     }
 
     #[test]

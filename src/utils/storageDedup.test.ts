@@ -272,6 +272,18 @@ describe('storageDedup', () => {
             host: 'dav.puter.com', port: 443, username: 'carol',
         });
         expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav:carol');
+        // Side by side, the same account with no account path: the password
+        // profile keys by its user name, the token profile cannot name the
+        // account at all (`-token` is shared by every account), so it keys by
+        // its own id. Merging them would need the account path; without it
+        // they stay two entries.
+        const carolTokenNoPath = make({
+            id: 'p9', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(carolTokenNoPath)).toBe('id:p9');
+        expect(getStorageDedupKey(carolTokenNoPath)).not.toBe(getStorageDedupKey(c));
+        expect(aggregateByDedupKey([c, carolTokenNoPath]).uniqueCount).toBe(2);
         // The password profile with no path and the token profile with the
         // account path name the same drive, so they share one key.
         const carolToken = make({
@@ -368,15 +380,37 @@ describe('storageDedup', () => {
         });
         expect(getStorageDedupKey(withQuery)).not.toContain('secret');
         expect(getStorageDedupKey(withQuery)).toBe(getStorageDedupKey(plain));
+        // Generic WebDAV: the `webdav-host:` key.
+        const dav = make({
+            id: 'q5', protocol: 'webdav', host: 'https://dav.example.com/remote?token=SECRET',
+            port: 443, username: 'alice',
+        });
+        const davPlain = make({
+            id: 'q6', protocol: 'webdav', host: 'https://dav.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(dav)).toBe('webdav-host:dav.example.com:alice');
+        expect(getStorageDedupKey(dav)).toBe(getStorageDedupKey(davPlain));
+        // Custom S3: the `s3-host:` key.
         const s3 = make({
             id: 'q3', protocol: 's3', host: 'https://s3.example.com?X-Amz-Signature=SECRET',
             port: 443, username: 'AKIAEXAMPLE',
         });
+        const s3Plain = make({
+            id: 'q7', protocol: 's3', host: 'https://s3.example.com', port: 443, username: 'AKIAEXAMPLE',
+        });
+        expect(getStorageDedupKey(s3)).toMatch(/^s3-host:s3\.example\.com:/);
         expect(getStorageDedupKey(s3)).not.toContain('secret');
+        expect(getStorageDedupKey(s3)).toBe(getStorageDedupKey(s3Plain));
+        // FTP: the `host:` key.
         const ftp = make({
             id: 'q4', protocol: 'ftp', host: 'ftp.example.com#SECRET', port: 21, username: 'bob',
         });
+        const ftpPlain = make({
+            id: 'q8', protocol: 'ftp', host: 'ftp.example.com', port: 21, username: 'bob',
+        });
+        expect(getStorageDedupKey(ftp)).toMatch(/^host:[^:]+:ftp\.example\.com:21:bob$/);
         expect(getStorageDedupKey(ftp)).not.toContain('secret');
+        expect(getStorageDedupKey(ftp)).toBe(getStorageDedupKey(ftpPlain));
     });
 
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
