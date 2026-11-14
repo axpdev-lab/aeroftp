@@ -6,6 +6,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, AlertTriangle, X, RefreshCw, Loader2, File, Undo2, CornerUpLeft } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { formatSize, formatDate } from '../utils/formatters';
@@ -52,6 +54,8 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
   const [emptyLoading, setEmptyLoading] = useState(false);
   // Per-version purge confirmation (irreversible).
   const [pendingPurge, setPendingPurge] = useState<TrashEntry | null>(null);
+  // An undelete, restore, purge or empty already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: actionKey !== null || emptyLoading ? 'busy' : null, onClose });
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
@@ -73,13 +77,18 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
     loadTrash();
   }, [loadTrash]);
 
+  // Escape dismisses the innermost surface: an open confirmation first, the
+  // manager only when none is pending (Discussion #1527).
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key !== 'Escape') return;
+      if (pendingPurge) { setPendingPurge(null); return; }
+      if (emptyPreview) { setEmptyPreview(null); return; }
+      guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose, pendingPurge, emptyPreview]);
 
   const restore = async (entry: TrashEntry, mode: RestoreMode) => {
     setActionKey(entry.version_id);
@@ -254,7 +263,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
   );
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[760px] max-h-[80vh] flex flex-col animate-scale-in"
@@ -281,7 +290,7 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
             >
               <X size={14} />
@@ -396,6 +405,9 @@ export function S3TrashManager({ onClose, onRefreshFiles }: S3TrashManagerProps)
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
       )}
     </div>
   );

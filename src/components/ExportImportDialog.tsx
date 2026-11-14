@@ -17,6 +17,8 @@ import { BridgeSourcePanel } from './BridgeSourcePanel';
 import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { useDetectedBridgeConfigs, shortenConfigPath, orderBridgeSourcesByDetection } from '../hooks/useDetectedBridgeConfigs';
 import { announceStoredServerProfiles } from '../utils/serverProfileStore';
 import { accountChangeGeneration } from '../utils/userPartitions';
@@ -486,6 +488,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         };
     }, [handleBridgeDrop]);
 
+    // An export or import in flight goes on after a close, and a typed
+    // export or import password would have to be typed again: the backdrop
+    // is inert then and the X asks first (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: loading ? 'busy' : (password || confirmPassword) && success === null ? 'dirty' : null,
+        onClose,
+    });
+
     // Opened from a recognized bridge-config file (AeroFile "Import to
     // AeroFTP"): run the identify+route flow once, exactly like a drop.
     const initialBridgeHandledRef = useRef<string | null>(null);
@@ -497,7 +507,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     }, [initialBridgeFilePath, handleBridgeDrop]);
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={(e) => e.target === e.currentTarget && onClose()}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
             <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing">
@@ -508,7 +518,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                             : mode === 'bridge-src' && bridgeSrc ? `${bridgeSrc.label} ${bridgeSrcDir === 'import' ? t('settings.bridgeImport') : t('settings.bridgeExport')}`
                             : t('settings.exportImport')}
                     </h3>
-                    <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
+                    <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
                         <X size={18} />
                     </button>
                 </div>
@@ -940,6 +950,14 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                     ) : null}
                 </div>
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

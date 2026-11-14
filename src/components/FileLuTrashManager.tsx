@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Trash2, RotateCcw, X, RefreshCw, Loader2, File, CheckSquare, Square, Clock } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { TrashTable, type TrashRow } from './Trash/TrashTable';
 import { fileLuDeletedAtLabel } from './Trash/fileLuDeletedLabel';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
@@ -35,6 +37,8 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A restore or delete already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: actionLoading !== null ? 'busy' : null, onClose });
 
   const loadTrash = useCallback(async () => {
     setLoading(true);
@@ -231,7 +235,7 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:bg-gray-800 transition-colors">
+            <button onClick={guarded.requestClose} className="p-1.5 rounded text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:bg-gray-800 transition-colors">
               <X size={14} />
             </button>
           </div>
@@ -301,6 +305,9 @@ export function FileLuTrashManager({ onClose, onRefreshFiles }: FileLuTrashManag
           {t('filelu.trashAutoExpiry') || 'Trashed files are automatically deleted by FileLu after 7 days'}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@
  * regardless of the host's stacking context.
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { MODAL_Z } from '../utils/modalLayers';
@@ -30,6 +30,18 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
   const t = useTranslation();
   const busy = kind === 'busy';
   const keepsRunning = busy && !canAbort;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const keepRef = useRef<HTMLButtonElement>(null);
+
+  // The confirm owns the keyboard while open: focus starts on the safe
+  // action, Tab cycles only between its two buttons (a window capture
+  // listener runs before any host focus trap), and closing hands focus back
+  // to whatever had it (Discussion #1527 review pass 2).
+  useEffect(() => {
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    keepRef.current?.focus();
+    return () => { previouslyFocused?.focus(); };
+  }, []);
 
   // Esc keeps working (the safe default); it never confirms the destructive action.
   useEffect(() => {
@@ -37,6 +49,20 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
       if (e.key === 'Escape') {
         e.stopPropagation();
         onKeep();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        e.stopPropagation();
+        const buttons = rootRef.current?.querySelectorAll<HTMLButtonElement>('button');
+        if (!buttons || buttons.length === 0) return;
+        const index = Array.from(buttons).indexOf(document.activeElement as HTMLButtonElement);
+        const next = index === -1
+          ? 0
+          : e.shiftKey
+            ? (index === 0 ? buttons.length - 1 : index - 1)
+            : (index === buttons.length - 1 ? 0 : index + 1);
+        buttons[next].focus();
       }
     };
     window.addEventListener('keydown', handler, true);
@@ -45,10 +71,15 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
 
   return (
     <div
+      ref={rootRef}
       className={`fixed inset-0 ${MODAL_Z.guardedClose} flex items-center justify-center bg-black/40 backdrop-blur-[1px]`}
       role="alertdialog"
       aria-modal="true"
       onClick={(e) => { if (e.target === e.currentTarget) onKeep(); }}
+      // The confirm sits inside its host modal: a keystroke on one of its
+      // buttons (Enter confirms "keep editing") must not bubble to a host
+      // onKeyDown that would act on it (Discussion #1527 review).
+      onKeyDown={(e) => e.stopPropagation()}
     >
       <div className="w-[360px] max-w-[90vw] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl p-5 animate-scale-in">
         <div className="flex items-start gap-3">
@@ -66,6 +97,7 @@ export const GuardedCloseConfirm: React.FC<GuardedCloseConfirmProps> = ({ kind, 
         </div>
         <div className="mt-4 flex justify-end gap-2">
           <button
+            ref={keepRef}
             type="button"
             onClick={onKeep}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"

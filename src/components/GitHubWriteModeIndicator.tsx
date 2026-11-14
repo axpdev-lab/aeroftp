@@ -13,6 +13,8 @@ import { CheckCircle, GitBranch, GitPullRequest, Lock, Globe, LockKeyhole } from
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { useTranslation } from '../i18n';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface GitHubWriteModeIndicatorProps {
   writeMode: 'direct' | 'branch' | 'readonly';
@@ -57,6 +59,12 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
       setCreating(false);
     }
   }, [prTitle, prBody, protocol, onError]);
+
+  // The title and description stay typed when the prompt hides. A request
+  // being created goes on after a close (Discussion #1527): the backdrop is
+  // inert while it runs, and ESC asks first.
+  const closePrPrompt = useCallback(() => setShowPrPrompt(false), []);
+  const guarded = useGuardedClose({ guard: creating ? 'busy' : null, onClose: closePrPrompt });
 
   const visibilityBadge = (
     <span
@@ -116,7 +124,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
 
           {showPrPrompt && (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-              onClick={(e) => { if (e.target === e.currentTarget) setShowPrPrompt(false); }}
+              onClick={guarded.onBackdropClick}
             >
               <div className="bg-[var(--color-bg-secondary)] border border-[var(--color-border)] rounded-lg shadow-xl p-4 w-96 animate-scale-in">
                 <h3 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3 flex items-center gap-2">
@@ -136,7 +144,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
                     bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]
                     placeholder:text-[var(--color-text-tertiary)] mb-2"
                   autoFocus
-                  onKeyDown={(e) => { if (e.key === 'Escape') setShowPrPrompt(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') guarded.requestClose(); }}
                 />
 
                 <textarea
@@ -147,7 +155,7 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
                   className="w-full px-2 py-1.5 text-sm rounded border border-[var(--color-border)]
                     bg-[var(--color-bg-primary)] text-[var(--color-text-primary)]
                     placeholder:text-[var(--color-text-tertiary)] mb-3 resize-none"
-                  onKeyDown={(e) => { if (e.key === 'Escape') setShowPrPrompt(false); }}
+                  onKeyDown={(e) => { if (e.key === 'Escape') guarded.requestClose(); }}
                 />
 
                 <div className="flex justify-end gap-2">
@@ -172,6 +180,14 @@ export const GitHubWriteModeIndicator: React.FC<GitHubWriteModeIndicatorProps> =
                   </button>
                 </div>
               </div>
+              {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                  kind={guarded.confirmKind}
+                  canAbort={guarded.canAbort}
+                  onKeep={guarded.cancelConfirm}
+                  onConfirm={guarded.confirmAndClose}
+                />
+              )}
             </div>
           )}
         </>
