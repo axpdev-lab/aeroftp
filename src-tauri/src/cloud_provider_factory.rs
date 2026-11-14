@@ -1659,7 +1659,8 @@ mod tests {
             .extra
             .insert("access_token".to_string(), "t".to_string());
         assert_eq!(endpoint_fingerprint(&secrets), fingerprint);
-        let edits: [(&str, fn(&mut ProviderConfig)); 6] = [
+        type Edit = (&'static str, fn(&mut ProviderConfig));
+        let edits: [Edit; 6] = [
             ("host", |c| c.host = "other.example".to_string()),
             ("port", |c| c.port = Some(2222)),
             ("user", |c| c.username = Some("v".to_string())),

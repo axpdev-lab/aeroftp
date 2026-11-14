@@ -16146,7 +16146,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
             // until first resolution; the worker always corrects it before dispatch.
 
-            if let Err(e) = cloud_config::refuse_a_parent_step_under_login(
+            if let Err(e) = ftp_client_gui_lib::cloud_config::refuse_a_parent_step_under_login(
                 &new_pair.remote_path,
                 &new_pair.protocol_type,
             ) {
