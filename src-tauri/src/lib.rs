@@ -221,12 +221,11 @@ mod remote_share_link_tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 mod parent_step_save_tests {
     use super::*;
 
     #[test]
-    #[cfg(target_os = "linux")]
     fn the_save_commands_refuse_a_parent_step_under_the_login_folder() {
         let _env = crate::test_env::lock();
         let data = tempfile::tempdir().unwrap();
