@@ -9639,14 +9639,14 @@ mod transfer_verdict_tests {
             .await
             .expect("the upload must end");
             assert!(outcome.is_err());
-            assert!(
-                log.lock()
-                    .unwrap()
-                    .iter()
-                    .any(|line| line.starts_with("ABOR")),
-                "the server was never told: {:?}",
-                log.lock().unwrap()
-            );
+            {
+                let log_lines = log.lock().unwrap().clone();
+                assert!(
+                    log_lines.iter().any(|line| line.starts_with("ABOR")),
+                    "the server was never told: {:?}",
+                    log_lines
+                );
+            }
             assert!(
                 provider.stream.is_none(),
                 "the session was handed on with an ABOR reply still owed (late: {stor_abor_late})"

@@ -11416,14 +11416,14 @@ mod tests {
             provider.config.region = "filen".into();
             let entries = provider.list("/").await.expect("list failed");
             server.abort();
-            assert!(
-                seen.lock()
-                    .unwrap()
-                    .iter()
-                    .all(|q| q.contains("encoding-type=url")),
-                "{:?}",
-                seen.lock().unwrap()
-            );
+            {
+                let queries = seen.lock().unwrap().clone();
+                assert!(
+                    queries.iter().all(|q| q.contains("encoding-type=url")),
+                    "{:?}",
+                    queries
+                );
+            }
             // The object is literally named `report%20final.txt` both times.
             assert_eq!(entries.len(), 1, "{entries:?}");
             assert_eq!(entries[0].name, "report%20final.txt", "echo={echo}");
@@ -12757,21 +12757,19 @@ mod tests {
         let outcome = provider.rmdir_recursive("/folder").await;
         assert!(outcome.is_err(), "{:?}", bodies.lock().unwrap());
         assert!(objects.lock().unwrap().contains("other/keep"));
-        assert!(
-            bodies.lock().unwrap().is_empty(),
-            "{:?}",
-            bodies.lock().unwrap()
-        );
+        {
+            let seen_bodies = bodies.lock().unwrap().clone();
+            assert!(seen_bodies.is_empty(), "{:?}", seen_bodies);
+        }
 
         let (mut provider, objects, bodies) = provider_on_a_listing_that_leaks_a_key().await;
         let outcome = provider.rename("/folder", "/moved").await;
         assert!(outcome.is_err(), "{:?}", objects.lock().unwrap());
         assert!(objects.lock().unwrap().contains("other/keep"));
-        assert!(
-            bodies.lock().unwrap().is_empty(),
-            "{:?}",
-            bodies.lock().unwrap()
-        );
+        {
+            let seen_bodies = bodies.lock().unwrap().clone();
+            assert!(seen_bodies.is_empty(), "{:?}", seen_bodies);
+        }
     }
 
     /// Round 2 of the 4.2.1 review: `rmdir` was `rmdir_recursive`, so an
@@ -13007,11 +13005,14 @@ mod tests {
                 matches!(outcome, Err(ProviderError::AlreadyExists(_))),
                 "{from} -> {to}: {outcome:?}"
             );
-            assert!(
-                !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
-                "{from} -> {to}: {:?}",
-                log.lock().unwrap()
-            );
+            {
+                let seen_log = log.lock().unwrap().clone();
+                assert!(
+                    !seen_log.iter().any(|r| r.starts_with("PUT")),
+                    "{from} -> {to}: {:?}",
+                    seen_log
+                );
+            }
             assert_eq!(bucket.lock().unwrap().len(), objects.len());
         }
     }
@@ -13028,11 +13029,14 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            !log.lock().unwrap().iter().any(|r| r.starts_with("PUT")),
-            "{:?}",
-            log.lock().unwrap()
-        );
+        {
+            let seen_log = log.lock().unwrap().clone();
+            assert!(
+                !seen_log.iter().any(|r| r.starts_with("PUT")),
+                "{:?}",
+                seen_log
+            );
+        }
         assert_eq!(bucket.lock().unwrap().len(), 2);
     }
 

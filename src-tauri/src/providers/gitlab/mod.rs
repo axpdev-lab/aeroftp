@@ -1253,11 +1253,10 @@ mod tests {
         .unwrap();
         provider.connected = true;
         provider.rename("/a.txt", "/a.txt").await.expect("a no-op");
-        assert!(
-            requests.lock().unwrap().is_empty(),
-            "{:?}",
-            requests.lock().unwrap()
-        );
+        {
+            let seen_requests = requests.lock().unwrap().clone();
+            assert!(seen_requests.is_empty(), "{:?}", seen_requests);
+        }
     }
 
     /// A recursive delete is one commit deleting every blob the recursive

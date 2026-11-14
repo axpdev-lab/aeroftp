@@ -6657,11 +6657,14 @@ mod tests {
                 "{outcome:?}"
             );
         }
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_copy_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
     }
 
     /// A folder is only the prefix of the files under it, and a rename of one
@@ -6696,11 +6699,14 @@ mod tests {
         );
         let replaced = provider.replace("/d", "/a.txt").await;
         assert!(replaced.is_err(), "{replaced:?}");
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_copy_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
     }
 
     /// A delete that fails after every copy leaves the folder under both
@@ -7302,11 +7308,14 @@ mod tests {
             matches!(outcome, Err(ProviderError::InvalidPath(_))),
             "{outcome:?}"
         );
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_copy_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
     }
 
     /// The pass after the deletes hides only the names this rename deleted:
@@ -7319,11 +7328,14 @@ mod tests {
             provider_for_rename_on(false, 200, AfterDelete::NewerUpload, FolderExtra::Nothing)
                 .await;
         provider.rename("/a.txt", "/b.txt").await.expect("rename");
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_hide_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
         let left = provider.list_files_under("a.txt").await.unwrap();
         assert_eq!(left.len(), 1, "{left:?}");
         assert_eq!(left[0].1, "newer-id");
@@ -7336,11 +7348,14 @@ mod tests {
             provider_for_rename_on(false, 200, AfterDelete::NewerUpload, FolderExtra::Nothing)
                 .await;
         provider.rename("/d", "/e").await.expect("folder rename");
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_hide_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_hide_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
         let left = provider.list_files_under("d/").await.unwrap();
         assert_eq!(left.len(), 1, "{left:?}");
         assert_eq!(left[0].1, "newer-id");
@@ -7415,11 +7430,14 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            !ops.lock().unwrap().iter().any(|op| op == "b2_copy_file"),
-            "{:?}",
-            ops.lock().unwrap()
-        );
+        {
+            let seen_ops = ops.lock().unwrap().clone();
+            assert!(
+                !seen_ops.iter().any(|op| op == "b2_copy_file"),
+                "{:?}",
+                seen_ops
+            );
+        }
     }
 
     /// A refusal is a type, not a phrase: a server error whose message happens

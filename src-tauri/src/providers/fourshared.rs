@@ -2225,11 +2225,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// The lookups read one page: an `a.txt` on the second page of a folder
@@ -2249,11 +2248,10 @@ mod tests {
             matches!(unreadable, Err(ProviderError::ParseError(_))),
             "{unreadable:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// An empty body or `null` is an empty folder: a ParseError stopped a
@@ -2279,11 +2277,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ParseError(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// A server that ignores `offset` answers its first page again: the
@@ -2303,11 +2300,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// A wrapper that also carries an `id` and a `name` was read as that one
@@ -2321,11 +2317,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// An error object that also carries an `id` and a `name` was read as a
@@ -2338,11 +2333,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ParseError(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// A lookup that read its page limit ended as if the name were free,
@@ -2356,11 +2350,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("pages")),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// The API guide documents a folder holding one item listed as that
@@ -2376,11 +2369,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// A trashed file held its name for a lookup, while the listing does
@@ -2453,11 +2445,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(_))),
             "{outcome:?}"
         );
-        assert!(
-            puts.lock().unwrap().is_empty(),
-            "{:?}",
-            puts.lock().unwrap()
-        );
+        {
+            let seen_puts = puts.lock().unwrap().clone();
+            assert!(seen_puts.is_empty(), "{:?}", seen_puts);
+        }
     }
 
     /// The move keeps the old name: with `/dst/a.txt` there it would put a

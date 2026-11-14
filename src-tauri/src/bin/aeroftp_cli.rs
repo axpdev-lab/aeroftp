@@ -99462,11 +99462,14 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
                 )
                 .await
             });
-            assert!(
-                deletes.lock().unwrap().is_empty(),
-                "{path}: deleted {:?}",
-                deletes.lock().unwrap()
-            );
+            {
+                let seen_deletes = deletes.lock().unwrap().clone();
+                assert!(
+                    seen_deletes.is_empty(),
+                    "{path}: deleted {:?}",
+                    seen_deletes
+                );
+            }
             assert_eq!(
                 code, 4,
                 "{path}: the folder it did not list makes the run partial"
@@ -99536,11 +99539,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         let code = run_against_remote(remote, || async {
             cmd_rmdirs("memory://", "/root", true, &quiet_cli(), OutputFormat::Json).await
         });
-        assert!(
-            rmdirs.lock().unwrap().is_empty(),
-            "{:?}",
-            rmdirs.lock().unwrap()
-        );
+        {
+            let seen_rmdirs = rmdirs.lock().unwrap().clone();
+            assert!(seen_rmdirs.is_empty(), "{:?}", seen_rmdirs);
+        }
         assert_eq!(
             code, 4,
             "rmdirs: the folder it refused makes the run partial"
@@ -99559,11 +99561,10 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
             )
             .await
         });
-        assert!(
-            deletes.lock().unwrap().is_empty(),
-            "{:?}",
-            deletes.lock().unwrap()
-        );
+        {
+            let seen_deletes = deletes.lock().unwrap().clone();
+            assert!(seen_deletes.is_empty(), "{:?}", seen_deletes);
+        }
         assert_eq!(
             code, 4,
             "cleanup: the orphan it refused makes the run partial"
