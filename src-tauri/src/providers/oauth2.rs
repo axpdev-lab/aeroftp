@@ -16,11 +16,38 @@ use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// In-memory token cache for when vault is locked (master mode).
 /// Tokens survive the session but are NOT persisted to disk.
 static MEMORY_TOKEN_CACHE: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+static MEMORY_TOKEN_REVISIONS: [std::sync::atomic::AtomicU64; 8] =
+    [const { std::sync::atomic::AtomicU64::new(0) }; 8];
+
+fn legacy_revision(provider: OAuthProvider) -> &'static std::sync::atomic::AtomicU64 {
+    let index = match provider {
+        OAuthProvider::Google => 0,
+        OAuthProvider::GooglePhotos => 1,
+        OAuthProvider::Dropbox => 2,
+        OAuthProvider::OneDrive => 3,
+        OAuthProvider::Box => 4,
+        OAuthProvider::PCloud => 5,
+        OAuthProvider::ZohoWorkdrive => 6,
+        OAuthProvider::YandexDisk => 7,
+    };
+    &MEMORY_TOKEN_REVISIONS[index]
+}
+
+fn invalidate_memory_tokens(
+    cache: &mut Option<HashMap<String, String>>,
+    revision: &std::sync::atomic::AtomicU64,
+    account: &str,
+) {
+    revision.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    if let Some(map) = cache.as_mut() {
+        map.remove(account);
+    }
+}
 
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
 type ConfiguredClient =
@@ -452,6 +479,484 @@ pub struct StoredTokens {
     pub scopes: Vec<String>,
 }
 
+/// Provenance stays inside the encrypted record. A new authorization mints a
+/// family; refresh preserves it. Old clients dropping it fail closed in a bound
+/// connection instead of silently substituting a different login.
+#[derive(Serialize, Deserialize)]
+struct TokenRecord {
+    #[serde(flatten)]
+    tokens: StoredTokens,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner_family: Option<String>,
+    /// The public client id of the OAuth app that authorized these tokens,
+    /// recorded at authorization and kept by every refresh. A bearer token
+    /// keeps working after the app is changed in Settings, so the app that
+    /// decides what the token sees (an "app folder" app sees its own root)
+    /// is the one recorded here, not the one configured now. Absent on a
+    /// record written before it was kept.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    client_id: Option<String>,
+    #[serde(skip)]
+    source: TokenSource,
+    #[serde(skip)]
+    credential_owner: Option<i64>,
+    #[serde(skip)]
+    raw: Zeroizing<String>,
+}
+
+#[derive(Default)]
+enum TokenSource {
+    #[default]
+    Unavailable,
+    Partition(i64),
+    Vault,
+    Memory(String),
+}
+
+impl TokenRecord {
+    fn family(&self) -> Result<String, ProviderError> {
+        if let Some(family) = &self.owner_family {
+            return Ok(family.clone());
+        }
+        // Compatibility for a record written before families were present.
+        // The identifier is keyed even inside the encrypted record. A memory
+        // token has a process key and can only ever receive an epoch journal.
+        static MEMORY_KEY: std::sync::OnceLock<Zeroizing<[u8; 32]>> = std::sync::OnceLock::new();
+        let key = match crate::credential_store::CredentialStore::from_cache() {
+            Some(store) => Zeroizing::new(store.derive_user_partition_wrapping_key()),
+            None => MEMORY_KEY
+                .get_or_init(|| {
+                    let bytes = crate::crypto::random_bytes(32);
+                    let mut key = [0; 32];
+                    key.copy_from_slice(&bytes);
+                    Zeroizing::new(key)
+                })
+                .clone(),
+        };
+        let key = crate::user_crypto::secret_key_from_bytes(&key);
+        let material = Zeroizing::new(
+            serde_json::to_string(&(&self.tokens.access_token, &self.tokens.refresh_token))
+                .map_err(|_| token_owner_changed())?,
+        );
+        crate::user_crypto::metadata_tag(&key, b"oauth-legacy-owner-family-v2", &material)
+            .map(|tag| format!("legacy-v2:{tag}"))
+            .map_err(|_| token_owner_changed())
+    }
+}
+
+struct TokenOwner {
+    user: Option<i64>,
+    family: String,
+}
+
+fn token_owner_changed() -> ProviderError {
+    ProviderError::TargetChanged
+}
+
+/// Own one legacy pathname before reading it. Failure restores without
+/// overwriting a newly created original. A conflicting recovery copy remains
+/// owner-only rather than deleting an authorization that was not migrated.
+struct ClaimedTokenFile {
+    original: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl ClaimedTokenFile {
+    // Called only while LegacyTokenGuard excludes every cooperating migrator
+    // and sign-out. A crash releases that lock but does not run Drop.
+    fn recovery_paths(
+        original: &std::path::Path,
+    ) -> Result<Vec<std::path::PathBuf>, ProviderError> {
+        let parent = original.parent().ok_or_else(token_owner_changed)?;
+        let stem = original
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .ok_or_else(token_owner_changed)?;
+        let prefix = format!("{stem}.migration-");
+        let mut claims = Vec::new();
+        for entry in std::fs::read_dir(parent).map_err(|_| token_owner_changed())? {
+            let entry = entry.map_err(|_| token_owner_changed())?;
+            let name = entry.file_name();
+            let Some(suffix) = name.to_str().and_then(|s| s.strip_prefix(&prefix)) else {
+                continue;
+            };
+            if uuid::Uuid::parse_str(suffix).is_err() {
+                continue;
+            }
+            if !entry
+                .file_type()
+                .map_err(|_| token_owner_changed())?
+                .is_file()
+            {
+                return Err(token_owner_changed());
+            }
+            claims.push(entry.path());
+        }
+        Ok(claims)
+    }
+
+    fn recover(original: &std::path::Path) -> Result<(), ProviderError> {
+        let claims = Self::recovery_paths(original)?;
+        if !original.exists() {
+            // Never select arbitrarily between different stranded logins.
+            if claims.len() > 1 {
+                return Err(token_owner_changed());
+            }
+            if let Some(path) = claims.first() {
+                std::fs::hard_link(path, original).map_err(|_| token_owner_changed())?;
+            }
+        }
+        // A recreated original is the newer authorization; old claims must
+        // never resurrect after a later migration or sign-out. Unlink only:
+        // a crash during recovery can leave two names for the same inode.
+        for path in claims {
+            std::fs::remove_file(path).map_err(|_| token_owner_changed())?;
+        }
+        Ok(())
+    }
+
+    fn claim(original: &std::path::Path) -> Result<Self, ProviderError> {
+        let path = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::rename(original, &path)
+            .map_err(|_| ProviderError::AuthenticationFailed("No stored authorization".into()))?;
+        let claimed = Self {
+            original: original.to_owned(),
+            path,
+        };
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&claimed.path, std::fs::Permissions::from_mode(0o600))
+                .map_err(|_| {
+                    ProviderError::Other("Could not protect legacy authorization".into())
+                })?;
+        }
+        Ok(claimed)
+    }
+
+    fn discard(self) -> Result<(), ProviderError> {
+        std::fs::remove_file(&self.path)
+            .map_err(|_| ProviderError::Other("Could not remove migrated authorization".into()))
+    }
+}
+
+impl Drop for ClaimedTokenFile {
+    fn drop(&mut self) {
+        if !self.path.exists() {
+            return;
+        }
+        // hard_link creates only an absent destination, unlike rename on Unix.
+        // Keep the protected recovery file when an original was recreated.
+        if std::fs::hard_link(&self.path, &self.original).is_ok() {
+            let _ = std::fs::remove_file(&self.path);
+        } else {
+            warn!("Legacy authorization retained in a protected migration recovery file");
+        }
+    }
+}
+
+/// Permanent lock inode shared by legacy migration and sign-out in every
+/// desktop/CLI/MCP process. Never unlink it: a replacement inode would allow
+/// two independent owners. The OS releases the advisory lock after a crash.
+struct LegacyTokenGuard(Option<std::fs::File>);
+
+#[cfg(all(test, unix))]
+thread_local! {
+    /// Test seam: the sign-out lock on this thread answers ENOLCK, so a test
+    /// can drive the whole `delete_tokens` path, vault included, into it.
+    static FORCE_SIGNOUT_ENOLCK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// A sign-out step's name and the closure a test runs there.
+#[cfg(test)]
+type SignoutStepHook = Option<(&'static str, Box<dyn FnOnce()>)>;
+
+#[cfg(test)]
+thread_local! {
+    /// Test seam: a closure run once at the named step of a sign-out on this
+    /// thread ("resolved": its account is resolved; "lock-wait": it waits
+    /// for the sign-out lock), so a test can switch the account there.
+    static SIGNOUT_STEP_HOOK: std::cell::RefCell<SignoutStepHook> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Run `hook` once when a sign-out on this thread reaches `step` (tests only).
+#[cfg(test)]
+pub(crate) fn on_signout_step_for_test(step: &'static str, hook: impl FnOnce() + 'static) {
+    SIGNOUT_STEP_HOOK.with(|slot| *slot.borrow_mut() = Some((step, Box::new(hook))));
+}
+
+fn signout_step(_step: &'static str) {
+    #[cfg(test)]
+    {
+        let hook = SIGNOUT_STEP_HOOK.with(|slot| {
+            let mut slot = slot.borrow_mut();
+            match slot.as_ref() {
+                Some((step, _)) if *step == _step => slot.take().map(|(_, hook)| hook),
+                _ => None,
+            }
+        });
+        if let Some(hook) = hook {
+            hook();
+        }
+    }
+}
+
+/// Make the sign-out lock on this thread answer ENOLCK (tests only).
+#[cfg(all(test, unix))]
+pub(crate) fn force_signout_enolck_for_test(on: bool) {
+    FORCE_SIGNOUT_ENOLCK.with(|force| force.set(on));
+}
+
+/// Seed the in-memory token cache for one account (tests only).
+// Only the unix-gated block of `profile_auth_tests` uses it (Windows CI
+// denies an unused function).
+#[cfg(all(test, unix))]
+pub(crate) fn seed_memory_token_for_test(account: &str, json: &str) {
+    MEMORY_TOKEN_CACHE
+        .lock()
+        .unwrap()
+        .get_or_insert_with(HashMap::new)
+        .insert(account.to_owned(), json.to_owned());
+}
+
+/// Whether the in-memory token cache still holds one account (tests only).
+// Only the unix-gated block of `profile_auth_tests` uses it (Windows CI
+// denies an unused function).
+#[cfg(all(test, unix))]
+pub(crate) fn memory_token_cache_contains_for_test(account: &str) -> bool {
+    MEMORY_TOKEN_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .is_some_and(|map| map.contains_key(account))
+}
+
+/// Why the caller wants the legacy lock. Only the lock-error policy differs.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LegacyLockUse {
+    Migration,
+    Signout,
+}
+
+/// What a failed lock attempt proves about other lock holders.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum LegacyLockFailure {
+    /// The filesystem has no file locks, so no process can hold this one.
+    NoLocks,
+    /// ENOLCK: the kernel may only be out of lock records while another
+    /// process still holds the lock.
+    Unproven,
+    Other,
+}
+
+fn legacy_lock_failure(error: &std::io::Error) -> LegacyLockFailure {
+    if error.kind() == std::io::ErrorKind::Unsupported {
+        LegacyLockFailure::NoLocks
+    } else if crate::user_partitions::file_locks_unavailable(error) {
+        LegacyLockFailure::Unproven
+    } else {
+        LegacyLockFailure::Other
+    }
+}
+
+impl LegacyTokenGuard {
+    fn acquire(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
+        let guard = Self::lock(legacy_path, LegacyLockUse::Migration)?;
+        if guard.0.is_some() {
+            ClaimedTokenFile::recover(legacy_path)?;
+        }
+        Ok(guard)
+    }
+
+    fn acquire_for_signout(legacy_path: &std::path::Path) -> Result<Self, ProviderError> {
+        Self::lock(legacy_path, LegacyLockUse::Signout)
+    }
+
+    fn lock(legacy_path: &std::path::Path, use_: LegacyLockUse) -> Result<Self, ProviderError> {
+        #[cfg(all(test, unix))]
+        if use_ == LegacyLockUse::Signout && FORCE_SIGNOUT_ENOLCK.with(std::cell::Cell::get) {
+            return Self::lock_with(legacy_path, use_, |_| {
+                Err(std::fs::TryLockError::Error(
+                    std::io::Error::from_raw_os_error(libc::ENOLCK),
+                ))
+            });
+        }
+        Self::lock_with(legacy_path, use_, |file| file.try_lock())
+    }
+
+    /// `try_lock` is a parameter so a test can play a lock error that the
+    /// operating system cannot be made to return on demand.
+    fn lock_with(
+        legacy_path: &std::path::Path,
+        use_: LegacyLockUse,
+        mut try_lock: impl FnMut(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+    ) -> Result<Self, ProviderError> {
+        let path = legacy_path.with_extension("migration.lock");
+        let mut options = std::fs::OpenOptions::new();
+        options.create(true).truncate(false).write(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let file = options.open(path).map_err(|e| {
+            ProviderError::Other(format!(
+                "Legacy authorization lock unavailable: {}",
+                e.kind()
+            ))
+        })?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            match try_lock(&file) {
+                Ok(()) => {
+                    return Ok(Self(Some(file)));
+                }
+                Err(std::fs::TryLockError::WouldBlock) if std::time::Instant::now() < deadline => {
+                    if use_ == LegacyLockUse::Signout {
+                        signout_step("lock-wait");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(25))
+                }
+                Err(std::fs::TryLockError::WouldBlock) => {
+                    return Err(ProviderError::Other(
+                        "Legacy authorization is busy; try again".into(),
+                    ))
+                }
+                Err(std::fs::TryLockError::Error(error)) => {
+                    let unlocked = match (legacy_lock_failure(&error), use_) {
+                        // A filesystem without locks: no process can hold this
+                        // lock, and `with_legacy_claim_guard` refuses to migrate
+                        // with an unlocked guard, so no migrator can exist for a
+                        // sign-out to race with.
+                        (LegacyLockFailure::NoLocks, _) => true,
+                        // An unlocked guard only disables migration.
+                        (LegacyLockFailure::Unproven, LegacyLockUse::Migration) => true,
+                        // ENOLCK says this process got no lock record, not that
+                        // nobody holds the lock. What is on disk proves nothing
+                        // either: a migrator's recovery moves its claim back to
+                        // the legacy name between any two looks. Sign-out waits
+                        // for a lock it can prove.
+                        (LegacyLockFailure::Unproven, LegacyLockUse::Signout) => {
+                            return Err(ProviderError::Other(
+                                "Legacy authorization lock unavailable (no lock record left); nothing was signed out, try again".into(),
+                            ))
+                        }
+                        (LegacyLockFailure::Other, _) => false,
+                    };
+                    if unlocked {
+                        return Ok(Self(None));
+                    }
+                    return Err(ProviderError::Other(format!(
+                        "Legacy authorization lock unavailable: {}",
+                        error.kind()
+                    )));
+                }
+            }
+        }
+    }
+}
+
+impl Drop for LegacyTokenGuard {
+    fn drop(&mut self) {
+        if let Some(file) = &self.0 {
+            let _ = file.unlock();
+        }
+    }
+}
+
+// All callers use file -> cache -> vault order. The callback owns the claim,
+// so its returns/errors finalize it before either guard is released.
+fn with_legacy_token_claim<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let process = LegacyTokenGuard::acquire(path)?;
+    with_legacy_claim_guard(cache, path, process, migrate)
+}
+
+fn with_legacy_claim_guard<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    process: LegacyTokenGuard,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    if process.0.is_none() {
+        return Err(ProviderError::AuthenticationFailed(
+            "Legacy authorization cannot be migrated on a filesystem without locks; sign in again"
+                .into(),
+        ));
+    }
+    let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
+    let claimed = ClaimedTokenFile::claim(path)?;
+    migrate(&mut cache, claimed)
+}
+
+// A token miss with no legacy file and no claim is answered before any lock:
+// with nothing to migrate there is nothing to coordinate.
+fn with_stored_legacy_token_claim<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    migrate: impl FnOnce(
+        &mut Option<HashMap<String, String>>,
+        ClaimedTokenFile,
+    ) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    if !path.exists() && ClaimedTokenFile::recovery_paths(path)?.is_empty() {
+        return Err(ProviderError::AuthenticationFailed(
+            "No stored authorization".into(),
+        ));
+    }
+    with_legacy_token_claim(cache, path, migrate)
+}
+
+// Sign-out purges every valid stranded claim without selecting a login to
+// restore. Keep the same file -> cache -> vault order as migration.
+#[cfg(test)]
+fn with_legacy_signout<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let process = LegacyTokenGuard::acquire_for_signout(path)?;
+    with_legacy_signout_guard(cache, path, process, clear)
+}
+
+// Only the unix tests can play ENOLCK, so this shares their cfg.
+#[cfg(all(test, unix))]
+fn with_legacy_signout_with<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    try_lock: impl FnMut(&std::fs::File) -> Result<(), std::fs::TryLockError>,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let process = LegacyTokenGuard::lock_with(path, LegacyLockUse::Signout, try_lock)?;
+    with_legacy_signout_guard(cache, path, process, clear)
+}
+
+fn with_legacy_signout_guard<T>(
+    cache: &Mutex<Option<HashMap<String, String>>>,
+    path: &std::path::Path,
+    _process: LegacyTokenGuard,
+    clear: impl FnOnce(&mut Option<HashMap<String, String>>) -> Result<T, ProviderError>,
+) -> Result<T, ProviderError> {
+    let mut cache = cache.lock().map_err(|_| token_owner_changed())?;
+    for claim in ClaimedTokenFile::recovery_paths(path)? {
+        // A claim holds the plaintext legacy authorization, so overwrite it
+        // before the unlink. A crash during recovery can leave the claim and
+        // the legacy file as two names of one inode: the overwrite then
+        // reaches that file too, which this sign-out is removing anyway.
+        crate::credential_store::secure_delete(&claim).map_err(|_| {
+            ProviderError::Other("Could not remove legacy authorization recovery file".into())
+        })?;
+    }
+    clear(&mut cache)
+}
+
 impl StoredTokens {
     /// Check if token is expired (with 5 min buffer)
     pub fn is_expired(&self) -> bool {
@@ -498,9 +1003,33 @@ impl RefreshLease {
     /// `slug`. `Some(lease)` => WE own it, perform the refresh. `None` =>
     /// gave up waiting or no lock dir; caller must re-load tokens (the other
     /// owner is refreshing) rather than refresh in parallel.
+    #[cfg(any(test, feature = "proton-native"))]
     pub(crate) async fn acquire(slug: &str) -> Option<Self> {
-        let dir = OAuth2Manager::token_dir().ok()?;
-        let path = dir.join(format!("refresh-{}.lock", slug));
+        Self::acquire_checked(slug).await.ok().flatten()
+    }
+
+    async fn acquire_checked(slug: &str) -> Result<Option<Self>, ProviderError> {
+        let dir = OAuth2Manager::token_dir().map_err(|_| {
+            ProviderError::Other("Authorization refresh lease directory is unavailable".into())
+        })?;
+        Self::acquire_in(&dir, slug).await
+    }
+
+    async fn acquire_in(dir: &std::path::Path, slug: &str) -> Result<Option<Self>, ProviderError> {
+        // A profile id can carry a path separator (an imported remote name).
+        // Only the lock file name is made safe; token keys are unchanged. Two
+        // ids that share a safe name only serialize their refreshes.
+        let safe_slug: String = slug
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        let path = dir.join(format!("refresh-{}.lock", safe_slug));
         let started = std::time::Instant::now();
         loop {
             match std::fs::OpenOptions::new()
@@ -516,7 +1045,7 @@ impl RefreshLease {
                         std::process::id(),
                         chrono::Utc::now().timestamp()
                     );
-                    return Some(Self { path });
+                    return Ok(Some(Self { path }));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
                     // Steal a stale lease (previous holder crashed).
@@ -526,16 +1055,32 @@ impl RefreshLease {
                             .map(|d| d.as_secs() >= Self::STALE_SECS)
                             .unwrap_or(true)
                         {
-                            let _ = std::fs::remove_file(&path);
-                            continue;
+                            match std::fs::remove_file(&path) {
+                                Ok(()) => continue,
+                                // Another waiter stole it first.
+                                Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                                // A stale lease that cannot be removed would
+                                // otherwise be retried here without a bound.
+                                Err(e) => {
+                                    return Err(ProviderError::Other(format!(
+                                        "Authorization refresh lease storage unavailable: {}",
+                                        e.kind()
+                                    )))
+                                }
+                            }
                         }
                     }
                     if started.elapsed().as_millis() as u64 >= Self::MAX_WAIT_MS {
-                        return None;
+                        return Ok(None);
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(Self::POLL_MS)).await;
                 }
-                Err(_) => return None, // unexpected fs error: degrade gracefully
+                Err(error) => {
+                    return Err(ProviderError::Other(format!(
+                        "Authorization refresh lease storage unavailable: {}",
+                        error.kind()
+                    )))
+                }
             }
         }
     }
@@ -564,6 +1109,9 @@ pub struct OAuth2Manager {
     /// Shared across clones of the same manager so Dropbox/Box part workers
     /// serialize refresh against the primary.
     refresh_guard: Arc<tokio::sync::Mutex<()>>,
+    /// Sealed on the first token used by connect, shared with transfer clones.
+    /// Key by profile, not user: changing active user must not create a new seal.
+    token_owners: Arc<Mutex<HashMap<String, TokenOwner>>>,
 }
 
 /// Secret PKCE material for an encrypted, profile-bound headless attempt.
@@ -583,6 +1131,7 @@ impl Clone for OAuth2Manager {
             callback_port: self.callback_port,
             credential_user: self.credential_user,
             refresh_guard: Arc::clone(&self.refresh_guard),
+            token_owners: Arc::clone(&self.token_owners),
         }
     }
 }
@@ -665,6 +1214,7 @@ impl OAuth2Manager {
             callback_port: 0, // Will be assigned dynamically by OS
             credential_user: None,
             refresh_guard: Arc::new(tokio::sync::Mutex::new(())),
+            token_owners: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -735,7 +1285,12 @@ impl OAuth2Manager {
         };
 
         let tokens = self.exchange_auth_code(config, code, verifier).await?;
-        self.store_tokens(config.provider, &config.profile_id, &tokens)?;
+        self.store_tokens_with_client(
+            config.provider,
+            &config.profile_id,
+            &tokens,
+            Some(&config.client_id),
+        )?;
         Ok(tokens)
     }
 
@@ -778,6 +1333,18 @@ impl OAuth2Manager {
         config: &OAuthConfig,
         refresh_token: &str,
     ) -> Result<StoredTokens, ProviderError> {
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        let observed = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &observed)?;
+        use subtle::ConstantTimeEq;
+        if !observed
+            .tokens
+            .refresh_token
+            .as_ref()
+            .is_some_and(|stored| bool::from(stored.as_bytes().ct_eq(refresh_token.as_bytes())))
+        {
+            return Err(token_owner_changed());
+        }
         let client = self.create_client(config)?;
 
         let token_result = client
@@ -806,7 +1373,7 @@ impl OAuth2Manager {
         // Update keyring under the profile-bound key, off the async worker:
         // another process may be writing the vault at the same moment.
         crate::credential_store::off_async_worker(|| {
-            self.store_tokens(config.provider, &config.profile_id, &tokens)
+            self.persist_refreshed_record(&account, &observed, &tokens)
         })?;
 
         info!("OAuth2 tokens refreshed for {:?}", config.provider);
@@ -828,20 +1395,30 @@ impl OAuth2Manager {
         config: &OAuthConfig,
     ) -> Result<SecretString, ProviderError> {
         let _guard = self.refresh_guard.lock().await;
-        let mut tokens = self.load_tokens(config.provider, &config.profile_id)?;
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        let mut record = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &record)?;
+        let mut tokens = record.tokens.clone();
 
         if tokens.is_expired() {
             // Per-profile lease: two profiles pointing at distinct accounts of
             // the same provider must not block each other's refresh.
             let slug = Self::token_account_key(config.provider, &config.profile_id);
             // Bounded, self-healing cross-process lease. `None` => another
-            // process is the refresh owner (or no lock dir): fall through to
+            // process is the refresh owner: fall through to
             // the re-load below and use whatever it persisted.
-            let _lease = RefreshLease::acquire(&slug).await;
+            let _lease = RefreshLease::acquire_checked(&slug).await?;
             // Double-check: the lease winner (possibly the other process)
             // may have already rotated+persisted a fresh token.
-            tokens = self.load_tokens(config.provider, &config.profile_id)?;
+            record = self.load_token_record(config.provider, &config.profile_id)?;
+            self.verify_token_owner(&account, &record)?;
+            tokens = record.tokens.clone();
             if tokens.is_expired() {
+                if _lease.is_none() {
+                    return Err(ProviderError::Other(
+                        "Authorization refresh is busy; try again".into(),
+                    ));
+                }
                 if let Some(ref refresh_token) = tokens.refresh_token {
                     tokens = self.refresh_tokens(config, refresh_token).await?;
                 } else {
@@ -896,8 +1473,33 @@ impl OAuth2Manager {
         profile_id: &str,
         tokens: &StoredTokens,
     ) -> Result<(), ProviderError> {
-        let json = serde_json::to_string_pretty(tokens)
-            .map_err(|e| ProviderError::Other(format!("Failed to serialize tokens: {}", e)))?;
+        self.store_tokens_with_client(provider, profile_id, tokens, None)
+    }
+
+    /// [`Self::store_tokens`] for a new authorization, recording the public
+    /// client id of the app that obtained the tokens (see `TokenRecord`).
+    pub fn store_tokens_with_client(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+        tokens: &StoredTokens,
+        client_id: Option<&str>,
+    ) -> Result<(), ProviderError> {
+        let record = TokenRecord {
+            tokens: tokens.clone(),
+            owner_family: Some(format!("v1:{}", uuid::Uuid::new_v4())),
+            client_id: client_id
+                .map(str::trim)
+                .filter(|id| !id.is_empty())
+                .map(str::to_owned),
+            source: TokenSource::Unavailable,
+            credential_owner: self.credential_user,
+            raw: Zeroizing::new(String::new()),
+        };
+        let json = Zeroizing::new(
+            serde_json::to_string_pretty(&record)
+                .map_err(|_| ProviderError::Other("Failed to serialize tokens".into()))?,
+        );
 
         let account = Self::token_account_key(provider, profile_id);
 
@@ -950,7 +1552,7 @@ impl OAuth2Manager {
         // Vault requires master password: store in memory only (never on disk unencrypted)
         if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
             let map = cache.get_or_insert_with(HashMap::new);
-            map.insert(account, json);
+            map.insert(account, json.to_string());
         }
 
         info!("Tokens stored in memory for {:?} (vault locked)", provider);
@@ -967,6 +1569,181 @@ impl OAuth2Manager {
         provider: OAuthProvider,
         profile_id: &str,
     ) -> Result<StoredTokens, ProviderError> {
+        self.load_token_record(provider, profile_id)
+            .map(|record| record.tokens)
+    }
+
+    /// The public client id recorded with the stored tokens (the app that
+    /// authorized them), `None` for a record written before it was kept.
+    pub fn token_client_id(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<Option<String>, ProviderError> {
+        self.load_token_record(provider, profile_id)
+            .map(|record| record.client_id)
+    }
+
+    fn decode_record(
+        json: &str,
+        source: TokenSource,
+        credential_owner: Option<i64>,
+    ) -> Result<TokenRecord, ProviderError> {
+        let mut record: TokenRecord = serde_json::from_str(json)
+            .map_err(|_| ProviderError::Other("Failed to parse tokens".into()))?;
+        record.raw = Zeroizing::new(json.to_owned());
+        record.source = source;
+        record.credential_owner = credential_owner;
+        Ok(record)
+    }
+
+    pub(crate) fn sync_owner_identity(
+        &self,
+        config: &OAuthConfig,
+    ) -> Result<Zeroizing<String>, ProviderError> {
+        let account = Self::token_account_key(config.provider, &config.profile_id);
+        if !self
+            .token_owners
+            .lock()
+            .map_err(|_| token_owner_changed())?
+            .contains_key(&account)
+        {
+            return Err(token_owner_changed());
+        }
+        let record = self.load_token_record(config.provider, &config.profile_id)?;
+        self.verify_token_owner(&account, &record)?;
+        serde_json::to_string(&(record.credential_owner, record.family()?, config))
+            .map(Zeroizing::new)
+            .map_err(|_| token_owner_changed())
+    }
+
+    fn verify_token_owner(&self, account: &str, record: &TokenRecord) -> Result<(), ProviderError> {
+        use subtle::ConstantTimeEq;
+        let family = record.family()?;
+        let mut owners = self
+            .token_owners
+            .lock()
+            .map_err(|_| token_owner_changed())?;
+        if let Some(owner) = owners.get(account) {
+            if owner.user != record.credential_owner
+                || !bool::from(owner.family.as_bytes().ct_eq(family.as_bytes()))
+            {
+                return Err(token_owner_changed());
+            }
+        } else {
+            owners.insert(
+                account.to_owned(),
+                TokenOwner {
+                    user: record.credential_owner,
+                    family,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    /// Save only to the exact source loaded before the network exchange.
+    /// No mirror: the partition is authoritative, and mirroring a stale refresh
+    /// could overwrite a fresh login made concurrently in the other store.
+    fn persist_refreshed_record(
+        &self,
+        account: &str,
+        observed: &TokenRecord,
+        tokens: &StoredTokens,
+    ) -> Result<(), ProviderError> {
+        let current_owner =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+                .map_err(|_| token_owner_changed())?
+                .0;
+        if current_owner != observed.credential_owner {
+            return Err(token_owner_changed());
+        }
+        if let Some(user) = current_owner {
+            crate::user_partitions::ensure_credential_user_unlocked(user)
+                .map_err(|_| token_owner_changed())?;
+        }
+        let replacement = TokenRecord {
+            tokens: tokens.clone(),
+            owner_family: Some(observed.family()?),
+            client_id: observed.client_id.clone(),
+            source: TokenSource::Unavailable,
+            credential_owner: current_owner,
+            raw: Zeroizing::new(String::new()),
+        };
+        let json = Zeroizing::new(
+            serde_json::to_string_pretty(&replacement)
+                .map_err(|_| ProviderError::Other("Failed to serialize tokens".into()))?,
+        );
+        let unchanged = match &observed.source {
+            TokenSource::Partition(user) => {
+                let store = crate::credential_store::CredentialStore::from_cache()
+                    .ok_or_else(token_owner_changed)?;
+                let conn = crate::user_partitions::open_or_init_cli()
+                    .map_err(|_| token_owner_changed())?;
+                let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+                crate::user_partitions::replace_user_credential_if_unchanged(
+                    &conn,
+                    &key,
+                    *user,
+                    account,
+                    "oauth",
+                    (&observed.raw, &json),
+                    self.credential_user.is_none(),
+                )
+                .map_err(|_| token_owner_changed())?
+            }
+            TokenSource::Vault | TokenSource::Memory(_) => {
+                let update = || -> Result<bool, String> {
+                    match &observed.source {
+                        TokenSource::Vault => {
+                            let store = crate::credential_store::CredentialStore::from_cache()
+                                .ok_or_else(|| "Authorization store closed".to_owned())?;
+                            store
+                                .replace_secret_if_unchanged(account, &observed.raw, &json)
+                                .map_err(|_| "Authorization changed".to_owned())
+                        }
+                        TokenSource::Memory(key) => {
+                            let mut cache = MEMORY_TOKEN_CACHE
+                                .lock()
+                                .map_err(|_| "Authorization changed".to_owned())?;
+                            let Some(map) = cache.as_mut() else {
+                                return Ok(false);
+                            };
+                            if !map.get(key).is_some_and(|raw| raw == observed.raw.as_str()) {
+                                return Ok(false);
+                            }
+                            map.insert(key.clone(), json.to_string());
+                            Ok(true)
+                        }
+                        _ => Ok(false),
+                    }
+                };
+                if self.credential_user.is_some() {
+                    update().map_err(|_| token_owner_changed())?
+                } else {
+                    let store = crate::credential_store::CredentialStore::from_cache();
+                    crate::user_partitions::with_unchanged_active_credential_user(
+                        store.as_ref(),
+                        observed.credential_owner,
+                        update,
+                    )
+                    .map_err(|_| token_owner_changed())?
+                }
+            }
+            TokenSource::Unavailable => false,
+        };
+        if unchanged {
+            Ok(())
+        } else {
+            Err(token_owner_changed())
+        }
+    }
+
+    fn load_token_record(
+        &self,
+        provider: OAuthProvider,
+        profile_id: &str,
+    ) -> Result<TokenRecord, ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
         let legacy = Self::legacy_token_account_key(provider);
         let (credential_user, legacy_fallback_allowed) =
@@ -982,13 +1759,18 @@ impl OAuth2Manager {
             crate::credential_store::CredentialStore::from_cache(),
             credential_user,
         ) {
-            let resolved = crate::user_partitions::resolve_credential_for_user_owner_aware(
-                &store, user, &account,
-            )
-            .map_err(|e| ProviderError::Other(format!("Failed to read user tokens: {}", e)))?;
+            crate::user_partitions::init_or_migrate_cli(&store)
+                .map_err(|_| ProviderError::Other("Failed to initialize token owner".into()))?;
+            let conn = crate::user_partitions::open_or_init_cli()
+                .map_err(|_| ProviderError::Other("Failed to open token owner".into()))?;
+            let key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+            let resolved =
+                crate::user_partitions::get_user_credential_for(&conn, &key, user, &account)
+                    .map_err(|e| {
+                        ProviderError::Other(format!("Failed to read user tokens: {e}"))
+                    })?;
             if let Some(json) = resolved {
-                return serde_json::from_str(&json)
-                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                return Self::decode_record(&json, TokenSource::Partition(user), credential_user);
             }
         }
 
@@ -1008,29 +1790,25 @@ impl OAuth2Manager {
         // Try vault first under the per-profile (or legacy when profile_id is empty) key.
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
             if let Ok(json) = store.get(&account) {
-                return serde_json::from_str(&json)
-                    .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)));
+                return Self::decode_record(&json, TokenSource::Vault, credential_user);
             }
 
             // Lazy migration: per-profile key missing, legacy hit ➜ rebind + remove.
             if !profile_id.is_empty() {
                 if let Ok(json) = store.get(&legacy) {
-                    let tokens: StoredTokens = serde_json::from_str(&json).map_err(|e| {
-                        ProviderError::Other(format!("Failed to parse legacy tokens: {}", e))
-                    })?;
-                    if store.store(&account, &json).is_ok() {
-                        let _ = store.delete(&legacy);
-                        info!(
-                            "Migrated legacy {:?} token to per-profile vault key",
-                            provider
-                        );
-                    } else {
-                        warn!(
-                            "Per-profile vault write failed for {:?}; legacy token left in place",
-                            provider
-                        );
+                    Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+                    let moved = store
+                        .move_secret_if_unchanged(&legacy, &account, &json)
+                        .map_err(|_| token_owner_changed())?;
+                    // A concurrent authorization wins. Re-read the actual
+                    // destination, not the stale singleton we inspected.
+                    if moved || store.get_secret(&account).is_ok() {
+                        let current = store
+                            .get_secret(&account)
+                            .map_err(|_| token_owner_changed())?;
+                        return Self::decode_record(&current, TokenSource::Vault, credential_user);
                     }
-                    return Ok(tokens);
+                    return Err(token_owner_changed());
                 }
             }
         }
@@ -1039,81 +1817,100 @@ impl OAuth2Manager {
         if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
             if let Some(map) = cache.as_ref() {
                 if let Some(json) = map.get(&account) {
-                    return serde_json::from_str(json).map_err(|e| {
-                        ProviderError::Other(format!("Failed to parse tokens: {}", e))
-                    });
+                    return Self::decode_record(
+                        json,
+                        TokenSource::Memory(account.clone()),
+                        credential_user,
+                    );
                 }
                 if !profile_id.is_empty() {
                     if let Some(json) = map.get(&legacy) {
-                        return serde_json::from_str(json).map_err(|e| {
-                            ProviderError::Other(format!("Failed to parse tokens: {}", e))
-                        });
-                    }
-                }
-            }
-        }
-
-        // Legacy: try plaintext file: migrate to vault immediately, then delete the file
-        let legacy_path =
-            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        let json = std::fs::read_to_string(&legacy_path)
-            .map_err(|e| ProviderError::AuthenticationFailed(format!("No stored tokens: {}", e)))?;
-
-        warn!(
-            "Found legacy plaintext OAuth token file for {:?}: migrating to vault",
-            provider
-        );
-
-        let tokens: StoredTokens = serde_json::from_str(&json)
-            .map_err(|e| ProviderError::Other(format!("Failed to parse tokens: {}", e)))?;
-
-        // Migrate to vault under the per-profile key (or legacy when profile_id is empty).
-        let mut migrated = false;
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if store.store(&account, &json).is_ok() {
-                migrated = true;
-                info!(
-                    "Legacy tokens for {:?} migrated to credential vault",
-                    provider
-                );
-            }
-        }
-        if !migrated {
-            // Try auto-init vault
-            if crate::credential_store::CredentialStore::init().is_ok() {
-                if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                    if store.store(&account, &json).is_ok() {
-                        migrated = true;
-                        info!(
-                            "Legacy tokens for {:?} migrated to auto-initialized vault",
-                            provider
+                        return Self::decode_record(
+                            json,
+                            TokenSource::Memory(legacy.clone()),
+                            credential_user,
                         );
                     }
                 }
             }
         }
 
-        // Delete legacy plaintext file after successful migration
-        if migrated {
-            if let Err(e) = crate::credential_store::secure_delete(&legacy_path) {
-                warn!(
-                    "Failed to secure-delete legacy token file for {:?}: {}",
-                    provider, e
-                );
-                // Fallback: try normal delete
-                let _ = std::fs::remove_file(&legacy_path);
-            } else {
-                info!("Legacy plaintext token file deleted for {:?}", provider);
+        let legacy_path =
+            Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
+        with_stored_legacy_token_claim(&MEMORY_TOKEN_CACHE, &legacy_path, |cache, claimed| {
+            let observed_legacy_revision =
+                legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst);
+            let json = Zeroizing::new(std::fs::read_to_string(&claimed.path).map_err(|_| {
+                ProviderError::AuthenticationFailed("Could not read legacy authorization".into())
+            })?);
+            Self::decode_record(&json, TokenSource::Unavailable, credential_user)?;
+            if crate::credential_store::CredentialStore::from_cache().is_none() {
+                let _ = crate::credential_store::CredentialStore::init();
             }
-        } else {
-            warn!(
-                "Could not migrate legacy tokens to vault for {:?}: vault unavailable. \
-                 Plaintext file remains until vault is unlocked.",
-                provider
-            );
-        }
+            let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+                // Establish an exact CAS-writable source before any refresh can
+                // consume a rotating token. A concurrent fresh memory login wins.
+                // Drop still restores the old file without clobbering a new one.
+                if legacy_revision(provider).load(std::sync::atomic::Ordering::SeqCst)
+                    != observed_legacy_revision
+                {
+                    claimed.discard()?;
+                    return Err(token_owner_changed());
+                }
+                let newer_login = cache.as_ref().is_some_and(|map| map.contains_key(&account));
+                let result = Self::remember_legacy_in_memory(
+                    cache,
+                    legacy_revision(provider),
+                    observed_legacy_revision,
+                    account,
+                    &json,
+                    credential_user,
+                )?;
+                if newer_login {
+                    claimed.discard()?;
+                }
+                return Ok(result);
+            };
+            Self::migrate_claimed_to_vault(&store, &account, &json, credential_user, claimed)
+        })
+    }
 
-        Ok(tokens)
+    fn migrate_claimed_to_vault(
+        store: &crate::credential_store::CredentialStore,
+        account: &str,
+        json: &str,
+        credential_user: Option<i64>,
+        claimed: ClaimedTokenFile,
+    ) -> Result<TokenRecord, ProviderError> {
+        store
+            .store_secret_if_absent(account, json)
+            .map_err(|_| token_owner_changed())?;
+        let current = store
+            .get_secret(account)
+            .map_err(|_| token_owner_changed())?;
+        let result = Self::decode_record(&current, TokenSource::Vault, credential_user)?;
+        // A newer login also consumes this obsolete legacy candidate. Restoring
+        // it would let a second profile silently import the old cloud account.
+        claimed.discard()?;
+        Ok(result)
+    }
+
+    fn remember_legacy_in_memory(
+        cache: &mut Option<HashMap<String, String>>,
+        revision: &std::sync::atomic::AtomicU64,
+        observed: u64,
+        account: String,
+        json: &str,
+        user: Option<i64>,
+    ) -> Result<TokenRecord, ProviderError> {
+        if revision.load(std::sync::atomic::Ordering::SeqCst) != observed {
+            return Err(token_owner_changed());
+        }
+        let current = cache
+            .get_or_insert_with(HashMap::new)
+            .entry(account.clone())
+            .or_insert_with(|| json.to_owned());
+        Self::decode_record(current, TokenSource::Memory(account), user)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
@@ -1127,9 +1924,16 @@ impl OAuth2Manager {
     ) -> Result<(), ProviderError> {
         let account = Self::token_account_key(provider, profile_id);
 
+        // Who owns this sign-out and whether it reaches the legacy owner's
+        // copies, resolved once, before any wait, and used for the whole
+        // cleanup: a switch meanwhile cannot split the two decisions.
+        let (owner, legacy_owner) =
+            crate::user_partitions::credential_owner_and_fallback(self.credential_user)
+                .map_err(|e| ProviderError::Other(format!("Failed to resolve token owner: {e}")))?;
+        signout_step("resolved");
         // A non-owner's tokens live only in its partition: the global key,
         // memory cache and plaintext files belong to the legacy owner.
-        if let Some(user) = self.private_token_user()? {
+        if let (Some(user), false) = (owner, legacy_owner) {
             let conn = crate::user_partitions::open_or_init_cli()
                 .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {}", e)))?;
             crate::user_partitions::delete_user_credential_for(&conn, user, &account)
@@ -1138,40 +1942,67 @@ impl OAuth2Manager {
             return Ok(());
         }
 
-        // Delete from vault
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            let _ = store.delete(&account);
-        }
-        // MUV-4: drop the per-profile token from the active user's partition too.
-        if !profile_id.is_empty() {
-            if let Some(user) = self.credential_user {
-                crate::user_partitions::unmirror_credential_for_user_best_effort_any(
-                    user, &account,
-                );
-            } else {
-                crate::user_partitions::unmirror_active_credential(&account);
-            }
-        }
+        // MUV-4: drop the per-profile token from the user's partition too,
+        // but only once the sign-out holds its lock (below): a sign-out refused
+        // for the lock must leave every copy in place. The account is resolved
+        // now, before the wait: a switch while the lock is awaited must not
+        // move the delete to another account's row with the same profile id.
+        let partition_user = if profile_id.is_empty() { None } else { owner };
+        let unmirror = || -> Result<(), ProviderError> {
+            let Some(user) = partition_user else {
+                return Ok(());
+            };
+            // Fallible: a partition copy that could not be removed fails the
+            // sign-out before the vault, the cache or the legacy files go.
+            crate::user_partitions::try_unmirror_active_credential(user, &account)
+                .map_err(|e| ProviderError::Other(format!("Failed to delete tokens: {e}")))
+        };
 
-        // Delete from in-memory cache
-        if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
-            if let Some(map) = cache.as_mut() {
-                map.remove(&account);
-            }
-        }
-
-        // Delete legacy .json file if exists
         let json_path =
             Self::token_dir()?.join(format!("oauth2_{:?}.json", provider).to_lowercase());
-        if json_path.exists() {
-            let _ = crate::credential_store::secure_delete(&json_path);
-        }
+        Self::delete_shared_tokens(
+            provider,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            unmirror,
+        )
+    }
 
-        // Delete legacy .enc file if exists
-        let enc_path = Self::token_dir()?.join(format!("oauth2_{:?}.enc", provider).to_lowercase());
-        if enc_path.exists() {
-            let _ = crate::credential_store::secure_delete(&enc_path);
-        }
+    /// The part of [`Self::delete_tokens`] the legacy owner's copies share:
+    /// take the sign-out lock first, then remove the partition mirror, the
+    /// vault entry, the memory cache and the legacy files, all under it.
+    fn delete_shared_tokens(
+        provider: OAuthProvider,
+        account: &str,
+        json_path: &std::path::Path,
+        lock: impl FnOnce(&std::path::Path) -> Result<LegacyTokenGuard, ProviderError>,
+        unmirror: impl FnOnce() -> Result<(), ProviderError>,
+    ) -> Result<(), ProviderError> {
+        let process = lock(json_path)?;
+        // Under the lock, the partition copy first: if it cannot be removed,
+        // nothing else is, not even the recovery claims the guard below
+        // purges before the vault and the cache.
+        unmirror()?;
+        with_legacy_signout_guard(&MEMORY_TOKEN_CACHE, json_path, process, |cache| {
+            // Delete from vault
+            if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
+                store.delete(account).map_err(|_| token_owner_changed())?;
+            }
+            invalidate_memory_tokens(cache, legacy_revision(provider), account);
+            // The legacy files are the ones next to the `json_path` this
+            // sign-out holds the lock for, never a path found again here: a
+            // second lookup would leave the lock's folder (a test's fixture)
+            // for the app's real token folder.
+            if json_path.exists() {
+                let _ = crate::credential_store::secure_delete(json_path);
+            }
+            let enc_path = json_path.with_extension("enc");
+            if enc_path.exists() {
+                let _ = crate::credential_store::secure_delete(&enc_path);
+            }
+            Ok(())
+        })?;
 
         info!("Tokens deleted for {:?}", provider);
         Ok(())
@@ -1656,6 +2487,1123 @@ fn parse_callback_request(request: &str) -> Result<(String, String), ProviderErr
 
 #[cfg(test)]
 mod tests {
+    /// E1: the OAuth app a target names is the one that authorized the
+    /// stored tokens. A token of app A, with the app changed to B in
+    /// Settings and no new sign-in, keeps naming A, through a refresh too; a
+    /// genuine sign-in with B names B. A record from before the app was kept
+    /// names one fixed value no recorded app shares.
+    ///
+    /// H3: it runs in an isolated child (its own data root, vault and
+    /// partition database next to a copy of the test binary) and deletes
+    /// nothing: the child checks that a legacy Dropbox authorization it
+    /// holds outside the test's profile is still there at the end. The
+    /// parent reads nothing of the real data root (L9).
+    #[test]
+    fn a_token_names_the_app_that_authorized_it_not_the_one_configured_now() {
+        use super::{OAuth2Manager, OAuthProvider, StoredTokens};
+        // The parent reads nothing of the real data root (L9): the child's own
+        // root, vault and partition database are checked by
+        // `in_isolated_child` before the body runs (K11), and the child
+        // checks below that what it protects is still there.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_token_names_the_app_that_authorized_it_not_the_one_configured_now",
+        ) {
+            return;
+        }
+        let root = crate::portable::aeroftp_data_root().unwrap();
+        let executable_dir = std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        assert!(root.starts_with(&executable_dir), "{}", root.display());
+        let manager = OAuth2Manager::new();
+        let profile = "e1-token-app".to_string();
+        // A legacy authorization outside the test's profile.
+        let legacy_file = OAuth2Manager::token_dir()
+            .unwrap()
+            .join("oauth2_dropbox.json");
+        std::fs::write(&legacy_file, b"{}").unwrap();
+        manager
+            .store_tokens(
+                OAuthProvider::Dropbox,
+                "",
+                &StoredTokens {
+                    access_token: "legacy".to_string(),
+                    refresh_token: None,
+                    expires_at: None,
+                    token_type: "Bearer".to_string(),
+                    scopes: vec![],
+                },
+            )
+            .unwrap();
+        let tokens = |access: &str| StoredTokens {
+            access_token: access.to_string(),
+            refresh_token: Some("refresh".to_string()),
+            expires_at: Some(chrono::Utc::now().timestamp() + 3600),
+            token_type: "Bearer".to_string(),
+            scopes: vec![],
+        };
+        let target = |recorded: Option<String>| {
+            crate::cloud_provider_factory::gui_target_identity(
+                None,
+                crate::providers::ProviderType::Dropbox,
+                Some("alice@example"),
+                Some(&crate::provider_commands::oauth_identity_client(recorded)),
+                &serde_json::Value::Null,
+            )
+            .unwrap()
+        };
+        let named = |manager: &OAuth2Manager| {
+            target(
+                manager
+                    .token_client_id(OAuthProvider::Dropbox, &profile)
+                    .unwrap(),
+            )
+        };
+        let app_a = target(Some("app-a".into()));
+        let app_b = target(Some("app-b".into()));
+        assert_ne!(app_a, app_b);
+
+        // Authorized with A; Settings now say B: the target is still A's.
+        manager
+            .store_tokens_with_client(
+                OAuthProvider::Dropbox,
+                &profile,
+                &tokens("a-1"),
+                Some("app-a"),
+            )
+            .unwrap();
+        assert_eq!(named(&manager), app_a);
+        // A refresh keeps the app.
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, &profile);
+        let observed = manager
+            .load_token_record(OAuthProvider::Dropbox, &profile)
+            .unwrap();
+        manager
+            .persist_refreshed_record(&account, &observed, &tokens("a-2"))
+            .unwrap();
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, &profile)
+                .unwrap()
+                .access_token,
+            "a-2"
+        );
+        assert_eq!(named(&manager), app_a);
+        // A genuine sign-in with B names B.
+        manager
+            .store_tokens_with_client(
+                OAuthProvider::Dropbox,
+                &profile,
+                &tokens("b-1"),
+                Some("app-b"),
+            )
+            .unwrap();
+        assert_eq!(named(&manager), app_b);
+        // A record from before names no app (the connection then gets an
+        // identity of its own, H1 in provider_commands).
+        manager
+            .store_tokens(OAuthProvider::Dropbox, &profile, &tokens("old"))
+            .unwrap();
+        assert_eq!(
+            manager
+                .token_client_id(OAuthProvider::Dropbox, &profile)
+                .unwrap(),
+            None
+        );
+        // The authorization outside the test's profile is still there.
+        assert!(legacy_file.exists());
+        assert_eq!(
+            manager
+                .load_tokens(OAuthProvider::Dropbox, "")
+                .unwrap()
+                .access_token,
+            "legacy"
+        );
+    }
+
+    #[test]
+    fn legacy_cache_signout_revision_rejects_a_paused_read() {
+        use std::sync::{Arc, Barrier};
+        let revision = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let cache = Arc::new(Mutex::new(None));
+        let observed = revision.load(std::sync::atomic::Ordering::SeqCst);
+        let barrier = Arc::new(Barrier::new(2));
+        let deletion = {
+            let revision = revision.clone();
+            let cache = cache.clone();
+            let barrier = barrier.clone();
+            std::thread::spawn(move || {
+                invalidate_memory_tokens(&mut cache.lock().unwrap(), &revision, "account");
+                barrier.wait();
+            })
+        };
+        barrier.wait();
+        let json = serde_json::to_string(&StoredTokens {
+            access_token: "old".into(),
+            refresh_token: None,
+            expires_at: None,
+            token_type: "Bearer".into(),
+            scopes: vec![],
+        })
+        .unwrap();
+        let mut cache = cache.lock().unwrap();
+        assert!(matches!(
+            OAuth2Manager::remember_legacy_in_memory(
+                &mut cache,
+                &revision,
+                observed,
+                "account".into(),
+                &json,
+                None
+            ),
+            Err(ProviderError::TargetChanged)
+        ));
+        assert!(cache.is_none());
+        assert!(OAuth2Manager::remember_legacy_in_memory(
+            &mut cache,
+            &revision,
+            revision.load(std::sync::atomic::Ordering::SeqCst),
+            "account".into(),
+            &json,
+            None
+        )
+        .is_ok());
+        drop(cache);
+        deletion.join().unwrap();
+    }
+
+    #[test]
+    fn legacy_claim_and_signout_coordinate_between_processes() {
+        const MODE: &str = "AEROFTP_LEGACY_CLAIM_PROCESS_TEST";
+        const TEST: &str =
+            "providers::oauth2::tests::legacy_claim_and_signout_coordinate_between_processes";
+        fn wait_for(path: &std::path::Path) {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+            while !path.exists() {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "barrier timed out: {}",
+                    path.display()
+                );
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+        }
+        if let Ok(mode) = std::env::var(MODE) {
+            let dir = std::path::PathBuf::from(
+                std::env::var_os("AEROFTP_LEGACY_CLAIM_TEST_DIR").unwrap(),
+            );
+            let path = dir.join("legacy.json");
+            if mode == "signout" {
+                std::fs::write(dir.join("deleting"), b"").unwrap();
+                let _guard = LegacyTokenGuard::acquire(&path).unwrap();
+                // The production sign-out holds this same guard through vault,
+                // memory and file cleanup. A waiting claimant cannot reappear.
+                let _ = std::fs::remove_file(dir.join("destination"));
+                let _ = std::fs::remove_file(&path);
+                std::fs::write(dir.join("deleted"), b"").unwrap();
+            } else {
+                with_legacy_token_claim(&Mutex::new(None), &path, |_, claimed| {
+                    std::fs::write(dir.join("claimed"), b"").unwrap();
+                    wait_for(&dir.join("release"));
+                    std::fs::write(dir.join("destination"), b"old authorization").unwrap();
+                    if mode == "vault" {
+                        claimed.discard()?;
+                    } else {
+                        drop(claimed);
+                    }
+                    Ok(())
+                })
+                .unwrap();
+            }
+            return;
+        }
+        for mode in ["memory", "vault"] {
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("legacy.json");
+            std::fs::write(&path, b"old authorization").unwrap();
+            let spawn = |mode: &str| {
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+                    .env(MODE, mode)
+                    .env("AEROFTP_LEGACY_CLAIM_TEST_DIR", dir.path())
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap()
+            };
+            let mut migration = spawn(mode);
+            wait_for(&dir.path().join("claimed"));
+            let mut deletion = spawn("signout");
+            wait_for(&dir.path().join("deleting"));
+            let lock = std::fs::OpenOptions::new()
+                .write(true)
+                .open(path.with_extension("migration.lock"))
+                .unwrap();
+            assert!(matches!(
+                lock.try_lock(),
+                Err(std::fs::TryLockError::WouldBlock)
+            ));
+            assert!(!dir.path().join("deleted").exists());
+            std::fs::write(dir.path().join("release"), b"").unwrap();
+            assert!(migration.wait().unwrap().success());
+            assert!(deletion.wait().unwrap().success());
+            assert!(!path.exists());
+            assert!(!dir.path().join("destination").exists());
+            assert_eq!(
+                std::fs::read_dir(dir.path())
+                    .unwrap()
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry
+                        .file_name()
+                        .to_string_lossy()
+                        .starts_with("legacy.migration-"))
+                    .count(),
+                0
+            );
+            // Keep the permanent inode, and prove the crashed/exited owners
+            // leave no stale lock that could block another migration/sign-out.
+            assert!(lock.try_lock().is_ok());
+            lock.unlock().unwrap();
+        }
+    }
+
+    #[test]
+    fn legacy_migration_finalizes_before_signout_in_memory_and_vault_paths() {
+        use std::sync::{mpsc, Arc, Barrier};
+        for vault_available in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let original = dir.path().join("legacy.json");
+            std::fs::write(&original, "old authorization").unwrap();
+            let cache = Arc::new(Mutex::new(None));
+            let vault = Arc::new(Mutex::new(HashMap::<String, String>::new()));
+            let claimed_barrier = Arc::new(Barrier::new(2));
+            let release = Arc::new(Barrier::new(2));
+            let migration = {
+                let (cache, vault, original, claimed_barrier, release) = (
+                    cache.clone(),
+                    vault.clone(),
+                    original.clone(),
+                    claimed_barrier.clone(),
+                    release.clone(),
+                );
+                std::thread::spawn(move || {
+                    with_legacy_token_claim(&cache, &original, |cache, claimed| {
+                        claimed_barrier.wait();
+                        release.wait();
+                        if vault_available {
+                            vault
+                                .lock()
+                                .unwrap()
+                                .insert("account".into(), "old authorization".into());
+                            claimed.discard()?;
+                        } else {
+                            cache
+                                .get_or_insert_with(HashMap::new)
+                                .insert("account".into(), "old authorization".into());
+                            // The memory path restores the legacy file for durability.
+                            drop(claimed);
+                        }
+                        Ok(())
+                    })
+                })
+            };
+            claimed_barrier.wait();
+            // A sign-out cannot complete while a claim is hidden, regardless
+            // of which destination the migration will use.
+            assert!(cache.try_lock().is_err());
+            let (done_tx, done_rx) = mpsc::channel();
+            let deletion = {
+                let (cache, vault, original) = (cache.clone(), vault.clone(), original.clone());
+                std::thread::spawn(move || {
+                    let mut cache = cache.lock().unwrap();
+                    vault.lock().unwrap().remove("account");
+                    *cache = None;
+                    let _ = std::fs::remove_file(&original);
+                    done_tx.send(()).unwrap();
+                })
+            };
+            assert!(done_rx.try_recv().is_err());
+            release.wait();
+            migration.join().unwrap().unwrap();
+            deletion.join().unwrap();
+            done_rx.recv().unwrap();
+            assert!(!original.exists());
+            assert!(cache.lock().unwrap().is_none());
+            assert!(vault.lock().unwrap().is_empty());
+            let remaining: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(
+                remaining,
+                vec![std::ffi::OsString::from("legacy.migration.lock")]
+            );
+        }
+    }
+
+    #[test]
+    fn unsupported_file_locks_disable_legacy_migration_without_claiming_a_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        std::fs::write(&path, "authorization").unwrap();
+        let migrated = std::cell::Cell::new(false);
+        let result =
+            with_legacy_claim_guard(&Mutex::new(None), &path, LegacyTokenGuard(None), |_, _| {
+                migrated.set(true);
+                Ok(())
+            });
+        assert!(matches!(
+            result,
+            Err(ProviderError::AuthenticationFailed(_))
+        ));
+        assert!(!migrated.get());
+        assert_eq!(std::fs::read_to_string(path).unwrap(), "authorization");
+        assert!(crate::user_partitions::file_locks_unavailable(
+            &std::io::Error::from(std::io::ErrorKind::Unsupported)
+        ));
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_storage_failure_is_not_reported_as_contention() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let error = match RefreshLease::acquire_in(file.path(), "test").await {
+            Err(error) => error,
+            Ok(_) => panic!("a non-directory cannot hold a lease"),
+        };
+        let message = error.to_string();
+        assert!(message.contains("lease storage unavailable"));
+        assert!(!message.contains("busy"));
+    }
+
+    #[test]
+    fn signout_purges_multiple_stranded_claims_without_restoring_a_login() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        for value in ["A", "B"] {
+            std::fs::write(
+                original.with_extension(format!("migration-{}", uuid::Uuid::new_v4())),
+                value,
+            )
+            .unwrap();
+        }
+        assert!(LegacyTokenGuard::acquire(&original).is_err());
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "B".into())])));
+        with_legacy_signout(&cache, &original, |tokens| {
+            *tokens = None;
+            Ok(())
+        })
+        .unwrap();
+        assert!(cache.lock().unwrap().is_none());
+        assert!(ClaimedTokenFile::recovery_paths(&original)
+            .unwrap()
+            .is_empty());
+        let _migration = LegacyTokenGuard::acquire(&original).unwrap();
+        assert!(!original.exists(), "sign-out must not restore either login");
+    }
+
+    // Only the unix tests can play ENOLCK, so the helper shares their cfg.
+    #[cfg(unix)]
+    fn enolck() -> std::fs::TryLockError {
+        std::fs::TryLockError::Error(std::io::Error::from_raw_os_error(libc::ENOLCK))
+    }
+
+    fn unsupported_lock() -> std::fs::TryLockError {
+        std::fs::TryLockError::Error(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signout_that_sees_enolck_leaves_an_active_migration_untouched() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "authorization").unwrap();
+        // The migrator holds the real lock and its claim, as another process
+        // would while the kernel has no lock record left for this sign-out.
+        let _migrator = LegacyTokenGuard::acquire(&original).unwrap();
+        let claimed = ClaimedTokenFile::claim(&original).unwrap();
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        let cleared = std::cell::Cell::new(false);
+
+        let refused =
+            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
+                .and_then(|guard| {
+                    with_legacy_signout_guard(&cache, &original, guard, |tokens| {
+                        cleared.set(true);
+                        *tokens = None;
+                        Ok(())
+                    })
+                });
+
+        assert!(matches!(refused, Err(ProviderError::Other(_))));
+        assert!(!cleared.get(), "nothing may be cleared without the lock");
+        assert_eq!(
+            std::fs::read_to_string(&claimed.path).unwrap(),
+            "authorization"
+        );
+        assert_eq!(
+            cache
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .get("login")
+                .unwrap(),
+            "A"
+        );
+        // The legacy file alone, before a migrator claims it, is refused too.
+        drop(claimed);
+        assert!(original.exists());
+        assert!(
+            LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| Err(enolck()))
+                .is_err()
+        );
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "authorization");
+    }
+
+    /// With nothing on disk at all, ENOLCK still refuses: an empty disk is
+    /// one of the states a migrator's recovery passes through.
+    #[cfg(unix)]
+    #[test]
+    fn signout_that_sees_enolck_is_refused_even_with_nothing_left_to_migrate() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        let refused = with_legacy_signout_with(
+            &cache,
+            &original,
+            |_| Err(enolck()),
+            |tokens| {
+                *tokens = None;
+                Ok(())
+            },
+        );
+        let message = match refused {
+            Err(ProviderError::Other(message)) => message,
+            other => panic!("sign-out must fail closed on ENOLCK: {other:?}"),
+        };
+        assert!(message.contains("try again"), "{message}");
+        assert_eq!(cache.lock().unwrap().as_ref().unwrap()["login"], "A");
+    }
+
+    /// The interleaving the review lists, driven through the injectable
+    /// try-lock: while sign-out asks for the lock, a migrator holding it
+    /// recovers its claim to the legacy name. Sign-out used to look at the
+    /// disk after that and could see neither a legacy file nor a claim at the
+    /// moment between them; now it refuses on ENOLCK whatever the disk shows,
+    /// so the restored authorization and the cache are left to the migrator.
+    #[cfg(unix)]
+    #[test]
+    fn signout_on_enolck_cannot_overtake_a_claim_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let claim = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "authorization").unwrap();
+        let _migrator = LegacyTokenGuard::lock(&original, LegacyLockUse::Migration).unwrap();
+        let cache = Mutex::new(Some(HashMap::from([("login".into(), "A".into())])));
+        let cleared = std::cell::Cell::new(false);
+        // Each state of the recovery as sign-out may see it: the claim alone,
+        // the legacy file alone, and neither (the gap a two-look check missed).
+        for step in ["claim", "restored", "empty"] {
+            let refused = with_legacy_signout_with(
+                &cache,
+                &original,
+                |_| {
+                    match step {
+                        "restored" if claim.exists() => std::fs::rename(&claim, &original).unwrap(),
+                        "empty" if original.exists() => {
+                            std::fs::rename(&original, dir.path().join("held")).unwrap()
+                        }
+                        _ => {}
+                    }
+                    Err(enolck())
+                },
+                |tokens| {
+                    cleared.set(true);
+                    *tokens = None;
+                    Ok(())
+                },
+            );
+            assert!(
+                matches!(refused, Err(ProviderError::Other(_))),
+                "{step}: {refused:?}"
+            );
+            assert!(
+                !cleared.get(),
+                "{step}: nothing may be cleared without the lock"
+            );
+            assert_eq!(
+                cache.lock().unwrap().as_ref().unwrap()["login"],
+                "A",
+                "{step}"
+            );
+        }
+        // The migrator's authorization survived every refused sign-out.
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("held")).unwrap(),
+            "authorization"
+        );
+    }
+
+    /// The whole sign-out of `delete_tokens` refused on ENOLCK takes nothing
+    /// away: the partition mirror is removed only after the lock is held, as
+    /// are the vault entry and the memory cache, so "nothing was signed out"
+    /// is true. With the lock the same call removes them.
+    #[cfg(unix)]
+    #[test]
+    fn a_signout_refused_on_enolck_removes_no_copy_of_the_token() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("oauth2_box.json");
+        // The legacy files of THIS fixture: the sign-out removes these, next
+        // to the lock it holds, and nothing in the app's real token folder.
+        std::fs::write(&json_path, "legacy").unwrap();
+        std::fs::write(json_path.with_extension("enc"), "legacy").unwrap();
+        let account = format!("oauth_box_enolck-{}", uuid::Uuid::new_v4());
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashMap::new)
+            .insert(account.clone(), "{}".into());
+        let unmirrored = std::cell::Cell::new(false);
+        let refused = OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            |path| LegacyTokenGuard::lock_with(path, LegacyLockUse::Signout, |_| Err(enolck())),
+            || {
+                unmirrored.set(true);
+                Ok(())
+            },
+        );
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert!(!unmirrored.get(), "the partition mirror stays");
+        let cached = |account: &str| {
+            MEMORY_TOKEN_CACHE
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|map| map.contains_key(account))
+        };
+        assert!(cached(&account), "the memory cache stays");
+        assert!(
+            json_path.exists() && json_path.with_extension("enc").exists(),
+            "the legacy files stay"
+        );
+
+        OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            || {
+                unmirrored.set(true);
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert!(unmirrored.get());
+        assert!(!cached(&account));
+        assert!(
+            !json_path.exists() && !json_path.with_extension("enc").exists(),
+            "the fixture's legacy files are the ones removed"
+        );
+    }
+
+    /// The partition copy goes first, under the lock, and a failure to remove
+    /// it (here a refused SQLite delete) fails the sign-out before the vault,
+    /// the memory cache or the legacy files are touched.
+    #[test]
+    fn a_partition_delete_that_fails_stops_the_signout_before_any_other_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let json_path = dir.path().join("oauth2_box.json");
+        std::fs::write(&json_path, "legacy").unwrap();
+        let claim = json_path.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "stranded").unwrap();
+        let account = format!("oauth_box_partition-{}", uuid::Uuid::new_v4());
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .get_or_insert_with(HashMap::new)
+            .insert(account.clone(), "{}".into());
+        let failed = OAuth2Manager::delete_shared_tokens(
+            OAuthProvider::Box,
+            &account,
+            &json_path,
+            LegacyTokenGuard::acquire_for_signout,
+            || {
+                Err(ProviderError::Other(
+                    "Failed to delete tokens: Delete user credential: database is locked".into(),
+                ))
+            },
+        );
+        assert!(failed.is_err(), "{failed:?}");
+        assert!(MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .as_ref()
+            .is_some_and(|map| map.contains_key(&account)));
+        assert!(json_path.exists(), "the legacy file stays");
+        assert!(
+            claim.exists(),
+            "a recovery claim is purged only after the partition copy is gone"
+        );
+        MEMORY_TOKEN_CACHE
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .remove(&account);
+    }
+
+    /// A vault with two accounts, each signed in to Box under the same
+    /// profile id: the first is the legacy owner (vault and partition), the
+    /// second holds its token in its partition only. Runs `body` with the
+    /// store, the two account ids and the token account key, then restores
+    /// the environment. For a test that runs in its own process.
+    fn with_two_box_accounts(
+        body: impl FnOnce(&crate::credential_store::CredentialStore, i64, i64, &str),
+    ) {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("signout-two-users-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("signout-two-users-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        for (user, token) in [(first, "first-token"), (second, "second-token")] {
+            OAuth2Manager::new()
+                .with_credential_user(Some(user))
+                .store_tokens(
+                    OAuthProvider::Box,
+                    "shared-profile",
+                    &StoredTokens {
+                        access_token: token.into(),
+                        refresh_token: None,
+                        expires_at: None,
+                        token_type: "Bearer".into(),
+                        scopes: vec![],
+                    },
+                )
+                .expect("sign the account in");
+        }
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Box, "shared-profile");
+        body(&store, first, second, &account);
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
+    /// The partition rows of `user` for `account`, read from the database.
+    fn partition_rows(user: i64, account: &str) -> i64 {
+        crate::user_partitions::open_or_init_cli()
+            .expect("partition DB")
+            .query_row(
+                "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                rusqlite::params![user, account],
+                |row| row.get(0),
+            )
+            .expect("count rows")
+    }
+
+    /// Sign the active (first) account out of Box while the second account
+    /// is activated at `step`: only the first account's partition row goes,
+    /// and the second account's token, under the same profile id, stays.
+    fn signout_with_a_switch_at(step: &'static str) {
+        with_two_box_accounts(|_store, first, second, account| {
+            assert_eq!(partition_rows(first, account), 1);
+            assert_eq!(partition_rows(second, account), 1);
+            let json_path = OAuth2Manager::token_dir().unwrap().join("oauth2_box.json");
+            // For the lock wait: another holder of the sign-out lock, which
+            // the hook releases as it switches the account.
+            let holder = (step == "lock-wait").then(|| {
+                let file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .truncate(false)
+                    .write(true)
+                    .open(json_path.with_extension("migration.lock"))
+                    .unwrap();
+                file.try_lock().expect("hold the sign-out lock");
+                file
+            });
+            let switch_conn = crate::user_partitions::open_or_init_cli().unwrap();
+            on_signout_step_for_test(step, move || {
+                crate::user_partitions::set_active_user(&switch_conn, second)
+                    .expect("switch to the second account");
+                drop(holder);
+            });
+            OAuth2Manager::new()
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("sign-out");
+            assert_eq!(
+                crate::user_partitions::open_or_init_cli()
+                    .and_then(|conn| crate::user_partitions::get_active_user(&conn))
+                    .unwrap()
+                    .map(|user| user.id),
+                Some(second),
+                "the switch happened at {step}"
+            );
+            assert_eq!(partition_rows(first, account), 0, "the captured row goes");
+            assert_eq!(partition_rows(second, account), 1, "the other row stays");
+            let other = OAuth2Manager::new()
+                .with_credential_user(Some(second))
+                .load_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the second account is still signed in");
+            assert_eq!(other.access_token, "second-token");
+        });
+    }
+
+    #[test]
+    fn a_switch_after_the_signout_resolves_its_account_deletes_only_that_row() {
+        if crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_switch_after_the_signout_resolves_its_account_deletes_only_that_row",
+        ) {
+            signout_with_a_switch_at("resolved");
+        }
+    }
+
+    #[test]
+    fn a_switch_during_the_signout_lock_wait_deletes_only_the_captured_row() {
+        if crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_switch_during_the_signout_lock_wait_deletes_only_the_captured_row",
+        ) {
+            signout_with_a_switch_at("lock-wait");
+        }
+    }
+
+    /// Through the production `delete_tokens`, the partition delete itself
+    /// fails in SQLite (a trigger aborts every delete of `user_credentials`).
+    /// A recovery claim hard-linked to the legacy file is on disk. Nothing
+    /// is signed out: the partition row, the vault entry, the claim and the
+    /// legacy file and its content all stay. Once SQLite deletes again, the
+    /// retry removes every copy.
+    #[test]
+    fn a_forced_sqlite_failure_of_the_partition_delete_keeps_every_copy() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::oauth2::tests::a_forced_sqlite_failure_of_the_partition_delete_keeps_every_copy",
+        ) {
+            return;
+        }
+        with_two_box_accounts(|store, first, _second, account| {
+            let json_path = OAuth2Manager::token_dir().unwrap().join("oauth2_box.json");
+            std::fs::write(&json_path, "legacy-token-file").unwrap();
+            let claim = json_path.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+            std::fs::hard_link(&json_path, &claim).expect("hard-link the claim");
+            let conn = crate::user_partitions::open_or_init_cli().unwrap();
+            conn.execute_batch(
+                "CREATE TRIGGER refuse_credential_delete BEFORE DELETE ON user_credentials
+                 BEGIN SELECT RAISE(ABORT, 'forced failure'); END;",
+            )
+            .unwrap();
+
+            let refused = OAuth2Manager::new().delete_tokens(OAuthProvider::Box, "shared-profile");
+            assert!(refused.is_err(), "{refused:?}");
+            assert_eq!(partition_rows(first, account), 1, "the partition row stays");
+            assert!(
+                store.get(account).is_ok_and(|value| !value.is_empty()),
+                "the vault entry stays"
+            );
+            assert!(claim.exists(), "the claim stays");
+            assert_eq!(
+                std::fs::read_to_string(&json_path).unwrap(),
+                "legacy-token-file",
+                "the legacy file and its content stay"
+            );
+            assert_eq!(
+                std::fs::read_to_string(&claim).unwrap(),
+                "legacy-token-file"
+            );
+
+            conn.execute_batch("DROP TRIGGER refuse_credential_delete;")
+                .unwrap();
+            OAuth2Manager::new()
+                .delete_tokens(OAuthProvider::Box, "shared-profile")
+                .expect("the retry signs out");
+            assert_eq!(partition_rows(first, account), 0);
+            assert!(store.get(account).is_err());
+            assert!(!json_path.exists());
+            assert!(!claim.exists(), "the claim is purged with the rest");
+        });
+    }
+
+    /// A token miss with no legacy file and no claim answers "no stored
+    /// authorization" and takes no lock: the lock file is never created.
+    #[test]
+    fn a_token_miss_with_nothing_on_disk_takes_no_legacy_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let result: Result<(), _> =
+            with_stored_legacy_token_claim(&Mutex::new(None), &original, |_, _| {
+                panic!("nothing to migrate")
+            });
+        assert!(
+            matches!(&result, Err(ProviderError::AuthenticationFailed(message)) if message == "No stored authorization"),
+            "{result:?}"
+        );
+        assert!(
+            !original.with_extension("migration.lock").exists(),
+            "no lock was taken"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn enolck_disables_migration_like_a_filesystem_without_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "authorization").unwrap();
+        for failure in [enolck as fn() -> _, unsupported_lock] {
+            let guard =
+                LegacyTokenGuard::lock_with(
+                    &original,
+                    LegacyLockUse::Migration,
+                    |_| Err(failure()),
+                )
+                .unwrap();
+            assert!(guard.0.is_none());
+            let result: Result<(), _> =
+                with_legacy_claim_guard(&Mutex::new(None), &original, guard, |_, _| {
+                    panic!("an unlocked guard must not migrate")
+                });
+            assert!(matches!(
+                result,
+                Err(ProviderError::AuthenticationFailed(_))
+            ));
+            assert_eq!(std::fs::read_to_string(&original).unwrap(), "authorization");
+        }
+    }
+
+    #[test]
+    fn signout_on_a_filesystem_without_locks_still_purges_claims() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(
+            original.with_extension(format!("migration-{}", uuid::Uuid::new_v4())),
+            "A",
+        )
+        .unwrap();
+        let guard = LegacyTokenGuard::lock_with(&original, LegacyLockUse::Signout, |_| {
+            Err(unsupported_lock())
+        })
+        .unwrap();
+        assert!(guard.0.is_none());
+        let cache = Mutex::new(Some(HashMap::new()));
+        with_legacy_signout_guard(&cache, &original, guard, |tokens| {
+            *tokens = None;
+            Ok(())
+        })
+        .unwrap();
+        assert!(cache.lock().unwrap().is_none());
+        assert!(ClaimedTokenFile::recovery_paths(&original)
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
+    fn lock_errors_are_classified_by_what_they_prove() {
+        assert_eq!(
+            legacy_lock_failure(&std::io::Error::from(std::io::ErrorKind::Unsupported)),
+            LegacyLockFailure::NoLocks
+        );
+        #[cfg(unix)]
+        {
+            for code in [libc::ENOSYS, libc::EOPNOTSUPP] {
+                assert_eq!(
+                    legacy_lock_failure(&std::io::Error::from_raw_os_error(code)),
+                    LegacyLockFailure::NoLocks
+                );
+            }
+            assert_eq!(
+                legacy_lock_failure(&std::io::Error::from_raw_os_error(libc::ENOLCK)),
+                LegacyLockFailure::Unproven
+            );
+        }
+        assert_eq!(
+            legacy_lock_failure(&std::io::Error::from(std::io::ErrorKind::PermissionDenied)),
+            LegacyLockFailure::Other
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn signout_overwrites_a_stranded_claim_before_unlinking_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let claim = original.with_extension(format!("migration-{}", uuid::Uuid::new_v4()));
+        std::fs::write(&claim, "refresh-token-secret").unwrap();
+        // A second name keeps the claim's blocks readable after the unlink.
+        let witness = dir.path().join("witness");
+        std::fs::hard_link(&claim, &witness).unwrap();
+        with_legacy_signout(&Mutex::new(None), &original, |_| Ok(())).unwrap();
+        assert!(!claim.exists());
+        let left = std::fs::read(&witness).unwrap();
+        assert!(
+            !String::from_utf8_lossy(&left).contains("refresh-token-secret"),
+            "the plaintext must be overwritten, not only unlinked"
+        );
+    }
+
+    #[tokio::test]
+    async fn refresh_lease_file_name_is_safe_for_a_profile_id_with_a_separator() {
+        let dir = tempfile::tempdir().unwrap();
+        let slug = "oauth_box_rclone-team/drive..\\x-1";
+        let lease = RefreshLease::acquire_in(dir.path(), slug)
+            .await
+            .unwrap()
+            .expect("a free lease is granted");
+        assert_eq!(lease.path.parent().unwrap(), dir.path());
+        assert!(lease.path.is_file());
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        assert_eq!(names, ["refresh-oauth_box_rclone-team_drive___x-1.lock"]);
+    }
+
+    /// Run in its own process under a watchdog: `tokio::time::timeout` cannot
+    /// interrupt a retry loop that never yields, so a regression to a spin
+    /// would hang the suite instead of failing; the watchdog kills the child
+    /// and the test fails.
+    #[cfg(unix)]
+    #[test]
+    fn a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child_within(
+            "providers::oauth2::tests::a_stale_lease_that_cannot_be_removed_is_an_error_not_a_spin",
+            Some(std::time::Duration::from_secs(60)),
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(stale_lease_that_cannot_be_removed());
+    }
+
+    #[cfg(unix)]
+    async fn stale_lease_that_cannot_be_removed() {
+        let dir = tempfile::tempdir().unwrap();
+        // A directory at the lease path: create_new sees it, unlink cannot
+        // remove it.
+        let lock_path = dir.path().join("refresh-stuck.lock");
+        std::fs::create_dir(&lock_path).unwrap();
+        let stale = std::time::SystemTime::now()
+            - std::time::Duration::from_secs(RefreshLease::STALE_SECS + 60);
+        filetime::set_file_mtime(&lock_path, filetime::FileTime::from_system_time(stale)).unwrap();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            RefreshLease::acquire_in(dir.path(), "stuck"),
+        )
+        .await
+        .expect("acquisition must return instead of retrying forever");
+        let message = match result {
+            Err(error) => error.to_string(),
+            Ok(_) => panic!("an unremovable stale lease cannot be granted"),
+        };
+        assert!(message.contains("lease storage unavailable"));
+    }
+
+    #[test]
+    fn crashed_legacy_claim_is_recovered_without_resurrecting_a_newer_login() {
+        const MODE: &str = "AEROFTP_LEGACY_CRASH_CLAIM";
+        const TEST: &str = "providers::oauth2::tests::crashed_legacy_claim_is_recovered_without_resurrecting_a_newer_login";
+        if let Some(path) = std::env::var_os(MODE) {
+            let path = std::path::PathBuf::from(path);
+            let _guard = LegacyTokenGuard::acquire(&path).unwrap();
+            let _claimed = ClaimedTokenFile::claim(&path).unwrap();
+            std::process::exit(0); // No destructors, like a killed migrator.
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        let crash = || {
+            assert!(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", TEST, "--test-threads=1"])
+                .env(MODE, &original)
+                .status()
+                .unwrap()
+                .success());
+            assert!(!original.exists());
+        };
+        std::fs::write(&original, "A").unwrap();
+        crash();
+        let recovered = with_legacy_token_claim(&Mutex::new(None), &original, |_, claimed| {
+            let value = std::fs::read_to_string(&claimed.path).unwrap();
+            claimed.discard()?;
+            Ok(value)
+        })
+        .unwrap();
+        assert_eq!(recovered, "A");
+        std::fs::write(&original, "A").unwrap();
+        crash();
+        std::fs::write(&original, "B").unwrap();
+        {
+            let _guard = LegacyTokenGuard::acquire(&original).unwrap();
+            assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+            std::fs::remove_file(&original).unwrap(); // Real sign-out lock scope.
+        }
+        let _guard = LegacyTokenGuard::acquire(&original).unwrap();
+        assert!(!original.exists(), "old A must never return after sign-out");
+    }
+
+    #[test]
+    fn claimed_plaintext_cleanup_never_deletes_a_new_authorization() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "A").unwrap();
+        let claimed = super::ClaimedTokenFile::claim(&original).unwrap();
+        std::fs::write(&original, "B").unwrap();
+        assert_eq!(std::fs::read_to_string(&claimed.path).unwrap(), "A");
+        claimed.discard().unwrap();
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+    }
+
+    #[test]
+    fn claimed_plaintext_restores_on_failure_without_clobber() {
+        let dir = tempfile::tempdir().unwrap();
+        let original = dir.path().join("legacy.json");
+        std::fs::write(&original, "A").unwrap();
+        drop(super::ClaimedTokenFile::claim(&original).unwrap());
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "A");
+        let claimed = super::ClaimedTokenFile::claim(&original).unwrap();
+        let recovery = claimed.path.clone();
+        std::fs::write(&original, "B").unwrap();
+        drop(claimed);
+        assert_eq!(std::fs::read_to_string(&original).unwrap(), "B");
+        assert_eq!(std::fs::read_to_string(&recovery).unwrap(), "A");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&recovery).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
+
     use super::*;
 
     /// A token request (exchange or refresh) to a server that accepts the
@@ -2097,6 +4045,44 @@ mod tests {
     async fn clones_re_read_shared_profile_token_source_body() {
         use secrecy::ExposeSecret;
 
+        {
+            let manager = OAuth2Manager::new();
+            let provider = OAuthProvider::GooglePhotos;
+            let dir = OAuth2Manager::token_dir().unwrap();
+            let path = dir.join("oauth2_googlephotos.json");
+            let old = serde_json::to_string(&StoredTokens {
+                access_token: "old-legacy".into(),
+                refresh_token: None,
+                expires_at: None,
+                token_type: "Bearer".into(),
+                scopes: vec![],
+            })
+            .unwrap();
+            let fresh = old.replace("old-legacy", "fresh-login");
+            std::fs::write(&path, &old).unwrap();
+            let claimed = ClaimedTokenFile::claim(&path).unwrap();
+            let store = crate::credential_store::CredentialStore::from_cache().unwrap();
+            let account = OAuth2Manager::token_account_key(provider, "migration-winner");
+            // Login B wins after legacy A was claimed but before insertion.
+            store.store(&account, &fresh).unwrap();
+            let winner =
+                OAuth2Manager::migrate_claimed_to_vault(&store, &account, &old, None, claimed)
+                    .unwrap();
+            assert_eq!(winner.tokens.access_token, "fresh-login");
+            assert!(!path.exists());
+            assert!(manager
+                .load_token_record(provider, "second-profile")
+                .is_err());
+            assert_eq!(
+                manager
+                    .load_tokens(provider, "migration-winner")
+                    .unwrap()
+                    .access_token,
+                "fresh-login"
+            );
+            store.delete(&account).unwrap();
+        }
+
         let primary = OAuth2Manager::new();
         let profile = format!("p1-05b-oauth-{}", std::process::id());
         // Clean any leftover from a previous run of this process.
@@ -2158,6 +4144,88 @@ mod tests {
         let original = primary.get_valid_token(&config).await.expect("original");
         assert_eq!(original.expose_secret(), "winner-access-token");
 
+        // The backend tag survives a new manager/process with the same real
+        // authorization, without retaining any JavaScript credentials/map.
+        let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+        let proof = primary.sync_owner_identity(&config).unwrap();
+        let original_binding = owner.persistent_tag(&proof).unwrap().unwrap();
+        let after_restart = OAuth2Manager::new();
+        after_restart.get_valid_token(&config).await.unwrap();
+        let restarted_proof = after_restart.sync_owner_identity(&config).unwrap();
+        assert!(crate::sync_owner::bindings_match(
+            &original_binding,
+            &owner.persistent_tag(&restarted_proof).unwrap().unwrap()
+        ));
+
+        // A legitimate rotation preserves the encrypted provenance and remains
+        // visible to all clones, without resealing them to another login.
+        let account = OAuth2Manager::token_account_key(config.provider, &profile);
+        let observed = primary
+            .load_token_record(config.provider, &profile)
+            .unwrap();
+        let mut rotated = tokens.clone();
+        rotated.access_token = "rotated-A".into();
+        rotated.refresh_token = Some("rotated-refresh-A".into());
+        primary
+            .persist_refreshed_record(&account, &observed, &rotated)
+            .unwrap();
+        let cloned = primary.clone();
+        assert_eq!(
+            cloned
+                .get_valid_token(&config)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "rotated-A"
+        );
+
+        // A new login during an in-flight refresh wins storage; neither the
+        // primary nor a clone is allowed to use that login as connection A.
+        let before_login = primary
+            .load_token_record(config.provider, &profile)
+            .unwrap();
+        primary
+            .store_tokens(config.provider, &profile, &other_tokens)
+            .unwrap();
+        assert!(primary
+            .persist_refreshed_record(&account, &before_login, &rotated)
+            .is_err());
+        assert_eq!(
+            primary
+                .load_tokens(config.provider, &profile)
+                .unwrap()
+                .access_token,
+            "other-access"
+        );
+        assert!(primary
+            .get_valid_token(&config)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("CONNECTION_CHANGED"));
+        assert!(cloned
+            .get_valid_token(&config)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("CONNECTION_CHANGED"));
+        // Only a new connection may adopt the newly authorized account.
+        let reconnected = OAuth2Manager::new();
+        assert_eq!(
+            reconnected
+                .get_valid_token(&config)
+                .await
+                .unwrap()
+                .expose_secret(),
+            "other-access"
+        );
+
+        let changed_proof = reconnected.sync_owner_identity(&config).unwrap();
+        let changed_binding = owner.persistent_tag(&changed_proof).unwrap().unwrap();
+        assert!(!crate::sync_owner::bindings_match(
+            &original_binding,
+            &changed_binding
+        ));
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &profile);
         let _ = primary.delete_tokens(OAuthProvider::Dropbox, &other_profile);
     }

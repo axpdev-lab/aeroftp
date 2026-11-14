@@ -125,6 +125,39 @@ pub enum OverlayKeys {
     },
 }
 
+impl OverlayKeys {
+    /// What decides the names a listing shows through this overlay, for the
+    /// target identity a sync index records (`SyncIndex::target_identity`):
+    /// the naming settings (rclone: filename mode, directory names, the `off`
+    /// suffix; AeroCrypt: the config version) and a domain-separated digest
+    /// of the key that decrypts the names, so another vault or password under
+    /// the same profile is another target. The key itself never leaves; the
+    /// digest is hashed again into the identity.
+    pub(crate) fn naming_fingerprint(&self) -> serde_json::Value {
+        use sha2::Digest;
+        let digest = |key: &[u8]| {
+            let mut hash = sha2::Sha256::new();
+            hash.update(b"aeroftp target-identity overlay-names v1");
+            hash.update(key);
+            format!("{:x}", hash.finalize())
+        };
+        match self {
+            OverlayKeys::Rclone(keys) => serde_json::json!({
+                "kind": "rclone-crypt",
+                "filenameEncryption": format!("{:?}", keys.filename_encryption),
+                "directoryNameEncryption": keys.directory_name_encryption,
+                "offSuffix": keys.off_suffix,
+                "names": digest(&[keys.name_key.as_slice(), keys.name_tweak.as_slice()].concat()),
+            }),
+            OverlayKeys::AeroCrypt { master_key, config } => serde_json::json!({
+                "kind": "aerocrypt",
+                "version": config.version(),
+                "names": digest(master_key),
+            }),
+        }
+    }
+}
+
 impl Drop for OverlayKeys {
     fn drop(&mut self) {
         if let Self::AeroCrypt { master_key, .. } = self {
@@ -1091,6 +1124,47 @@ async fn ensure_parent_dirs(inner: &mut Box<dyn StorageProvider>, enc_path: &str
 
 #[async_trait]
 impl StorageProvider for CryptOverlayProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        let Some(inner) = self.inner.sync_owner_identity()? else {
+            return Ok(None);
+        };
+        let material = match &self.keys {
+            OverlayKeys::AeroCrypt { master_key, config } => {
+                let (salt, id): (&[u8], Option<&[u8]>) = match config {
+                    OverlayConfig::V1 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V2 { salt } => (salt.as_slice(), None),
+                    OverlayConfig::V3 { salt, vault_id, .. } => {
+                        (salt.as_slice(), vault_id.as_ref().map(|id| id.as_slice()))
+                    }
+                    OverlayConfig::V4 { vault_id, .. } => (&[], Some(vault_id.as_slice())),
+                };
+                serde_json::to_string(&(
+                    "aerocrypt",
+                    inner.as_str(),
+                    &self.scope,
+                    master_key,
+                    config.version(),
+                    salt,
+                    id,
+                ))
+            }
+            OverlayKeys::Rclone(keys) => serde_json::to_string(&(
+                "rclone",
+                inner.as_str(),
+                &self.scope,
+                &keys.name_key,
+                &keys.data_key,
+                &keys.name_tweak,
+                format!("{:?}", keys.filename_encryption),
+                &keys.off_suffix,
+                keys.directory_name_encryption,
+            )),
+        };
+        material
+            .map(|value| Some(zeroize::Zeroizing::new(value)))
+            .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         // Honest downcast target: this IS a CryptOverlayProvider. Callers that
         // need provider-specific operations on the inner transport must reach it
@@ -1112,6 +1186,12 @@ impl StorageProvider for CryptOverlayProvider {
 
     fn display_name(&self) -> String {
         self.inner.display_name()
+    }
+
+    /// The wrapped session's poison: the inner provider refuses the writes,
+    /// and the GUI target reads the flag through the overlay.
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        self.inner.target_poison()
     }
 
     fn account_email(&self) -> Option<String> {
@@ -2107,7 +2187,7 @@ pub fn validate_headerless_config_salt(
 
 /// Scoped unlocks write only the captured partition. A legacy scope writes only
 /// the legacy vault; neither case rediscovers the active user or its mirror.
-fn persist_public_overlay_config_for_unlock(
+pub(crate) fn persist_public_overlay_config_for_unlock(
     auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
     id: &str,
     config_json: &str,
@@ -2592,19 +2672,31 @@ pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
 ///
 /// The overlay is anchored by [`aerocloud_overlay_profile`], where the app
 /// anchors it when it opens the profile.
+///
+/// `account` is the one the connection began with (U9): the profile and its
+/// overlay secrets are that account's, whichever is active by now, the
+/// legacy owner's only for `LEGACY_ONLY_ACCOUNT`. Read for the active one, a
+/// switch while connecting wrapped the session in another account's overlay,
+/// and a headed recovery could write its marker on this account's remote.
 pub async fn wrap_connected_provider_for_profile_named(
     inner: Box<dyn StorageProvider>,
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let profiles = crate::user_partitions::mcp_list_server_profiles(store, Some(account))?;
     let Some(profile) = select_aerocloud_profile(&profiles, profile_id, profile_name) else {
         return Ok(inner);
     };
     let profile = aerocloud_overlay_profile(profile);
     refuse_login_relative_aerocloud_scope(&profile)?;
-    wrap_connected_provider_for_profile(inner, &profile, store).await
+    wrap_connected_provider_for_profile_in_scope(
+        inner,
+        &profile,
+        &crate::profile_auth::AuthScope::for_captured(store, account),
+    )
+    .await
 }
 
 /// AeroCloud names its remote folders as absolute paths below the profile's
@@ -2697,8 +2789,9 @@ pub async fn build_aerocloud_overlay_stack(
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store).await
+    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store, account).await
 }
 
 /// The saved profile an AeroCloud config names: by its stable id when the
@@ -4589,6 +4682,35 @@ pub(crate) mod tests {
     /// holds, which is the overlay: a Proton CLI behind encryption must still
     /// purge a live path, and a Koofr behind it must still say its trash was
     /// left.
+    /// M10: GitHub wrapped in a crypt or a compress overlay. The inner
+    /// session refuses its own writes after the working-branch fallback, and
+    /// the overlay hands its poison on, so the GUI target sees it and moves
+    /// its epoch as for a bare session.
+    #[test]
+    fn the_overlays_forward_the_session_poison_of_the_inner_provider() {
+        let github = || -> Box<dyn StorageProvider> {
+            Box::new(
+                crate::providers::github::GitHubProvider::protected_for_test(
+                    "http://127.0.0.1:9".into(),
+                ),
+            )
+        };
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let crypt = CryptOverlayProvider::new(inner, aerocrypt_keys(), "/Vault");
+        assert!(std::sync::Arc::ptr_eq(
+            &crypt.target_poison().unwrap(),
+            &poison
+        ));
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let compress = crate::compress_overlay_provider::CompressOverlayProvider::new(inner, 3);
+        assert!(std::sync::Arc::ptr_eq(
+            &compress.target_poison().unwrap(),
+            &poison
+        ));
+    }
+
     #[tokio::test]
     async fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
         for (label, keys) in both_kinds() {

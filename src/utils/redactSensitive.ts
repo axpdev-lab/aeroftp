@@ -54,7 +54,91 @@ const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|pass
 // bare word up to the next delimiter.
 const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
-export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+// The rules for credentials only. `REDACTION_PATTERNS` starts with them, in
+// this order, and `redactCredentials` applies them without the identity rules.
+/** A rule: a pattern and its replacement, or a function of the whole text. */
+type RedactionRule = { pattern: RegExp; replacement: string } | { apply: (text: string) => string };
+
+const applyRule = (text: string, rule: RedactionRule): string =>
+    'apply' in rule ? rule.apply(text) : text.replace(rule.pattern, rule.replacement);
+
+const URL_CREDENTIAL_SCHEMES = new Set(['ftp', 'ftps', 'sftp', 'scp', 'http', 'https', 'webdav']);
+const isWordChar = (code: number) => (code >= 48 && code <= 57) || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122) || code === 95;
+const isAsciiLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
+const isSchemeChar = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57)
+    || code === 43 || code === 45 || code === 46;
+// What follows the escaped quote that closes a JSON value inside a string:
+// `\",\"b\"`, `\"}`, `\"]`, `\":`, a space or the end of the text (T11).
+const closesJsonValue = (code: number) => Number.isNaN(code) || code === 44 || code === 125
+    || code === 93 || code === 58 || isSpace(code);
+
+/**
+ * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
+ * URLs in one pass over the text, so its time is linear whatever the input.
+ * After `scheme://` the authority runs to the first `/`, `?`, `#`, ASCII
+ * space or unescaped double quote (a backslash escapes the next character,
+ * as inside a JSON string), or at an escaped quote that closes a JSON value
+ * (followed by `,`, `}`, `]`, `:`, a space or the end: `\",\"b\"`); an
+ * escaped quote followed by anything else is part of the value (`pa\"ss@`). With an `@` in it, the userinfo is everything up
+ * to the LAST `@`, and all of it becomes the placeholder, user name included:
+ * a token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
+ * authority without `@` (`host:443`) stays.
+ * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs.
+ */
+export function redactUrlUserinfo(text: string, anyScheme = false): string {
+    let out = '';
+    let copied = 0;
+    let i = 0;
+    while (i + 3 <= text.length) {
+        if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
+            i += 1;
+            continue;
+        }
+        // `anyScheme` (redactCredentials): any scheme name, `s3://` too, up
+        // to 32 characters back, so the scan stays linear.
+        let start = i;
+        const reach = anyScheme ? 32 : 7;
+        const schemeChar = anyScheme ? isSchemeChar : isAsciiLetter;
+        while (start > 0 && i - start < reach && schemeChar(text.charCodeAt(start - 1))) start -= 1;
+        while (anyScheme && start < i && !isAsciiLetter(text.charCodeAt(start))) start += 1;
+        const bounded = start === 0 || !isWordChar(text.charCodeAt(start - 1));
+        const named = anyScheme ? start < i : URL_CREDENTIAL_SCHEMES.has(text.slice(start, i).toLowerCase());
+        if (!bounded || !named) {
+            i += 3;
+            continue;
+        }
+        const authority = i + 3;
+        let k = authority;
+        let escaped = false;
+        let lastAt = -1;
+        while (k < text.length) {
+            const code = text.charCodeAt(k);
+            if (code === 47 || code === 63 || code === 35 || isSpace(code)) break;
+            if (code === 34 && !escaped) break;
+            if (code === 92 && !escaped && text.charCodeAt(k + 1) === 34 && closesJsonValue(text.charCodeAt(k + 2))) break;
+            if (code === 64) lastAt = k;
+            escaped = code === 92 && !escaped;
+            k += 1;
+        }
+        if (lastAt < 0) {
+            // No userinfo: go on right after this `://`. The authority ended
+            // at a `/`, and a scheme whose `://` starts just before it (one
+            // past an escaped JSON quote, `\",\"b\":\"https://`) is still
+            // scanned (L7). Nothing between holds a `://`, so each character
+            // is read at most twice.
+            i = authority;
+            continue;
+        }
+        out += text.slice(copied, authority) + '***REDACTED***';
+        copied = lastAt;
+        i = lastAt + 1;
+    }
+    return out + text.slice(copied);
+}
+
+const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
     // password. First of all, ahead of the key and Bearer rules, so
@@ -79,8 +163,9 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     { pattern: new RegExp(String.raw`\bx-api-key\s*[:=]\s*${SECRET_VALUE}`, 'gi'), replacement: 'x-api-key: ***REDACTED***' },
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
-    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
-    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redactUrlUserinfo`).
+    { apply: redactUrlUserinfo },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
@@ -98,6 +183,10 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
         pattern: new RegExp(String.raw`(\b${SECRET_NAME}\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
+];
+
+export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
+    ...CREDENTIAL_PATTERNS,
     // Email addresses. The local part is at most 64 characters (RFC 5321), which
     // also keeps a long run of such characters without an `@` (a hex or base64url
     // dump) from costing a quadratic scan on every start position.
@@ -118,8 +207,34 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
 export function redactSensitive(msg: string): string {
     if (!msg) return msg;
     let result = msg;
-    for (const { pattern, replacement } of REDACTION_PATTERNS) {
-        result = result.replace(pattern, replacement);
+    for (const rule of REDACTION_PATTERNS) {
+        result = applyRule(result, rule);
+    }
+    return result;
+}
+
+// Signed URL parameters and the userinfo of any URL. They are not part of
+// `REDACTION_PATTERNS`, whose rules the Rust twin mirrors. `key` and `sig` go
+// only as a query parameter, so an object key named in the error text stays.
+const SIGNED_URL_PATTERNS: ReadonlyArray<RedactionRule> = [
+    { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    // The whole userinfo of a URL of any scheme (`s3://` too), by the same
+    // linear scanner as the shared rule: never past the authority, a quote
+    // or a JSON field boundary (T11).
+    { apply: (text: string) => redactUrlUserinfo(text, true) },
+];
+
+/**
+ * Masks credentials in an error text a user will read (a sync journal, report
+ * or status line) and keeps the rest of it: paths, hosts, codes and the error
+ * wording. Unlike `redactSensitive`, emails, addresses, home folders and hashes stay.
+ */
+export function redactCredentials(msg: string): string {
+    if (!msg) return msg;
+    let result = msg;
+    for (const rule of [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS]) {
+        result = applyRule(result, rule);
     }
     return result;
 }

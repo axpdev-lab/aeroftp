@@ -1108,8 +1108,57 @@ impl Handler for SshHandler {
 /// Holding credentials for the provider's lifetime is the exact security
 /// posture FTP already ships. Secrets are only exposed (`ExposeSecret`)
 /// at dial time, never on IPC or in logs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SshAuthMethod {
+    NoCredential,
+    PrivateKey,
+    Password,
+    /// The password, answered to a keyboard-interactive prompt after the
+    /// `password` method was refused. A redial repeats the same two steps;
+    /// the delta login can only repeat `password`, so such a session gets
+    /// no delta transport (its transfers use SFTP).
+    PasswordKeyboardInteractive,
+}
+
+/// The refusal of a server that wants a credential when the profile has
+/// none. One text for every site that can report it, so they cannot drift.
+const NO_CREDENTIAL_CONFIGURED: &str =
+    "The server requires a password or a private key, and neither is set";
+
+fn select_auth_method(
+    config: &SftpConfig,
+    pinned: Option<SshAuthMethod>,
+    none_accepted: bool,
+) -> Result<SshAuthMethod, ProviderError> {
+    if let Some(method) = pinned {
+        if method == SshAuthMethod::NoCredential && !none_accepted {
+            return Err(ProviderError::TargetChanged);
+        }
+        return Ok(method);
+    }
+    if none_accepted {
+        Ok(SshAuthMethod::NoCredential)
+    } else if config.private_key_path.is_some() {
+        Ok(SshAuthMethod::PrivateKey)
+    } else if config.password.is_some() {
+        Ok(SshAuthMethod::Password)
+    } else {
+        Err(ProviderError::AuthenticationFailed(
+            NO_CREDENTIAL_CONFIGURED.to_string(),
+        ))
+    }
+}
+
 #[derive(Clone)]
 pub struct SftpConnectionSpec {
+    /// Parsed key used by the original login. Pool re-dials never reopen a
+    /// mutable key path and silently authenticate as another principal.
+    pinned_private_key: Option<Arc<keys::PrivateKey>>,
+    /// SHA-256 fingerprint (`SHA256:` form) of that key's public half,
+    /// recorded at the first login and kept across re-dials. A delta
+    /// transport offers the pinned key only while it still matches this.
+    pinned_key_sha256: Option<String>,
+    pinned_auth_method: Option<SshAuthMethod>,
     pub host: String,
     pub port: u16,
     pub username: String,
@@ -1928,6 +1977,11 @@ impl SftpProvider {
     /// - Provider is connected (shared handle present)
     /// - SSH authentication has either a private key path on disk or a
     ///   non-empty password saved in the profile.
+    /// - The session did not log in with the `none` method.
+    ///
+    /// A session that logged in with a private key gets the native transport
+    /// only, carrying that key in memory; the `rsync` binary reads a key path
+    /// itself and is never returned for it.
     ///
     /// This method is the single choke point where an `SftpProvider` becomes a
     /// `dyn DeltaTransport`. The adapter layer (`delta_sync_rsync`) never reaches
@@ -2039,23 +2093,61 @@ impl SftpProvider {
         use crate::rsync_over_ssh::AuthMethod;
         use secrecy::ExposeSecret;
 
-        let (ssh_key_path, ssh_password, auth_method) =
-            if let Some(key_path_str) = self.config.private_key_path.as_ref() {
-                (
-                    Some(std::path::PathBuf::from(Self::expand_home_path(
-                        key_path_str,
-                    ))),
-                    None,
-                    AuthMethod::SshKey,
-                )
-            } else {
-                let password = self
-                    .config
-                    .password
-                    .as_ref()
-                    .filter(|secret| !secret.expose_secret().is_empty())?;
-                (None, Some(password.clone()), AuthMethod::Password)
-            };
+        let pinned = self
+            .connection_spec
+            .as_ref()
+            .and_then(|spec| spec.pinned_auth_method);
+        if matches!(
+            pinned,
+            Some(SshAuthMethod::NoCredential | SshAuthMethod::PasswordKeyboardInteractive)
+        ) {
+            // Both delta adapters open a separate SSH login and neither is
+            // given a way to repeat the session's `none` login here. Use the
+            // pinned SFTP transfer path for these sessions instead.
+            return None;
+        }
+        let pinned_private_key = if pinned == Some(SshAuthMethod::PrivateKey) {
+            // The delta login signs with the key object the session logged
+            // in with, together with the fingerprint recorded at that login:
+            // the native transport checks one against the other before it
+            // offers the key. No key path is handed over, so the file at
+            // that path is not opened again. A session with no captured key
+            // gets no delta transport.
+            let spec = self.connection_spec.as_ref()?;
+            Some((
+                spec.pinned_private_key.clone()?,
+                spec.pinned_key_sha256.clone(),
+            ))
+        } else {
+            None
+        };
+        let (pinned_private_key, pinned_key_sha256) = match pinned_private_key {
+            Some((key, sha256)) => (Some(key), sha256),
+            None => (None, None),
+        };
+        let (ssh_key_path, ssh_password, auth_method) = if pinned_private_key.is_some() {
+            (None, None, AuthMethod::SshKey)
+        } else if let Some(key_path_str) = self.config.private_key_path.as_ref().filter(|_| {
+            !matches!(
+                pinned,
+                Some(SshAuthMethod::Password | SshAuthMethod::PasswordKeyboardInteractive)
+            )
+        }) {
+            (
+                Some(std::path::PathBuf::from(Self::expand_home_path(
+                    key_path_str,
+                ))),
+                None,
+                AuthMethod::SshKey,
+            )
+        } else {
+            let password = self
+                .config
+                .password
+                .as_ref()
+                .filter(|secret| !secret.expose_secret().is_empty())?;
+            (None, Some(password.clone()), AuthMethod::Password)
+        };
 
         Some(crate::rsync_over_ssh::RsyncConfig {
             compress: true,
@@ -2073,8 +2165,24 @@ impl SftpProvider {
             // trust that verification for the same session.
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path,
+            pinned_private_key,
+            // The password branch is a password session's: its delta login
+            // repeats the password and never sends `none` (see
+            // `RusshSessionTransport::connect`).
+            pinned_password: matches!(auth_method, AuthMethod::Password),
+            pinned_key_sha256,
         })
     }
+}
+
+/// Whether the `rsync` binary may serve this session. It spawns `ssh -i
+/// <path>`, which reads the key file itself, so a session whose key is pinned
+/// in memory cannot be bound to it and is refused.
+/// The `rsync` binary runs `ssh` itself: it can neither sign with a key held
+/// in memory nor hold a password pin (OpenSSH sends `none` first). Such a
+/// session gets no binary transport, and its transfers use plain SFTP.
+fn classic_binary_allowed(rsync_config: &crate::rsync_over_ssh::RsyncConfig) -> bool {
+    rsync_config.pinned_private_key.is_none() && !rsync_config.pinned_password
 }
 
 /// PR-T11 cross-OS helper. On Unix this constructs the classic
@@ -2086,6 +2194,13 @@ fn classic_binary_fallback(
     rsync_config: crate::rsync_over_ssh::RsyncConfig,
     handle: SharedSshHandle,
 ) -> Option<Box<dyn crate::delta_transport::DeltaTransport>> {
+    if !classic_binary_allowed(&rsync_config) {
+        tracing::debug!(
+            "providers::sftp: session key is pinned in memory; no rsync binary transport \
+             (caller transparently drops to plain SFTP)"
+        );
+        return None;
+    }
     #[cfg(unix)]
     {
         Some(Box::new(crate::delta_transport::RsyncBinaryTransport::new(
@@ -2262,15 +2377,15 @@ impl SftpProvider {
     ///
     /// Free of `&self` so `list` can call it from inside the concurrent
     /// per-entry futures without capturing the provider.
-    fn metadata_to_entry(
+    pub(crate) fn metadata_to_entry(
         name: String,
         path: String,
         metadata: &russh_sftp::protocol::FileAttributes,
     ) -> RemoteEntry {
-        let is_dir = metadata
-            .permissions
-            .map(|p| (p & 0o40000) != 0)
-            .unwrap_or(false);
+        // The file-type field (S_IFMT), not one bit of it: a socket
+        // (0o140000) also has the directory bit set.
+        let file_type = metadata.permissions.map(|p| p & 0o170000);
+        let is_dir = file_type == Some(0o040000);
 
         let permissions = metadata.permissions.map(|p| format_permissions(p, is_dir));
 
@@ -2280,7 +2395,7 @@ impl SftpProvider {
                 .unwrap_or_default()
         });
 
-        RemoteEntry {
+        let mut entry = RemoteEntry {
             name,
             path,
             is_dir,
@@ -2293,7 +2408,15 @@ impl SftpProvider {
             link_target: None,
             mime_type: None,
             metadata: Default::default(),
+        };
+        // Positive evidence only: no file-type bits, or a FIFO, socket or
+        // device, is not a regular file (`is_dir` and `is_symlink` false do
+        // not say "file"). A symlink's own mode is marked too; the receipt
+        // refuses a link on its own flag.
+        if !matches!(file_type, Some(0o100000) | Some(0o040000)) {
+            crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
         }
+        entry
     }
 
     async fn verify_remote_upload_size(
@@ -2441,10 +2564,12 @@ pub fn scp_fallback_allowed(config: &ProviderConfig) -> bool {
 /// never on a second one (the SCP backend removed in #73 dialled again and
 /// tripped "host key changed"). The accepted key's SHA-256 fingerprint is
 /// left in `host_key_sha256_hex`.
-pub(crate) async fn ssh_login(
+pub(crate) async fn ssh_login_pinned(
     config: &SftpConfig,
     compression: bool,
     host_key_sha256_hex: Arc<std::sync::OnceLock<String>>,
+    private_key: Arc<std::sync::OnceLock<Arc<keys::PrivateKey>>>,
+    auth_method: Arc<std::sync::OnceLock<SshAuthMethod>>,
 ) -> Result<Handle<SshHandler>, ProviderError> {
     // Create SSH config with keepalive to prevent server from closing connection
     let preferred = if compression {
@@ -2491,16 +2616,27 @@ pub(crate) async fn ssh_login(
     // Dropbear is the case that needs it: for a root with no password
     // set it accepts only `none` and refuses the password method
     // outright, so without this the device cannot be reached at all.
-    let none_result = handle
-        .authenticate_none(&config.username)
-        .await
-        .map_err(|e| ProviderError::AuthenticationFailed(format!("SSH auth failed: {}", e)))?;
-    let authenticated = if matches!(none_result, AuthResult::Success) {
-        tracing::info!("SSH: Server accepted the account with no credential");
+    let pinned = auth_method.get().copied();
+    let none_accepted = if pinned.is_none() || pinned == Some(SshAuthMethod::NoCredential) {
+        matches!(
+            handle
+                .authenticate_none(&config.username)
+                .await
+                .map_err(|e| ProviderError::AuthenticationFailed(format!(
+                    "SSH auth failed: {e}"
+                )))?,
+            AuthResult::Success
+        )
+    } else {
+        false
+    };
+    let method = select_auth_method(config, pinned, none_accepted)?;
+    let mut via_keyboard_interactive = false;
+    let authenticated = if method == SshAuthMethod::NoCredential {
         true
-    } else if config.private_key_path.is_some() {
+    } else if method == SshAuthMethod::PrivateKey {
         // Try key-based authentication
-        authenticate_with_key(config, &mut handle).await?
+        authenticate_with_key(config, &mut handle, &private_key).await?
     } else if let Some(password) = &config.password {
         // Try password authentication first, then keyboard-interactive as fallback
         use russh::client::KeyboardInteractiveAuthResponse;
@@ -2515,6 +2651,7 @@ pub(crate) async fn ssh_login(
         if matches!(result, AuthResult::Success) {
             true
         } else {
+            via_keyboard_interactive = true;
             // Fallback: keyboard-interactive (many servers like SourceForge require this)
             tracing::info!("SSH: Password auth not accepted, trying keyboard-interactive...");
             let ki_result = handle
@@ -2547,7 +2684,7 @@ pub(crate) async fn ssh_login(
         }
     } else {
         return Err(ProviderError::AuthenticationFailed(
-            "The server requires a password or a private key, and neither is set".to_string(),
+            NO_CREDENTIAL_CONFIGURED.to_string(),
         ));
     };
 
@@ -2557,14 +2694,48 @@ pub(crate) async fn ssh_login(
         ));
     }
 
+    // Record the method that really got in: a password the server took only
+    // as a keyboard-interactive answer is not a `password` login.
+    let succeeded = if matches!(
+        method,
+        SshAuthMethod::Password | SshAuthMethod::PasswordKeyboardInteractive
+    ) {
+        if via_keyboard_interactive {
+            SshAuthMethod::PasswordKeyboardInteractive
+        } else {
+            SshAuthMethod::Password
+        }
+    } else {
+        method
+    };
+    // A redial must get in the way the session did: another method (the
+    // server now takes the password only as a keyboard-interactive answer,
+    // or the other way round) may put it in another root, so it is a changed
+    // target, never accepted under the method recorded first.
+    if pinned.is_some_and(|pinned| pinned != succeeded) {
+        return Err(ProviderError::TargetChanged);
+    }
+    let _ = auth_method.set(succeeded);
     Ok(handle)
 }
 
-/// Authenticate using SSH private key
-async fn authenticate_with_key(
+/// SHA-256 fingerprint of a key's public half, in OpenSSH's `SHA256:` form:
+/// the value recorded at login and compared again before a delta login.
+fn public_key_sha256(key: &keys::PrivateKey) -> String {
+    key.public_key()
+        .fingerprint(keys::HashAlg::Sha256)
+        .to_string()
+}
+
+/// Resolve the real key once. A file replacement after the connection was
+/// authorized cannot change any lazy pool worker's authentication.
+fn captured_key(
     config: &SftpConfig,
-    handle: &mut Handle<SshHandler>,
-) -> Result<bool, ProviderError> {
+    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+) -> Result<Arc<keys::PrivateKey>, ProviderError> {
+    if let Some(key) = captured.get() {
+        return Ok(key.clone());
+    }
     let key_path = config.private_key_path.as_ref().ok_or_else(|| {
         ProviderError::AuthenticationFailed("No private key path specified".to_string())
     })?;
@@ -2582,6 +2753,19 @@ async fn authenticate_with_key(
     let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
         .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
 
+    let key_pair = Arc::new(key_pair);
+    let _ = captured.set(key_pair.clone());
+    Ok(captured.get().cloned().unwrap_or(key_pair))
+}
+
+/// Authenticate using SSH private key
+async fn authenticate_with_key(
+    config: &SftpConfig,
+    handle: &mut Handle<SshHandler>,
+    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+) -> Result<bool, ProviderError> {
+    let key_pair = captured_key(config, captured)?;
+
     // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
     // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
     // disabled by default. We have to negotiate rsa-sha2-512 or
@@ -2593,7 +2777,6 @@ async fn authenticate_with_key(
     // to SHA-256 on auth failure, then fall back to no-hash (ssh-rsa
     // SHA-1) for ancient servers that still accept it. Non-RSA
     // keys take the `None` path directly.
-    let key_pair = Arc::new(key_pair);
     let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
 
     let attempts: Vec<Option<HashAlg>> = if is_rsa {
@@ -2770,10 +2953,28 @@ impl StorageProvider for SftpProvider {
         self.scp = None;
         self.retire_ssh_connection().await;
 
-        let handle = ssh_login(
+        let auth_method = Arc::new(std::sync::OnceLock::new());
+        if let Some(method) = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_auth_method)
+        {
+            let _ = auth_method.set(method);
+        }
+        let private_key = Arc::new(std::sync::OnceLock::new());
+        if let Some(key) = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_private_key.clone())
+        {
+            let _ = private_key.set(key);
+        }
+        let handle = ssh_login_pinned(
             &self.config,
             self.compression_enabled,
             self.host_key_sha256_hex.clone(),
+            private_key.clone(),
+            auth_method.clone(),
         )
         .await?;
 
@@ -2839,7 +3040,15 @@ impl StorageProvider for SftpProvider {
             .connection_spec
             .as_ref()
             .and_then(|s| s.pinned_host_key_sha256.clone());
+        let prior_key_pin = self
+            .connection_spec
+            .as_ref()
+            .and_then(|s| s.pinned_key_sha256.clone());
         self.connection_spec = Some(SftpConnectionSpec {
+            pinned_key_sha256: prior_key_pin
+                .or_else(|| private_key.get().map(|key| public_key_sha256(key))),
+            pinned_private_key: private_key.get().cloned(),
+            pinned_auth_method: auth_method.get().copied(),
             host: self.config.host.clone(),
             port: self.config.port,
             username: self.config.username.clone(),
@@ -3030,7 +3239,7 @@ impl StorageProvider for SftpProvider {
                         until_sftp_ends(&sftp.ended, sftp.metadata(&entry_path)).await
                     {
                         if let Some(target_perms) = target_meta.permissions {
-                            remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                            remote_entry.is_dir = (target_perms & 0o170000) == 0o040000;
                         }
                         // Update size from target if available
                         if let Some(target_size) = target_meta.size {
@@ -3101,7 +3310,7 @@ impl StorageProvider for SftpProvider {
         };
 
         if let Some(perms) = metadata.permissions {
-            if (perms & 0o40000) == 0 {
+            if (perms & 0o170000) != 0o040000 {
                 return Err(ProviderError::InvalidPath(format!(
                     "{} is not a directory",
                     full_path
@@ -4459,21 +4668,25 @@ impl StorageProvider for SftpProvider {
 
         let mut entry = Self::metadata_to_entry(name, full_path.clone(), &metadata);
 
-        // Check for symlink. The check is best effort, but not over a
-        // transport that ended while it was asked: the entry would say "not a
-        // link" for a question that got no answer.
+        // The entry's own type, which STAT does not give (it follows a link):
+        // LSTAT. When LSTAT is refused or answers no type bits, nothing says
+        // the name is not a link to the file STAT read, so the entry's type
+        // is marked unconfirmed and a backup receipt refuses it (T2). So is a
+        // LSTAT type that is not STAT's (a directory or a FIFO where STAT read
+        // a regular file): the path changed between the two calls, or the
+        // server contradicts itself, and neither answer can be kept. Not over
+        // a transport that ended while it was asked (checked below).
+        let stat_type = metadata.permissions.map(|p| p & 0o170000);
         let link_meta = until_sftp_ends(&sftp.ended, sftp.symlink_metadata(&full_path)).await;
-        if let Ok(link_meta) = link_meta {
-            if let Some(perms) = link_meta.permissions {
-                if (perms & 0o170000) == 0o120000 {
-                    entry.is_symlink = true;
-                    if let Ok(target) =
-                        until_sftp_ends(&sftp.ended, sftp.read_link(&full_path)).await
-                    {
-                        entry.link_target = Some(target);
-                    }
+        match link_meta.ok().and_then(|meta| meta.permissions) {
+            Some(perms) if (perms & 0o170000) == 0o120000 => {
+                entry.is_symlink = true;
+                if let Ok(target) = until_sftp_ends(&sftp.ended, sftp.read_link(&full_path)).await {
+                    entry.link_target = Some(target);
                 }
             }
+            Some(perms) if (perms & 0o170000) != 0 && Some(perms & 0o170000) == stat_type => {}
+            _ => crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry),
         }
         if sftp.ended.is_cancelled() {
             return Err(ProviderError::ConnectionLost(
@@ -6782,6 +6995,35 @@ impl HostHashMemory {
 #[cfg(test)]
 mod tests {
     #[test]
+    fn original_none_auth_never_reloads_a_replaced_key_on_redial() {
+        let dir = tempfile::tempdir().unwrap();
+        let key = dir.path().join("key");
+        std::fs::write(&key, "original").unwrap();
+        let config = SftpConfig {
+            host: "server".into(),
+            port: 22,
+            username: "u".into(),
+            password: None,
+            private_key_path: Some(key.to_string_lossy().into_owned()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 1,
+            trust_unknown_hosts: false,
+        };
+        let selected = select_auth_method(&config, None, true).unwrap();
+        assert_eq!(selected, SshAuthMethod::NoCredential);
+        std::fs::write(&key, "replacement authorization").unwrap();
+        assert!(matches!(
+            select_auth_method(&config, Some(selected), false),
+            Err(ProviderError::TargetChanged)
+        ));
+        assert_eq!(
+            select_auth_method(&config, Some(selected), true).unwrap(),
+            SshAuthMethod::NoCredential
+        );
+    }
+
+    #[test]
     fn a_relative_start_folder_opens_under_the_login_folder() {
         // OpenSSH, WinSCP and rclone read `docs` from the login folder; SFTP
         // read it from `/` while the SCP fallback read it from the login one.
@@ -7187,6 +7429,9 @@ mod tests {
         // independent connections, each an unconnected clone that dials
         // lazily and opts into warm reuse across directories.
         provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: None,
+            pinned_key_sha256: None,
+            pinned_auth_method: None,
             host: "example.com".to_string(),
             port: 22,
             username: "testuser".to_string(),
@@ -7209,6 +7454,37 @@ mod tests {
         let worker = provider.clone_for_list().expect("clone from spec");
         assert!(!worker.is_connected(), "a scan worker dials on first use");
         assert!(worker.supports_transfer_worker_reuse());
+    }
+
+    #[test]
+    fn sftp_pool_private_key_snapshot_survives_path_replacement() {
+        let key = keys::PrivateKey::new(
+            keys::ssh_key::private::Ed25519Keypair::from_seed(&[7; 32]).into(),
+            "fixture",
+        )
+        .unwrap();
+        let original = key.public_key().clone();
+        let captured = std::sync::OnceLock::new();
+        captured.set(Arc::new(key)).unwrap();
+        let config = SftpConfig {
+            host: "fixture.invalid".into(),
+            port: 22,
+            username: "fixture".into(),
+            password: None,
+            private_key_path: Some("/path/replaced-or-removed".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 1,
+            trust_unknown_hosts: false,
+        };
+        let reused = captured_key(&config, &captured).unwrap();
+        assert_eq!(reused.public_key(), &original);
+        let cloned = std::sync::OnceLock::new();
+        cloned.set(reused).unwrap();
+        assert_eq!(
+            captured_key(&config, &cloned).unwrap().public_key(),
+            &original
+        );
     }
 
     #[test]
@@ -7349,6 +7625,281 @@ mod tests {
         let provider = SftpProvider::new(config);
         assert_eq!(provider.provider_type(), ProviderType::Sftp);
         assert!(!provider.is_connected());
+    }
+
+    #[test]
+    fn delta_cannot_replace_none_auth_with_a_configured_key() {
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".into(),
+            port: 22,
+            username: "testuser".into(),
+            password: Some(secrecy::SecretString::from("password".to_string())),
+            private_key_path: Some("/changed/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: None,
+            pinned_key_sha256: None,
+            pinned_auth_method: Some(SshAuthMethod::NoCredential),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+        assert!(provider.rsync_config_for_delta(None).is_none());
+        // A key login with no captured key has nothing to pin: no delta, and
+        // the configured path is not a substitute.
+        provider
+            .connection_spec
+            .as_mut()
+            .unwrap()
+            .pinned_auth_method = Some(SshAuthMethod::PrivateKey);
+        assert!(provider.rsync_config_for_delta(None).is_none());
+        provider
+            .connection_spec
+            .as_mut()
+            .unwrap()
+            .pinned_auth_method = Some(SshAuthMethod::Password);
+        let delta = provider.rsync_config_for_delta(None).unwrap();
+        assert!(delta.ssh_key_path.is_none());
+        assert_eq!(
+            delta.auth_method,
+            crate::rsync_over_ssh::AuthMethod::Password
+        );
+    }
+
+    /// A session that logged in with a key gets a delta config that carries
+    /// that key object, the fingerprint recorded at login and no path,
+    /// whatever `private_key_path` says now. The native transport built from
+    /// it holds the same object, is on the russh leg and passes the login
+    /// check; the rsync binary is refused for it.
+    #[test]
+    fn delta_for_a_key_session_carries_the_login_key_and_never_the_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("id_ed25519");
+        let write = |key: &keys::PrivateKey| {
+            std::fs::write(
+                &key_path,
+                key.to_openssh(keys::ssh_key::LineEnding::LF)
+                    .unwrap()
+                    .as_bytes(),
+            )
+            .unwrap();
+        };
+        let login_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        write(&login_key);
+
+        let config = SftpConfig {
+            host: "example.com".into(),
+            port: 22,
+            username: "testuser".into(),
+            password: Some(secrecy::SecretString::from("password".to_string())),
+            private_key_path: Some(key_path.to_string_lossy().into_owned()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        };
+        // The production capture: the key is parsed once, at login.
+        let captured = std::sync::OnceLock::new();
+        let login = captured_key(&config, &captured).unwrap();
+        let login_sha256 = public_key_sha256(&login_key);
+
+        let mut provider = SftpProvider::new(config);
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: captured.get().cloned(),
+            pinned_key_sha256: Some(login_sha256.clone()),
+            pinned_auth_method: Some(SshAuthMethod::PrivateKey),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: None,
+            private_key_path: Some(key_path.to_string_lossy().into_owned()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+
+        // Unchanged key: a delta config is produced, with the login key.
+        let delta = provider.rsync_config_for_delta(None).unwrap();
+        assert!(Arc::ptr_eq(
+            delta.pinned_private_key.as_ref().unwrap(),
+            &login
+        ));
+        assert_eq!(
+            delta.pinned_key_sha256.as_deref(),
+            Some(login_sha256.as_str())
+        );
+
+        // The file is replaced by another valid key after login: the config
+        // still carries the login key, never the file.
+        let replacement =
+            keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        write(&replacement);
+
+        let delta = provider.rsync_config_for_delta(None).unwrap();
+        let carried = delta.pinned_private_key.as_ref().unwrap();
+        assert!(Arc::ptr_eq(carried, &login));
+        assert_eq!(
+            carried.public_key().key_data(),
+            login_key.public_key().key_data()
+        );
+        assert!(delta.ssh_key_path.is_none());
+        assert!(delta.ssh_password.is_none());
+        assert_eq!(delta.auth_method, crate::rsync_over_ssh::AuthMethod::SshKey);
+        assert!(delta.validate_auth_material().is_ok());
+
+        // No rsync binary for this session: it would run `ssh -i <path>`.
+        assert!(!classic_binary_allowed(&delta));
+
+        #[cfg(feature = "aerorsync")]
+        {
+            use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
+            let transport = crate::aerorsync_adapter::config::transport_from_rsync_config(
+                &delta,
+                SshHostKeyPolicy::AcceptAny,
+            )
+            .unwrap();
+            let ssh = transport.ssh_config();
+            let pinned = ssh.pinned_private_key.as_ref().unwrap();
+            assert!(Arc::ptr_eq(pinned.key(), &login));
+            assert!(Arc::ptr_eq(&pinned.verified_key().unwrap(), &login));
+            assert_eq!(ssh.private_key_path, std::path::PathBuf::new());
+            assert!(ssh.prefers_russh_leg());
+        }
+    }
+
+    /// A re-dial that ends up holding another key object than the one the
+    /// first login used (the recorded fingerprint is kept across re-dials)
+    /// still gets a delta config, but the native transport refuses to offer
+    /// that key, with a typed error and before any socket is opened. The
+    /// rsync binary is not a way around it.
+    #[test]
+    fn delta_for_a_key_session_refuses_a_key_that_is_not_the_login_key() {
+        let login_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        let replacement =
+            keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".into(),
+            port: 22,
+            username: "testuser".into(),
+            password: None,
+            private_key_path: Some("/changed/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: Some(Arc::new(replacement)),
+            pinned_key_sha256: Some(public_key_sha256(&login_key)),
+            pinned_auth_method: Some(SshAuthMethod::PrivateKey),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: None,
+            private_key_path: Some("/changed/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+        let delta = provider.rsync_config_for_delta(None).unwrap();
+        assert!(delta.ssh_key_path.is_none());
+        assert!(!classic_binary_allowed(&delta));
+
+        #[cfg(feature = "aerorsync")]
+        {
+            use crate::aerorsync::ssh_transport::SshHostKeyPolicy;
+            use crate::aerorsync::types::AerorsyncErrorKind;
+            let transport = crate::aerorsync_adapter::config::transport_from_rsync_config(
+                &delta,
+                SshHostKeyPolicy::AcceptAny,
+            )
+            .unwrap();
+            let pinned = transport.ssh_config().pinned_private_key.as_ref().unwrap();
+            let err = pinned.verified_key().unwrap_err();
+            assert_eq!(err.kind, AerorsyncErrorKind::PinnedKeyMismatch);
+            // The connect path runs the same check before it dials, so this
+            // returns at once with the typed refusal and never reaches the
+            // network (a dial would end in a transport error instead).
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let err = runtime
+                .block_on(
+                    crate::aerorsync::russh_session_transport::RusshSessionTransport::connect(
+                        transport.ssh_config().clone(),
+                    ),
+                )
+                .err()
+                .expect("a key that is not the login key is refused");
+            assert_eq!(err.kind, AerorsyncErrorKind::PinnedKeyMismatch);
+        }
+    }
+
+    /// A session that logged in with `none` gets no delta transport at all,
+    /// even with a key path and a password configured.
+    #[test]
+    fn delta_for_a_none_session_is_never_produced() {
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".into(),
+            port: 22,
+            username: "testuser".into(),
+            password: Some(secrecy::SecretString::from("password".to_string())),
+            private_key_path: Some("/some/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        let key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_key_sha256: Some(public_key_sha256(&key)),
+            pinned_private_key: Some(Arc::new(key)),
+            pinned_auth_method: Some(SshAuthMethod::NoCredential),
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: Some("/some/key".into()),
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+        assert!(provider.rsync_config_for_delta(None).is_none());
+    }
+
+    /// Sessions that did not log in with a key keep the rsync binary as a
+    /// candidate; only a pinned session key rules it out.
+    #[test]
+    fn classic_binary_is_ruled_out_only_by_a_pinned_session_key() {
+        let key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519).unwrap();
+        let unpinned = crate::rsync_over_ssh::RsyncConfig {
+            ssh_key_path: Some(std::path::PathBuf::from("/tmp/key")),
+            ..Default::default()
+        };
+        assert!(classic_binary_allowed(&unpinned));
+        let pinned = crate::rsync_over_ssh::RsyncConfig {
+            pinned_private_key: Some(Arc::new(key)),
+            ..unpinned
+        };
+        assert!(!classic_binary_allowed(&pinned));
     }
 
     #[test]
@@ -8026,6 +8577,110 @@ mod tests {
                 ]
             };
             Ok(russh_sftp::protocol::Name { id, files })
+        }
+    }
+
+    /// How [`LinkStatServer`] answers LSTAT.
+    #[derive(Clone, Copy, Debug)]
+    enum LstatAnswer {
+        Refused,
+        Typeless,
+        Regular,
+        Symlink,
+        /// A type that is not STAT's regular file: the path changed between
+        /// the calls, or the server contradicts itself (U1).
+        Directory,
+        Fifo,
+    }
+
+    /// An SFTP server whose STAT finds a regular file (as it does through a
+    /// link) and whose LSTAT answers as told.
+    struct LinkStatServer(LstatAnswer);
+
+    impl russh_sftp::server::Handler for LinkStatServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(3),
+                    permissions: Some(0o100644),
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn lstat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            let permissions = match self.0 {
+                LstatAnswer::Refused => {
+                    return Err(russh_sftp::protocol::StatusCode::PermissionDenied)
+                }
+                LstatAnswer::Typeless => Some(0o644),
+                LstatAnswer::Regular => Some(0o100644),
+                LstatAnswer::Symlink => Some(0o120777),
+                LstatAnswer::Directory => Some(0o040755),
+                LstatAnswer::Fifo => Some(0o010644),
+            };
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(3),
+                    permissions,
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn readlink(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            Ok(russh_sftp::protocol::Name {
+                id,
+                files: vec![russh_sftp::protocol::File::dummy("/elsewhere")],
+            })
+        }
+    }
+
+    /// T2: a backup receipt is a regular file only when LSTAT says so. A
+    /// refused or type-less LSTAT leaves the entry's own type unknown (the
+    /// name may be a link STAT followed), and the receipt is refused; a link
+    /// is refused; a confirmed regular file is accepted. A LSTAT type that
+    /// contradicts STAT's regular file (a directory, a FIFO) is refused too
+    /// (U1). Through the production `stat` and `provider_receipt_is_file`.
+    #[tokio::test]
+    async fn a_receipt_needs_lstat_to_confirm_a_regular_file() {
+        for (answer, accepted) in [
+            (LstatAnswer::Refused, false),
+            (LstatAnswer::Typeless, false),
+            (LstatAnswer::Symlink, false),
+            (LstatAnswer::Directory, false),
+            (LstatAnswer::Fifo, false),
+            (LstatAnswer::Regular, true),
+        ] {
+            let (client, server) = tokio::io::duplex(1 << 16);
+            russh_sftp::server::run(server, LinkStatServer(answer)).await;
+            let mut provider = provider_without_a_session();
+            provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+            let receipt =
+                crate::sync_backup::provider_receipt_is_file(&mut provider, "/backup/a.txt")
+                    .await
+                    .unwrap();
+            assert_eq!(receipt, accepted, "{answer:?}");
         }
     }
 

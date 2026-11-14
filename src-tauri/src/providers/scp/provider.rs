@@ -1,7 +1,7 @@
 //! SCP as a storage provider: the explicit SCP protocol, and the mode an SFTP
 //! connection continues in when its server has no SFTP.
 //!
-//! Both run on a connection made by [`crate::providers::sftp::ssh_login`], so
+//! Both run on a connection made by [`crate::providers::sftp::ssh_login_pinned`], so
 //! host-key trust and the order of the authentication methods are exactly
 //! those of SFTP. The operations are [`ScpSession`]'s.
 //!
@@ -20,7 +20,7 @@ use tokio::sync::Mutex as TokioMutex;
 use super::listing::{Entry, Kind, Meta};
 use super::session::ScpSession;
 use crate::providers::sftp::{
-    format_permissions, resolve_remote_path, resolve_start_dir, ssh_login, SharedSshHandle,
+    format_permissions, resolve_remote_path, resolve_start_dir, ssh_login_pinned, SharedSshHandle,
     SshHandler,
 };
 use crate::providers::shell_quote::shell_quote;
@@ -63,6 +63,8 @@ pub struct ScpProvider {
     /// False when the connection belongs to an `SftpProvider` that went on in
     /// SCP mode: that provider dials, reconnects and disconnects it.
     owns_connection: bool,
+    private_key: Arc<std::sync::OnceLock<Arc<russh::keys::PrivateKey>>>,
+    auth_method: Arc<std::sync::OnceLock<super::super::sftp::SshAuthMethod>>,
     home_dir: String,
     current_dir: String,
     /// The accepted host key's SHA-256, filled during the handshake.
@@ -87,6 +89,8 @@ impl ScpProvider {
             handle: None,
             session: None,
             owns_connection: true,
+            private_key: Arc::default(),
+            auth_method: Arc::default(),
             home_dir: "/".to_string(),
             current_dir: "/".to_string(),
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
@@ -357,7 +361,7 @@ fn last_component(path: &str) -> &str {
 /// The entry callers see, in the shape SFTP gives it.
 fn remote_entry(name: String, path: String, meta: &Meta, is_dir: bool) -> RemoteEntry {
     let modified = mtime_string(meta.mtime);
-    RemoteEntry {
+    let mut entry = RemoteEntry {
         name,
         path,
         is_dir,
@@ -370,7 +374,13 @@ fn remote_entry(name: String, path: String, meta: &Meta, is_dir: bool) -> Remote
         link_target: None,
         mime_type: None,
         metadata: Default::default(),
+    };
+    // A FIFO, socket or device is neither a directory nor a link, and not a
+    // regular file either: say so, as SFTP does for its modes.
+    if !matches!(meta.kind, Kind::File | Kind::Dir | Kind::Symlink) {
+        crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
     }
+    entry
 }
 
 fn entry_name(entry: &Entry) -> String {
@@ -410,7 +420,14 @@ impl StorageProvider for ScpProvider {
             self.config.host,
             self.config.port
         );
-        let handle = ssh_login(&self.config, false, self.host_key_sha256_hex.clone()).await?;
+        let handle = ssh_login_pinned(
+            &self.config,
+            false,
+            self.host_key_sha256_hex.clone(),
+            self.private_key.clone(),
+            self.auth_method.clone(),
+        )
+        .await?;
         self.start(Arc::new(TokioMutex::new(handle))).await
     }
 
@@ -914,6 +931,8 @@ impl StorageProvider for ScpProvider {
             handle: Some(handle.clone()),
             session: Some(session.worker()),
             owns_connection: false,
+            private_key: self.private_key.clone(),
+            auth_method: self.auth_method.clone(),
             home_dir: self.home_dir.clone(),
             current_dir: self.current_dir.clone(),
             host_key_sha256_hex: self.host_key_sha256_hex.clone(),
@@ -1054,6 +1073,42 @@ mod tests {
         assert!(entry.is_dir && entry.is_symlink);
         assert_eq!(entry.modified.as_deref(), Some("2023-11-14 22:13:20Z"));
         assert_eq!(entry.permissions.as_deref(), Some("drwxrwxrwx"));
+    }
+
+    /// Only a regular file, a directory or a link has a confirmed type; a
+    /// receipt (`sync_backup::provider_receipt_is_file`) refuses the rest.
+    #[test]
+    fn a_special_file_is_not_a_confirmed_file() {
+        let entry_of = |kind| {
+            let meta = Meta {
+                kind,
+                mode: 0o644,
+                size: 0,
+                mtime: 1_700_000_000,
+                uid: "0".to_string(),
+                gid: "0".to_string(),
+            };
+            remote_entry("x".into(), "/x".into(), &meta, kind == Kind::Dir)
+        };
+        for kind in [
+            Kind::Fifo,
+            Kind::Socket,
+            Kind::CharDevice,
+            Kind::BlockDevice,
+        ] {
+            let entry = entry_of(kind);
+            assert!(!entry.is_dir && !entry.is_symlink, "{kind:?}");
+            assert!(
+                crate::providers::ftp_listing::type_is_unconfirmed(&entry),
+                "{kind:?}"
+            );
+        }
+        for kind in [Kind::File, Kind::Dir, Kind::Symlink] {
+            assert!(
+                !crate::providers::ftp_listing::type_is_unconfirmed(&entry_of(kind)),
+                "{kind:?}"
+            );
+        }
     }
 
     #[tokio::test]

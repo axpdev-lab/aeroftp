@@ -6,6 +6,9 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferEvents } from './useTransferEvents';
+import { updateTransferStatus } from '../components/transferQueueActions';
+import type { TransferItem } from '../components/TransferQueue';
+import { fixture } from '../utils/testFixtures/appTransferWiring';
 
 const listeners = vi.hoisted(() => new Map<string, (event: { payload: unknown }) => void>());
 vi.mock('@tauri-apps/api/event', () => ({
@@ -41,12 +44,13 @@ const mount = async (transferQueue: ReturnType<typeof queueWith>) => {
         currentLocalPath: '/home/u/work',
         currentRemotePath: '/srv/data',
     } as unknown as Options;
+    let controls!: ReturnType<typeof useTransferEvents>;
     const Probe = () => {
-        useTransferEvents(options);
+        controls = useTransferEvents(options);
         return null;
     };
     await act(async () => root.render(createElement(Probe)));
-    return options;
+    return { ...options, controls };
 };
 
 const emit = async (payload: Record<string, unknown>) => {
@@ -152,4 +156,216 @@ it('settles the active row and activity when the server skips an occupied upload
     expect(queue.completeTransfer).toHaveBeenCalledExactlyOnceWith('q1');
     expect(queue.addItem).not.toHaveBeenCalled();
     expect(options.activityLog.updateEntry).toHaveBeenCalledWith('log', expect.objectContaining({ status: 'success' }));
+});
+
+
+describe('privacy completion ownership', () => {
+    it('keeps file_complete unsettled so a rejected privacy write can fail the real queue row', async () => {
+        let items = [{id:'q1',filename:'b.txt',path:'/b.txt',size:1,type:'upload',status:'transferring'}] as TransferItem[];
+        const queue = Object.assign(queueWith({id:'q1',filename:'b.txt',status:'transferring'}), {
+            completeTransfer: (id:string) => { items=updateTransferStatus(items,id,'completed'); },
+            failTransfer: (id:string,error:string) => { items=updateTransferStatus(items,id,'error',undefined,error); },
+        });
+        Object.defineProperty(queue,'items',{get:()=>items});
+        const {controls} = await mount(queue);
+        controls.registerFileBatchRows('batch',['q1']);
+        const release=controls.holdFileCompletions(['q1']);
+        let rejectPrivacy!:(e:Error)=>void;
+        const privacy=new Promise<void>((_,reject)=>{rejectPrivacy=reject;});
+        const final=privacy.catch(error=>queue.failTransfer('q1',String(error)));
+        await emit({event_type:'file_start',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        await emit({event_type:'file_complete',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        expect(items[0].status).toBe('transferring');
+        rejectPrivacy(new Error('privacy refused'));
+        await final;
+        release();
+        expect(items[0].status).toBe('error');
+        expect(items[0].error).toContain('privacy refused');
+        await emit({event_type:'file_complete',transfer_id:'batch-0',filename:'b.txt',path:'/b.txt',direction:'upload'});
+        expect(items[0].status).toBe('error');
+    });
+
+    // A single-file upload: `start` registers the row under the bare transfer
+    // id, then the server skips the file. That row is settled; no second row.
+    it('settles a single-file upload skipped after its start, without a duplicate row', async () => {
+        let items = [{ id: 'q1', filename: 'c.txt', path: '/c.txt', size: 1, type: 'upload', status: 'transferring' }] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'c.txt', status: 'transferring' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            addItem: vi.fn((filename: string, path: string, size: number, type: string) => {
+                items = [...items, { id: `added-${items.length}`, filename, path, size, type, status: 'pending' } as TransferItem];
+                return `added-${items.length - 1}`;
+            }),
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        await mount(queue);
+        await emit({ event_type: 'start', transfer_id: 'ul-single-1', filename: 'c.txt', path: '/c.txt', direction: 'upload' });
+        await emit({ event_type: 'file_skip', transfer_id: 'ul-single-1', filename: 'c.txt', path: '/c.txt', direction: 'upload', message: 'Destination already exists' });
+        // No completed duplicate was added for the skip, and every row is settled.
+        expect(items.filter(item => item.filename === 'c.txt' && item.status === 'transferring')).toHaveLength(0);
+        expect(queue.addItem.mock.calls.filter(call => call[2] === 0)).toHaveLength(0);
+    });
+
+    // A file batch registers its child rows before it starts; a preflight
+    // can skip one before any file_start. The registered row completes, and
+    // no duplicate row is added.
+    it('settles a registered batch row skipped before its file_start', async () => {
+        let items = [
+            { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+            { id: 'q2', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'pending' },
+        ] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            addItem: vi.fn(() => 'duplicate'),
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        controls.registerFileBatchRows('batch-7', ['q1', 'q2']);
+        await emit({ event_type: 'file_skip', transfer_id: 'batch-7-1', filename: 'b.txt', path: '/b.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items.find(item => item.id === 'q2')?.status).toBe('completed');
+        expect(items.find(item => item.id === 'q1')?.status).toBe('pending');
+        expect(queue.addItem).not.toHaveBeenCalled();
+    });
+
+    // U8(b): the same with the id App.tsx makes (`ul-files-<time>-<rand>`),
+    // whose `-files-` once sent the child's skip to the aggregate lookup.
+    it('settles a production-id batch row skipped before its file_start', async () => {
+        let items = [
+            { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+            { id: 'q2', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'pending' },
+        ] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            addItem: vi.fn(() => 'duplicate'),
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        const batchId = 'ul-files-1731542400000-k3x9qa';
+        controls.registerFileBatchRows(batchId, ['q1', 'q2']);
+        await emit({ event_type: 'file_skip', transfer_id: `${batchId}-1`, filename: 'b.txt', path: '/b.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items.find(item => item.id === 'q2')?.status).toBe('completed');
+        expect(items.find(item => item.id === 'q1')?.status).toBe('pending');
+        expect(queue.addItem).not.toHaveBeenCalled();
+        // The other child still starts and completes on its own row.
+        await emit({ event_type: 'file_start', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        await emit({ event_type: 'file_complete', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        expect(items.find(item => item.id === 'q1')?.status).toBe('completed');
+        expect(queue.addItem).not.toHaveBeenCalled();
+    });
+
+    // A folder's start registers the folder row under the bare id. A child
+    // skipped before any file_start must not complete that row: the bare id
+    // is found only for a single-file transfer.
+    it('keeps a folder row running when its first child is skipped before any file starts', async () => {
+        let items = [{ id: 'folder', filename: 'docs', path: '/docs', size: 0, type: 'upload', status: 'transferring' }] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'folder', filename: 'docs', status: 'transferring' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            updateFolderProgress: vi.fn(),
+            addItem: vi.fn((filename: string, path: string, size: number, type: string) => {
+                items = [...items, { id: `added-${items.length}`, filename, path, size, type, status: 'pending' } as TransferItem];
+                return `added-${items.length - 1}`;
+            }),
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        await mount(queue);
+        await emit({ event_type: 'start', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload' });
+        await emit({ event_type: 'file_skip', transfer_id: 'ul-folder-7', filename: 'a.txt', path: '/docs/a.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
+        // The next child transfers and the folder row still follows it.
+        await emit({ event_type: 'file_start', transfer_id: 'ul-folder-7', filename: 'b.txt', path: '/docs/b.txt', direction: 'upload' });
+        expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
+        // T10: a symlink skipped inside the folder carries the folder's id;
+        // its progress and its end still reach the folder row.
+        await emit({ event_type: 'file_skip', transfer_id: 'ul-folder-7', filename: 'link', path: '/docs/link', direction: 'upload', message: 'Symlink skipped' });
+        await emit({ event_type: 'progress', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload', progress: { transfer_id: 'ul-folder-7', filename: 'docs', total: 3, transferred: 2, percentage: 66, speed_bps: 0, eta_seconds: 0, total_files: 3 } });
+        // U8(a): the progress reaches the folder row itself.
+        expect(queue.updateFolderProgress).toHaveBeenLastCalledWith('folder', 3, 2);
+        expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
+        await emit({ event_type: 'complete', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload' });
+        expect(items.find(item => item.id === 'folder')?.status).toBe('completed');
+    });
+
+    // A file the server skipped wrote nothing, so no privacy update is owed:
+    // its row completes even while completions are held.
+    it('completes a skipped row while completions are held', async () => {
+        let items = [{ id: 'q1', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'transferring' }] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'b.txt', status: 'transferring' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            failTransfer: (id: string, error: string) => { items = updateTransferStatus(items, id, 'error', undefined, error); },
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        controls.registerFileBatchRows('batch', ['q1']);
+        const release = controls.holdFileCompletions(['q1']);
+        await emit({ event_type: 'file_start', transfer_id: 'batch-0', filename: 'b.txt', path: '/b.txt', direction: 'upload' });
+        await emit({ event_type: 'file_skip', transfer_id: 'batch-0', filename: 'b.txt', path: '/b.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items[0].status).toBe('completed');
+        release();
+    });
+
+    it.each(['opendrive', 'fourshared'] as const)('lets the App %s upload batch settle its own rows through the mounted hook', async protocol => {
+        // The real App batch closure, the real hook and the real row guard:
+        // the backend reports both files complete before privacy is known.
+        let items: TransferItem[] = [];
+        const queue = Object.assign(queueWith({ id: 'unused', filename: 'unused', status: 'completed' }), {
+            startTransfer: (id: string) => { items = updateTransferStatus(items, id, 'transferring'); },
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            failTransfer: (id: string, error: string) => { items = updateTransferStatus(items, id, 'error', undefined, error); },
+            // A file_start the hook cannot match to a live row adds its own.
+            addItem: (filename: string, path: string, size: number, type: string) => {
+                const id = `late-${items.length}`;
+                items = [...items, { id, filename, path, size, type, status: 'pending' } as TransferItem];
+                return id;
+            },
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite', hold: controls,
+            queue: { startTransfer: queue.startTransfer, completeTransfer: queue.completeTransfer, failTransfer: queue.failTransfer } });
+        const addRow = f.transferQueue.addItem.getMockImplementation()! as (...args: unknown[]) => string;
+        f.transferQueue.addItem.mockImplementation(((...args: unknown[]) => {
+            const id = addRow(...args);
+            items = [...items, { id, filename: args[0], path: args[1], size: args[2], type: 'upload', status: 'pending' } as TransferItem];
+            return id;
+        }) as never);
+        const backend = f.invoke.getMockImplementation()!;
+        const beforePrivacy: string[][] = [];
+        let batchId = '';
+        f.invoke.mockImplementation(async (command, args) => {
+            if (command === 'provider_upload_files_batch') {
+                const { batch_id, entries } = args!.params as { batch_id: string; entries: { display_name: string; remote_path: string }[] };
+                batchId = batch_id;
+                for (const [index, entry] of entries.entries()) {
+                    const event = { transfer_id: `${batch_id}-${index}`, filename: entry.display_name, path: entry.remote_path, direction: 'upload' };
+                    await emit({ ...event, event_type: 'file_start' });
+                    await emit({ ...event, event_type: 'file_complete' });
+                }
+                return backend(command, args);
+            }
+            if (!command.endsWith('_set_path_privacy')) return backend(command, args);
+            beforePrivacy.push(items.map(item => item.status));
+            if (String(args?.path).endsWith('/b.bin')) throw new Error('privacy refused');
+            return undefined;
+        });
+        const sources = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
+        await f.runtime.runFileBatch('upload', sources, '/actual');
+        // file_complete arrived for both rows, and neither was settled by it.
+        expect(beforePrivacy).toEqual([['transferring', 'transferring'], ['transferring', 'transferring']]);
+        expect(items.map(item => [item.filename, item.status, item.error])).toEqual([
+            ['a.bin', 'completed', undefined],
+            ['b.bin', 'error', 'activity.set_private_error'],
+        ]);
+        // The hold is released. A late completion of the SAME file of the
+        // batch, its id registered again by a file_start: the settled (failed)
+        // row is not a live row, so the late events cannot touch it, and the
+        // failure stays a failure.
+        const late = { transfer_id: `${batchId}-1`, filename: 'b.bin', path: '/actual/b.bin', direction: 'upload' };
+        expect(batchId).not.toBe('');
+        await emit({ ...late, event_type: 'file_complete' });
+        expect(items[1].status).toBe('error');
+        await emit({ ...late, event_type: 'file_start' });
+        await emit({ ...late, event_type: 'file_complete' });
+        expect(items[1].status).toBe('error');
+        expect(items[1].error).toBe('activity.set_private_error');
+        expect(items[0].status).toBe('completed');
+    });
 });

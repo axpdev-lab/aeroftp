@@ -175,6 +175,55 @@ fn with_suffix(rel: &str, n: u32) -> String {
 /// every name cannot loop forever.
 const MAX_SUFFIX: u32 = 10_000;
 
+/// Only a path this archive routine could have produced is a valid receipt.
+pub fn archive_receipt_matches(
+    root: &str,
+    dir: &BackupDir,
+    stamp: &str,
+    rel: &str,
+    receipt: &str,
+    local: bool,
+) -> bool {
+    if stamp.is_empty()
+        || !stamp
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    {
+        return false;
+    }
+    let base = archive_rel_path(dir, stamp, rel);
+    let expected = if local {
+        Path::new(root).join(&base).to_string_lossy().into_owned()
+    } else {
+        join_remote(root, &base)
+    };
+    if expected == receipt {
+        return true;
+    }
+    let name = base.rsplit('/').next().unwrap_or("");
+    let extension = name
+        .rfind('.')
+        .filter(|&dot| dot > 0)
+        .map(|dot| &name[dot..])
+        .unwrap_or("");
+    let Some(prefix) = expected.strip_suffix(extension) else {
+        return false;
+    };
+    let Some(suffix) = receipt
+        .strip_prefix(prefix)
+        .and_then(|value| value.strip_suffix(extension))
+    else {
+        return false;
+    };
+    let Some(digits) = suffix.strip_prefix('.') else {
+        return false;
+    };
+    match digits.parse::<u32>() {
+        Ok(n) => (1..=MAX_SUFFIX).contains(&n) && digits == n.to_string(),
+        Err(_) => false,
+    }
+}
+
 /// Move `<root>/<rel>` to `<root>/<dir>/<stamp>/<rel>` on the local disk.
 ///
 /// `Ok(None)` when `<root>/<rel>` does not exist. The move is a rename inside
@@ -307,6 +356,20 @@ pub trait ArchiveRemote: Send {
     async fn move_path(&mut self, from: &str, to: &str) -> Result<(), ProviderError>;
 }
 
+/// A receipt must still name the archived file, never a directory or link.
+pub async fn provider_receipt_is_file(
+    provider: &mut dyn StorageProvider,
+    path: &str,
+) -> Result<bool, ProviderError> {
+    match provider.stat(path).await {
+        Ok(entry) => Ok(!entry.is_dir
+            && !entry.is_symlink
+            && !crate::providers::ftp_listing::type_is_unconfirmed(&entry)),
+        Err(ProviderError::NotFound(_)) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
 /// A [`StorageProvider`] seen as an archive target.
 pub struct ProviderRemote<'a>(pub &'a mut dyn StorageProvider);
 
@@ -333,6 +396,20 @@ impl ArchiveRemote for ProviderRemote<'_> {
     }
 }
 
+/// A failure of the GUI's FTP session at the archive boundary: a refused
+/// reply keeps its status, typed (`ProviderError::FtpRefused`, then
+/// `IpcError::FtpStatus` at the page), never as text the classifier would
+/// read again (T8); anything else keeps the session's safe text.
+fn legacy_ftp_failure(error: &anyhow::Error) -> ProviderError {
+    match error.downcast_ref::<crate::ftp::FtpManagerError>() {
+        Some(crate::ftp::FtpManagerError::Refused { code }) => ProviderError::FtpRefused {
+            code: *code,
+            during: String::new(),
+        },
+        _ => ProviderError::ServerError(error.to_string()),
+    }
+}
+
 /// The GUI's FTP session. RNFR/RNTO takes full paths, so it moves across
 /// folders; on Unix servers it also replaces an occupied destination, which
 /// is why the archive picks a free name before it moves.
@@ -345,19 +422,15 @@ impl ArchiveRemote for crate::ftp::FtpManager {
         "FTP".to_string()
     }
     async fn path_exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        self.exists(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+        self.exists(path).await.map_err(|e| legacy_ftp_failure(&e))
     }
     async fn make_dir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.mkdir(path)
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+        self.mkdir(path).await.map_err(|e| legacy_ftp_failure(&e))
     }
     async fn move_path(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
         self.rename(from, to)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))
+            .map_err(|e| legacy_ftp_failure(&e))
     }
 }
 
@@ -459,6 +532,65 @@ pub async fn archive_remote_on<R: ArchiveRemote + ?Sized>(
 
 #[cfg(test)]
 mod tests {
+    /// T8: the legacy FTP session's 553 reaches the IPC boundary as its
+    /// status, typed: not retryable, not text the classifier reads again.
+    #[test]
+    fn a_legacy_ftp_refusal_keeps_its_status_at_the_ipc_boundary() {
+        let refused: anyhow::Error = crate::ftp::FtpManagerError::Refused { code: 553 }.into();
+        let error = super::legacy_ftp_failure(&refused);
+        assert!(
+            matches!(
+                error,
+                crate::providers::ProviderError::FtpRefused { code: 553, .. }
+            ),
+            "{error:?}"
+        );
+        let rendered = crate::sync::ipc_error_render(
+            "sync_backup_archive_remote",
+            &crate::sync::IpcError::from(error),
+        );
+        assert!(rendered.contains("(FTP 553)"), "{rendered}");
+        assert!(rendered.ends_with(":false]"), "not retryable: {rendered}");
+        let other: anyhow::Error =
+            crate::ftp::FtpManagerError::OperationFailed("timed out".into()).into();
+        assert!(matches!(
+            super::legacy_ftp_failure(&other),
+            crate::providers::ProviderError::ServerError(_)
+        ));
+    }
+
+    #[test]
+    fn archive_receipt_rejects_wrong_root_name_and_stamp() {
+        let dir = super::BackupDir::parse(".versions").unwrap();
+        let matches = |receipt: &str, stamp: &str| {
+            super::archive_receipt_matches("/remote", &dir, stamp, "sub/a.txt", receipt, false)
+        };
+        assert!(matches(
+            "/remote/.versions/20261111T140000Z/sub/a.txt",
+            "20261111T140000Z"
+        ));
+        assert!(matches(
+            "/remote/.versions/20261111T140000Z/sub/a.1.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/other/.versions/20261111T140000Z/sub/a.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/b.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/a.01.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches(
+            "/remote/.versions/20261111T140000Z/sub/a.10001.txt",
+            "20261111T140000Z"
+        ));
+        assert!(!matches("/remote/.versions/../sub/a.txt", ".."));
+    }
     use super::*;
     use crate::providers::RemoteEntry;
     use async_trait::async_trait;
@@ -648,6 +780,8 @@ mod tests {
         dirs: BTreeSet<String>,
         leaf_only_rename: bool,
         unpublished: BTreeSet<String>,
+        /// Entries `stat` returns exactly as given, before the tree is asked.
+        stat_rows: std::collections::BTreeMap<String, RemoteEntry>,
         readiness_fails: bool,
         calls: Vec<String>,
     }
@@ -672,6 +806,7 @@ mod tests {
                 dirs,
                 leaf_only_rename: false,
                 unpublished: BTreeSet::new(),
+                stat_rows: Default::default(),
                 readiness_fails: false,
                 calls: Vec::new(),
             }
@@ -788,8 +923,20 @@ mod tests {
             self.unpublished.remove(path);
             Ok(())
         }
-        async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
-            Err(ProviderError::NotSupported("stat".into()))
+        async fn stat(&mut self, p: &str) -> Result<RemoteEntry, ProviderError> {
+            if self.unpublished.contains(p) {
+                return Err(ProviderError::NotSupported("unknown type".into()));
+            }
+            if let Some(row) = self.stat_rows.get(p) {
+                return Ok(row.clone());
+            }
+            if self.dirs.contains(p) {
+                return Ok(RemoteEntry::directory("entry".into(), p.into()));
+            }
+            if self.files.contains(p) {
+                return Ok(RemoteEntry::file("entry".into(), p.into(), 1));
+            }
+            Err(ProviderError::NotFound(p.into()))
         }
         async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
             Ok(0)
@@ -811,6 +958,106 @@ mod tests {
         async fn server_info(&mut self) -> Result<String, ProviderError> {
             Ok("mem".into())
         }
+    }
+
+    #[tokio::test]
+    async fn provider_receipt_rejects_a_directory_and_unknown_type() {
+        let mut remote = MemTree::new(ProviderType::WebDav, &["/root/kept"]);
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .unwrap());
+        assert!(!provider_receipt_is_file(&mut remote, "/root")
+            .await
+            .unwrap());
+        remote.unpublished.insert("/root/kept".into());
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .is_err());
+    }
+
+    /// The rows are read by the production FTP parsers, as the FTP provider's
+    /// `stat` reads an MLST answer or a LIST row.
+    #[tokio::test]
+    async fn provider_receipt_rejects_a_row_without_a_confirmed_file_type() {
+        use crate::providers::ftp_listing::{parse_listing, parse_mlsd_entry};
+        let mut remote = MemTree::new(ProviderType::Ftp, &[]);
+        let unconfirmed = [
+            parse_mlsd_entry("size=5;modify=20260101000000; kept", "/root"),
+            parse_mlsd_entry("type=OS.unix=fifo;size=0; kept", "/root"),
+            parse_mlsd_entry("type=;size=5; kept", "/root"),
+            parse_listing("prw-r--r-- 1 user group 0 Jan 20 10:00 kept", "/root"),
+            // A DOS row whose type-or-size field is neither `<DIR>` nor a number.
+            parse_listing("01-23-24  10:30AM       ????      kept", "/root"),
+        ];
+        for row in unconfirmed {
+            let row = row.expect("the row parses");
+            assert!(!row.is_dir && !row.is_symlink, "{row:?}");
+            remote.stat_rows.insert("/root/kept".into(), row);
+            assert!(!provider_receipt_is_file(&mut remote, "/root/kept")
+                .await
+                .unwrap());
+        }
+        let confirmed = [
+            parse_mlsd_entry("type=file;size=5; kept", "/root"),
+            parse_listing("-rw-r--r-- 1 user group 5 Jan 20 10:00 kept", "/root"),
+            parse_listing("01-23-24  10:30AM           12345 kept", "/root"),
+        ];
+        for row in confirmed {
+            remote
+                .stat_rows
+                .insert("/root/kept".into(), row.expect("the row parses"));
+            assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+                .await
+                .unwrap());
+        }
+    }
+
+    /// The entries are built by the production SFTP conversion, as
+    /// `SftpProvider::stat` builds them from the server's attributes. Only a
+    /// regular-file mode is a file: no mode bits (a server that sends none),
+    /// a FIFO, a socket (whose mode also has the directory bit) and a device
+    /// are not.
+    #[tokio::test]
+    async fn provider_receipt_requires_a_regular_file_mode_on_sftp() {
+        use russh_sftp::protocol::FileAttributes;
+        let entry = |permissions: Option<u32>| {
+            crate::providers::SftpProvider::metadata_to_entry(
+                "kept".into(),
+                "/root/kept".into(),
+                &FileAttributes {
+                    size: Some(5),
+                    permissions,
+                    ..Default::default()
+                },
+            )
+        };
+        let mut remote = MemTree::new(ProviderType::Sftp, &[]);
+        for (label, mode) in [
+            ("no mode bits", None),
+            ("permission bits without a type", Some(0o644)),
+            ("FIFO", Some(0o010644)),
+            ("socket", Some(0o140755)),
+            ("character device", Some(0o020644)),
+            ("block device", Some(0o060644)),
+        ] {
+            let row = entry(mode);
+            assert!(!row.is_dir && !row.is_symlink, "{label}: {row:?}");
+            remote.stat_rows.insert("/root/kept".into(), row);
+            assert!(
+                !provider_receipt_is_file(&mut remote, "/root/kept")
+                    .await
+                    .unwrap(),
+                "{label}"
+            );
+        }
+        remote
+            .stat_rows
+            .insert("/root/kept".into(), entry(Some(0o100644)));
+        assert!(provider_receipt_is_file(&mut remote, "/root/kept")
+            .await
+            .unwrap());
+        let dir = entry(Some(0o040755));
+        assert!(dir.is_dir && !crate::providers::ftp_listing::type_is_unconfirmed(&dir));
     }
 
     #[tokio::test]

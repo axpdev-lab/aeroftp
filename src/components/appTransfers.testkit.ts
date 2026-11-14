@@ -13,6 +13,7 @@ import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../ut
 import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
+import { isDeletionCancelled } from '../utils/localTrash';
 import { QueuedTargetChangedError, type QueuedTarget } from '../utils/queuedTarget';
 import { oauthLoginCount, oauthLoginKey } from '../utils/oauthLogins';
 import type { PreviewFile } from './DevTools/types';
@@ -54,7 +55,8 @@ const dropEnd = app.indexOf('\n  });', dropStart);
 if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
 
 const { code } = await transformWithOxc(
-  closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
+  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  + closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
   + closure('liveOverlay', '\n  const connectSavedProfileForResume')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  const retryRestoredEntry =')
@@ -119,6 +121,8 @@ export type Options = {
   folderOutcome?: (command: string, call: number) => Partial<FolderTransferOutcome>;
   /** App's circuit breaker; by default one that never retries. */
   breaker?: Breaker;
+  /** An AeroVault overlay session open on the remote panel. */
+  vaultOverlay?: boolean;
 };
 
 export function fixture(options: Options = {}) {
@@ -155,7 +159,7 @@ export function fixture(options: Options = {}) {
       return { completed: 1, skipped: 0, failed: 0, cancelled: false, message: 'Done', ...options.folderOutcome?.(command, calls[command]) };
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
-    if (command === 'provider_connection_generation') return 7;
+    if (command === 'provider_connection_generation' || command === 'provider_gui_target_epoch') return 7;
     if (command === 'save_remote_file') {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
@@ -167,6 +171,8 @@ export function fixture(options: Options = {}) {
     if (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy') return undefined;
     // A cut's moves and source deletes.
     if (['provider_delete_file', 'delete_remote_file', 'delete_local_file', 'provider_rename', 'rename_remote_file', 'provider_server_copy'].includes(command)) return undefined;
+    if (command === 'aerovault_overlay_delete_entries') return args!.entryPaths.length;
+    if (command === 'aerovault_overlay_extract_entry') return undefined;
     throw new Error(`Unexpected IPC: ${command}`);
   });
 
@@ -204,6 +210,7 @@ export function fixture(options: Options = {}) {
       queueItemsRef.current = cancelTransferRow(queueItemsRef.current, id, label);
     }),
     retryItem: vi.fn(reopen),
+    getItemNow: (id: string) => queueItemsRef.current.find(item => item.id === id),
     // The queue's own filter: a failed row, not a stopped one.
     retryAllFailed: vi.fn(() => {
       const { ids } = retryAllFailedRows(queueItemsRef.current);
@@ -214,6 +221,7 @@ export function fixture(options: Options = {}) {
   const row = (id: string) => queueItemsRef.current.find(item => item.id === id);
   const batchCancelledRef = { current: false };
   const stopCountRef = { current: 0 };
+  const deleteGesturesRef = { current: [] as string[] };
   const retryCallbacksRef = { current: new Map<string, () => Promise<void>>() };
   const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() };
   const humanLog = { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), logSuccess: vi.fn(), updateEntry: vi.fn() };
@@ -223,7 +231,7 @@ export function fixture(options: Options = {}) {
   // Panel 1's own loader, which the download called before it reloaded every
   // panel showing the folder written.
   const loadLocalFiles = vi.fn(async () => undefined);
-  const crossPanelDropRef = { current: null as null | ((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string | undefined, sourceKey?: string) => Promise<void>) };
+  const crossPanelDropRef = { current: null as null | ((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string | undefined, sourceKey?: string, target?: unknown, stops?: number) => Promise<void>) };
   const protocol = options.protocol ?? 'webdav';
   // The live connection, which a test can switch to another server or
   // account: App's own target checks read it through this proxy.
@@ -240,7 +248,7 @@ export function fixture(options: Options = {}) {
   const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
   const context = {
     // Outside a render a latest-value callback is the function itself.
-    useLatestCallback: <T,>(fn: T) => fn,
+    useLatestCallback: <T,>(fn: T) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null },
     isLiveOnProfile: () => true,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
@@ -249,18 +257,18 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
+    liveConnectionParams, aeroVaultOverlaySession: options.vaultOverlay ? { sessionId: 'vault-session' } : null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
-    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
-    batchOpInFlightRef: { current: false }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
+    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef: { current: 0 },
+    batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
       stateRef: { current: 'closed' }, pauseReasonRef: { current: null }, tripErrorKindRef: { current: null },
       config: { maxRetriesPerFile: 0 }, getRetryDelay: () => 0,
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
-    retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
+    retryCallbacksRef, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), holdFileCompletions: () => () => undefined, withTransferRun,
     QueuedTargetChangedError,
     remoteConnectPhaseRef: { current: false as false | 'connect' | 'switch' },
     backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
@@ -306,5 +314,5 @@ export function fixture(options: Options = {}) {
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

@@ -151,6 +151,10 @@ pub struct GitHubProvider {
     repo_private: bool,
     is_bot_token: bool,
     default_branch: String,
+    /// Raised by the working-branch fallback; see
+    /// `StorageProvider::target_poison`. Never lowered: a new connection is a
+    /// new provider.
+    poison: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl std::fmt::Debug for GitHubProvider {
@@ -172,8 +176,11 @@ impl GitHubProvider {
     pub fn new(config: GitHubConfig) -> Result<Self, ProviderError> {
         let token = SecretString::from(config.token);
         let current_path = Self::normalise_path(config.initial_path.as_deref().unwrap_or(""));
+        let poison = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut client = GitHubHttpClient::new(token).map_err(ProviderError::from)?;
+        client.poison = Some(poison.clone());
         Ok(Self {
-            client: GitHubHttpClient::new(token).map_err(ProviderError::from)?,
+            client,
             owner: config.owner,
             repo: config.repo,
             branch: config.branch,
@@ -187,6 +194,7 @@ impl GitHubProvider {
             repo_private: false,
             is_bot_token: false,
             default_branch: String::from("main"),
+            poison,
         })
     }
 
@@ -351,6 +359,7 @@ impl GitHubProvider {
         additions: &[(String, Vec<u8>)],
         deletions: &[String],
     ) -> Result<String, ProviderError> {
+        self.refuse_when_poisoned()?;
         let branch = self.content_branch().to_string();
         let head_oid = graphql::get_head_sha(&mut self.client, &self.owner, &self.repo, &branch)
             .await
@@ -510,6 +519,50 @@ impl GitHubProvider {
         }
     }
 
+    /// A connected provider whose branch `main` is protected, its API at
+    /// `api_origin`: the state `connect` leaves before a working branch is
+    /// needed.
+    #[cfg(test)]
+    pub(crate) fn protected_for_test(api_origin: String) -> Self {
+        let mut extra = HashMap::new();
+        extra.insert("branch".to_string(), "main".to_string());
+        let config = ProviderConfig {
+            name: "repo".to_string(),
+            provider_type: ProviderType::GitHub,
+            host: "o/r".to_string(),
+            port: Some(443),
+            username: None,
+            password: Some("token".to_string()),
+            initial_path: Some("/".to_string()),
+            extra,
+        };
+        let mut provider = Self::connected_for_test(&config, "alice", "main");
+        provider.client.api_origin_override = Some(api_origin);
+        provider.write_mode = GitHubWriteMode::DirectWriteProtected {
+            base_sha: "0123456789abcdef0123456789abcdef01234567".to_string(),
+        };
+        provider
+    }
+
+    /// A provider in the state `connect` leaves it in, without the network:
+    /// the account and the repository's default branch as the API reported
+    /// them, the configured branch (or that default) active.
+    #[cfg(test)]
+    pub(crate) fn connected_for_test(
+        config: &ProviderConfig,
+        account: &str,
+        default_branch: &str,
+    ) -> Self {
+        let mut provider = Self::new(GitHubConfig::from_provider_config(config).unwrap()).unwrap();
+        provider.account_email = Some(account.to_string());
+        provider.default_branch = default_branch.to_string();
+        if provider.branch.is_empty() {
+            provider.branch = provider.default_branch.clone();
+        }
+        provider.connected = true;
+        provider
+    }
+
     fn sanitise_branch_component(value: &str) -> String {
         let mut output = String::with_capacity(value.len());
         let mut last_was_separator = false;
@@ -533,6 +586,73 @@ impl GitHubProvider {
         }
     }
 
+    /// A write of a poisoned session (see `StorageProvider::target_poison`)
+    /// is refused here, before any request, its own preparing reads
+    /// included. The client refuses any request that is not a read as well.
+    pub(crate) fn refuse_when_poisoned(&self) -> Result<(), ProviderError> {
+        if self.poison.load(std::sync::atomic::Ordering::SeqCst) {
+            Err(ProviderError::TargetChanged)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// The working branch the fallback writes to for this account and branch.
+    fn own_working_branch(&self) -> String {
+        let user = self
+            .account_name
+            .clone()
+            .unwrap_or_else(|| "aeroftp".to_string());
+        Self::workflow_branch_name(&user, self.active_branch())
+    }
+
+    /// How far `branch` is ahead of and behind `base` (a branch or a SHA);
+    /// `None` when the API answers 404 (the branch is not there).
+    async fn compare_with(
+        &mut self,
+        base: &str,
+        branch: &str,
+    ) -> Result<Option<GitHubCompare>, ProviderError> {
+        let url = format!(
+            "{}/compare/{}...{}",
+            self.repo_url(),
+            urlencoding::encode(base),
+            urlencoding::encode(branch)
+        );
+        match self.client.get_json::<GitHubCompare>(&url).await {
+            Ok(compare) => Ok(Some(compare)),
+            Err(
+                GitHubError::PathNotFound(_)
+                | GitHubError::RepoNotFound
+                | GitHubError::BranchNotFound(_)
+                | GitHubError::NotFound(_),
+            ) => Ok(None),
+            Err(e) => Err(ProviderError::from(e)),
+        }
+    }
+
+    /// One decision, at connect (A1, point 1): a protected branch whose
+    /// working branch this account already has, with commits the protected
+    /// branch does not (an earlier refused write, not merged yet), starts the
+    /// session on that working branch. The listing, the target identity and
+    /// every write are the working branch's from the first request, so no
+    /// session switches tree half way, and a sync of many files to a
+    /// protected repository is not stopped after its first one at every
+    /// connection. A working branch that is not ahead (its pull request was
+    /// merged and the branch kept) holds an older tree: the session stays on
+    /// the protected branch (R2). Only a 404 says the branch is not there;
+    /// any other answer fails the connect rather than guess.
+    async fn start_on_existing_working_branch(&mut self) -> Result<(), ProviderError> {
+        let branch = self.own_working_branch();
+        let base = self.active_branch().to_string();
+        if let Some(compare) = self.compare_with(&base, &branch).await? {
+            if compare.ahead_by > 0 {
+                self.write_mode = GitHubWriteMode::BranchWorkflow { branch };
+            }
+        }
+        Ok(())
+    }
+
     fn workflow_branch_name(user_login: &str, base_branch: &str) -> String {
         format!(
             "aeroftp/{}/{}",
@@ -551,7 +671,7 @@ impl GitHubProvider {
             .get_json::<GitHubBranch>(&self.branch_api_url(branch))
             .await
         {
-            Ok(_) => return Ok(()),
+            Ok(_) => return self.fast_forward_if_behind(branch, base_sha).await,
             Err(
                 GitHubError::PathNotFound(_)
                 | GitHubError::RepoNotFound
@@ -600,6 +720,36 @@ impl GitHubProvider {
             },
             Err(e) => Err(ProviderError::from(e)),
         }
+    }
+
+    /// A working branch that exists but holds nothing the base does not (its
+    /// pull request merged, the branch kept) is behind the base: a write
+    /// there would land on an older tree. It is moved up to `base_sha` first,
+    /// a plain update with no force, which GitHub accepts only as a fast
+    /// forward (R2). A branch ahead of the base keeps its own commits.
+    async fn fast_forward_if_behind(
+        &mut self,
+        branch: &str,
+        base_sha: &str,
+    ) -> Result<(), ProviderError> {
+        let Some(compare) = self.compare_with(base_sha, branch).await? else {
+            return Err(ProviderError::from(GitHubError::BranchNotFound(
+                branch.to_string(),
+            )));
+        };
+        if compare.ahead_by > 0 || compare.behind_by == 0 {
+            return Ok(());
+        }
+        let url = format!(
+            "{}/git/refs/heads/{}",
+            self.repo_url(),
+            urlencoding::encode(branch)
+        );
+        self.client
+            .patch_json(&url, &serde_json::json!({"sha": base_sha, "force": false}))
+            .await
+            .map(drop)
+            .map_err(ProviderError::from)
     }
 
     /// Return the current working branch when branch workflow mode is active.
@@ -878,6 +1028,23 @@ impl StorageProvider for GitHubProvider {
         self.account_email.clone()
     }
 
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        Some(self.poison.clone())
+    }
+
+    /// The account, the repository and the branch the listing reads
+    /// (`content_branch`: the configured branch, the repository's default
+    /// one resolved at connect, or the workflow branch). Another branch of
+    /// the same repository is another tree, so a sync index of one never
+    /// serves the other as a baseline.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        let branch = self.content_branch();
+        // Before connect the default branch is unknown: no identity.
+        (self.connected && !branch.is_empty()).then(|| {
+            serde_json::json!(["github", self.account_email, self.repo_slug(), branch]).to_string()
+        })
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // 1. Validate token: try GET /user first (PAT/Device Flow),
         //    fallback to GET /app for installation tokens
@@ -961,6 +1128,7 @@ impl StorageProvider for GitHubProvider {
                         self.write_mode = GitHubWriteMode::DirectWriteProtected {
                             base_sha: branch_info.commit.sha,
                         };
+                        self.start_on_existing_working_branch().await?;
                     } else {
                         self.write_mode = GitHubWriteMode::DirectWrite;
                     }
@@ -1270,6 +1438,7 @@ impl StorageProvider for GitHubProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1381,11 +1550,7 @@ impl StorageProvider for GitHubProvider {
                     } else {
                         unreachable!()
                     };
-                    let user = self
-                        .account_name
-                        .clone()
-                        .unwrap_or_else(|| "aeroftp".to_string());
-                    let workflow_branch = Self::workflow_branch_name(&user, self.active_branch());
+                    let workflow_branch = self.own_working_branch();
                     self.ensure_branch_exists_from_sha(&workflow_branch, &base_sha)
                         .await
                         .map_err(|e2| {
@@ -1396,22 +1561,30 @@ impl StorageProvider for GitHubProvider {
                                 ))
                             })
                         })?;
+                    // QA-GH-019: Mutate the existing body in-place: no clone of the
+                    // large base64 content. `body` is already a serde_json::Value on the stack.
+                    // The upload goes to the working branch by name; the
+                    // session is still on the protected one while it waits.
+                    if let Some(obj) = body.as_object_mut() {
+                        obj.insert("branch".to_string(), serde_json::json!(workflow_branch));
+                    }
+                    let written = self
+                        .client
+                        .put_json(&url, &body)
+                        .await
+                        .map_err(ProviderError::from)?;
+                    // Written: the session is on another branch from here,
+                    // another tree than the one any plan of it was made
+                    // against, so the switch poisons it in the same step (no
+                    // await between): every later write of this session is
+                    // refused, and the next connection starts on the working
+                    // branch. An upload dropped or refused while it waits
+                    // leaves the session wholly on the protected branch.
                     self.write_mode = GitHubWriteMode::BranchWorkflow {
                         branch: workflow_branch,
                     };
-
-                    // QA-GH-019: Mutate the existing body in-place: no clone of the
-                    // large base64 content. `body` is already a serde_json::Value on the stack.
-                    if let Some(obj) = body.as_object_mut() {
-                        obj.insert(
-                            "branch".to_string(),
-                            serde_json::json!(self.content_branch()),
-                        );
-                    }
-                    self.client
-                        .put_json(&url, &body)
-                        .await
-                        .map_err(ProviderError::from)?
+                    self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
+                    written
                 } else {
                     return Err(ProviderError::from(result.unwrap_err()));
                 }
@@ -1435,6 +1608,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1475,6 +1649,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1547,6 +1722,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         // Round 2 of the 4.2.1 review: the API's delete takes a folder's
         // content along, so a folder that lists anything is refused here and
         // only one that listed empty reaches it.
@@ -1572,6 +1748,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1606,6 +1783,7 @@ impl StorageProvider for GitHubProvider {
     }
 
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+        self.refuse_when_poisoned()?;
         if self.parse_virtual_path(&self.resolve_path(from)).is_some()
             || self.parse_virtual_path(&self.resolve_path(to)).is_some()
         {
@@ -1979,6 +2157,220 @@ impl StorageProvider for GitHubProvider {
 
 #[cfg(test)]
 mod tests {
+    /// A1, point 1, as one group: what `connect` decides for a protected
+    /// branch, from the API's comparison of this account's working branch
+    /// with it; and the fallback's handling of a working branch left behind.
+    mod start_on_existing_working_branch {
+        use super::super::*;
+        use std::sync::{Arc, Mutex};
+
+        /// A GitHub API that answers the comparison with `compare` (a status
+        /// and a body), refuses direct pushes to `main`, accepts the working
+        /// branch, and logs every write with its body.
+        async fn api(
+            compare: (u16, serde_json::Value),
+        ) -> (String, Arc<Mutex<Vec<String>>>, tokio::task::JoinHandle<()>) {
+            let log = Arc::new(Mutex::new(Vec::new()));
+            let seen = log.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                    let (seen, compare) = (seen.clone(), compare.clone());
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = uri.path().to_string();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        if method != axum::http::Method::GET {
+                            seen.lock().unwrap().push(format!("{method} {path} {body}"));
+                        }
+                        if path.contains("/compare/") {
+                            return reply(compare.0, compare.1);
+                        }
+                        if path.contains("/branches/") {
+                            return reply(
+                                200,
+                                serde_json::json!({
+                                    "name": "aeroftp/aeroftp/main", "protected": false,
+                                    "commit": {"sha": "fedcba9876543210fedcba9876543210fedcba98"}
+                                }),
+                            );
+                        }
+                        if method == axum::http::Method::PUT && body.contains("\"branch\":\"main\"")
+                        {
+                            return reply(
+                                403,
+                                serde_json::json!({"message": "Protected branch update failed"}),
+                            );
+                        }
+                        if method == axum::http::Method::PUT || method == axum::http::Method::PATCH
+                        {
+                            return reply(200, serde_json::json!({"content": {"sha": "abc123"}}));
+                        }
+                        reply(404, serde_json::json!({"message": "Not Found"}))
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (format!("http://{addr}"), log, server)
+        }
+
+        fn compared(ahead_by: u64, behind_by: u64) -> (u16, serde_json::Value) {
+            (
+                200,
+                serde_json::json!({"ahead_by": ahead_by, "behind_by": behind_by, "status": "x"}),
+            )
+        }
+
+        /// The working branch has commits `main` does not: the session starts
+        /// on it, so its listing, its target identity and its writes are that
+        /// branch's from the first request.
+        #[tokio::test]
+        async fn a_working_branch_ahead_is_where_the_session_starts() {
+            let (origin, _log, server) = api(compared(2, 0)).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            let identity_before = provider.sync_namespace_identity();
+            provider.start_on_existing_working_branch().await.unwrap();
+            assert_eq!(provider.working_branch(), Some("aeroftp/aeroftp/main"));
+            assert_ne!(provider.sync_namespace_identity(), identity_before);
+            server.abort();
+        }
+
+        /// R2: merged and not deleted, the working branch is behind `main`
+        /// and holds an older tree: the session stays on `main`. A 404 (no
+        /// working branch) does the same.
+        #[tokio::test]
+        async fn a_merged_or_missing_working_branch_keeps_the_protected_branch() {
+            for answer in [
+                compared(0, 3),
+                compared(0, 0),
+                (404, serde_json::json!({"message": "Not Found"})),
+            ] {
+                let (origin, _log, server) = api(answer).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider.start_on_existing_working_branch().await.unwrap();
+                assert_eq!(provider.working_branch(), None);
+                server.abort();
+            }
+        }
+
+        /// Any other answer is not "absent": the connect fails rather than
+        /// guess which branch the session is on.
+        #[tokio::test]
+        async fn another_answer_fails_the_connect() {
+            for status in [500, 403, 401] {
+                let (origin, _log, server) =
+                    api((status, serde_json::json!({"message": "answer"}))).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                assert!(
+                    provider.start_on_existing_working_branch().await.is_err(),
+                    "{status}"
+                );
+                assert_eq!(provider.working_branch(), None);
+                server.abort();
+            }
+        }
+
+        /// R2, the fallback: a working branch left behind `main` is moved up
+        /// to `main`'s tip with a plain update (no force) before the write,
+        /// so the write never lands on the older tree. One ahead keeps its
+        /// commits and gets no update.
+        #[tokio::test]
+        async fn the_fallback_fast_forwards_a_working_branch_left_behind() {
+            let dir = tempfile::tempdir().unwrap();
+            let file = dir.path().join("a.txt");
+            std::fs::write(&file, b"a").unwrap();
+            for (answer, moved) in [(compared(0, 2), true), (compared(1, 2), false)] {
+                let (origin, log, server) = api(answer).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider
+                    .upload(file.to_str().unwrap(), "/a.txt", None)
+                    .await
+                    .unwrap();
+                let writes = log.lock().unwrap().clone();
+                let patch = writes
+                    .iter()
+                    .position(|w| w.starts_with("PATCH ") && w.contains("/git/refs/heads/"));
+                let written = writes
+                    .iter()
+                    .position(|w| w.starts_with("PUT ") && w.contains("aeroftp/aeroftp/main"))
+                    .expect("the write to the working branch");
+                if moved {
+                    let patch = patch.expect("the working branch is fast-forwarded");
+                    assert!(patch < written, "{writes:?}");
+                    assert!(writes[patch].contains("\"force\":false"), "{writes:?}");
+                    assert!(
+                        writes[patch].contains("0123456789abcdef0123456789abcdef01234567"),
+                        "{writes:?}"
+                    );
+                } else {
+                    assert_eq!(patch, None, "{writes:?}");
+                }
+                server.abort();
+            }
+        }
+
+        /// R1: a poisoned session refuses what writes the tree (contents,
+        /// git data, GraphQL commits) before any request, and lets through
+        /// what names its own branch or tag (a pull request, a release, a
+        /// Pages build, an Actions run).
+        #[tokio::test]
+        async fn a_poisoned_session_refuses_tree_writes_only() {
+            let (origin, log, server) = api(compared(0, 0)).await;
+            let mut provider = GitHubProvider::protected_for_test(origin);
+            provider
+                .poison
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            for url in [
+                "/repos/o/r/contents/a.txt",
+                "/repos/o/r/git/refs/heads/x",
+                "/graphql",
+            ] {
+                let refused = provider.client.put_json(url, &serde_json::json!({})).await;
+                assert!(matches!(refused, Err(GitHubError::TargetChanged)), "{url}");
+            }
+            assert!(matches!(
+                provider
+                    .client
+                    .graphql_raw(&serde_json::json!({"query": "x"}))
+                    .await,
+                Err(GitHubError::TargetChanged)
+            ));
+            assert!(log.lock().unwrap().is_empty());
+            for url in [
+                "/repos/o/r/pulls",
+                "/repos/o/r/releases",
+                "/repos/o/r/pages/builds",
+            ] {
+                let _ = provider
+                    .client
+                    .post_json::<serde_json::Value>(url, &serde_json::json!({}))
+                    .await;
+            }
+            let sent = log.lock().unwrap().clone();
+            assert_eq!(sent.len(), 3, "{sent:?}");
+            // The provider's own tree writes are refused before any request.
+            assert!(matches!(
+                provider.delete("/a.txt").await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert!(matches!(
+                provider
+                    .batch_upload("m", &[("a.txt".into(), b"a".to_vec())], &[])
+                    .await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(log.lock().unwrap().len(), 3);
+            server.abort();
+        }
+    }
+
     #[tokio::test]
     async fn probe_contract_github_directory_metadata_is_not_a_parse_error() {
         use axum::response::IntoResponse;

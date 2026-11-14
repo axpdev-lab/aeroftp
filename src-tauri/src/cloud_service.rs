@@ -1504,6 +1504,9 @@ impl CloudService {
             cloud_remote_metadata: self
                 .retain_remote_observations(plan.remote_observations.clone(), &rows),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -1550,6 +1553,9 @@ impl CloudService {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         });
         // The prior index was migrated when it was loaded, and the keys the
         // migration could not vouch for are not saved with it: written back
@@ -1648,6 +1654,13 @@ impl CloudService {
         direction: CompareDirection,
     ) {
         for key in prior.unverified_keys.clone() {
+            // A key an interrupted run fenced is unverified for another
+            // reason: equal copies do not say which of them the run wrote,
+            // so it stays an interrupted-sync conflict for the user, with no
+            // baseline and no receipt.
+            if prior.pending_recovery_keys.contains(&key) {
+                continue;
+            }
             let (Some(local), Some(remote)) = (locals.get(&key), remotes.get(&key)) else {
                 continue;
             };
@@ -3787,8 +3800,18 @@ async fn open_aerocloud_connection(
     let opened = cloud_provider_factory::create_cloud_connection(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
+    // The account every read below answers for: the captured one, or the
+    // legacy owner only (never the active account for a legacy capture, U9).
+    let reads = opened.reads_account();
     let mut provider = opened.provider;
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    let Some(account) = reads else {
+        let _ = provider.disconnect().await;
+        return Err("the connection captured no account".into());
+    };
+    let account_ref = Some(account);
+    if cloud_provider_factory::current_overlay_binding(config, store, account_ref)?
+        != opened.overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
     }
@@ -3798,6 +3821,7 @@ async fn open_aerocloud_connection(
         config.server_profile_id.as_deref(),
         &config.server_profile,
         store,
+        account,
     )
     .await
     .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
@@ -3808,11 +3832,24 @@ async fn open_aerocloud_connection(
             config.compress_level,
         ));
     }
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    if cloud_provider_factory::current_overlay_binding(config, store, account_ref)?
+        != opened.overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err(
             "Profile encryption binding changed during overlay composition; retry the cycle".into(),
         );
+    }
+    // The overlay stack read the profile and its keys for the active account.
+    // The snapshot carries the activation revision, so an unchanged one
+    // proves that account was the connection's all along (A, B, A included).
+    if let Some(captured) = opened.account.as_ref() {
+        if let Err(error) = crate::credential_store::off_async_worker(|| {
+            cloud_provider_factory::account_unchanged(captured)
+        }) {
+            let _ = provider.disconnect().await;
+            return Err(error);
+        }
     }
     Ok(ConnectedCloudProvider {
         provider,
@@ -4185,6 +4222,9 @@ mod baseline_tests {
                 cloud_receipts: [("f.txt".into(), receipt)].into(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: Default::default(),
+                pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
             };
             let row = cmp(
                 SyncStatus::Identical,
@@ -4317,6 +4357,46 @@ mod baseline_tests {
             index.unverified_keys.clear();
             index = serde_json::from_str(&serde_json::to_string(&index).unwrap()).unwrap();
         }
+    }
+
+    /// A key fenced by an interrupted run sits in both `unverified_keys` and
+    /// `pending_recovery_keys`. Equal copies on both sides do not restore its
+    /// trust: its marker, its fence and its old baseline stay, while a key
+    /// that only a migration rewrote is verified beside it.
+    #[test]
+    fn a_pending_recovery_key_is_not_verified_as_a_migrated_baseline() {
+        let old = SyncIndexEntry {
+            size: 9,
+            modified: fi(9, 900).modified,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        for key in ["fenced.txt", "migrated.txt"] {
+            index.files.insert(key.into(), old.clone());
+            index.unverified_keys.insert(key.into());
+        }
+        index.pending_recovery_keys.insert("fenced.txt".into());
+        let files = HashMap::from([
+            ("fenced.txt".to_string(), fi(5, 1000)),
+            ("migrated.txt".to_string(), fi(5, 1000)),
+        ]);
+        CloudService::verify_migrated_baseline(
+            &mut index,
+            &files,
+            &files,
+            &CompareOptions::default(),
+            CompareDirection::LocalToRemote,
+        );
+        assert!(index.unverified_keys.contains("fenced.txt"));
+        assert!(index.pending_recovery_keys.contains("fenced.txt"));
+        assert_eq!(
+            index.files["fenced.txt"].size, 9,
+            "its baseline is untouched"
+        );
+        assert!(!index.unverified_keys.contains("migrated.txt"));
+        assert_eq!(index.files["migrated.txt"].size, 5);
+        assert!(index.cloud_receipts.is_empty());
     }
 
     #[test]
@@ -5519,6 +5599,9 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
@@ -5895,6 +5978,9 @@ mod baseline_tests {
                 cloud_receipts: Default::default(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: std::collections::HashSet::from(["sub/b.txt".to_string()]),
+                pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
@@ -8812,6 +8898,9 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         let gone = CloudService::gone_on_both(
             &config,
@@ -9255,6 +9344,9 @@ mod secval_b_tests {
                             cloud_receipts: Default::default(),
                             cloud_remote_metadata: Default::default(),
                             unverified_keys: Default::default(),
+                            pending_recovery_keys: Default::default(),
+                            target_identity: None,
+                            history_only_keys: Default::default(),
                         })
                         .unwrap();
                         let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)

@@ -31,6 +31,12 @@ pub enum FtpManagerError {
     #[error("Operation failed: {0}")]
     OperationFailed(String),
 
+    /// A reply the server refused, by the code the reply parser read: the
+    /// IPC boundary reads the status from here (`sync::IpcError::from_ftp`),
+    /// never from text. Same text as `OperationFailed` of the envelope.
+    #[error("Operation failed: FTP status {code}: command rejected")]
+    Refused { code: u16 },
+
     #[error("Timeout occurred")]
     Timeout,
 }
@@ -111,6 +117,38 @@ pub struct FtpManager {
 
 #[allow(dead_code)]
 impl FtpManager {
+    /// Server reply bodies (including errors) can echo login secrets. Preserve
+    /// only a numeric status or a local error category at this boundary.
+    fn safe_ftp_error(error: &FtpError) -> String {
+        match error {
+            FtpError::UnexpectedResponse(reply) => {
+                format!("FTP status {}: command rejected", reply.status.code())
+            }
+            FtpError::ConnectionError(error) => match error.kind() {
+                std::io::ErrorKind::TimedOut => "FTP connection timed out",
+                std::io::ErrorKind::ConnectionReset => "FTP connection reset",
+                std::io::ErrorKind::ConnectionRefused => "FTP connection refused",
+                std::io::ErrorKind::BrokenPipe => "FTP broken pipe",
+                std::io::ErrorKind::NotConnected => "FTP not connected",
+                std::io::ErrorKind::UnexpectedEof => "FTP unexpected EOF",
+                _ => "FTP connection error",
+            }
+            .into(),
+            _ => "FTP protocol error".into(),
+        }
+    }
+
+    /// The error of a refused or failed operation: a refused reply keeps its
+    /// code typed ([`FtpManagerError::Refused`]), anything else its safe text.
+    fn operation_failure(error: &FtpError) -> FtpManagerError {
+        match error {
+            FtpError::UnexpectedResponse(reply) => FtpManagerError::Refused {
+                code: reply.status.code() as u16,
+            },
+            other => FtpManagerError::OperationFailed(Self::safe_ftp_error(other)),
+        }
+    }
+
     pub fn new() -> Self {
         Self {
             stream: None,
@@ -153,6 +191,9 @@ impl FtpManager {
     }
 
     pub fn connection_spec(&self) -> Result<FtpConnectionSpec> {
+        if self.stream.is_none() || self.abandoned_command {
+            return Err(FtpManagerError::NotConnected.into());
+        }
         let server = self.server.clone().ok_or(FtpManagerError::NotConnected)?;
         let username = self.username.clone().ok_or(FtpManagerError::NotConnected)?;
         let password = self
@@ -194,7 +235,7 @@ impl FtpManager {
         )
         .await
         .context("Connection timeout")?
-        .map_err(|e| FtpManagerError::ConnectionError(e.to_string()))?;
+        .map_err(|e| FtpManagerError::ConnectionError(Self::safe_ftp_error(&e)))?;
         let mut stream = stream;
         // Data connections go to the control peer unless the profile trusts
         // the PASV address (#1506 Requested 188).
@@ -221,7 +262,11 @@ impl FtpManager {
         if let Err(e) = stream.login(username, password).await {
             // A refusal is a reply: the channel is in step.
             self.abandoned_command = false;
-            return Err(FtpManagerError::OperationFailed(format!("Login failed: {}", e)).into());
+            return Err(FtpManagerError::OperationFailed(format!(
+                "Login failed: {}",
+                Self::safe_ftp_error(&e)
+            ))
+            .into());
         }
 
         self.username = Some(username.to_string());
@@ -257,6 +302,13 @@ impl FtpManager {
     /// Disconnect from FTP server
     pub async fn disconnect(&mut self) -> Result<()> {
         let abandoned = std::mem::take(&mut self.abandoned_command);
+        // Clear identity even if an uncertain navigation already retired the
+        // stream, and before a canceled QUIT could skip cleanup. reconnect()
+        // snapshots its own credentials before explicitly disconnecting.
+        self.server = None;
+        self.username = None;
+        self.password = None;
+        self.current_path = "/".into();
         if let Some(mut stream) = self.stream.take() {
             info!("Disconnecting from FTP server");
 
@@ -270,7 +322,7 @@ impl FtpManager {
 
                 match result {
                     Ok(Ok(_)) => info!("Successfully disconnected"),
-                    Ok(Err(e)) => warn!("Error during disconnect: {:?}", e),
+                    Ok(Err(e)) => warn!("Error during disconnect: {}", Self::safe_ftp_error(&e)),
                     Err(_) => warn!("Disconnect timeout"),
                 }
             }
@@ -299,27 +351,85 @@ impl FtpManager {
         include_hidden: bool,
         require_complete: bool,
     ) -> Result<Vec<RemoteFile>> {
-        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        let entries = self
+            .list_entries_opts(include_hidden, require_complete)
+            .await?;
+        let mut remote_files: Vec<RemoteFile> = entries
+            .into_iter()
+            .map(|entry| {
+                let size = (!crate::providers::ftp_listing::size_is_unreadable(&entry))
+                    .then_some(entry.size);
+                RemoteFile {
+                    name: entry.name,
+                    path: entry.path,
+                    size,
+                    is_dir: entry.is_dir,
+                    is_symlink: entry.is_symlink,
+                    modified: entry.modified,
+                    permissions: entry.permissions,
+                    link_target: entry.link_target,
+                }
+            })
+            .collect();
+
+        // Sort: directories first, then files, both alphabetically
+        remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+
+        Ok(remote_files)
+    }
+
+    /// The parsed rows of the current folder, with the markers the shared
+    /// parser puts on them, which [`RemoteFile`] does not carry.
+    async fn list_entries_opts(
+        &mut self,
+        include_hidden: bool,
+        require_complete: bool,
+    ) -> Result<Vec<crate::providers::RemoteEntry>> {
+        let mut stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
+        self.abandoned_command = true;
 
         debug!("Listing files in: {}", self.current_path);
 
         // Send NOOP before LIST to drain any pending control-connection responses
         // from a previous large transfer/listing. This prevents stale data from
         // leaking into the next LIST response (phantom files bug).
-        if let Err(e) = stream.noop().await {
-            debug!("Pre-LIST NOOP failed (non-fatal): {}", e);
+        match tokio::time::timeout(self.timeouts.command_timeout, stream.noop()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {}
+            Ok(Err(_)) => {
+                // The reply body is server-controlled and may echo credentials.
+                return Err(FtpManagerError::OperationFailed(
+                    "FTP connection check failed before listing".into(),
+                )
+                .into());
+            }
+            Err(error) => return Err(anyhow::Error::new(error).context("Pre-LIST NOOP timeout")),
         }
 
         // Use LIST without explicit path argument: relies on CWD already being set.
         // Passing the path explicitly (LIST /path/with spaces/#chars) causes FTP servers
         // to misinterpret paths containing #, spaces, or other special characters.
-        let files = tokio::time::timeout(
+        let listing_reply = tokio::time::timeout(
             self.timeouts.list_timeout,
             stream.list(if include_hidden { Some("-a") } else { None }),
         )
-        .await
-        .context("List operation timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .await;
+        let files = match listing_reply {
+            Ok(Ok(files)) => files,
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {
+                self.abandoned_command = false;
+                self.stream = Some(stream);
+                return Err(Self::operation_failure(&error).into());
+            }
+            Ok(Err(error)) => return Err(Self::operation_failure(&error).into()),
+            Err(error) => return Err(anyhow::Error::new(error).context("List operation timeout")),
+        };
+        self.abandoned_command = false;
+        self.stream = Some(stream);
 
         // The three filters that used to stand here (blank and `total ` lines,
         // `path:` headers, and `.` / `..` by name) are gone: the shared module
@@ -359,55 +469,57 @@ impl FtpManager {
             .into());
         }
 
-        let mut remote_files: Vec<RemoteFile> = listing
-            .entries
-            .into_iter()
-            .map(|entry| {
-                let size = (!crate::providers::ftp_listing::size_is_unreadable(&entry))
-                    .then_some(entry.size);
-                RemoteFile {
-                    name: entry.name,
-                    path: entry.path,
-                    size,
-                    is_dir: entry.is_dir,
-                    is_symlink: entry.is_symlink,
-                    modified: entry.modified,
-                    permissions: entry.permissions,
-                    link_target: entry.link_target,
-                }
-            })
-            .collect();
+        Ok(listing.entries)
+    }
 
-        // Sort: directories first, then files, both alphabetically
-        remote_files.sort_by(|a, b| match (a.is_dir, b.is_dir) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
-
-        Ok(remote_files)
+    fn definitive_refusal(error: &FtpError) -> bool {
+        matches!(error, FtpError::UnexpectedResponse(reply)
+            if matches!(reply.status.code() / 100, 4 | 5)
+                && !matches!(reply.status.code(), 421 | 426))
     }
 
     /// Change working directory
     pub async fn change_dir(&mut self, path: &str) -> Result<()> {
-        let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
+        // A canceled navigation must drop its uncertain socket, rather than
+        // returning a CWD-mutated stream to a manager with the old path.
+        let mut stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
 
         info!("Changing directory to: {}", path);
 
         // If path is absolute, use it directly
         // If path is relative (like ".."), let the server handle it
-        tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
-            .await
-            .context("Change directory timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-
-        // Get the actual current directory from the server using PWD
-        let pwd = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
-            .await
-            .context("PWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-
-        self.current_path = pwd;
+        self.abandoned_command = true;
+        let cwd = tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path)).await;
+        match cwd {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) if Self::definitive_refusal(&error) => {
+                self.abandoned_command = false;
+                self.stream = Some(stream);
+                return Err(Self::operation_failure(&error).into());
+            }
+            Ok(Err(error)) => return Err(Self::operation_failure(&error).into()),
+            Err(error) => return Err(anyhow::Error::new(error).context("Change directory timeout")),
+        }
+        let changed: Result<String> = async {
+            tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
+                .await
+                .context("PWD timeout")?
+                .map_err(|e| Self::operation_failure(&e).into())
+        }
+        .await;
+        self.abandoned_command = false;
+        match changed {
+            Ok(pwd) => {
+                self.current_path = pwd;
+                self.stream = Some(stream);
+            }
+            Err(error) => {
+                // CWD may already have taken effect or its late reply may
+                // still be on the wire. No subsequent command may use it.
+                self.stream = None;
+                return Err(error);
+            }
+        }
         info!("Changed directory to: {}", self.current_path);
 
         Ok(())
@@ -428,7 +540,7 @@ impl FtpManager {
         let path = tokio::time::timeout(self.timeouts.command_timeout, stream.pwd())
             .await
             .context("PWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(path)
     }
@@ -443,23 +555,37 @@ impl FtpManager {
     /// deciding whether a file must be kept before it is overwritten must not
     /// take a lost connection for "nothing there".
     pub async fn exists(&mut self, path: &str) -> Result<bool> {
+        let mut probe = self.take_directory_probe()?;
+        let result = probe.exists_with_owned_stream(path).await;
+        self.finish_directory_probe(probe, result)
+    }
+
+    async fn exists_with_owned_stream(&mut self, path: &str) -> Result<bool> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         // SIZE is defined on the binary form of a file: vsftpd refuses it
         // with 550 in ASCII mode even for a file that is there, and that
         // refusal followed by CWD's 550 on a file read as "nothing there".
         // Every transfer here sets binary itself, so this changes nothing
         // else; a server that refuses binary is an error, not a "no".
-        tokio::time::timeout(
+        self.abandoned_command = true;
+        let binary = tokio::time::timeout(
             self.timeouts.command_timeout,
             stream.transfer_type(FileType::Binary),
         )
         .await
-        .context("TYPE timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
-        match tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
+        .context("TYPE timeout")?;
+        if binary.is_ok() || binary.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        binary.map_err(|e| Self::operation_failure(&e))?;
+        self.abandoned_command = true;
+        let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
-            .context("SIZE timeout")?
-        {
+            .context("SIZE timeout")?;
+        if size.is_ok() || size.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        match size {
             Ok(_) => return Ok(true),
             Err(FtpError::UnexpectedResponse(r))
                 if matches!(
@@ -471,23 +597,31 @@ impl FtpManager {
             {
                 return self.exists_in_parent_listing(path).await;
             }
-            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => return Err(Self::operation_failure(&e).into()),
         }
+        self.abandoned_command = true;
         match tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(path))
             .await
             .context("CWD timeout")?
         {
             Ok(()) => {}
             Err(FtpError::UnexpectedResponse(r)) if r.status == Status::FileUnavailable => {
-                return self.exists_in_parent_listing(path).await
+                self.abandoned_command = false;
+                return self.exists_in_parent_listing(path).await;
             }
-            Err(e) => return Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => {
+                if Self::definitive_refusal(&e) {
+                    self.abandoned_command = false;
+                }
+                return Err(Self::operation_failure(&e).into());
+            }
         }
         let previous = self.current_path.clone();
         tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
             .await
             .context("CWD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
+        self.abandoned_command = false;
         Ok(true)
     }
 
@@ -502,24 +636,135 @@ impl FtpManager {
         if name.starts_with('.') {
             let previous = self.current_path.clone();
             self.change_dir(parent).await?;
-            let listed = self.list_files_for_probe(true).await;
+            // The same guard as a receipt (`list_receipt_folder`): `LIST -a`
+            // only when the bare listing proves `-a` names nothing here. With
+            // an entry named `-a` the answer is an error, never "absent", so a
+            // backup name is never taken for free.
+            let listed = match self.list_files_for_probe(false).await {
+                Ok(plain) if plain.iter().any(|entry| entry.name == name) => Ok(plain),
+                Ok(plain) if plain.iter().any(|entry| entry.name == "-a") => Err(
+                    FtpManagerError::OperationFailed("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()).into(),
+                ),
+                Ok(_) => self.list_files_for_probe(true).await,
+                Err(error) => Err(error),
+            };
+            if self.stream.is_none() {
+                return Err(listed
+                    .err()
+                    .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
+            }
             let restored = self.change_dir(&previous).await;
             restored?;
             return listed.map(|items| items.iter().any(|entry| entry.name == name));
         }
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
-        match tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
+        self.abandoned_command = true;
+        let names = tokio::time::timeout(self.timeouts.list_timeout, stream.nlst(Some(parent)))
             .await
-            .context("NLST timeout")?
-        {
+            .context("NLST timeout")?;
+        if names.is_ok() || names.as_ref().is_err_and(Self::definitive_refusal) {
+            self.abandoned_command = false;
+        }
+        match names {
             Ok(names) => Ok(names
                 .iter()
                 .any(|n| n.trim_end_matches('/').rsplit('/').next() == Some(name))),
-            Err(e) => Err(FtpManagerError::OperationFailed(e.to_string()).into()),
+            Err(e) => Err(Self::operation_failure(&e).into()),
         }
     }
 
     /// Get file size
+    /// Verify a backup receipt by its listing type, not CWD/SIZE existence.
+    /// Always restore the session folder, including on a refused listing.
+    pub(crate) async fn receipt_is_file(&mut self, path: &str) -> Result<bool> {
+        let mut probe = self.take_directory_probe()?;
+        let result = probe.receipt_with_owned_stream(path).await;
+        self.finish_directory_probe(probe, result)
+    }
+
+    // Keep the browsing manager unavailable throughout temporary CWD/listing/
+    // restoration, including cancellation between those individual commands.
+    fn take_directory_probe(&mut self) -> Result<Self> {
+        let stream = self.stream.take().ok_or(FtpManagerError::NotConnected)?;
+        self.abandoned_command = true;
+        let mut probe = Self::new();
+        probe.stream = Some(stream);
+        probe.current_path = self.current_path.clone();
+        probe.timeouts = self.timeouts;
+        probe.trust_pasv_address = self.trust_pasv_address;
+        Ok(probe)
+    }
+
+    fn finish_directory_probe<T>(&mut self, mut probe: Self, result: Result<T>) -> Result<T> {
+        self.abandoned_command = false;
+        if !probe.abandoned_command && probe.current_path == self.current_path {
+            self.stream = probe.stream.take();
+        }
+        result
+    }
+
+    async fn receipt_with_owned_stream(&mut self, path: &str) -> Result<bool> {
+        // A relative path would resolve against the session folder of the
+        // moment, not the folder the backup was written to.
+        if !path.starts_with('/') {
+            return Err(FtpManagerError::OperationFailed(
+                "Backup receipt path must be absolute".into(),
+            )
+            .into());
+        }
+        let (parent, name) = path.rsplit_once('/').ok_or_else(|| {
+            FtpManagerError::OperationFailed("Receipt needs a parent folder".into())
+        })?;
+        if name.is_empty() {
+            return Ok(false);
+        }
+        let original = self.current_path.clone();
+        self.change_dir(if parent.is_empty() { "/" } else { parent })
+            .await?;
+        // `-a` is an ls option, not LIST syntax: a server that reads it as a
+        // pathname lists a folder named `-a`. Only a dot name needs it, and
+        // only after the plain listing proves `-a` can name nothing here.
+        let listed = self.list_receipt_folder(name).await;
+        if self.stream.is_none() {
+            return Err(listed
+                .err()
+                .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
+        }
+        let restored = self.change_dir(&original).await;
+        restored?;
+        Ok(listed?.iter().any(|entry| {
+            entry.name == name
+                && !entry.is_dir
+                && !entry.is_symlink
+                && !crate::providers::ftp_listing::type_is_unconfirmed(entry)
+        }))
+    }
+
+    /// The listing a receipt for `name` is read from, in the current folder.
+    ///
+    /// A plain `LIST` serves an ordinary name, and a dot name the server
+    /// already shows. Otherwise the dot name needs `LIST -a`, which a server
+    /// may read as the pathname `-a`: then it lists a folder named `-a`, and a
+    /// same-named file there would pass for the receipt. So `-a` is sent only
+    /// when the plain listing has no entry named `-a`; with one, the location
+    /// is ambiguous and the receipt cannot be verified.
+    async fn list_receipt_folder(
+        &mut self,
+        name: &str,
+    ) -> Result<Vec<crate::providers::RemoteEntry>> {
+        let plain = self.list_entries_opts(false, true).await?;
+        if !name.starts_with('.') || plain.iter().any(|entry| entry.name == name) {
+            return Ok(plain);
+        }
+        if plain.iter().any(|entry| entry.name == "-a") {
+            return Err(FtpManagerError::OperationFailed(
+                "Backup receipt cannot be verified: the folder holds an entry named -a, so LIST -a is ambiguous".into(),
+            )
+            .into());
+        }
+        self.list_entries_opts(true, true).await
+    }
+
     pub async fn get_file_size(&mut self, path: &str) -> Result<u64> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
         tokio::time::timeout(
@@ -528,11 +773,11 @@ impl FtpManager {
         )
         .await
         .context("TYPE timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .map_err(|e| Self::operation_failure(&e))?;
         let size = tokio::time::timeout(self.timeouts.command_timeout, stream.size(path))
             .await
             .context("SIZE timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
         Ok(size as u64)
     }
 
@@ -546,7 +791,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -568,7 +813,7 @@ impl FtpManager {
                 stream
                     .transfer_type(FileType::Binary)
                     .await
-                    .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+                    .map_err(|e| Self::operation_failure(&e))?;
                 None
             }
         };
@@ -578,7 +823,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Read all data
         let mut buf = Vec::new();
@@ -588,7 +833,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         if let Some(expected) = expected_size {
             if buf.len() as u64 != expected as u64 {
@@ -638,13 +883,13 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Download using retr_as_stream
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // H2: Read with size cap to prevent OOM
         let mut buf = Vec::new();
@@ -670,7 +915,7 @@ impl FtpManager {
         data_stream
             .finish()
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         if bytes_read as u64 > LIMIT {
             return Err(FtpManagerError::OperationFailed(format!(
@@ -706,7 +951,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Create local directory if needed
         if let Some(parent) = PathBuf::from(local_path).parent() {
@@ -717,7 +962,7 @@ impl FtpManager {
         let mut data_stream = stream
             .retr_as_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Stream to disk in 8KB chunks (no full-file RAM buffering), through
         // a temporary renamed over the name at the end: a link standing at
@@ -756,7 +1001,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        finalize_result.map_err(|e| Self::operation_failure(&e))?;
         local_file.commit().await?;
 
         info!("Download completed: {} ({} bytes)", remote_path, total_read);
@@ -773,7 +1018,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Read local file
         let data = tokio::fs::read(local_path).await?;
@@ -786,7 +1031,7 @@ impl FtpManager {
         )
         .await
         .context("Upload timeout")?
-        .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        .map_err(|e| Self::operation_failure(&e))?;
 
         info!("Upload completed: {}", remote_path);
         Ok(())
@@ -812,7 +1057,7 @@ impl FtpManager {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Open local file for streaming read
         let mut file = tokio::fs::File::open(local_path).await?;
@@ -825,7 +1070,7 @@ impl FtpManager {
         let mut data_stream = stream
             .put_with_stream(remote_path)
             .await
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         // Write in 8KB chunks with progress tracking
         let mut chunk = [0u8; 8192];
@@ -869,7 +1114,7 @@ impl FtpManager {
                 FtpManagerError::OperationFailed("Transfer cancelled by user".to_string()).into(),
             );
         }
-        finalize_result.map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+        finalize_result.map_err(|e| Self::operation_failure(&e))?;
 
         info!(
             "Upload completed: {} ({} bytes)",
@@ -887,7 +1132,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.mkdir(path))
             .await
             .context("MKDIR timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -901,7 +1146,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rm(path))
             .await
             .context("Remove timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -915,7 +1160,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rmdir(path))
             .await
             .context("Remove directory timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -929,7 +1174,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.rename(from, to))
             .await
             .context("Rename timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -970,7 +1215,7 @@ impl FtpManager {
         tokio::time::timeout(self.timeouts.command_timeout, stream.site(&args))
             .await
             .context("CHMOD timeout")?
-            .map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;
+            .map_err(|e| Self::operation_failure(&e))?;
 
         Ok(())
     }
@@ -989,10 +1234,9 @@ impl FtpManager {
     pub async fn noop(&mut self) -> Result<()> {
         let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
 
-        stream
-            .noop()
-            .await
-            .map_err(|e| FtpManagerError::OperationFailed(format!("NOOP failed: {}", e)))?;
+        stream.noop().await.map_err(|e| {
+            FtpManagerError::OperationFailed(format!("NOOP failed: {}", Self::safe_ftp_error(&e)))
+        })?;
 
         Ok(())
     }
@@ -1069,7 +1313,8 @@ impl FtpManager {
         let entry =
             crate::providers::ftp_listing::parse_listing_at(listing, &self.current_path, now)
                 .ok_or_else(|| {
-                    FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
+                    // The row is server text: kept out of the error (U6).
+                    FtpManagerError::InvalidPath("Unrecognised listing row".to_string())
                 })?;
         let size =
             (!crate::providers::ftp_listing::size_is_unreadable(&entry)).then_some(entry.size);
@@ -1223,15 +1468,15 @@ LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt"
   name="odd.txt" path="/odd.txt" dir=false size=None perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00"
-  <err: Invalid path: Unrecognised listing row: -rw-r--r-- 1 user group 123 Jan 20 10:00>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..>
+  <err: Invalid path: Unrecognised listing row>
 LIST ""
   <err: Invalid path: Empty listing>
 LIST "total 12"
-  <err: Invalid path: Unrecognised listing row: total 12>
+  <err: Invalid path: Unrecognised listing row>
 LIST "01-23-24  10:30AM       <DIR>          folder"
   name="folder" path="/folder" dir=true size=Some(0) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      file.txt"
@@ -1243,9 +1488,9 @@ LIST "01-23-24  10:30AM           12345      my file.txt"
 LIST "01-23-24 10:30AM 12345 a b c d e f"
   name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "not-a-date 10:30AM <DIR> folder"
-  <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .>"#;
+  <err: Invalid path: Unrecognised listing row>"#;
 }
 
 #[cfg(test)]
@@ -1310,6 +1555,646 @@ pub(crate) mod exists_tests {
             assert_eq!(outcome.is_ok(), kept, "{outcome:?}");
             assert_eq!(out.exists(), kept);
         }
+    }
+
+    async fn cwd_then_unavailable_pwd(stage: &str) -> (String, Arc<tokio::sync::Notify>) {
+        let stage = stage.to_owned();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let reached = entered.clone();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut moved = false;
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let command = line.split(' ').next().unwrap();
+                let response = match command {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" if stage == "SECRET_LOGIN" => {
+                        "530 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
+                    "PASS" => "230 in\r\n".to_string(),
+                    "CWD" if stage == "SECRET_CWD" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
+                    "CWD" => {
+                        moved = true;
+                        "250 moved\r\n".to_string()
+                    }
+                    "PWD" if moved && stage == "SECRET_PWD" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
+                    "PWD" if moved && stage != "LIST" => {
+                        reached.notify_one();
+                        if stage == "PWD" {
+                            continue;
+                        }
+                        "550 cannot report folder\r\n".to_string()
+                    }
+                    "PWD" if moved => "257 \"/backup\"\r\n".to_string(),
+                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "NOOP" if stage == "SECRET_NOOP" => {
+                        "421 access_token=private-noop-token password=private-noop-password\r\n"
+                            .to_string()
+                    }
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" | "MLSD" if stage == "SECRET_LIST" => {
+                        "550 password=private-ftp-secret access_token=private-ftp-token\r\n".into()
+                    }
+                    "LIST" | "MLSD" => {
+                        reached.notify_one();
+                        continue;
+                    }
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(response.as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+            drop(data_listener);
+        });
+        (addr, entered)
+    }
+
+    #[tokio::test]
+    async fn receipt_cwd_without_pwd_retires_the_uncertain_session() {
+        let (addr, _) = cwd_then_unavailable_pwd("ERROR").await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/backup/item").await.is_err());
+        assert!(ftp.stream.is_none());
+        assert!(ftp.pwd().await.is_err());
+        assert!(ftp.change_dir("/elsewhere").await.is_err());
+        assert!(ftp.connection_spec().is_err());
+        // Retirement keeps explicit reconnect possible, but disconnect must
+        // clear identity even when there is no longer a socket.
+        assert!(ftp.server.is_some() && ftp.username.is_some() && ftp.password.is_some());
+        ftp.disconnect().await.unwrap();
+        assert!(ftp.server.is_none() && ftp.username.is_none() && ftp.password.is_none());
+        assert!(ftp.connection_spec().is_err());
+    }
+
+    #[tokio::test]
+    async fn canceled_receipt_navigation_cannot_delete_in_the_new_server_folder() {
+        for stage in ["PWD", "LIST"] {
+            let (addr, entered) = cwd_then_unavailable_pwd(stage).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+            assert!(ftp.connection_spec().is_ok());
+            {
+                let navigating = ftp.receipt_is_file("/backup/item");
+                tokio::pin!(navigating);
+                tokio::select! {
+                    _ = entered.notified() => {},
+                    result = &mut navigating => panic!("PWD must remain pending: {result:?}"),
+                }
+                // Drop the caller future like a navigation timeout/cancellation.
+            }
+            assert!(!ftp.is_connected());
+            assert!(ftp.connection_spec().is_err());
+            assert!(ftp.remove("relative-name").await.is_err());
+            assert!(ftp.server.is_some() && ftp.username.is_some() && ftp.password.is_some());
+            ftp.disconnect().await.unwrap();
+            assert!(ftp.connection_spec().is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn refused_navigation_keeps_the_original_folder_usable() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.change_dir("/missing").await.is_err());
+        assert_eq!(ftp.current_path(), "/");
+        assert!(ftp.connection_spec().is_ok());
+        assert!(ftp
+            .list_files()
+            .await
+            .unwrap()
+            .iter()
+            .any(|entry| entry.name == "a.txt"));
+    }
+
+    #[tokio::test]
+    async fn refused_receipt_listing_restores_a_usable_original_folder() {
+        let addr = vsftpd_like_script(false, false, true).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/d/item").await.is_err());
+        assert_eq!(ftp.current_path(), "/");
+        assert!(ftp.connection_spec().is_ok());
+        assert!(ftp
+            .list_files()
+            .await
+            .unwrap()
+            .iter()
+            .any(|entry| entry.name == "a.txt"));
+    }
+
+    #[tokio::test]
+    async fn noop_connection_error_never_exposes_a_server_echoed_secret() {
+        let (addr, _) = cwd_then_unavailable_pwd("SECRET_NOOP").await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let error = ftp.list_files().await.unwrap_err().to_string();
+        assert_eq!(
+            error,
+            FtpManagerError::OperationFailed("FTP connection check failed before listing".into())
+                .to_string()
+        );
+        assert!(!error.contains("private-noop"));
+        assert!(!ftp.is_connected());
+        assert!(ftp.connection_spec().is_err());
+    }
+
+    #[tokio::test]
+    async fn ftp_refusals_never_expose_server_echoed_secrets() {
+        for stage in ["SECRET_CWD", "SECRET_PWD", "SECRET_LIST", "SECRET_LOGIN"] {
+            let (addr, _) = cwd_then_unavailable_pwd(stage).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            let error = if stage == "SECRET_LOGIN" {
+                ftp.login("u", "private-ftp-secret").await.unwrap_err()
+            } else {
+                ftp.login("u", "private-ftp-secret").await.unwrap();
+                if stage == "SECRET_LIST" {
+                    ftp.list_files().await.unwrap_err()
+                } else {
+                    ftp.change_dir("/backup").await.unwrap_err()
+                }
+            };
+            let display = format!("{error:#}");
+            assert!(!display.contains("private-ftp"), "{stage}: {display}");
+            assert!(!format!("{error:?}").contains("private-ftp"));
+            let status = if stage == "SECRET_LOGIN" { 530 } else { 550 };
+            assert!(
+                display.contains(&format!("FTP status {status}:")),
+                "{display}"
+            );
+            let classified = crate::sync::classify_sync_error(&display, None);
+            assert!(!classified.retryable, "{classified:?}");
+            assert!(matches!(
+                classified.kind,
+                crate::sync::SyncErrorKind::Auth | crate::sync::SyncErrorKind::PermissionDenied
+            ));
+            if stage == "SECRET_CWD" || stage == "SECRET_LIST" {
+                assert!(
+                    ftp.is_connected(),
+                    "a definitive refusal preserves the channel"
+                );
+            } else if stage == "SECRET_PWD" {
+                assert!(
+                    !ftp.is_connected(),
+                    "unproven CWD result retires the channel"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ftp_connection_errors_do_not_echo_embedded_transport_text() {
+        let error = FtpError::ConnectionError(std::io::Error::other("password=private-ftp-secret"));
+        assert_eq!(FtpManager::safe_ftp_error(&error), "FTP connection error");
+    }
+
+    #[test]
+    fn sanitized_transient_ftp_refusals_remain_retryable() {
+        for code in [421, 425, 426, 450] {
+            let error = FtpError::UnexpectedResponse(suppaftp::types::Response {
+                status: Status::from(code),
+                body: b"password=private-ftp-secret".to_vec(),
+            });
+            let message =
+                FtpManagerError::OperationFailed(FtpManager::safe_ftp_error(&error)).to_string();
+            assert!(!message.contains("private-ftp"));
+            assert!(
+                crate::sync::classify_sync_error(&message, None).retryable,
+                "{message}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn timed_out_receipt_listing_cannot_restore_an_uncertain_channel() {
+        let (addr, _) = cwd_then_unavailable_pwd("LIST").await;
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.list_timeout = std::time::Duration::from_millis(30);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let error = ftp.receipt_is_file("/backup/item").await.unwrap_err();
+        assert!(
+            error.to_string().contains("List operation timeout"),
+            "{error}"
+        );
+        assert!(!ftp.is_connected());
+        assert!(ftp.connection_spec().is_err());
+        assert!(ftp.remove("relative-name").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn ftp_receipt_rejects_a_directory_and_restores_the_listing_folder() {
+        let addr = vsftpd_like().await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/d").await.unwrap();
+        assert!(!ftp.receipt_is_file("/denied").await.unwrap());
+        assert_eq!(ftp.current_path, "/d");
+        assert!(ftp.receipt_is_file("/.hidden").await.unwrap());
+        assert_eq!(ftp.current_path, "/d");
+    }
+
+    /// A server for receipt probes. A plain `LIST` serves `plain`; `LIST -a`
+    /// is read as a pathname and serves the folder named `-a`. Every command
+    /// line is recorded.
+    async fn receipt_server(
+        plain: &'static str,
+        dash_a_folder: &'static str,
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                log.lock().unwrap().push(line.clone());
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let listing = if arg == "-a" { dash_a_folder } else { plain };
+                        data.write_all(listing.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "CWD" if arg.starts_with('/') => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
+                    "CWD" => {
+                        cwd = format!("{}/{arg}", cwd.trim_end_matches('/'));
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, seen)
+    }
+
+    const KEPT_ROW: &str = "-rw-r--r-- 1 user group 5 Jan 20 10:00 kept.bak\r\n";
+
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_relative_path_before_any_folder_change() {
+        // The session folder holds a same-named file: a relative receipt
+        // resolved against it would be accepted.
+        let (addr, seen) = receipt_server(KEPT_ROW, KEPT_ROW).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/elsewhere").await.unwrap();
+        let before = seen.lock().unwrap().len();
+        for relative in ["backups/kept.bak", "./kept.bak", "kept.bak"] {
+            assert!(
+                ftp.receipt_is_file(relative).await.is_err(),
+                "{relative} must not be verified"
+            );
+        }
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            before,
+            "a refused receipt sends no command"
+        );
+        assert_eq!(ftp.current_path, "/elsewhere");
+        assert!(ftp.receipt_is_file("/backups/kept.bak").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn ftp_receipt_for_an_ordinary_name_sends_a_plain_list() {
+        // The receipt's folder lacks the file; a folder literally named `-a`
+        // holds one with the same name.
+        let (addr, seen) = receipt_server(
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 other.bak\r\n",
+            KEPT_ROW,
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(!ftp.receipt_is_file("/backups/kept.bak").await.unwrap());
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST"]);
+    }
+
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_row_that_is_not_a_regular_file() {
+        let (addr, _) = receipt_server(
+            "prw-r--r-- 1 user group 0 Jan 20 10:00 pipe.bak\r\n\
+             srwxr-xr-x 1 user group 0 Jan 20 10:00 sock.bak\r\n\
+             crw-r--r-- 1 user group 0 Jan 20 10:00 dev.bak\r\n\
+             -rw-r--r-- 1 user group 5 Jan 20 10:00 kept.bak\r\n",
+            "",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        for special in ["/b/pipe.bak", "/b/sock.bak", "/b/dev.bak"] {
+            assert!(
+                !ftp.receipt_is_file(special).await.unwrap(),
+                "{special} is not a confirmed file"
+            );
+        }
+        assert!(ftp.receipt_is_file("/b/kept.bak").await.unwrap());
+    }
+
+    /// A folder named `-a` beside the receipt makes `LIST -a` ambiguous: the
+    /// server below reads it as that folder's pathname, and the folder holds
+    /// a file with the receipt's dot name. The receipt is refused, and `-a` is
+    /// never sent.
+    #[tokio::test]
+    async fn ftp_receipt_for_a_dot_name_refuses_a_folder_named_dash_a() {
+        let (addr, seen) = receipt_server(
+            "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env.bak\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/elsewhere").await.unwrap();
+        let refused = ftp.receipt_is_file("/b/sub/.env.bak").await;
+        assert!(
+            refused.is_err(),
+            "an ambiguous location is not a receipt: {refused:?}"
+        );
+        assert_eq!(ftp.current_path, "/elsewhere");
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST"], "LIST -a must not be sent");
+    }
+
+    /// The existence probe a versioned backup uses on a server without SIZE:
+    /// with a folder named `-a` beside it, a dot name is not looked up through
+    /// `LIST -a`, and the probe fails instead of answering "free", so the
+    /// backup stops before any rename and an existing backup is never
+    /// overwritten.
+    #[tokio::test]
+    async fn a_dot_name_probe_fails_closed_beside_a_folder_named_dash_a() {
+        let (addr, seen) = receipt_server(
+            "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n\
+             -rw-r--r-- 1 user group 5 Jan 20 10:00 a.txt\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let probe = ftp.exists("/b/.env").await;
+        assert!(probe.is_err(), "unknown, not absent: {probe:?}");
+        let dir = crate::sync_backup::BackupDir::parse(".aeroftp-versions").unwrap();
+        let archived =
+            crate::sync_backup::archive_remote_on(&mut ftp, "/b", &dir, "20260925T070000Z", ".env")
+                .await;
+        assert!(archived.is_err(), "{archived:?}");
+        let log = seen.lock().unwrap();
+        assert!(!log.iter().any(|line| line == "LIST -a"), "{log:?}");
+        assert!(
+            !log.iter()
+                .any(|line| line.starts_with("RNFR") || line.starts_with("RNTO")),
+            "nothing is renamed: {log:?}"
+        );
+    }
+
+    /// A server whose listings depend on the folder: a plain `LIST` serves
+    /// the current folder's rows, `LIST -a` is read as the pathname `-a`
+    /// (the folder `-a` inside the current one), `NLST <dir>` serves the names
+    /// of that folder, and SIZE is not implemented, so existence goes through
+    /// the parent listing. Every command line is recorded.
+    pub(crate) async fn dir_server(
+        dirs: &'static [(&'static str, &'static str)],
+    ) -> (String, Arc<std::sync::Mutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = Arc::clone(&seen);
+        let listing = |dir: &str| {
+            dirs.iter()
+                .find(|(path, _)| *path == dir)
+                .map(|(_, rows)| *rows)
+                .unwrap_or("")
+        };
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                log.lock().unwrap().push(line.clone());
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "MKD" => "257 created\r\n".to_string(),
+                    "RNFR" => "350 ready\r\n".to_string(),
+                    "RNTO" => "250 renamed\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" | "NLST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let body = match (cmd, arg) {
+                            ("LIST", "-a") => {
+                                listing(&format!("{}/-a", cwd.trim_end_matches('/'))).to_string()
+                            }
+                            ("LIST", _) => listing(&cwd).to_string(),
+                            (_, dir) => listing(dir)
+                                .lines()
+                                .filter_map(|row| row.split_whitespace().last())
+                                .map(|name| format!("{name}\r\n"))
+                                .collect(),
+                        };
+                        data.write_all(body.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "CWD" => {
+                        cwd = if arg.starts_with('/') {
+                            arg.to_string()
+                        } else {
+                            format!("{}/{arg}", cwd.trim_end_matches('/'))
+                        };
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, seen)
+    }
+
+    /// The source and both backup folders exist; the destination folder's
+    /// bare listing shows only a folder named `-a` and hides the dot-prefixed
+    /// backup already there. `LIST -a`, read as that folder's pathname, would
+    /// list `-a` and call the name free, and the rename would overwrite the
+    /// existing backup. The destination probe meets the `-a` entry and fails:
+    /// nothing is renamed.
+    #[tokio::test]
+    async fn a_backup_stops_when_its_destination_probe_meets_a_folder_named_dash_a() {
+        static DIRS: &[(&str, &str)] = &[
+            (
+                "/b",
+                "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env\r\n\
+                 drwxr-xr-x 2 user group 4096 Jan 20 10:00 .aeroftp-versions\r\n",
+            ),
+            (
+                "/b/.aeroftp-versions",
+                "drwxr-xr-x 2 user group 4096 Jan 20 10:00 20260925T070000Z\r\n",
+            ),
+            (
+                "/b/.aeroftp-versions/20260925T070000Z",
+                "drwxr-xr-x 2 user group 4096 Jan 20 10:00 -a\r\n",
+            ),
+            ("/b/.aeroftp-versions/20260925T070000Z/-a", ""),
+        ];
+        let (addr, seen) = dir_server(DIRS).await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        let dir = crate::sync_backup::BackupDir::parse(".aeroftp-versions").unwrap();
+        let archived =
+            crate::sync_backup::archive_remote_on(&mut ftp, "/b", &dir, "20260925T070000Z", ".env")
+                .await;
+        assert!(archived.is_err(), "{archived:?}");
+        let log = seen.lock().unwrap();
+        // The destination folder was probed...
+        assert!(
+            log.iter()
+                .any(|line| line == "CWD /b/.aeroftp-versions/20260925T070000Z"),
+            "{log:?}"
+        );
+        // ...with its bare listing only, and nothing was renamed.
+        assert!(!log.iter().any(|line| line == "LIST -a"), "{log:?}");
+        assert!(
+            !log.iter()
+                .any(|line| line.starts_with("RNFR") || line.starts_with("RNTO")),
+            "{log:?}"
+        );
+    }
+
+    /// Without a `-a` entry, a dot name the plain listing does not show is
+    /// read from `LIST -a`; one the plain listing shows needs no `-a`.
+    #[tokio::test]
+    async fn ftp_receipt_for_a_dot_name_uses_list_a_only_when_it_is_unambiguous() {
+        let (addr, seen) = receipt_server(
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .shown.bak\r\n",
+            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .env.bak\r\n",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(ftp.receipt_is_file("/b/.shown.bak").await.unwrap());
+        assert!(ftp.receipt_is_file("/b/.env.bak").await.unwrap());
+        let lists: Vec<String> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("LIST"))
+            .cloned()
+            .collect();
+        assert_eq!(lists, ["LIST", "LIST", "LIST -a"]);
+    }
+
+    /// An IIS-style DOS listing: the field after the time is `<DIR>` or the
+    /// size. A row with anything else there stays listed but proves no file.
+    #[tokio::test]
+    async fn ftp_receipt_refuses_a_dos_row_without_a_numeric_size() {
+        let (addr, _) = receipt_server(
+            "01-23-24  10:30AM       ????           odd.bak\r\n\
+             01-23-24  10:30AM       <DIR>          dir.bak\r\n\
+             01-23-24  10:30AM                12345 kept.bak\r\n",
+            "",
+        )
+        .await;
+        let mut ftp = FtpManager::new();
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert!(!ftp.receipt_is_file("/b/odd.bak").await.unwrap());
+        assert!(!ftp.receipt_is_file("/b/dir.bak").await.unwrap());
+        assert!(ftp.receipt_is_file("/b/kept.bak").await.unwrap());
     }
 
     #[tokio::test]
@@ -1400,7 +2285,7 @@ pub(crate) mod exists_tests {
                         let listing = if cmd == "NLST" {
                             "a.txt\r\nd\r\n"
                         } else if arg == "-a" {
-                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\n"
+                            "-rw-r--r-- 1 user group 5 Jan 20 10:00 .hidden\r\ndrwxr-xr-x 1 user group 0 Jan 20 10:00 denied\r\n"
                         } else if unknown_size {
                             "-rw-r--r-- 1 user group ???? Jan 20 10:00 a.txt\r\n"
                         } else {
@@ -1530,13 +2415,13 @@ mod connection_spec_tests {
     /// A pooled transfer session dials with the PASV-address trust of the
     /// session it was derived from, both ways (CodeRabbit on #1506 Requested
     /// 188: the pool used to build its managers with the default).
-    #[test]
-    fn a_pooled_session_keeps_the_pasv_address_trust() {
+    #[tokio::test]
+    async fn a_pooled_session_keeps_the_pasv_address_trust() {
         for trust in [true, false] {
             let mut browsing = FtpManager::new();
-            browsing.server = Some("ftp.example.com:21".to_string());
-            browsing.username = Some("user".to_string());
-            browsing.password = Some(SecretString::from("unused".to_string()));
+            let server = super::exists_tests::vsftpd_like().await;
+            browsing.connect(&server).await.unwrap();
+            browsing.login("user", "unused").await.unwrap();
             browsing.set_trust_pasv_address(trust);
             let spec = browsing.connection_spec().expect("spec");
             assert_eq!(spec.trust_pasv_address, trust);

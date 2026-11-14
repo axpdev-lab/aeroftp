@@ -428,7 +428,7 @@ export function computeFooterPercentage(
  *  file. */
 export interface FileBatchDispatcher {
     /** Send every row still in the queue as one batch. */
-    launchAll(): Promise<void>;
+    launchAll(userAction?: boolean): Promise<void>;
     /** The callback to register for a queue row. */
     callbackFor(id: string): () => void;
 }
@@ -454,7 +454,7 @@ export function createFileBatchDispatcher<E>(options: {
     ids: readonly string[];
     entries: readonly E[];
     /** Runs the given entries; resolves with the ids of the files that landed. */
-    run: (entries: E[], ids: string[]) => Promise<ReadonlySet<string>>;
+    run: (entries: E[], ids: string[], userAction: boolean) => Promise<ReadonlySet<string>>;
     /** Current queue status of a row, `undefined` once the row was removed. */
     statusOf: (id: string) => string | undefined;
     /** Auto-start OFF: the first callback sends the whole batch. */
@@ -467,13 +467,13 @@ export function createFileBatchDispatcher<E>(options: {
     const inFlight = new Set<string>();
     const deferred = new Set<string>();
 
-    const launch = async (ids: string[]): Promise<void> => {
+    const launch = async (ids: string[], userAction: boolean): Promise<void> => {
         if (ids.length === 0) return;
         // Marked before the first await, so a callback in the same tick sees it.
         for (const id of ids) inFlight.add(id);
         let landed: ReadonlySet<string> = new Set();
         try {
-            landed = await options.run(ids.map(id => options.entries[index.get(id)!]), ids);
+            landed = await options.run(ids.map(id => options.entries[index.get(id)!]), ids, userAction);
         } finally {
             for (const id of ids) inFlight.delete(id);
             // A deferred row goes again only if its file did NOT land and the
@@ -482,18 +482,18 @@ export function createFileBatchDispatcher<E>(options: {
             const again = ids.filter(id =>
                 deferred.has(id) && !landed.has(id) && options.statusOf(id) === 'pending');
             for (const id of ids) deferred.delete(id);
-            for (const id of again) void launch([id]);
+            for (const id of again) void launch([id], true);
         }
     };
 
-    const launchAll = () => {
+    const launchAll = (userAction = false) => {
         fired.all = true;
         // Pruning applies to staged rows only: with auto-start ON the rows were
         // added a moment ago and the queue snapshot may not list them yet.
         const ids = options.firstStartRunsAll
             ? options.ids.filter(id => options.statusOf(id) !== undefined)
             : options.ids;
-        return launch(ids.filter(id => !inFlight.has(id)));
+        return launch(ids.filter(id => !inFlight.has(id)), userAction);
     };
 
     return {
@@ -501,14 +501,14 @@ export function createFileBatchDispatcher<E>(options: {
         callbackFor: (id: string) => () => {
             if (!index.has(id)) return;
             if (!fired.all) {
-                void launchAll();
+                void launchAll(true);
                 return;
             }
             if (inFlight.has(id)) {
                 deferred.add(id);
                 return;
             }
-            void launch([id]);
+            void launch([id], true);
         },
     };
 }

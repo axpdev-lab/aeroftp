@@ -3,6 +3,7 @@
 
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
+import { isDeletionCancelled } from './localTrash';
 import APP from '../App.tsx?raw';
 import CODE_BLOCK from '../components/DevTools/CodeBlockActions.tsx?raw';
 import CODE_EDITOR from '../components/DevTools/CodeEditor.tsx?raw';
@@ -76,10 +77,10 @@ describe('Apply on a remote file', () => {
 
 describe('a queued transfer', () => {
     it('is bound to its server on every Start and Retry the user queues', () => {
-        const registrations = APP_CODE.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
+        const registrations = APP_CODE.split('registerTransferCallback(id, ').slice(1).map(rest => rest.slice(0, 120));
         // The restored-journal retry has its own profile ownership check.
-        const restored = registrations.filter(r => r.startsWith('id, () => retryRestoredEntry('));
-        const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(queuedTarget, id, '));
+        const restored = registrations.filter(r => r.startsWith('() => retryRestoredEntry('));
+        const bound = registrations.filter(r => r.startsWith('boundToQueuedServer(queuedTarget, id, '));
         expect(restored).toHaveLength(1);
         expect(bound).toHaveLength(5);
         expect(registrations).toHaveLength(restored.length + bound.length);
@@ -118,7 +119,7 @@ describe('a queued transfer', () => {
         const run = vi.fn();
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: vault as Overlay };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 },
             isConnected: true,
             remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
@@ -131,7 +132,7 @@ describe('a queued transfer', () => {
             connectionNumberOf,
             ACCOUNT_KEY_OPTIONS,
             oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey,
-            transferQueue: { failTransfer: vi.fn() },
+            transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() },
             t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
@@ -157,9 +158,9 @@ describe('a queued transfer', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -178,10 +179,10 @@ describe('a queued transfer', () => {
                 + between(APP, '  const abortSwitchAfterCancel = async (', '\n  // #401') : '');
         const session = { id: 'A', connectionParams: { ...params }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -477,6 +478,22 @@ describe('a queued transfer', () => {
         expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/up.txt`]);
         expect(f.row('q0')).toMatchObject({ status: 'completed' });
     });
+
+    it('refuses the actual Retry when its overwrite prompt switches the target', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [remote('up.txt')] },
+            policy: 'ask', fail: (command, call) => command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined });
+        f.checkOverwrite.mockResolvedValue({ action: 'overwrite', destinationExists: true });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'error' });
+        f.checkOverwrite.mockImplementation(async () => {
+            f.switchServer();
+            return { action: 'overwrite', destinationExists: true };
+        });
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'reconnect_ftp')).toHaveLength(0);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+    });
 });
 
 /**
@@ -543,9 +560,12 @@ describe('a switch to another server while the overwrite question is open', () =
         ]) {
             // Up to the next closure declared at App's own level.
             const body = between(APP_CODE, head, '\n  const ');
-            expect(body).toContain('const onQueuedTarget = queuedTargetGuard(queuedTarget);');
+            expect(body).toContain('queuedTargetGuard(queuedTarget);');
             const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
-            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget\)$/);
+            // M5: the guard they get checks the batch's Stop too, after the
+            // target, right before each native dispatch.
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedDispatch(?:, expectedGuiTarget)?\)$/);
+            if (writes.length > 0) expect(body).toMatch(/const onQueuedDispatch = \(\) => \{\n\s+onQueuedTarget\(\);\n\s+if \(stopCountRef\.current !== stops\) throw/);
         }
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
@@ -589,12 +609,16 @@ describe('remote files cut on one server and pasted after a switch to another', 
         expect(f.notify.error).toHaveBeenCalledWith('contextMenu.paste', 'transfer.pasteFromAnotherServer');
     });
 
-    it('moves them once their server is live again', async () => {
+    it('requires a fresh cut after the captured target was interrupted', async () => {
         const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
         cutOnA(f);
         f.switchServer();
         await f.clipboardPaste(false, SUB);
         f.switchServer({ server: 'a.example' });
+        await f.clipboardPaste(false, SUB);
+        expect(f.written()).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', isRemote: true });
+        cutOnA(f);
         await f.clipboardPaste(false, SUB);
         expect(f.written()).toEqual(names.map(n => `${SUB}/${n}`));
         expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_delete_file').map(([, args]) => args!.path))
@@ -795,15 +819,17 @@ describe('a direct remote action', () => {
     });
 
     it('takes the target when the dialog it is answered from opens', () => {
-        expect(APP).toContain('setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });');
-        expect(APP).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });');
-        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*target: snapshotQueuedTarget\(\) \}\)/g)).toHaveLength(2);
+        expect(between(APP_CODE, 'const startInlineRename =', 'const commitInlineRename =')).toContain('prepareGuiTarget(remoteActionGuard(target))');
+        expect(APP_CODE).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target, preparedTarget: prepareGuiTarget(remoteActionGuard(target)) });');
+        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*preparedTarget: prepareGuiTarget\(remoteActionGuard\(target\)\) \}\)/g)).toHaveLength(2);
     });
 
     it('moves a dropped remote file only on the server it was dropped on', () => {
-        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', '            } catch (err) {');
-        expect(move).toContain("const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;");
+        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', "humanLog.logError('MOVE'");
+        expect(move).toContain('const onTarget = remoteOwner?.check;');
         expect(move).toMatch(/onTarget\?\.\(\);\n\s+if \(useProviderCmd\) \{\n\s+await invoke\('provider_rename'/);
+        expect(move).toContain('const expectedGuiTarget = remoteOwner?.epoch;');
+        expect(DRAG).toContain('remoteOwner = await resolveRemoteDragTarget(dragData)');
         expect(APP).toContain('remoteActionGuard: () => remoteActionGuard(),');
     });
 
@@ -811,10 +837,10 @@ describe('a direct remote action', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const failQueuedRestIfRetargeted =');
         const session = { id: 'A', connectionParams: { server: 'a.example', protocol: 'sftp', username: 'u', password: 'k' }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');
@@ -867,7 +893,8 @@ describe('the private step after a batch upload', () => {
  */
 describe('a delete that asks for a commit message', () => {
     const run = async () => {
-        const source = between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
+        const source = between(APP, '  const captureGuiTarget =', '\n  const getOverwriteDestination =')
+            + between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
         const { code } = await transformWithOxc(source, 'delete.ts');
         const live = { server: 'a.example' };
         // The guard of a direct action: bound to the server live when it is taken.
@@ -875,7 +902,7 @@ describe('a delete that asks for a commit message', () => {
             const at = live.server;
             return () => { if (live.server !== at) throw new QueuedTargetChangedError('toast.remoteTargetChanged'); };
         };
-        const invoke = vi.fn(async () => undefined);
+        const invoke = vi.fn(async (command: string) => command === 'provider_gui_target_epoch' ? 7 : undefined);
         const dialog: { onCommit?: (message: string) => void } = {};
         const notify = { success: vi.fn(), error: vi.fn() };
         const context: Record<string, unknown> = {
@@ -886,6 +913,7 @@ describe('a delete that asks for a commit message', () => {
             humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
             usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
             setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+            deleteGesturesRef: { current: [] }, isDeletionCancelled,
         };
         const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context));
         return { deleteRemoteFile, live, invoke, dialog, notify };
@@ -899,7 +927,7 @@ describe('a delete that asks for a commit message', () => {
         r.live.server = 'b.example';
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).not.toHaveBeenCalled();
+        expect(r.invoke.mock.calls.filter(([name]) => name === 'provider_delete_file')).toHaveLength(0);
         expect(r.notify.error).toHaveBeenCalled();
     });
 
@@ -908,6 +936,225 @@ describe('a delete that asks for a commit message', () => {
         r.deleteRemoteFile('/repo/a.txt', false);
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message' });
+        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message', expectedGuiTarget: 7, operationId: expect.any(String) });
     });
 });
+
+/**
+ * E3: each local copy or delete is a native command with a cancel state of
+ * its own, so a Stop raised during the first one does not reach the next:
+ * the paste itself starts no further item once a Stop came.
+ */
+describe('a Stop during a paste ends the paste, not only the command in flight', () => {
+    const names = ['a.txt', 'b.txt', 'c.txt'];
+    const stopOnFirst = (f: ReturnType<typeof fixture>, command: string, answer: () => unknown) => {
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            if (cmd !== command) return original(cmd, args);
+            if (f.invoke.mock.calls.filter(([c]) => c === command).length === 1) {
+                f.stopCountRef.current += 1;
+                return answer();
+            }
+            return undefined;
+        }) as typeof original);
+    };
+    const sent = (f: ReturnType<typeof fixture>, command: string) => f.invoke.mock.calls.filter(([c]) => c === command);
+
+    it('copies no further local file after a Stop (K4)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [SUB]: [] } });
+        // The Stop comes while the first copy runs; that copy completes.
+        stopOnFirst(f, 'copy_local_file', () => undefined);
+        f.clipboardCopy(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(false, SUB);
+        expect(sent(f, 'copy_local_file')).toHaveLength(1);
+    });
+
+    it('lets a new paste run after an earlier gesture was stopped (K3)', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('a.txt')], [REMOTE]: [] } });
+        // An earlier gesture's Stop, which no batch has reset since.
+        f.stopCountRef.current += 1;
+        f.batchCancelledRef.current = true;
+        f.clipboardCut([{ name: 'a.txt', path: `${LOCAL}/a.txt`, is_dir: false }], false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        expect(f.invoke.mock.calls.filter(([c]) => /upload/.test(c)).length).toBeGreaterThan(0);
+        expect(sent(f, 'delete_local_file')).toHaveLength(1);
+    });
+
+    it('deletes no further source of a cut after a Stop, even one answered as a cancelled delete', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        stopOnFirst(f, 'delete_local_file', () => 'Deletion cancelled: 0 of 1 files deleted');
+        f.clipboardCut(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        expect(sent(f, 'delete_local_file')).toHaveLength(1);
+        // H4: the cut keeps on the clipboard every source it did not finish
+        // moving, the one whose delete was cancelled included.
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+    });
+
+    it('the toast Cancel during the cleanup of a cut stops its delete and no other source goes (L2)', async () => {
+        for (const sourceIsRemote of [false, true]) {
+            const f = fixture({ folders: sourceIsRemote
+                ? { [REMOTE]: names.map(n => remote(n)), [SUB]: [] }
+                : { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+            const command = sourceIsRemote ? 'provider_delete_file' : 'delete_local_file';
+            const cancelled: Array<string | null> = [];
+            const original = f.invoke.getMockImplementation()!;
+            f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+                if (cmd !== command) return original(cmd, args);
+                // The toast's Cancel while the first source delete runs: what
+                // `ScanningToast.onCancel` does, then the native answer.
+                f.stopCountRef.current += 1;
+                cancelled.push(f.deleteGesturesRef.current[f.deleteGesturesRef.current.length - 1] ?? null);
+                if (sourceIsRemote) throw new Error('Transfer cancelled by user');
+                return 'Deletion cancelled: 0 of 1 files deleted';
+            }) as typeof original);
+            const dir = sourceIsRemote ? REMOTE : LOCAL;
+            f.clipboardCut(names.map(n => ({ name: n, path: `${dir}/${n}`, is_dir: false })), sourceIsRemote, dir);
+            await f.clipboardPaste(!sourceIsRemote, sourceIsRemote ? SUB : REMOTE);
+            const deletes = sent(f, command);
+            expect(deletes).toHaveLength(1);
+            // The Cancel reached the paste's own scope, the one its delete carries.
+            expect(cancelled[0]).toEqual(expect.any(String));
+            expect(deletes[0][1]).toMatchObject({ operationId: cancelled[0] });
+            expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+        }
+    });
+
+    it('the toast Cancel reaches the delete of an earlier paste a later one overlaps (M4)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const held: Array<() => void> = [];
+        const deleting: Array<string> = [];
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            if (cmd !== 'delete_local_file') return original(cmd, args);
+            deleting.push(String(args?.operationId));
+            // Each source delete waits, as a folder delete runs.
+            await new Promise<void>(resolve => held.push(resolve));
+            return 'Deletion cancelled: 0 of 1 files deleted';
+        }) as typeof original);
+        f.clipboardCut([{ name: names[0], path: `${LOCAL}/${names[0]}`, is_dir: false }], false, LOCAL);
+        const first = f.clipboardPaste(true, REMOTE);
+        await vi.waitFor(() => expect(deleting).toHaveLength(1));
+        f.clipboardCut([{ name: names[1], path: `${LOCAL}/${names[1]}`, is_dir: false }], false, LOCAL);
+        const second = f.clipboardPaste(true, REMOTE);
+        await vi.waitFor(() => expect(deleting).toHaveLength(2));
+        // What the toast's Cancel sends: one cancel per gesture it knows.
+        const cancelled = [...f.deleteGesturesRef.current];
+        expect(deleting[0]).not.toBe(deleting[1]);
+        expect(cancelled).toEqual(expect.arrayContaining(deleting));
+        for (const release of held) release();
+        await Promise.all([first, second]);
+    });
+
+    it('a paste stopped while a transfer is prepared (overwrite question) sends no transfer (M5)', async () => {
+        const dispatched = (f: ReturnType<typeof fixture>) =>
+            f.invoke.mock.calls.some(([c]) => /^(provider_)?(upload|download)_file$/.test(c));
+        for (const fromRemote of [false, true]) {
+            for (const stopped of [false, true]) {
+                const f = fixture({ folders: { [LOCAL]: [local(names[0])], [REMOTE]: [remote(names[0])] } });
+                f.checkOverwrite.mockImplementation(async () => {
+                    // The Stop lands while the user is asked about the existing file.
+                    if (stopped) f.stopCountRef.current += 1;
+                    return { action: 'overwrite', destinationExists: true };
+                });
+                const dir = fromRemote ? REMOTE : LOCAL;
+                f.clipboardCopy([{ name: names[0], path: `${dir}/${names[0]}`, is_dir: false }], fromRemote, dir);
+                await f.clipboardPaste(!fromRemote, fromRemote ? LOCAL : REMOTE);
+                expect(f.checkOverwrite).toHaveBeenCalled();
+                expect(dispatched(f), `fromRemote=${fromRemote} stopped=${stopped}`).toBe(!stopped);
+            }
+        }
+    });
+
+    it('a drop stopped while it prepared its target starts no transfer (M6)', async () => {
+        // A batch starts with `reset_cancel_flag`; its transfers leave the queue after it.
+        const started = (f: ReturnType<typeof fixture>) =>
+            f.invoke.mock.calls.some(([c]) => c === 'reset_cancel_flag' || /upload|download/.test(c));
+        for (const fromRemote of [false, true]) {
+            for (const stoppedSince of [false, true]) {
+                const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: names.map(n => remote(n)) } });
+                // The drop took its count (4) before its first await.
+                f.stopCountRef.current = stoppedSince ? 5 : 4;
+                const rows = fromRemote ? [remote(names[0])] : [local(names[0])];
+                await f.drop(rows, fromRemote, fromRemote ? LOCAL : REMOTE, fromRemote ? 'remote' : 'local', undefined, 4);
+                expect(started(f), `fromRemote=${fromRemote} stopped=${stoppedSince}`).toBe(!stoppedSince);
+            }
+        }
+    });
+
+    it('starts no transfer when a Stop came while the target was prepared (H7)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        stopOnFirst(f, 'provider_gui_target_epoch', () => 7);
+        f.clipboardCut(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        const transfers = f.invoke.mock.calls.filter(([c]) => /upload|download|delete/.test(c));
+        expect(transfers).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+    });
+
+    it('deletes no vault source of a cut after a Stop during its download (H5)', async () => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [SUB]: [] }, vaultOverlay: true });
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            const answer = await original(cmd, args);
+            // The Stop lands while the first file comes out of the vault.
+            if (cmd === 'aerovault_overlay_extract_entry') f.stopCountRef.current += 1;
+            return answer;
+        }) as typeof original);
+        f.clipboardCut(names.map(n => ({ name: n, path: `${REMOTE}/${n}`, is_dir: false })), true, REMOTE);
+        await f.clipboardPaste(false, SUB);
+        expect(sent(f, 'aerovault_overlay_extract_entry')).toHaveLength(1);
+        expect(sent(f, 'aerovault_overlay_delete_entries')).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut' });
+    });
+});
+
+/**
+ * E3 and H8 for the panel delete, the gesture that has a Cancel (its scanning
+ * toast): one id per gesture, made before anything is awaited, carried by
+ * every native delete of it; the toast's Cancel stops the delete in flight
+ * through that id, and touches no other transfer.
+ */
+describe('a panel delete is one gesture its toast can cancel', () => {
+    it('carries one id from its start and cancels it from the toast', () => {
+        for (const head of ['const deleteMultipleRemoteFiles = withBatchLatch(', 'const deleteMultipleLocalFiles = withBatchLatch(']) {
+            const body = between(APP_CODE, head, '\n  const ');
+            expect(body).toMatch(/const performDelete = async \(\) => \{\n\s+const operationId = crypto\.randomUUID\(\);\n\s+deleteGesturesRef\.current = \[\.\.\.deleteGesturesRef\.current\.slice\(-15\), operationId\];/);
+        }
+        const remote = between(APP_CODE, 'const deleteMultipleRemoteFiles = withBatchLatch(', '\n  const ');
+        expect(remote).toContain("await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId });");
+        expect(remote).toMatch(/if \(stopCountRef\.current !== stops\) return;/);
+        // K6: the provider deletes carry the gesture too.
+        expect(remote.match(/invoke\('provider_delete_dir', \{[^}]*operationId \}\)/g)).toHaveLength(2);
+        expect(remote).toMatch(/invoke\('provider_delete_file', \{[^}]*operationId \}\)/);
+        const local = between(APP_CODE, 'const deleteMultipleLocalFiles = withBatchLatch(', '\n  const ');
+        expect(local).toContain('{ ...localTrashDeps(() => batchCancelledRef.current), operationId }');
+        // L2: every native delete of the page belongs to a gesture scope, and
+        // every scope is made before its first await and named to the toast.
+        const deletes = APP_CODE.match(/invoke(<[^>]*>)?\('(delete_remote_file|delete_local_file|provider_delete_file|provider_delete_dir)', \{[^}]*\}/g) ?? [];
+        expect(deletes.length).toBeGreaterThanOrEqual(10);
+        for (const call of deletes) expect(call).toContain('operationId');
+        const scopes = APP_CODE.match(/deleteGesturesRef\.current = \[\.\.\.deleteGesturesRef\.current\.slice\(-15\), operationId\];/g) ?? [];
+        expect(scopes).toHaveLength(5);
+        // One reader of a cancelled delete, in both shapes: no call site
+        // reads the text itself, and every delete gesture asks it.
+        const pageSources = Object.entries(import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.*', '!../**/*.testkit.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>);
+        for (const [file, source] of pageSources) {
+            if (file.endsWith('/localTrash.ts')) continue;
+            expect(source, file).not.toMatch(/Deletion cancelled|Transfer cancelled by user/);
+        }
+        expect(APP_CODE.match(/isDeletionCancelled\(/g)?.length ?? 0).toBeGreaterThanOrEqual(7);
+        // M5: inside a loop, every single transfer gets a guard that checks the
+        // gesture's Stop right before its native dispatch, after its awaits.
+        for (const [guard, count] of [['onPasteDispatch', 2], ['onQueuedDispatch', 7], ['planDispatch\\(\\)', 2]] as const) {
+            expect(APP_CODE.match(new RegExp(`(?:uploadFile|downloadFile)\\([^;]*?${guard}`, 'g'))?.length, guard).toBe(count);
+        }
+        const toast = between(APP_CODE, '<ScanningToast state={scanningState}', '/>');
+        expect(toast).toContain("invoke('operation_scope_cancel', { operationId })");
+        // M4: the Cancel reaches every delete gesture started, not only the
+        // last one: an earlier one still running is stopped too.
+        expect(toast).toContain('for (const operationId of deleteGesturesRef.current)');
+        expect(toast).toContain('stopCountRef.current += 1; batchCancelledRef.current = true;');
+    });
+});
+

@@ -4,7 +4,7 @@
 
 import { act, createElement, useEffect, useLayoutEffect } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useTransferQueue } from './TransferQueue';
 
 let root: Root | null = null;
@@ -25,6 +25,131 @@ afterEach(async () => {
 });
 
 describe('useTransferQueue retryAllFailed (#139)', () => {
+    it.each(['single', 'all'] as const)('runs the actual queued executor on %s Retry before React commits', async mode => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const boundToQueuedServer =');
+        const end = app.indexOf('\n  /** Whether two connections', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'synchronous-retry-executor.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload'); queue.failTransfer(id, 'Timeout'); });
+        const beforeRetry = queue;
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, queuedTargetProblem: () => null,
+            transferQueue: beforeRetry, t: (key: string) => key };
+        const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
+        const executor = vi.fn();
+        await act(async () => {
+            if (mode === 'single') beforeRetry.retryItem(id); else expect(beforeRetry.retryAllFailed()).toEqual([id]);
+            expect(beforeRetry.items.find(item => item.id === id)?.status).toBe('error');
+            expect(beforeRetry.getItemNow(id)?.status).toBe('pending');
+            const executing = bind({}, id, executor)();
+            expect(executor).toHaveBeenCalledOnce();
+            await executing;
+        });
+    });
+
+    // A staged Start waits for a sync run to end; a Stop during that wait
+    // settles the row as cancelled instead of leaving it pending.
+    it('cancels a staged row stopped while it waited for a sync run', async () => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const boundToQueuedServer =');
+        const end = app.indexOf('\n  /** Whether two connections', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'stopped-while-waiting.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload', { staged: true }); });
+        let endRun!: () => void;
+        const syncRun = new Promise<void>(resolve => { endRun = resolve; });
+        const stopCountRef = { current: 0 };
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: syncRun as Promise<void> | null }, stopCountRef, queuedTargetProblem: () => null,
+            transferQueue: queue, t: (key: string) => key };
+        const bind = new Function(...Object.keys(context), `${code};return boundToQueuedServer;`)(...Object.values(context));
+        const executor = vi.fn();
+        await act(async () => {
+            queue.startStaged(id);
+            const waiting = bind({}, id, executor)();
+            stopCountRef.current++;
+            context.syncRunnerPendingRef.current = null;
+            endRun();
+            await waiting;
+        });
+        expect(executor).not.toHaveBeenCalled();
+        const row = queue.getItemNow(id);
+        expect(row?.status).not.toBe('pending');
+        expect(row?.cancelled).toBeTruthy();
+    });
+
+    // Resume All of a restored row while a sync run holds the session, then
+    // Stop: the restored retry settles its row as cancelled too.
+    it('cancels a restored row whose resume was stopped while a sync run held it', async () => {
+        const { transformWithOxc } = await import('vite'); const { default: app } = await import('../App.tsx?raw');
+        const start = app.indexOf('  const retryRestoredEntry = useLatestCallback(');
+        const end = app.indexOf('\n\n  // Queues the restorable entries of the journal read at startup.', start);
+        const { code } = await transformWithOxc(app.slice(start, end), 'restored-stopped-while-waiting.ts');
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'download'); });
+        let endRun!: () => void;
+        const syncRun = new Promise<void>(resolve => { endRun = resolve; });
+        const stopCountRef = { current: 0 };
+        const downloadFile = vi.fn();
+        const context = { useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null },
+            syncRunnerPendingRef: { current: syncRun as Promise<void> | null }, stopCountRef,
+            transferQueue: queue, t: (key: string) => key, downloadFile, uploadFile: vi.fn() };
+        const retry = new Function(...Object.keys(context), `${code};return retryRestoredEntry;`)(...Object.values(context));
+        await act(async () => {
+            const waiting = retry(id, { direction: 'download', remote_path: '/file.txt', local_path: '/tmp/file.txt' });
+            stopCountRef.current++;
+            context.syncRunnerPendingRef.current = null;
+            endRun();
+            await waiting;
+        });
+        expect(downloadFile).not.toHaveBeenCalled();
+        const row = queue.getItemNow(id);
+        expect(row?.status).not.toBe('pending');
+        expect(row?.cancelled).toBeTruthy();
+    });
+
+    it('forgets a removed staged Start synchronously even through an older hook result', async () => {
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload', { staged: true }); });
+        const staged = queue;
+        await act(async () => {
+            staged.startStaged(id);
+            expect(staged.getItemNow(id)?.status).toBe('pending');
+            staged.removeItem(id);
+            expect(staged.getItemNow(id)).toBeUndefined();
+        });
+    });
+
+    it('exposes Retry activity synchronously before React publishes the next render', async () => {
+        let queue!: ReturnType<typeof useTransferQueue>;
+        const Probe = () => { queue = useTransferQueue(); return null; };
+        await act(async () => { root!.render(createElement(Probe)); });
+        let id = '';
+        await act(async () => { id = queue.addItem('file.txt', '/file.txt', 100, 'upload'); queue.failTransfer(id, 'Timeout'); });
+        const beforeRetry = queue;
+        expect(beforeRetry.hasActiveTransfers).toBe(false);
+        await act(async () => {
+            beforeRetry.retryItem(id);
+            expect(beforeRetry.hasActiveTransfers).toBe(false);
+            expect(beforeRetry.hasActiveTransfersNow()).toBe(true);
+            beforeRetry.stopAll();
+            expect(beforeRetry.hasActiveTransfersNow()).toBe(false);
+        });
+    });
+
     it('returns failed IDs synchronously and transitions rows to pending', async () => {
         let queue!: ReturnType<typeof useTransferQueue>;
         const Probe = () => {

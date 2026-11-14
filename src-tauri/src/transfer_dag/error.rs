@@ -38,6 +38,8 @@ pub enum TransferErrorKind {
     Network,
     /// Authentication / credential failure.
     Auth,
+    /// The session owner changed; stop the job without retry or fallback.
+    TargetChanged,
     /// Path or object not found.
     NotFound,
     /// Permission / ACL denial.
@@ -145,9 +147,13 @@ impl TransferError {
 
     /// Synthetic / structural failure with only a presentation string.
     ///
-    /// Classifies congestion and cancel keywords once at this boundary so the
-    /// controller can stay substring-free. Prefer [`Self::from_provider`] when
-    /// a [`ProviderError`] is available.
+    /// Classifies congestion keywords once at this boundary so the controller
+    /// can stay substring-free. Never a cancellation (U12): its callers pass
+    /// text that can hold a provider's words or a remote name (`Failed to
+    /// change directory to /cancelled: ...`), and a cancellation is the typed
+    /// one ([`Self::cancelled`], `ProviderError::Cancelled`) or the run's own
+    /// token, which every caller checks first. Prefer [`Self::from_provider`]
+    /// when a [`ProviderError`] is available.
     pub fn from_message(message: impl Into<String>) -> Self {
         let message = message.into();
         let retry_after = parse_embedded_retry_after(&message);
@@ -160,17 +166,38 @@ impl TransferError {
         err
     }
 
+    /// [`Self::from_message`] for text that may hold a server's: the same
+    /// classes and Retry-After, but never `TargetChanged` (the owner-change
+    /// marker in such text proves nothing).
+    pub fn from_untrusted_text(message: impl Into<String>) -> Self {
+        let message = message.into();
+        let retry_after = parse_embedded_retry_after(&message);
+        let kind = classify_provider_text(&message);
+        let mut err = Self::new(kind, message);
+        err.retry_after = retry_after;
+        if retry_after.is_some() && matches!(kind, TransferErrorKind::RateLimited) {
+            err.retry = RetryDirective::AfterHint;
+        }
+        err
+    }
+
     /// Adapter: map a provider error into a typed transfer error.
     ///
     /// Known [`ProviderError`] variants map by discriminant. String-bearing
     /// variants (e.g. `TransferFailed`, `ServerError`) are classified once
-    /// here — including extraction of an embedded `Retry-After` marker —
-    /// so the executor/AIMD path never re-parses text.
+    /// here, including extraction of an embedded `Retry-After` marker, so the
+    /// executor/AIMD path never re-parses text. Their text never classifies
+    /// as `TargetChanged`: only the typed variant does.
     pub fn from_provider(err: &ProviderError) -> Self {
         let message = err.to_string();
         let retry_after = parse_embedded_retry_after(&message);
 
         let kind = match err {
+            ProviderError::TargetChanged => TransferErrorKind::TargetChanged,
+            // The status alone is classified (`during` names our path).
+            ProviderError::FtpRefused { code, .. } => {
+                classify_text_body(&format!("FTP status {code}: command rejected"))
+            }
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
@@ -192,14 +219,17 @@ impl TransferError {
             ProviderError::ParseError(_) => TransferErrorKind::RemoteIo,
             ProviderError::IoError(_) => TransferErrorKind::LocalIo,
             ProviderError::ConnectionLost(_) => TransferErrorKind::ConnectionReset,
-            ProviderError::ConnectionFailed(s) => classify_raw_message(s),
             ProviderError::NetworkError(s) => classify_network_message(s),
-            ProviderError::TransferFailed(s)
+            // The text of these variants can be a server's answer. Only the
+            // typed `ProviderError::TargetChanged` above names an owner
+            // change: the marker inside a string never does.
+            ProviderError::ConnectionFailed(s)
+            | ProviderError::ServerError(s)
+            | ProviderError::TransferFailed(s)
             | ProviderError::ParallelRefused(s)
             | ProviderError::PinRefused(s)
-            | ProviderError::ServerError(s)
             | ProviderError::Other(s)
-            | ProviderError::Unknown(s) => classify_raw_message(s),
+            | ProviderError::Unknown(s) => classify_provider_text(s),
         };
 
         let mut te = Self::new(kind, message);
@@ -246,6 +276,7 @@ fn default_retry_for(kind: TransferErrorKind) -> RetryDirective {
     match kind {
         TransferErrorKind::Cancelled
         | TransferErrorKind::Auth
+        | TransferErrorKind::TargetChanged
         | TransferErrorKind::NotFound
         | TransferErrorKind::PermissionDenied
         | TransferErrorKind::QuotaExceeded
@@ -269,6 +300,7 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
     !matches!(
         kind,
         TransferErrorKind::Auth
+            | TransferErrorKind::TargetChanged
             | TransferErrorKind::PermissionDenied
             | TransferErrorKind::QuotaExceeded
             | TransferErrorKind::FileTooLarge
@@ -278,6 +310,10 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
 }
 
 /// Does this message say the operation was cancelled?
+///
+/// No production path asks it any more (U12): a message can hold a remote
+/// name or a provider's words, so a cancellation is the typed one or the
+/// run's token. The tests keep it to check what a stopped command prints.
 ///
 /// Five readers asked this with THREE different needles, and the answer to the
 /// same message depended on which layer was asking. `transfer_multipart` used
@@ -368,11 +404,32 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
     // that function, so a name parked after the marker must already be gone
     // here: `503` or `cancelled` in a file name is not that failure.
     let raw = crate::providers::types::without_unclassified_items(raw);
+
+    if raw.trim_start().starts_with("CONNECTION_CHANGED: ") {
+        return TransferErrorKind::TargetChanged;
+    }
+    // Text decides nothing about a cancellation (U12).
+    classify_text_body(raw)
+}
+
+/// Classify the text carried by a string-bearing [`ProviderError`]. Unlike
+/// [`classify_raw_message`] it never answers `TargetChanged`: the text may
+/// repeat what a server sent, and the owner-change marker in it proves nothing.
+///
+/// Nor `Cancelled`: a cancellation is the typed `ProviderError::Cancelled` or
+/// the run's own token, never a server's sentence that says "cancelled".
+fn classify_provider_text(raw: &str) -> TransferErrorKind {
+    // Text decides nothing about a cancellation (only the typed one does),
+    // and does not hide the rest either: `HTTP 403: Transfer cancelled` is a
+    // refusal, classified as one (T12).
+    classify_text_body(crate::providers::types::without_unclassified_items(raw))
+}
+
+/// The taxonomy shared by both entry points, on text already cut at the
+/// unclassified-item marker: everything but a cancellation.
+fn classify_text_body(raw: &str) -> TransferErrorKind {
     let lower = raw.to_lowercase();
 
-    if message_names_a_cancellation(&lower) {
-        return TransferErrorKind::Cancelled;
-    }
     if lower.contains("503") || lower.contains("service unavailable") {
         return TransferErrorKind::ServiceUnavailable;
     }
@@ -413,6 +470,39 @@ fn classify_network_message(raw: &str) -> TransferErrorKind {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn owner_change_marker_in_a_filename_never_overrides_a_typed_error() {
+        use super::*;
+        for error in [
+            ProviderError::NotFound("/remote/CONNECTION_CHANGED.txt".into()),
+            ProviderError::ServerError("remote note CONNECTION_CHANGED.txt".into()),
+            ProviderError::ServerError("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::Other("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::Unknown("  CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::TransferFailed("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::ConnectionFailed("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::ParallelRefused("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::PinRefused("CONNECTION_CHANGED: server supplied text".into()),
+            ProviderError::NetworkError("CONNECTION_CHANGED: server supplied text".into()),
+        ] {
+            assert_ne!(
+                TransferError::from_provider(&error).kind,
+                TransferErrorKind::TargetChanged
+            );
+        }
+        assert_eq!(
+            TransferError::from_provider(&ProviderError::TargetChanged).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_eq!(
+            TransferError::from_message(ProviderError::TargetChanged.to_string()).kind,
+            TransferErrorKind::TargetChanged
+        );
+        assert_ne!(
+            TransferError::from_message("/remote/CONNECTION_CHANGED.txt").kind,
+            TransferErrorKind::TargetChanged
+        );
+    }
 
     /// A negated cancellation is not a cancellation.
     ///
@@ -532,10 +622,61 @@ mod tests {
             TransferError::from_message("404 not found").kind,
             TransferErrorKind::NotFound
         );
+        // U12: a cancellation is never read from text, not even our own.
         assert_eq!(
             TransferError::from_message("Transfer cancelled by user").kind,
+            TransferErrorKind::Unknown
+        );
+    }
+
+    /// U12: every text entry point to the transfer taxonomy, not one of them
+    /// reading a cancellation: a remote name that says `cancelled` stays the
+    /// failure it is (here a 550, not found), retried or not as that failure.
+    #[test]
+    fn no_text_entry_point_reads_a_cancellation() {
+        let named = "Failed to change directory to /cancelled: FTP status 550: command rejected";
+        for kind in [
+            TransferError::from_message(named).kind,
+            TransferError::from_untrusted_text(named).kind,
+        ] {
+            assert_ne!(kind, TransferErrorKind::Cancelled, "{named}");
+        }
+        use crate::transfer_domain::{TransferFailure, TransferFailureKind};
+        for failure in [
+            TransferFailure::from_raw_message(named),
+            crate::transfer_multipart::transfer_failure_from_message(named, None),
+            TransferFailure::from_raw_message("Transfer cancelled by user"),
+        ] {
+            assert_ne!(failure.kind, TransferFailureKind::Cancelled, "{failure:?}");
+        }
+        // The typed cancellation is.
+        assert_eq!(
+            TransferError::cancelled().kind,
             TransferErrorKind::Cancelled
         );
+        assert_eq!(
+            TransferError::from_provider(&ProviderError::Cancelled).kind,
+            TransferErrorKind::Cancelled
+        );
+    }
+
+    /// T12: a provider's text that mentions a cancellation is classified by
+    /// the rest of it: the refusal stays a refusal, not retried; a text that
+    /// only says "cancelled" is Unknown, never a cancellation.
+    #[test]
+    fn a_cancellation_word_in_provider_text_hides_nothing() {
+        let refused = TransferError::from_provider(&ProviderError::ServerError(
+            "HTTP 403: Transfer cancelled".into(),
+        ));
+        assert_eq!(refused.kind, TransferErrorKind::PermissionDenied);
+        assert_eq!(refused.retry, RetryDirective::Never);
+        let busy = TransferError::from_provider(&ProviderError::ServerError(
+            "503 Service Unavailable: upload cancelled".into(),
+        ));
+        assert_eq!(busy.kind, TransferErrorKind::ServiceUnavailable);
+        assert_ne!(busy.retry, RetryDirective::Never);
+        let only = TransferError::from_untrusted_text("Transfer cancelled by user");
+        assert_eq!(only.kind, TransferErrorKind::Unknown);
     }
 
     #[test]

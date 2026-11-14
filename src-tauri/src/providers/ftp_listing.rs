@@ -110,6 +110,39 @@ fn read_size(token: &str) -> (u64, bool) {
 /// itself; until it can, this is where the fact lives instead of nowhere.
 pub(crate) const SIZE_UNREADABLE: &str = "ftp.size_unreadable";
 
+/// Marker put on an entry whose row does not confirm a regular file, a
+/// directory or a symlink: a FIFO, socket or device row of `ls -l`, or an MLSx
+/// row without a recognised `type` fact. `is_dir` and `is_symlink` are both
+/// false for such a row, which is not the same as "this is a file".
+pub(crate) const TYPE_UNCONFIRMED: &str = "ftp.type_unconfirmed";
+
+/// The same verdict from any provider: the entry's metadata does not confirm
+/// a regular file, a directory or a symlink (an SFTP entry with no file-type
+/// bits, or a FIFO, socket or device). A receipt or any other check that needs
+/// a regular file must read [`type_is_unconfirmed`], which sees both keys.
+pub(crate) const ENTRY_TYPE_UNCONFIRMED: &str = "entry.type_unconfirmed";
+
+/// Whether `entry` carries [`TYPE_UNCONFIRMED`] or [`ENTRY_TYPE_UNCONFIRMED`].
+pub fn type_is_unconfirmed(entry: &RemoteEntry) -> bool {
+    entry.metadata.contains_key(TYPE_UNCONFIRMED)
+        || entry.metadata.contains_key(ENTRY_TYPE_UNCONFIRMED)
+}
+
+/// Put [`ENTRY_TYPE_UNCONFIRMED`] on an entry of a provider other than FTP.
+pub(crate) fn mark_entry_type_unconfirmed(entry: &mut RemoteEntry) {
+    entry
+        .metadata
+        .insert(ENTRY_TYPE_UNCONFIRMED.to_string(), "1".to_string());
+}
+
+fn mark_type_unconfirmed(entry: &mut RemoteEntry, confirmed: bool) {
+    if !confirmed {
+        entry
+            .metadata
+            .insert(TYPE_UNCONFIRMED.to_string(), "1".to_string());
+    }
+}
+
 /// Whether `entry` carries [`SIZE_UNREADABLE`]: its size is a 0 that stands
 /// for "unknown", not the size of the file. For the consumers outside this
 /// crate (the CLI), which cannot name the marker itself.
@@ -377,6 +410,10 @@ pub(crate) fn parse_unix_listing(
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read);
+    mark_type_unconfirmed(
+        &mut entry,
+        matches!(permissions.chars().next(), Some('-' | 'd' | 'l')),
+    );
     Some(entry)
 }
 
@@ -459,6 +496,10 @@ pub(crate) fn parse_dos_listing(line: &str, base_path: &str) -> Option<RemoteEnt
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read);
+    // The field is the type and the size at once: `<DIR>` or a number. Any
+    // other text confirms neither a folder nor a regular file, so the row
+    // stays in the listing but cannot serve as proof that a file is there.
+    mark_type_unconfirmed(&mut entry, is_dir || size_read);
     Some(entry)
 }
 
@@ -604,6 +645,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
 
     let mut is_dir = false;
     let mut is_symlink = false;
+    let mut type_confirmed = false;
     let mut size: u64 = 0;
     // A file whose facts carry no size says nothing about it (RFC 3659 makes
     // every fact optional): the 0 is unknown, not empty.
@@ -628,6 +670,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
                 let v_lower = value.to_lowercase();
                 is_dir = v_lower == "dir" || v_lower == "cdir" || v_lower == "pdir";
                 is_symlink = v_lower == "os.unix=symlink" || v_lower == "os.unix=slink";
+                type_confirmed = is_dir || is_symlink || v_lower == "file";
             }
             "size" | "sizd" => {
                 let (parsed, read) = read_size(value);
@@ -680,6 +723,7 @@ pub(crate) fn parse_mlsd_entry(line: &str, base_path: &str) -> Option<RemoteEntr
         metadata: Default::default(),
     };
     mark_size_unreadable(&mut entry, size_read || is_dir);
+    mark_type_unconfirmed(&mut entry, type_confirmed);
     Some(entry)
 }
 
@@ -1005,6 +1049,23 @@ mod tests {
         assert_eq!(listing.entries.len(), 2, "both are kept");
         assert_eq!(listing.unreadable_sizes, 1);
         assert_eq!(listing.unreadable, 0, "neither row failed to parse");
+    }
+
+    /// A DOS row's third field is `<DIR>` or the size. Other text keeps the
+    /// row in the listing, but it confirms neither a folder nor a file.
+    #[test]
+    fn a_dos_row_without_dir_or_numeric_size_is_listed_unconfirmed() {
+        let odd = parse_listing("01-23-24  10:30AM       ????      kept.bak", "/b")
+            .expect("the row stays in the listing");
+        assert_eq!(odd.name, "kept.bak");
+        assert!(!odd.is_dir && !odd.is_symlink);
+        assert!(type_is_unconfirmed(&odd), "{odd:?}");
+        assert!(size_is_unreadable(&odd), "{odd:?}");
+        let file =
+            parse_listing("01-23-24  10:30AM           12345 kept.bak", "/b").expect("a file");
+        assert!(!type_is_unconfirmed(&file), "{file:?}");
+        let dir = parse_listing("01-23-24  10:30AM       <DIR>          d", "/b").expect("a dir");
+        assert!(dir.is_dir && !type_is_unconfirmed(&dir), "{dir:?}");
     }
 
     /// The dispatcher decides on the shape of the first token, so a DOS row

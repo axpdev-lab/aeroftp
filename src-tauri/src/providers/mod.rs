@@ -1246,6 +1246,13 @@ pub const FILEN_DESKTOP_BRIDGE_NOTE: &str = "Filen Desktop preset: these figures
 #[async_trait]
 #[allow(dead_code)]
 pub trait StorageProvider: Send + Sync {
+    /// Backend-only provenance of the credential actually used by connect.
+    /// Dynamic token sources verify their sealed owner on every call. No raw
+    /// token or unkeyed credential hash may cross IPC from this material.
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        Ok(None)
+    }
+
     /// Downcast to concrete provider type for provider-specific operations
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
@@ -1278,6 +1285,18 @@ pub trait StorageProvider: Send + Sync {
     /// Non-secret authenticated namespace for persistent sync authority, when an
     /// account label alone omits the actual device, mount or client namespace.
     fn sync_namespace_identity(&self) -> Option<String> {
+        None
+    }
+
+    /// Raised once the tree this session reads and writes is no longer the
+    /// one it connected to (GitHub switching to a working branch after a
+    /// protected-branch refusal). From then on the provider itself refuses
+    /// every write of the session (`TargetChanged`), whoever holds it: a
+    /// plan made against the previous tree stops at its next write, and a
+    /// new connection is a new provider. The GUI target reads the flag
+    /// without the provider lock to move its epoch, so the page reads the
+    /// target again.
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
         None
     }
 

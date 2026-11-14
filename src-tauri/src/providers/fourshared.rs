@@ -1084,6 +1084,21 @@ impl FourSharedProvider {
 
 #[async_trait]
 impl StorageProvider for FourSharedProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        use secrecy::ExposeSecret;
+        serde_json::to_string(&(
+            "fourshared",
+            API_BASE,
+            &self.config.consumer_key,
+            self.config.consumer_secret.expose_secret(),
+            self.config.access_token.expose_secret(),
+            self.config.access_token_secret.expose_secret(),
+            &self.root_folder_id,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

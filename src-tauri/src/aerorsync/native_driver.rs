@@ -384,6 +384,7 @@ fn failure_depends_on_argv(err: &AerorsyncError) -> bool {
         err.kind,
         AerorsyncErrorKind::Cancelled
             | AerorsyncErrorKind::HostKeyRejected
+            | AerorsyncErrorKind::PinnedKeyMismatch
             | AerorsyncErrorKind::UnsupportedVersion
     )
 }
@@ -7747,6 +7748,8 @@ mod tests {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         };
 
         let transport = SshRemoteShellTransport::new(ssh_config);
@@ -7850,6 +7853,8 @@ mod tests {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         };
 
         let run_id = std::time::SystemTime::now()
@@ -11941,6 +11946,8 @@ mod tests {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         })
     }
 
@@ -11988,6 +11995,8 @@ mod tests {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         };
         let transport = SshRemoteShellTransport::new(ssh_config);
         let driver = AerorsyncDriver::new(transport, CancelHandle::inert());

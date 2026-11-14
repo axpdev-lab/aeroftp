@@ -11,6 +11,13 @@ import { IconThemeProvider } from './hooks/useIconTheme';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { loader } from '@monaco-editor/react';
 import './styles.css';
+import { invoke } from '@tauri-apps/api/core';
+import { bindSyncPage } from './utils/remoteSyncRunner';
+
+// Bind this document to its window before anything else can ask for a sync
+// run (the native side gives runs only to the window's last bound document).
+// A run awaits this same binding; a failure here is retried by the next run.
+void bindSyncPage(invoke).catch(() => undefined);
 
 // Pre-configure Monaco AMD path (must match CodeEditor.tsx)
 loader.config({ paths: { vs: '/vs' } });

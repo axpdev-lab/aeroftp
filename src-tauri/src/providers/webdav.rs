@@ -674,6 +674,36 @@ fn body_cut_short(error: &reqwest::Error, received: u64, announced: u64) -> Stri
 
 /// #958: the Filen Desktop bridge never answers `Depth: infinity`, so asking
 /// it cost every used-storage scan the whole header cap.
+/// Whether the account behind a WebDAV or S3 endpoint cannot be verified from
+/// the connection: a local bridge (Filen Desktop, MEGAcmd, OpenDrive Desktop,
+/// by preset) or any loopback endpoint, which can be a hand-configured bridge.
+/// Its endpoint and credentials are the bridge's, and the account upstream
+/// can change behind them. Such a connection owns no stable identity: no sync
+/// owner, and a GUI target of this connection only (T4). One rule for both.
+pub(crate) fn upstream_account_unverified(provider_id: Option<&str>, endpoint: &str) -> bool {
+    let bridge = provider_id.is_some_and(|id| {
+        crate::local_bridge::bridge_kind_for_provider_id(id).is_some()
+            || matches!(id, "filen" | "opendrive-desktop")
+    });
+    // An endpoint saved without a scheme (`127.0.0.1:4566`) is read as one.
+    let url = url::Url::parse(endpoint)
+        .ok()
+        .filter(|url| url.host_str().is_some())
+        .or_else(|| url::Url::parse(&format!("http://{endpoint}")).ok());
+    let local = url
+        .as_ref()
+        .and_then(url::Url::host_str)
+        .is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_matches(['[', ']'])
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|ip| ip.is_loopback())
+                || host.ends_with(".filen.io") && host.starts_with("local.")
+        });
+    bridge || local
+}
+
 fn infinity_refused_from_the_start(provider_id: Option<&str>) -> bool {
     provider_id == Some("filen-desktop-webdav")
 }
@@ -3913,6 +3943,24 @@ impl NextcloudMultipartHandle {
 
 #[async_trait]
 impl StorageProvider for WebDavProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        use secrecy::ExposeSecret;
+        if upstream_account_unverified(self.config.provider_id.as_deref(), &self.config.url) {
+            return Ok(None);
+        }
+        serde_json::to_string(&(
+            "webdav",
+            &self.config.url,
+            &self.config.username,
+            self.config.password.expose_secret(),
+            self.config.anonymous,
+            &self.config.provider_id,
+            &self.server_root,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -6420,6 +6468,41 @@ mod tests {
             Box::new(provider)
         })
         .await;
+    }
+
+    #[test]
+    fn sync_owner_excludes_actual_bridge_presets_and_generic_loopback() {
+        for id in [
+            "filen-desktop-webdav",
+            "megacmd-webdav",
+            "megacmd",
+            "opendrive-desktop",
+        ] {
+            let mut config = test_config("https://fixture.invalid/");
+            config.provider_id = Some(id.into());
+            assert!(WebDavProvider::new(config)
+                .unwrap()
+                .sync_owner_identity()
+                .unwrap()
+                .is_none());
+        }
+        for url in [
+            "http://127.0.0.1:7654/",
+            "http://[::1]:7654/",
+            "http://localhost:7654/",
+            "http://local.webdav.filen.io/",
+        ] {
+            assert!(WebDavProvider::new(test_config(url))
+                .unwrap()
+                .sync_owner_identity()
+                .unwrap()
+                .is_none());
+        }
+        assert!(WebDavProvider::new(test_config("https://fixture.invalid/"))
+            .unwrap()
+            .sync_owner_identity()
+            .unwrap()
+            .is_some());
     }
 
     /// #368: the Filen Desktop WebDAV bridge has the same local cache as the

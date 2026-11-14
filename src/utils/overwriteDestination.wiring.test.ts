@@ -1,119 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { transformWithOxc } from 'vite';
-import app from '../App.tsx?raw';
-import overwriteHook from '../hooks/useOverwriteCheck.ts?raw';
 import { describe, expect, it, vi } from 'vitest';
-import { usesProviderApi, type RemoteFile } from '../types';
-import { loadOverwriteDestination } from './overwriteDestination';
-import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath, splitForFileBatch } from './fileBatchRouting';
-import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
-import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from './localPath';
-
-// Run the actual App transfer closures with a mocked IPC boundary. This catches
-// a caller that forgets to pass the snapshot, lists inside the loop, or writes
-// after a failed preflight, without mounting the entire Tauri/Monaco UI.
-function closure(name: string, endMarker: string) {
-  const start = app.indexOf(`\n  const ${name} =`);
-  const end = app.indexOf(endMarker, start + 1);
-  if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
-  return app.slice(start, end);
-}
-const { code } = await transformWithOxc(
-  (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
-  + closure('downloadFile', '\n  const uploadFile =')
-  + closure('uploadFile', '\n  // The retry of an item restored from the journal')
-  + closure('runFileBatch', '\n  const uploadMultipleFiles ='),
-  'overwrite-wiring.ts',
-);
-// The paste: what it hands the batch of a copy to the other side.
-const { code: pasteCode } = await transformWithOxc(
-  closure('clipboardPaste', '\n  // openDevToolsPreview, openUniversalPreview'),
-  'paste-wiring.ts',
-);
-const { code: overwriteCode } = await transformWithOxc(
-  overwriteHook.slice(overwriteHook.indexOf('  const checkOverwrite ='), overwriteHook.indexOf('  const resetOverwriteSettings =')),
-  'overwrite-check.ts',
-);
-
-type Direction = 'upload' | 'download';
-type Policy = 'skip' | 'overwrite' | 'resume' | 'rename';
-const file = (name: string, size = 40): RemoteFile => ({ name, path: `/actual/${name}`, size, modified: null, is_dir: false, permissions: null });
-function fixture(options: { direction: Direction; policy?: Policy; destination?: RemoteFile[]; panel?: RemoteFile[]; nested?: RemoteFile[]; panel2?: RemoteFile[]; failListing?: boolean; beforeListing?: () => Promise<void>; ownsProfile?: () => boolean; protocol?: 'webdav' | 'sftp' | 'imagekit' }) {
-  const direction = options.direction;
-  const protocol = options.protocol || 'webdav';
-  const destination = options.destination ?? [file('a.bin')];
-  const panel = options.panel ?? [];
-  const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
-    if (['get_local_files', 'provider_list_files'].includes(command)) {
-      await options.beforeListing?.();
-      if (options.failListing) throw new Error('Destination listing refused');
-      return command === 'get_local_files' ? destination : { files: destination, current_path: '/panel' };
-    }
-    if (command === 'provider_download_files_batch' || command === 'provider_upload_files_batch') {
-      const entries = args!.params.entries;
-      return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
-    }
-    if (['reset_cancel_flag', 'provider_download_file', 'provider_upload_file'].includes(command)) return undefined;
-    if (command === 'provider_download_folder') return { cancelled: false, failed: 0, skipped: 0 };
-    throw new Error(`Unexpected IPC: ${command}`);
-  });
-  // Execute the real hook policy as well as the real App batch planner. This
-  // makes duplicate-name regressions exercise suffix selection, not a stub.
-  const checkOverwrite = vi.fn(new Function('isWindowsLocalPath', 'useCallback', 'localFiles', 'remoteFiles', 'fileExistsAction', 'overwriteApplyToAllRef', 'setOverwriteDialog',
-    `${overwriteCode}; return checkOverwrite;`)(isWindowsLocalPath, (fn: unknown) => fn, panel, panel, options.policy || 'skip',
-      { current: { enabled: false, action: 'overwrite' } }, () => { throw new Error('Unexpected interactive overwrite'); }));
-  const resolveDestination = vi.fn(loadOverwriteDestination);
-  const queueItemsRef = { current: [] as { id: string; status: string }[] };
-  const transferQueue = {
-    addItem: vi.fn(() => {
-      const id = `q${queueItemsRef.current.length}`;
-      queueItemsRef.current.push({ id, status: 'pending' });
-      return id;
-    }),
-    startTransfer: vi.fn(), completeTransfer: vi.fn(), failTransfer: vi.fn(),
-  };
-  const notify = { info: vi.fn(), error: vi.fn() };
-  const resetOverwriteSettings = vi.fn();
-  const context = {
-    invoke, checkOverwrite, loadOverwriteDestination: resolveDestination, resetOverwriteSettings,
-    isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget,
-    isLiveOnProfile: options.ownsProfile ?? (() => true),
-    sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams: { protocol },
-    usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
-    localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
-    // The rows shown, which a nested row of a flattened search is found in.
-    sortedLocalFiles: options.nested ?? [],
-    localFiles2: options.panel2 ?? [], sortedLocalFiles2: options.panel2 ?? [],
-    remoteFiles: direction === 'download' ? [file('a.bin', 100)] : panel,
-    humanLog: { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), updateEntry: vi.fn() },
-    pendingFileLogIds: { current: new Map() }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
-    circuitBreaker: { reset: vi.fn() }, retryCallbacksRef: { current: new Map() }, queueItemsRef, transferQueue,
-    recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), fileBatchCommand, keepsSingleFilePath,
-    folderTransferIsComplete, createFileBatchDispatcher, rearmedOnUserAction,
-    // One server for the whole run (the server check is pinned in wrongTarget.wiring.test.ts).
-    boundToQueuedServer: (_target: unknown, _id: string, run: () => unknown) => async () => { await run(); },
-    snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
-    queuedTargetProblem: () => null,
-    queuedTargetGuard: () => () => undefined,
-    failQueuedRestIfRetargeted: () => false,
-    QueuedTargetChangedError: Error,
-    joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
-    settings: { autoStartTransfers: true }, fileExistsAction: options.policy || 'skip',
-    effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
-    downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
-    buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
-    formatBytes: (size: number) => String(size), t: (key: string) => key, notify,
-    // Outside React, a function from useLatestCallback is the function itself.
-    useLatestCallback: <F,>(fn: F) => fn,
-  };
-  const runtime = new Function(...Object.keys(context), `${code}; return { downloadFile, uploadFile, runFileBatch };`)(...Object.values(context));
-  const writers = () => invoke.mock.calls.filter(([name]) => /provider_(upload|download)_(file|files_batch|folder)$/.test(name));
-  const listings = () => invoke.mock.calls.filter(([name]) => ['get_local_files', 'provider_list_files'].includes(name));
-  return { runtime, invoke, checkOverwrite, resolveDestination, notify, transferQueue, listings, writers, resetOverwriteSettings };
-}
+import type { RemoteFile } from '../types';
+import { splitForFileBatch } from './fileBatchRouting';
+import { file, fixture, pasteCode, type Direction } from './testFixtures/appTransferWiring';
 
 const items = ['a.bin', 'b.bin'].map(name => ({ name, sourcePath: `/source/${name}`, size: 100, modified: null }));
 const single = (f: ReturnType<typeof fixture>, direction: Direction) => direction === 'download'
@@ -147,12 +38,13 @@ describe('a file of panel 2 brings its own size and modified date to the overwri
     const context = {
       fileClipboardRef: { current: { files: panel2.map(({ name, path, is_dir }) => ({ name, path, is_dir })), sourceDir: '/panel2', isRemote: false, operation: 'copy' } },
       splitForFileBatch, fileBatchSessionFlags: () => ({ aeroVaultOverlay: false, gitHostUpload: false }),
-      resetOverwriteSettings: vi.fn(), runFileBatch, batchCancelledRef: { current: false },
+      resetOverwriteSettings: vi.fn(), runFileBatch, batchCancelledRef: { current: false }, stopCountRef: { current: 0 },
       remoteFiles: [], localFiles: [file('a.bin', 1)], sortedLocalFiles: [], localFiles2: panel2, sortedLocalFiles2: panel2,
       loadRemoteFiles: vi.fn(), notify: { error: vi.fn(), warning: vi.fn(), info: vi.fn() }, t: (key: string) => key,
       // One server for the whole paste (the clipboard's server check is in wrongTarget.wiring.test.ts).
       snapshotQueuedTarget: () => ({ params: {}, profileId: null, overlay: null }),
       queuedTargetProblem: () => null, queuedTargetGuard: () => () => undefined,
+      captureGuiTarget: async () => 7,
     };
     const { clipboardPaste } = new Function(...Object.keys(context), `${pasteCode}; return { clipboardPaste };`)(...Object.values(context));
     await clipboardPaste(true, '/remote');
@@ -338,4 +230,88 @@ it('requires the backend overlay as well as the frontend profile before an encry
   const f = fixture({ direction: 'download', destination: [], ownsProfile: () => true });
   await f.runtime.downloadFile('/remote/a.bin', 'a.bin', '/actual', false, 100, false, 'throw', { profileId: 'profile-A', generation: 7, requireOverlay: true });
   expect(f.writers()[0][1]).toMatchObject({ expectedGeneration: 7, expectedProfileId: 'profile-A', requireCryptOverlay: true });
+});
+
+it.each(['opendrive', 'fourshared'] as const)('keeps cut originals after %s privacy rejects a changed target', async protocol => {
+  const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite', privacyError: 'CONNECTION_CHANGED: target changed' });
+  const result = await f.runtime.runFileBatch('upload', items, '/actual');
+  expect(f.invoke).toHaveBeenCalledWith(protocol === 'opendrive' ? 'opendrive_set_path_privacy' : 'fourshared_set_path_privacy', expect.objectContaining({ isPublic: false, expectedGuiTarget: expect.any(Number) }));
+  expect(result.succeededSources).toEqual([]);
+  expect(result.aborted).toBe(true);
+  expect(result.failed).toBe(2);
+  expect(f.transferQueue.completeTransfer).not.toHaveBeenCalled();
+  // App itself settles both rows as failed: neither file was made private.
+  const rows = f.transferQueue.addItem.mock.results.map(added => added.value);
+  expect(rows).toHaveLength(2);
+  expect(f.transferQueue.failTransfer.mock.calls).toEqual(rows.map(id => [id, 'activity.set_private_error']));
+});
+
+it.each(['opendrive', 'fourshared'] as const)('fails only the row whose %s privacy write was rejected', async protocol => {
+  const f = fixture({ direction: 'upload', protocol, destination: [], policy: 'overwrite' });
+  const backend = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (command, args) => {
+    if (!command.endsWith('_set_path_privacy')) return backend(command, args);
+    if (String(args?.path).endsWith('/b.bin')) throw new Error('privacy refused');
+    return undefined;
+  });
+  const result = await f.runtime.runFileBatch('upload', items, '/actual');
+  const [rowA, rowB] = f.transferQueue.addItem.mock.results.map(added => added.value);
+  expect(f.invoke.mock.calls.filter(([command]) => command.endsWith('_set_path_privacy')).map(([, args]) => args!.path)).toEqual(['/actual/a.bin', '/actual/b.bin']);
+  expect(f.transferQueue.failTransfer.mock.calls).toEqual([[rowB, 'activity.set_private_error']]);
+  expect(f.transferQueue.completeTransfer.mock.calls).toEqual([[rowA]]);
+  expect(result.failed).toBe(1);
+  expect(result.succeededSources).toEqual(['/source/a.bin']);
+});
+
+it.each(['upload', 'download'] as const)('pins a fresh epoch for staged %s Start and subsequent Retry', async direction => {
+  let epoch = 7;
+  const f = fixture({ direction, destination: [], policy: 'overwrite', staged: true, epoch: () => epoch });
+  expect(await f.runtime.runFileBatch(direction, items, '/actual')).toMatchObject({ staged: true });
+  expect(f.writers()).toHaveLength(0);
+  epoch = 9;
+  await f.retryCallbacks.get('q0')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(1));
+  expect(f.writers()[0][1]?.params.expected_gui_target).toBe(9);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  epoch = 11;
+  await f.retryCallbacks.get('q1')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(2));
+  expect(f.writers()[1][1]?.params.expected_gui_target).toBe(11);
+});
+
+// Execute the production App launchers with an epoch response arriving after Stop.
+it.each(['upload', 'download'] as const)('does not start staged %s or Retry after Stop during epoch capture', async direction => {
+  let resolveEpoch!: (value: number) => void;
+  let epoch: number | Promise<number> = 7;
+  const f = fixture({ direction, destination: [], policy: 'overwrite', staged: true, epoch: () => epoch });
+  await f.runtime.runFileBatch(direction, items, '/actual');
+  epoch = new Promise<number>(resolve => { resolveEpoch = resolve; });
+  await f.retryCallbacks.get('q0')!();
+  f.stop();
+  resolveEpoch(9);
+  await vi.waitFor(() => expect(f.transferQueue.cancelTransfer).toHaveBeenCalledTimes(2));
+  expect(f.writers()).toHaveLength(0);
+  epoch = 11;
+  await f.retryCallbacks.get('q0')!();
+  await vi.waitFor(() => expect(f.writers()).toHaveLength(1));
+  // A subsequent retry must also abandon its captured action when Stop wins.
+  epoch = new Promise<number>(resolve => { resolveEpoch = resolve; });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await f.retryCallbacks.get('q1')!();
+  f.stop();
+  resolveEpoch(13);
+  await vi.waitFor(() => expect(f.transferQueue.cancelTransfer).toHaveBeenCalledTimes(3));
+  expect(f.writers()).toHaveLength(1);
+});
+
+it.each(['upload', 'download'] as const)('does not clear Stop during initial %s epoch capture', async direction => {
+  let finish!: (epoch: number) => void;
+  const epoch = new Promise<number>(resolve => { finish = resolve; });
+  const f = fixture({ direction, destination: [], policy: 'overwrite', epoch: () => epoch });
+  const pending = f.runtime.runFileBatch(direction, items, '/actual');
+  f.stop();
+  finish(7);
+  expect(await pending).toMatchObject({ aborted: true, sent: 0 });
+  expect(f.writers()).toHaveLength(0);
+  expect(f.invoke.mock.calls.some(([cmd]) => cmd === 'reset_cancel_flag')).toBe(false);
 });

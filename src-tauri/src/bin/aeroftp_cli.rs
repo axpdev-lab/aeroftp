@@ -7745,6 +7745,7 @@ fn connect_failure_message(e: &ProviderError) -> String {
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
     match err {
         ProviderError::ConnectionFailed(_)
+        | ProviderError::TargetChanged
         | ProviderError::ConnectionLost(_)
         | ProviderError::NotConnected
         | ProviderError::NetworkError(_) => 1,
@@ -7763,7 +7764,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotSupported(_) => 7,
         ProviderError::Timeout => 8,
         ProviderError::AlreadyExists(_) | ProviderError::DirectoryNotEmpty(_) => 9,
-        ProviderError::ParseError(_) | ProviderError::ServerError(_) => 10,
+        ProviderError::ParseError(_)
+        | ProviderError::ServerError(_)
+        | ProviderError::FtpRefused { .. } => 10,
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }
@@ -45423,6 +45426,10 @@ async fn cmd_aerorsync_probe(
         },
         auth_password: Some(SecretString::from(password)),
         auth_agent: false,
+        pinned_private_key: None,
+        // The operator gave a password: the probe logs in with it, never
+        // through `none`.
+        pinned_password: true,
     };
 
     let transport = match RusshSessionTransport::connect(cfg).await {

@@ -7,6 +7,7 @@
 // way now travel in groups, and each one is still journalled, verified and
 // recorded as on the single-file path.
 
+import { createIntentFixture } from './testFixtures/syncIntents';
 import { describe, expect, it } from 'vitest';
 import {
     filesFromJournal,
@@ -19,6 +20,7 @@ import type { SyncErrorInfo, SyncJournal } from '../types';
 
 const config = (over: Partial<RemoteSyncConfig> = {}): RemoteSyncConfig => ({
     localRoot: '/home/u/work',
+    profileId: 'A',
     remoteRoot: '/my-files/work',
     isProvider: true,
     isFtp: false,
@@ -44,10 +46,10 @@ const answer = (items: BulkItem[]) =>
         ? { status: 'failed', message: 'Permission denied: refused' }
         : item.remotePath.includes('skip') ? { status: 'not_attempted' } : { status: 'completed' });
 
-const harness = (handlers: Record<string, Handler> = {}, support = { upload: true, download: true }) => {
+const harness = (handlers: Record<string, Handler> = {}, support = { upload: true, download: true }, intentFixture = createIntentFixture()) => {
     const calls: Call[] = [];
     const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-        calls.push({ cmd, args });
+        calls.push({ cmd, args: cmd === 'save_sync_journal_cmd' ? structuredClone(args) : args });
         if (handlers[cmd]) return handlers[cmd](args) as T;
         if (cmd === 'provider_bulk_support') return support as T;
         if (cmd === 'provider_sync_transfer_bulk') return answer(args?.items as BulkItem[]) as T;
@@ -61,11 +63,11 @@ const harness = (handlers: Record<string, Handler> = {}, support = { upload: tru
         }
         return undefined as T;
     };
-    const deps: RemoteSyncDeps = { invoke, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
+    const deps: RemoteSyncDeps = { invoke: intentFixture.wrap(invoke), remoteTarget: { ownerBinding: 'test-owner-v1', epoch: 1, assertCurrent: () => undefined }, delay: async () => undefined, now: () => 0, makeId: () => 'journal' };
     const of = (cmd: string) => calls.filter((c) => c.cmd === cmd);
     const sent = () => of('provider_sync_transfer_bulk').map((c) => (c.args?.items as BulkItem[]).map((i) => i.remotePath));
     const journal = () => [...calls].reverse().find((c) => c.cmd === 'save_sync_journal_cmd')?.args?.journal as SyncJournal;
-    return { calls, deps, of, sent, journal };
+    return { calls, deps, of, sent, journal, intentFixture };
 };
 
 const files = (count: number, action: SyncRunFile['action'], name = (i: number) => `docs/f${i}.txt`): SyncRunFile[] =>
@@ -118,6 +120,57 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(ftp.of('provider_bulk_support')).toHaveLength(0);
     });
 
+    // A bulk failure is ambiguous: the file may have landed. The journal is
+    // marked unsafe and a resume asks for a new compare instead of replaying
+    // or trusting the row.
+    it('marks the journal unsafe after an ambiguous bulk failure, and the resume is refused', async () => {
+        const h = harness();
+        await runRemoteSync([...files(2, 'upload'), { relativePath: 'docs/fail.txt', action: 'upload', size: 1024, mtime: '2026-10-24T05:00:00Z' }],
+            { remote: [], local: [] }, config(), {}, h.deps);
+        const journal = h.journal();
+        expect(journal.entries.find((e) => e.relative_path === 'docs/fail.txt')?.status).toBe('failed');
+        expect(journal.resume_safe).toBe(false);
+        await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal: journal }))
+            .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    });
+
+    // Mixed results: one file failed (it may have landed) and the target
+    // changed for another. The journal the run saves is already unsafe.
+    it('marks the journal unsafe when a bulk answer mixes failed and target_changed', async () => {
+        // The destination, modelled: every upload command writes into it. The
+        // "failed" file landed anyway (the answer was lost, not the write).
+        const destination = new Map<string, string>();
+        const h = harness({
+            provider_sync_transfer_bulk: (args) => {
+                const items = args?.items as BulkItem[];
+                destination.set(items[0].remotePath, `bytes of ${items[0].localPath}`);
+                return [{ status: 'failed', message: 'refused' }, { status: 'target_changed' }];
+            },
+            provider_upload_file: (args) => { destination.set(String(args?.remotePath), 'replayed upload'); },
+        });
+        await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(), {}, h.deps).catch(() => undefined);
+        const saved = h.of('save_sync_journal_cmd').map((call) => (call.args?.journal as SyncJournal));
+        const failedSaved = saved.filter((journal) => journal.entries.some((e) => e.status === 'failed'));
+        expect(failedSaved.length).toBeGreaterThan(0);
+        expect(failedSaved.every((journal) => journal.resume_safe === false)).toBe(true);
+        // T3: the committed file is edited after the run. Resume from the
+        // saved journal is refused, dispatches no replacement transfer, and
+        // the edit is still there afterwards.
+        const committed = '/my-files/work/docs/f0.txt';
+        expect(destination.get(committed)).toBe('bytes of /home/u/work/docs/f0.txt');
+        destination.set(committed, 'user edit after the run');
+        const snapshot = new Map(destination);
+        const journal = failedSaved[failedSaved.length - 1];
+        const dispatched = () => h.of('provider_sync_transfer_bulk').length + h.of('provider_upload_file').length
+            + h.of('provider_download_file').length;
+        const before = dispatched();
+        await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal: journal }))
+            .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(dispatched()).toBe(before);
+        expect(destination.get(committed)).toBe('user edit after the run');
+        expect(destination).toEqual(snapshot);
+    });
+
     it('takes a failed file as final and sends a file the bulk did not take on its own', async () => {
         const h = harness();
         const run = files(3, 'upload', (i) => ['docs/ok.txt', 'docs/fail.txt', 'docs/skip.txt'][i]);
@@ -127,6 +180,40 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(report.errors.map((e) => e.file_path)).toEqual(['docs/fail.txt']);
         const status = Object.fromEntries(h.journal().entries.map((e) => [e.relative_path, e.status]));
         expect(status).toEqual({ 'docs/ok.txt': 'completed', 'docs/fail.txt': 'failed', 'docs/skip.txt': 'completed' });
+    });
+
+    it('reports a fixed message, not the provider text, when a failed bulk file cannot be classified', async () => {
+        const secret = 'access_token=bulk-secret-never-visible';
+        const statuses: unknown[] = [];
+        const h = harness({
+            provider_sync_transfer_bulk: (args) => (args?.items as BulkItem[]).map(() => ({ status: 'failed', message: `refused ${secret}` })),
+            classify_transfer_error: () => { throw new Error('classifier unavailable'); },
+        });
+        const report = await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(),
+            { onFileStatus: (...status) => { statuses.push(status); } }, h.deps);
+        expect(h.of('classify_transfer_error')).toHaveLength(2);
+        expect(report.errors.map((e) => e.message)).toEqual(Array(2).fill('Transfer failed; compare again before retrying'));
+        expect(JSON.stringify(report)).not.toContain(secret);
+        expect(JSON.stringify(statuses)).not.toContain(secret);
+        expect(JSON.stringify(h.journal())).not.toContain(secret);
+    });
+
+    it('keeps the provider text of a failed bulk file out of the journal when the owner changed', async () => {
+        const secret = 'access_token=owner-change-secret-never-visible';
+        const statuses: unknown[] = [];
+        const h = harness({
+            provider_sync_transfer_bulk: () => [{ status: 'target_changed' }, { status: 'failed', message: `refused ${secret}` }],
+            classify_transfer_error: () => { throw new Error('classifier unavailable'); },
+        });
+        const report = await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(),
+            { onFileStatus: (...status) => { statuses.push(status); } }, h.deps).catch((error: unknown) => error);
+        const failed = h.journal().entries.find((e) => e.relative_path === 'docs/f1.txt');
+        expect(failed?.status).toBe('failed');
+        expect(failed?.last_error?.message).toBe('Transfer failed; compare again before retrying');
+        expect(JSON.stringify(h.of('save_sync_journal_cmd').map((c) => c.args))).not.toContain(secret);
+        expect(JSON.stringify(report, Object.getOwnPropertyNames(report ?? {}))).not.toContain(secret);
+        expect(String(report)).not.toContain(secret);
+        expect(JSON.stringify(statuses)).not.toContain(secret);
     });
 
     it('stops a group at the file that reaches the budget, the last one the single-file path sends too', async () => {
@@ -239,6 +326,8 @@ describe('remoteSyncRunner on a native bulk', () => {
     it('does not send again what a resumed run already finished', async () => {
         const run = files(4, 'upload');
         const resumeJournal: SyncJournal = {
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
+            profile_id: 'A',
             id: 'resume',
             created_at: '2026-10-24T05:00:00Z',
             updated_at: '2026-10-24T05:00:00Z',
@@ -289,7 +378,7 @@ describe('remoteSyncRunner on a native bulk', () => {
         expect(h.of('provider_upload_file')).toHaveLength(0);
         expect(report.cancelled).toBe(true);
         const status = Object.fromEntries(h.journal().entries.map((e) => [e.relative_path, e.status]));
-        expect(status).toEqual({ 'docs/f0.txt': 'in_progress', 'docs/f1.txt': 'pending', 'docs/f2.txt': 'pending' });
+        expect(status).toEqual({ 'docs/f0.txt': 'pending', 'docs/f1.txt': 'pending', 'docs/f2.txt': 'pending' });
     });
 
     // A resume archives every download again, and a stopped run had already
@@ -297,10 +386,14 @@ describe('remoteSyncRunner on a native bulk', () => {
     // there is a fact, and the download goes on (it failed on every resume).
     it('resumes downloads whose copies a stopped run already kept, on the bulk and one by one', async () => {
         for (const support of [{ upload: true, download: true }, { upload: false, download: false }]) {
-            const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null }, support);
+            const h = harness({ sync_backup_run_stamp: () => 'stamp', sync_backup_archive_local: () => null, sync_backup_verify_receipt: () => true }, support);
             const run = files(3, 'download');
             const resumeJournal: SyncJournal = {
+            resume_safe: true, intent_protocol: 1, owner_binding: 'test-owner-v1',
+            profile_id: 'A',
                 id: 'resume',
+                backup_dir: '.v',
+                backup_stamp: 'stamp',
                 created_at: '2026-10-24T05:00:00Z',
                 updated_at: '2026-10-24T05:00:00Z',
                 local_path: '/home/u/work',
@@ -310,9 +403,12 @@ describe('remoteSyncRunner on a native bulk', () => {
                 verify_policy: 'none',
                 entries: run.map((f) => ({
                     relative_path: f.relativePath,
+                    overwrites_existing: true,
+                    archive_state: 'archived',
+                    archive_receipt: `/home/u/work/.v/stamp/${f.relativePath}`,
                     source_path: null,
                     action: 'download',
-                    status: 'in_progress',
+                    status: 'pending',
                     attempts: 0,
                     last_error: null,
                     verified: null,
@@ -327,5 +423,190 @@ describe('remoteSyncRunner on a native bulk', () => {
             expect(report.downloaded).toBe(3);
             expect(h.of('sync_backup_archive_local')).toHaveLength(3);
         }
+    });
+});
+
+it.each(['upload', 'download'] as const)('persists every acknowledged bulk %s before a tab switch stops follow-up work', async action => {
+    let current = true;
+    const first = harness({ provider_sync_transfer_bulk: args => {
+        current = false;
+        return (args!.items as BulkItem[]).map(() => ({ status: 'completed' }));
+    } });
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED: tab switched'); };
+    const plan = files(3, action);
+    const report = await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
+    expect(report.cancelled).toBe(true);
+    const persisted = first.of('save_sync_journal_cmd').slice(0, -1).map(call => call.args!.journal as SyncJournal);
+    expect(persisted.some(saved => saved.entries.length === 3 && saved.entries.every(entry => entry.status === 'transferred'))).toBe(true);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries.map(entry => entry.status)).toEqual(['transferred', 'transferred', 'transferred']);
+    expect(journal.entries.map(entry => entry.bytes_transferred)).toEqual([1024, 1024, 1024]);
+    const resumed = harness({}, undefined, first.intentFixture);
+    if (action === 'download') {
+        await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...resumed.deps, resumeJournal: journal })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(resumed.of('provider_download_file')).toHaveLength(0);
+        return;
+    }
+    const result = await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...resumed.deps, resumeJournal: journal });
+    expect(result.errors).toEqual([]);
+    expect(resumed.of('provider_sync_transfer_bulk')).toHaveLength(0);
+    expect(resumed.of('provider_upload_file')).toHaveLength(0);
+    expect(resumed.of('provider_download_file')).toHaveLength(0);
+    expect(resumed.journal().entries.every(entry => entry.status === 'completed')).toBe(true);
+});
+
+it('resumes acknowledged mixed-result downloads with verification, without downloading them again', async () => {
+    const settings = config({ verifyPolicy: 'size_only' });
+    const first = harness({ provider_sync_transfer_bulk: () => [
+        { status: 'completed' }, { status: 'target_changed' }, { status: 'not_attempted' },
+    ] });
+    const report = await runRemoteSync(files(3, 'download'), { remote: [], local: [] }, settings, {}, first.deps);
+    expect(report.cancelled).toBe(true);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries[0].status).toBe('transferred');
+    expect(first.of('verify_local_transfer')).toHaveLength(0);
+    expect(first.of('sync_ec_verify_repair')).toHaveLength(0);
+    const resumed = harness({
+        sync_ec_verify_repair: () => ({ status: 'verified' }),
+        verify_local_transfer: args => ({ passed: !String(args!.localPath).endsWith('f0.txt'), message: 'bad size' }),
+    }, undefined, first.intentFixture);
+    await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, settings, {}, { ...resumed.deps, resumeJournal: journal })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(resumed.of('provider_download_file')).toHaveLength(0);
+    expect(resumed.of('sync_ec_verify_repair')).toHaveLength(0);
+    expect(journal.entries[0].status).toBe('transferred');
+    expect(journal.completed).toBe(false);
+});
+
+it('keeps an acknowledged download unfinished when its requested local verification rejects', async () => {
+    const h = harness({ verify_local_transfer: () => { throw new Error('could not inspect destination'); } });
+    const report = await runRemoteSync(files(2, 'download'), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, h.deps);
+    expect(report.verifyFailed).toBe(2);
+    expect(h.journal().completed).toBe(false);
+    expect(h.journal().entries.every(entry => entry.status === 'verify_failed')).toBe(true);
+});
+
+it('requires a new compare after an acknowledgement checkpoint rejects, including after restart', async () => {
+    let persisted: SyncJournal | undefined;
+    const h = harness({ save_sync_journal_cmd: args => {
+        const snapshot = structuredClone(args!.journal as SyncJournal);
+        if (snapshot.entries.some(entry => entry.status === 'transferred')) throw new Error('disk full at ack');
+        persisted = snapshot;
+    } });
+    const plan = files(3, 'upload');
+    const report = await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, h.deps);
+    expect(report.cancelled).toBe(true);
+    expect(report.errors.some(error => error.message.includes('SYNC_RESUME_NEEDS_COMPARE'))).toBe(true);
+    expect(persisted!.entries.every(entry => entry.status === 'in_progress')).toBe(true);
+    expect(h.of('provider_sync_transfer_bulk')).toHaveLength(1);
+    expect(h.of('provider_upload_file')).toHaveLength(0);
+    const restarted = harness({}, undefined, h.intentFixture);
+    await expect(runRemoteSync(filesFromJournal(persisted!), { remote: [], local: [] }, config(), {}, { ...restarted.deps, resumeJournal: persisted })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(restarted.calls).toHaveLength(0);
+});
+
+it('never dispatches a bulk before its write-ahead checkpoint is persisted', async () => {
+    const h = harness({ save_sync_journal_cmd: args => {
+        if ((args!.journal as SyncJournal).entries.some(entry => entry.status === 'in_progress')) throw new Error('cannot save intent');
+    } });
+    const report = await runRemoteSync(files(3, 'upload'), { remote: [], local: [] }, config(), {}, h.deps);
+    expect(report.cancelled).toBe(true);
+    expect(report.errors.some(error => error.message.includes('SYNC_RESUME_NEEDS_COMPARE'))).toBe(true);
+    expect(h.of('provider_sync_transfer_bulk')).toHaveLength(0);
+    expect(h.of('provider_upload_file')).toHaveLength(0);
+});
+
+it('preserves the acknowledged upload local timestamp in an index-writing resume', async () => {
+    let current = true;
+    const first = harness({
+        get_file_properties: () => ({ size: 1024, modified: '2026-11-11T01:02:03' }),
+        provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); },
+    });
+    first.deps.writeIndex = true;
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    const plan = files(3, 'upload').map(file => ({ ...file, mtime: null }));
+    await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries.every(entry => entry.local_modified === '2026-11-11T01:02:03Z')).toBe(true);
+    const resumed = harness({}, undefined, first.intentFixture);
+    resumed.deps.writeIndex = true;
+    await runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...resumed.deps, resumeJournal: journal });
+    expect(resumed.of('get_file_properties')).toHaveLength(0);
+    expect(resumed.journal().entries.every(entry => entry.local_modified === '2026-11-11T01:02:03Z')).toBe(true);
+    const index = resumed.of('save_sync_index_cmd')[0].args!.index as { files: Record<string, { modified: string }> };
+    expect(Object.values(index.files).every(entry => entry.modified === '2026-11-11T01:02:03Z')).toBe(true);
+});
+
+it.each(['upload', 'download'] as const)('requires a fresh compare before an unproven EC tail can modify an edited %s', async action => {
+    let current = true;
+    const settings = config({ errorCorrection: { enabled: true, pct: 10 } });
+    const first = harness({ provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); } });
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    await runRemoteSync(files(3, action).map(file => ({ ...file, expectedSha256: '1'.repeat(64) })), { remote: [], local: [] }, settings, {}, first.deps);
+    const journal = structuredClone(first.journal());
+    // The local file now contains a same-size user edit; a signed journal's
+    // ownership proof alone is no content proof. Do not generate stale parity
+    // or repair over that edit, even when size/mtime happen to match.
+    const resumed = harness({ get_file_properties: () => ({ size: 1024, modified: '2026-11-12T00:00:00' }) }, undefined, first.intentFixture);
+    await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, settings, {}, { ...resumed.deps, resumeJournal: journal })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(resumed.calls).toHaveLength(0);
+});
+
+it('a single-file crash after its write cannot replay a saved pending entry', async () => {
+    let crashSnapshot: SyncJournal | undefined;
+    const h = harness({ provider_upload_file: () => { crashSnapshot = structuredClone(h.journal()); } }, { upload: false, download: false });
+    expect((await runRemoteSync(files(1, 'upload'), { remote: [], local: [] }, config(), {}, h.deps)).uploaded).toBe(1);
+    // This is exactly what reached disk before the native command; the DB
+    // generation advanced independently before its first possible effect.
+    expect(crashSnapshot!.entries[0].status).toBe('pending');
+    const restarted = harness({}, undefined, h.intentFixture);
+    await expect(runRemoteSync(filesFromJournal(crashSnapshot!), { remote: [], local: [] }, config(), {}, { ...restarted.deps, resumeJournal: crashSnapshot })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(restarted.of('provider_upload_file')).toHaveLength(0);
+    expect(restarted.of('provider_sync_transfer_bulk')).toHaveLength(0);
+});
+
+it.each([true, false])('stops all dispatch when an archive checkpoint rejects (bulk=%s)', async bulk => {
+    const h = harness({ save_sync_journal_cmd: args => {
+        if ((args!.journal as SyncJournal).entries.some(entry => entry.archive_state === 'started')) throw new Error('intent disk full');
+    } }, { upload: bulk, download: bulk });
+    const plan = files(3, 'upload').map(file => ({ ...file, overwritesExisting: true }));
+    const report = await runRemoteSync(plan, { remote: [], local: [] }, config({ versionedBackup: { dir: '.v' } }), {}, h.deps);
+    expect(report.cancelled).toBe(true);
+    expect(report.errors.some(error => error.message.includes('SYNC_RESUME_NEEDS_COMPARE'))).toBe(true);
+    expect(h.of('sync_backup_archive_remote')).toHaveLength(0);
+    expect(h.of('provider_upload_file')).toHaveLength(0);
+    expect(h.of('provider_sync_transfer_bulk')).toHaveLength(0);
+});
+
+it('never adopts a same-size edited acknowledged download as the synced index baseline', async () => {
+    let current = true;
+    const first = harness({ get_file_properties: () => ({ size: 1024, modified: '2026-11-11T00:00:00' }),
+        provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); } });
+    first.deps.writeIndex = true;
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    await runRemoteSync(files(3, 'download').map(file => ({ ...file, mtime: null })), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, first.deps);
+    const journal = structuredClone(first.journal());
+    expect(journal.entries.every(entry => entry.local_modified === '2026-11-11T00:00:00Z')).toBe(true);
+    const resumed = harness({ get_file_properties: () => ({ size: 1024, modified: '2026-11-12T00:00:00' }), verify_local_transfer: () => ({ passed: true }) }, undefined, first.intentFixture);
+    resumed.deps.writeIndex = true;
+    await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, { ...resumed.deps, resumeJournal: journal })).rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+    expect(resumed.of('save_sync_index_cmd')).toHaveLength(0);
+    expect(resumed.of('sync_ec_verify_repair')).toHaveLength(0);
+    expect(journal.entries[0].local_modified).toBe('2026-11-11T00:00:00Z');
+});
+
+describe('sync intent fixture', () => {
+    it('refuses to begin intents for a pair that holds no run lease, even with no token', async () => {
+        const fixture = createIntentFixture();
+        const invoke = fixture.wrap(async <T,>() => undefined as T);
+        await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'] }))
+            .rejects.toThrow('SYNC_RUN_BUSY');
+        expect(fixture.generations.size).toBe(0);
+        // With the pair's lease the same request is served.
+        // A begin names its page nonce; one that names none is refused.
+        await expect(invoke('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' })).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r', pageNonce: 'page-test' });
+        await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'], syncRunLease: lease }))
+            .resolves.toHaveLength(1);
+        expect([...fixture.generations.keys()]).toEqual(['a.txt']);
     });
 });

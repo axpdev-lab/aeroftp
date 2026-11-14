@@ -667,10 +667,14 @@ async fn chmod_takes_any_2xx_and_reports_a_refusal() {
         vec!["SITE CHMOD 600 /pub/a\tb"]
     );
 
+    // T8: the refusal keeps its status typed and none of the server's text;
+    // the IPC boundary classifies it from the code (550), as every caller
+    // of `chmod` only renders the error.
     let (mut provider, _) = provider_with(reply(b"550 Permission denied\r\n")).await;
     let err = provider.chmod("/pub/x", 0o600).await.unwrap_err();
     assert!(
-        matches!(&err, ProviderError::ServerError(message) if message.contains("550 Permission denied")),
+        matches!(&err, ProviderError::FtpRefused { code: 550, .. }),
         "{err:?}"
     );
+    assert!(!err.to_string().contains("Permission denied"), "{err}");
 }

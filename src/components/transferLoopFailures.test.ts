@@ -56,16 +56,18 @@ const { code: pickerCode } = await transformWithOxc(
 );
 async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>, picked = [`${LOCAL}/up.txt`], onPick = () => {}) {
   const context = {
-    withBatchLatch: <T,>(fn: T) => fn, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
+    withBatchLatch: <T,>(fn: T) => fn, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
     getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
     pickFile: vi.fn(async () => { onPick(); return picked; }), t: (key: string) => key,
     splitForFileBatch, usesProviderApi, liveConnectionParams: f.liveConnectionParams, loadRemoteFiles: f.loadRemoteFiles,
-    batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
+    batchCancelledRef: f.batchCancelledRef, stopCountRef: f.stopCountRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { f.retryCallbacksRef.current.set(id, cb); },
     // App's own target checks and file batch, over the fixture's live
     // connection, which a test can switch while the picker is open.
     ...f.targetChecks,
+    captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
     QueuedTargetChangedError: Error,
     uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
     humanLog: f.humanLog, isCancelledTransferError,
@@ -549,4 +551,39 @@ describe('a switch to another server while the file picker is open', () => {
     await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`]);
     expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/b.txt`]);
   });
+});
+
+it('does not dispatch multiple picker files after Stop while the picker is open', async () => {
+  const f = fixture({ folders: { [LOCAL]: [local('up.txt'), local('b.txt')] } });
+  await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`], () => {
+    f.stopCountRef.current++;
+    f.batchCancelledRef.current = true;
+  });
+  expect(f.written()).toEqual([]);
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+});
+
+it.each(['upload', 'download'] as const)('creates no pending %s rows after Stop during destination listing', async direction => {
+  const entry = direction === 'upload' ? folder(local('dir')) : folder(remote('dir'));
+  const destination = direction === 'upload' ? INBOX : SUB;
+  const f = fixture({ folders: { [LOCAL]: [folder(local('dir'))], [REMOTE]: [folder(remote('dir'))], [destination]: [] } });
+  let finish!: () => void;
+  let listing = false;
+  const held = new Promise<void>(resolve => { finish = resolve; });
+  const original = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (cmd: string, args?: Record<string, any>) => {
+    if (cmd === (direction === 'upload' ? 'provider_list_files' : 'get_local_files') && args?.path === destination) {
+      listing = true;
+      await held;
+    }
+    return original(cmd, args);
+  });
+  const pending = f.drop([entry], direction === 'download', destination, 'local');
+  await vi.waitFor(() => expect(listing).toBe(true));
+  f.stopCountRef.current++;
+  f.batchCancelledRef.current = true;
+  finish();
+  await pending;
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+  expect(f.written()).toEqual([]);
 });

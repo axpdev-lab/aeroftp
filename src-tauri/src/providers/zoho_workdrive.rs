@@ -2941,6 +2941,20 @@ impl ZohoWorkdriveProvider {
 
 #[async_trait]
 impl StorageProvider for ZohoWorkdriveProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        let auth = self
+            .oauth_manager
+            .sync_owner_identity(&self.oauth_config())?;
+        serde_json::to_string(&(
+            auth.as_str(),
+            &self.config.region,
+            &self.team_id,
+            &self.privatespace_id,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

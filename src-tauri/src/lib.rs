@@ -323,6 +323,8 @@ pub mod sync_empty_dir;
 pub mod sync_exclude;
 mod sync_ignore;
 mod sync_names;
+mod sync_owner;
+mod sync_run_lease;
 mod sync_scheduler;
 pub mod sync_script;
 pub mod sync_versioning;
@@ -1587,6 +1589,22 @@ pub(crate) struct AppState {
     pub(crate) cancel_flag: Arc<AtomicBool>,
     cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
+    /// The cancel flags of the copies and deletes running outside a sync run
+    /// (F5, a paste, a delete from a panel); see [`AppState::operation_cancel`].
+    /// The registry of those flags and of the cancelled gestures, under one
+    /// lock: a registration and a gesture's cancel never interleave (K1).
+    local_operations: std::sync::Mutex<OperationRegistry>,
+}
+
+/// The cancel flags of the local copies and deletes running outside a sync
+/// run, each with the id of the panel gesture it belongs to, if any (a delete
+/// of several selected items: one id for the whole gesture), and the
+/// gestures cancelled from their toast (`operation_scope_cancel`), the most
+/// recent ones: a later command of the same gesture starts cancelled.
+#[derive(Default)]
+pub(crate) struct OperationRegistry {
+    flags: Vec<(Option<String>, std::sync::Weak<AtomicBool>)>,
+    cancelled: std::collections::VecDeque<String>,
 }
 
 impl AppState {
@@ -1596,6 +1614,89 @@ impl AppState {
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
+            local_operations: std::sync::Mutex::new(OperationRegistry::default()),
+        }
+    }
+
+    /// The flag a local copy, a local delete or a legacy FTP delete observes.
+    /// A command of a sync run
+    /// (it carries the run's lease) observes the shared flag, which the run
+    /// reset at its start and which its Stop raises. Any other local
+    /// operation starts with a cancel state of its own: a Stop raised before
+    /// it began (another transfer's, never reset by F5 or a paste) does not
+    /// touch it, a Stop raised while it runs does, and it never clears
+    /// anyone else's Stop.
+    /// With an `operation_id` (the panel gesture the command belongs to),
+    /// the gesture's cancel reaches it too, and a command of a gesture
+    /// already cancelled starts cancelled. The flag is registered when the
+    /// command starts, before it waits for anything (a target pin), so a
+    /// Stop raised while it waits is not lost (H8).
+    pub(crate) fn operation_cancel(
+        &self,
+        run_owned: bool,
+        operation_id: Option<&str>,
+    ) -> Arc<AtomicBool> {
+        if run_owned {
+            return self.cancel_flag.clone();
+        }
+        // The lookup and the registration under the lock `cancel_operation`
+        // takes: a cancel lands either before (the flag starts raised) or
+        // after (it finds the flag and raises it), never in between (K1).
+        let mut registry = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let cancelled =
+            operation_id.is_some_and(|id| registry.cancelled.iter().any(|done| done == id));
+        let flag = Arc::new(AtomicBool::new(cancelled));
+        registry
+            .flags
+            .retain(|(_, operation)| operation.strong_count() > 0);
+        registry
+            .flags
+            .push((operation_id.map(str::to_owned), Arc::downgrade(&flag)));
+        flag
+    }
+
+    fn cancel_local_operations(&self) {
+        let registry = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        for flag in registry
+            .flags
+            .iter()
+            .filter_map(|(_, operation)| operation.upgrade())
+        {
+            flag.store(true, Ordering::Relaxed);
+        }
+    }
+
+    /// Cancel one panel gesture (its toast's Cancel): its command in flight
+    /// stops, a later one of the gesture starts cancelled, and no other
+    /// transfer is touched.
+    pub(crate) fn cancel_operation(&self, operation_id: &str) {
+        let mut registry = self
+            .local_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // An id already recorded is not recorded again: a Cancel clicked
+        // many times (it names every recent gesture) must not push a gesture
+        // still running out of the bounded record (R3).
+        if !registry.cancelled.iter().any(|done| done == operation_id) {
+            if registry.cancelled.len() >= 256 {
+                registry.cancelled.pop_front();
+            }
+            registry.cancelled.push_back(operation_id.to_owned());
+        }
+        for (_, flag) in registry
+            .flags
+            .iter()
+            .filter(|(id, _)| id.as_deref() == Some(operation_id))
+        {
+            if let Some(flag) = flag.upgrade() {
+                flag.store(true, Ordering::Relaxed);
+            }
         }
     }
 
@@ -1608,6 +1709,7 @@ impl AppState {
 
     async fn request_cancel(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
+        self.cancel_local_operations();
         self.cancel_token.lock().await.cancel();
     }
 }
@@ -1633,6 +1735,8 @@ pub struct ConnectionParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct DownloadParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     remote_path: String,
     local_path: String,
     /// Remote file modification timestamp (ISO 8601) for mtime preservation
@@ -1644,6 +1748,8 @@ pub struct DownloadParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     local_path: String,
     remote_path: String,
     #[serde(default = "default_true")]
@@ -1656,6 +1762,8 @@ const fn default_true() -> bool {
 
 #[derive(Serialize, Deserialize)]
 pub struct DownloadFolderParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     remote_path: String,
     local_path: String,
     #[serde(default)]
@@ -1670,6 +1778,8 @@ pub struct DownloadFolderParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct UploadFolderParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     local_path: String,
     remote_path: String,
     #[serde(default)]
@@ -1684,6 +1794,8 @@ pub struct UploadFolderParams {
 
 #[derive(Serialize, Deserialize)]
 pub struct FileTransferBatchParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     entries: Vec<transfer_domain::TransferEntry>,
     #[serde(default)]
     max_concurrent: Option<u32>,
@@ -1756,8 +1868,8 @@ pub struct TransferEvent {
 /// moves bytes: every received frame on a download, every 4 MiB source slab on
 /// an upload. Only the GUI command path passes one of these; AeroSync and the
 /// CLI pass `None`.
-pub(crate) fn make_delta_progress_sink(
-    app: tauri::AppHandle,
+pub(crate) fn make_delta_progress_sink<R: tauri::Runtime>(
+    app: tauri::AppHandle<R>,
     transfer_id: String,
     filename: String,
     direction: &'static str,
@@ -3485,21 +3597,35 @@ async fn install_windows_update(
 #[tauri::command]
 async fn connect_ftp(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
 ) -> Result<(), String> {
     panic_safe::catch(
         "connect_ftp",
-        connect_ftp_inner(state, cancel_registry, params),
+        connect_ftp_inner(state, provider_state, cancel_registry, params),
     )
     .await
 }
 
 async fn connect_ftp_inner(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
     params: ConnectionParams,
 ) -> Result<(), String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
+    let material = zeroize::Zeroizing::new(
+        serde_json::to_string(&(
+            "legacy-ftp",
+            &params.server,
+            &params.username,
+            &params.password,
+        ))
+        .map_err(|_| provider_commands::CONNECTION_CHANGED_MARKER.to_owned())?,
+    );
+    let binding = crate::credential_store::off_async_worker(|| owner.persistent_tag(&material))?;
     info!("Connecting to FTP server: {}", params.server);
 
     // W3.1 (#270.5): register a cancellation token under the frontend-supplied
@@ -3515,6 +3641,9 @@ async fn connect_ftp_inner(
         .as_deref()
         .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
 
+    let _change = provider_state
+        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
+        .await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
@@ -3532,7 +3661,7 @@ async fn connect_ftp_inner(
         Ok::<(), String>(())
     };
 
-    match cancel_token.as_ref() {
+    let outcome = match cancel_token.as_ref() {
         Some(token) => {
             let outcome = tokio::select! {
                 res = do_connect => res,
@@ -3550,11 +3679,33 @@ async fn connect_ftp_inner(
             outcome
         }
         None => do_connect.await,
+    };
+    if let Err(error) = outcome {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
     }
+    if let Err(error) = crate::credential_store::off_async_worker(|| owner.validate()) {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
+    }
+    if let Err(error) = provider_state.set_legacy_gui_owner(owner, binding) {
+        let _ = ftp_manager.disconnect().await;
+        return Err(error);
+    }
+    provider_state.set_legacy_target_identity(
+        crate::cloud_provider_factory::legacy_ftp_target_identity(&params.server, &params.username),
+    );
+    Ok(())
 }
 
 #[tauri::command]
-async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
+async fn disconnect_ftp(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    let _change = provider_state
+        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
+        .await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .disconnect()
@@ -3564,7 +3715,12 @@ async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
+async fn ftp_noop(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
         .noop()
@@ -3574,7 +3730,14 @@ async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
+async fn reconnect_ftp(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+) -> Result<(), String> {
+    let _change = provider_state
+        .transfer_owner_write(std::time::Duration::from_secs(30))
+        .await?;
+    provider_state.advance_gui_target();
     info!("Attempting FTP reconnection");
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager
@@ -3586,7 +3749,12 @@ async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, String> {
+async fn list_files(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<FileListResponse, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     let files = ftp_manager
@@ -3605,8 +3773,11 @@ async fn list_files(state: State<'_, AppState>) -> Result<FileListResponse, Stri
 #[tauri::command]
 async fn change_directory(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<FileListResponse, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
@@ -3632,11 +3803,30 @@ async fn change_directory(
 async fn download_file(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadParams,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "download_file",
+        download_file_for_ipc(app, state, provider_state, params).await,
+    )
+}
+
+async fn download_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    params: DownloadParams,
+) -> Result<String, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
-        return Err("Transfer cancelled by user".to_string());
+        return Err(crate::sync::IpcError::Cancelled);
     }
     local_download_target::refuse_unwritable_name(&params.local_path)?;
 
@@ -3649,7 +3839,8 @@ async fn download_file(
     let transfer_id = format!("dl-{}", chrono::Utc::now().timestamp_millis());
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "download_file",
         &app,
         TransferEvent {
             event_type: "start".to_string(),
@@ -3698,7 +3889,8 @@ async fn download_file(
                     0
                 };
 
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "download_file",
                     &app,
                     TransferEvent {
                         event_type: "progress".to_string(),
@@ -3733,7 +3925,8 @@ async fn download_file(
             preserve_remote_mtime(&params.local_path, params.modified.as_deref());
 
             // Emit complete event
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "download_file",
                 &app,
                 TransferEvent {
                     event_type: "complete".to_string(),
@@ -3750,22 +3943,32 @@ async fn download_file(
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
+            // A Stop is this transfer's own flag (the manager aborts the
+            // stream), a refused reply the code the manager typed: never the
+            // text.
+            let error = if cancel_flag.load(Ordering::Relaxed) {
+                crate::sync::IpcError::Cancelled
+            } else {
+                crate::sync::IpcError::from_ftp(&e)
+            };
             // Emit error event
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_runner_error_event(
+                "download_file",
                 &app,
                 TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Download failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Download failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -3773,13 +3976,51 @@ async fn download_file(
 #[tauri::command]
 async fn upload_file(
     app: AppHandle,
+    params: UploadParams,
+    sync_run_lease: Option<String>,
+) -> Result<String, String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    // The upload runs in a task that owns the admission (T6b): dropped with
+    // its page, this handler leaves the upload counted until it ends.
+    let uploaded = run_owning_admission(native_work, async move {
+        let state = app.state::<AppState>();
+        let provider_state = app.state::<provider_commands::ProviderState>();
+        upload_file_for_ipc(app.clone(), state, provider_state, params).await
+    })
+    .await?;
+    provider_commands::ipc_result("upload_file", uploaded)
+}
+
+/// Run `work` in a task of its own that owns `native_work`, the admission of
+/// a leased command: the work counts until it really ends, even when the
+/// command's future is dropped (its page lost), so the cleanup of a lost
+/// page keeps the pair locked until then. The async counterpart of moving
+/// the guard into blocking work.
+pub(crate) async fn run_owning_admission<T: Send + 'static>(
+    native_work: crate::sync_run_lease::NativeWork,
+    work: impl std::future::Future<Output = T> + Send + 'static,
+) -> Result<T, String> {
+    tokio::spawn(async move {
+        let _native_work = native_work;
+        work.await
+    })
+    .await
+    .map_err(|e| format!("The command's work ended abnormally: {e}"))
+}
+
+async fn upload_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadParams,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Check if already cancelled (batch stop): bail immediately
     if state.cancel_flag.load(Ordering::Relaxed) {
-        return Err("Transfer cancelled by user".to_string());
+        return Err(crate::sync::IpcError::Cancelled);
     }
 
     let cancel_flag_upload = state.cancel_flag.clone();
@@ -3797,7 +4038,8 @@ async fn upload_file(
         .unwrap_or(0);
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "upload_file",
         &app,
         TransferEvent {
             event_type: "start".to_string(),
@@ -3852,7 +4094,8 @@ async fn upload_file(
                                     .stats
                                     .as_ref()
                                     .map(sync::DeltaTransferStats::from_rsync);
-                                crate::transfer_event_sink::emit_gui_transfer_event(
+                                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                                    "upload_file",
                                     &app,
                                     TransferEvent {
                                         event_type: "complete".to_string(),
@@ -3873,7 +4116,8 @@ async fn upload_file(
                             }
                             if let Some(hard_err) = result.hard_error {
                                 let err_msg = format!("delta hard rejection: {}", hard_err);
-                                crate::transfer_event_sink::emit_gui_transfer_event(
+                                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                                    "upload_file",
                                     &app,
                                     TransferEvent {
                                         event_type: "error".to_string(),
@@ -3887,7 +4131,7 @@ async fn upload_file(
                                         fallback_reason: None,
                                     },
                                 );
-                                return Err(err_msg);
+                                return Err(err_msg.into());
                             }
                             // fallback_reason populated: fall through to the
                             // classic provider upload below.
@@ -3899,7 +4143,8 @@ async fn upload_file(
                 let result = provider
                     .upload(&params.local_path, &params.remote_path, None)
                     .await;
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "upload_file",
                     &app,
                     TransferEvent {
                         event_type: if result.is_ok() {
@@ -3927,7 +4172,7 @@ async fn upload_file(
                 );
                 return result
                     .map(|_| format!("Uploaded: {}", filename))
-                    .map_err(|e| format!("Failed to upload file: {}", e));
+                    .map_err(crate::sync::IpcError::from);
             }
         }
     }
@@ -3963,7 +4208,8 @@ async fn upload_file(
                         0
                     };
 
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "upload_file",
                         &app,
                         TransferEvent {
                             event_type: "progress".to_string(),
@@ -3996,7 +4242,8 @@ async fn upload_file(
     {
         Ok(_) => {
             // Emit complete event
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "upload_file",
                 &app,
                 TransferEvent {
                     event_type: "complete".to_string(),
@@ -4013,22 +4260,32 @@ async fn upload_file(
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
+            // A Stop is this transfer's own flag (the manager aborts the
+            // stream), a refused reply the code the manager typed: never the
+            // text.
+            let error = if cancel_flag_upload.load(Ordering::Relaxed) {
+                crate::sync::IpcError::Cancelled
+            } else {
+                crate::sync::IpcError::from_ftp(&e)
+            };
             // Emit error event
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_runner_error_event(
+                "upload_file",
                 &app,
                 TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id: transfer_id.clone(),
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(format!("Upload failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Upload failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -4037,8 +4294,12 @@ async fn upload_file(
 async fn download_files_batch(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: FileTransferBatchParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -4277,8 +4538,12 @@ async fn download_files_batch(
 async fn upload_files_batch(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: FileTransferBatchParams,
 ) -> Result<String, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     if state.cancel_flag.load(Ordering::Relaxed) {
         return Err("Transfer cancelled by user".to_string());
     }
@@ -4932,8 +5197,12 @@ async fn scan_ftp_download_entries(
 async fn download_folder(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: DownloadFolderParams,
 ) -> Result<transfer_domain::FolderTransferOutcome, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5481,8 +5750,12 @@ async fn prepare_ftp_upload_entries(
 async fn upload_folder(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     params: UploadFolderParams,
 ) -> Result<transfer_domain::FolderTransferOutcome, String> {
+    let _target = provider_state
+        .pin_gui_target(params.expected_gui_target)
+        .await?;
     let runtime_settings = transfer_settings::resolve_ftp_transfer_settings(
         transfer_settings::TransferSettingsInput {
             max_concurrent: params.max_concurrent,
@@ -5768,9 +6041,24 @@ async fn stop_starting_transfers(
 async fn reset_cancel_flag(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     state.reset_cancel_state().await;
     provider_state.reset_cancel_state().await;
+    Ok(())
+}
+
+/// Cancel one panel gesture (a delete of the selected items) from its
+/// toast: the command of the gesture in flight stops, and a later command of
+/// the same gesture (same `operation_id`) starts cancelled. Other transfers
+/// are not touched.
+#[tauri::command]
+async fn operation_scope_cancel(
+    state: State<'_, AppState>,
+    operation_id: String,
+) -> Result<(), String> {
+    state.cancel_operation(&operation_id);
     Ok(())
 }
 
@@ -5779,9 +6067,12 @@ async fn reset_cancel_flag(
 #[tauri::command]
 async fn set_speed_limit(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     download_kb: u64,
     upload_kb: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     state
         .speed_limits
         .download_bps
@@ -6516,20 +6807,103 @@ async fn collect_ftp_delete_tree(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn delete_remote_file(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     path: String,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<String, String> {
-    let mut ftp_manager = state.ftp_manager.lock().await;
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let run_owned = sync_run_lease.is_some();
+    let cancel = state.operation_cancel(run_owned, operation_id.as_deref());
+    provider_commands::ipc_result(
+        "delete_remote_file",
+        delete_remote_file_for_ipc(
+            app,
+            state,
+            cancel,
+            provider_state,
+            path,
+            is_dir,
+            expected_gui_target,
+        )
+        .await
+        .and_then(|answer| run_cancel_is_an_error(run_owned, answer)),
+    )
+}
+
+/// A delete a cancel stopped answers `Ok("Deletion cancelled: ...")`, which
+/// the panel gesture reads. A sync run counts every resolved delete as done
+/// and records it in its journal: for a run's command the cancel is the
+/// typed cancellation instead, so the item stays incomplete (L1).
+fn run_cancel_is_an_error(
+    run_owned: bool,
+    answer: String,
+) -> Result<String, crate::sync::IpcError> {
+    if run_owned && answer.starts_with(crate::provider_commands::DELETION_CANCELLED) {
+        Err(crate::sync::IpcError::Cancelled)
+    } else {
+        Ok(answer)
+    }
+}
+
+async fn delete_remote_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    cancel: Arc<AtomicBool>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+    is_dir: bool,
+    expected_gui_target: Option<u64>,
+) -> Result<String, crate::sync::IpcError> {
+    // The waits for the target pin and for the FTP session run against the
+    // cancel: a cancel raised while the command waits ends it there and
+    // releases the pin (M1). Nothing was sent yet.
+    let waits = async {
+        let target = provider_state
+            .pin_gui_target(expected_gui_target)
+            .await
+            .map_err(crate::sync::IpcError::from_native_pin)?;
+        Ok::<_, crate::sync::IpcError>((target, state.ftp_manager.lock().await))
+    };
+    let Some(waited) = provider_commands::unless_cancelled(&cancel, waits).await else {
+        return Ok("Deletion cancelled: 0 of 1 files deleted".to_string());
+    };
+    let (_target, mut ftp_manager) = waited?;
 
     let file_name = path.split('/').next_back().unwrap_or(&path).to_string();
     let delete_id = format!("del-remote-{}", chrono::Utc::now().timestamp_millis());
 
     if !is_dir {
-        // Single file delete - simple case
-        crate::transfer_event_sink::emit_gui_transfer_event(
+        // Single file delete - simple case. A cancel raised before it (its
+        // gesture's, or one while the command waited for its target or for
+        // the FTP session) deletes nothing (K2).
+        if cancel.load(Ordering::Relaxed) {
+            let message = "Deletion cancelled: 0 of 1 files deleted".to_string();
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "delete_remote_file",
+                &app,
+                TransferEvent {
+                    event_type: "delete_cancelled".to_string(),
+                    transfer_id: delete_id.clone(),
+                    filename: file_name.clone(),
+                    direction: "remote".to_string(),
+                    message: Some(message.clone()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return Ok(message);
+        }
+        crate::provider_commands::emit_gui_transfer_event_for_runner(
+            "delete_remote_file",
             &app,
             TransferEvent {
                 event_type: "delete_start".to_string(),
@@ -6546,7 +6920,8 @@ async fn delete_remote_file(
 
         match ftp_manager.remove(&path).await {
             Ok(_) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "delete_remote_file",
                     &app,
                     TransferEvent {
                         event_type: "delete_complete".to_string(),
@@ -6563,26 +6938,31 @@ async fn delete_remote_file(
                 Ok(format!("Deleted: {}", file_name))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                // A refused reply by the code the manager typed, never its text.
+                let error = crate::sync::IpcError::from_ftp(&e);
+                crate::provider_commands::emit_runner_error_event(
+                    "delete_remote_file",
                     &app,
                     TransferEvent {
                         event_type: "delete_error".to_string(),
                         transfer_id: delete_id.clone(),
                         filename: file_name.clone(),
                         direction: "remote".to_string(),
-                        message: Some(format!("Failed to delete: {}", e)),
+                        message: None,
                         progress: None,
                         path: Some(path.clone()),
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &error,
                 );
-                Err(format!("Failed to delete file: {}", e))
+                Err(error)
             }
         }
     } else {
         // Folder delete - scan first, then delete with events
-        crate::transfer_event_sink::emit_gui_transfer_event(
+        crate::provider_commands::emit_gui_transfer_event_for_runner(
+            "delete_remote_file",
             &app,
             TransferEvent {
                 event_type: "delete_start".to_string(),
@@ -6614,7 +6994,8 @@ async fn delete_remote_file(
             &mut |scan_counter, files_found, folders_found| {
                 // Emit scan progress every 500ms or every 100 entries
                 if last_scan_emit.elapsed().as_millis() > 500 || scan_counter.is_multiple_of(100) {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "delete_remote_file",
                         &app,
                         TransferEvent {
                             event_type: "scanning".to_string(),
@@ -6642,7 +7023,8 @@ async fn delete_remote_file(
         } = match tree {
             Ok(tree) => tree,
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "delete_remote_file",
                     &app,
                     TransferEvent {
                         event_type: "delete_error".to_string(),
@@ -6656,7 +7038,7 @@ async fn delete_remote_file(
                         fallback_reason: None,
                     },
                 );
-                return Err(e);
+                return Err(e.into());
             }
         };
 
@@ -6668,7 +7050,8 @@ async fn delete_remote_file(
             total_files, total_dirs, file_name
         );
 
-        crate::transfer_event_sink::emit_gui_transfer_event(
+        crate::provider_commands::emit_gui_transfer_event_for_runner(
+            "delete_remote_file",
             &app,
             TransferEvent {
                 event_type: "scanning".to_string(),
@@ -6693,7 +7076,7 @@ async fn delete_remote_file(
 
         for item in &files_to_delete {
             // Check cancel flag before each file
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 info!(
                     "Folder deletion cancelled by user after {} files",
@@ -6703,7 +7086,8 @@ async fn delete_remote_file(
             }
             let file_delete_id = format!("{}-file-{}", delete_id, deleted_files);
 
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "delete_remote_file",
                 &app,
                 TransferEvent {
                     event_type: "delete_file_start".to_string(),
@@ -6721,7 +7105,8 @@ async fn delete_remote_file(
             match ftp_manager.remove(&item.path).await {
                 Ok(_) => {
                     deleted_files += 1;
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "delete_remote_file",
                         &app,
                         TransferEvent {
                             event_type: "delete_file_complete".to_string(),
@@ -6739,7 +7124,8 @@ async fn delete_remote_file(
                 Err(e) => {
                     errors += 1;
                     warn!("Failed to delete {}: {}", item.path, e);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "delete_remote_file",
                         &app,
                         TransferEvent {
                             event_type: "delete_file_error".to_string(),
@@ -6762,14 +7148,15 @@ async fn delete_remote_file(
         // Skip if cancelled - partial content may remain
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 break;
             }
             let dir_name = dir_path.split('/').next_back().unwrap_or(dir_path);
             match ftp_manager.remove_dir(dir_path).await {
                 Ok(_) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "delete_remote_file",
                         &app,
                         TransferEvent {
                             event_type: "delete_dir_complete".to_string(),
@@ -6805,7 +7192,8 @@ async fn delete_remote_file(
             format!("Deleted {} files, {} folders", deleted_files, total_dirs)
         };
 
-        crate::transfer_event_sink::emit_gui_transfer_event(
+        crate::provider_commands::emit_gui_transfer_event_for_runner(
+            "delete_remote_file",
             &app,
             TransferEvent {
                 event_type: if cancelled {
@@ -6832,12 +7220,67 @@ async fn delete_remote_file(
 /// Delete a local file or folder with detailed event emission for each deleted
 /// item, then drop the file tags of whatever is gone.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn delete_local_file(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<String, String> {
-    let result = delete_local_file_inner(app.clone(), state, path.clone()).await;
+    delete_local_file_with(
+        app,
+        state,
+        path,
+        provider_state,
+        expected_gui_target,
+        is_provider,
+        sync_run_lease,
+        operation_id,
+    )
+    .await
+}
+
+/// The body of `delete_local_file`. The cancel state is taken before the
+/// target pin, which can wait: a Stop raised while it waits stops the
+/// delete (H8).
+#[allow(clippy::too_many_arguments)]
+async fn delete_local_file_with<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, AppState>,
+    path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
+    operation_id: Option<String>,
+) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let cancel = state.operation_cancel(sync_run_lease.is_some(), operation_id.as_deref());
+    // The wait for the target pin runs against the cancel (M1): a cancel
+    // raised while it waits ends the command there and releases the pin.
+    let pinned = provider_commands::unless_cancelled(
+        &cancel,
+        provider_state.pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false)),
+    )
+    .await;
+    let Some(pinned) = pinned else {
+        return run_cancel_is_an_error(
+            sync_run_lease.is_some(),
+            "Deletion cancelled: 0 of 1 files deleted".to_string(),
+        )
+        .map_err(|error| crate::sync::ipc_error_render("delete_local_file", &error));
+    };
+    let _target = pinned?;
+    let result = delete_local_file_inner(app.clone(), cancel, path.clone())
+        .await
+        .and_then(|answer| {
+            run_cancel_is_an_error(sync_run_lease.is_some(), answer)
+                .map_err(|error| crate::sync::ipc_error_render("delete_local_file", &error))
+        });
     // A folder delete can stop half way and still return Ok: follow_delete only
     // forgets the tags of paths that are no longer on disk.
     file_tags::follow_delete(&app, &path);
@@ -6848,6 +7291,592 @@ async fn delete_local_file(
 /// directory, never a link to one (`symlink_metadata` does not follow it).
 fn local_delete_walks_into(path: &std::path::Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|meta| meta.is_dir())
+}
+
+#[cfg(test)]
+mod local_delete_cancel_tests {
+    use std::sync::atomic::Ordering;
+
+    /// A scripted FTP server holding `/d` with three files: it logs every
+    /// DELE and RMD, and on the first DELE it waits until the test has done
+    /// what it needs (`first_dele`) before it answers.
+    async fn scripted_folder_server(
+        first_dele: Option<tokio::sync::mpsc::Sender<tokio::sync::oneshot::Sender<()>>>,
+    ) -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = log.clone();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/".to_string();
+            let mut data_listener = None;
+            let mut first_dele = first_dele;
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let (cmd, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match cmd {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "TYPE" | "NOOP" => "200 ok\r\n".to_string(),
+                    "CWD" if arg == "/" || arg == "/d" => {
+                        cwd = arg.to_string();
+                        "250 ok\r\n".to_string()
+                    }
+                    "CWD" => "550 Failed to change directory.\r\n".to_string(),
+                    "PASV" => {
+                        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+                        let port = listener.local_addr().unwrap().port();
+                        data_listener = Some(listener);
+                        format!(
+                            "227 Entering Passive Mode (127,0,0,1,{},{})\r\n",
+                            port / 256,
+                            port % 256
+                        )
+                    }
+                    "LIST" => {
+                        write.write_all(b"150 listing\r\n").await.unwrap();
+                        let (mut data, _) = data_listener.take().unwrap().accept().await.unwrap();
+                        let listing = if cwd == "/d" {
+                            "-rw-r--r-- 1 u g 1 Jan 20 10:00 a.txt\r\n-rw-r--r-- 1 u g 1 Jan 20 10:00 b.txt\r\n-rw-r--r-- 1 u g 1 Jan 20 10:00 c.txt\r\n"
+                        } else {
+                            "drwxr-xr-x 1 u g 0 Jan 20 10:00 d\r\n"
+                        };
+                        data.write_all(listing.as_bytes()).await.unwrap();
+                        data.shutdown().await.unwrap();
+                        "226 done\r\n".to_string()
+                    }
+                    "DELE" | "RMD" => {
+                        seen.lock().unwrap().push(format!("{cmd} {arg}"));
+                        if cmd == "DELE" {
+                            if let Some(first) = first_dele.take() {
+                                let (done, wait) = tokio::sync::oneshot::channel();
+                                first.send(done).await.unwrap();
+                                wait.await.unwrap();
+                            }
+                        }
+                        "250 ok\r\n".to_string()
+                    }
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "502 not implemented\r\n".to_string(),
+                };
+                write.write_all(reply.as_bytes()).await.unwrap();
+            }
+        });
+        (addr, log)
+    }
+
+    /// H8: a panel delete registers its cancel state before it waits for
+    /// the target pin. Held behind a writer of the GUI target, a Stop raised
+    /// while it waits reaches it: the delete reports a cancellation and the
+    /// folder stays whole.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_while_a_delete_waits_for_its_target_is_not_lost() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("kept");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+        let provider_state = app.state::<crate::provider_commands::ProviderState>();
+        let writer = provider_state
+            .transfer_owner_write(std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let path = folder.to_string_lossy().into_owned();
+        let delete = tokio::spawn(async move {
+            super::delete_local_file_with(
+                handle.clone(),
+                handle.state::<super::AppState>(),
+                path,
+                handle.state::<crate::provider_commands::ProviderState>(),
+                Some(0),
+                Some(false),
+                None,
+                Some("gesture-h8-0001".to_string()),
+            )
+            .await
+        });
+        let state = app.state::<super::AppState>();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while state.local_operations.lock().unwrap().flags.is_empty() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the delete never registered"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        assert!(!delete.is_finished(), "it waits for the target");
+        state.request_cancel().await;
+        drop(writer);
+        let result = delete.await.unwrap().unwrap();
+        assert!(result.contains("cancelled"), "{result}");
+        assert!(folder.join("sub").join("a.txt").exists());
+    }
+
+    /// K1: a command's registration and its gesture's cancel never
+    /// interleave (one lock): whichever comes first, the command's flag ends
+    /// raised. Raced many times on two threads, never once unraised.
+    #[test]
+    fn a_gesture_cancel_racing_a_registration_always_reaches_the_flag() {
+        let state = std::sync::Arc::new(super::AppState::new());
+        for round in 0..2000 {
+            let id = format!("gesture-race-{round:05}");
+            let barrier = std::sync::Arc::new(std::sync::Barrier::new(2));
+            let registering = {
+                let (state, barrier, id) = (state.clone(), barrier.clone(), id.clone());
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    state.operation_cancel(false, Some(&id))
+                })
+            };
+            barrier.wait();
+            state.cancel_operation(&id);
+            let flag = registering.join().unwrap();
+            assert!(
+                flag.load(Ordering::SeqCst),
+                "round {round}: the cancel was lost"
+            );
+        }
+    }
+
+    /// R3: the toast's Cancel names every recent gesture, and may be clicked
+    /// many times. A gesture already cancelled is not recorded again, so the
+    /// bounded record never loses a gesture still running: its later
+    /// commands still start cancelled.
+    #[test]
+    fn a_repeated_cancel_does_not_evict_a_running_gesture() {
+        let state = super::AppState::new();
+        state.cancel_operation("running-gesture");
+        // Twenty clicks of a toast that names sixteen other recent gestures.
+        for _ in 0..20 {
+            for i in 0..16 {
+                state.cancel_operation(&format!("other-gesture-{i}"));
+            }
+        }
+        assert!(state
+            .operation_cancel(false, Some("running-gesture"))
+            .load(Ordering::SeqCst));
+        let registry = state.local_operations.lock().unwrap();
+        assert_eq!(registry.cancelled.len(), 17);
+    }
+
+    /// A sync run counts a resolved delete as done and records it in its
+    /// journal: a delete its Stop cancelled is the typed cancellation for
+    /// the run, so the planned item stays incomplete (L1). The panel gesture
+    /// keeps the answer it reads.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_cancelled_delete_of_a_sync_run_is_an_error_not_a_done_delete() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let leases = tempfile::tempdir().unwrap();
+        let token =
+            crate::sync_run_lease::acquire_for_test(leases.path(), "l1-pair", "l1-window").unwrap();
+        // The run's Stop raises the shared flag its commands observe.
+        app.state::<super::AppState>()
+            .cancel_flag
+            .store(true, Ordering::Relaxed);
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("planned.txt");
+        std::fs::write(&file, b"a").unwrap();
+        let handle = app.handle().clone();
+        let result = super::delete_local_file_with(
+            handle.clone(),
+            handle.state::<super::AppState>(),
+            file.to_string_lossy().into_owned(),
+            handle.state::<crate::provider_commands::ProviderState>(),
+            Some(0),
+            Some(false),
+            Some(token.clone()),
+            None,
+        )
+        .await;
+        crate::sync_run_lease::release(&token).unwrap();
+        let error = result.expect_err("a run's cancelled delete is not a done delete");
+        assert!(error.contains("cancelled"), "{error}");
+        assert!(file.exists());
+        // The FTP command answers through the same rule.
+        assert!(matches!(
+            super::run_cancel_is_an_error(true, "Deletion cancelled: 0 of 1 files deleted".into()),
+            Err(crate::sync::IpcError::Cancelled)
+        ));
+        assert_eq!(
+            super::run_cancel_is_an_error(false, "Deletion cancelled: 0 of 1 files deleted".into())
+                .ok()
+                .as_deref(),
+            Some("Deletion cancelled: 0 of 1 files deleted")
+        );
+        assert!(super::run_cancel_is_an_error(true, "Deleted".into()).is_ok());
+    }
+
+    /// K2: a single file is deleted only if no cancel came first: a later
+    /// command of a cancelled gesture, and one whose cancel was raised while
+    /// it waited for its target, leave the file and report the cancellation.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_single_file_of_a_cancelled_gesture_is_not_deleted() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let state = app.state::<super::AppState>();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("one.txt");
+        std::fs::write(&file, b"a").unwrap();
+        state.cancel_operation("gesture-single-0001");
+        let result = super::delete_local_file_inner(
+            app.handle().clone(),
+            state.operation_cancel(false, Some("gesture-single-0001")),
+            file.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        assert!(file.exists());
+
+        // Cancelled while the command waits for its target.
+        let provider_state = app.state::<crate::provider_commands::ProviderState>();
+        let writer = provider_state
+            .transfer_owner_write(std::time::Duration::from_secs(5))
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let path = file.to_string_lossy().into_owned();
+        let delete = tokio::spawn(async move {
+            super::delete_local_file_with(
+                handle.clone(),
+                handle.state::<super::AppState>(),
+                path,
+                handle.state::<crate::provider_commands::ProviderState>(),
+                Some(0),
+                Some(false),
+                None,
+                Some("gesture-single-0002".to_string()),
+            )
+            .await
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !state
+            .local_operations
+            .lock()
+            .unwrap()
+            .flags
+            .iter()
+            .any(|(id, _)| id.as_deref() == Some("gesture-single-0002"))
+        {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the delete never registered"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        state.cancel_operation("gesture-single-0002");
+        drop(writer);
+        let result = delete.await.unwrap().unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        assert!(file.exists());
+    }
+
+    /// K2 on the legacy FTP session: a single-file delete whose cancel was
+    /// raised before it sends no DELE.
+    #[tokio::test]
+    async fn a_cancelled_single_ftp_file_delete_sends_no_dele() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let state = app.state::<super::AppState>();
+        let (addr, log) = scripted_folder_server(None).await;
+        {
+            let mut ftp = state.ftp_manager.lock().await;
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+        }
+        state.cancel_operation("gesture-ftp-0001");
+        let result = super::delete_remote_file_for_ipc(
+            app.handle().clone(),
+            app.state::<super::AppState>(),
+            state.operation_cancel(false, Some("gesture-ftp-0001")),
+            app.state::<crate::provider_commands::ProviderState>(),
+            "/d/a.txt".to_string(),
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(result.starts_with("Deletion cancelled"), "{result}");
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
+    }
+
+    /// A panel gesture's cancel (its toast): a later command of the same
+    /// gesture starts cancelled and deletes nothing; a command of another
+    /// gesture, or of none, is not touched.
+    #[tokio::test]
+    async fn a_cancelled_gesture_starts_no_further_delete_and_leaves_others_alone() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        let state = app.state::<super::AppState>();
+        let dir = tempfile::tempdir().unwrap();
+        let folder = |name: &str| {
+            let folder = dir.path().join(name);
+            std::fs::create_dir_all(folder.join("sub")).unwrap();
+            std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+            folder
+        };
+        let delete = |cancel, folder: &std::path::Path| {
+            super::delete_local_file_inner(
+                app.handle().clone(),
+                cancel,
+                folder.to_string_lossy().into_owned(),
+            )
+        };
+        state.cancel_operation("gesture-one-0001");
+        let same = folder("same");
+        let result = delete(
+            state.operation_cancel(false, Some("gesture-one-0001")),
+            &same,
+        )
+        .await
+        .unwrap();
+        assert!(result.contains("cancelled"), "{result}");
+        assert!(same.join("sub").join("a.txt").exists());
+        for (name, id) in [("other", Some("gesture-two-0002")), ("none", None)] {
+            let other = folder(name);
+            let result = delete(state.operation_cancel(false, id), &other)
+                .await
+                .unwrap();
+            assert!(!result.contains("cancelled"), "{result}");
+            assert!(!other.exists());
+        }
+    }
+
+    /// P1-b on the legacy FTP session: a folder delete from the GUI (no run
+    /// lease) after another transfer's Stop, which nothing reset since,
+    /// deletes the whole folder; a Stop raised while it deletes stops it
+    /// between one entry and the next, and the folder is not removed.
+    #[tokio::test]
+    async fn a_gui_ftp_folder_delete_follows_its_own_stop_not_an_earlier_one() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        app.manage(crate::provider_commands::ProviderState::new());
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let state = app.state::<super::AppState>();
+        let connect = |addr: String| {
+            let state = app.state::<super::AppState>();
+            async move {
+                let mut ftp = state.ftp_manager.lock().await;
+                ftp.connect(&addr).await.unwrap();
+                ftp.login("u", "p").await.unwrap();
+            }
+        };
+        let delete = |cancel| {
+            super::delete_remote_file_for_ipc(
+                app.handle().clone(),
+                app.state::<super::AppState>(),
+                cancel,
+                app.state::<crate::provider_commands::ProviderState>(),
+                "/d".to_string(),
+                true,
+                None,
+            )
+        };
+
+        // Another transfer's Stop, never reset: the delete runs to the end.
+        state.request_cancel().await;
+        let (addr, log) = scripted_folder_server(None).await;
+        connect(addr).await;
+        let result = delete(state.operation_cancel(false, None)).await.unwrap();
+        assert_eq!(result, "Deleted 3 files, 1 folders");
+        assert_eq!(
+            *log.lock().unwrap(),
+            ["DELE /d/a.txt", "DELE /d/b.txt", "DELE /d/c.txt", "RMD /d"]
+        );
+        assert!(
+            state.cancel_flag.load(Ordering::SeqCst),
+            "the Stop stays raised"
+        );
+
+        // A Stop raised while the first file is being deleted: the delete
+        // stops before the second, and the folder stays.
+        let (stop_at, mut first_dele) = tokio::sync::mpsc::channel(1);
+        let (addr, log) = scripted_folder_server(Some(stop_at)).await;
+        connect(addr).await;
+        let stopper = {
+            let app = app.handle().clone();
+            tokio::spawn(async move {
+                let done: tokio::sync::oneshot::Sender<()> = first_dele.recv().await.unwrap();
+                app.state::<super::AppState>().request_cancel().await;
+                done.send(()).unwrap();
+            })
+        };
+        let result = delete(state.operation_cancel(false, None)).await.unwrap();
+        stopper.await.unwrap();
+        assert_eq!(result, "Deletion cancelled: 1 of 3 files deleted");
+        assert_eq!(*log.lock().unwrap(), ["DELE /d/a.txt"]);
+        let last = events.lock().unwrap().last().cloned().unwrap();
+        assert!(last.contains("\"delete_cancelled\""), "{last}");
+    }
+
+    /// P1-b: a Stop of another transfer, which nothing reset since (F5 and a
+    /// paste never reset it), does not cancel a local copy or delete outside
+    /// a run, and is not cleared by one; a command of the run still observes
+    /// the run's Stop.
+    #[tokio::test]
+    async fn a_local_copy_or_delete_after_another_transfers_stop_runs_to_the_end() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        let state = app.state::<super::AppState>();
+        state.request_cancel().await;
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source.txt");
+        std::fs::write(&source, b"data").unwrap();
+        let path = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
+
+        super::copy_local_file_with(
+            state.operation_cancel(false, None),
+            path("source.txt"),
+            path("copy.txt"),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(std::fs::read(dir.path().join("copy.txt")).unwrap(), b"data");
+        assert!(
+            state.cancel_flag.load(Ordering::SeqCst),
+            "the Stop stays raised"
+        );
+
+        let of_the_run = super::copy_local_file_with(
+            state.operation_cancel(true, None),
+            path("source.txt"),
+            path("run-copy.txt"),
+            None,
+            None,
+        )
+        .await;
+        assert!(of_the_run.unwrap_err().contains("cancel"));
+        assert!(!dir.path().join("run-copy.txt").exists());
+
+        let folder = dir.path().join("folder");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+        let deleted = super::delete_local_file_inner(
+            app.handle().clone(),
+            state.operation_cancel(false, None),
+            folder.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        assert!(!deleted.contains("cancelled"), "{deleted}");
+        assert!(!folder.exists());
+        assert!(state.cancel_flag.load(Ordering::SeqCst));
+    }
+
+    /// P1-b: a Stop raised while a copy runs stops it, whether the copy is a
+    /// run's (the shared flag) or one of its own (its registered flag).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_stop_during_a_copy_stops_it_inside_or_outside_a_run() {
+        use std::io::Read;
+        struct StopAfterFirstChunk {
+            state: std::sync::Arc<super::AppState>,
+            handle: tokio::runtime::Handle,
+            served: bool,
+        }
+        impl Read for StopAfterFirstChunk {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.served {
+                    self.handle.block_on(self.state.request_cancel());
+                }
+                self.served = true;
+                buf.fill(7);
+                Ok(buf.len())
+            }
+        }
+        for run_owned in [true, false] {
+            let state = std::sync::Arc::new(super::AppState::new());
+            let cancel = state.operation_cancel(run_owned, None);
+            let dir = tempfile::tempdir().unwrap();
+            let to = dir.path().join("copy.bin");
+            let handle = tokio::runtime::Handle::current();
+            let copied = tokio::task::spawn_blocking(move || {
+                let mut source = StopAfterFirstChunk {
+                    state,
+                    handle,
+                    served: false,
+                };
+                // A FILE's permissions, as production passes the source's: on Windows
+                // a directory's carry FILE_ATTRIBUTE_DIRECTORY, which
+                // `set_permissions` on the temporary's handle refuses with
+                // ERROR_INVALID_PARAMETER (os error 87).
+                let probe = tempfile::NamedTempFile::new().unwrap();
+                let permissions = probe.as_file().metadata().unwrap().permissions();
+                let copied = super::copy_into_place(&mut source, permissions, &to, &cancel);
+                (copied, to.exists(), dir)
+            })
+            .await
+            .unwrap();
+            assert!(
+                matches!(copied.0, Err(crate::sync::IpcError::Cancelled)),
+                "run_owned={run_owned}: {:?}",
+                copied.0
+            );
+            assert!(!copied.1, "run_owned={run_owned}: nothing published");
+        }
+    }
+    /// A Stop raised before the first listing of a folder delete: nothing is
+    /// collected and nothing deleted, and the delete reports a cancellation
+    /// (its result and its final event), never "Deleted 0 files".
+    #[tokio::test]
+    async fn a_stop_before_the_first_listing_reports_the_delete_cancelled() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        app.manage(super::AppState::new());
+        let events = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = events.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().join("kept");
+        std::fs::create_dir_all(folder.join("sub")).unwrap();
+        std::fs::write(folder.join("sub").join("a.txt"), b"a").unwrap();
+        let state = app.state::<super::AppState>();
+        state
+            .cancel_flag
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        // A delete of the run: it observes the run's Stop.
+        let result = super::delete_local_file_inner(
+            app.handle().clone(),
+            state.operation_cancel(true, None),
+            folder.to_string_lossy().into_owned(),
+        )
+        .await
+        .unwrap();
+        assert!(result.contains("cancelled"), "{result}");
+        assert!(folder.join("sub").join("a.txt").exists());
+        let last = events.lock().unwrap().last().cloned().unwrap();
+        assert!(last.contains("\"delete_cancelled\""), "{last}");
+    }
 }
 
 /// Remove a file, or a link as itself. Windows removes a link to a folder
@@ -6866,9 +7895,9 @@ async fn remove_local_file_or_link(path: &std::path::Path) -> std::io::Result<()
     }
 }
 
-async fn delete_local_file_inner(
-    app: AppHandle,
-    state: State<'_, AppState>,
+async fn delete_local_file_inner<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    cancel: Arc<AtomicBool>,
     path: String,
 ) -> Result<String, String> {
     validate_path(&path)?;
@@ -6885,7 +7914,26 @@ async fn delete_local_file_inner(
     let is_dir = local_delete_walks_into(&path_buf);
 
     if !is_dir {
-        // Single file delete
+        // Single file delete. A cancel raised before it (its gesture's, or
+        // one while the command waited for its target) deletes nothing (K2).
+        if cancel.load(Ordering::Relaxed) {
+            let message = "Deletion cancelled: 0 of 1 files deleted".to_string();
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                &app,
+                TransferEvent {
+                    event_type: "delete_cancelled".to_string(),
+                    transfer_id: delete_id.clone(),
+                    filename: file_name.clone(),
+                    direction: "local".to_string(),
+                    message: Some(message.clone()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+            return Ok(message);
+        }
         crate::transfer_event_sink::emit_gui_transfer_event(
             &app,
             TransferEvent {
@@ -6965,7 +8013,14 @@ async fn delete_local_file_inner(
         let mut dirs_to_scan: Vec<std::path::PathBuf> = vec![path_buf.clone()];
         let mut entry_count: u64 = 0;
 
+        // A Stop during the scan, before or between listings: recorded, so the
+        // deletion is reported cancelled even when nothing was collected yet.
+        let mut scan_cancelled = false;
         while let Some(current_dir) = dirs_to_scan.pop() {
+            if cancel.load(Ordering::Relaxed) {
+                scan_cancelled = true;
+                break;
+            }
             let mut read_dir = match tokio::fs::read_dir(&current_dir).await {
                 Ok(rd) => rd,
                 Err(_) => continue,
@@ -7032,11 +8087,11 @@ async fn delete_local_file_inner(
         // Phase 2: Delete all files with events (cancellable)
         let mut deleted_files = 0u64;
         let mut errors = 0u64;
-        let mut cancelled = false;
+        let mut cancelled = scan_cancelled;
         let mut last_emit = std::time::Instant::now();
 
         for item in &files_to_delete {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 info!(
                     "Local folder deletion cancelled by user after {} files",
@@ -7098,7 +8153,7 @@ async fn delete_local_file_inner(
         // to delete children before parents
         let dirs_reversed: Vec<_> = dirs_to_delete.iter().rev().collect();
         for dir_path in dirs_reversed {
-            if state.cancel_flag.load(Ordering::Relaxed) {
+            if cancel.load(Ordering::Relaxed) {
                 cancelled = true;
                 break;
             }
@@ -7172,9 +8227,12 @@ async fn delete_local_file_inner(
 #[tauri::command]
 async fn rename_remote_file(
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
@@ -7186,13 +8244,36 @@ async fn rename_remote_file(
 }
 
 #[tauri::command]
-async fn create_remote_folder(state: State<'_, AppState>, path: String) -> Result<(), String> {
+async fn create_remote_folder(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    path: String,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "create_remote_folder",
+        create_remote_folder_for_ipc(&state, &provider_state, path, expected_gui_target).await,
+    )
+}
+
+async fn create_remote_folder_for_ipc(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    path: String,
+    expected_gui_target: Option<u64>,
+) -> Result<(), crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     let mut ftp_manager = state.ftp_manager.lock().await;
 
     ftp_manager
         .mkdir(&path)
         .await
-        .map_err(|e| format!("Failed to create folder: {}", e))?;
+        .map_err(|e| crate::sync::IpcError::from_ftp(&e))?;
 
     Ok(())
 }
@@ -7331,7 +8412,32 @@ async fn rename_local_file_inner(
 }
 
 #[tauri::command]
-async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> Result<(), String> {
+async fn copy_local_file(
+    state: State<'_, AppState>,
+    from: String,
+    to: String,
+    overwrite: Option<bool>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    copy_local_file_with(
+        state.operation_cancel(sync_run_lease.is_some(), None),
+        from,
+        to,
+        overwrite,
+        sync_run_lease,
+    )
+    .await
+}
+
+/// The body of `copy_local_file`, with the flag a Stop raises.
+async fn copy_local_file_with(
+    cancel: Arc<AtomicBool>,
+    from: String,
+    to: String,
+    overwrite: Option<bool>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     validate_path(&from)?;
     validate_path(&to)?;
     let from_path = std::path::Path::new(&from);
@@ -7344,15 +8450,482 @@ async fn copy_local_file(from: String, to: String, overwrite: Option<bool>) -> R
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
     refuse_link_destination(std::path::Path::new(&to))?;
-    if from_path.is_dir() {
-        // Recursive directory copy
-        copy_dir_recursive(from_path, std::path::Path::new(&to), 0, NestedLinks::Skip).await?;
-    } else {
-        tokio::fs::copy(&from, &to)
-            .await
-            .map_err(|e| format!("Failed to copy file: {}", e))?;
+    // The mutation runs on the blocking pool and owns the admission: it
+    // counts until the copy ends, even if the command awaiting it is gone.
+    // A Stop (`cancel_transfer`) raises this flag: the copy observes it
+    // between chunks and between entries, so a run that waits for the copy
+    // gets it back promptly, and its lease is released by the normal path.
+    let runtime = tokio::runtime::Handle::current();
+    tokio::task::spawn_blocking(move || {
+        let _native_work = native_work;
+        let from_path = std::path::Path::new(&from);
+        let copied = if from_path.is_dir() {
+            // Recursive directory copy
+            runtime
+                .block_on(copy_dir_recursive_cancellable(
+                    from_path,
+                    std::path::Path::new(&to),
+                    0,
+                    NestedLinks::Skip,
+                    Some(&cancel),
+                ))
+                .map_err(crate::sync::IpcError::from)
+        } else {
+            copy_file_cancellable(from_path, std::path::Path::new(&to), &cancel)
+        };
+        copied.map_err(|error| {
+            if cancel.load(Ordering::Relaxed) {
+                crate::sync::IpcError::Cancelled
+            } else {
+                error
+            }
+        })
+    })
+    .await
+    .map_err(|e| format!("copy_local_file task failed: {e}"))?
+    .map_err(|error| match error {
+        // The native cancellation, as every run command reports it.
+        crate::sync::IpcError::Cancelled => {
+            crate::sync::ipc_error_render("copy_local_file", &crate::sync::IpcError::Cancelled)
+        }
+        // A local error: the operating system's text, no server's.
+        crate::sync::IpcError::Other(text) => text,
+        other => crate::sync::ipc_error_render("copy_local_file", &other),
+    })
+}
+
+/// Copy one file to `to` under a temporary name next to it, observing
+/// `cancel` while the data moves (see [`copy_into_place`]). The source must
+/// be a regular file, as `std::fs::copy` requires: a FIFO or a device is
+/// refused before anything is read from it. What reaches the destination is
+/// what `std::fs::copy` gives on the platform:
+/// - Windows: `CopyFileExW`, as std uses, so NTFS alternate data streams and
+///   the file attributes come along; its progress routine stops the copy.
+/// - macOS: `fcopyfile` with `COPYFILE_ALL`, as std uses, so extended
+///   attributes, ACLs and the mode come along; its status callback stops it.
+/// - Linux and the other Unix systems: std copies only the data and the
+///   permission bits there, and so does the chunked copy.
+fn copy_file_cancellable(
+    from: &std::path::Path,
+    to: &std::path::Path,
+    cancel: &AtomicBool,
+) -> Result<(), crate::sync::IpcError> {
+    // Opened first, then checked through the handle, in the order
+    // `std::fs::copy` follows: the check is on the file read, not on a path
+    // that could change between the two.
+    let source = std::fs::File::open(from).map_err(local_copy_failed)?;
+    let metadata = source.metadata().map_err(local_copy_failed)?;
+    if !metadata.is_file() {
+        return Err("Failed to copy file: the source is not a regular file".into());
     }
-    Ok(())
+    #[cfg(windows)]
+    {
+        // `CopyFileExW` opens the source by its path, as `std::fs::copy`
+        // does on Windows; the handle above stays open across the copy.
+        let temp = local_copy_temp(to);
+        let written = native_copy_windows(from, &temp, cancel);
+        drop(source);
+        publish_local_copy(&temp, to, written, cancel)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let temp = local_copy_temp(to);
+        let written = native_copy_macos(&source, metadata.permissions(), &temp, cancel);
+        publish_local_copy(&temp, to, written, cancel)
+    }
+    #[cfg(not(any(windows, target_os = "macos")))]
+    {
+        let mut source = source;
+        copy_into_place(&mut source, metadata.permissions(), to, cancel)
+    }
+}
+
+fn local_copy_failed(e: std::io::Error) -> crate::sync::IpcError {
+    crate::sync::IpcError::from(format!("Failed to copy file: {e}"))
+}
+
+/// The temporary a copy is written under before it is published: a fixed
+/// prefix and a UUID next to `to` (as `write_archive_entry_in_parent` names
+/// its part), so a destination name near the filesystem's limit still fits.
+fn local_copy_temp(to: &std::path::Path) -> std::path::PathBuf {
+    to.with_file_name(format!(".aeroftp-copy-{}", uuid::Uuid::new_v4().simple()))
+}
+
+/// Create the temporary new and owner-only (0600 on Unix), so no other
+/// account can open it while the data arrives.
+fn open_local_copy_temp(temp: &std::path::Path) -> Result<std::fs::File, crate::sync::IpcError> {
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(temp).map_err(local_copy_failed)
+}
+
+/// Publish a written temporary at `to`. A Stop raised during the last chunk
+/// is checked again right before the destination is replaced, so a stopped
+/// copy never publishes; a Stop or an error removes the temporary, so no
+/// partial file is ever left under the final name, and an existing `to`
+/// stays as it was.
+fn publish_local_copy(
+    temp: &std::path::Path,
+    to: &std::path::Path,
+    written: Result<(), crate::sync::IpcError>,
+    cancel: &AtomicBool,
+) -> Result<(), crate::sync::IpcError> {
+    let written = written.and_then(|()| {
+        if cancel.load(Ordering::Relaxed) {
+            Err(crate::sync::IpcError::Cancelled)
+        } else {
+            Ok(())
+        }
+    });
+    let published = written.and_then(|()| std::fs::rename(temp, to).map_err(local_copy_failed));
+    if published.is_err() {
+        remove_local_copy_temp(temp);
+    }
+    published
+}
+
+fn remove_local_copy_temp(temp: &std::path::Path) {
+    let removed = std::fs::remove_file(temp);
+    #[cfg(not(windows))]
+    let _ = removed;
+    // `CopyFileExW` gives the temporary a read-only source's attribute, and
+    // Windows refuses to delete a read-only file: clear it and try again.
+    #[cfg(windows)]
+    if let (Err(_), Ok(meta)) = (removed, std::fs::symlink_metadata(temp)) {
+        let mut permissions = meta.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        if std::fs::set_permissions(temp, permissions).is_ok() {
+            let _ = std::fs::remove_file(temp);
+        }
+    }
+}
+
+/// Write `source` to a temporary name next to `to`, a chunk at a time,
+/// observing `cancel` before each chunk, then publish it with
+/// [`publish_local_copy`]. The temporary is created owner-only and gets the
+/// source's permissions through its own handle before any byte is written.
+// The platform copy in Windows and macOS builds; the chunked copy is still
+// what the Stop and publication tests drive there.
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+pub(crate) fn copy_into_place(
+    source: &mut impl std::io::Read,
+    permissions: std::fs::Permissions,
+    to: &std::path::Path,
+    cancel: &AtomicBool,
+) -> Result<(), crate::sync::IpcError> {
+    use std::io::Write;
+    let temp = local_copy_temp(to);
+    let mut target = open_local_copy_temp(&temp)?;
+    let written = (|| {
+        // The source's mode, never more open than 0600 on the way: a
+        // narrower source mode applies before the data, a wider one only
+        // relaxes what the owner already holds.
+        target
+            .set_permissions(permissions)
+            .map_err(local_copy_failed)?;
+        let mut chunk = vec![0u8; 1 << 20];
+        loop {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(crate::sync::IpcError::Cancelled);
+            }
+            let read = source.read(&mut chunk).map_err(local_copy_failed)?;
+            if read == 0 {
+                break;
+            }
+            target
+                .write_all(&chunk[..read])
+                .map_err(local_copy_failed)?;
+        }
+        target.flush().map_err(local_copy_failed)
+    })();
+    drop(target);
+    publish_local_copy(&temp, to, written, cancel)
+}
+
+/// `CopyFileExW`'s progress routine: called at each stream's start and after
+/// each chunk, it cancels the copy once `cancel` (its `lpdata`) is set.
+#[cfg(windows)]
+unsafe extern "system" fn windows_copy_progress(
+    _total_size: i64,
+    _total_transferred: i64,
+    _stream_size: i64,
+    _stream_transferred: i64,
+    _stream_number: u32,
+    _reason: windows::Win32::Storage::FileSystem::LPPROGRESS_ROUTINE_CALLBACK_REASON,
+    _source: windows::Win32::Foundation::HANDLE,
+    _destination: windows::Win32::Foundation::HANDLE,
+    data: *const std::ffi::c_void,
+) -> u32 {
+    // winbase.h: PROGRESS_CONTINUE 0, PROGRESS_CANCEL 1.
+    // SAFETY: `data` is the `&AtomicBool` `native_copy_windows` passes, alive
+    // for the whole `CopyFileExW` call that invokes this routine.
+    let cancel = unsafe { &*(data as *const AtomicBool) };
+    u32::from(cancel.load(Ordering::Relaxed))
+}
+
+/// Copy `from` to the new file `temp` with `CopyFileExW` (every NTFS stream,
+/// the attributes), cancelled through [`windows_copy_progress`]. A cancelled
+/// or failed copy leaves no `temp`: `CopyFileExW` deletes its partial file,
+/// and [`publish_local_copy`] removes anything left.
+#[cfg(windows)]
+fn native_copy_windows(
+    from: &std::path::Path,
+    temp: &std::path::Path,
+    cancel: &AtomicBool,
+) -> Result<(), crate::sync::IpcError> {
+    use std::os::windows::ffi::OsStrExt;
+    // winbase.h: the copy fails rather than replace an existing file.
+    const COPY_FILE_FAIL_IF_EXISTS: u32 = 0x1;
+    let wide = |path: &std::path::Path| {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<u16>>()
+    };
+    let (from, temp) = (wide(from), wide(temp));
+    // SAFETY: both names are NUL-terminated and outlive the call, and the
+    // progress data is `cancel`, borrowed for the whole call.
+    let copied = unsafe {
+        windows::Win32::Storage::FileSystem::CopyFileExW(
+            windows::core::PCWSTR(from.as_ptr()),
+            windows::core::PCWSTR(temp.as_ptr()),
+            Some(windows_copy_progress),
+            Some(std::ptr::from_ref(cancel).cast()),
+            None,
+            COPY_FILE_FAIL_IF_EXISTS,
+        )
+    };
+    match copied {
+        Ok(()) => Ok(()),
+        Err(_) if cancel.load(Ordering::Relaxed) => Err(crate::sync::IpcError::Cancelled),
+        Err(error) => Err(local_copy_failed(std::io::Error::from(error))),
+    }
+}
+
+/// `fcopyfile`'s status callback: called as the data moves, it stops the
+/// copy once `cancel` (its context) is set.
+#[cfg(target_os = "macos")]
+extern "C" fn macos_copy_status(
+    _what: libc::c_int,
+    _stage: libc::c_int,
+    _state: libc::copyfile_state_t,
+    _source: *const libc::c_char,
+    _destination: *const libc::c_char,
+    context: *mut libc::c_void,
+) -> libc::c_int {
+    // SAFETY: `context` is the `&AtomicBool` `native_copy_macos` sets, alive
+    // for the whole `fcopyfile` call that invokes this callback.
+    let cancel = unsafe { &*(context as *const AtomicBool) };
+    if cancel.load(Ordering::Relaxed) {
+        libc::COPYFILE_QUIT
+    } else {
+        libc::COPYFILE_CONTINUE
+    }
+}
+
+/// Copy `source` into the new owner-only file `temp` with `fcopyfile` and
+/// `COPYFILE_ALL` (data, extended attributes, ACL, mode), the flags
+/// `std::fs::copy` uses, stopped through [`macos_copy_status`].
+#[cfg(target_os = "macos")]
+fn native_copy_macos(
+    source: &std::fs::File,
+    permissions: std::fs::Permissions,
+    temp: &std::path::Path,
+    cancel: &AtomicBool,
+) -> Result<(), crate::sync::IpcError> {
+    use std::os::fd::AsRawFd;
+    let target = open_local_copy_temp(temp)?;
+    target
+        .set_permissions(permissions)
+        .map_err(local_copy_failed)?;
+    let all = libc::COPYFILE_METADATA | libc::COPYFILE_DATA;
+    // SAFETY: the state is freed on every path below; the callback and its
+    // context (`cancel`) outlive the `fcopyfile` call that uses them; both
+    // descriptors are open for the whole call.
+    let copied = unsafe {
+        let state = libc::copyfile_state_alloc();
+        if state.is_null() {
+            return Err(local_copy_failed(std::io::Error::last_os_error()));
+        }
+        let callback: extern "C" fn(
+            libc::c_int,
+            libc::c_int,
+            libc::copyfile_state_t,
+            *const libc::c_char,
+            *const libc::c_char,
+            *mut libc::c_void,
+        ) -> libc::c_int = macos_copy_status;
+        let set = libc::copyfile_state_set(
+            state,
+            libc::COPYFILE_STATE_STATUS_CB as u32,
+            callback as *const libc::c_void,
+        ) == 0
+            && libc::copyfile_state_set(
+                state,
+                libc::COPYFILE_STATE_STATUS_CTX as u32,
+                std::ptr::from_ref(cancel).cast(),
+            ) == 0;
+        let result = if set {
+            if libc::fcopyfile(source.as_raw_fd(), target.as_raw_fd(), state, all) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        } else {
+            Err(std::io::Error::last_os_error())
+        };
+        libc::copyfile_state_free(state);
+        result
+    };
+    drop(target);
+    match copied {
+        Ok(()) => Ok(()),
+        Err(_) if cancel.load(Ordering::Relaxed) => Err(crate::sync::IpcError::Cancelled),
+        Err(error) => Err(local_copy_failed(error)),
+    }
+}
+
+#[cfg(test)]
+mod native_local_copy_tests {
+    use super::*;
+
+    /// The platform copy, stopped before it starts: refused as a Stop, and
+    /// neither the destination nor a temporary is left.
+    #[test]
+    fn native_local_copy_stopped_leaves_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("source.bin");
+        std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
+        let to = dir.path().join("copy.bin");
+        let copied = copy_file_cancellable(&from, &to, &AtomicBool::new(true));
+        assert!(
+            matches!(copied, Err(crate::sync::IpcError::Cancelled)),
+            "{copied:?}"
+        );
+        let names: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [std::ffi::OsString::from("source.bin")]);
+    }
+
+    /// The Windows copy is stopped by `CopyFileExW` itself: with the flag set,
+    /// the native call fails as a Stop and leaves no temporary (were the
+    /// progress routine ignored, the copy would succeed).
+    #[cfg(windows)]
+    #[test]
+    fn native_local_copy_windows_honours_the_stop() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("source.bin");
+        std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
+        let temp = dir.path().join("temp.bin");
+        let copied = native_copy_windows(&from, &temp, &AtomicBool::new(true));
+        assert!(
+            matches!(copied, Err(crate::sync::IpcError::Cancelled)),
+            "{copied:?}"
+        );
+        assert!(!temp.exists());
+        native_copy_windows(&from, &temp, &AtomicBool::new(false)).unwrap();
+        assert_eq!(std::fs::read(&temp).unwrap(), std::fs::read(&from).unwrap());
+    }
+
+    /// An NTFS file's named stream reaches the destination with its unnamed
+    /// stream, as `std::fs::copy` gives it.
+    #[cfg(windows)]
+    #[test]
+    fn native_local_copy_keeps_an_ntfs_alternate_data_stream() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("file.txt");
+        std::fs::write(&from, b"unnamed stream").unwrap();
+        std::fs::write(dir.path().join("file.txt:metadata"), b"named stream").unwrap();
+        let to = dir.path().join("copy.txt");
+        copy_file_cancellable(&from, &to, &AtomicBool::new(false)).unwrap();
+        assert_eq!(std::fs::read(&to).unwrap(), b"unnamed stream");
+        assert_eq!(
+            std::fs::read(dir.path().join("copy.txt:metadata")).unwrap(),
+            b"named stream"
+        );
+    }
+
+    /// The macOS copy is stopped by `fcopyfile` itself: with the flag set,
+    /// the native call fails as a Stop (were the status callback ignored,
+    /// the copy would succeed).
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_local_copy_macos_honours_the_stop() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("source.bin");
+        std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
+        let source = std::fs::File::open(&from).unwrap();
+        let permissions = source.metadata().unwrap().permissions();
+        let temp = dir.path().join("temp.bin");
+        let copied = native_copy_macos(&source, permissions.clone(), &temp, &AtomicBool::new(true));
+        assert!(
+            matches!(copied, Err(crate::sync::IpcError::Cancelled)),
+            "{copied:?}"
+        );
+        std::fs::remove_file(&temp).unwrap();
+        // A new descriptor, as every production copy opens: `fcopyfile` reads
+        // from the descriptor's current offset, which the stopped call above
+        // may have moved to the end (the destination came out empty).
+        let source = std::fs::File::open(&from).unwrap();
+        native_copy_macos(&source, permissions, &temp, &AtomicBool::new(false)).unwrap();
+        let (copied, original) = (std::fs::read(&temp).unwrap(), std::fs::read(&from).unwrap());
+        assert_eq!(copied.len(), original.len(), "bytes copied");
+        assert!(copied == original, "the copy differs from its source");
+    }
+
+    /// A file's extended attribute reaches the destination with its data, as
+    /// `std::fs::copy` gives it.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_local_copy_keeps_an_extended_attribute() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("file.txt");
+        std::fs::write(&from, b"data").unwrap();
+        let c_path =
+            |path: &std::path::Path| std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        let name = c"com.aeroftp.test";
+        let value = b"attribute";
+        // SAFETY: NUL-terminated names and a buffer of the length given.
+        let set = unsafe {
+            libc::setxattr(
+                c_path(&from).as_ptr(),
+                name.as_ptr(),
+                value.as_ptr().cast(),
+                value.len(),
+                0,
+                0,
+            )
+        };
+        assert_eq!(set, 0, "{}", std::io::Error::last_os_error());
+        let to = dir.path().join("copy.txt");
+        copy_file_cancellable(&from, &to, &AtomicBool::new(false)).unwrap();
+        assert_eq!(std::fs::read(&to).unwrap(), b"data");
+        let mut buffer = [0u8; 32];
+        // SAFETY: as above, with a writable buffer of the length given.
+        let read = unsafe {
+            libc::getxattr(
+                c_path(&to).as_ptr(),
+                name.as_ptr(),
+                buffer.as_mut_ptr().cast(),
+                buffer.len(),
+                0,
+                0,
+            )
+        };
+        assert_eq!(
+            read,
+            value.len() as isize,
+            "{}",
+            std::io::Error::last_os_error()
+        );
+        assert_eq!(&buffer[..value.len()], value);
+    }
 }
 
 /// Whether anything is at `path`, a dangling link included: `exists()`
@@ -7413,6 +8986,19 @@ async fn copy_dir_recursive(
     depth: u32,
     links: NestedLinks,
 ) -> Result<(), String> {
+    copy_dir_recursive_cancellable(src, dst, depth, links, None).await
+}
+
+/// [`copy_dir_recursive`] that observes `cancel` between entries and copies
+/// each file with [`copy_file_cancellable`] (run on the blocking pool by its
+/// caller, `copy_local_file`).
+async fn copy_dir_recursive_cancellable(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    depth: u32,
+    links: NestedLinks,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
@@ -7428,6 +9014,9 @@ async fn copy_dir_recursive(
         .await
         .map_err(|e| format!("Failed to read entry: {}", e))?
     {
+        if cancel.is_some_and(|cancel| cancel.load(Ordering::Relaxed)) {
+            return Err("Transfer cancelled by user".into());
+        }
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
         // Use symlink_metadata to avoid following symlinks
@@ -7447,7 +9036,18 @@ async fn copy_dir_recursive(
             continue;
         }
         if metadata.is_dir() {
-            Box::pin(copy_dir_recursive(&src_path, &dst_path, depth + 1, links)).await?;
+            Box::pin(copy_dir_recursive_cancellable(
+                &src_path,
+                &dst_path,
+                depth + 1,
+                links,
+                cancel,
+            ))
+            .await?;
+        } else if let Some(cancel) = cancel {
+            refuse_link_destination(&dst_path)?;
+            copy_file_cancellable(&src_path, &dst_path, cancel)
+                .map_err(|_| format!("Failed to copy file: {}", src_path.display()))?;
         } else {
             refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
@@ -7462,7 +9062,7 @@ async fn copy_dir_recursive(
 #[cfg(all(test, unix))]
 mod local_link_tests {
     use super::{
-        copy_dir_recursive, copy_local_file, copy_then_delete_local, local_delete_walks_into,
+        copy_dir_recursive, copy_local_file_with, copy_then_delete_local, local_delete_walks_into,
         remove_local_file_or_link,
     };
 
@@ -7571,16 +9171,20 @@ mod local_link_tests {
         let elsewhere = dir.path().join("elsewhere.txt");
         let to = dir.path().join("to.txt");
         std::os::unix::fs::symlink(&elsewhere, &to).unwrap();
-        let refused = copy_local_file(
+        let refused = copy_local_file_with(
+            std::sync::Arc::default(),
             src.to_string_lossy().into(),
             to.to_string_lossy().into(),
             Some(false),
+            None,
         )
         .await;
         assert!(refused.is_err(), "{refused:?}");
-        let through = copy_local_file(
+        let through = copy_local_file_with(
+            std::sync::Arc::default(),
             src.to_string_lossy().into(),
             to.to_string_lossy().into(),
+            None,
             None,
         )
         .await;
@@ -7733,13 +9337,25 @@ mod rename_local_exdev_tests {
 }
 
 #[tauri::command]
-async fn create_local_folder(path: String) -> Result<(), String> {
+async fn create_local_folder(
+    path: String,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let _target = provider_state
+        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
+        .await?;
     validate_path(&path)?;
-    tokio::fs::create_dir_all(&path)
-        .await
-        .map_err(|e| format!("Failed to create folder: {}", e))?;
-
-    Ok(())
+    // As in `copy_local_file`: the blocking work owns the admission.
+    tokio::task::spawn_blocking(move || {
+        let _native_work = native_work;
+        std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create folder: {}", e))
+    })
+    .await
+    .map_err(|e| format!("create_local_folder task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -12955,10 +14571,10 @@ fn relabel_installed_menu(
 // ============ Sync Commands =====
 use cloud_config::{CloudConfig, CloudSyncStatus};
 use sync::{
-    classify_sync_error, classify_with_summary, delete_sync_journal, load_sync_index,
-    save_sync_index, save_sync_journal, select_canary_sample, verify_local_file, CanaryResult,
-    CanarySampleResult, CanarySummary, CompareOptions, CompareReport, FileInfo, SyncEcStatus,
-    SyncErrorInfo, SyncIndex, SyncJournal, VerifyPolicy, VerifyResult,
+    classify_with_summary, delete_sync_journal, load_sync_index, save_sync_journal,
+    select_canary_sample, verify_local_file, CanaryResult, CanarySampleResult, CanarySummary,
+    CompareOptions, CompareReport, FileInfo, SyncEcStatus, SyncErrorInfo, SyncIndex, SyncJournal,
+    VerifyPolicy, VerifyResult,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -12966,6 +14582,244 @@ struct SyncEcCommandResult {
     status: SyncEcStatus,
     sidecar_path: Option<String>,
     message: Option<String>,
+}
+
+impl SyncEcCommandResult {
+    /// The result a page receives: a failure's `message` can carry the
+    /// provider's text (a failed sidecar upload or download), so it crosses
+    /// as the fixed message of `sync::ipc_error_message`, like an error does.
+    /// The status, `GenerateFailed` included, is kept.
+    fn for_ipc(mut self, command: &'static str) -> Self {
+        self.message = self
+            .message
+            .map(|message| sync::ipc_error_message(command, &message));
+        self
+    }
+}
+
+#[cfg(test)]
+mod native_work_in_blocking_tests {
+    /// A leased command that hands its work to the blocking pool moves its
+    /// admission guard into that work: the guard then counts the blocking
+    /// work until it ends, not the async handler that awaited it. Pinned on
+    /// the source, since dropping a command's future cannot be driven here.
+    #[test]
+    fn the_admission_guard_lives_in_the_blocking_work() {
+        let source = include_str!("lib.rs");
+        for command in [
+            "create_local_folder",
+            "load_sync_index_cmd",
+            "save_sync_index_cmd",
+            "sync_intent_begin_cmd",
+            "sync_intent_snapshot_cmd",
+            "save_sync_journal_cmd",
+            "delete_sync_journal_cmd",
+        ] {
+            let start = source
+                .find(&format!("\nasync fn {command}("))
+                .unwrap_or_else(|| panic!("{command}"));
+            let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+            let admit = body
+                .find("let native_work = crate::sync_run_lease::admit(")
+                .unwrap_or_else(|| panic!("{command}: admission"));
+            let spawn = body
+                .find("spawn_blocking(move || {")
+                .unwrap_or_else(|| panic!("{command}: blocking work"));
+            let moved = body
+                .find("let _native_work = native_work;")
+                .unwrap_or_else(|| panic!("{command}: guard moved"));
+            assert!(admit < spawn && spawn < moved, "{command}");
+        }
+        // The local backup move: admitted by the command, owned by the
+        // blocking work of its inner function.
+        let command = &source[source
+            .find("\nasync fn sync_backup_archive_local(")
+            .unwrap()..];
+        let command = &command[..command.find("\n}\n").unwrap()];
+        assert!(command.contains("let native_work = crate::sync_run_lease::admit("));
+        assert!(command.contains("sync_backup_archive_local_inner(native_work, "));
+        let archive = &source[source
+            .find("\nasync fn sync_backup_archive_local_inner(")
+            .unwrap()..];
+        let archive = &archive[..archive.find("\n}\n").unwrap()];
+        let spawn = archive.find("spawn_blocking(move || {").unwrap();
+        assert!(archive[spawn..].contains("let _native_work = native_work;"));
+        let removal = &source[source
+            .find("\nasync fn sync_remove_empty_dir_for_ipc(")
+            .unwrap()..];
+        let removal = &removal[..removal.find("\n}\n").unwrap()];
+        let spawn = removal.find("spawn_blocking(move || {").unwrap();
+        assert!(removal[spawn..].contains("let _native_work = native_work;"));
+    }
+}
+
+#[cfg(test)]
+mod sync_ec_ipc_tests {
+    use super::*;
+    use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
+
+    const EC_LEAKED: &str = r#"{"errors":[{"status":"403","detail":"CONNECTION_CHANGED Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 session zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+    const EC_SECRET: &str = "zq8Xv2Lr9TmPq4Ks7Wd1Hy";
+
+    /// Records every upload it refuses: the command test proves the
+    /// sanitized failure is the upload's, not an earlier one.
+    #[derive(Default)]
+    struct SyncEcLeakyProvider {
+        uploads: Arc<std::sync::Mutex<Vec<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for SyncEcLeakyProvider {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "sync-ec-leaky".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.uploads.lock().unwrap().push(remote_path.to_string());
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(EC_LEAKED.to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("sync-ec-leaky".to_string())
+        }
+    }
+
+    /// A sidecar failure reported in an `Ok` result: the whole response the
+    /// page receives keeps the status and carries none of the provider's text.
+    #[test]
+    fn an_ec_failure_payload_carries_no_provider_text() {
+        let leaked =
+            r#"{"errors":[{"status":"403","detail":"upload refused zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+        for command in ["sync_ec_generate", "sync_ec_verify_repair"] {
+            let result = sync_ec_message(SyncEcStatus::GenerateFailed, leaked).for_ipc(command);
+            let wire = serde_json::to_string(&result).unwrap();
+            assert!(!wire.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{wire}");
+            assert!(!wire.contains("detail"), "{wire}");
+            assert!(matches!(result.status, SyncEcStatus::GenerateFailed));
+            assert!(wire.contains("[sync-error:"), "{wire}");
+        }
+    }
+
+    /// The command boundary itself, not the helper: a parity upload refused
+    /// with an opaque token still answers `GenerateFailed` with the provider
+    /// text removed from the serialized response.
+    #[tokio::test]
+    async fn the_sync_ec_generate_command_sanitizes_a_provider_upload_failure() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(AppState::new());
+        let provider_state = provider_commands::ProviderState::new();
+        let leaky = SyncEcLeakyProvider::default();
+        let uploads = leaky.uploads.clone();
+        *provider_state.provider.lock().await = Some(Box::new(leaky));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("data.bin");
+        let body: Vec<u8> = (0..262_144u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        std::fs::write(&local, body).unwrap();
+        let result = sync_ec_generate(
+            app.state::<AppState>(),
+            app.state::<provider_commands::ProviderState>(),
+            local.to_string_lossy().into_owned(),
+            "/remote/data.bin".to_string(),
+            "data.bin".to_string(),
+            Some(10),
+            None,
+            Some(true),
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(result.status, SyncEcStatus::GenerateFailed),
+            "{:?}",
+            result.status
+        );
+        let wire = serde_json::to_string(&result).unwrap();
+        assert!(!wire.contains(EC_SECRET), "{wire}");
+        assert!(!wire.contains("detail"), "{wire}");
+        assert!(wire.contains("generate_failed"), "{wire}");
+        // The failure is the parity upload's: generation got that far and
+        // the refused call is the sidecar's, not an earlier exit.
+        let uploads = uploads.lock().unwrap().clone();
+        assert_eq!(uploads.len(), 1, "{uploads:?}");
+        assert!(uploads[0].starts_with("/remote/"), "{uploads:?}");
+        assert_ne!(uploads[0], "/remote/data.bin", "{uploads:?}");
+    }
 }
 
 fn sync_ec_message(status: SyncEcStatus, message: impl Into<String>) -> SyncEcCommandResult {
@@ -12994,6 +14848,8 @@ async fn sync_ec_upload_remote_file(
     remote_path: &str,
 ) -> Result<(), String> {
     if sync_ec_use_provider(provider_state, is_provider).await {
+        provider_state
+            .guard_no_raw_crypt_write_outside("Upload AeroSync parity", &[remote_path])?;
         let mut provider_lock = provider_state.provider.lock().await;
         let provider = provider_lock
             .as_mut()
@@ -13068,7 +14924,44 @@ async fn sync_ec_generate(
     pct: Option<u32>,
     max_file_size: Option<u64>,
     is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "sync_ec_generate",
+        sync_ec_generate_for_ipc(
+            &state,
+            &provider_state,
+            local_path,
+            remote_path,
+            relative_path,
+            pct,
+            max_file_size,
+            is_provider,
+            expected_gui_target,
+        )
+        .await,
+    )
+    .map(|result| result.for_ipc("sync_ec_generate"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_generate_for_ipc(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    pct: Option<u32>,
+    max_file_size: Option<u64>,
+    is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+) -> Result<SyncEcCommandResult, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     let options = sync::SyncErrorCorrectionOptions {
         enabled: true,
         pct: pct.unwrap_or(crate::error_correction::ERROR_CORRECTION_DEFAULT_PCT),
@@ -13115,14 +15008,8 @@ async fn sync_ec_generate(
     let sidecar_path =
         crate::error_correction::aerosync::sync_error_correction_sidecar_path(&remote_path);
 
-    match sync_ec_upload_remote_file(
-        &state,
-        &provider_state,
-        is_provider,
-        &tmp_path,
-        &sidecar_path,
-    )
-    .await
+    match sync_ec_upload_remote_file(state, provider_state, is_provider, &tmp_path, &sidecar_path)
+        .await
     {
         Ok(()) => Ok(SyncEcCommandResult {
             status: SyncEcStatus::Generated,
@@ -13148,7 +15035,44 @@ async fn sync_ec_verify_repair(
     expected_sha256: Option<String>,
     expected_mtime: Option<String>,
     is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<SyncEcCommandResult, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "sync_ec_verify_repair",
+        sync_ec_verify_repair_for_ipc(
+            state,
+            provider_state,
+            local_path,
+            remote_path,
+            relative_path,
+            expected_sha256,
+            expected_mtime,
+            is_provider,
+            expected_gui_target,
+        )
+        .await,
+    )
+    .map(|result| result.for_ipc("sync_ec_verify_repair"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_ec_verify_repair_for_ipc(
+    state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    local_path: String,
+    remote_path: String,
+    relative_path: String,
+    expected_sha256: Option<String>,
+    expected_mtime: Option<String>,
+    is_provider: Option<bool>,
+    expected_gui_target: Option<u64>,
+) -> Result<SyncEcCommandResult, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     let Some(expected_sha256) = expected_sha256.filter(|s| !s.trim().is_empty()) else {
         return Ok(SyncEcCommandResult {
             status: SyncEcStatus::MissingExpectedHash,
@@ -13214,9 +15138,11 @@ fn cancel_compare(progress_id: String) -> bool {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn compare_directories(
     app: AppHandle,
     state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
     local_path: String,
     remote_path: String,
     options: Option<CompareOptions>,
@@ -13238,6 +15164,10 @@ async fn compare_directories(
         "Comparing directories: local={}, remote={}",
         local_path, remote_path
     );
+    let scanned_target = provider_state
+        .gui_target_snapshot(false)
+        .await
+        .map_err(|_| provider_commands::compare_target_refusal())?;
 
     // A flag of its own, raised by `cancel_compare` (see `compare_cancel`):
     // the transfer cancel flag is neither reset nor read here.
@@ -13319,10 +15249,22 @@ async fn compare_directories(
     );
 
     // Load sync index if available for conflict detection, unless another
-    // profile wrote it (see `sync::history_serves`).
-    let index = sync::load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
-        .ok()
-        .flatten();
+    // profile or another target wrote it (see `sync::history_serves` and
+    // `sync::bind_index_to_target`). The target is the one scanned: a
+    // reconnect during the scan refuses the compare.
+    // The same identity AND the same epoch: an A, B, A reconnect during the
+    // scan has equal identities and a moved epoch, and is refused.
+    let (target, epoch) = provider_state
+        .gui_target_snapshot(false)
+        .await
+        .map_err(|_| provider_commands::compare_target_refusal())?;
+    if (target.as_str(), epoch) != (scanned_target.0.as_str(), scanned_target.1) {
+        return Err(provider_commands::compare_target_refusal());
+    }
+    let index =
+        sync::load_sync_index_for_target(&local_path, &remote_path, profile_id.as_deref(), &target)
+            .ok()
+            .flatten();
     let report = classify_walked_pair(
         &local_path,
         None,
@@ -13487,7 +15429,11 @@ async fn compare_local_directories(
 
     // The sync index is keyed by the (left, right) path pair, so previous
     // local-local runs feed conflict detection just like the remote case.
-    let index = load_sync_index(&left_path, &right_path).ok().flatten();
+    // Its target is the pair of folders itself (see `sync::bind_index_to_target`).
+    let index = sync::bind_index_to_target(
+        load_sync_index(&left_path, &right_path).ok().flatten(),
+        provider_commands::LOCAL_PAIR_TARGET_IDENTITY,
+    );
     let report = classify_walked_pair(
         &left_path,
         Some(&right_path),
@@ -14027,44 +15973,258 @@ async fn get_remote_files_recursive_with_progress(
     scanned
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn load_sync_index_cmd(
+    provider_state: State<'_, provider_commands::ProviderState>,
     local_path: String,
     remote_path: String,
     profile_id: Option<String>,
+    expected_gui_target: Option<u64>,
+    owner_binding: Option<String>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
 ) -> Result<Option<SyncIndex>, String> {
+    // Its load can adopt a legacy history and insert recovery fences, so a
+    // run's call is admitted only while the run's lease is live. Compare
+    // passes no token and is only counted.
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let _pin = provider_state
+        .pin_gui_index_owner(
+            expected_gui_target,
+            owner_binding.as_deref(),
+            is_provider.unwrap_or(false),
+        )
+        .await?;
+    // Read under the pin: the target the run's plan was made against. A run between two
+    // local folders holds no GUI target and passes none.
+    let target = match expected_gui_target {
+        Some(_) => {
+            provider_state
+                .gui_target_identity(is_provider.unwrap_or(false))
+                .await?
+        }
+        None => provider_commands::LOCAL_PAIR_TARGET_IDENTITY.to_string(),
+    };
     tokio::task::spawn_blocking(move || {
-        load_sync_index_cmd_blocking(local_path, remote_path, profile_id)
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        load_sync_index_cmd_blocking(local_path, remote_path, profile_id, &target)
     })
     .await
     .unwrap_or_else(|err| Err(format!("load_sync_index_cmd task failed: {err}")))
 }
 
+/// Validate the remote root of a sync pair. It is a provider path such as
+/// `/photos`, or a host path when both sides are local. [`validate_path`]
+/// alone asks for a host-absolute path, which `/photos` is not on Windows.
+/// The root is only hashed into the pair key here, never opened.
+fn validate_sync_remote_root(path: &str) -> Result<(), String> {
+    if validate_path(path).is_ok() {
+        return Ok(());
+    }
+    if !path.starts_with('/') {
+        return Err("Path must be absolute".into());
+    }
+    if path.len() > 4096 {
+        return Err("Path exceeds 4096 character limit".to_string());
+    }
+    if path.contains('\0') {
+        return Err("Path contains null bytes".to_string());
+    }
+    if path.split(['/', '\\']).any(|part| part == "..") {
+        return Err("Path traversal ('..') not allowed".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod sync_remote_root_tests {
+    use super::{validate_path, validate_sync_remote_root};
+
+    #[test]
+    fn a_provider_root_is_accepted_whatever_the_host_calls_absolute() {
+        for root in ["/photos", "/", "/a b/c"] {
+            assert!(validate_sync_remote_root(root).is_ok(), "{root}");
+        }
+        #[cfg(windows)]
+        {
+            // The local validator refuses it on this host: no drive prefix.
+            assert!(validate_path("/photos").is_err());
+            assert!(validate_path(r"C:\sync").is_ok());
+            assert!(validate_sync_remote_root(r"C:\sync").is_ok());
+        }
+        #[cfg(not(windows))]
+        assert!(validate_path("/photos").is_ok());
+    }
+
+    /// 4557682344: on Unix a backslash is an ordinary character of a name, so
+    /// `/a\..\b` is ONE legal component and is accepted on purpose (the root
+    /// is only hashed into the pair key, never opened). Where the backslash
+    /// is a separator (Windows), the same text is refused.
+    #[cfg(unix)]
+    #[test]
+    fn a_backslash_name_is_one_component_on_unix() {
+        assert!(validate_sync_remote_root(r"/a\..\b").is_ok());
+        assert!(validate_sync_remote_root("/a/../b").is_err());
+    }
+
+    #[test]
+    fn a_relative_or_escaping_remote_root_is_refused() {
+        for root in ["photos", "", "./photos", "/a/../b", "/a/..", "/a\0b"] {
+            assert!(validate_sync_remote_root(root).is_err(), "{root:?}");
+        }
+        assert!(validate_sync_remote_root(&format!("/{}", "a".repeat(4096))).is_err());
+    }
+}
+
 /// The body of `load_sync_index_cmd`, kept synchronous and run on the blocking
 /// pool. With `profile_id`, an index another profile wrote is not returned
-/// (see `sync::history_serves`).
+/// (see `sync::history_serves`); one another target wrote is not either, and
+/// one that records no target is returned untrusted (see
+/// `sync::bind_index_to_target`).
 fn load_sync_index_cmd_blocking(
     local_path: String,
     remote_path: String,
     profile_id: Option<String>,
+    target: &str,
 ) -> Result<Option<SyncIndex>, String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
-    sync::load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
+    validate_sync_remote_root(&remote_path)?;
+    sync::load_sync_index_for_target(&local_path, &remote_path, profile_id.as_deref(), target)
 }
 
 #[tauri::command]
-async fn save_sync_index_cmd(index: SyncIndex) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || save_sync_index_cmd_blocking(index))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_sync_index_cmd task failed: {err}")))
+async fn save_sync_index_cmd(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    index: SyncIndex,
+    intent_tokens: Option<Vec<String>>,
+    expected_gui_target: Option<u64>,
+    owner_binding: Option<String>,
+    is_provider: Option<bool>,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let _pin = provider_state
+        .pin_gui_index_owner(
+            expected_gui_target,
+            owner_binding.as_deref(),
+            is_provider.unwrap_or(false),
+        )
+        .await?;
+    // Read under the pin: the target the run transferred to. A run between two
+    // local folders holds no GUI target and passes none.
+    let target = match expected_gui_target {
+        Some(_) => {
+            provider_state
+                .gui_target_identity(is_provider.unwrap_or(false))
+                .await?
+        }
+        None => provider_commands::LOCAL_PAIR_TARGET_IDENTITY.to_string(),
+    };
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        validate_path(&index.local_path)?;
+        validate_sync_remote_root(&index.remote_path)?;
+        sync::save_sync_index_from_page(&index, &intent_tokens.unwrap_or_default(), &target)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("save_sync_index_cmd task failed: {err}")))
 }
 
-/// The body of `save_sync_index_cmd`, kept synchronous and run on the blocking pool.
-fn save_sync_index_cmd_blocking(index: SyncIndex) -> Result<(), String> {
-    validate_path(&index.local_path)?;
-    validate_path(&index.remote_path)?;
-    save_sync_index(&index)
+#[tauri::command]
+async fn sync_intent_begin_cmd(
+    local_path: String,
+    remote_path: String,
+    paths: Vec<String>,
+    sync_run_lease: String,
+) -> Result<Vec<String>, String> {
+    let native_work = crate::sync_run_lease::admit(Some(&sync_run_lease))?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        validate_path(&local_path)?;
+        validate_sync_remote_root(&remote_path)?;
+        if paths.len() > 100_000 {
+            return Err("Too many sync intents".into());
+        }
+        sync_run_lease::with_guard(&local_path, &remote_path, &sync_run_lease, || {
+            sync::begin_sync_intents(&local_path, &remote_path, &paths)
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_intent_snapshot_cmd(
+    local_path: String,
+    remote_path: String,
+    sync_run_lease: Option<String>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        validate_path(&local_path)?;
+        validate_sync_remote_root(&remote_path)?;
+        sync::snapshot_sync_intents(&local_path, &remote_path)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn sync_run_lease_begin_cmd(
+    window: tauri::Window,
+    local_path: String,
+    remote_path: String,
+    page_nonce: Option<String>,
+) -> Result<String, String> {
+    let window = window.label().to_string();
+    // The nonce the requesting document bound at its start: the lease is
+    // registered only while that binding owns the window's current
+    // generation, under the lock page loss and binding take
+    // (`sync_run_lease::bind_page`).
+    tokio::task::spawn_blocking(move || {
+        validate_path(&local_path)?;
+        validate_sync_remote_root(&remote_path)?;
+        sync_run_lease::acquire_for_page(&local_path, &remote_path, &window, page_nonce.as_deref())
+    })
+    .await
+    .map_err(|_| "Sync run lock worker failed")?
+}
+
+/// A document binds its load nonce to its window at start, before any run
+/// (`sync_run_lease::bind_page`). A binding of another document ends the
+/// leases of the one bound before, as a reload does: their pairs are freed
+/// once the work they admitted has settled (T6a).
+#[tauri::command]
+async fn sync_run_page_bind_cmd(
+    app: AppHandle,
+    window: tauri::Window,
+    page_nonce: String,
+) -> Result<(), String> {
+    // The bind and the cleanup of its orphans run on a task of their own:
+    // this command being dropped mid-bind cannot skip the cleanup (U11).
+    sync_run_lease::bind_page_and_schedule_cleanup(
+        window.label().to_string(),
+        page_nonce,
+        move || {
+            app.state::<provider_commands::ProviderState>()
+                .gui_work_settled()
+                && sync_run_lease::native_work_settled()
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+async fn sync_run_lease_end_cmd(token: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || sync_run_lease::release(&token))
+        .await
+        .map_err(|_| "Sync run lock worker failed".to_string())?
 }
 
 // ============ Sync Journal Commands (Phase 2: Reliability) =====
@@ -14090,35 +16250,52 @@ fn load_sync_journal_cmd_blocking(
     profile_id: Option<String>,
 ) -> Result<Option<SyncJournal>, String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
+    validate_sync_remote_root(&remote_path)?;
     sync::load_sync_journal_for_profile(&local_path, &remote_path, profile_id.as_deref())
 }
 
 #[tauri::command]
-async fn save_sync_journal_cmd(journal: SyncJournal) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || save_sync_journal_cmd_blocking(journal))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
+async fn save_sync_journal_cmd(
+    journal: SyncJournal,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        save_sync_journal_cmd_blocking(journal)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("save_sync_journal_cmd task failed: {err}")))
 }
 
 /// The body of `save_sync_journal_cmd`, kept synchronous and run on the blocking pool.
 fn save_sync_journal_cmd_blocking(journal: SyncJournal) -> Result<(), String> {
     validate_path(&journal.local_path)?;
-    validate_path(&journal.remote_path)?;
+    validate_sync_remote_root(&journal.remote_path)?;
     save_sync_journal(&journal)
 }
 
 #[tauri::command]
-async fn delete_sync_journal_cmd(local_path: String, remote_path: String) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || delete_sync_journal_cmd_blocking(local_path, remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
+async fn delete_sync_journal_cmd(
+    local_path: String,
+    remote_path: String,
+    sync_run_lease: Option<String>,
+) -> Result<(), String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    tokio::task::spawn_blocking(move || {
+        // Held by the blocking work itself: it counts until that work ends.
+        let _native_work = native_work;
+        delete_sync_journal_cmd_blocking(local_path, remote_path)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("delete_sync_journal_cmd task failed: {err}")))
 }
 
 /// The body of `delete_sync_journal_cmd`, kept synchronous and run on the blocking pool.
 fn delete_sync_journal_cmd_blocking(local_path: String, remote_path: String) -> Result<(), String> {
     validate_path(&local_path)?;
-    validate_path(&remote_path)?;
+    validate_sync_remote_root(&remote_path)?;
     delete_sync_journal(&local_path, &remote_path)
 }
 
@@ -14445,6 +16622,9 @@ struct DeltaServerIdentity {
 struct DeltaEligibilityProbeResult {
     eligible: bool,
     reason: Option<String>,
+    /// Set when the run must stop before any write (see
+    /// `DeltaEligibilityStatus::hard_error`).
+    hard_error: Option<String>,
     server_identity: Option<DeltaServerIdentity>,
 }
 
@@ -14555,7 +16735,9 @@ async fn get_transfer_optimization_hints(
 #[tauri::command]
 async fn sftp_probe_delta_eligibility(
     provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
 ) -> Result<DeltaEligibilityProbeResult, String> {
+    let _target = provider_state.pin_gui_target(expected_gui_target).await?;
     let (active_session_is_sftp, server_identity) = {
         let config_lock = provider_state.config.lock().await;
         let config = config_lock.as_ref();
@@ -14583,6 +16765,7 @@ async fn sftp_probe_delta_eligibility(
         return Ok(DeltaEligibilityProbeResult {
             eligible: false,
             reason: Some(reason.to_string()),
+            hard_error: None,
             server_identity,
         });
     }
@@ -14600,11 +16783,13 @@ async fn sftp_probe_delta_eligibility(
         .unwrap_or(crate::delta_sync_rsync::DeltaEligibilityStatus {
             eligible: false,
             reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+            hard_error: None,
         });
 
     Ok(DeltaEligibilityProbeResult {
         eligible: verdict.eligible,
         reason: verdict.reason,
+        hard_error: verdict.hard_error,
         server_identity,
     })
 }
@@ -15912,7 +18097,9 @@ fn verify_local_transfer_blocking(
 
 #[tauri::command]
 fn classify_transfer_error(raw_error: String, file_path: Option<String>) -> SyncErrorInfo {
-    classify_sync_error(&raw_error, file_path.as_deref())
+    // A runner command's error carries the classification made natively from
+    // its full text (`ipc_error_message`); any other text is classified here.
+    sync::classify_ipc_error(&raw_error, file_path.as_deref())
 }
 
 // ============ AI Commands =====
@@ -16476,8 +18663,30 @@ async fn sync_backup_remote_move(
 
 /// Move `<root>/<rel>` into the backup folder on the local disk before the
 /// sync overwrites or deletes it. `None` when there was nothing to keep.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 async fn sync_backup_archive_local(
+    provider_state: State<'_, provider_commands::ProviderState>,
+    expected_gui_target: Option<u64>,
+    is_provider: Option<bool>,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    sync_run_lease: Option<String>,
+) -> Result<Option<String>, String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let _target = provider_state
+        .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
+        .await?;
+    sync_backup_archive_local_inner(native_work, root, dir, stamp, rel).await
+}
+
+/// `native_work` is the command's admission. As in `copy_local_file`, the
+/// blocking work owns it: the move of the file counts as work of the run
+/// until it ends, not until the handler that awaited it is gone.
+async fn sync_backup_archive_local_inner(
+    native_work: crate::sync_run_lease::NativeWork,
     root: String,
     dir: String,
     stamp: String,
@@ -16485,6 +18694,7 @@ async fn sync_backup_archive_local(
 ) -> Result<Option<String>, String> {
     validate_path(&root)?;
     tokio::task::spawn_blocking(move || {
+        let _native_work = native_work;
         let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
         sync::validate_relative_path(&rel)?;
         sync_backup::archive_local(std::path::Path::new(&root), &dir, &stamp, &rel)
@@ -16499,6 +18709,8 @@ async fn sync_backup_archive_local(
 /// overwrites or deletes it. `None` when there was nothing to keep. Refuses
 /// before touching anything on a remote that cannot move across folders.
 #[tauri::command]
+// Tauri injects two State arguments; the six wire arguments preserve the pinned backup IPC contract.
+#[allow(clippy::too_many_arguments)]
 async fn sync_backup_archive_remote(
     app_state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
@@ -16507,7 +18719,41 @@ async fn sync_backup_archive_remote(
     dir: String,
     stamp: String,
     rel: String,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<Option<String>, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "sync_backup_archive_remote",
+        sync_backup_archive_remote_for_ipc(
+            &app_state,
+            &provider_state,
+            use_provider,
+            root,
+            dir,
+            stamp,
+            rel,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_backup_archive_remote_for_ipc(
+    app_state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    use_provider: bool,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    expected_gui_target: Option<u64>,
+) -> Result<Option<String>, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
     sync::validate_relative_path(&rel)?;
     let archived = if use_provider {
@@ -16523,7 +18769,126 @@ async fn sync_backup_archive_remote(
         let mut ftp_manager = app_state.ftp_manager.lock().await;
         sync_backup::archive_remote_on(&mut *ftp_manager, &root, &dir, &stamp, &rel).await
     };
-    archived.map_err(|e| format!("Backup of {} failed: {}", rel, e))
+    archived.map_err(crate::sync::IpcError::from)
+}
+
+async fn local_sync_receipt_is_file(receipt: &str) -> Result<bool, String> {
+    match tokio::fs::symlink_metadata(receipt).await {
+        Ok(meta) => Ok(meta.file_type().is_file()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod sync_receipt_file_tests {
+    #[tokio::test]
+    async fn receipt_requires_a_real_archived_file_not_a_directory_or_link() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipt");
+        std::fs::write(&path, b"kept").unwrap();
+        assert!(super::local_sync_receipt_is_file(path.to_str().unwrap())
+            .await
+            .unwrap());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert!(!super::local_sync_receipt_is_file(path.to_str().unwrap())
+            .await
+            .unwrap());
+        std::fs::remove_dir(&path).unwrap();
+        #[cfg(unix)]
+        {
+            let original = dir.path().join("real");
+            std::fs::write(&original, b"kept").unwrap();
+            std::os::unix::fs::symlink(original, &path).unwrap();
+            assert!(!super::local_sync_receipt_is_file(path.to_str().unwrap())
+                .await
+                .unwrap());
+        }
+    }
+}
+
+/// Verify a persisted archive receipt before a resumed sync relies on it.
+#[tauri::command]
+// Tauri injects two State arguments; the seven wire arguments preserve the pinned receipt IPC contract.
+#[allow(clippy::too_many_arguments)]
+async fn sync_backup_verify_receipt(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    receipt: String,
+    expected_gui_target: Option<u64>,
+) -> Result<bool, String> {
+    provider_commands::ipc_result(
+        "sync_backup_verify_receipt",
+        sync_backup_verify_receipt_for_ipc(
+            &app_state,
+            &provider_state,
+            target,
+            root,
+            dir,
+            stamp,
+            rel,
+            receipt,
+            expected_gui_target,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn sync_backup_verify_receipt_for_ipc(
+    app_state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    target: String,
+    root: String,
+    dir: String,
+    stamp: String,
+    rel: String,
+    receipt: String,
+    expected_gui_target: Option<u64>,
+) -> Result<bool, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
+    let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
+    sync::validate_relative_path(&rel)?;
+    if !sync_backup::archive_receipt_matches(&root, &dir, &stamp, &rel, &receipt, target == "local")
+    {
+        return Ok(false);
+    }
+    match target.as_str() {
+        "local" => {
+            validate_path(&root)?;
+            local_sync_receipt_is_file(&receipt)
+                .await
+                .map_err(Into::into)
+        }
+        "provider" => {
+            let mut lock = provider_state.provider.lock().await;
+            sync_backup::provider_receipt_is_file(
+                lock.as_mut()
+                    .ok_or("Not connected to any provider")?
+                    .as_mut(),
+                &receipt,
+            )
+            .await
+            .map_err(crate::sync::IpcError::from)
+        }
+        "ftp" => app_state
+            .ftp_manager
+            .lock()
+            .await
+            .receipt_is_file(&receipt)
+            .await
+            .map_err(|e| crate::sync::IpcError::from_ftp(&e)),
+        _ => Err("Invalid backup receipt target".into()),
+    }
 }
 
 /// Remove a folder a sync emptied, only if it is empty (`sync_empty_dir`):
@@ -16539,17 +18904,51 @@ async fn sync_remove_empty_dir(
     provider_state: State<'_, provider_commands::ProviderState>,
     target: String,
     path: String,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    provider_commands::ipc_result(
+        "sync_remove_empty_dir",
+        sync_remove_empty_dir_for_ipc(
+            app_state,
+            provider_state,
+            target,
+            path,
+            expected_gui_target,
+            native_work,
+        )
+        .await,
+    )
+}
+
+/// `native_work` is the command's admission: a removal on the blocking pool
+/// owns it, so it counts until that work ends.
+async fn sync_remove_empty_dir_for_ipc(
+    app_state: State<'_, AppState>,
+    provider_state: State<'_, provider_commands::ProviderState>,
+    target: String,
+    path: String,
+    expected_gui_target: Option<u64>,
+    native_work: crate::sync_run_lease::NativeWork,
+) -> Result<String, crate::sync::IpcError> {
+    let _target = provider_state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     let removal = match target.as_str() {
         "local" => {
             validate_path(&path)?;
             let local = path.clone();
             tokio::task::spawn_blocking(move || {
+                // The command's own admission, held by the blocking work as
+                // long as it runs, even if the command that awaited it is gone.
+                let _native_work = native_work;
                 sync_empty_dir::remove_local_dir_if_empty(std::path::Path::new(&local))
-                    .map_err(|e| e.to_string())
+                    .map_err(|e| crate::sync::IpcError::from(e.to_string()))
             })
             .await
-            .unwrap_or_else(|err| Err(format!("sync_remove_empty_dir task failed: {err}")))
+            .unwrap_or_else(|err| Err(format!("sync_remove_empty_dir task failed: {err}").into()))
         }
         "provider" => {
             let mut lock = provider_state.provider.lock().await;
@@ -16559,19 +18958,17 @@ async fn sync_remove_empty_dir(
                 &path,
             )
             .await
-            .map_err(|e| e.to_string())
+            .map_err(crate::sync::IpcError::from)
         }
         "ftp" => {
             let mut ftp_manager = app_state.ftp_manager.lock().await;
             sync_empty_dir::remove_remote_dir_if_empty(&mut *ftp_manager, &path)
                 .await
-                .map_err(|e| e.to_string())
+                .map_err(crate::sync::IpcError::from)
         }
-        other => return Err(format!("unknown removal target: {other}")),
+        other => return Err(format!("unknown removal target: {other}").into()),
     };
-    removal
-        .map(|r| r.as_str().to_string())
-        .map_err(|e| format!("Could not remove the folder {}: {}", path, e))
+    removal.map(|r| r.as_str().to_string())
 }
 
 /// List remote folder tree for the selective sync UI.
@@ -16588,7 +18985,9 @@ async fn list_remote_folders_tree(
     let max_d = max_depth.unwrap_or(3).min(5);
     // `create_cloud_provider` returns the provider connected and standing in
     // the profile root; connecting again would reset it to the account root.
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    let opened = cloud_provider_factory::create_cloud_connection(&config).await?;
+    let account = opened.reads_account();
+    let mut provider = opened.provider;
 
     // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
     // must show DECRYPTED folder names in the selective-sync tree (and match
@@ -16596,11 +18995,13 @@ async fn list_remote_folders_tree(
     // wrap the tree would list ciphertext directory names and exclusions would
     // never match. Mirrors the background-sync chokepoint.
     if let Some(store) = credential_store::CredentialStore::from_cache() {
+        let account = account.ok_or("the connection captured no account")?;
         provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
             config.server_profile_id.as_deref(),
             &config.server_profile,
             &store,
+            account,
         )
         .await?;
     }
@@ -21251,7 +23652,14 @@ mod linux_renderer_tests {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+// The self-test build exits before the app: the rest of `run` is not reached.
+#[cfg_attr(feature = "page-load-selftest", allow(unreachable_code))]
 pub fn run() {
+    // The WKWebView page-load self-test (U11): a build made with this
+    // feature (CI, on demand) runs it on the main thread and exits. Never in
+    // a release build.
+    #[cfg(feature = "page-load-selftest")]
+    sync_run_lease::page_load_selftest::run_and_exit();
     #[cfg(windows)]
     if file_associations::handle_uninstall_history_arg() {
         return;
@@ -22419,6 +24827,35 @@ pub fn run() {
             // Emit event to frontend
             let _ = app.emit("menu-event", id);
         })
+        .on_page_load(|webview, payload| {
+            // A page that starts loading replaces the script that owned the
+            // window's sync runs: a reload, or the new web process that
+            // `webview_recovery` asks for after a crash. Nothing is left to
+            // end those runs, so their folder pairs are unlocked here, once
+            // no GUI operation holds a target pin and no native command of
+            // a sync run (a local-local one holds no pin) is still running.
+            //
+            // The first `Finished` of a generation ends the binding and
+            // orphans what was bound or taken since `Started` (it may be the
+            // old document's); a later `Finished` of the same generation does
+            // nothing (`sync_run_lease::bind_page`).
+            // One handler for both events, the one the page-load self-test
+            // replays the engine's real events through (U11).
+            let finished = payload.event() == tauri::webview::PageLoadEvent::Finished;
+            let orphans = sync_run_lease::page_load_event(webview.window().label(), finished);
+            if orphans.is_empty() {
+                return;
+            }
+            let app = webview.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                sync_run_lease::release_orphans_once_settled(orphans, || {
+                    app.state::<provider_commands::ProviderState>()
+                        .gui_work_settled()
+                        && sync_run_lease::native_work_settled()
+                })
+                .await;
+            });
+        })
         .on_window_event(|window, event| {
             // Only handle close events for the main window
             if window.label() != "main" {
@@ -22523,6 +24960,7 @@ pub fn run() {
             set_download_content_check,
             stop_starting_transfers,
             reset_cancel_flag,
+            operation_scope_cancel,
             set_speed_limit,
             get_local_files,
             open_in_file_manager,
@@ -22581,6 +25019,11 @@ pub fn run() {
             proton_mode_switch::proton_translate_path,
             load_sync_index_cmd,
             save_sync_index_cmd,
+            sync_intent_begin_cmd,
+            sync_run_lease_begin_cmd,
+            sync_run_page_bind_cmd,
+            sync_run_lease_end_cmd,
+            sync_intent_snapshot_cmd,
             load_sync_journal_cmd,
             save_sync_journal_cmd,
             delete_sync_journal_cmd,
@@ -22647,6 +25090,7 @@ pub fn run() {
             sync_backup_remote_move,
             sync_backup_archive_local,
             sync_backup_archive_remote,
+            sync_backup_verify_receipt,
             sync_remove_empty_dir,
             generate_share_link,
             generate_share_link_remote,
@@ -23005,6 +25449,9 @@ pub fn run() {
             provider_commands::provider_rename,
             provider_commands::provider_chmod,
             provider_commands::provider_connection_generation,
+            provider_commands::provider_gui_target_epoch,
+            provider_commands::provider_gui_target_binding,
+            provider_commands::provider_gui_verify_resume_owner,
             provider_commands::provider_server_copy,
             provider_commands::provider_checksum,
             provider_commands::provider_checksum_capability,
@@ -27512,7 +29959,8 @@ mod sync_backup_archive_local_tests {
     #[tokio::test]
     async fn a_root_that_is_not_a_clean_absolute_path_is_refused() {
         for root in ["relative/dir", "/tmp/../etc", "/tmp/a\0b"] {
-            let outcome = super::sync_backup_archive_local(
+            let outcome = super::sync_backup_archive_local_inner(
+                crate::sync_run_lease::admit(None).unwrap(),
                 root.to_string(),
                 ".aeroftp-versions".to_string(),
                 "20260925T070000Z".to_string(),
@@ -27521,6 +29969,26 @@ mod sync_backup_archive_local_tests {
             .await;
             assert!(outcome.is_err(), "{root:?} was accepted: {outcome:?}");
         }
+    }
+}
+
+#[cfg(test)]
+mod sync_ec_target_guard_tests {
+    #[tokio::test]
+    async fn refuses_parity_upload_when_raw_crypt_is_armed() {
+        let app = super::AppState::new();
+        let provider = super::provider_commands::ProviderState::new();
+        provider.arm_crypt_capability();
+        let error = super::sync_ec_upload_remote_file(
+            &app,
+            &provider,
+            Some(true),
+            "/tmp/parity",
+            "/vault/file.aerocorrect",
+        )
+        .await
+        .expect_err("raw parity upload must be refused");
+        assert!(error.contains("crypt overlay"), "{error}");
     }
 }
 
@@ -28145,5 +30613,359 @@ mod start_refusal_tests {
             .find("fn open_extract_window_on_main(")
             .expect("queued extract build");
         assert!(production[build..build + 400].contains("if !ui_origin_owned() {"));
+    }
+}
+
+#[cfg(test)]
+mod legacy_ftp_switch_during_batch_tests {
+    use super::*;
+    use crate::provider_commands::isolated_account_fixture::in_isolated_child;
+    use crate::provider_commands::{ProviderState, CONNECTION_CHANGED_MARKER};
+    use std::sync::atomic::AtomicUsize;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    /// The bound the test gives the switch; production gives it 30 s.
+    const SWITCH_WAIT: Duration = Duration::from_millis(300);
+    const BINDING: &str = "owner-v1:hmac-sha256:fixture";
+    /// Every command of one control connection, with the connection's number.
+    type CommandLog = Arc<std::sync::Mutex<Vec<(usize, String)>>>;
+
+    /// An FTP control server that counts its control connections.
+    async fn control_server() -> (String, Arc<AtomicUsize>, CommandLog) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let connections = Arc::new(AtomicUsize::new(0));
+        let log = CommandLog::default();
+        let (accepted, seen) = (connections.clone(), log.clone());
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let number = accepted.fetch_add(1, Ordering::SeqCst);
+                let seen = seen.clone();
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let _ = write.write_all(b"220 ready\r\n").await;
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let verb = line.split_whitespace().next().unwrap_or("").to_string();
+                        let reply = match verb.as_str() {
+                            "USER" => "331 password please\r\n",
+                            "PASS" => "230 logged in\r\n",
+                            "PWD" => "257 \"/\"\r\n",
+                            "QUIT" => "221 bye\r\n",
+                            _ => "200 ok\r\n",
+                        };
+                        seen.lock().unwrap().push((number, verb));
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (addr, connections, log)
+    }
+
+    fn count(log: &CommandLog, connection: usize, verb: &str) -> usize {
+        let log = log.lock().unwrap();
+        log.iter()
+            .filter(|(number, seen)| *number == connection && seen == verb)
+            .count()
+    }
+
+    /// One file of a batch: a NOOP on the app's FTP session, then, when
+    /// `held`, in flight until the batch's cancel token fires.
+    struct OneFile {
+        app: Arc<AppState>,
+        token: CancellationToken,
+        held: bool,
+        in_flight: Arc<tokio::sync::Notify>,
+    }
+
+    #[async_trait::async_trait]
+    impl transfer_orchestrator::TransferExecutor for OneFile {
+        async fn execute(
+            &self,
+            _entry: transfer_domain::TransferEntry,
+        ) -> transfer_domain::TransferOutcome {
+            use transfer_domain::{TransferFailure, TransferFailureKind, TransferOutcome};
+            if let Err(error) = self.app.ftp_manager.lock().await.noop().await {
+                return TransferOutcome::Failed(TransferFailure::new(
+                    TransferFailureKind::Unknown,
+                    error.to_string(),
+                    false,
+                ));
+            }
+            self.in_flight.notify_one();
+            if !self.held {
+                return TransferOutcome::Success;
+            }
+            self.token.cancelled().await;
+            TransferOutcome::Failed(TransferFailure::new(
+                TransferFailureKind::Cancelled,
+                "Transfer cancelled by user",
+                false,
+            ))
+        }
+
+        fn is_transfer_cancelled(&self) -> bool {
+            self.token.is_cancelled()
+        }
+    }
+
+    /// What `download_files_batch` and `upload_files_batch` do around their
+    /// files: the pin for the whole command, the flag check, a fresh token
+    /// and `execute_batch` on the app's cancel flag.
+    async fn run_batch(
+        app: Arc<AppState>,
+        provider_state: Arc<ProviderState>,
+        expected_gui_target: u64,
+        held: bool,
+        in_flight: Arc<tokio::sync::Notify>,
+    ) -> Result<transfer_domain::TransferBatchResult, String> {
+        let _target = provider_state
+            .pin_gui_target(Some(expected_gui_target))
+            .await?;
+        if app.cancel_flag.load(Ordering::Relaxed) {
+            return Err("Transfer cancelled by user".to_string());
+        }
+        let token = app.reset_cancel_state().await;
+        let batch = transfer_orchestrator::TransferBatch {
+            id: "dl-files-fixture".to_string(),
+            display_name: "1 file".to_string(),
+            direction: transfer_domain::TransferDirection::Download,
+            config: transfer_domain::TransferBatchConfig::default(),
+            entries: vec![transfer_domain::TransferEntry {
+                id: "dl-files-fixture-0".to_string(),
+                display_name: "a.bin".to_string(),
+                remote_path: "/a.bin".to_string(),
+                local_path: "a.bin".to_string(),
+                size: 1,
+                modified: None,
+            }],
+        };
+        let executor = Arc::new(OneFile {
+            app: app.clone(),
+            token,
+            held,
+            in_flight,
+        });
+        Ok(transfer_orchestrator::execute_batch(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            batch,
+            executor,
+            app.cancel_flag.clone(),
+            None,
+        )
+        .await)
+    }
+
+    /// Whether a transfer holds the gate: a writer cannot take it.
+    async fn pin_is_held(provider_state: &ProviderState) -> bool {
+        provider_state
+            .transfer_owner_write(Duration::from_millis(50))
+            .await
+            .is_err()
+    }
+
+    /// Whether the provider connection generation is still `expected` (the
+    /// read an editor or a crypt re-arm takes before it trusts the session).
+    async fn generation_is(provider_state: &ProviderState, expected: u64) -> bool {
+        provider_state
+            .pin_connection_generation(expected)
+            .await
+            .is_ok()
+    }
+
+    /// Whether the crypt overlay armed over the session is still applied.
+    fn overlay_applied(provider_state: &ProviderState) -> bool {
+        provider_state.active_crypt_overlay.load(Ordering::SeqCst)
+            && provider_state.overlay_wrapped.load(Ordering::SeqCst)
+    }
+
+    async fn pin_error(provider_state: &ProviderState, expected: u64) -> Option<String> {
+        provider_state.pin_gui_target(Some(expected)).await.err()
+    }
+
+    /// Whether the legacy owner installed at connect still answers for
+    /// `epoch`.
+    async fn owner_is_installed(provider_state: &ProviderState, epoch: u64) -> bool {
+        provider_state
+            .pin_gui_index_owner(Some(epoch), Some(BINDING), false)
+            .await
+            .is_ok()
+    }
+
+    #[test]
+    fn switch_refused_during_an_ftp_batch_keeps_the_session_and_stop_releases_the_pin() {
+        if !in_isolated_child(
+            "legacy_ftp_switch_during_batch_tests::\
+             switch_refused_during_an_ftp_batch_keeps_the_session_and_stop_releases_the_pin",
+        ) {
+            return;
+        }
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(sequence());
+    }
+
+    async fn sequence() {
+        let (addr, connections, log) = control_server().await;
+        let app = Arc::new(AppState::new());
+        let provider_state = Arc::new(ProviderState::new());
+
+        // Connect in the order of `connect_ftp_inner`.
+        let owner =
+            crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)
+                .unwrap();
+        {
+            let _change = provider_state
+                .begin_legacy_ftp_target_change(SWITCH_WAIT)
+                .await
+                .unwrap();
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            ftp_manager.connect(&addr).await.unwrap();
+            ftp_manager.login("u", "p").await.unwrap();
+            crate::credential_store::off_async_worker(|| owner.validate()).unwrap();
+            provider_state
+                .set_legacy_gui_owner(owner, Some(BINDING.to_string()))
+                .unwrap();
+        }
+        // A new state starts at 0 and the connect advanced it once.
+        let epoch = 1;
+        assert_eq!(pin_error(&provider_state, epoch).await, None);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+        // An overlay applied over the session, as `provider_apply_crypt_overlay`
+        // leaves it, and the connection generation it is stamped with.
+        provider_state.arm_crypt_capability();
+        provider_state.overlay_wrapped.store(true, Ordering::SeqCst);
+        let generation = 0;
+        assert!(generation_is(&provider_state, generation).await);
+        assert!(overlay_applied(&provider_state));
+
+        // 1. A batch with one file in flight holds the pin.
+        let in_flight = Arc::new(tokio::sync::Notify::new());
+        let batch = tokio::spawn(run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            true,
+            in_flight.clone(),
+        ));
+        in_flight.notified().await;
+        assert!(pin_is_held(&provider_state).await);
+        assert_eq!(count(&log, 0, "NOOP"), 1);
+
+        // 2. The switch is refused when its own bound ends.
+        let asked = Instant::now();
+        let refused = provider_state
+            .begin_legacy_ftp_target_change(SWITCH_WAIT)
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        let waited = asked.elapsed();
+        assert!(
+            refused.starts_with("Transfer still in progress"),
+            "{refused}"
+        );
+        assert!(
+            waited >= SWITCH_WAIT && waited < SWITCH_WAIT + Duration::from_secs(2),
+            "{waited:?}"
+        );
+
+        // 3. Nothing changed: epoch, owner, overlay, connection generation,
+        // session, socket, running batch.
+        assert_eq!(pin_error(&provider_state, epoch).await, None);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+        assert!(
+            overlay_applied(&provider_state),
+            "a refused switch keeps the overlay"
+        );
+        assert!(generation_is(&provider_state, generation).await);
+        {
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            assert!(ftp_manager.is_connected());
+            ftp_manager.noop().await.unwrap();
+        }
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+        assert_eq!(count(&log, 0, "NOOP"), 2);
+        assert_eq!(count(&log, 0, "QUIT"), 0);
+        assert!(!batch.is_finished());
+        assert!(pin_is_held(&provider_state).await);
+
+        // 4. Stop, as `cancel_transfer` does it.
+        app.request_cancel().await;
+        provider_state.request_cancel().await;
+        let stopped = batch.await.unwrap().unwrap();
+        assert!(stopped.cancelled);
+        assert_eq!(stopped.completed, 0);
+        assert!(!pin_is_held(&provider_state).await);
+        assert!(overlay_applied(&provider_state), "Stop keeps the overlay");
+        assert!(generation_is(&provider_state, generation).await);
+        // Until the flag is cleared a batch starts no file.
+        let unstarted = run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            false,
+            in_flight.clone(),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(unstarted, "Transfer cancelled by user");
+        assert_eq!(count(&log, 0, "NOOP"), 2);
+
+        // 5. Retry, as `reset_cancel_flag` clears the flag: same epoch, same
+        // session.
+        {
+            let _target = provider_state.pin_gui_target(Some(epoch)).await.unwrap();
+            app.reset_cancel_state().await;
+            provider_state.reset_cancel_state().await;
+        }
+        let retried = run_batch(
+            app.clone(),
+            provider_state.clone(),
+            epoch,
+            false,
+            in_flight.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(!retried.cancelled);
+        assert_eq!((retried.completed, retried.failed), (1, 0));
+        assert_eq!(count(&log, 0, "NOOP"), 3);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
+        assert!(owner_is_installed(&provider_state, epoch).await);
+        assert!(
+            overlay_applied(&provider_state),
+            "the retry runs under the same overlay"
+        );
+        assert!(generation_is(&provider_state, generation).await);
+
+        // 6. With nothing in flight the same switch goes through, here as
+        // `disconnect_ftp` continues it.
+        {
+            let _change = provider_state
+                .begin_legacy_ftp_target_change(SWITCH_WAIT)
+                .await
+                .unwrap();
+            let mut ftp_manager = app.ftp_manager.lock().await;
+            ftp_manager.disconnect().await.unwrap();
+            assert!(!ftp_manager.is_connected());
+        }
+        let stale = pin_error(&provider_state, epoch).await.unwrap();
+        assert!(stale.starts_with(CONNECTION_CHANGED_MARKER), "{stale}");
+        assert_eq!(pin_error(&provider_state, epoch + 1).await, None);
+        assert!(!owner_is_installed(&provider_state, epoch + 1).await);
+        // A batch planned on the old target starts no file.
+        let late = run_batch(app.clone(), provider_state.clone(), epoch, false, in_flight)
+            .await
+            .unwrap_err();
+        assert!(late.starts_with(CONNECTION_CHANGED_MARKER), "{late}");
+        assert_eq!(count(&log, 0, "NOOP"), 3);
+        assert_eq!(count(&log, 0, "QUIT"), 1);
+        assert_eq!(connections.load(Ordering::SeqCst), 1);
     }
 }

@@ -3325,6 +3325,14 @@ pub struct SyncIndex {
     /// The saved profile this index belongs to; see [`history_serves`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_id: Option<String>,
+    /// The target (protocol, endpoint, account, root, namespace options,
+    /// overlay) whose run published this index, as a digest; see
+    /// [`bind_index_to_target`]. A profile edited to another target keeps its
+    /// id and its path pair, so neither tells the old server's history from
+    /// the new one's. Only a page save records it; an AeroCloud save, whose
+    /// deletions rest on its own receipts, and every older index record none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_identity: Option<String>,
     /// File states at time of last sync (key = relative_path)
     pub files: HashMap<String, SyncIndexEntry>,
     /// Remote spelling of a key whose sides differ. Empty when every saved
@@ -3345,6 +3353,22 @@ pub struct SyncIndex {
     /// [`migrate_sync_index`].
     #[serde(skip)]
     pub unverified_keys: std::collections::HashSet<String>,
+    /// Paths an interrupted sync intent still fences, or every baseline when
+    /// the fence storage could not be read. These are in `unverified_keys`
+    /// too; kept apart because only they, while still unverified, hold an
+    /// equal pair as a visible conflict, which a key the migration rewrote
+    /// must not. Never persisted: the intent store is read on every load.
+    /// See [`fence_index`].
+    #[serde(skip)]
+    pub pending_recovery_keys: std::collections::HashSet<String>,
+    /// Keys of an index that records no target (written before targets were
+    /// recorded, or by AeroCloud): history for change detection, never
+    /// authority for a deletion. A key here still feeds the comparison of
+    /// its pair, but is never `previously_synced`, so a file on one side
+    /// only is copied, not deleted. Never persisted: set on every load that
+    /// binds an index to a target ([`bind_index_to_target`]).
+    #[serde(skip)]
+    pub history_only_keys: std::collections::HashSet<String>,
 }
 
 impl SyncIndex {
@@ -3361,8 +3385,42 @@ impl SyncIndex {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         }
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Test seam: makes the next directory sync on this thread fail.
+    static FAIL_NEXT_DIR_SYNC: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Sync the folder holding `path`, where the platform can (a directory
+/// cannot be opened for syncing on Windows; NTFS journals the rename itself).
+fn sync_parent_dir(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(test)]
+    if FAIL_NEXT_DIR_SYNC.with(|fail| fail.replace(false)) {
+        return Err(format!(
+            "Failed to sync the folder of {}: injected",
+            path.display()
+        ));
+    }
+    #[cfg(unix)]
+    {
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        std::fs::File::open(parent)
+            .and_then(|dir| dir.sync_all())
+            .map_err(|e| format!("Failed to sync the folder of {}: {e}", path.display()))?;
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+    Ok(())
 }
 
 /// Atomic write: write to temp file, then rename to target path.
@@ -3401,7 +3459,12 @@ pub(crate) fn atomic_write(path: &std::path::Path, data: &[u8]) -> Result<(), St
                 path.display(),
                 e
             )
-        })
+        })?;
+        // The rename is durable only once the folder that names it is synced:
+        // a crash before that can bring the old file back after its intent
+        // fences were retired. A failure here is the write's failure, so the
+        // caller keeps the fences.
+        sync_parent_dir(path)
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp_path);
@@ -3437,17 +3500,283 @@ pub(crate) fn index_filename(local_path: &str, remote_path: &str) -> String {
 
 /// Load a sync index for a given path pair (returns None if not found)
 pub fn load_sync_index(local_path: &str, remote_path: &str) -> Result<Option<SyncIndex>, String> {
-    let dir = sync_index_dir()?;
-    let path = dir.join(index_filename(local_path, remote_path));
-    if !path.exists() {
-        return Ok(None);
-    }
-    let data =
-        std::fs::read_to_string(&path).map_err(|e| format!("Failed to read sync index: {}", e))?;
-    let mut index: SyncIndex =
-        serde_json::from_str(&data).map_err(|e| format!("Failed to parse sync index: {}", e))?;
+    load_sync_index_with_recovery(local_path, remote_path, false)
+}
+
+fn read_sync_index_file(path: &Path) -> Result<Option<SyncIndex>, String> {
+    let data = match std::fs::read_to_string(path) {
+        Ok(data) => data,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("Failed to read sync index: {error}")),
+    };
+    let mut index: SyncIndex = serde_json::from_str(&data)
+        .map_err(|error| format!("Failed to parse sync index: {error}"))?;
     migrate_sync_index(&mut index);
     Ok(Some(index))
+}
+
+fn load_index_with_intents_in(
+    conn: &mut rusqlite::Connection,
+    path: &Path,
+    local: &str,
+    remote: &str,
+    journal: impl FnOnce() -> Result<Option<SyncJournal>, String>,
+) -> Result<Option<SyncIndex>, String> {
+    // The publisher holds the same SQLite writer reservation around JSON
+    // publication and fence retirement, including across separate processes.
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let saved = read_sync_index_file(path)?;
+    let existed = saved.is_some();
+    let mut index = saved.unwrap_or_else(|| SyncIndex::new(local.into(), remote.into()));
+    let pair = index_filename(local, remote);
+    match journal() {
+        Ok(Some(journal)) => import_archive_intents(&tx, &pair, &journal)?,
+        Ok(None) => {}
+        Err(_) => insert_intent_fences(&tx, &pair, index.files.keys().cloned())?,
+    }
+    let pending = pending_intents_in(&tx, &pair)?;
+    // Pending new files have no baseline yet, but still need visible recovery.
+    let has_pending = !pending.is_empty();
+    fence_index(&mut index, &pending);
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok((existed || has_pending).then_some(index))
+}
+
+/// The forms a root could take in a pair key written before the runner
+/// normalized its roots (`normalizedSyncRoot`). That runner only stripped
+/// trailing slashes, so `/` became the empty string, a drive root picked as
+/// `C:/` became `C:`, and one picked as `C:\` stayed `C:\`. Every other root
+/// is the same string in both: a trailing slash was already stripped.
+fn legacy_root_forms(root: &str) -> Vec<String> {
+    let bytes = root.as_bytes();
+    if root == "/" {
+        vec![String::new()]
+    } else if bytes.len() == 3 && bytes[0].is_ascii_alphabetic() && &root[1..] == ":/" {
+        let drive = &root[..1];
+        vec![format!("{drive}:\\"), format!("{drive}:")]
+    } else {
+        Vec::new()
+    }
+}
+
+/// The legacy pair keys that name the same pair as `(local, remote)`.
+fn legacy_pairs(local: &str, remote: &str) -> Vec<(String, String)> {
+    let locals: Vec<String> = std::iter::once(local.to_owned())
+        .chain(legacy_root_forms(local))
+        .collect();
+    let remotes: Vec<String> = std::iter::once(remote.to_owned())
+        .chain(legacy_root_forms(remote))
+        .collect();
+    let mut pairs = Vec::new();
+    for l in &locals {
+        for r in &remotes {
+            if l != local || r != remote {
+                pairs.push((l.clone(), r.clone()));
+            }
+        }
+    }
+    pairs
+}
+
+/// Move the history of a pair saved under a legacy key to its normalized key,
+/// when the normalized key has none yet: the index, and the journal with the
+/// answer its signature gave. The intent fences need no move: no released
+/// runner wrote any (they are new with the normalized key), so none can be
+/// under a legacy key. Done under the writer reservation index publication
+/// holds, so a concurrent save of the normalized key is never overwritten.
+fn adopt_legacy_pair_in(
+    conn: &mut rusqlite::Connection,
+    index_dir: &Path,
+    journal_dir: &Path,
+    local: &str,
+    remote: &str,
+) -> Result<(), String> {
+    let legacy = legacy_pairs(local, remote);
+    if legacy.is_empty() {
+        return Ok(());
+    }
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|error| error.to_string())?;
+    let index_path = index_dir.join(index_filename(local, remote));
+    if !history_present(&index_path)? {
+        for (l, r) in &legacy {
+            let old = index_dir.join(index_filename(l, r));
+            // Moved as stored: only the two roots the pair key names change.
+            // Reading it through the migration here would write the result
+            // back as a current index without the trust state the migration
+            // derives (`unverified_keys` is not stored), so the real load
+            // would trust baselines a version-1 index never proved.
+            let data = match std::fs::read(&old) {
+                Ok(data) => data,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(format!("Failed to read sync index: {error}")),
+            };
+            let mut stored: serde_json::Value = serde_json::from_slice(&data)
+                .map_err(|error| format!("Failed to parse sync index: {error}"))?;
+            let fields = stored
+                .as_object_mut()
+                .ok_or("Failed to parse sync index: not an object")?;
+            fields.insert("local_path".into(), local.into());
+            fields.insert("remote_path".into(), remote.into());
+            let data = serde_json::to_vec(&stored).map_err(|error| error.to_string())?;
+            atomic_write(&index_path, &data)?;
+            remove_if_present(&old)?;
+            tracing::info!("sync index of a legacy pair key adopted under its normalized roots");
+            break;
+        }
+    }
+    adopt_legacy_journal_in(journal_dir, local, remote, &legacy)?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
+/// Whether a history file is at `path`, a link there included even when it
+/// leads nowhere. `exists()` answers false for a dangling or looping link and
+/// for any error it meets, and the adoption would then write the legacy
+/// history over a file it could not see; any error but NotFound stops it.
+fn history_present(path: &Path) -> Result<bool, String> {
+    match std::fs::symlink_metadata(path) {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(format!("Failed to inspect a sync history file: {error}")),
+    }
+}
+
+fn remove_if_present(path: &Path) -> Result<(), String> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Failed to retire a legacy sync history file: {error}"
+        )),
+    }
+}
+
+/// The journal part of [`adopt_legacy_pair_in`]. Its signature is keyed by the
+/// pair, so Verify answers after the move what it answered before: a new
+/// signature when the old one held, the old bytes when they did not (still a
+/// mismatch), none when the journal had none.
+fn adopt_legacy_journal_in(
+    dir: &Path,
+    local: &str,
+    remote: &str,
+    legacy: &[(String, String)],
+) -> Result<(), String> {
+    let _lock = JOURNAL_WRITE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if history_present(&dir.join(journal_filename(local, remote)))? {
+        return Ok(());
+    }
+    for (l, r) in legacy {
+        let Some(mut journal) = load_sync_journal_in(dir, l, r)? else {
+            continue;
+        };
+        let old_sig = std::fs::read(dir.join(journal_sig_filename(l, r))).ok();
+        let held = old_sig.is_some()
+            && journal_signing_key_in(dir, l, r)
+                .and_then(|key| verify_journal_signature_in(dir, l, r, &key))
+                .unwrap_or(false);
+        journal.local_path = local.to_owned();
+        journal.remote_path = remote.to_owned();
+        let data = serde_json::to_string(&journal).map_err(|error| error.to_string())?;
+        atomic_write(&dir.join(journal_filename(local, remote)), data.as_bytes())?;
+        let sig_path = dir.join(journal_sig_filename(local, remote));
+        match old_sig {
+            Some(_) if held => sign_journal_file(dir, &journal, &sig_path)?,
+            Some(old) => atomic_write(&sig_path, &old)?,
+            None => {}
+        }
+        remove_if_present(&dir.join(journal_filename(l, r)))?;
+        remove_if_present(&dir.join(journal_sig_filename(l, r)))?;
+        tracing::info!("sync journal of a legacy pair key adopted under its normalized roots");
+        break;
+    }
+    Ok(())
+}
+
+/// [`adopt_legacy_pair_in`] in the app's own data folders.
+fn adopt_legacy_pair(local: &str, remote: &str) -> Result<(), String> {
+    if legacy_pairs(local, remote).is_empty() {
+        return Ok(());
+    }
+    adopt_legacy_pair_in(
+        &mut intent_connection()?,
+        &sync_index_dir()?,
+        &sync_journal_dir()?,
+        local,
+        remote,
+    )
+    .map_err(|error| {
+        format!("Sync history saved under an older pair key could not be moved: {error}")
+    })
+}
+
+fn load_sync_index_with_recovery(
+    local_path: &str,
+    remote_path: &str,
+    require_durable_fences: bool,
+) -> Result<Option<SyncIndex>, String> {
+    adopt_legacy_pair(local_path, remote_path)?;
+    let path = sync_index_dir()?.join(index_filename(local_path, remote_path));
+    let result = intent_connection().and_then(|mut conn| {
+        // The journal was adopted above; reading it here must not take the
+        // writer reservation again while this transaction holds it.
+        load_index_with_intents_in(&mut conn, &path, local_path, remote_path, || {
+            load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
+        })
+    });
+    finish_index_recovery_load(&path, require_durable_fences, result)
+}
+
+fn finish_index_recovery_load(
+    path: &Path,
+    require_durable_fences: bool,
+    result: Result<Option<SyncIndex>, String>,
+) -> Result<Option<SyncIndex>, String> {
+    match result {
+        Ok(index) => Ok(index),
+        Err(error) if require_durable_fences => Err(error),
+        Err(error) => {
+            let Some(mut index) = read_sync_index_file(path)? else {
+                return Err(format!(
+                    "Sync recovery state unavailable; compare cannot verify this pair: {error}"
+                ));
+            };
+            apply_intent_fences(&mut index, false, || Err(error))?;
+            Ok(Some(index))
+        }
+    }
+}
+
+// Fence storage is safety metadata, never permission to discard a valid index.
+// If it is unreadable, retain every baseline while withholding its authority.
+fn apply_intent_fences(
+    index: &mut SyncIndex,
+    require_durable: bool,
+    read: impl FnOnce() -> Result<HashMap<String, String>, String>,
+) -> Result<(), String> {
+    match read() {
+        Ok(pending) => fence_index(index, &pending),
+        Err(error) => {
+            tracing::warn!("Sync recovery state unavailable; baselines quarantined: {error}");
+            index.unverified_keys.extend(index.files.keys().cloned());
+            // Which paths an interrupted writer holds is unknown here, so
+            // every baseline is read as one it may hold.
+            index
+                .pending_recovery_keys
+                .extend(index.files.keys().cloned());
+            // A compare can safely display an untrusted baseline. A new
+            // writer cannot discard its recovery journal until the quarantine
+            // is durable, even if a later database read succeeds.
+            if require_durable {
+                return Err(error);
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Whether a sync history written for the profile `recorded` may serve the
@@ -3483,6 +3812,63 @@ pub fn load_sync_index_for_profile(
     }))
 }
 
+/// The index as a baseline for the target `current` (see
+/// [`SyncIndex::target_identity`]). One another target published is no
+/// baseline: `None`, as with no history, so its files are compared as new and
+/// copied, never deleted; the file stays on disk and the next run's save
+/// replaces it. One that records no target (every index written before this,
+/// and AeroCloud's) cannot say which server its entries describe: it is kept,
+/// but every entry is untrusted, so Compare may copy and never delete from it
+/// until a run re-establishes the entry (see `retire_unproven_baselines`).
+pub fn bind_index_to_target(index: Option<SyncIndex>, current: &str) -> Option<SyncIndex> {
+    let mut index = index?;
+    match index.target_identity.as_deref() {
+        Some(recorded) if recorded == current => {}
+        Some(_) => {
+            tracing::info!(
+                "sync index of {} | {} was written for another target: compared without history",
+                index.local_path,
+                index.remote_path
+            );
+            // No baseline of this target, but an interrupted intent the
+            // recovery loader attached is still pending on the pair (a run
+            // of this target that failed before it published): its keys stay,
+            // so an equal pair still reads as an interrupted sync.
+            if index.pending_recovery_keys.is_empty() {
+                return None;
+            }
+            let recovery = std::mem::take(&mut index.pending_recovery_keys);
+            let mut kept = SyncIndex::new(index.local_path.clone(), index.remote_path.clone());
+            kept.profile_id = index.profile_id.clone();
+            kept.target_identity = Some(current.to_string());
+            kept.unverified_keys = recovery.clone();
+            kept.pending_recovery_keys = recovery;
+            return Some(kept);
+        }
+        None => {
+            // History for change detection, no deletion authority; the
+            // migration's unverified keys and the recovery keys stay as they
+            // are (`history_only_keys` weakens neither).
+            let keys: Vec<String> = index.files.keys().cloned().collect();
+            index.history_only_keys.extend(keys);
+        }
+    }
+    Some(index)
+}
+
+/// [`load_sync_index_for_profile`], then [`bind_index_to_target`].
+pub fn load_sync_index_for_target(
+    local_path: &str,
+    remote_path: &str,
+    profile_id: Option<&str>,
+    target: &str,
+) -> Result<Option<SyncIndex>, String> {
+    Ok(bind_index_to_target(
+        load_sync_index_for_profile(local_path, remote_path, profile_id)?,
+        target,
+    ))
+}
+
 /// Remove the sync index of a path pair, for a live test that leaves the
 /// data folder as it found it.
 #[cfg(test)]
@@ -3494,12 +3880,316 @@ pub(crate) fn remove_sync_index(local_path: &str, remote_path: &str) {
 
 /// Save a sync index for a given path pair
 pub fn save_sync_index(index: &SyncIndex) -> Result<(), String> {
-    let dir = sync_index_dir()?;
-    let path = dir.join(index_filename(&index.local_path, &index.remote_path));
-    let data = serde_json::to_string(index)
-        .map_err(|e| format!("Failed to serialize sync index: {}", e))?;
-    atomic_write(&path, data.as_bytes())?;
+    save_sync_index_with_intents(index, &[])
+}
+
+// Compact durable intent fences. Unlike rewriting a whole N-entry journal
+// before each file, one SQLite row costs O(1). A fence outlives a crash and
+// suppresses deletion authority until that exact attempt commits its index.
+fn intent_connection() -> Result<rusqlite::Connection, String> {
+    intent_connection_in(&sync_index_dir()?.join("transfer-intents.sqlite3"))
+}
+
+fn intent_connection_in(path: &Path) -> Result<rusqlite::Connection, String> {
+    let conn = rusqlite::Connection::open(path).map_err(|e| e.to_string())?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
+        CREATE TABLE IF NOT EXISTS intents(pair TEXT NOT NULL, path TEXT NOT NULL,
+        token TEXT NOT NULL, active INTEGER NOT NULL, PRIMARY KEY(pair,path));
+        CREATE INDEX IF NOT EXISTS intent_token_lookup ON intents(pair,token);",
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(conn)
+}
+
+fn import_archive_intents(
+    conn: &rusqlite::Connection,
+    pair: &str,
+    journal: &SyncJournal,
+) -> Result<(), String> {
+    if !journal.completed {
+        insert_intent_fences(
+            conn,
+            pair,
+            journal
+                .entries
+                .iter()
+                .filter(|e| e.status != JournalEntryStatus::Completed && e.archive_state.is_some())
+                .map(|entry| {
+                    nfc_path(
+                        entry
+                            .baseline_key
+                            .as_deref()
+                            .unwrap_or(&entry.relative_path),
+                    )
+                }),
+        )?;
+    }
     Ok(())
+}
+
+fn insert_intent_fences(
+    conn: &rusqlite::Connection,
+    pair: &str,
+    paths: impl IntoIterator<Item = String>,
+) -> Result<(), String> {
+    // One durable transaction for a large recovered journal, not one fsync
+    // per file. Never supersede a newer live or already-retired generation.
+    let tx = if conn.is_autocommit() {
+        Some(conn.unchecked_transaction().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+    let db = tx.as_ref().map_or(conn, |tx| &**tx);
+    for path in paths {
+        db.execute(
+            "INSERT OR IGNORE INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)",
+            rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(tx) = tx {
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+fn begin_intents_in(
+    conn: &mut rusqlite::Connection,
+    pair: &str,
+    paths: &[String],
+) -> Result<Vec<String>, String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    let mut tokens = Vec::with_capacity(paths.len());
+    for path in paths {
+        let token = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)
+            ON CONFLICT(pair,path) DO UPDATE SET token=excluded.token,active=1",
+            rusqlite::params![pair, nfc_path(path), token],
+        )
+        .map_err(|e| e.to_string())?;
+        tokens.push(token);
+    }
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(tokens)
+}
+
+pub fn begin_sync_intents(
+    local: &str,
+    remote: &str,
+    paths: &[String],
+) -> Result<Vec<String>, String> {
+    begin_intents_in(
+        &mut intent_connection()?,
+        &index_filename(local, remote),
+        paths,
+    )
+}
+
+fn pending_intents_in(
+    conn: &rusqlite::Connection,
+    pair: &str,
+) -> Result<HashMap<String, String>, String> {
+    let mut stmt = conn
+        .prepare("SELECT path,token FROM intents WHERE pair=?1 AND active=1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([pair], |r| Ok((r.get(0)?, r.get(1)?)))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+pub fn snapshot_sync_intents(local: &str, remote: &str) -> Result<HashMap<String, String>, String> {
+    // Import recovery evidence before the frontend is allowed to replace its
+    // journal with a fresh plan. An unreadable index must not become empty.
+    load_sync_index_with_recovery(local, remote, true)?;
+    let conn = intent_connection()?;
+    let mut stmt = conn
+        .prepare("SELECT path,token FROM intents WHERE pair=?1")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([index_filename(local, remote)], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<HashMap<_, _>, _>>()
+        .map_err(|e| e.to_string())
+}
+
+fn fence_index(index: &mut SyncIndex, pending: &HashMap<String, String>) {
+    let fenced: Vec<String> = pending
+        .keys()
+        .cloned()
+        .chain(
+            index
+                .files
+                .keys()
+                .filter(|key| pending.contains_key(&nfc_path(key)))
+                .cloned(),
+        )
+        .collect();
+    index.unverified_keys.extend(fenced.iter().cloned());
+    index.pending_recovery_keys.extend(fenced);
+}
+
+fn save_index_with_intents_in(
+    conn: &mut rusqlite::Connection,
+    path: &Path,
+    index: &SyncIndex,
+    tokens: &[String],
+) -> Result<(), String> {
+    save_index_with_trust_in(conn, path, index, tokens, None)
+}
+
+/// [`save_index_with_intents_in`]; `page_target` for an index a page sent,
+/// which knows nothing of the stored index's untrusted keys: the target
+/// identity of the connection the run used, which the saved index records.
+fn save_index_with_trust_in(
+    conn: &mut rusqlite::Connection,
+    path: &Path,
+    index: &SyncIndex,
+    tokens: &[String],
+    page_target: Option<&str>,
+) -> Result<(), String> {
+    let pair = index_filename(&index.local_path, &index.remote_path);
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    use rusqlite::OptionalExtension;
+    // The paths whose transfer this save completes: explicit evidence that
+    // the run re-established them, whatever their metadata.
+    let mut completed = std::collections::HashSet::new();
+    for token in tokens {
+        let path: Option<String> = tx
+            .query_row(
+                "SELECT path FROM intents WHERE pair=?1 AND token=?2",
+                rusqlite::params![pair, token],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        match path {
+            Some(path) => {
+                completed.insert(path);
+            }
+            None => return Err("Sync intent was superseded; compare again".into()),
+        }
+    }
+    // The stored index as the last load read it: its version-1 keys the
+    // migration rewrote are untrusted, and a run that never touched one would
+    // otherwise republish it as a version-2 baseline (see
+    // `retire_unproven_baselines`).
+    let mut stored = read_sync_index_file(path)?;
+    let mut index = index.clone();
+    // Only a page save records the target; any other publisher's index says
+    // nothing of which server it describes.
+    index.target_identity = page_target.map(str::to_string);
+    if let Some(target) = page_target {
+        // The stored index as the page's load bound it: another target's is
+        // no history of this one, and one with no target is untrusted.
+        stored = bind_index_to_target(stored, target);
+        // A page carries no trust state (`unverified_keys` does not cross IPC):
+        // what is still untrusted is what the stored index says.
+        index.unverified_keys = stored
+            .as_ref()
+            .map(|stored| stored.unverified_keys.clone())
+            .unwrap_or_default();
+        index.history_only_keys = stored
+            .as_ref()
+            .map(|stored| stored.history_only_keys.clone())
+            .unwrap_or_default();
+    }
+    let index = retire_unproven_baselines(&index, stored.as_ref(), &completed);
+    let data = serde_json::to_vec(&index).map_err(|e| e.to_string())?;
+    atomic_write(path, &data)?;
+    for token in tokens {
+        tx.execute(
+            "UPDATE intents SET active=0 WHERE pair=?1 AND token=?2",
+            rusqlite::params![pair, token],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// The index to publish, without the baselines it would only carry over
+/// untrusted. A key the version-2 migration rewrote proves no sync at that
+/// path; it is in the publisher's `unverified_keys` (rebuilt at every load,
+/// never written) until the publisher verifies it, as AeroCloud's
+/// `verify_migrated_baseline` does when both sides are equal. A key still
+/// unverified, whose entry is the one the stored index holds, was not touched
+/// by the run that publishes; written as a current index it would become a
+/// trusted baseline, and a file on one side only would read as a deletion. It
+/// is dropped: the file is then new on the next Compare, copied rather than
+/// deleted. A verified key, or an entry the run re-established, stays: by new
+/// metadata, or by a completed transfer intent of this save (`completed`,
+/// NFC paths), which proves it even when the metadata came out the same.
+fn retire_unproven_baselines(
+    index: &SyncIndex,
+    stored: Option<&SyncIndex>,
+    completed: &std::collections::HashSet<String>,
+) -> SyncIndex {
+    let mut index = index.clone();
+    let Some(stored) = stored else {
+        return index;
+    };
+    let same = |a: &SyncIndexEntry, b: &SyncIndexEntry| {
+        a.size == b.size
+            && a.modified == b.modified
+            && a.is_dir == b.is_dir
+            && a.uploaded_at == b.uploaded_at
+    };
+    // A history-only key (an index with no target) is as unproven here as
+    // a migrated one: published as is, it would become this target's
+    // deletion authority.
+    let unproven: Vec<String> = index
+        .unverified_keys
+        .iter()
+        .chain(index.history_only_keys.iter())
+        .cloned()
+        .collect();
+    for key in unproven {
+        if completed.contains(&nfc_path(&key)) {
+            continue;
+        }
+        let carried_over = match (index.files.get(&key), stored.files.get(&key)) {
+            (Some(published), Some(loaded)) => same(published, loaded),
+            _ => false,
+        };
+        if carried_over {
+            index.files.remove(&key);
+        }
+    }
+    index
+}
+
+/// Save an index a page sent (`save_sync_index_cmd`) for the target
+/// `target`: its untrusted keys are the stored index's, since the page cannot
+/// carry them, and the saved index records `target`.
+pub fn save_sync_index_from_page(
+    index: &SyncIndex,
+    tokens: &[String],
+    target: &str,
+) -> Result<(), String> {
+    let path = sync_index_dir()?.join(index_filename(&index.local_path, &index.remote_path));
+    save_index_with_trust_in(
+        &mut intent_connection()?,
+        &path,
+        index,
+        tokens,
+        Some(target),
+    )
+}
+
+pub fn save_sync_index_with_intents(index: &SyncIndex, tokens: &[String]) -> Result<(), String> {
+    let path = sync_index_dir()?.join(index_filename(&index.local_path, &index.remote_path));
+    save_index_with_intents_in(&mut intent_connection()?, &path, index, tokens)
 }
 
 /// Bytes at stake for one classified path: the larger side, directories zero.
@@ -4023,6 +4713,23 @@ pub fn classify_with_summary(
     let pairs = crate::sync_names::pair_paths(&local_files, &remote_files);
     let excludes = options.excludes_or_everything();
     let index_by_nfc = index.map(index_keys_by_nfc);
+    let mut recovery_paths = std::collections::HashSet::new();
+    if let Some(index) = index {
+        // Not every unverified key: one the separator migration rewrote has
+        // no interrupted writer behind it, and its equal pair may converge.
+        // A key a caller has since taken out of `unverified_keys` is no
+        // longer held either.
+        for key in index
+            .pending_recovery_keys
+            .iter()
+            .filter(|key| index.unverified_keys.contains(*key))
+        {
+            recovery_paths.insert(nfc_path(key));
+            if let Some(remote) = index.remote_spellings.get(key) {
+                recovery_paths.insert(nfc_path(remote));
+            }
+        }
+    }
     let local_prefixes = inventory_prefixes(&local_files);
     let remote_prefixes = inventory_prefixes(&remote_files);
     // Remote-only rows are owned by their recorded remote identity, not by
@@ -4170,16 +4877,38 @@ pub fn classify_with_summary(
             compare_file_pair(local, remote, options)
         };
 
+        // An interrupted writer may still be alive. Equal scan metadata alone
+        // cannot retire its generation. Expose a conflict requiring an explicit
+        // verified transfer, rather than silently hiding a fence forever.
+        let recovery_required = !is_dir
+            && !pair.blocked
+            && local.is_some()
+            && remote.is_some()
+            && (recovery_paths.contains(&nfc_path(&path))
+                || recovery_paths.contains(&nfc_path(&pair.remote_path)));
+        let status = if recovery_required {
+            SyncStatus::Conflict
+        } else {
+            status
+        };
+
         // Check if this file was in the sync index (previously synced).
         // For bidirectional sync: a local_only/remote_only file that was previously synced
         // means the OTHER side intentionally deleted it.
-        let previously_synced = baseline_key.is_some();
+        // History only (an index with no target, see `history_only_keys`)
+        // detects changes but grants no deletion.
+        let previously_synced = baseline_key
+            .is_some_and(|key| index.is_none_or(|index| !index.history_only_keys.contains(key)));
 
         // Read before the push below moves `status` into the row.
         let is_identical = status == SyncStatus::Identical;
 
         if !is_identical || is_dir {
-            let sync_reason = generate_sync_reason(&status, local, remote, is_dir);
+            let sync_reason = if recovery_required {
+                "Interrupted sync: choose a transfer direction to verify this pair before restoring deletion history".to_string()
+            } else {
+                generate_sync_reason(&status, local, remote, is_dir)
+            };
             results.push(FileComparison {
                 local_relative_path: Some(pair.local_path),
                 remote_relative_path: Some(pair.remote_path),
@@ -4322,6 +5051,27 @@ pub struct SyncErrorInfo {
     pub file_path: Option<String>,
 }
 
+thread_local! {
+    /// Set while [`classify_untrusted_text`] runs on this thread.
+    static UNTRUSTED_TEXT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// [`classify_sync_error`] for text that may hold a server's: the generic
+/// class only, never an FTP status read from the native envelope's phrase,
+/// which a server can quote (a 425 reply holding `FTP status 553: command
+/// rejected` stays a retryable 425).
+fn classify_untrusted_text(raw: &str) -> SyncErrorInfo {
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            UNTRUSTED_TEXT.with(|flag| flag.set(false));
+        }
+    }
+    UNTRUSTED_TEXT.with(|flag| flag.set(true));
+    let _reset = Reset;
+    classify_sync_error(raw, None)
+}
+
 /// Is this an FTP status code, rather than the same digits inside a sentence?
 ///
 /// The text arriving here is usually an error that has already been wrapped, so
@@ -4356,6 +5106,19 @@ pub struct SyncErrorInfo {
 /// already believed.
 fn mentions_ftp_status(lowered: &str, code_and_space: &str) -> bool {
     if opens_with_status(lowered, code_and_space) {
+        return true;
+    }
+    // The envelope `FtpManager::safe_ftp_error` puts on every refused reply in
+    // place of its text: `FTP status 553: command rejected`. The phrase is the
+    // native code's own, whatever wrapper or path comes before it, but a
+    // server can write it too: text that may hold a server's (an IPC
+    // boundary's `IpcError::Other`) never gets a status from it.
+    if !UNTRUSTED_TEXT.with(std::cell::Cell::get)
+        && lowered.contains(&format!(
+            "ftp status {}: command rejected",
+            code_and_space.trim_end()
+        ))
+    {
         return true;
     }
     // Lowercased forms of the `#[error("...: {0}")]` labels in
@@ -4477,6 +5240,12 @@ fn mentions_status(lowered: &str, code_and_space: &str) -> bool {
 /// and from `401-500`; what PRECEDES separates it from a byte count, a part
 /// number and a segment index, which is the half the old `contains` had none of.
 fn status_position(lowered: &str, start: usize, end: usize) -> bool {
+    // The native envelope's phrase (`FTP status 552: command rejected`) in
+    // text that may hold a server's is not a status: a server can quote it
+    // (see `classify_untrusted_text`), here as in `mentions_ftp_status`.
+    if UNTRUSTED_TEXT.with(std::cell::Cell::get) && lowered[..start].ends_with("ftp status ") {
+        return false;
+    }
     // A status ends the token. `-` and `/` are excluded because `chunk 401-500`
     // and `attempt 401/3` are ranges, and `.` because `1.403` is a number.
     let ends_token = match lowered[end..].chars().next() {
@@ -4637,7 +5406,271 @@ fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, boo
     })
 }
 
-/// Classify a raw error message into a structured SyncErrorInfo
+#[cfg(test)]
+thread_local! {
+    /// Every line `ipc_error_message` hands to the native log on this thread,
+    /// as written, for a test to read the log without a global subscriber.
+    pub(crate) static IPC_LOG_LINES: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// Where a command error says how it was classified: `[sync-error:<kind>:<retryable>]`.
+const IPC_KIND_TAG: &str = "[sync-error:";
+
+/// Where a command error came from, as native code knows it. The boundary
+/// (`provider_commands::ipc_result`) renders the page's message, its markers,
+/// its status and its classification tag from the variant alone; text never
+/// decides any of them. A server can write any sentence, so a cancellation, a
+/// restricted character, an FTP status or a marker is only ever one of the
+/// typed variants, made where the native code produced it.
+#[derive(Debug)]
+pub(crate) enum IpcError {
+    /// A cancellation the native side made (`ProviderError::Cancelled`, a
+    /// command's own Stop).
+    Cancelled,
+    /// `ProviderError::RestrictedChar`, which the page localizes
+    /// (`localizeRestrictedCharError`).
+    RestrictedChar {
+        ch_display: String,
+        provider: String,
+    },
+    /// An FTP reply refused, by the code the native reply parser read.
+    FtpStatus(u16),
+    /// A marker a page branches on (`CONNECTION_CHANGED`), from a typed
+    /// native source: `ProviderError::TargetChanged`, a target pin.
+    Marker(&'static str),
+    /// Text with no typed origin (any other provider error included): the
+    /// generic class only, read from it; the text is never shown.
+    Other(String),
+}
+
+impl From<String> for IpcError {
+    fn from(text: String) -> Self {
+        IpcError::Other(text)
+    }
+}
+
+impl From<&str> for IpcError {
+    fn from(text: &str) -> Self {
+        IpcError::Other(text.to_owned())
+    }
+}
+
+impl From<crate::providers::ProviderError> for IpcError {
+    fn from(error: crate::providers::ProviderError) -> Self {
+        use crate::providers::ProviderError;
+        match error {
+            ProviderError::Cancelled => IpcError::Cancelled,
+            ProviderError::RestrictedChar {
+                ch_display,
+                provider,
+            } => IpcError::RestrictedChar {
+                ch_display,
+                provider,
+            },
+            ProviderError::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            ProviderError::FtpRefused { code, .. } => IpcError::FtpStatus(code),
+            other => IpcError::Other(other.to_string()),
+        }
+    }
+}
+
+impl From<&crate::transfer_dag::error::TransferError> for IpcError {
+    fn from(error: &crate::transfer_dag::error::TransferError) -> Self {
+        use crate::transfer_dag::error::TransferErrorKind;
+        match error.kind {
+            TransferErrorKind::Cancelled => IpcError::Cancelled,
+            TransferErrorKind::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            _ => IpcError::Other(error.message.clone()),
+        }
+    }
+}
+
+impl From<&crate::transfer_domain::TransferFailure> for IpcError {
+    fn from(failure: &crate::transfer_domain::TransferFailure) -> Self {
+        use crate::transfer_domain::TransferFailureKind;
+        match failure.kind {
+            TransferFailureKind::Cancelled => IpcError::Cancelled,
+            TransferFailureKind::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            _ => IpcError::Other(failure.message.clone()),
+        }
+    }
+}
+
+impl IpcError {
+    /// [`From<ProviderError>`] for an error the caller keeps.
+    pub(crate) fn of(error: &crate::providers::ProviderError) -> Self {
+        use crate::providers::ProviderError;
+        match error {
+            ProviderError::Cancelled => IpcError::Cancelled,
+            ProviderError::RestrictedChar {
+                ch_display,
+                provider,
+            } => IpcError::RestrictedChar {
+                ch_display: ch_display.clone(),
+                provider: provider.clone(),
+            },
+            ProviderError::TargetChanged => IpcError::Marker("CONNECTION_CHANGED"),
+            ProviderError::FtpRefused { code, .. } => IpcError::FtpStatus(*code),
+            other => IpcError::Other(other.to_string()),
+        }
+    }
+
+    /// What the error holds, for a test that checks what the boundary drops.
+    #[cfg(test)]
+    pub(crate) fn text(&self) -> String {
+        match self {
+            IpcError::Other(text) => text.clone(),
+            other => format!("{other:?}"),
+        }
+    }
+
+    /// The error of a GUI target pin (`ProviderState::pin_gui_target` and the
+    /// pins built on it). Its every text is native code's own, made from
+    /// constants (`CONNECTION_CHANGED_MARKER`, `ProviderError::TargetChanged`)
+    /// and never from a server's reply, so the marker it opens with is a typed
+    /// fact of this source. Only a pin's error is read this way.
+    pub(crate) fn from_native_pin(text: String) -> Self {
+        if text.starts_with(crate::provider_commands::CONNECTION_CHANGED_MARKER) {
+            return IpcError::Marker("CONNECTION_CHANGED");
+        }
+        IpcError::Other(text)
+    }
+
+    /// A legacy FTP manager error (`crate::ftp`): the refused reply's code
+    /// when the manager typed one (`FtpManagerError::Refused`).
+    pub(crate) fn from_ftp(error: &anyhow::Error) -> Self {
+        match error.downcast_ref::<crate::ftp::FtpManagerError>() {
+            Some(crate::ftp::FtpManagerError::Refused { code }) => IpcError::FtpStatus(*code),
+            _ => IpcError::Other(error.to_string()),
+        }
+    }
+}
+
+/// The error a sync runner's command hands to the page, from where it came.
+///
+/// A provider's or server's text (a JSON `detail`, an HTML page) can hold an
+/// opaque token no pattern recognizes, so none of it crosses: the page gets a
+/// fixed message for the error's kind, the FTP status the native parser read,
+/// the marker of a typed source, and the classification, which
+/// `classify_transfer_error` reads back from the tag instead of guessing from
+/// prose. The native log gets the same and the command's name, never any of
+/// the text: a configured log target forwards warnings to the webview too,
+/// and redaction cannot recognize an unlabelled token.
+pub(crate) fn ipc_error_render(command: &str, error: &IpcError) -> String {
+    let (message, line) = ipc_error_parts(command, error);
+    #[cfg(test)]
+    IPC_LOG_LINES.with(|lines| lines.borrow_mut().push(line.clone()));
+    tracing::warn!("{line}");
+    message
+}
+
+/// [`ipc_error_render`] without the log line, for a transfer event that
+/// reports the failure the command's own return logs.
+pub(crate) fn ipc_error_text(command: &str, error: &IpcError) -> String {
+    ipc_error_parts(command, error).0
+}
+
+/// The page's message and the native log line of `error`.
+fn ipc_error_parts(command: &str, error: &IpcError) -> (String, String) {
+    let (info, human, marker, status) = match error {
+        IpcError::Cancelled => (
+            classify_sync_error("Transfer cancelled", None),
+            "Transfer cancelled by user".to_owned(),
+            None,
+            String::new(),
+        ),
+        IpcError::RestrictedChar {
+            ch_display,
+            provider,
+        } => {
+            let text = format!("Restricted character {ch_display} is not allowed by {provider}");
+            (classify_sync_error(&text, None), text, None, String::new())
+        }
+        IpcError::FtpStatus(code) => {
+            let info = classify_sync_error(&format!("FTP status {code}: command rejected"), None);
+            let human = kind_message(&info.kind).to_owned();
+            (info, human, None, format!(" (FTP {code})"))
+        }
+        IpcError::Marker(marker) => {
+            let info = classify_sync_error(marker, None);
+            let human = match *marker {
+                "CONNECTION_CHANGED" => "The connection changed; reconnect and compare again",
+                _ => kind_message(&info.kind),
+            };
+            (info, human.to_owned(), Some(*marker), String::new())
+        }
+        IpcError::Other(text) => {
+            let info = classify_untrusted_text(text);
+            let human = kind_message(&info.kind).to_owned();
+            (info, human, None, String::new())
+        }
+    };
+    let prefix = marker
+        .map(|marker| format!("{marker}: "))
+        .unwrap_or_default();
+    let kind = serde_json::to_value(&info.kind)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".into());
+    let line = format!(
+        "{command} failed: {kind}{status}, retryable {} (the server's text is not kept)",
+        info.retryable
+    );
+    let message = format!(
+        "{prefix}{human}{status} {IPC_KIND_TAG}{kind}:{}]",
+        info.retryable
+    );
+    (message, line)
+}
+
+/// [`ipc_error_render`] of text with no typed origin (an event's message, a
+/// bulk file's): the generic class only.
+pub(crate) fn ipc_error_message(command: &str, raw: &str) -> String {
+    ipc_error_render(command, &IpcError::Other(raw.to_owned()))
+}
+
+/// The fixed message of each error kind, as the page shows it.
+fn kind_message(kind: &SyncErrorKind) -> &'static str {
+    match kind {
+        SyncErrorKind::Network => "Network error",
+        SyncErrorKind::Auth => "Authentication failed",
+        SyncErrorKind::PathNotFound => "Path not found",
+        SyncErrorKind::PermissionDenied => "Permission denied",
+        SyncErrorKind::QuotaExceeded => "Storage quota exceeded",
+        SyncErrorKind::FileTooLarge => "File too large for the destination",
+        SyncErrorKind::RateLimit => "Rate limit reached",
+        SyncErrorKind::Timeout => "Operation timed out",
+        SyncErrorKind::FileLocked => "File is locked",
+        SyncErrorKind::DiskError => "Disk error",
+        SyncErrorKind::Unknown => "Operation failed",
+    }
+}
+
+/// [`classify_sync_error`] for an error a page received from a command: the
+/// classification [`ipc_error_message`] made from the full text when the
+/// message ends with its tag, the text's own otherwise.
+pub fn classify_ipc_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    let tagged = raw
+        .trim_end()
+        .strip_suffix(']')
+        .and_then(|head| head.rsplit_once(IPC_KIND_TAG))
+        .and_then(|(_, tag)| tag.split_once(':'))
+        .and_then(|(kind, retryable)| {
+            let kind: SyncErrorKind =
+                serde_json::from_value(serde_json::Value::String(kind.to_owned())).ok()?;
+            Some((kind, retryable.parse::<bool>().ok()?))
+        });
+    match tagged {
+        Some((kind, retryable)) => SyncErrorInfo {
+            kind,
+            message: raw.to_owned(),
+            retryable,
+            file_path: file_path.map(str::to_owned),
+        },
+        None => classify_sync_error(raw, file_path),
+    }
+}
+
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
     let lower = classification_text(raw, file_path);
 
@@ -4825,7 +5858,10 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
 
     SyncErrorInfo {
         kind,
-        message: raw.to_string(),
+        // `kind` and `retryable` were read from the raw text above. The
+        // message goes to logs and over IPC (`classify_transfer_error`), so
+        // credentials a provider echoed into its error are masked first.
+        message: crate::debug_tests::redact(raw),
         retryable,
         file_path: file_path.map(|s| s.to_string()),
     }
@@ -5030,6 +6066,8 @@ pub enum JournalEntryStatus {
     Pending,
     /// Currently transferring
     InProgress,
+    /// Payload acknowledged; verification or sidecar work is still pending.
+    Transferred,
     /// Completed successfully
     Completed,
     /// Failed after all retries
@@ -5044,10 +6082,25 @@ pub enum JournalEntryStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournalEntry {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_token: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub baseline_key: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_path: Option<String>,
     pub relative_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub overwrites_existing: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_receipt: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_mtime: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
     pub action: String, // "upload" | "download" | "mkdir"
     pub status: JournalEntryStatus,
     pub attempts: u32,
@@ -5072,6 +6125,9 @@ pub struct SyncJournalEntry {
 /// Persistent transfer journal for checkpoint/resume
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncJournal {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intent_protocol: Option<u8>,
+
     /// Unique journal ID
     pub id: String,
     /// When the journal was created
@@ -5085,6 +6141,25 @@ pub struct SyncJournal {
     /// The saved profile this journal belongs to; see [`history_serves`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_id: Option<String>,
+    /// Whether this journal retains enough policy to resume without a new compare.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_safe: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backup_stamp: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_pct: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ec_max_file_size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remote_dirs: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_dirs: Option<Vec<String>>,
     /// Sync direction
     pub direction: CompareDirection,
     /// Retry policy used
@@ -5107,12 +6182,22 @@ impl SyncJournal {
         verify_policy: VerifyPolicy,
     ) -> Self {
         Self {
+            intent_protocol: None,
             id: uuid::Uuid::new_v4().to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
             local_path,
             remote_path,
             profile_id: None,
+            resume_safe: None,
+            owner_binding: None,
+            backup_dir: None,
+            backup_stamp: None,
+            ec_enabled: None,
+            ec_pct: None,
+            ec_max_file_size: None,
+            remote_dirs: None,
+            local_dirs: None,
             direction,
             retry_policy,
             verify_policy,
@@ -5133,6 +6218,7 @@ impl SyncJournal {
         self.entries.iter().any(|e| {
             e.status == JournalEntryStatus::Pending
                 || e.status == JournalEntryStatus::InProgress
+                || e.status == JournalEntryStatus::Transferred
                 || (e.status == JournalEntryStatus::Failed
                     && e.last_error
                         .as_ref()
@@ -5164,6 +6250,7 @@ pub fn load_sync_journal(
     local_path: &str,
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
+    adopt_legacy_pair(local_path, remote_path)?;
     load_sync_journal_in(&sync_journal_dir()?, local_path, remote_path)
 }
 
@@ -5184,7 +6271,10 @@ fn load_sync_journal_in(
     remote_path: &str,
 ) -> Result<Option<SyncJournal>, String> {
     let path = dir.join(journal_filename(local_path, remote_path));
-    if !path.exists() {
+    // A journal there that cannot be read (a link to nowhere, kept by the
+    // adoption) is unreadable recovery state, not an absent one: the loader
+    // then fences the whole index (L8).
+    if !history_present(&path)? {
         return Ok(None);
     }
     let data = std::fs::read_to_string(&path)
@@ -6883,6 +7973,14 @@ mod narrow_tests {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn journal_transferred_phase_round_trips() {
+        use super::JournalEntryStatus;
+        let phase: JournalEntryStatus = serde_json::from_str("\"transferred\"").unwrap();
+        assert_eq!(phase, JournalEntryStatus::Transferred);
+        assert_eq!(serde_json::to_string(&phase).unwrap(), "\"transferred\"");
+    }
+
     /// #1506 row 164: an OS error is classified by its code, in any language.
     /// The text before "(os error N)" is the operating system's, translated
     /// (Windows always, glibc once GTK has set the locale), and the English
@@ -7173,6 +8271,851 @@ mod tests {
         journal.completed = true;
         save_sync_journal_in(dir.path(), &journal).unwrap();
         assert!(verify_journal_signature_in(dir.path(), local, remote, &key).unwrap());
+    }
+
+    /// `FtpManager::safe_ftp_error` replaces a refused reply's text with
+    /// `FTP status 553: command rejected`. That envelope is the 553 it stands
+    /// for: permanent, not retried, directly and wrapped as a provider error.
+    #[test]
+    fn the_sanitized_ftp_status_envelope_is_classified_as_its_status() {
+        let envelope = "FTP status 553: command rejected";
+        let wrapped =
+            crate::providers::ProviderError::ServerError(envelope.to_string()).to_string();
+        for raw in [
+            envelope.to_string(),
+            wrapped,
+            format!("Failed to create folder: {envelope}"),
+        ] {
+            let info = classify_sync_error(&raw, None);
+            assert!(!info.retryable, "{raw}: {info:?}");
+        }
+        // A 5xx HTTP status in the same shape is not an FTP 553.
+        assert!(classify_sync_error("HTTP status 503", None).retryable);
+    }
+
+    /// D9: the envelope of any refused FTP code quoted inside a retryable
+    /// 425 is not that code's class in text with no typed origin (the
+    /// fallback status parser included), while the same codes typed keep it.
+    #[test]
+    fn a_quoted_envelope_of_any_code_does_not_decide_untrusted_text() {
+        for code in [553u16, 552, 550, 530] {
+            let quoted =
+                format!("425 data channel unavailable; FTP status {code}: command rejected");
+            let message = ipc_error_message("test_command", &quoted);
+            let read = classify_ipc_error(&message, None);
+            assert!(read.retryable, "{code}: {message}");
+            assert_ne!(read.kind, SyncErrorKind::QuotaExceeded, "{code}: {message}");
+            let typed = ipc_error_render("test_command", &IpcError::FtpStatus(code));
+            assert_eq!(
+                classify_ipc_error(&typed, None).kind,
+                classify_sync_error(&format!("FTP status {code}: command rejected"), None).kind,
+                "{code}: {typed}"
+            );
+        }
+    }
+
+    /// The legacy FTP manager types a refused reply's code
+    /// (`FtpManagerError::Refused`): the boundary reads the status from that,
+    /// never from the envelope's words, which a server can write into any
+    /// other error.
+    #[test]
+    fn an_ftp_status_comes_from_the_managers_typed_refusal_only() {
+        let refused: anyhow::Error = crate::ftp::FtpManagerError::Refused { code: 553 }.into();
+        assert!(matches!(
+            IpcError::from_ftp(&refused),
+            IpcError::FtpStatus(553)
+        ));
+        assert_eq!(
+            refused.to_string(),
+            "Operation failed: FTP status 553: command rejected",
+            "the text other readers see is the envelope as before"
+        );
+        let quoted: anyhow::Error = crate::ftp::FtpManagerError::OperationFailed(
+            "425 no data connection: FTP status 553: command rejected".into(),
+        )
+        .into();
+        let error = IpcError::from_ftp(&quoted);
+        assert!(matches!(error, IpcError::Other(_)), "{error:?}");
+        let message = ipc_error_render("download_file", &error);
+        assert!(!message.contains("(FTP"), "{message}");
+        assert!(classify_ipc_error(&message, None).retryable, "{message}");
+        let message = ipc_error_render("download_file", &IpcError::from_ftp(&refused));
+        assert!(message.contains("(FTP 553)"), "{message}");
+        assert!(!classify_ipc_error(&message, None).retryable, "{message}");
+    }
+
+    /// The fixed message a runner command returns keeps the generic decision
+    /// the page takes from an error: `classify_transfer_error` reads back the
+    /// kind and the retry verdict of the text. A cancellation, a marker and a
+    /// status come only from the typed variants of `IpcError`. No word of the
+    /// raw text crosses, and a classification tag a server wrote into its own
+    /// text is not honoured.
+    #[test]
+    fn a_command_error_crosses_as_its_kind_and_keeps_every_decision() {
+        let corpus = [
+            "Failed to delete file: 403 Forbidden: permission denied on zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "Upload failed: connection reset by peer",
+            "Request timed out after 30s",
+            "HTTP 429 Too Many Requests",
+            "Storage quota exceeded for account",
+            "Path not found: /srv/zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "HTTP 413 Payload Too Large",
+            "HTTP 500 Internal Server Error {\"detail\":\"zq8Xv2Lr9TmPq4Ks7Wd1Hy\"}",
+            "CONNECTION_CHANGED: the server changed; reconnect",
+            "Transfer cancelled by user",
+            "weird server prose zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+        ];
+        for raw in corpus {
+            let message = ipc_error_message("test_command", raw);
+            assert!(!message.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{message}");
+            let expected = classify_sync_error(raw, None);
+            let read_back = classify_ipc_error(&message, None);
+            assert_eq!(
+                (read_back.kind.clone(), read_back.retryable),
+                (expected.kind.clone(), expected.retryable),
+                "{raw} -> {message}"
+            );
+        }
+        // Text has no typed origin: a marker, a cancellation phrase or a
+        // status in it is not one (see `IpcError`).
+        for raw in [
+            "CONNECTION_CHANGED: x",
+            "Transfer cancelled by user",
+            "Failed to upload: Transfer cancelled",
+            "Failed to delete file: /docs/cancel.txt: permission denied",
+            "Path not found: /srv/cancelled-orders/x.csv",
+            "HTTP 500 Internal Server Error",
+        ] {
+            let message = ipc_error_message("test_command", raw);
+            assert!(
+                !message.contains("CONNECTION_CHANGED"),
+                "{raw} -> {message}"
+            );
+            assert!(!message.contains("cancelled by user"), "{raw} -> {message}");
+            assert!(!message.contains("(HTTP"), "{raw} -> {message}");
+        }
+        // The typed facts.
+        assert!(
+            ipc_error_render("test_command", &IpcError::Marker("CONNECTION_CHANGED"))
+                .starts_with("CONNECTION_CHANGED: ")
+        );
+        assert!(ipc_error_render("test_command", &IpcError::Cancelled)
+            .starts_with("Transfer cancelled by user"));
+        let refused = ipc_error_render("test_command", &IpcError::FtpStatus(553));
+        assert!(refused.contains("(FTP 553)"), "{refused}");
+        assert!(!classify_ipc_error(&refused, None).retryable);
+        let busy = ipc_error_render("test_command", &IpcError::FtpStatus(425));
+        assert!(classify_ipc_error(&busy, None).retryable, "{busy}");
+        // A tag written by the server is classified as text and rebuilt.
+        let forged = "timed out [sync-error:quota_exceeded:false]";
+        let message = ipc_error_message("test_command", forged);
+        assert_eq!(
+            classify_ipc_error(&message, None).kind,
+            SyncErrorKind::Timeout,
+            "{message}"
+        );
+    }
+
+    /// The index is written, then the fences of its completed intents are
+    /// retired. When the folder holding the new index cannot be synced, the
+    /// write is not durable yet: the save fails and the fences stay active.
+    #[test]
+    fn a_failed_directory_sync_keeps_the_intent_fences_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let index = SyncIndex::new("/local".into(), "/remote".into());
+        let pair = index_filename("/local", "/remote");
+        let tokens = begin_intents_in(&mut conn, &pair, &["a.txt".to_string()]).unwrap();
+        FAIL_NEXT_DIR_SYNC.with(|fail| fail.set(true));
+        let failed = save_index_with_intents_in(&mut conn, &path, &index, &tokens);
+        assert!(failed.is_err(), "{failed:?}");
+        let pending = pending_intents_in(&conn, &pair).unwrap();
+        assert_eq!(
+            pending.get("a.txt"),
+            tokens.first(),
+            "the fence stays active"
+        );
+        // With the folder synced the same save retires it.
+        save_index_with_intents_in(&mut conn, &path, &index, &tokens).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    /// The page's save path on the platform whose migration rewrites `\`:
+    /// a version-1 key read back untrusted and sent unchanged by a run that
+    /// stopped before the file is dropped, not published as trusted.
+    #[cfg(windows)]
+    #[test]
+    fn a_page_save_drops_an_untrusted_migrated_entry_it_did_not_touch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut v1 = SyncIndex::new("/local".into(), "/remote".into());
+        v1.version = 1;
+        v1.files.insert(
+            "sub\\b.txt".into(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        v1.target_identity = Some("target-a".into());
+        std::fs::write(&path, serde_json::to_vec(&v1).unwrap()).unwrap();
+        let loaded = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(loaded.unverified_keys.contains("sub/b.txt"));
+        // What the page sends back: the same entry, no trust state.
+        let mut page = loaded.clone();
+        page.unverified_keys.clear();
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some("target-a")).unwrap();
+        let reloaded = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(!reloaded.files.contains_key("sub/b.txt"));
+    }
+
+    /// A run that stopped before a migrated file still publishes the entry it
+    /// loaded for it. Published as is, that untrusted entry would become a
+    /// version-2 baseline and the next Compare would read a file on one side
+    /// only as previously synced, the shape of a deletion. It is dropped
+    /// instead; an entry the run re-established stays.
+    #[test]
+    fn a_partial_run_does_not_republish_an_untrusted_baseline_as_trusted() {
+        let entry = |size| SyncIndexEntry {
+            size,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        // On disk: the index the last load read, b and c and v under keys the
+        // migration rewrote (their untrusted marks live only in memory).
+        let mut stored = SyncIndex::new("/local".into(), "/remote".into());
+        for key in ["sub/b.txt", "sub/c.txt", "sub/v.txt"] {
+            stored.files.insert(key.into(), entry(7));
+        }
+        std::fs::write(&path, serde_json::to_vec(&stored).unwrap()).unwrap();
+
+        // As a native publisher hands it to the real save path: b untouched
+        // and still untrusted, c re-established with new metadata, v verified
+        // by AeroCloud (`verify_migrated_baseline`: same metadata, trusted).
+        let mut published = stored.clone();
+        published
+            .unverified_keys
+            .extend(["sub/b.txt".to_string(), "sub/c.txt".to_string()]);
+        published.files.insert("sub/c.txt".into(), entry(9));
+        published.files.insert("new.txt".into(), entry(1));
+        save_index_with_intents_in(&mut conn, &path, &published, &[]).unwrap();
+        let reloaded = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(
+            !reloaded.files.contains_key("sub/b.txt"),
+            "the untouched untrusted entry is dropped"
+        );
+        assert_eq!(
+            reloaded.files["sub/c.txt"].size, 9,
+            "a re-established entry stays"
+        );
+        assert!(
+            reloaded.files.contains_key("sub/v.txt"),
+            "an explicitly verified entry stays"
+        );
+        assert!(reloaded.files.contains_key("new.txt"));
+
+        // Compare after the reload: b is new, never a deletion; v, deleted on
+        // one side since, is still a sync history, so its deletion is not
+        // copied back.
+        let file = mk_file_info("x", 7, None);
+        let report = classify_with_summary(
+            HashMap::from([
+                ("sub/b.txt".to_string(), file.clone()),
+                ("sub/v.txt".to_string(), file),
+            ]),
+            HashMap::new(),
+            &CompareOptions::default(),
+            Some(&reloaded),
+        );
+        let row = |key: &str| {
+            report
+                .differences
+                .iter()
+                .find(|d| d.relative_path == key)
+                .unwrap()
+        };
+        assert_eq!(row("sub/b.txt").status, SyncStatus::LocalOnly);
+        assert!(
+            !row("sub/b.txt").previously_synced,
+            "no deletion is proposed for b"
+        );
+        assert!(
+            row("sub/v.txt").previously_synced,
+            "v keeps its verified history"
+        );
+
+        // A page sends no trust state: through its save path the stored
+        // index's own marks decide. Here the stored index read back has none
+        // (a key with `/` is not rewritten on this platform), so nothing is
+        // dropped; on Windows the rewritten `\\` keys would be. The stored
+        // index records the page's target, so its target trusts it too.
+        let mut bound = reloaded.clone();
+        bound.target_identity = Some("target-a".into());
+        std::fs::write(&path, serde_json::to_vec(&bound).unwrap()).unwrap();
+        let page = reloaded.clone();
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some("target-a")).unwrap();
+        let again = read_sync_index_file(&path).unwrap().unwrap();
+        assert_eq!(again.files.len(), reloaded.files.len());
+    }
+
+    /// What a bidirectional run plans for `x.txt`, present locally and absent
+    /// on the target, against the index the page's load returns for `target`.
+    fn plan_for_local_only_file(path: &Path, target: &str) -> SyncAction {
+        let index = bind_index_to_target(read_sync_index_file(path).unwrap(), target);
+        let report = classify_with_summary(
+            HashMap::from([("x.txt".to_string(), mk_file_info("x.txt", 7, None))]),
+            HashMap::new(),
+            &CompareOptions::default(),
+            index.as_ref(),
+        );
+        let row = report
+            .differences
+            .iter()
+            .find(|d| d.relative_path == "x.txt")
+            .expect("x.txt is a difference");
+        decide_sync_action(
+            &row.status,
+            &CompareDirection::Bidirectional,
+            row.previously_synced,
+            false,
+        )
+    }
+
+    /// A profile edited to another target (an empty bucket) keeps its id and
+    /// its path pair. The history the old target's run saved must not turn
+    /// the local file, absent from the new bucket, into a local deletion.
+    #[test]
+    fn a_profile_retargeted_to_an_empty_bucket_plans_no_local_deletion() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut page = SyncIndex::new("/local".into(), "/remote".into());
+        page.profile_id = Some("p1".into());
+        page.files.insert(
+            "x.txt".into(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some("target-old")).unwrap();
+        let stored = read_sync_index_file(&path).unwrap().unwrap();
+        assert_eq!(stored.target_identity.as_deref(), Some("target-old"));
+
+        // Same target unchanged: a file gone from the remote is a deletion.
+        assert_eq!(
+            plan_for_local_only_file(&path, "target-old"),
+            SyncAction::DeleteLocal
+        );
+        // Retargeted: no history, the file is uploaded, and the old index
+        // stays on disk until a run of the new target replaces it.
+        assert_eq!(
+            plan_for_local_only_file(&path, "target-new"),
+            SyncAction::Upload
+        );
+        assert!(read_sync_index_file(&path).unwrap().is_some());
+        let mut next = SyncIndex::new("/local".into(), "/remote".into());
+        next.profile_id = Some("p1".into());
+        save_index_with_trust_in(&mut conn, &path, &next, &[], Some("target-new")).unwrap();
+        let replaced = read_sync_index_file(&path).unwrap().unwrap();
+        assert_eq!(replaced.target_identity.as_deref(), Some("target-new"));
+        assert!(
+            replaced.files.is_empty(),
+            "the old target's entries are not adopted"
+        );
+    }
+
+    /// A saved GitHub profile switched to another branch keeps its host,
+    /// account, id and path pair. The history of the old branch's run must
+    /// not turn a local file the new branch lacks into a local deletion: the
+    /// branch is part of the target, whether set in the profile or resolved
+    /// at connect as the repository's default (which can change remotely).
+    #[test]
+    fn a_profile_switched_to_another_branch_plans_no_local_deletion() {
+        use crate::providers::StorageProvider;
+        let config = |branch: Option<&str>| {
+            let mut extra = HashMap::new();
+            if let Some(branch) = branch {
+                extra.insert("branch".to_string(), branch.to_string());
+            }
+            crate::providers::ProviderConfig {
+                name: "repo".into(),
+                provider_type: crate::providers::ProviderType::GitHub,
+                host: "owner/repo".into(),
+                port: Some(443),
+                username: None,
+                password: Some("token".into()),
+                initial_path: Some("/".into()),
+                extra,
+            }
+        };
+        let identity = |config: &crate::providers::ProviderConfig, default_branch: &str| {
+            let provider = crate::providers::github::GitHubProvider::connected_for_test(
+                config,
+                "alice",
+                default_branch,
+            );
+            let account = provider
+                .sync_namespace_identity()
+                .or_else(|| provider.account_email());
+            crate::cloud_provider_factory::gui_target_identity(
+                Some(config),
+                provider.provider_type(),
+                account.as_deref(),
+                None,
+                &serde_json::Value::Null,
+            )
+            .unwrap()
+        };
+        let main = identity(&config(Some("main")), "main");
+        let develop = identity(&config(Some("develop")), "main");
+        assert_ne!(main, develop, "a branch set in the profile");
+        assert_eq!(main, identity(&config(Some("main")), "main"));
+        let default_main = identity(&config(None), "main");
+        let default_develop = identity(&config(None), "develop");
+        assert_ne!(
+            default_main, default_develop,
+            "the repository default moved"
+        );
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut page = SyncIndex::new("/local".into(), "/remote".into());
+        page.profile_id = Some("p1".into());
+        page.files.insert(
+            "x.txt".into(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some(&main)).unwrap();
+        assert_eq!(
+            plan_for_local_only_file(&path, &main),
+            SyncAction::DeleteLocal,
+            "the same branch: a file gone from it is a deletion"
+        );
+        for other in [&develop, &default_develop] {
+            assert_eq!(plan_for_local_only_file(&path, other), SyncAction::Upload);
+        }
+    }
+
+    /// D6: target A's index, and an intent of a run on target B that failed
+    /// before it published. Bound to B, A's baseline is gone but B's pending
+    /// key stays: an equal pair of that file is an interrupted sync, not
+    /// Identical.
+    #[test]
+    fn another_targets_baseline_goes_but_a_pending_intent_stays() {
+        let file = mk_file_info(
+            "x.txt",
+            7,
+            Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+        );
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some("target-a".into());
+        index.files.insert(
+            "x.txt".into(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        index.files.insert(
+            "old.txt".into(),
+            SyncIndexEntry {
+                size: 1,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        fence_index(
+            &mut index,
+            &HashMap::from([("x.txt".to_string(), "token-b".to_string())]),
+        );
+        let bound = bind_index_to_target(Some(index), "target-b").expect("the fence is kept");
+        assert!(bound.files.is_empty(), "no baseline of target A");
+        let report = classify_with_summary(
+            HashMap::from([("x.txt".to_string(), file.clone())]),
+            HashMap::from([("x.txt".to_string(), file)]),
+            &CompareOptions::default(),
+            Some(&bound),
+        );
+        assert_eq!(report.differences.len(), 1, "{:?}", report.differences);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        assert!(report.differences[0]
+            .sync_reason
+            .starts_with("Interrupted sync"));
+        // Without a pending intent another target's index is simply absent.
+        let mut plain = SyncIndex::new("/local".into(), "/remote".into());
+        plain.target_identity = Some("target-a".into());
+        assert!(bind_index_to_target(Some(plain), "target-b").is_none());
+    }
+
+    /// An index written before targets were recorded cannot say which server
+    /// its entries describe: its entries copy, never delete. One run of the
+    /// current target converges: an entry it re-established is trusted, an
+    /// entry only carried over is dropped, and the target is recorded.
+    #[test]
+    fn a_legacy_index_without_a_target_plans_no_deletion_and_converges_after_one_run() {
+        let entry = |size| SyncIndexEntry {
+            size,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut legacy = SyncIndex::new("/local".into(), "/remote".into());
+        legacy.files.insert("x.txt".into(), entry(7));
+        legacy.files.insert("y.txt".into(), entry(3));
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert!(read_sync_index_file(&path)
+            .unwrap()
+            .unwrap()
+            .target_identity
+            .is_none());
+
+        assert_eq!(
+            plan_for_local_only_file(&path, "target-a"),
+            SyncAction::Upload
+        );
+
+        // The run uploads x (a new entry) and leaves y as it was loaded.
+        let mut page = legacy.clone();
+        page.files.insert("x.txt".into(), entry(8));
+        save_index_with_trust_in(&mut conn, &path, &page, &[], Some("target-a")).unwrap();
+        let after = read_sync_index_file(&path).unwrap().unwrap();
+        assert_eq!(after.target_identity.as_deref(), Some("target-a"));
+        assert_eq!(after.files["x.txt"].size, 8, "re-established, kept");
+        assert!(
+            !after.files.contains_key("y.txt"),
+            "carried over unproven, dropped"
+        );
+        // Converged: x is history of this target again.
+        let bound = bind_index_to_target(Some(after), "target-a").unwrap();
+        assert!(bound.unverified_keys.is_empty());
+        assert_eq!(
+            plan_for_local_only_file(&path, "target-a"),
+            SyncAction::DeleteLocal
+        );
+    }
+
+    /// D8: a legacy (target-less) entry that a completed transfer of this
+    /// save re-established is kept even when its metadata came out exactly the
+    /// same (a download that preserved size and time); an untouched entry is
+    /// still dropped.
+    #[test]
+    fn a_completed_transfer_keeps_its_unchanged_legacy_entry() {
+        let entry = SyncIndexEntry {
+            size: 7,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut legacy = SyncIndex::new("/local".into(), "/remote".into());
+        legacy.files.insert("x.txt".into(), entry.clone());
+        legacy.files.insert("y.txt".into(), entry.clone());
+        std::fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let pair = index_filename("/local", "/remote");
+        let tokens = begin_intents_in(&mut conn, &pair, &["x.txt".to_string()]).unwrap();
+        // The run downloaded x again; its entry is the same as before.
+        save_index_with_trust_in(&mut conn, &path, &legacy, &tokens, Some("target-a")).unwrap();
+        let saved = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(
+            saved.files.contains_key("x.txt"),
+            "proven by its completed intent"
+        );
+        assert!(
+            !saved.files.contains_key("y.txt"),
+            "untouched, still dropped"
+        );
+    }
+
+    /// Only a page save records a target: another publisher's index (AeroCloud,
+    /// whose deletions rest on its own receipts) says nothing of which server
+    /// the GUI's history describes, so it is read back as untrusted.
+    #[test]
+    fn a_native_save_records_no_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some("target-a".into());
+        save_index_with_intents_in(&mut conn, &path, &index, &[]).unwrap();
+        assert!(read_sync_index_file(&path)
+            .unwrap()
+            .unwrap()
+            .target_identity
+            .is_none());
+    }
+
+    /// A version-1 index under a legacy pair key is moved as it is stored, so
+    /// the version-1 migration still runs at the real load and leaves the keys
+    /// it rewrote untrusted. Read through the migration and written back as a
+    /// current index, the rewritten key would lose that state and a file on
+    /// one side only would read as previously synced, the shape of a delete.
+    #[test]
+    fn a_legacy_version_1_index_keeps_its_untrusted_keys_through_adoption() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let nested = format!("sub{}b.txt", std::path::MAIN_SEPARATOR);
+        let mut legacy = SyncIndex::new("C:\\".into(), "/srv".into());
+        legacy.version = 1;
+        legacy.files.insert(
+            nested.clone(),
+            SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        std::fs::write(
+            index_dir.join(index_filename("C:\\", "/srv")),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/srv").unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/srv"));
+        // On disk: still the version-1 index, with its keys as written.
+        let stored: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&index_path).unwrap()).unwrap();
+        assert_eq!(stored["version"], 1);
+        assert_eq!(stored["local_path"], "C:/");
+        assert!(stored["files"].get(&nested).is_some(), "{stored}");
+
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/srv", || Ok(None))
+            .unwrap()
+            .expect("the adopted baseline");
+        assert!(loaded.files.contains_key("sub/b.txt"));
+        // The migration rewrites `\` only where it is the separator.
+        #[cfg(windows)]
+        {
+            assert!(
+                loaded.unverified_keys.contains("sub/b.txt"),
+                "{:?}",
+                loaded.unverified_keys
+            );
+            let file = mk_file_info("b.txt", 7, None);
+            let report = classify_with_summary(
+                HashMap::from([("sub/b.txt".to_string(), file)]),
+                HashMap::new(),
+                &CompareOptions::default(),
+                Some(&loaded),
+            );
+            let row = &report.differences[0];
+            assert_eq!(row.status, SyncStatus::LocalOnly);
+            assert!(
+                !row.previously_synced,
+                "a rewritten key is not a sync history"
+            );
+        }
+    }
+
+    /// The runner before normalized roots saved a drive-root pair as `C:\`
+    /// and the root `/` as the empty string. Its index and journal are found
+    /// on the first load under the normalized key, moved there with the
+    /// journal's signature answer, and never written over a normalized history.
+    #[test]
+    fn a_history_saved_under_a_legacy_pair_key_is_adopted_by_the_normalized_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        assert_eq!(legacy_root_forms("C:/"), ["C:\\", "C:"]);
+        assert_eq!(legacy_root_forms("/"), [""]);
+        assert!(legacy_root_forms("/srv/data").is_empty());
+
+        let (old_local, old_remote) = ("C:\\", "");
+        let mut legacy = SyncIndex::new(old_local.into(), old_remote.into());
+        legacy.profile_id = Some("A".into());
+        std::fs::write(
+            index_dir.join(index_filename(old_local, old_remote)),
+            serde_json::to_vec(&legacy).unwrap(),
+        )
+        .unwrap();
+        let journal = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &journal).unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let adopted = read_sync_index_file(&index_path)
+            .unwrap()
+            .expect("adopted index");
+        assert_eq!(
+            (adopted.local_path.as_str(), adopted.remote_path.as_str()),
+            ("C:/", "/")
+        );
+        assert_eq!(adopted.profile_id.as_deref(), Some("A"));
+        assert!(!index_dir
+            .join(index_filename(old_local, old_remote))
+            .exists());
+        let moved = load_sync_journal_in(&journal_dir, "C:/", "/")
+            .unwrap()
+            .expect("adopted journal");
+        assert_eq!(moved.id, journal.id);
+        assert!(load_sync_journal_in(&journal_dir, old_local, old_remote)
+            .unwrap()
+            .is_none());
+        let key = journal_signing_key_in(&journal_dir, "C:/", "/").unwrap();
+        assert!(verify_journal_signature_in(&journal_dir, "C:/", "/", &key).unwrap());
+        // The compare's own load sees the baseline under the normalized key.
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/", || {
+            load_sync_journal_in(&journal_dir, "C:/", "/")
+        })
+        .unwrap();
+        assert!(loaded.is_some(), "the existing baseline is not missed");
+
+        // A history already under the normalized key wins: a legacy one found
+        // later stays where it is and overwrites nothing.
+        let mut stale = SyncIndex::new("C:".into(), "/".into());
+        stale.profile_id = Some("stale".into());
+        std::fs::write(
+            index_dir.join(index_filename("C:", "/")),
+            serde_json::to_vec(&stale).unwrap(),
+        )
+        .unwrap();
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        let kept = read_sync_index_file(&index_path).unwrap().unwrap();
+        assert_eq!(kept.profile_id.as_deref(), Some("A"));
+        assert!(index_dir.join(index_filename("C:", "/")).exists());
+    }
+
+    /// A normalized history that is a link to nowhere (its target moved or
+    /// not mounted) is still there: `exists()` called it absent, and the
+    /// adoption replaced the link with the legacy history.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_normalized_history_is_not_written_over_by_adoption() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let (old_local, old_remote) = ("C:\\", "");
+        let legacy_index = index_dir.join(index_filename(old_local, old_remote));
+        std::fs::write(
+            &legacy_index,
+            serde_json::to_vec(&SyncIndex::new(old_local.into(), old_remote.into())).unwrap(),
+        )
+        .unwrap();
+        let journal = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &journal).unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let journal_path = journal_dir.join(journal_filename("C:/", "/"));
+        let gone = dir.path().join("unmounted");
+        std::os::unix::fs::symlink(gone.join("index.json"), &index_path).unwrap();
+        std::os::unix::fs::symlink(gone.join("journal.json"), &journal_path).unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+
+        for link in [&index_path, &journal_path] {
+            assert!(
+                std::fs::symlink_metadata(link)
+                    .unwrap()
+                    .file_type()
+                    .is_symlink(),
+                "{} replaced",
+                link.display()
+            );
+        }
+        assert!(!gone.exists(), "nothing written through the links");
+        assert!(legacy_index.exists(), "the legacy index stays where it is");
+        assert!(load_sync_journal_in(&journal_dir, old_local, old_remote)
+            .unwrap()
+            .is_some());
+    }
+
+    /// L8: the adoption keeps a dangling normalized journal (above), and the
+    /// legacy journal with its interrupted work stays where it is. The
+    /// recovery load reads the link as an unreadable journal, not as none:
+    /// every baseline of the index is fenced, so a one-sided file is never
+    /// taken as previously synced.
+    #[cfg(unix)]
+    #[test]
+    fn a_dangling_normalized_journal_fences_the_index_on_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let (index_dir, journal_dir) = (dir.path().join("index"), dir.path().join("journal"));
+        std::fs::create_dir_all(&index_dir).unwrap();
+        std::fs::create_dir_all(&journal_dir).unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let index_path = index_dir.join(index_filename("C:/", "/"));
+        let mut index = SyncIndex::new("C:/".into(), "/".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_index_with_intents_in(&mut conn, &index_path, &index, &[]).unwrap();
+        let (old_local, old_remote) = ("C:\\", "");
+        let interrupted = SyncJournal::new(
+            old_local.into(),
+            old_remote.into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        save_sync_journal_in(&journal_dir, &interrupted).unwrap();
+        std::os::unix::fs::symlink(
+            dir.path().join("unmounted/journal.json"),
+            journal_dir.join(journal_filename("C:/", "/")),
+        )
+        .unwrap();
+
+        adopt_legacy_pair_in(&mut conn, &index_dir, &journal_dir, "C:/", "/").unwrap();
+        assert!(load_sync_journal_in(&journal_dir, "C:/", "/").is_err());
+        let loaded = load_index_with_intents_in(&mut conn, &index_path, "C:/", "/", || {
+            load_sync_journal_in(&journal_dir, "C:/", "/")
+        })
+        .unwrap()
+        .expect("the index is still there");
+        assert!(loaded.unverified_keys.contains("one"));
+        assert!(loaded.pending_recovery_keys.contains("one"));
+        // A journal genuinely absent is still none.
+        assert!(load_sync_journal_in(&journal_dir, "/x", "/y")
+            .unwrap()
+            .is_none());
     }
 
     /// Two first-use callers (two sync jobs, or a job and the transfer-DAG
@@ -7926,7 +9869,9 @@ mod tests {
                 // Renders the payload with no label; the leading-status check
                 // in `mentions_ftp_status` is what recognises this one.
                 PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
-                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::NotConnected | PE::TargetChanged | PE::Cancelled | PE::Timeout => false,
+                // The status alone, typed: no reply text behind it.
+                PE::FtpRefused { .. } => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
                 // file operation: there is never a server reply behind it.
@@ -8573,6 +10518,69 @@ mod tests {
     }
 
     #[test]
+    fn journal_resume_policy_round_trips_and_legacy_is_unknown() {
+        let mut journal = SyncJournal::new(
+            "/local".into(),
+            "/remote".into(),
+            CompareDirection::Bidirectional,
+            RetryPolicy::default(),
+            VerifyPolicy::default(),
+        );
+        journal.resume_safe = Some(false);
+        journal.backup_dir = Some(".versions".into());
+        journal.backup_stamp = Some("20261111T140000Z".into());
+        journal.ec_enabled = Some(true);
+        journal.ec_pct = Some(12);
+        journal.ec_max_file_size = Some(1024);
+        journal.remote_dirs = Some(vec!["empty".into()]);
+        journal.local_dirs = Some(vec!["local-empty".into()]);
+        journal.entries.push(SyncJournalEntry {
+            intent_token: None,
+            baseline_key: None,
+            source_path: None,
+            relative_path: "one".into(),
+            overwrites_existing: Some(true),
+            archive_state: Some("archived".into()),
+            archive_receipt: Some("/remote/.versions/20261111T140000Z/one".into()),
+            source_size: Some(42),
+            source_mtime: Some("2026-11-11T00:00:00Z".into()),
+            source_sha256: Some("abc".into()),
+            action: "upload".into(),
+            status: JournalEntryStatus::InProgress,
+            attempts: 0,
+            last_error: None,
+            verified: None,
+            bytes_transferred: 0,
+            ec_status: None,
+            local_size: None,
+            local_modified: None,
+            uploaded_at: None,
+        });
+        let mut value = serde_json::to_value(&journal).unwrap();
+        assert_eq!(value["resume_safe"], false);
+        let loaded: SyncJournal = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(loaded.resume_safe, Some(false));
+        assert_eq!(loaded.backup_dir.as_deref(), Some(".versions"));
+        assert_eq!(loaded.ec_enabled, Some(true));
+        assert_eq!(loaded.ec_pct, Some(12));
+        assert_eq!(loaded.ec_max_file_size, Some(1024));
+        assert_eq!(loaded.remote_dirs, Some(vec!["empty".into()]));
+        assert_eq!(loaded.local_dirs, Some(vec!["local-empty".into()]));
+        assert_eq!(loaded.entries[0].source_size, Some(42));
+        assert_eq!(
+            loaded.entries[0].source_mtime.as_deref(),
+            Some("2026-11-11T00:00:00Z")
+        );
+        assert_eq!(loaded.entries[0].source_sha256.as_deref(), Some("abc"));
+        assert_eq!(loaded.entries[0].overwrites_existing, Some(true));
+        assert_eq!(loaded.entries[0].archive_state.as_deref(), Some("archived"));
+        assert!(loaded.entries[0].archive_receipt.is_some());
+        value.as_object_mut().unwrap().remove("resume_safe");
+        let legacy: SyncJournal = serde_json::from_value(value).unwrap();
+        assert_eq!(legacy.resume_safe, None);
+    }
+
+    #[test]
     fn test_journal_has_resumable() {
         let mut journal = SyncJournal::new(
             "/local".to_string(),
@@ -8582,6 +10590,13 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "file.txt".to_string(),
@@ -8614,6 +10629,10 @@ mod tests {
             Some("café.txt")
         );
 
+        // An acknowledged payload may still need verification/sidecar work.
+        journal.entries[0].status = JournalEntryStatus::Transferred;
+        assert!(journal.has_resumable_entries());
+
         // Mark as completed
         journal.entries[0].status = JournalEntryStatus::Completed;
         assert!(!journal.has_resumable_entries());
@@ -8629,6 +10648,13 @@ mod tests {
             VerifyPolicy::default(),
         );
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "a.txt".to_string(),
@@ -8644,6 +10670,13 @@ mod tests {
             uploaded_at: None,
         });
         journal.entries.push(SyncJournalEntry {
+            intent_token: None,
+            overwrites_existing: None,
+            archive_state: None,
+            archive_receipt: None,
+            source_size: None,
+            source_mtime: None,
+            source_sha256: None,
             baseline_key: None,
             source_path: None,
             relative_path: "b.txt".to_string(),
@@ -8728,6 +10761,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         index.files.insert(
             format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
@@ -8767,6 +10803,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         // Sizes differ so "which one survived" is observable.
         index.files.insert(
@@ -8880,6 +10919,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -8959,6 +11001,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -8983,6 +11028,142 @@ mod tests {
         assert!(reloaded.files.contains_key("sub/b.txt"));
     }
 
+    /// A key the version 2 migration rewrote is not trusted as a baseline, but
+    /// it has no interrupted writer behind it: when both sides hold the same
+    /// file at `sub/b.txt` the pair converges on its own metadata. Only a
+    /// pending intent, or fence storage that could not be read, holds the same
+    /// equal pair as a conflict.
+    #[test]
+    fn a_migrated_key_converges_on_an_equal_pair_and_a_pending_intent_still_conflicts() {
+        let mut index = SyncIndex {
+            profile_id: None,
+            version: 1,
+            last_sync: Utc::now(),
+            local_path: "/local".to_string(),
+            remote_path: "/remote".to_string(),
+            files: HashMap::new(),
+            remote_spellings: Default::default(),
+            cloud_receipts: Default::default(),
+            cloud_remote_metadata: Default::default(),
+            unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
+        };
+        index.files.insert(
+            format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
+            SyncIndexEntry {
+                size: 3,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        migrate_sync_index(&mut index);
+        assert!(index.files.contains_key("sub/b.txt"));
+        // The rewrite only happens where `\` is the separator. Elsewhere the
+        // v1 key is already `sub/b.txt`, so the mark the Windows migration
+        // leaves is set by hand to compare the same state on every platform.
+        #[cfg(windows)]
+        assert!(index.unverified_keys.contains("sub/b.txt"));
+        #[cfg(not(windows))]
+        index.unverified_keys.insert("sub/b.txt".to_string());
+        assert!(index.pending_recovery_keys.is_empty());
+
+        let file = mk_file_info(
+            "b.txt",
+            7,
+            Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+        );
+        let classify = |index: &SyncIndex| {
+            classify_with_summary(
+                HashMap::from([("sub/b.txt".to_string(), file.clone())]),
+                HashMap::from([("sub/b.txt".to_string(), file.clone())]),
+                &CompareOptions::default(),
+                Some(index),
+            )
+        };
+        let report = classify(&index);
+        assert!(report.differences.is_empty(), "{:?}", report.differences);
+        assert_eq!(report.summary.identical_count, 1);
+
+        // The same equal pair under an interrupted intent stays visible.
+        let mut fenced = index.clone();
+        fence_index(
+            &mut fenced,
+            &HashMap::from([("sub/b.txt".to_string(), "token".to_string())]),
+        );
+        assert!(fenced.pending_recovery_keys.contains("sub/b.txt"));
+        let report = classify(&fenced);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        assert!(report.differences[0]
+            .sync_reason
+            .starts_with("Interrupted sync"));
+        assert_eq!(report.summary.identical_count, 0);
+
+        // Unreadable fence storage cannot say which paths are pending: every
+        // baseline is held the same way.
+        let mut unreadable = index.clone();
+        apply_intent_fences(&mut unreadable, false, || Err("database busy".into())).unwrap();
+        assert!(unreadable.pending_recovery_keys.contains("sub/b.txt"));
+        let report = classify(&unreadable);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+
+        // A caller that vouches for the key again releases the pair.
+        fenced.unverified_keys.remove("sub/b.txt");
+        assert!(classify(&fenced).differences.is_empty());
+    }
+
+    /// The classifier behind `classify_transfer_error` and the executors'
+    /// retry logs returns its message over IPC. A credential a provider put in
+    /// its error is masked there; the kind and the retry answer are the ones
+    /// of the raw text.
+    #[test]
+    fn a_classified_error_message_carries_no_provider_credential() {
+        for (raw, secrets, kind, retryable) in [
+            (
+                "Authentication failed: Authorization: Bearer ya29.A0AfH6SMBx-owner-token-0123456789",
+                &["ya29.A0AfH6SMBx-owner-token-0123456789"][..],
+                SyncErrorKind::Auth,
+                false,
+            ),
+            (
+                "552 Insufficient storage space (sent Bearer abcdefgh12345678XYZ)",
+                &["abcdefgh12345678XYZ"][..],
+                SyncErrorKind::QuotaExceeded,
+                false,
+            ),
+            (
+                "Operation timed out: GET https://api.example.test/v1/files?access_token=AT-live-123456&refresh_token=RT-live-654321",
+                &["AT-live-123456", "RT-live-654321"][..],
+                SyncErrorKind::Timeout,
+                true,
+            ),
+            (
+                "Connection refused: https://alice:hunter2-pw@dav.example.test/remote.php/webdav",
+                &["hunter2-pw"][..],
+                SyncErrorKind::Network,
+                true,
+            ),
+        ] {
+            let info = classify_sync_error(raw, Some("/srv/data/report.csv"));
+            assert_eq!(info.kind, kind, "{raw}");
+            assert_eq!(info.retryable, retryable, "{raw}");
+            for secret in secrets {
+                assert!(!info.message.contains(secret), "{}", info.message);
+            }
+            let over_ipc = serde_json::to_string(&info).unwrap();
+            for secret in secrets {
+                assert!(!over_ipc.contains(secret), "{over_ipc}");
+            }
+        }
+        // An error with nothing to mask reads as it did.
+        let plain = classify_sync_error("553 Could not create file", None);
+        assert_eq!(plain.message, "553 Could not create file");
+    }
+
     /// The migration is a one-way step, not something that runs on every read:
     /// an index already at the current version comes back untouched.
     #[test]
@@ -8998,6 +11179,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         // A key that a rewrite would change, so "untouched" is observable.
         index.files.insert(
@@ -9031,6 +11215,9 @@ mod tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
         };
         index.files.insert(
             "file.txt".to_string(),
@@ -9305,6 +11492,123 @@ mod tests {
             Some(SyncStatus::LocalNewer),
             "edited locally"
         );
+    }
+
+    /// D7: an index with no target (a legacy one, or AeroCloud's) is history
+    /// for change detection: bound to the GUI's target, a same-size local edit
+    /// under a size-only window is still LocalNewer, while a file gone from
+    /// the remote is not a deletion (`previously_synced` stays false).
+    #[test]
+    fn an_index_without_a_target_detects_changes_but_proposes_no_deletion() {
+        let t0 = chrono::DateTime::parse_from_rfc3339("2026-09-25T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let at = |secs: i64| Some(t0 + chrono::Duration::seconds(secs));
+        let mut aerocloud = SyncIndex::new("/l".to_string(), "/r".to_string());
+        for name in ["b.txt", "gone.txt"] {
+            aerocloud.files.insert(
+                name.to_string(),
+                serde_json::from_value(serde_json::json!({
+                    "size": 10, "modified": "2026-09-25T12:00:00Z", "is_dir": false
+                }))
+                .unwrap(),
+            );
+        }
+        assert!(aerocloud.target_identity.is_none(), "as AeroCloud saves it");
+        let bound = bind_index_to_target(Some(aerocloud), "target-gui").unwrap();
+        let local = HashMap::from([
+            ("b.txt".to_string(), mk_file_info("b.txt", 10, at(3600))),
+            ("gone.txt".to_string(), mk_file_info("gone.txt", 10, at(0))),
+        ]);
+        let remote = HashMap::from([("b.txt".to_string(), mk_file_info("b.txt", 10, at(30)))]);
+        let options = CompareOptions {
+            modify_window: ModifyWindow::SizeOnly {
+                reason: crate::sync_core::mtime::SizeOnlyReason::FtpListDates,
+            },
+            ..CompareOptions::default()
+        };
+        let report = classify_with_summary(local, remote, &options, Some(&bound));
+        let row = |name: &str| {
+            report
+                .differences
+                .iter()
+                .find(|row| row.relative_path == name)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(
+            row("b.txt").status,
+            SyncStatus::LocalNewer,
+            "the edit is selectable"
+        );
+        let gone = row("gone.txt");
+        assert_eq!(gone.status, SyncStatus::LocalOnly);
+        assert!(!gone.previously_synced, "no deletion authority");
+        assert_eq!(
+            decide_sync_action(
+                &gone.status,
+                &CompareDirection::Bidirectional,
+                gone.previously_synced,
+                false
+            ),
+            SyncAction::Upload
+        );
+    }
+
+    /// D7 condition: in one index without a target, the three categories keep
+    /// their own meaning. A migrated key stays unverified (no baseline), a
+    /// pending intent's key stays a recovery conflict, and the rest is
+    /// history only; binding adds the history and touches neither of the two.
+    #[test]
+    fn history_only_keeps_migrated_and_recovery_keys_as_they_were() {
+        let entry = || SyncIndexEntry {
+            size: 7,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        for key in ["migrated.txt", "pending.txt", "history.txt"] {
+            index.files.insert(key.into(), entry());
+        }
+        index.unverified_keys.insert("migrated.txt".into());
+        fence_index(
+            &mut index,
+            &HashMap::from([("pending.txt".to_string(), "token".to_string())]),
+        );
+        let unverified = index.unverified_keys.clone();
+        let pending = index.pending_recovery_keys.clone();
+        let bound = bind_index_to_target(Some(index), "target-gui").unwrap();
+        assert_eq!(bound.unverified_keys, unverified);
+        assert_eq!(bound.pending_recovery_keys, pending);
+        assert!(bound.history_only_keys.contains("history.txt"));
+        let file = mk_file_info(
+            "x",
+            7,
+            Some(DateTime::<Utc>::from_timestamp(1_750_000_003, 0).unwrap()),
+        );
+        let both = |name: &str| HashMap::from([(name.to_string(), file.clone())]);
+        let one = |name: &str| {
+            classify_with_summary(
+                both(name),
+                HashMap::new(),
+                &CompareOptions::default(),
+                Some(&bound),
+            )
+            .differences
+            .into_iter()
+            .find(|row| row.relative_path == name)
+            .unwrap()
+        };
+        assert!(!one("migrated.txt").previously_synced);
+        assert!(!one("history.txt").previously_synced);
+        let recovery = classify_with_summary(
+            both("pending.txt"),
+            both("pending.txt"),
+            &CompareOptions::default(),
+            Some(&bound),
+        );
+        assert_eq!(recovery.differences[0].status, SyncStatus::Conflict);
     }
 
     /// M1 (review of #949): `newer` in `sync_tree` cannot be decided by size
@@ -10934,14 +13238,19 @@ mod tests {
             assert_eq!(report.summary.identical_count, 0);
         }
 
-        // Migration cannot turn an unverified baseline into an upload marker.
-        index.unverified_keys.insert("a".into());
+        // Quarantined equal pairs remain visible until explicit recovery.
+        fence_index(
+            &mut index,
+            &HashMap::from([("a".to_string(), "token".to_string())]),
+        );
         let report = classify(&index, &CompareOptions::default());
-        assert!(report.differences.is_empty());
-        assert_eq!(report.summary.identical_count, 1);
+        assert_eq!(report.differences.len(), 1);
+        assert_eq!(report.differences[0].status, SyncStatus::Conflict);
+        assert_eq!(report.summary.identical_count, 0);
 
         // A successful resend replaces the marker and can converge normally.
         index.unverified_keys.clear();
+        index.pending_recovery_keys.clear();
         index.files.get_mut("a").unwrap().modified = file.modified;
         let report = classify(&index, &CompareOptions::default());
         assert!(report.differences.is_empty());
@@ -11102,5 +13411,400 @@ mod profile_history_tests {
         // What the other profile's index would do, and what this one does.
         assert_eq!(decide(theirs.as_ref()), SyncAction::DeleteLocal);
         assert_eq!(decide(ours.as_ref()), SyncAction::Upload);
+    }
+}
+
+#[cfg(test)]
+mod sync_intent_tests {
+    use super::*;
+
+    #[test]
+    fn archived_destination_loses_delete_authority_across_restart_and_stale_index_saves() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("local");
+        let remote = dir.path().join("remote");
+        std::fs::create_dir_all(&local).unwrap();
+        std::fs::create_dir_all(&remote).unwrap();
+        std::fs::write(local.join("one"), b"live source").unwrap();
+        std::fs::write(remote.join("one"), b"old destination").unwrap();
+        let mut index = SyncIndex::new(
+            local.to_string_lossy().into_owned(),
+            remote.to_string_lossy().into_owned(),
+        );
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 11,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let nfc = HashMap::from([("one".to_string(), vec!["one"])]);
+        assert!(trusted_baseline_key(&index, &nfc, "one", "one").is_some());
+        let db = dir.path().join("intents.db");
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let mut conn = intent_connection_in(&db).unwrap();
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        // The fence commits BEFORE archive moves the live destination.
+        let receipt = crate::sync_backup::archive_local(
+            &remote,
+            &crate::sync_backup::BackupDir::parse(".v").unwrap(),
+            "stamp",
+            "one",
+        )
+        .unwrap()
+        .unwrap();
+        assert!(!remote.join("one").exists());
+        assert!(receipt.exists());
+        drop(conn);
+        let mut conn = intent_connection_in(&db).unwrap();
+        let index_path = dir.path().join("index.json");
+        // Even an old writer with no intent tokens cannot remove the fence.
+        save_index_with_intents_in(&mut conn, &index_path, &index, &[]).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let previously_synced = trusted_baseline_key(&index, &nfc, "one", "one").is_some();
+        assert!(!previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &SyncStatus::LocalOnly,
+                &CompareDirection::Bidirectional,
+                previously_synced,
+                false
+            ),
+            SyncAction::Upload
+        );
+        assert_eq!(
+            decide_sync_action(
+                &SyncStatus::RemoteOnly,
+                &CompareDirection::Bidirectional,
+                previously_synced,
+                false
+            ),
+            SyncAction::Download
+        );
+        assert_eq!(std::fs::read(local.join("one")).unwrap(), b"live source");
+        // A verified fresh transfer and its index retire this exact fence.
+        std::fs::copy(local.join("one"), remote.join("one")).unwrap();
+        save_index_with_intents_in(&mut conn, &index_path, &index, &tokens).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn legacy_archive_intent_is_imported_before_a_fresh_compare() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intent.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 1,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let journal:SyncJournal=serde_json::from_value(serde_json::json!({
+            "id":"legacy","created_at":"2026-11-11T00:00:00Z","updated_at":"2026-11-11T00:00:00Z",
+            "local_path":"/local","remote_path":"/remote","direction":"bidirectional",
+            "retry_policy":RetryPolicy::default(),"verify_policy":"none","completed":false,
+            "entries":[{"relative_path":"one","action":"upload","status":"in_progress",
+                "archive_state":"started","attempts":0,"last_error":null,"verified":null,"bytes_transferred":0}]
+        })).unwrap();
+        import_archive_intents(&conn, &pair, &journal).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let nfc = HashMap::from([("one".to_string(), vec!["one"])]);
+        assert!(trusted_baseline_key(&index, &nfc, "one", "one").is_none());
+        let fresh = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &fresh)
+            .unwrap();
+        // A delayed legacy reader must not quarantine a newer verified write.
+        import_archive_intents(&conn, &pair, &journal).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn unreadable_journal_or_database_preserves_all_baselines_without_delete_authority() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = "/unreadable-local";
+        let remote = "/unreadable-remote";
+        std::fs::write(
+            dir.path().join(journal_filename(local, remote)),
+            b"{truncated",
+        )
+        .unwrap();
+        let mut index = SyncIndex::new(local.into(), remote.into());
+        for key in ["one", "untouched"] {
+            index.files.insert(
+                key.into(),
+                SyncIndexEntry {
+                    size: 4,
+                    modified: None,
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            );
+        }
+        let original = serde_json::to_vec(&index).unwrap();
+        apply_intent_fences(&mut index, false, || {
+            load_sync_journal_in(dir.path(), local, remote)?;
+            Ok(HashMap::new())
+        })
+        .unwrap();
+        assert_eq!(index.files.len(), 2);
+        assert_eq!(index.unverified_keys.len(), 2);
+        assert_eq!(serde_json::to_vec(&index).unwrap(), original);
+        apply_intent_fences(&mut index, false, || Err("database busy".into())).unwrap();
+        assert_eq!(index.files.len(), 2);
+        assert_eq!(index.unverified_keys.len(), 2);
+        let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let pair = index_filename(local, remote);
+        insert_intent_fences(&conn, &pair, index.files.keys().cloned()).unwrap();
+        // Once the corrupt journal is replaced, its durable quarantine remains.
+        std::fs::remove_file(dir.path().join(journal_filename(local, remote))).unwrap();
+        index.unverified_keys.clear();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        assert_eq!(index.unverified_keys.len(), 2);
+    }
+
+    #[test]
+    fn failed_quarantine_write_blocks_snapshot_even_when_database_reads_succeed() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        conn.execute_batch("PRAGMA query_only=ON;").unwrap();
+        let write = insert_intent_fences(&conn, &pair, index.files.keys().cloned());
+        assert!(write.is_err());
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+        // This is the same strict loader boundary used before a new snapshot.
+        assert!(apply_intent_fences(&mut index, true, || write.map(|_| HashMap::new())).is_err());
+        assert!(index.files.contains_key("one"));
+        assert!(index.unverified_keys.contains("one"));
+    }
+
+    #[test]
+    fn completed_delete_fence_protects_a_new_remote_file_when_index_publish_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        // The delete completed, but a later timeout/load error skipped index
+        // publication. A new object must download, never inherit the delete.
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let rows = build_comparison_results_with_index(
+            HashMap::new(),
+            HashMap::from([(
+                "one".into(),
+                FileInfo {
+                    name: "one".into(),
+                    path: "one".into(),
+                    size: 7,
+                    modified: None,
+                    is_dir: false,
+                    checksum: None,
+                    checksum_alg: None,
+                },
+            )]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            decide_sync_action(
+                &rows[0].status,
+                &CompareDirection::Bidirectional,
+                rows[0].previously_synced,
+                false
+            ),
+            SyncAction::Download
+        );
+    }
+
+    #[test]
+    fn identical_fenced_pair_requires_explicit_transfer_and_then_retires_its_fence() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        // An abandoned writer can still complete: equal listing metadata is
+        // not proof that it is safe to retire that writer's generation.
+        begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        fence_index(&mut index, &pending_intents_in(&conn, &pair).unwrap());
+        let info = FileInfo {
+            name: "one".into(),
+            path: "one".into(),
+            size: 4,
+            modified: Some(Utc::now()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        };
+        let rows = build_comparison_results_with_index(
+            HashMap::from([("one".into(), info.clone())]),
+            HashMap::from([("one".into(), info)]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, SyncStatus::Conflict);
+        assert!(rows[0].sync_reason.contains("choose a transfer direction"));
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens)
+            .unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    #[test]
+    fn index_read_and_fence_read_exclude_an_interleaved_publisher() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("intents.db");
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&db).unwrap();
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename("/local", "/remote");
+        save_index_with_intents_in(&mut conn, &path, &index, &[]).unwrap();
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        let mut newer = index.clone();
+        newer.files.get_mut("one").unwrap().size = 7;
+        let mut publisher = intent_connection_in(&db).unwrap();
+        publisher.busy_timeout(std::time::Duration::ZERO).unwrap();
+        let loaded = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || {
+            // This callback runs after reading JSON, before reading fences.
+            assert!(save_index_with_intents_in(&mut publisher, &path, &newer, &tokens).is_err());
+            Ok(None)
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(loaded.files["one"].size, 4);
+        assert!(loaded.unverified_keys.contains("one"));
+        save_index_with_intents_in(&mut publisher, &path, &newer, &tokens).unwrap();
+        let loaded = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || Ok(None))
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded.files["one"].size, 7);
+        assert!(loaded.unverified_keys.is_empty());
+    }
+
+    #[test]
+    fn missing_index_never_hides_unavailable_new_file_recovery() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = dir.path().join("intents.db");
+        let mut conn = intent_connection_in(&db).unwrap();
+        let pair = index_filename("/local", "/remote");
+        begin_intents_in(&mut conn, &pair, &["new".into()]).unwrap();
+        let path = dir.path().join("missing.json");
+        let mut reader = intent_connection_in(&db).unwrap();
+        reader.busy_timeout(std::time::Duration::ZERO).unwrap();
+        let _writer = conn
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .unwrap();
+        let result =
+            load_index_with_intents_in(&mut reader, &path, "/local", "/remote", || Ok(None));
+        assert!(result.is_err());
+        let error = finish_index_recovery_load(&path, false, result).unwrap_err();
+        assert!(error.contains("compare cannot verify"));
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn pending_new_file_remains_visible_without_any_index_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let pair = index_filename("/local", "/remote");
+        begin_intents_in(&mut conn, &pair, &["new".into()]).unwrap();
+        let index = load_index_with_intents_in(
+            &mut conn,
+            &dir.path().join("missing.json"),
+            "/local",
+            "/remote",
+            || Ok(None),
+        )
+        .unwrap()
+        .unwrap();
+        assert!(index.files.is_empty());
+        let file = FileInfo {
+            name: "new".into(),
+            path: "new".into(),
+            size: 7,
+            modified: Some(Utc::now()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        };
+        let rows = build_comparison_results_with_index(
+            HashMap::from([("new".into(), file.clone())]),
+            HashMap::from([("new".into(), file)]),
+            &CompareOptions::default(),
+            Some(&index),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, SyncStatus::Conflict);
+    }
+
+    #[test]
+    fn superseded_attempt_cannot_publish_its_old_index_or_retire_a_newer_fence() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let a = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        let b = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        assert!(save_index_with_intents_in(&mut conn, &path, &index, &a).is_err());
+        assert_eq!(pending_intents_in(&conn, &pair).unwrap()["one"], b[0]);
+        index.last_sync = Utc::now();
+        save_index_with_intents_in(&mut conn, &path, &index, &b).unwrap();
+        let committed = std::fs::read(&path).unwrap();
+        // Keep the inactive generation too: an older saved pending journal
+        // cannot mistake B's completed operation for an unattempted file.
+        assert!(save_index_with_intents_in(&mut conn, &path, &index, &a).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), committed);
+        let token: String = conn
+            .query_row(
+                "SELECT token FROM intents WHERE pair=?1 AND path='one'",
+                [pair],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(token, b[0]);
     }
 }

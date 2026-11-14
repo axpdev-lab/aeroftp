@@ -11,6 +11,7 @@ export interface OverwriteDestination {
   isProviderSession: boolean;
   aeroVaultSessionId?: string;
   visibleRemotePath: string;
+  expectedGuiTarget?: number;
 }
 
 /** Read the actual destination without navigating either panel or changing cwd.
@@ -40,14 +41,16 @@ export async function loadOverwriteDestination(
     });
   } else if (target.isProviderSession) {
     // The live provider decorator supplies plaintext names for crypt sessions.
-    response = await invoke<FileListResponse>('provider_list_files', { path: target.path });
+    response = await invoke<FileListResponse>('provider_list_files', { path: target.path, ...(target.expectedGuiTarget === undefined ? {} : { expectedGuiTarget: target.expectedGuiTarget }) });
   } else {
     // Legacy list_files has no path argument. Never change cwd to inspect an
     // off-panel destination, or accidentally list the source/current folder.
     if (target.path !== target.visibleRemotePath) {
       throw new Error('Cannot inspect another remote directory on this legacy session');
     }
-    response = await invoke<FileListResponse>('list_files');
+    response = target.expectedGuiTarget === undefined
+      ? await invoke<FileListResponse>('list_files')
+      : await invoke<FileListResponse>('list_files', { expectedGuiTarget: target.expectedGuiTarget });
   }
   if (!target.isProviderSession || target.aeroVaultSessionId) {
     if (response.current_path !== target.path) {

@@ -637,6 +637,17 @@ impl StorageProvider for GitLabProvider {
         self.account_email.clone()
     }
 
+    /// The account, the project and the branch the listing reads (the
+    /// configured branch or the project's default one resolved at connect).
+    /// Another branch of the same project is another tree, so a sync index
+    /// of one never serves the other as a baseline.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        let branch = self.active_branch();
+        (self.connected && !branch.is_empty()).then(|| {
+            serde_json::json!(["gitlab", self.account_email, self.project_path, branch]).to_string()
+        })
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         // 1. Validate token: GET /user
         match self.client.get_json::<GitLabUser>("/user").await {
@@ -1184,6 +1195,35 @@ impl StorageProvider for GitLabProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The branch the listing reads is part of the sync namespace: a profile
+    /// switched to another branch, or a project whose default branch moved,
+    /// is another tree of the same project and account. No identity before
+    /// connect (the default branch is not known yet).
+    #[test]
+    fn the_sync_namespace_follows_the_branch_read() {
+        let provider = |branch: &str, default_branch: &str, connected: bool| {
+            let mut provider = GitLabProvider::new(GitLabConfig {
+                token: "t".into(),
+                api_base: "https://gitlab.example/api/v4".into(),
+                project_path: "group/project".into(),
+                branch: branch.into(),
+                initial_path: None,
+                accept_invalid_certs: false,
+            })
+            .unwrap();
+            provider.account_email = Some("alice@gitlab".into());
+            provider.default_branch = default_branch.into();
+            provider.connected = connected;
+            provider.sync_namespace_identity()
+        };
+        assert!(provider("main", "main", false).is_none());
+        let main = provider("main", "main", true).unwrap();
+        assert_eq!(provider("main", "develop", true).unwrap(), main);
+        assert_ne!(provider("develop", "main", true).unwrap(), main);
+        assert_eq!(provider("", "main", true).unwrap(), main);
+        assert_ne!(provider("", "develop", true).unwrap(), main);
+    }
 
     #[tokio::test]
     async fn probe_contract_gitlab_file_404_does_not_hide_a_directory() {

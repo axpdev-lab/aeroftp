@@ -82,6 +82,21 @@ struct CachedCryptOverlay {
     generation: u64,
 }
 
+/// A compare whose target changed while it scanned (or whose target cannot be
+/// read): refused under the scan-completeness contract, so the page fails
+/// closed (no rows, no executable plan) instead of falling back to a flat
+/// compare over panel listings that may belong to the other connection.
+pub(crate) fn compare_target_refusal() -> String {
+    format!(
+        "{}: the connection changed during the compare; compare again",
+        crate::SCAN_INCOMPLETE_MARKER
+    )
+}
+
+/// [`ProviderState::gui_target_identity`] with no connection: both roots
+/// of the pair are local folders.
+pub(crate) const LOCAL_PAIR_TARGET_IDENTITY: &str = "target-v1:local-pair";
+
 pub struct ProviderState {
     /// Currently active provider (if connected)
     pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -98,6 +113,23 @@ pub struct ProviderState {
     /// Bumped on every connection change (connect swap, disconnect, hard lock)
     /// so a stale cached key can never be re-armed onto a new connection.
     connection_generation: Arc<AtomicU64>,
+    /// Changes whenever either GUI transport or its path interpretation changes.
+    /// Unlike `connection_generation`, this also covers view-only overlay changes
+    /// and the legacy FTP manager without invalidating cached overlay keys.
+    gui_target_epoch: AtomicU64,
+    gui_owner_context: std::sync::Mutex<Option<crate::sync_owner::GuiOwnerContext>>,
+    gui_process_nonce: String,
+    legacy_owner_binding: std::sync::Mutex<Option<String>>,
+    /// Target identity of the legacy FTP session (`connect_ftp`), set with
+    /// its owner and dropped with it; see [`Self::gui_target_identity`].
+    legacy_target_identity: std::sync::Mutex<Option<String>>,
+    /// Public client id of the OAuth app the provider in the slot signed in
+    /// with (none for a config install); set with the provider, under the
+    /// same locks. Part of the GUI target (see [`Self::gui_target_identity`]).
+    gui_oauth_client: std::sync::Mutex<Option<String>>,
+    /// The poison of the provider in the slot and whether the GUI target has
+    /// seen it raised; see [`Self::observe_target_poison`].
+    target_poison: std::sync::Mutex<Option<(Arc<std::sync::atomic::AtomicBool>, bool)>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -156,6 +188,13 @@ impl ProviderState {
             cached_overlay: std::sync::Mutex::new(None),
             overlay_activation_id: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
+            gui_target_epoch: AtomicU64::new(0),
+            gui_owner_context: std::sync::Mutex::new(None),
+            gui_process_nonce: uuid::Uuid::new_v4().to_string(),
+            legacy_owner_binding: std::sync::Mutex::new(None),
+            legacy_target_identity: std::sync::Mutex::new(None),
+            gui_oauth_client: std::sync::Mutex::new(None),
+            target_poison: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -173,6 +212,7 @@ impl ProviderState {
     /// Bind an optional restored-transfer generation before any remote I/O.
     /// Keep the returned guard through the whole command, including DAG lock
     /// releases and folder phases. Dropping/error/cancellation releases the pin.
+    #[cfg(test)]
     async fn pin_transfer_owner(
         &self,
         expected_generation: Option<u64>,
@@ -181,6 +221,27 @@ impl ProviderState {
         expected_crypt_scope: Option<&str>,
         remote_path: &str,
     ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        self.pin_gui_transfer_owner(
+            None,
+            expected_generation,
+            expected_profile_id,
+            require_crypt_overlay,
+            expected_crypt_scope,
+            remote_path,
+        )
+        .await
+    }
+
+    async fn pin_gui_transfer_owner(
+        &self,
+        expected_gui_target: Option<u64>,
+        expected_generation: Option<u64>,
+        expected_profile_id: Option<&str>,
+        require_crypt_overlay: bool,
+        expected_crypt_scope: Option<&str>,
+        remote_path: &str,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_target(expected_gui_target).await?;
         let Some(expected) = expected_generation else {
             if require_crypt_overlay
                 || expected_profile_id.is_some()
@@ -190,7 +251,7 @@ impl ProviderState {
                     "{CONNECTION_CHANGED_MARKER}: encrypted resume requires a connection owner"
                 ));
             }
-            return Ok(None);
+            return Ok(pin);
         };
         let expected_profile =
             expected_profile_id
@@ -200,7 +261,12 @@ impl ProviderState {
                     "{CONNECTION_CHANGED_MARKER}: restored transfer requires a saved profile owner"
                 )
                 })?;
-        let pin = self.transfer_owner_gate.read().await;
+        // Do not reacquire a read lock when a writer is queued: Tokio's fair
+        // RwLock would otherwise deadlock with the read guard held above.
+        let pin = match pin {
+            Some(pin) => pin,
+            None => self.transfer_owner_gate.read().await,
+        };
         let mut provider = self.provider.lock().await;
         let profile_matches = self
             .connected_profile_id
@@ -267,10 +333,313 @@ impl ProviderState {
         Ok(pin)
     }
 
+    /// Pin a GUI operation to the transport and overlay observed by its caller.
+    /// Every writer of that target holds the write side while advancing the epoch.
+    pub(crate) async fn pin_gui_target(
+        &self,
+        expected: Option<u64>,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let Some(expected) = expected else {
+            return Ok(None);
+        };
+        let pin = self.transfer_owner_gate.read().await;
+        self.validate_gui_owner()?;
+        self.observe_target_poison();
+        if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
+            return Err(format!(
+                "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
+            ));
+        }
+        Ok(Some(pin))
+    }
+
+    /// Local effects of a remote plan use the same command-lifetime pin.
+    /// Validate the sealed provider authorization at dispatch, then keep the
+    /// target fixed until the accepted local operation has finished.
+    pub(crate) async fn pin_gui_local_target(
+        &self,
+        expected: Option<u64>,
+        is_provider: bool,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_target(expected).await?;
+        if expected.is_some() && is_provider {
+            let provider = self.provider.lock().await;
+            let provider = provider
+                .as_ref()
+                .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+            crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(pin)
+    }
+
+    /// A persisted baseline is published only by the connection and login
+    /// that captured its plan. The caller keeps the pin through blocking I/O.
+    pub(crate) async fn pin_gui_index_owner(
+        &self,
+        expected: Option<u64>,
+        binding: Option<&str>,
+        is_provider: bool,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        let pin = self.pin_gui_local_target(expected, is_provider).await?;
+        if expected.is_some() || binding.is_some() {
+            let binding = binding.ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+            if expected.is_none()
+                || !crate::sync_owner::bindings_match(
+                    &self.gui_owner_binding(is_provider).await?,
+                    binding,
+                )
+            {
+                return Err(ProviderError::TargetChanged.to_string());
+            }
+        }
+        Ok(pin)
+    }
+
+    fn validate_gui_owner(&self) -> Result<(), String> {
+        let owner = self
+            .gui_owner_context
+            .lock()
+            .map_err(|_| ProviderError::TargetChanged.to_string())?
+            .clone();
+        if let Some(owner) = owner {
+            crate::credential_store::off_async_worker(|| owner.validate())?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn set_legacy_gui_owner(
+        &self,
+        owner: crate::sync_owner::GuiOwnerContext,
+        binding: Option<String>,
+    ) -> Result<(), String> {
+        let validated = owner.clone();
+        crate::credential_store::off_async_worker(|| {
+            validated.with_current(|| {
+                *self
+                    .gui_owner_context
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(owner);
+                *self
+                    .legacy_owner_binding
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = binding;
+                Ok(())
+            })
+        })
+    }
+
+    pub(crate) fn clear_legacy_gui_owner(&self) {
+        *self
+            .legacy_owner_binding
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        *self
+            .legacy_target_identity
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Record the target of the legacy FTP session just logged in.
+    pub(crate) fn set_legacy_target_identity(&self, identity: String) {
+        *self
+            .legacy_target_identity
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = Some(identity);
+    }
+
+    /// The target the GUI is connected to, as a page-saved sync index
+    /// records it (`SyncIndex::target_identity`): the provider slot's config,
+    /// the account it reports and the naming of the crypt overlay applied to
+    /// it; for the legacy FTP session, its server and login; with neither
+    /// connected, a pair of two local folders. A connection whose target
+    /// nothing identifies (an overlay whose keys are not at hand, a sign-in
+    /// that reports no account) gets an identity of this connection only, so
+    /// no index it saves serves another connection as a baseline. The caller
+    /// holds the GUI target pin, so it is the target the run's plan was made
+    /// against.
+    pub(crate) async fn gui_target_identity(&self, is_provider: bool) -> Result<String, String> {
+        if !is_provider {
+            return Ok(self
+                .legacy_target_identity
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+                .unwrap_or_else(|| LOCAL_PAIR_TARGET_IDENTITY.to_string()));
+        }
+        let provider = self.provider.lock().await;
+        let provider = provider
+            .as_ref()
+            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+        let config = self.config.lock().await.clone();
+        let account = provider
+            .sync_namespace_identity()
+            .or_else(|| provider.account_email());
+        // With the GUI target epoch too: an overlay armed, applied, cleared
+        // or rearmed and a namespace change all advance it without a new
+        // connection, and each is another target (K7).
+        let this_connection = || {
+            format!(
+                "target-v1:connection:{}:{}:{}",
+                self.gui_process_nonce,
+                self.connection_generation.load(Ordering::SeqCst),
+                self.gui_target_epoch.load(Ordering::SeqCst)
+            )
+        };
+        let overlay = if self.active_crypt_overlay.load(Ordering::SeqCst) {
+            match self.cached_overlay_naming() {
+                Some(naming) => naming,
+                None => return Ok(this_connection()),
+            }
+        } else {
+            serde_json::Value::Null
+        };
+        let oauth_client = self
+            .gui_oauth_client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        // Tokens whose app is unknown: nothing tells this app's space from
+        // another app's on the same account, so no identity another
+        // connection could share (H1).
+        if oauth_client.as_deref() == Some(UNRECORDED_TOKEN_APP) {
+            return Ok(this_connection());
+        }
+        // A WebDAV or S3 bridge: its endpoint and credentials do not prove
+        // the account upstream, which can change behind them between two
+        // connections; no baseline of one may serve the next (T4). The
+        // endpoint the connection really uses: S3's `extra["endpoint"]`
+        // takes precedence over `host` (U5); WebDAV builds from `host`.
+        if config.as_ref().is_some_and(|config| {
+            let endpoint = match config.provider_type {
+                ProviderType::S3 => crate::providers::types::s3_endpoint_and_path_style(config)
+                    .0
+                    .unwrap_or_default(),
+                ProviderType::WebDav => config.host.clone(),
+                _ => return false,
+            };
+            crate::providers::webdav::upstream_account_unverified(
+                config.extra.get("provider_id").map(String::as_str),
+                &endpoint,
+            )
+        }) {
+            return Ok(this_connection());
+        }
+        Ok(crate::cloud_provider_factory::gui_target_identity(
+            config.as_ref(),
+            provider.provider_type(),
+            account.as_deref(),
+            oauth_client.as_deref(),
+            &overlay,
+        )
+        .unwrap_or_else(this_connection))
+    }
+
+    /// [`Self::gui_target_identity`] with the GUI target epoch, which every
+    /// connect, disconnect and overlay change moves: two reads that agree on
+    /// both saw one connection, not an A, B, A sequence of equal targets.
+    pub(crate) async fn gui_target_snapshot(
+        &self,
+        is_provider: bool,
+    ) -> Result<(String, u64), String> {
+        self.observe_target_poison();
+        let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
+        let identity = self.gui_target_identity(is_provider).await?;
+        if self.gui_target_epoch.load(Ordering::SeqCst) != epoch {
+            return Err(ProviderError::TargetChanged.to_string());
+        }
+        Ok((identity, epoch))
+    }
+
+    /// The naming the live overlay of this connection applies, with its scope.
+    fn cached_overlay_naming(&self) -> Option<serde_json::Value> {
+        let live = self.connection_generation.load(Ordering::SeqCst);
+        let slot = self.cached_overlay.lock().ok()?;
+        slot.as_ref().filter(|c| c.generation == live).map(|c| {
+            serde_json::json!({
+                "kind": c.kind,
+                "scope": c.scope,
+                "naming": c.keys.naming_fingerprint(),
+            })
+        })
+    }
+
+    /// Caller keeps the read pin throughout capture/verification. The epoch
+    /// then guards every subsequent command, including a change A -> B -> A.
+    async fn gui_owner_binding(&self, is_provider: bool) -> Result<String, String> {
+        self.validate_gui_owner()?;
+        let epoch = self.gui_target_epoch.load(Ordering::SeqCst);
+        if !is_provider {
+            return Ok(self
+                .legacy_owner_binding
+                .lock()
+                .map_err(|_| ProviderError::TargetChanged.to_string())?
+                .clone()
+                .unwrap_or_else(|| {
+                    crate::sync_owner::epoch_binding(&self.gui_process_nonce, epoch)
+                }));
+        }
+        let owner = self
+            .gui_owner_context
+            .lock()
+            .map_err(|_| ProviderError::TargetChanged.to_string())?
+            .clone();
+        let provider = self.provider.lock().await;
+        let provider = provider
+            .as_ref()
+            .ok_or_else(|| ProviderError::TargetChanged.to_string())?;
+        let material = if self.active_crypt_overlay.load(Ordering::SeqCst)
+            && !self.overlay_wrapped.load(Ordering::SeqCst)
+        {
+            None
+        } else {
+            crate::credential_store::off_async_worker(|| provider.sync_owner_identity())
+                .map_err(|e| e.to_string())?
+        };
+        if let (Some(owner), Some(material)) = (owner, material) {
+            if let Some(tag) = crate::credential_store::off_async_worker(|| {
+                owner.persistent_tag(material.as_str())
+            })? {
+                return Ok(tag);
+            }
+        }
+        Ok(crate::sync_owner::epoch_binding(
+            &self.gui_process_nonce,
+            epoch,
+        ))
+    }
+
+    /// Whether no GUI operation holds a target pin right now. A waiting
+    /// writer is not queued by this check, so it never delays a new pin.
+    pub(crate) fn gui_work_settled(&self) -> bool {
+        self.transfer_owner_gate.try_write().is_ok()
+    }
+
+    /// Called only while holding `transfer_owner_write` when the GUI target changes.
+    pub(crate) fn advance_gui_target(&self) {
+        self.gui_target_epoch.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// The provider in the slot moved to another tree without a reconnect
+    /// and poisoned itself (`StorageProvider::target_poison`): the GUI
+    /// target advances once, so every pin taken against the previous tree is
+    /// refused and the page reads the target again before a compare can use
+    /// a listing of it. The provider refuses the writes itself, pinned or
+    /// not. Read without the provider lock, at every pin and target read.
+    fn observe_target_poison(&self) {
+        let mut watch = self.target_poison.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((poison, seen)) = watch.as_mut() {
+            if !*seen && poison.load(Ordering::SeqCst) {
+                *seen = true;
+                self.advance_gui_target();
+            }
+        }
+    }
+
     /// Writers leave the current connection/overlay untouched if a pinned
     /// transfer cannot finish within the bound. In particular, scoped cleanup
     /// must never cancel somebody else's active transfer to obtain this lock.
-    async fn transfer_owner_write(
+    pub(crate) async fn transfer_owner_write(
         &self,
         wait: Duration,
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
@@ -278,16 +647,41 @@ impl ProviderState {
             .map_err(|_| "Transfer still in progress; connection or overlay was not changed. Stop the transfer and try again".to_string())
     }
 
+    /// First step of a legacy FTP connect or disconnect: take the gate within
+    /// `wait`, then advance the GUI target and drop the legacy owner binding.
+    /// A gate timeout returns before either change. The caller keeps the guard
+    /// while it replaces or closes the FTP session.
+    pub(crate) async fn begin_legacy_ftp_target_change(
+        &self,
+        wait: Duration,
+    ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
+        let change = self.transfer_owner_write(wait).await?;
+        self.advance_gui_target();
+        self.clear_legacy_gui_owner();
+        Ok(change)
+    }
+
     pub(crate) async fn install_mtp_provider(
         &self,
-        provider: Box<dyn StorageProvider>,
+        mut provider: Box<dyn StorageProvider>,
         config: ProviderConfig,
     ) -> Result<(), String> {
-        install_connected_provider_with_config(
+        let owner = match crate::credential_store::off_async_worker(
+            crate::sync_owner::GuiOwnerContext::capture,
+        ) {
+            Ok(owner) => owner,
+            Err(error) => {
+                let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
+                return Err(error);
+            }
+        };
+        install_connected_provider_with_owner(
             self,
             provider,
             None,
             Some(config),
+            None,
+            Some(owner),
             Duration::from_secs(30),
         )
         .await
@@ -513,6 +907,7 @@ impl ProviderState {
 
     fn invalidate_overlay_key_cache(&self) {
         self.connection_generation.fetch_add(1, Ordering::SeqCst);
+        self.advance_gui_target();
         self.clear_overlay_key_cache();
     }
 
@@ -1908,6 +2303,8 @@ async fn provider_connect_inner(
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     info!(
         "Connecting to {} provider: {}",
         params.protocol, params.server
@@ -1989,11 +2386,16 @@ async fn provider_connect_inner(
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
-    install_connected_provider(&state, provider, config.extra.get("profile_id").cloned()).await?;
-    {
-        let mut config_lock = state.config.lock().await;
-        *config_lock = Some(config);
-    }
+    install_connected_provider_with_owner(
+        &state,
+        provider,
+        config.extra.get("profile_id").cloned(),
+        Some(config),
+        None,
+        Some(owner),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!("Connected successfully: {}", display_name);
     Ok(format!("Connected to {} via {}", display_name, protocol))
@@ -2002,6 +2404,7 @@ async fn provider_connect_inner(
 /// Put a freshly connected provider in the slot, disconnecting the previous
 /// one. Storage reads of the previous connection are cancelled first (#958),
 /// so a stalled scan or quota read cannot keep the slot from being taken.
+#[cfg(test)]
 async fn install_connected_provider(
     state: &ProviderState,
     provider: Box<dyn StorageProvider>,
@@ -2017,11 +2420,25 @@ async fn install_connected_provider(
     .await
 }
 
+#[cfg(test)]
 async fn install_connected_provider_with_config(
+    state: &ProviderState,
+    provider: Box<dyn StorageProvider>,
+    profile_id: Option<String>,
+    config: Option<ProviderConfig>,
+    wait: Duration,
+) -> Result<(), String> {
+    install_connected_provider_with_owner(state, provider, profile_id, config, None, None, wait)
+        .await
+}
+
+async fn install_connected_provider_with_owner(
     state: &ProviderState,
     mut provider: Box<dyn StorageProvider>,
     profile_id: Option<String>,
     config: Option<ProviderConfig>,
+    oauth_client: Option<String>,
+    owner: Option<crate::sync_owner::GuiOwnerContext>,
     wait: Duration,
 ) -> Result<(), String> {
     state.cancel_storage_reads();
@@ -2032,9 +2449,31 @@ async fn install_connected_provider_with_config(
             return Err(error);
         }
     };
+    if let Some(owner) = owner.as_ref() {
+        if let Err(error) = crate::credential_store::off_async_worker(|| owner.validate()) {
+            let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
+            return Err(error);
+        }
+    }
     drain_in_flight_transfers(state, Duration::from_secs(30)).await;
     let mut prov_lock = state.provider.lock().await;
-    if let Some(mut previous) = prov_lock.take() {
+    let mut config_lock = state.config.lock().await;
+    let previous = prov_lock.take();
+    *config_lock = None;
+    *state
+        .connected_profile_id
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    *state
+        .gui_owner_context
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+    state.clear_legacy_gui_owner();
+    state.active_crypt_overlay.store(false, Ordering::SeqCst);
+    state.overlay_wrapped.store(false, Ordering::SeqCst);
+    state.invalidate_overlay_key_cache();
+    drop(config_lock);
+    if let Some(mut previous) = previous {
         if let Err(err) = previous.disconnect().await {
             warn!(
                 "provider_connect: previous provider disconnect failed: {}",
@@ -2042,22 +2481,57 @@ async fn install_connected_provider_with_config(
             );
         }
     }
-    *prov_lock = Some(provider);
-    *state
-        .connected_profile_id
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = profile_id;
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    // A new connection occupies the slot: the previous connection's cached
-    // overlay keys must never re-arm onto it. Bump generation + zeroize while
-    // still holding the provider lock, so a concurrent re-arm is serialized out.
-    state.invalidate_overlay_key_cache();
-    // The config always describes the provider in the slot. An install without
-    // one (OAuth, 4shared; `provider_connect` sets its own right after) clears
-    // the previous connection's, which the liveness probe would otherwise
-    // compare against the new provider.
-    *state.config.lock().await = config;
+    let mut config_lock = state.config.lock().await;
+    let validated_owner = owner.clone();
+    let target_poison = provider.target_poison().map(|poison| {
+        let seen = poison.load(Ordering::SeqCst);
+        (poison, seen)
+    });
+    let mut candidate = Some(provider);
+    let publish = || {
+        *state
+            .gui_owner_context
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = owner;
+        state.clear_legacy_gui_owner();
+        *prov_lock = candidate.take();
+        *state
+            .connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = profile_id;
+        state.active_crypt_overlay.store(false, Ordering::SeqCst);
+        state.overlay_wrapped.store(false, Ordering::SeqCst);
+        // The retired slot's keys and generation were invalidated before
+        // awaiting disconnect, including when this publication is refused.
+        // The config always describes the provider in the slot. An install without
+        // one (OAuth, 4shared) clears
+        // the previous connection's, which the liveness probe would otherwise
+        // compare against the new provider.
+        *config_lock = config;
+        *state
+            .gui_oauth_client
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = oauth_client.clone();
+        *state
+            .target_poison
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = target_poison.clone();
+        Ok(())
+    };
+    let result = if let Some(owner) = validated_owner {
+        crate::credential_store::off_async_worker(|| owner.with_current(publish))
+    } else {
+        publish()
+    };
+    if let Err(error) = result {
+        drop(config_lock);
+        drop(prov_lock);
+        if let Some(mut candidate) = candidate {
+            let _ = tokio::time::timeout(Duration::from_secs(2), candidate.disconnect()).await;
+        }
+        return Err(error);
+    }
+
     Ok(())
 }
 
@@ -2180,8 +2654,10 @@ async fn provider_arm_crypt_capability_inner(
     state: &ProviderState,
     expected_generation: Option<u64>,
 ) -> Result<(), String> {
+    let _change = state.transfer_owner_write(Duration::from_secs(30)).await?;
     let _guard = state.provider.lock().await;
     ensure_overlay_connection_generation(state, expected_generation)?;
+    state.advance_gui_target();
     state.arm_crypt_capability();
     Ok(())
 }
@@ -2391,6 +2867,7 @@ async fn provider_apply_crypt_overlay_inner(
     let _overlay_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
     let mut guard = state.provider.lock().await;
     ensure_overlay_connection_generation(state, params.expected_generation)?;
+    state.advance_gui_target();
     let result = {
         match crate::crypt_overlay_provider::apply_overlay_in_place(
             &mut guard,
@@ -2630,6 +3107,7 @@ async fn discard_crypt_activation_with_wait(
     if state.connection_generation.load(Ordering::SeqCst) != expected_generation || !owner_matches {
         return Ok(false);
     }
+    state.advance_gui_target();
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.overlay_wrapped.store(false, Ordering::SeqCst);
     state.clear_overlay_key_cache();
@@ -2651,6 +3129,7 @@ async fn clear_crypt_overlay_with_wait(
     state.cancel_storage_reads();
     let _overlay_change = state.transfer_owner_write(wait).await?;
     let mut guard = state.provider.lock().await;
+    state.advance_gui_target();
     let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
     state.set_overlay_activation_id(None);
     if full {
@@ -2672,6 +3151,7 @@ pub async fn provider_lock_crypt_overlay(state: State<'_, ProviderState>) -> Res
     let removed = {
         let _overlay_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
         let mut guard = state.provider.lock().await;
+        state.advance_gui_target();
         let removed = crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
         state.set_overlay_activation_id(None);
         state.overlay_wrapped.store(false, Ordering::SeqCst);
@@ -2712,6 +3192,7 @@ pub async fn provider_rearm_cached_crypt_overlay(
     let (keys, scope, kind) = state
         .cached_overlay_for_rearm()
         .ok_or_else(|| "no cached overlay key for this connection".to_string())?;
+    state.advance_gui_target();
     // Revert any existing overlay first so we never stack two decorators, then
     // take the raw inner, wrap it with the cached keys, and put it back.
     crate::crypt_overlay_provider::clear_overlay_in_place(&mut guard);
@@ -3045,7 +3526,9 @@ pub async fn provider_list_files(
     state: State<'_, ProviderState>,
     listing_cancel: State<'_, ListingCancelState>,
     path: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     crate::panic_safe::catch(
         "provider_list_files",
         run_cancellable_listing(
@@ -3115,7 +3598,9 @@ pub async fn provider_change_dir(
     listing_cancel: State<'_, ListingCancelState>,
     path: String,
     expected_generation: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     run_cancellable_listing(
         &listing_cancel,
         provider_change_dir_inner(&app, &state, path, expected_generation),
@@ -3202,8 +3687,8 @@ async fn provider_change_dir_inner(
 /// is in hand) events. The emitted events are byte-identical with the
 /// pre-convergence single-file path.
 #[allow(clippy::too_many_arguments)]
-async fn run_dag_download_leaf(
-    app: AppHandle,
+async fn run_dag_download_leaf<R: tauri::Runtime>(
+    app: AppHandle<R>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     // Holds the in-flight counter for the lifetime of this leaf so
     // `provider_disconnect` cannot drain past us. Held by name (not `_`)
@@ -3220,7 +3705,7 @@ async fn run_dag_download_leaf(
     // FINDING-4 Part B: the live session cancel token so an in-flight Stop
     // aborts the current file (see `execute_single_file_dag`).
     cancel_token: Option<CancellationToken>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     // Capability snapshot drives the shaped-graph shape (single transfer
     // core vs multipart fan-out). For downloads the shape collapses to one
     // transfer node regardless, but we still resolve caps here so the
@@ -3273,9 +3758,7 @@ async fn run_dag_download_leaf(
                         match &cancel_token {
                             Some(tok) => tokio::select! {
                                 biased;
-                                _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                                    "Transfer cancelled by user".to_string(),
-                                )),
+                                _ = tok.cancelled() => Err(ProviderError::Cancelled),
                                 r = dl => r,
                             },
                             None => dl.await,
@@ -3303,7 +3786,8 @@ async fn run_dag_download_leaf(
                     .await
                     .map(|m| m.len())
                     .unwrap_or(file_size);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "complete".to_string(),
@@ -3328,21 +3812,24 @@ async fn run_dag_download_leaf(
                 Ok(format!("Downloaded: {}", filename))
             }
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                let error = crate::sync::IpcError::of(&e);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
                         direction: "download".to_string(),
-                        message: Some(format!("Download failed: {}", e)),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &error,
                 );
-                Err(format!("Download failed: {}", e))
+                Err(error)
             }
         };
     }
@@ -3355,7 +3842,8 @@ async fn run_dag_download_leaf(
     // Seed with the discovered remote size; the transfer node overwrites it
     // with the real on-disk size once the download succeeds.
     let report_size = Arc::new(AtomicU64::new(file_size));
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let sink: Arc<dyn TransferEventSink> =
+        Arc::new(RunnerEventSink::new(app.clone(), "provider_download_file"));
     let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
         sink,
         transfer_id.clone(),
@@ -3387,21 +3875,24 @@ async fn run_dag_download_leaf(
             Ok(format!("Downloaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(&e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Download failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Download failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -3410,8 +3901,8 @@ async fn run_dag_download_leaf(
 /// engine and emit the GUI completion / error events. The upload mirror of
 /// [`run_dag_download_leaf`]; GitHub keeps its dedicated commit-based path.
 #[allow(clippy::too_many_arguments)]
-async fn run_dag_upload_leaf(
-    app: AppHandle,
+async fn run_dag_upload_leaf<R: tauri::Runtime>(
+    app: AppHandle<R>,
     provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
     // Same role as the download leaf: pin the in-flight counter against
     // `provider_disconnect` (issue #233).
@@ -3426,7 +3917,7 @@ async fn run_dag_upload_leaf(
     // FINDING-4 Part B: the live session cancel token so an in-flight Stop
     // aborts the current file (see `execute_single_file_dag`).
     cancel_token: Option<CancellationToken>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     // Capability snapshot drives the shaped-graph shape. On an upload, this
     // is the gate between the legacy single-`UploadFile` core and a native
     // multipart fan-out (`UploadPart` x N) when the provider advertises
@@ -3466,9 +3957,7 @@ async fn run_dag_upload_leaf(
                 match &cancel_token {
                     Some(tok) => tokio::select! {
                         biased;
-                        _ = tok.cancelled() => Err(ProviderError::TransferFailed(
-                            "Transfer cancelled by user".to_string(),
-                        )),
+                        _ = tok.cancelled() => Err(ProviderError::Cancelled),
                         r = ul => r,
                     },
                     None => ul.await,
@@ -3479,21 +3968,24 @@ async fn run_dag_upload_leaf(
         return match result {
             Ok(()) => Ok(format!("Uploaded: {}", filename)),
             Err(e) => {
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                let error = crate::sync::IpcError::of(&e);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id,
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some(format!("Upload failed: {}", e)),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &error,
                 );
-                Err(format!("Upload failed: {}", e))
+                Err(error)
             }
         };
     }
@@ -3506,7 +3998,8 @@ async fn run_dag_upload_leaf(
     // The upload node does not touch the report size: the local file size is
     // the value the legacy completion event reports.
     let report_size = Arc::new(AtomicU64::new(file_size));
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app.clone()));
+    let sink: Arc<dyn TransferEventSink> =
+        Arc::new(RunnerEventSink::new(app.clone(), "provider_upload_file"));
     let observer: Arc<dyn DagObserver> = Arc::new(GuiDagObserver::new(
         sink,
         transfer_id.clone(),
@@ -3538,21 +4031,24 @@ async fn run_dag_upload_leaf(
             Ok(format!("Uploaded: {}", filename))
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(&e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(format!("Upload failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Upload failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -3911,8 +4407,47 @@ fn download_wrote_target(
 /// Download a file from the remote server
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn provider_download_file(
-    app: AppHandle,
+pub async fn provider_download_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, ProviderState>,
+    remote_path: String,
+    local_path: String,
+    modified: Option<String>,
+    use_delta: Option<bool>,
+    download_segments: Option<u32>,
+    sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
+    expected_generation: Option<u64>,
+    require_crypt_overlay: Option<bool>,
+    expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
+    sync_run_lease: Option<String>,
+) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(
+        "provider_download_file",
+        download_file_for_ipc(
+            app,
+            state,
+            remote_path,
+            local_path,
+            modified,
+            use_delta,
+            download_segments,
+            sftp_download_preset,
+            expected_gui_target,
+            expected_generation,
+            require_crypt_overlay,
+            expected_profile_id,
+            expected_crypt_scope,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn download_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     remote_path: String,
     local_path: String,
@@ -3920,20 +4455,23 @@ pub async fn provider_download_file(
     use_delta: Option<bool>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, crate::sync::IpcError> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
             expected_crypt_scope.as_deref(),
             &remote_path,
         )
-        .await?;
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     crate::local_download_target::refuse_unwritable_name(&local_path)?;
     let mut provider_lock = state.provider.lock().await;
 
@@ -3954,7 +4492,8 @@ pub async fn provider_download_file(
     );
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "provider_download_file",
         &app,
         crate::TransferEvent {
             event_type: "start".to_string(),
@@ -4004,7 +4543,8 @@ pub async fn provider_download_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app_progress,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -4078,22 +4618,23 @@ pub async fn provider_download_file(
                 }
             };
             if delta_cancelled {
-                let err_msg = format!("Download cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_download_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "download".to_string(),
-                        message: Some("Download cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             if let Some(result) = delta_outcome {
                 if result.used_delta {
@@ -4106,7 +4647,8 @@ pub async fn provider_download_file(
                         .await
                         .map(|m| m.len())
                         .unwrap_or(file_size);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -4132,7 +4674,8 @@ pub async fn provider_download_file(
                 }
                 if let Some(hard_err) = result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
@@ -4146,7 +4689,7 @@ pub async fn provider_download_file(
                             fallback_reason: None,
                         },
                     );
-                    return Err(err_msg);
+                    return Err(err_msg.into());
                 }
                 // Silent fallback: result.fallback_reason populated but we continue
                 // with the classic provider path below.
@@ -4236,22 +4779,23 @@ pub async fn provider_download_file(
                     }
                 }
                 if session_cancel.is_cancelled() || e.is_cancelled() {
-                    let message = format!("Download cancelled by user: {}", filename);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_runner_error_event(
+                        "provider_download_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
                             direction: "download".to_string(),
-                            message: Some(message.clone()),
+                            message: None,
                             progress: None,
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
                         },
+                        &crate::sync::IpcError::Cancelled,
                     );
-                    return Err(message);
+                    return Err(crate::sync::IpcError::Cancelled);
                 }
                 e.report_fallback();
                 warn!(
@@ -4285,7 +4829,8 @@ pub async fn provider_download_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app_progress_fb,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -4393,21 +4938,19 @@ pub async fn provider_download_file(
                 r = &mut work => break r,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
                     if dl_cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                        crate::provider_commands::emit_runner_error_event("provider_download_file", &app, crate::TransferEvent {
                                 event_type: "error".to_string(),
                                 transfer_id: transfer_id.clone(),
                                 filename: filename.clone(),
                                 direction: "download".to_string(),
-                                message: Some("Download cancelled by user".to_string()),
+                                message: None,
                                 progress: None,
                                 path: None,
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            }, &crate::sync::IpcError::Cancelled);
                         // Break so MTP (and others) can drop a partial local file.
-                        break Err(crate::providers::types::ProviderError::TransferFailed(
-                            format!("Download cancelled by user: {}", filename),
-                        ));
+                        break Err(crate::providers::types::ProviderError::Cancelled);
                     }
                 }
             }
@@ -4416,12 +4959,20 @@ pub async fn provider_download_file(
 
     // Partial local target is not a valid whole file after cancel (MTP has no resume).
     // A file the download never touched is the old one, and it stays.
-    if let Err(ref err) = result {
-        if crate::transfer_dag::error::message_names_a_cancellation(&err.to_string())
-            && download_wrote_target(target_before, local_target_state(&local_path))
-        {
-            let _ = tokio::fs::remove_file(&local_path).await;
-        }
+    // A cancellation is the native state: the typed error, or the Stop that
+    // raised this transfer's flag or the session token. Never the text, which
+    // a server or a file name can make read like one.
+    let session_cancelled = state.current_cancel_token().await.is_cancelled();
+    let cancelled = matches!(
+        &result,
+        Err(crate::providers::types::ProviderError::Cancelled)
+    ) || (result.is_err()
+        && (session_cancelled || dl_cancel.load(std::sync::atomic::Ordering::Relaxed)));
+    if result.is_err()
+        && cancelled
+        && download_wrote_target(target_before, local_target_state(&local_path))
+    {
+        let _ = tokio::fs::remove_file(&local_path).await;
     }
 
     match &result {
@@ -4440,7 +4991,8 @@ pub async fn provider_download_file(
                 .await
                 .map(|m| m.len())
                 .unwrap_or(file_size);
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "complete".to_string(),
@@ -4464,26 +5016,29 @@ pub async fn provider_download_file(
             info!("Download completed: {}", filename);
             Ok(format!("Downloaded: {}", filename))
         }
-        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(&e.to_string()) => {
+        Err(_) if cancelled => {
             // Cancel path already emitted a transfer_event above.
-            Err(format!("Download cancelled by user: {}", filename))
+            Err(crate::sync::IpcError::Cancelled)
         }
         Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            let error = crate::sync::IpcError::of(e);
+            crate::provider_commands::emit_runner_error_event(
+                "provider_download_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "download".to_string(),
-                    message: Some(format!("Download failed: {}", e)),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(format!("Download failed: {}", e))
+            Err(error)
         }
     }
 }
@@ -4502,13 +5057,15 @@ pub async fn provider_download_folder(
     timeout_seconds: Option<u64>,
     download_segments: Option<u32>,
     sftp_download_preset: Option<SftpDownloadPreset>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -4569,13 +5126,15 @@ pub async fn provider_upload_folder(
     retry_count: Option<u32>,
     timeout_seconds: Option<u64>,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<crate::transfer_domain::FolderTransferOutcome, String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -4640,6 +5199,8 @@ pub async fn provider_upload_folder(
 /// folder to walk.
 #[derive(Debug, Deserialize)]
 pub struct ProviderFileBatchParams {
+    #[serde(default)]
+    expected_gui_target: Option<u64>,
     #[serde(default)]
     no_clobber: bool,
     entries: Vec<TransferEntry>,
@@ -4761,6 +5322,7 @@ pub async fn provider_download_files_batch(
     state: State<'_, ProviderState>,
     params: ProviderFileBatchParams,
 ) -> Result<ProviderFileBatchOutcome, String> {
+    let _target = state.pin_gui_target(params.expected_gui_target).await?;
     let _transfer_guard = TransferInProgressGuard::acquire();
     let cancel_token = state.reset_cancel_state().await;
     run_provider_file_batch(
@@ -4782,6 +5344,7 @@ pub async fn provider_upload_files_batch(
     state: State<'_, ProviderState>,
     params: ProviderFileBatchParams,
 ) -> Result<ProviderFileBatchOutcome, String> {
+    let _target = state.pin_gui_target(params.expected_gui_target).await?;
     // Same fail-closed guard as `provider_upload_file`, over every target.
     let targets: Vec<&str> = params
         .entries
@@ -6514,8 +7077,8 @@ async fn provider_upload_folder_inner(
 // Keep the existing IPC arguments compatible; no_clobber is an optional field.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-pub async fn provider_upload_file(
-    app: AppHandle,
+pub async fn provider_upload_file<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, ProviderState>,
     local_path: String,
     remote_path: String,
@@ -6523,20 +7086,62 @@ pub async fn provider_upload_file(
     use_delta: Option<bool>,
     resume: Option<bool>,
     no_clobber: Option<bool>,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
+    sync_run_lease: Option<String>,
 ) -> Result<String, String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(
+        "provider_upload_file",
+        upload_file_for_ipc(
+            app,
+            state,
+            local_path,
+            remote_path,
+            commit_message,
+            use_delta,
+            resume,
+            no_clobber,
+            expected_gui_target,
+            expected_generation,
+            require_crypt_overlay,
+            expected_profile_id,
+            expected_crypt_scope,
+        )
+        .await,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn upload_file_for_ipc<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, ProviderState>,
+    local_path: String,
+    remote_path: String,
+    commit_message: Option<String>,
+    use_delta: Option<bool>,
+    resume: Option<bool>,
+    no_clobber: Option<bool>,
+    expected_gui_target: Option<u64>,
+    expected_generation: Option<u64>,
+    require_crypt_overlay: Option<bool>,
+    expected_profile_id: Option<String>,
+    expected_crypt_scope: Option<String>,
+) -> Result<String, crate::sync::IpcError> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
             expected_crypt_scope.as_deref(),
             &remote_path,
         )
-        .await?;
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Fail-closed: never write plaintext into a crypt store whose overlay is
     // currently unwrapped (badge locked / outside the encrypted scope). A remote
     // target provably outside the overlay anchor is plain territory (#390).
@@ -6551,7 +7156,7 @@ pub async fn provider_upload_file(
     // Reject upload targets with characters this provider's backend forbids
     // before any transfer work starts (delta / DAG / GitHub branches below).
     crate::restricted_chars::validate_path(provider.provider_type(), &remote_path)
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::sync::IpcError::from)?;
 
     let filename = std::path::Path::new(&local_path)
         .file_name()
@@ -6567,7 +7172,8 @@ pub async fn provider_upload_file(
     info!("Uploading via provider: {} -> {}", local_path, remote_path);
 
     // Emit start event
-    crate::transfer_event_sink::emit_gui_transfer_event(
+    crate::provider_commands::emit_gui_transfer_event_for_runner(
+        "provider_upload_file",
         &app,
         crate::TransferEvent {
             event_type: "start".to_string(),
@@ -6600,7 +7206,8 @@ pub async fn provider_upload_file(
             } else {
                 0
             };
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_upload_file",
                 &app_progress,
                 crate::TransferEvent {
                     event_type: "progress".to_string(),
@@ -6634,31 +7241,44 @@ pub async fn provider_upload_file(
         let cancel = state.current_cancel_token().await;
         let result = tokio::select! {
             biased;
-            _=cancel.cancelled()=>Err(ProviderError::TransferFailed("Transfer cancelled by user".into())),
+            _=cancel.cancelled()=>Err(ProviderError::Cancelled),
             result=provider.upload_if_absent(&local_path,&remote_path,progress_cb)=>result,
         };
         let (event_type, message) = match &result {
             Ok(()) => ("complete", format!("Uploaded: {filename}")),
             Err(ProviderError::AlreadyExists(_)) => ("file_skip", format!("Skipped: {filename}")),
-            Err(error) => ("error", error.to_string()),
+            Err(_) => ("error", String::new()),
         };
-        crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
-            crate::TransferEvent {
-                event_type: event_type.into(),
-                transfer_id,
-                filename,
-                direction: "upload".into(),
-                message: Some(message.clone()),
-                progress: None,
-                path: Some(remote_path),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
+        let event = crate::TransferEvent {
+            event_type: event_type.into(),
+            transfer_id,
+            filename,
+            direction: "upload".into(),
+            message: Some(message.clone()),
+            progress: None,
+            path: Some(remote_path),
+            delta_stats: None,
+            fallback_reason: None,
+        };
         return match result {
-            Ok(()) | Err(ProviderError::AlreadyExists(_)) => Ok(message),
-            Err(_) => Err(message),
+            Ok(()) | Err(ProviderError::AlreadyExists(_)) => {
+                crate::provider_commands::emit_gui_transfer_event_for_runner(
+                    "provider_upload_file",
+                    &app,
+                    event,
+                );
+                Ok(message)
+            }
+            Err(error) => {
+                let error = crate::sync::IpcError::of(&error);
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
+                    &app,
+                    event,
+                    &error,
+                );
+                Err(error)
+            }
         };
     }
 
@@ -6701,22 +7321,23 @@ pub async fn provider_upload_file(
                 }
             };
             if delta_cancelled {
-                let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some("Upload cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             if let Some(delta_result) = delta_outcome {
                 if delta_result.used_delta {
@@ -6724,7 +7345,8 @@ pub async fn provider_upload_file(
                         .stats
                         .as_ref()
                         .map(crate::sync::DeltaTransferStats::from_rsync);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -6750,7 +7372,8 @@ pub async fn provider_upload_file(
                 }
                 if let Some(hard_err) = delta_result.hard_error {
                     let err_msg = format!("delta hard rejection: {}", hard_err);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
@@ -6764,7 +7387,7 @@ pub async fn provider_upload_file(
                             fallback_reason: None,
                         },
                     );
-                    return Err(err_msg);
+                    return Err(err_msg.into());
                 }
                 // Silent fallback to classic provider upload below.
                 delta_fallback_reason = delta_result.fallback_reason;
@@ -6805,26 +7428,28 @@ pub async fn provider_upload_file(
                 r = &mut up_fut => { resume_outcome = Some(r); false }
             };
             if cancelled {
-                let err_msg = format!("Upload cancelled by user: {}", filename);
-                crate::transfer_event_sink::emit_gui_transfer_event(
+                crate::provider_commands::emit_runner_error_event(
+                    "provider_upload_file",
                     &app,
                     crate::TransferEvent {
                         event_type: "error".to_string(),
                         transfer_id: transfer_id.clone(),
                         filename: filename.clone(),
                         direction: "upload".to_string(),
-                        message: Some("Upload cancelled by user".to_string()),
+                        message: None,
                         progress: None,
                         path: None,
                         delta_stats: None,
                         fallback_reason: None,
                     },
+                    &crate::sync::IpcError::Cancelled,
                 );
-                return Err(err_msg);
+                return Err(crate::sync::IpcError::Cancelled);
             }
             return match resume_outcome.expect("resume outcome set when not cancelled") {
                 Ok(()) => {
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    crate::provider_commands::emit_gui_transfer_event_for_runner(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "complete".to_string(),
@@ -6849,22 +7474,24 @@ pub async fn provider_upload_file(
                     Ok(format!("Uploaded: {}", filename))
                 }
                 Err(e) => {
-                    let err_msg = format!("Upload failed: {}", e);
-                    crate::transfer_event_sink::emit_gui_transfer_event(
+                    let error = crate::sync::IpcError::of(&e);
+                    crate::provider_commands::emit_runner_error_event(
+                        "provider_upload_file",
                         &app,
                         crate::TransferEvent {
                             event_type: "error".to_string(),
                             transfer_id: transfer_id.clone(),
                             filename: filename.clone(),
                             direction: "upload".to_string(),
-                            message: Some(err_msg.clone()),
+                            message: None,
                             progress: None,
                             path: None,
                             delta_stats: None,
                             fallback_reason: None,
                         },
+                        &error,
                     );
-                    Err(err_msg)
+                    Err(error)
                 }
             };
         }
@@ -6916,16 +7543,18 @@ pub async fn provider_upload_file(
                 let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
                     .as_any_mut()
                     .downcast_mut::<crate::providers::github::GitHubProvider>()
-                    .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+                    .ok_or_else(|| {
+                        crate::sync::IpcError::from("Failed to access GitHub provider")
+                    })?;
                 github
                     .upload_file(&local_path, &remote_path, commit_message.as_deref())
                     .await
-                    .map_err(|e| format!("Upload failed: {}", e))
+                    .map_err(crate::sync::IpcError::from)
             } else {
                 provider
                     .upload(&local_path, &remote_path, progress_cb)
                     .await
-                    .map_err(|e| format!("Upload failed: {}", e))
+                    .map_err(crate::sync::IpcError::from)
             }
         };
         tokio::pin!(work);
@@ -6935,21 +7564,21 @@ pub async fn provider_upload_file(
                 r = &mut work => break r,
                 _ = tokio::time::sleep(std::time::Duration::from_millis(200)) => {
                     if ul_cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                        crate::transfer_event_sink::emit_gui_transfer_event(&app, crate::TransferEvent {
+                        crate::provider_commands::emit_runner_error_event("provider_upload_file", &app, crate::TransferEvent {
                                 event_type: "error".to_string(),
                                 transfer_id: transfer_id.clone(),
                                 filename: filename.clone(),
                                 direction: "upload".to_string(),
-                                message: Some("Upload cancelled by user".to_string()),
+                                message: None,
                                 progress: None,
                                 path: None,
                                 delta_stats: None,
                                 fallback_reason: None,
-                            },);
+                            }, &crate::sync::IpcError::Cancelled);
                         // Break (do not return) so MTP can best-effort delete a
                         // partial object below. MTP has no honest resume: a
                         // half-sent object is invalid on many devices.
-                        break Err(format!("Upload cancelled by user: {}", filename));
+                        break Err(crate::sync::IpcError::Cancelled);
                     }
                 }
             }
@@ -6958,22 +7587,28 @@ pub async fn provider_upload_file(
 
     // MTP honesty: cancelled whole-file upload may leave a partial object.
     // Delete it when the backend allows; never claim resume.
-    if let Err(ref err) = result {
-        if crate::transfer_dag::error::message_names_a_cancellation(err)
-            && provider.provider_type() == crate::providers::types::ProviderType::Mtp
-        {
-            if let Err(del_err) = provider.delete(&remote_path).await {
-                warn!(
-                    "MTP cancelled upload cleanup delete failed for {}: {}",
-                    remote_path, del_err
-                );
-            }
+    // A cancellation is the native state (the typed error, the transfer's
+    // flag, the session token), never the text.
+    let session_cancelled = state.current_cancel_token().await.is_cancelled();
+    let cancelled = matches!(&result, Err(crate::sync::IpcError::Cancelled))
+        || (result.is_err()
+            && (session_cancelled || ul_cancel.load(std::sync::atomic::Ordering::Relaxed)));
+    if result.is_err()
+        && cancelled
+        && provider.provider_type() == crate::providers::types::ProviderType::Mtp
+    {
+        if let Err(del_err) = provider.delete(&remote_path).await {
+            warn!(
+                "MTP cancelled upload cleanup delete failed for {}: {}",
+                remote_path, del_err
+            );
         }
     }
 
     match &result {
         Ok(()) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+            crate::provider_commands::emit_gui_transfer_event_for_runner(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "complete".to_string(),
@@ -6997,28 +7632,126 @@ pub async fn provider_upload_file(
             info!("Upload completed: {}", filename);
             Ok(format!("Uploaded: {}", filename))
         }
-        Err(e) if crate::transfer_dag::error::message_names_a_cancellation(e) => {
+        Err(_) if cancelled => {
             // Cancel path already emitted a transfer_event above.
-            Err(e.clone())
+            Err(crate::sync::IpcError::Cancelled)
         }
-        Err(e) => {
-            crate::transfer_event_sink::emit_gui_transfer_event(
+        Err(_) => {
+            let Err(error) = result else { unreachable!() };
+            crate::provider_commands::emit_runner_error_event(
+                "provider_upload_file",
                 &app,
                 crate::TransferEvent {
                     event_type: "error".to_string(),
                     transfer_id,
                     filename: filename.clone(),
                     direction: "upload".to_string(),
-                    message: Some(e.clone()),
+                    message: None,
                     progress: None,
                     path: None,
                     delta_stats: None,
                     fallback_reason: None,
                 },
+                &error,
             );
-            Err(e.clone())
+            Err(error)
         }
     }
+}
+
+/// The error a sync runner's command hands to the webview.
+///
+/// A provider's error can carry what its server wrote (a JSON `detail`, an
+/// HTML page), and an opaque token there matches no redaction pattern. So
+/// none of that text crosses: the commands the runner calls return their
+/// errors through here, the one place the text leaves the native side, as the
+/// fixed message of [`crate::sync::ipc_error_message`] (the error's kind, its
+/// HTTP status, the trusted markers such as `CONNECTION_CHANGED`). The native
+/// log gets no more than that and the command's name: a log target can reach
+/// the webview too.
+/// A transfer event of a sync runner's command, as the webview receives it:
+/// an `error` event's message is the same fixed message the command's
+/// returned error is (`ipc_result`), so the server's text reaches the page by
+/// neither route. Other events are unchanged.
+pub(crate) fn runner_transfer_event(
+    command: &'static str,
+    mut event: crate::TransferEvent,
+) -> crate::TransferEvent {
+    // Every kind that reports a failure: `error`, and the per-file and
+    // delete kinds (`file_error`, `delete_error`, `delete_file_error`).
+    if event.event_type == "error" || event.event_type.ends_with("_error") {
+        event.message = event
+            .message
+            .map(|message| crate::sync::ipc_error_message(command, &message));
+    }
+    event
+}
+
+/// [`crate::transfer_event_sink::emit_gui_transfer_event`] for a sync
+/// runner's upload and download commands, through [`runner_transfer_event`].
+pub(crate) fn emit_gui_transfer_event_for_runner<R: tauri::Runtime>(
+    command: &'static str,
+    app: &AppHandle<R>,
+    event: crate::TransferEvent,
+) {
+    crate::transfer_event_sink::emit_gui_transfer_event(app, runner_transfer_event(command, event));
+}
+
+/// A runner command's `error` event for a typed failure: its message is the
+/// text the command returns for the same failure, made from where it came.
+pub(crate) fn emit_runner_error_event<R: tauri::Runtime>(
+    command: &'static str,
+    app: &AppHandle<R>,
+    mut event: crate::TransferEvent,
+    error: &crate::sync::IpcError,
+) {
+    event.message = Some(crate::sync::ipc_error_text(command, error));
+    crate::transfer_event_sink::emit_gui_transfer_event(app, event);
+}
+
+/// The GUI sink a runner's transfer hands to the transfer engine: every event
+/// goes to the webview as [`AppHandleSink`] sends it, an error event through
+/// [`runner_transfer_event`].
+pub(crate) struct RunnerEventSink<R: tauri::Runtime = tauri::Wry> {
+    inner: AppHandleSink<R>,
+    command: &'static str,
+}
+
+impl<R: tauri::Runtime> RunnerEventSink<R> {
+    pub(crate) fn new(app: AppHandle<R>, command: &'static str) -> Self {
+        Self {
+            inner: AppHandleSink::new(app),
+            command,
+        }
+    }
+}
+
+impl<R: tauri::Runtime> TransferEventSink for RunnerEventSink<R> {
+    fn emit_transfer_event(&self, event: crate::TransferEvent) {
+        self.inner
+            .emit_transfer_event(runner_transfer_event(self.command, event));
+    }
+    fn emit_batch_started(&self, payload: serde_json::Value) {
+        self.inner.emit_batch_started(payload);
+    }
+    fn emit_batch_progress(&self, snapshot: &crate::transfer_domain::BatchProgressSnapshot) {
+        self.inner.emit_batch_progress(snapshot);
+    }
+    fn emit_batch_completed(&self, result: &crate::transfer_domain::TransferBatchResult) {
+        self.inner.emit_batch_completed(result);
+    }
+    fn emit_engine_stats(&self, stats: &crate::transfer_dag::EngineTransferStats) {
+        self.inner.emit_engine_stats(stats);
+    }
+}
+
+/// A command's error as the page receives it: rendered from where it came
+/// (`sync::IpcError`), never from its text.
+pub(crate) fn ipc_result<T, E: Into<crate::sync::IpcError>>(
+    command: &'static str,
+    result: Result<T, E>,
+) -> Result<T, String> {
+    result.map_err(|error| crate::sync::ipc_error_render(command, &error.into()))
 }
 
 /// Create a directory
@@ -7027,7 +7760,26 @@ pub async fn provider_mkdir(
     state: State<'_, ProviderState>,
     path: String,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<(), String> {
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    ipc_result(
+        "provider_mkdir",
+        mkdir_for_ipc(&state, path, commit_message, expected_gui_target).await,
+    )
+}
+
+async fn mkdir_for_ipc(
+    state: &ProviderState,
+    path: String,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+) -> Result<(), crate::sync::IpcError> {
+    let _target = state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     // Fail-closed: refuse a cleartext mkdir name into an unwrapped crypt store,
     // unless the target is provably outside the overlay anchor (#390).
     state.guard_no_raw_crypt_write_outside("Create directory", &[&path])?;
@@ -7042,7 +7794,7 @@ pub async fn provider_mkdir(
 
     // Reject folder names with characters this provider's backend forbids.
     crate::restricted_chars::validate_path(provider.provider_type(), &path)
-        .map_err(|e| e.to_string())?;
+        .map_err(crate::sync::IpcError::from)?;
 
     if is_plain_github_provider(provider.as_mut()) {
         let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -7052,12 +7804,12 @@ pub async fn provider_mkdir(
         github
             .create_directory(&path, commit_message.as_deref())
             .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     } else {
         provider
             .mkdir(&path)
             .await
-            .map_err(|e| format!("Failed to create directory: {}", e))?;
+            .map_err(crate::sync::IpcError::from)?;
     }
 
     Ok(())
@@ -7065,105 +7817,224 @@ pub async fn provider_mkdir(
 
 /// Delete a file
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn provider_delete_file(
+    app: AppHandle,
     state: State<'_, ProviderState>,
     path: String,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<(), String> {
-    // The raw view exposes raw paths. Deletion removes the selected object and
-    // cannot inject plaintext, so it remains available with CRYPT off (#390).
+    use tauri::Manager;
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    // Registered before the target pin, which can wait (H8, K6).
+    let cancel = app
+        .state::<crate::AppState>()
+        .operation_cancel(sync_run_lease.is_some(), operation_id.as_deref());
+    ipc_result(
+        "provider_delete_file",
+        delete_file_for_ipc(
+            &state,
+            path,
+            commit_message,
+            expected_gui_target,
+            Some(&cancel),
+        )
+        .await,
+    )
+}
 
-    let mut provider_lock = state.provider.lock().await;
-
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
-
-    info!("Deleting file: {}", path);
-
-    if is_plain_github_provider(provider.as_mut()) {
-        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-            .as_any_mut()
-            .downcast_mut::<crate::providers::github::GitHubProvider>()
-            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github
-            .delete_file(&path, commit_message.as_deref())
+/// `cancel`: the panel gesture's (or the run's) flag; raised before the
+/// delete is sent, nothing is deleted.
+pub(crate) async fn delete_file_for_ipc(
+    state: &ProviderState,
+    path: String,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    cancel: Option<&AtomicBool>,
+) -> Result<(), crate::sync::IpcError> {
+    // The whole command runs against the cancel: the waits for the target
+    // pin and for the provider (M1), and the removal's own preparation, a
+    // lookup or a SHA read (L4). A cancel raised at any of them ends it
+    // there, releases the pin and sends no delete.
+    let deleting = async {
+        let _target = state
+            .pin_gui_target(expected_gui_target)
             .await
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
-    } else {
-        provider
-            .delete(&path)
+            .map_err(crate::sync::IpcError::from_native_pin)?;
+        // The raw view exposes raw paths. Deletion removes the selected object and
+        // cannot inject plaintext, so it remains available with CRYPT off (#390).
+        let mut provider_lock = state.provider.lock().await;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
+        info!("Deleting file: {}", path);
+        if is_plain_github_provider(provider.as_mut()) {
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .delete_file(&path, commit_message.as_deref())
+                .await
+                .map_err(crate::sync::IpcError::from)
+        } else {
+            provider
+                .delete(&path)
+                .await
+                .map_err(crate::sync::IpcError::from)
+        }
+    };
+    match cancel {
+        Some(cancel) => unless_cancelled(cancel, deleting)
             .await
-            .map_err(|e| format!("Failed to delete file: {}", e))?;
+            .unwrap_or(Err(crate::sync::IpcError::Cancelled)),
+        None => deleting.await,
     }
+}
 
-    Ok(())
+/// What a panel delete its gesture's cancel stopped answers.
+pub(crate) const DELETION_CANCELLED: &str = "Deletion cancelled";
+
+/// Run a provider removal so that a cancel raised while it is pending wins
+/// (`None`): the flag is read on every wake, before the removal is polled
+/// again, and a tick wakes it while the provider waits. The removal future
+/// is then dropped, so it sends no further request: a walk does not go on
+/// to its next child (K6), and a removal still in its preparation (a lookup,
+/// GitHub's SHA read) never sends the delete (L4). No backend runs its
+/// removal in a worker that outlives the future (L3): the walks run inside
+/// it, Proton's CLI process is killed on drop, an MTP device call removes
+/// at most the one object already asked for, and a server-side recursive
+/// delete is a single request a cancel can only keep from starting.
+pub(crate) async fn unless_cancelled<T>(
+    cancel: &AtomicBool,
+    removal: impl std::future::Future<Output = T>,
+) -> Option<T> {
+    let mut removal = std::pin::pin!(removal);
+    let mut tick = tokio::time::interval(Duration::from_millis(25));
+    std::future::poll_fn(|cx| {
+        if cancel.load(Ordering::Relaxed) {
+            return std::task::Poll::Ready(None);
+        }
+        if let std::task::Poll::Ready(done) = removal.as_mut().poll(cx) {
+            return std::task::Poll::Ready(Some(done));
+        }
+        while tick.poll_tick(cx).is_ready() {}
+        std::task::Poll::Pending
+    })
+    .await
 }
 
 /// Delete a directory
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn provider_delete_dir(
     app: AppHandle,
     state: State<'_, ProviderState>,
     path: String,
     recursive: bool,
     commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    operation_id: Option<String>,
 ) -> Result<(), String> {
-    // As for file deletion, use the path selected in the current raw/wrapped
-    // view. The plaintext-injection guard applies to writes, not removals.
+    provider_delete_dir_with(
+        &app,
+        &state,
+        path,
+        recursive,
+        commit_message,
+        expected_gui_target,
+        operation_id,
+    )
+    .await
+}
 
-    let mut provider_lock = state.provider.lock().await;
+/// The body of `provider_delete_dir`. The panel gesture's flag is
+/// registered before the target pin (H8) and read again right before the
+/// delete; the delete itself runs against it: once it is raised, the
+/// provider call is dropped at its next await, so a recursive delete that
+/// walks the tree sends no further removal (K6), as a cancelled transfer
+/// drops its call (#332).
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn provider_delete_dir_with<R: tauri::Runtime>(
+    app: &AppHandle<R>,
+    state: &ProviderState,
+    path: String,
+    recursive: bool,
+    commit_message: Option<String>,
+    expected_gui_target: Option<u64>,
+    operation_id: Option<String>,
+) -> Result<(), String> {
+    use tauri::Manager;
+    let cancel = app
+        .state::<crate::AppState>()
+        .operation_cancel(false, operation_id.as_deref());
+    // The whole command runs against the cancel, the waits for the target
+    // pin and for the provider included: a cancel raised while it waits
+    // ends it there and releases the pin (M1).
+    let deleting = async {
+        let _target = state.pin_gui_target(expected_gui_target).await?;
+        // As for file deletion, use the path selected in the current raw/wrapped
+        // view. The plaintext-injection guard applies to writes, not removals.
 
-    let provider = provider_lock
-        .as_mut()
-        .ok_or("Not connected to any provider")?;
+        let mut provider_lock = state.provider.lock().await;
 
-    info!("Deleting directory: {} (recursive: {})", path, recursive);
+        let provider = provider_lock
+            .as_mut()
+            .ok_or("Not connected to any provider")?;
 
-    // Emit scanning event for folder deletes so the ScanningToast appears
-    if recursive {
-        let folder_name = std::path::Path::new(&path)
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| path.clone());
-        crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
-            crate::TransferEvent {
-                event_type: "scanning".to_string(),
-                transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
-                filename: folder_name,
-                direction: "delete".to_string(),
-                message: Some("Scanning folder for deletion...".to_string()),
-                progress: None,
-                path: Some(path.clone()),
-                delta_stats: None,
-                fallback_reason: None,
-            },
-        );
-    }
+        info!("Deleting directory: {} (recursive: {})", path, recursive);
 
-    if is_plain_github_provider(provider.as_mut()) {
-        // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
-        let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-            .as_any_mut()
-            .downcast_mut::<crate::providers::github::GitHubProvider>()
-            .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
-        github
-            .delete_directory_recursive(&path, commit_message.as_deref())
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    } else if recursive {
-        provider
-            .rmdir_recursive(&path)
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    } else {
-        // Not recursive: only an empty directory, since `rmdir` itself takes
-        // the content along on several backends.
-        crate::providers::remove_empty_directory(provider.as_mut(), &path)
-            .await
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
-    }
+        // Emit scanning event for folder deletes so the ScanningToast appears
+        if recursive {
+            let folder_name = std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            crate::transfer_event_sink::emit_gui_transfer_event(
+                app,
+                crate::TransferEvent {
+                    event_type: "scanning".to_string(),
+                    transfer_id: format!("del-dir-{}", chrono::Utc::now().timestamp_millis()),
+                    filename: folder_name,
+                    direction: "delete".to_string(),
+                    message: Some("Scanning folder for deletion...".to_string()),
+                    progress: None,
+                    path: Some(path.clone()),
+                    delta_stats: None,
+                    fallback_reason: None,
+                },
+            );
+        }
+
+        if is_plain_github_provider(provider.as_mut()) {
+            // QA-GH-006: GitHub always needs recursive delete (no empty dirs in git)
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+                .as_any_mut()
+                .downcast_mut::<crate::providers::github::GitHubProvider>()
+                .ok_or_else(|| "Failed to access GitHub provider".to_string())?;
+            github
+                .delete_directory_recursive(&path, commit_message.as_deref())
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        } else if recursive {
+            provider
+                .rmdir_recursive(&path)
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        } else {
+            // Not recursive: only an empty directory, since `rmdir` itself takes
+            // the content along on several backends.
+            crate::providers::remove_empty_directory(provider.as_mut(), &path)
+                .await
+                .map_err(|e| format!("Failed to delete directory: {}", e))
+        }
+    };
+    unless_cancelled(&cancel, deleting)
+        .await
+        .unwrap_or_else(|| Err(DELETION_CANCELLED.to_string()))?;
 
     // Emit delete_complete so ScanningToast dismisses
     if recursive {
@@ -7172,7 +8043,7 @@ pub async fn provider_delete_dir(
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| path.clone());
         crate::transfer_event_sink::emit_gui_transfer_event(
-            &app,
+            app,
             crate::TransferEvent {
                 event_type: "delete_complete".to_string(),
                 transfer_id: format!("del-dir-done-{}", chrono::Utc::now().timestamp_millis()),
@@ -7196,7 +8067,9 @@ pub async fn provider_rename(
     state: State<'_, ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: renaming through the raw backend while the overlay is
     // unwrapped would create a cleartext name in the encrypted store. Allowed
     // when BOTH endpoints are provably outside the overlay anchor (#390), which
@@ -7237,6 +8110,41 @@ pub async fn provider_connection_generation(
     state: State<'_, ProviderState>,
 ) -> Result<u64, String> {
     Ok(state.connection_generation.load(Ordering::SeqCst))
+}
+
+/// Return only a keyed owner tag, or a connection-lifetime nonce when the
+/// installed authentication cannot prove a persistent identity.
+#[tauri::command]
+pub async fn provider_gui_target_binding(
+    state: State<'_, ProviderState>,
+    expected_gui_target: u64,
+    is_provider: bool,
+) -> Result<String, String> {
+    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
+    state.gui_owner_binding(is_provider).await
+}
+
+#[tauri::command]
+pub async fn provider_gui_verify_resume_owner(
+    state: State<'_, ProviderState>,
+    expected_gui_target: u64,
+    is_provider: bool,
+    binding: String,
+) -> Result<(), String> {
+    let _pin = state.pin_gui_target(Some(expected_gui_target)).await?;
+    let current = state.gui_owner_binding(is_provider).await?;
+    if !crate::sync_owner::bindings_match(&current, &binding) {
+        return Err(ProviderError::TargetChanged.to_string());
+    }
+    Ok(())
+}
+
+/// Opaque identity for a GUI action; only compare it through `pin_gui_target`.
+#[tauri::command]
+pub async fn provider_gui_target_epoch(state: State<'_, ProviderState>) -> Result<u64, String> {
+    let _target = state.transfer_owner_gate.read().await;
+    state.observe_target_poison();
+    Ok(state.gui_target_epoch.load(Ordering::SeqCst))
 }
 
 /// Change a remote entry's permission bits through the active provider
@@ -7299,7 +8207,9 @@ pub async fn provider_server_copy(
     state: State<'_, ProviderState>,
     from: String,
     to: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     // Fail-closed: a raw server-side copy while the overlay is unwrapped would
     // land a cleartext-named object in the encrypted store (the content stays
     // ciphertext but the name never gets encrypted), orphaning it from the
@@ -7823,6 +8733,8 @@ pub async fn oauth2_connect(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: OAuthConnectionParams,
 ) -> Result<OAuth2ConnectResult, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     use crate::providers::{
         dropbox::DropboxConfig, google_drive::GoogleDriveConfig, google_photos::GooglePhotosConfig,
         onedrive::OneDriveConfig, types::BoxConfig, types::PCloudConfig,
@@ -7839,7 +8751,9 @@ pub async fn oauth2_connect(
         let provider: Box<dyn StorageProvider> = match params.provider.to_lowercase().as_str() {
             "google_drive" | "googledrive" | "google" => {
                 let config = GoogleDriveConfig::new(&params.client_id, &params.client_secret);
-                let mut p = GoogleDriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = GoogleDriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Google Drive connection failed: {}", e))?;
@@ -7847,7 +8761,9 @@ pub async fn oauth2_connect(
             }
             "googlephotos" | "google_photos" => {
                 let config = GooglePhotosConfig::new(&params.client_id, &params.client_secret);
-                let mut p = GooglePhotosProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = GooglePhotosProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Google Photos connection failed: {}", e))?;
@@ -7855,7 +8771,9 @@ pub async fn oauth2_connect(
             }
             "dropbox" => {
                 let config = DropboxConfig::new(&params.client_id, &params.client_secret);
-                let mut p = DropboxProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = DropboxProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Dropbox connection failed: {}", e))?;
@@ -7863,7 +8781,9 @@ pub async fn oauth2_connect(
             }
             "onedrive" | "microsoft" => {
                 let config = OneDriveConfig::new(&params.client_id, &params.client_secret);
-                let mut p = OneDriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = OneDriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("OneDrive connection failed: {}", e))?;
@@ -7874,7 +8794,9 @@ pub async fn oauth2_connect(
                     client_id: params.client_id.clone(),
                     client_secret: params.client_secret.clone(),
                 };
-                let mut p = BoxProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = BoxProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Box connection failed: {}", e))?;
@@ -7891,7 +8813,9 @@ pub async fn oauth2_connect(
                     client_secret: params.client_secret.clone(),
                     region,
                 };
-                let mut p = PCloudProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = PCloudProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("pCloud connection failed: {}", e))?;
@@ -7903,7 +8827,9 @@ pub async fn oauth2_connect(
                     &params.client_secret,
                     &params.region,
                 );
-                let mut p = ZohoWorkdriveProvider::new(config).with_profile_id(&params.profile_id);
+                let mut p = ZohoWorkdriveProvider::new(config)
+                    .with_profile_id(&params.profile_id)
+                    .with_credential_user(owner.user());
                 p.connect()
                     .await
                     .map_err(|e| format!("Zoho WorkDrive connection failed: {}", e))?;
@@ -7912,7 +8838,7 @@ pub async fn oauth2_connect(
             "yandexdisk" | "yandex_disk" | "yandex" => {
                 // Yandex Disk OAuth: retrieve token from stored OAuth tokens
                 use crate::providers::{OAuth2Manager, OAuthProvider};
-                let manager = OAuth2Manager::new();
+                let manager = OAuth2Manager::new().with_credential_user(owner.user());
                 let tokens = manager
                     .load_tokens(OAuthProvider::YandexDisk, &params.profile_id)
                     .map_err(|e| format!("No Yandex Disk tokens found: {}", e))?;
@@ -7937,9 +8863,28 @@ pub async fn oauth2_connect(
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
+    // The OAuth app of the tokens the provider signed in with (a public id).
+    let token_client = oauth_provider_named(&params.provider)
+        .ok()
+        .and_then(|oauth_provider| {
+            crate::providers::OAuth2Manager::new()
+                .with_credential_user(owner.user())
+                .token_client_id(oauth_provider, &params.profile_id)
+                .ok()
+        })
+        .flatten();
 
-    // Store provider
-    install_connected_provider(&state, provider, Some(params.profile_id.clone())).await?;
+    // Store provider, with that app.
+    install_connected_provider_with_owner(
+        &state,
+        provider,
+        Some(params.profile_id.clone()),
+        None,
+        Some(oauth_identity_client(token_client)),
+        Some(owner),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!(
         "Connected to {} ({})",
@@ -8296,7 +9241,12 @@ async fn pcloud_exchange_code(
         };
 
         let manager = OAuth2Manager::new().with_credential_user(credential_user);
-        manager.store_tokens(config.provider, config.profile_id(), &tokens)?;
+        manager.store_tokens_with_client(
+            config.provider,
+            config.profile_id(),
+            &tokens,
+            Some(&config.client_id),
+        )?;
 
         // Persist detected region so oauth2_connect uses the correct API endpoint
         let region = if endpoint.contains("eapi") {
@@ -8334,9 +9284,18 @@ pub async fn oauth2_has_tokens(
     provider: String,
     profile_id: Option<String>,
 ) -> Result<bool, String> {
-    use crate::providers::{OAuth2Manager, OAuthProvider};
+    use crate::providers::OAuth2Manager;
 
-    let oauth_provider = match provider.to_lowercase().as_str() {
+    let oauth_provider = oauth_provider_named(&provider)?;
+
+    let pid = profile_id.unwrap_or_default();
+    let manager = OAuth2Manager::new();
+    Ok(manager.has_tokens(oauth_provider, &pid))
+}
+
+fn oauth_provider_named(provider: &str) -> Result<crate::providers::OAuthProvider, String> {
+    use crate::providers::OAuthProvider;
+    Ok(match provider.to_lowercase().as_str() {
         "google_drive" | "googledrive" | "google" => OAuthProvider::Google,
         "googlephotos" | "google_photos" => OAuthProvider::GooglePhotos,
         "dropbox" => OAuthProvider::Dropbox,
@@ -8346,12 +9305,22 @@ pub async fn oauth2_has_tokens(
         "zoho" | "zoho_workdrive" | "zohoworkdrive" => OAuthProvider::ZohoWorkdrive,
         "yandexdisk" | "yandex_disk" | "yandex" => OAuthProvider::YandexDisk,
         other => return Err(format!("Unknown OAuth2 provider: {}", other)),
-    };
-
-    let pid = profile_id.unwrap_or_default();
-    let manager = OAuth2Manager::new();
-    Ok(manager.has_tokens(oauth_provider, &pid))
+    })
 }
+
+/// The OAuth app a GUI connection's target names: the one recorded with the
+/// stored tokens, never the one configured now (a token keeps working after
+/// the app is changed in Settings, and it still sees its own app's space).
+/// A record written before the app was kept names no app: the connection
+/// then gets an identity of its own, never reused (as one with no account,
+/// see [`ProviderState::gui_target_identity`]), since two such records can
+/// belong to two "app folder" apps of the same account.
+pub(crate) fn oauth_identity_client(recorded: Option<String>) -> String {
+    recorded.unwrap_or_else(|| UNRECORDED_TOKEN_APP.to_string())
+}
+
+/// What [`oauth_identity_client`] answers for tokens whose app is unknown.
+pub(crate) const UNRECORDED_TOKEN_APP: &str = "token-app-unrecorded";
 
 /// Create a shareable link for a file using the OAuth provider's native sharing API
 #[tauri::command]
@@ -8361,7 +9330,9 @@ pub async fn provider_create_share_link(
     expires_in_secs: Option<u64>,
     password: Option<String>,
     permissions: Option<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<ShareLinkResult, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -8584,7 +9555,9 @@ pub async fn provider_set_speed_limit(
     state: State<'_, ProviderState>,
     upload_kb: u64,
     download_kb: u64,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -9104,7 +10077,7 @@ pub async fn provider_compare_directories(
     progress_id: Option<String>,
     profile_id: Option<String>,
 ) -> Result<crate::sync::CompareReport, String> {
-    use crate::sync::{classify_with_summary, load_sync_index_for_profile, FileInfo};
+    use crate::sync::{classify_with_summary, FileInfo};
 
     let mut options = options.unwrap_or_default();
     crate::sync::apply_error_correction_excludes(&mut options);
@@ -9191,6 +10164,12 @@ pub async fn provider_compare_directories(
         }
         state.connection_generation.load(Ordering::SeqCst)
     };
+    // The target this scan reads, which its baseline must have been written
+    // for, with the epoch of the connection that serves it.
+    let scanned_target = state
+        .gui_target_snapshot(true)
+        .await
+        .map_err(|_| compare_target_refusal())?;
 
     // Pin the crypt overlay wrap state for the whole remote scan + normalize
     // pass. Sampling only after the scan (old behaviour) raced a badge toggle
@@ -9443,10 +10422,26 @@ pub async fn provider_compare_directories(
         }),
     );
 
-    // Another profile's index is no baseline here (see `sync::history_serves`).
-    let index = load_sync_index_for_profile(&local_path, &remote_path, profile_id.as_deref())
-        .ok()
-        .flatten();
+    // Another profile's index is no baseline here (see `sync::history_serves`),
+    // nor another target's (see `sync::bind_index_to_target`). The target is
+    // the one scanned: a reconnect during the scan refuses the compare.
+    // The same identity AND the same epoch: an A, B, A reconnect during the
+    // scan has equal identities and a moved epoch, and is refused.
+    let (target, epoch) = state
+        .gui_target_snapshot(true)
+        .await
+        .map_err(|_| compare_target_refusal())?;
+    if (target.as_str(), epoch) != (scanned_target.0.as_str(), scanned_target.1) {
+        return Err(compare_target_refusal());
+    }
+    let index = crate::sync::load_sync_index_for_target(
+        &local_path,
+        &remote_path,
+        profile_id.as_deref(),
+        &target,
+    )
+    .ok()
+    .flatten();
     let report = classify_with_summary(local_files, remote_files, &options, index.as_ref());
     info!(
         "Provider compare complete: {} differences out of {} examined (index: {})",
@@ -9542,10 +10537,22 @@ fn store_fourshared_tokens(
 /// Load 4shared tokens from credential vault: this profile's key first, then
 /// the legacy singleton, through the same resolver the export and the CLI use.
 pub(crate) fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
+    load_fourshared_tokens_for(profile_id, None)
+}
+
+/// [`load_fourshared_tokens`] for the account `user` (see
+/// `bridge_commands::resolve_profile_oauth_token_for`).
+pub(crate) fn load_fourshared_tokens_for(
+    profile_id: &str,
+    user: Option<i64>,
+) -> Result<(String, String), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-        if let Some(data) =
-            crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)
-        {
+        if let Some(data) = crate::bridge_commands::resolve_profile_oauth_token_for(
+            &store,
+            "fourshared",
+            profile_id,
+            user,
+        ) {
             if let Some((token, secret)) = data.split_once(':') {
                 return Ok((token.to_string(), secret.to_string()));
             }
@@ -9861,6 +10868,8 @@ pub async fn fourshared_connect(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: FourSharedAuthParams,
 ) -> Result<OAuth2ConnectResult, String> {
+    let owner =
+        crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     use crate::providers::{types::FourSharedConfig, FourSharedProvider};
 
     info!("Connecting to 4shared...");
@@ -9868,6 +10877,7 @@ pub async fn fourshared_connect(
     let connect_token = params.connect_token.clone();
     let (access_token, access_token_secret) = load_fourshared_tokens(&params.profile_id)?;
 
+    let oauth_client = params.consumer_key.clone();
     let config = FourSharedConfig {
         consumer_key: params.consumer_key,
         consumer_secret: params.consumer_secret.into(),
@@ -9888,7 +10898,16 @@ pub async fn fourshared_connect(
     let display_name = provider.display_name();
     let account_email = provider.account_email();
 
-    install_connected_provider(&state, Box::new(provider), Some(params.profile_id.clone())).await?;
+    install_connected_provider_with_owner(
+        &state,
+        Box::new(provider),
+        Some(params.profile_id.clone()),
+        None,
+        Some(oauth_client),
+        Some(owner),
+        Duration::from_secs(30),
+    )
+    .await?;
 
     info!(
         "Connected to 4shared ({})",
@@ -10536,13 +11555,15 @@ pub async fn opendrive_set_path_privacy(
     path: String,
     is_public: bool,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -10590,7 +11611,9 @@ pub async fn opendrive_set_path_access(
     path: String,
     access_level: String,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let level = crate::providers::opendrive::OpenDriveAccessLevel::from_token(&access_level)
         .ok_or_else(|| {
             format!(
@@ -10643,13 +11666,15 @@ pub async fn fourshared_set_path_privacy(
     path: String,
     is_public: bool,
     is_dir: bool,
+    expected_gui_target: Option<u64>,
     expected_generation: Option<u64>,
     require_crypt_overlay: Option<bool>,
     expected_profile_id: Option<String>,
     expected_crypt_scope: Option<String>,
 ) -> Result<(), String> {
     let _transfer_owner = state
-        .pin_transfer_owner(
+        .pin_gui_transfer_owner(
+            expected_gui_target,
             expected_generation,
             expected_profile_id.as_deref(),
             require_crypt_overlay.unwrap_or(false),
@@ -10826,7 +11851,9 @@ pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remot
 pub async fn box_trash_files(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::Box {
@@ -11168,7 +12195,9 @@ pub async fn filelu_set_file_password(
     state: State<'_, ProviderState>,
     path: String,
     password: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11189,7 +12218,9 @@ pub async fn filelu_set_file_privacy(
     state: State<'_, ProviderState>,
     path: String,
     only_me: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11209,7 +12240,9 @@ pub async fn filelu_set_file_privacy(
 pub async fn filelu_clone_file(
     state: State<'_, ProviderState>,
     path: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<String, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11228,7 +12261,9 @@ pub async fn filelu_set_folder_password(
     state: State<'_, ProviderState>,
     path: String,
     password: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -11250,7 +12285,9 @@ pub async fn filelu_set_folder_settings(
     path: String,
     filedrop: bool,
     is_public: bool,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or_else(|| "Not connected".to_string())?;
     if provider.provider_type() != ProviderType::FileLu {
@@ -12171,7 +13208,9 @@ pub async fn gitlab_batch_upload(
     state: State<'_, ProviderState>,
     files: Vec<serde_json::Value>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -12230,7 +13269,9 @@ pub async fn gitlab_batch_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -13290,7 +14331,9 @@ pub async fn github_batch_upload(
     state: State<'_, ProviderState>,
     files: Vec<serde_json::Value>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -13336,7 +14379,9 @@ pub async fn github_batch_delete(
     state: State<'_, ProviderState>,
     paths: Vec<String>,
     message: String,
+    expected_gui_target: Option<u64>,
 ) -> Result<serde_json::Value, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     let mut provider_guard = state.provider.lock().await;
     let provider = provider_guard
         .as_mut()
@@ -14933,6 +15978,94 @@ pub(crate) fn bound_compare_rows(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn gui_target_pin_serializes_writers_and_refuses_the_old_epoch() {
+        let state = ProviderState::new();
+        // No saved profile is needed for a GUI quick-connect target.
+        let pin = state.pin_gui_target(Some(0)).await.unwrap().unwrap();
+        assert!(state.transfer_owner_gate.try_write().is_err());
+        drop(pin);
+        {
+            let _change = state.transfer_owner_gate.try_write().unwrap();
+            state.advance_gui_target();
+        }
+        assert!(state
+            .pin_gui_target(Some(0))
+            .await
+            .unwrap_err()
+            .contains(CONNECTION_CHANGED_MARKER));
+        assert!(state.pin_gui_target(Some(1)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn gui_pin_keeps_the_target_until_the_waiting_switch_can_complete() {
+        let state = Arc::new(ProviderState::new());
+        let pin = state.pin_gui_target(Some(0)).await.unwrap();
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let switch = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _ = started.send(());
+                let _writer = state
+                    .transfer_owner_write(Duration::from_secs(2))
+                    .await
+                    .unwrap();
+                state.advance_gui_target();
+            })
+        };
+        ready.await.unwrap();
+        tokio::task::yield_now().await;
+        assert!(!switch.is_finished());
+        drop(pin);
+        switch.await.unwrap();
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        // Returning to a connection with the same fields does not revive A.
+        {
+            let _writer = state
+                .transfer_owner_write(Duration::from_secs(2))
+                .await
+                .unwrap();
+            state.advance_gui_target();
+        }
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        assert!(state.pin_gui_target(Some(2)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn gui_epoch_covers_overlay_arm_and_clear_without_changing_resume_generation() {
+        let state = ProviderState::new();
+        provider_arm_crypt_capability_inner(&state, Some(0))
+            .await
+            .unwrap();
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        assert!(state.pin_gui_target(Some(0)).await.is_err());
+        clear_crypt_overlay_with_wait(&state, false, Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 0);
+        assert!(state.pin_gui_target(Some(1)).await.is_err());
+        assert!(state.pin_gui_target(Some(2)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_gui_operation_releases_its_target_pin() {
+        let state = Arc::new(ProviderState::new());
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let task = {
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _pin = state.pin_gui_target(Some(0)).await.unwrap();
+                let _ = started.send(());
+                std::future::pending::<()>().await;
+            })
+        };
+        ready.await.unwrap();
+        assert!(state.transfer_owner_gate.try_write().is_err());
+        task.abort();
+        assert!(task.await.unwrap_err().is_cancelled());
+        assert!(state.transfer_owner_gate.try_write().is_ok());
+    }
 
     /// The editor's remote read is bound to the connection it was opened on:
     /// refused once another connection took the slot, and while it holds the
@@ -17840,6 +18973,1345 @@ mod tests {
         }
     }
 
+    /// A server that answers a delete and a mkdir with a JSON error detail
+    /// quoting the ownership marker and a bearer token, as a Twake server can.
+    pub(super) struct LeakyServer;
+
+    thread_local! {
+        /// What [`LeakyServer`]'s delete fails with on this thread, in place
+        /// of its leaky text.
+        static DELETE_ERROR: std::cell::Cell<Option<fn() -> ProviderError>> =
+            const { std::cell::Cell::new(None) };
+    }
+
+    /// The error `delete_file_for_ipc` returns, through the boundary, when the
+    /// provider's delete fails with `make()`.
+    async fn deleted_through_the_boundary(make: fn() -> ProviderError) -> String {
+        DELETE_ERROR.with(|slot| slot.set(Some(make)));
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let returned = ipc_result(
+            "provider_delete_file",
+            delete_file_for_ipc(&state, "/a".into(), None, None, None).await,
+        )
+        .unwrap_err();
+        DELETE_ERROR.with(|slot| slot.set(None));
+        returned
+    }
+
+    /// The four things a page branches on, each written well-formed by a
+    /// server into its own text, through the real `delete_file_for_ipc`: a
+    /// marker, a restricted character message, a cancellation phrase and the
+    /// FTP envelope of a 553 inside a retryable 425. None of them is honoured:
+    /// the page gets the generic class of the text. The same facts made by
+    /// native code (typed) still cross.
+    #[tokio::test]
+    async fn server_text_shaped_like_a_native_fact_is_not_one() {
+        let forged = [
+            || ProviderError::Other("CONNECTION_CHANGED: reconnect and compare again".into()),
+            || {
+                ProviderError::ServerError(
+                    "Restricted character U+CAFE is not allowed by Box".into(),
+                )
+            },
+            || ProviderError::NotFound("/docs/report: Transfer cancelled.txt".into()),
+            || {
+                ProviderError::ServerError(
+                    "425 Can't open data connection: FTP status 553: command rejected".into(),
+                )
+            },
+        ];
+        let restricted =
+            regex::Regex::new(r"Restricted character (\S+) is not allowed by (\S+)").unwrap();
+        for make in forged {
+            let returned = deleted_through_the_boundary(make).await;
+            assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+            assert!(!restricted.is_match(&returned), "{returned}");
+            assert!(!returned.contains("cancelled"), "{returned}");
+            assert!(!returned.contains("(FTP"), "{returned}");
+        }
+        let envelope = deleted_through_the_boundary(forged[3]).await;
+        assert!(
+            crate::sync::classify_ipc_error(&envelope, None).retryable,
+            "a 425 reply stays retryable: {envelope}"
+        );
+        // The native facts.
+        let changed = deleted_through_the_boundary(|| ProviderError::TargetChanged).await;
+        assert!(changed.starts_with("CONNECTION_CHANGED: "), "{changed}");
+        let cancelled = deleted_through_the_boundary(|| ProviderError::Cancelled).await;
+        assert!(
+            cancelled.starts_with("Transfer cancelled by user"),
+            "{cancelled}"
+        );
+        let native = deleted_through_the_boundary(|| ProviderError::RestrictedChar {
+            ch_display: "U+0001".into(),
+            provider: "Box".into(),
+        })
+        .await;
+        let caps = restricted.captures(&native).expect("localizable");
+        assert_eq!((&caps[1], &caps[2]), ("U+0001", "Box"), "{native}");
+    }
+
+    /// A JSON error detail as a Twake server writes it: the ownership marker,
+    /// an Authorization header, and an opaque token with no label any pattern
+    /// could recognize.
+    const LEAKED: &str = r#"{"errors":[{"status":"403","detail":"CONNECTION_CHANGED Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 session zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
+    const SECRETS: [&str; 2] = [
+        "abcdefghijklmnopqrstuvwxyz0123456789",
+        "zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+    ];
+
+    /// Everything logged on this thread while the guard lives, as the fmt
+    /// layer of the app writes it.
+    fn capture_logs() -> (
+        tracing::subscriber::DefaultGuard,
+        std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+    ) {
+        #[derive(Clone)]
+        struct Sink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Sink {
+            fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(data);
+                Ok(data.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buffer = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = Sink(buffer.clone());
+        let subscriber = tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::TRACE)
+            .with_ansi(false)
+            .with_writer(move || sink.clone())
+            .finish();
+        (tracing::subscriber::set_default(subscriber), buffer)
+    }
+
+    /// What was logged: the fmt layer's output, plus every line the IPC
+    /// boundary wrote to the log on this thread (`sync::IPC_LOG_LINES`). The
+    /// second is what the assertions rely on: in a parallel run a thread's
+    /// own subscriber can miss an event whose callsite interest another
+    /// thread cached.
+    fn logged(buffer: &std::sync::Mutex<Vec<u8>>) -> String {
+        let mut text = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+        crate::sync::IPC_LOG_LINES.with(|lines| {
+            for line in lines.borrow_mut().drain(..) {
+                text.push('\n');
+                text.push_str(&line);
+            }
+        });
+        text
+    }
+
+    fn assert_no_server_text(returned: &str) {
+        for secret in SECRETS {
+            assert!(!returned.contains(secret), "{returned}");
+        }
+        assert!(!returned.contains("detail"), "{returned}");
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for LeakyServer {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "leaky-server".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::Other(LEAKED.to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(DELETE_ERROR
+                .with(std::cell::Cell::get)
+                .map_or_else(|| ProviderError::Other(LEAKED.to_string()), |make| make()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            // Every source is there and no backup yet, so a backup goes on
+            // to the failing write.
+            if path.contains("receipt-error") {
+                return Err(ProviderError::Other(LEAKED.to_string()));
+            }
+            if path.contains(".aeroftp-versions") {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            Ok(!path.contains(".aeroftp-versions"))
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("leaky-server".to_string())
+        }
+    }
+
+    /// What `provider_delete_file` and `provider_mkdir` return to the webview,
+    /// through the same boundary the commands use: none of the server's text,
+    /// only the error's kind, its HTTP status and the marker the runner
+    /// confirms natively; `classify_transfer_error` reads the kind back.
+    #[tokio::test]
+    async fn a_provider_error_reaches_the_webview_without_the_server_text() {
+        let (_logs, log) = capture_logs();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let deleted = ipc_result(
+            "provider_delete_file",
+            delete_file_for_ipc(&state, "/a".into(), None, None, None).await,
+        );
+        let created = ipc_result(
+            "provider_mkdir",
+            mkdir_for_ipc(&state, "/d".into(), None, None).await,
+        );
+        for returned in [deleted.unwrap_err(), created.unwrap_err()] {
+            assert_no_server_text(&returned);
+            // The server wrote the marker and a status: neither is honoured.
+            assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+            assert!(!returned.contains("(HTTP"), "{returned}");
+            let raw_kind = crate::sync::classify_sync_error(LEAKED, None);
+            let read_back = crate::sync::classify_ipc_error(&returned, None);
+            assert_eq!(
+                (read_back.kind, read_back.retryable),
+                (raw_kind.kind, raw_kind.retryable)
+            );
+        }
+        // The native log (whose targets reach the webview too) holds the
+        // command, the kind and the status, and none of the server's text.
+        let log = logged(&log);
+        assert_no_server_text(&log);
+        assert!(log.contains("provider_delete_file failed"), "{log}");
+        assert!(log.contains("provider_mkdir failed"), "{log}");
+        assert!(!log.contains("(HTTP"), "{log}");
+        // Without the boundary the same call hands the token over.
+        let raw = delete_file_for_ipc(&state, "/a".into(), None, None, None)
+            .await
+            .unwrap_err();
+        assert!(raw.text().contains(SECRETS[1]));
+    }
+
+    /// The tracing event itself, as a subscriber receives it: in a child
+    /// process with this test alone on one thread, so no other test's
+    /// subscriber has decided the callsite's interest first. The event names
+    /// the command and the kind, and holds none of the server's text.
+    #[test]
+    fn the_logged_tracing_event_of_a_command_error_holds_no_server_text() {
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "provider_commands::tests::the_logged_tracing_event_of_a_command_error_holds_no_server_text",
+        ) {
+            return;
+        }
+        let (guard, buffer) = capture_logs();
+        tracing::callsite::rebuild_interest_cache();
+        let returned =
+            ipc_result::<(), String>("provider_delete_file", Err(LEAKED.into())).unwrap_err();
+        drop(guard);
+        let event = String::from_utf8_lossy(&buffer.lock().unwrap()).into_owned();
+        assert!(
+            event.contains("provider_delete_file failed"),
+            "the event was captured: {event:?}"
+        );
+        assert!(event.contains("WARN"), "{event}");
+        assert_no_server_text(&event);
+        assert_no_server_text(&returned);
+    }
+
+    /// An EC sidecar whose upload the provider refuses: the command answers
+    /// `Ok` with `GenerateFailed`, and the whole response as the webview
+    /// receives it (the command's own composition: `ipc_result` then
+    /// `for_ipc`) carries none of the server's detail.
+    #[tokio::test]
+    async fn an_ec_upload_failure_reaches_the_webview_without_the_server_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("data.bin");
+        let body: Vec<u8> = (0..262_144u32)
+            .map(|i| (i.wrapping_mul(2_654_435_761) >> 13) as u8)
+            .collect();
+        std::fs::write(&local, body).unwrap();
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let raw = crate::sync_ec_generate_for_ipc(
+            &app,
+            &state,
+            local.to_string_lossy().into_owned(),
+            "/remote/data.bin".into(),
+            "data.bin".into(),
+            Some(10),
+            None,
+            Some(true),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(raw.status, crate::sync::SyncEcStatus::GenerateFailed),
+            "{:?}",
+            raw.status
+        );
+        assert!(
+            raw.message
+                .as_deref()
+                .is_some_and(|m| m.contains(SECRETS[1])),
+            "the raw payload holds the token"
+        );
+        let response = ipc_result::<_, String>("sync_ec_generate", Ok(raw))
+            .map(|r| r.for_ipc("sync_ec_generate"))
+            .unwrap();
+        let wire = serde_json::to_string(&response).unwrap();
+        assert_no_server_text(&wire);
+        assert!(wire.contains("generate_failed"), "{wire}");
+    }
+
+    /// The runner's upload and download report a failure twice: the returned
+    /// error and an `error` transfer event. Both reach the webview as the same
+    /// fixed message, so the opaque token in the server's detail is in neither.
+    #[test]
+    fn a_runner_transfer_error_event_carries_no_server_text() {
+        let event = |event_type: &str, message: &str| crate::TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: "t".into(),
+            filename: "a.bin".into(),
+            direction: "upload".into(),
+            message: Some(message.to_string()),
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        let emitted = runner_transfer_event("provider_upload_file", event("error", LEAKED));
+        let emitted = emitted.message.unwrap();
+        assert_no_server_text(&emitted);
+        let returned =
+            ipc_result::<(), String>("provider_upload_file", Err(LEAKED.into())).unwrap_err();
+        assert_eq!(emitted, returned, "the event says what the command returns");
+        // Every kind that reports a failure: a bulk file's and a delete's too.
+        for kind in ["file_error", "delete_error", "delete_file_error"] {
+            let emitted = runner_transfer_event("delete_remote_file", event(kind, LEAKED));
+            assert_no_server_text(emitted.message.as_deref().unwrap());
+        }
+        // Other events keep their text.
+        let start = runner_transfer_event(
+            "provider_upload_file",
+            event("start", "Starting upload: a.bin"),
+        );
+        assert_eq!(start.message.as_deref(), Some("Starting upload: a.bin"));
+
+        // Every event of the runner's transfer bodies goes through it.
+        let provider = include_str!("provider_commands.rs");
+        let lib = include_str!("lib.rs");
+        for (source, function) in [
+            (provider, "download_file_for_ipc"),
+            (provider, "upload_file_for_ipc"),
+            (provider, "run_dag_download_leaf"),
+            (provider, "run_dag_upload_leaf"),
+            (lib, "download_file_for_ipc"),
+            (lib, "upload_file_for_ipc"),
+            (lib, "delete_remote_file_for_ipc"),
+        ] {
+            // The plain or the runtime-generic signature (`<R: Runtime>(`).
+            let start = [
+                format!("\nasync fn {function}("),
+                format!("\nasync fn {function}<"),
+            ]
+            .iter()
+            .find_map(|head| source.find(head.as_str()))
+            .unwrap_or_else(|| panic!("{function}"));
+            let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+            assert!(
+                !body.contains("emit_gui_transfer_event("),
+                "{function} emits around the boundary"
+            );
+            assert!(
+                !body.contains("AppHandleSink::new("),
+                "{function} hands the engine a raw sink"
+            );
+        }
+    }
+
+    /// The events a run's command really emits, read back from a mock
+    /// application (`tauri::test`): the error of a single-file transfer and
+    /// a bulk file's `file_error` reach the webview as the fixed message,
+    /// never with the server's text, and a start event keeps its own.
+    #[test]
+    fn the_emitted_runner_events_carry_no_server_text() {
+        use tauri::Listener;
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let handle = app.handle().clone();
+        let event = |event_type: &str, id: &str, message: &str| crate::TransferEvent {
+            event_type: event_type.to_string(),
+            transfer_id: id.into(),
+            filename: "a.bin".into(),
+            direction: "download".into(),
+            message: Some(message.to_string()),
+            progress: None,
+            path: None,
+            delta_stats: None,
+            fallback_reason: None,
+        };
+        emit_gui_transfer_event_for_runner(
+            "provider_download_file",
+            &handle,
+            event("start", "emitted-single", "Starting download: a.bin"),
+        );
+        emit_gui_transfer_event_for_runner(
+            "provider_download_file",
+            &handle,
+            event("error", "emitted-single", LEAKED),
+        );
+        let bulk = RunnerEventSink::new(handle.clone(), "provider_sync_transfer_bulk");
+        bulk.emit_transfer_event(event("file_start", "emitted-bulk", "a.bin"));
+        bulk.emit_transfer_event(event("file_error", "emitted-bulk", LEAKED));
+        let payloads = captured.lock().unwrap().clone();
+        assert_eq!(payloads.len(), 4, "{payloads:?}");
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert!(payloads[0].contains("Starting download: a.bin"));
+        let returned =
+            ipc_result::<(), String>("provider_download_file", Err(LEAKED.into())).unwrap_err();
+        let error: serde_json::Value = serde_json::from_str(&payloads[1]).unwrap();
+        assert_eq!(
+            error["message"],
+            returned.as_str(),
+            "the event says what the command returns"
+        );
+        // The bulk command hands the engine this sink, not a raw one.
+        let bulk_source = include_str!("provider_bulk_commands.rs");
+        let start = bulk_source
+            .find("pub async fn provider_sync_transfer_bulk(")
+            .unwrap();
+        let body = &bulk_source[start..start + bulk_source[start..].find("\n}\n").unwrap()];
+        assert!(body.contains("RunnerEventSink::new(app, \"provider_sync_transfer_bulk\")"));
+        assert!(!body.contains("AppHandleSink::new("));
+    }
+
+    /// The `message` of every `error` event among the captured payloads.
+    fn error_event_messages(payloads: &[String]) -> Vec<String> {
+        payloads
+            .iter()
+            .filter_map(|payload| serde_json::from_str::<serde_json::Value>(payload).ok())
+            .filter(|event| event.get("event_type").and_then(|v| v.as_str()) == Some("error"))
+            .filter_map(|event| {
+                event
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+            })
+            .collect()
+    }
+
+    /// The real download command, not a fabricated error: `LeakyServer`'s
+    /// opaque token is in neither the returned error nor the emitted events,
+    /// and the error event says what the command returns.
+    #[tokio::test]
+    async fn a_failing_provider_download_command_carries_no_server_text() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(LeakyServer));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("downloaded.bin");
+        let returned = provider_download_file(
+            app.handle().clone(),
+            app.state::<ProviderState>(),
+            "/remote/a.bin".to_string(),
+            local.to_string_lossy().into_owned(),
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_no_server_text(&returned);
+        let payloads = captured.lock().unwrap().clone();
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert_eq!(
+            error_event_messages(&payloads),
+            vec![returned.clone()],
+            "{payloads:?}"
+        );
+    }
+
+    /// The real upload command, same boundary as the download: the provider's
+    /// opaque token reaches the page by neither the return nor the events.
+    #[tokio::test]
+    async fn a_failing_provider_upload_command_carries_no_server_text() {
+        use tauri::{Listener, Manager};
+        let app = tauri::test::mock_app();
+        let captured = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let sink = captured.clone();
+        app.listen("transfer_event", move |event| {
+            sink.lock().unwrap().push(event.payload().to_string());
+        });
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(LeakyServer));
+        app.manage(provider_state);
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("upload.bin");
+        std::fs::write(&local, b"payload").unwrap();
+        let returned = provider_upload_file(
+            app.handle().clone(),
+            app.state::<ProviderState>(),
+            local.to_string_lossy().into_owned(),
+            "/remote/upload.bin".to_string(),
+            None,
+            Some(false),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .unwrap_err();
+        assert_no_server_text(&returned);
+        let payloads = captured.lock().unwrap().clone();
+        for payload in &payloads {
+            assert_no_server_text(payload);
+        }
+        assert_eq!(
+            error_event_messages(&payloads),
+            vec![returned.clone()],
+            "{payloads:?}"
+        );
+    }
+
+    /// A name the provider forbids is refused natively with a stable text
+    /// the page localizes (`localizeRestrictedCharError`). That text is not
+    /// the server's and keeps its shape through the boundary, for a mkdir the
+    /// command refuses itself and for a delete whose error carries it. A
+    /// server cannot pass its own text off as one: a forged provider name or
+    /// character is dropped with the rest of the text.
+    #[tokio::test]
+    async fn a_restricted_character_error_keeps_its_localizable_text() {
+        let pattern =
+            regex::Regex::new(r"Restricted character (\S+) is not allowed by (\S+)").unwrap();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let created = ipc_result(
+            "provider_mkdir",
+            mkdir_for_ipc(&state, "/bad\tname".into(), None, None).await,
+        )
+        .unwrap_err();
+        let caps = pattern.captures(&created).expect("localizable");
+        assert_eq!((&caps[1], &caps[2]), ("U+0009", "WebDav"), "{created}");
+        // The same sentence as text, with no typed origin: not localized.
+        let deleted = ipc_result::<(), String>(
+            "provider_delete_file",
+            Err("Failed to delete file: Restricted character U+0001 is not allowed by Box".into()),
+        )
+        .unwrap_err();
+        assert!(pattern.captures(&deleted).is_none(), "{deleted}");
+        for forged in [
+            "Restricted character U+0009 is not allowed by zq8Xv2Lr9TmPq4Ks7Wd1Hy",
+            "Restricted character zq8Xv2Lr9TmPq4Ks7Wd1Hy is not allowed by Box",
+        ] {
+            let returned =
+                ipc_result::<(), String>("provider_delete_file", Err(forged.into())).unwrap_err();
+            assert!(!returned.contains("zq8Xv2Lr9TmPq4Ks7Wd1Hy"), "{returned}");
+        }
+    }
+
+    /// The receipt check of a sync run's backup, on a provider whose `stat`
+    /// fails with the server's text.
+    #[tokio::test]
+    async fn a_receipt_check_error_reaches_the_webview_without_the_server_text() {
+        let (_logs, log) = capture_logs();
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let call = || {
+            crate::sync_backup_verify_receipt_for_ipc(
+                &app,
+                &state,
+                "provider".into(),
+                "/root".into(),
+                ".aeroftp-versions".into(),
+                "20260925T070000Z".into(),
+                "docs/receipt-error.txt".into(),
+                "/root/.aeroftp-versions/20260925T070000Z/docs/receipt-error.txt".into(),
+                None,
+            )
+        };
+        let raw = call().await.unwrap_err();
+        assert!(raw.text().contains(SECRETS[1]), "{raw:?}");
+        let returned = ipc_result("sync_backup_verify_receipt", call().await).unwrap_err();
+        assert_no_server_text(&returned);
+        // The provider's text quotes the marker: not a typed owner change.
+        assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+        let log = logged(&log);
+        assert_no_server_text(&log);
+        assert!(log.contains("sync_backup_verify_receipt failed"), "{log}");
+    }
+
+    /// The remote backup of a sync run, on a provider: none of the provider's
+    /// text reaches the webview.
+    #[tokio::test]
+    async fn a_remote_backup_error_reaches_the_webview_without_the_server_text() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        let call = || {
+            crate::sync_backup_archive_remote_for_ipc(
+                &app,
+                &state,
+                true,
+                "/root".into(),
+                ".aeroftp-versions".into(),
+                "20260925T070000Z".into(),
+                "docs/a.txt".into(),
+                None,
+            )
+        };
+        let raw = call().await.unwrap_err();
+        assert!(raw.text().contains(SECRETS[1]), "{raw:?}");
+        let returned = ipc_result("sync_backup_archive_remote", call().await).unwrap_err();
+        assert_no_server_text(&returned);
+        assert!(!returned.contains("CONNECTION_CHANGED"), "{returned}");
+    }
+
+    /// The legacy FTP session of a sync run: a server reply quoting the marker
+    /// and a token. `safe_ftp_error` already keeps reply text out, and the
+    /// boundary would drop it if it came by any other route.
+    #[tokio::test]
+    async fn a_legacy_ftp_error_reaches_the_webview_without_the_server_text() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let reply = match line.split_whitespace().next().unwrap_or("") {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 in\r\n".to_string(),
+                    "PWD" => "257 \"/\"\r\n".to_string(),
+                    "MKD" => format!("550 {LEAKED}\r\n"),
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let app = crate::AppState::new();
+        {
+            let mut ftp = app.ftp_manager.lock().await;
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+        }
+        let state = ProviderState::new();
+        let returned = ipc_result(
+            "create_remote_folder",
+            crate::create_remote_folder_for_ipc(&app, &state, "/d".into(), None).await,
+        )
+        .unwrap_err();
+        assert_no_server_text(&returned);
+        assert!(returned.contains("[sync-error:"), "{returned}");
+        assert_no_server_text(
+            &ipc_result::<(), String>(
+                "create_remote_folder",
+                Err(format!("Failed to create folder: {LEAKED}")),
+            )
+            .unwrap_err(),
+        );
+    }
+
+    /// The connection a sync run was gated on is replaced after the gate:
+    /// every call of B is counted, and any is a write to the wrong server.
+    struct Replacement(Arc<AtomicUsize>);
+
+    impl Replacement {
+        fn touched(&self) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for Replacement {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::WebDav
+        }
+        fn display_name(&self) -> String {
+            "replacement".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.touched();
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            self.touched();
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            self.touched();
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.touched();
+            Ok(RemoteEntry::file("f".to_string(), path.to_string(), 1))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            self.touched();
+            Ok(1)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            self.touched();
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            self.touched();
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            self.touched();
+            Ok("replacement".to_string())
+        }
+    }
+
+    /// E2: the connection a sync run was gated on (GUI target 0) is replaced
+    /// by B after the gate, under the owner gate as every connect does. Each
+    /// command the runner issues after the gate is called as the webview
+    /// calls it, with the run's expected target (`expectedGuiTarget`, or
+    /// `params.expected_gui_target` for the legacy transfers): directory
+    /// creation, backup moves, single transfers, deletes, folder removal, EC,
+    /// and the run's other guarded commands (its index load and save, the
+    /// resume owner check, the cancel reset, both speed limits, the bulk
+    /// probe and the FTP keepalive). Each is refused with the owner change,
+    /// and neither B, the legacy FTP session, the local filesystem, the index
+    /// folder nor the speed limits are touched. The bulk transfer is
+    /// `provider_bulk_commands::stale_gui_bulk_is_refused_before_the_replacement_provider_is_used`.
+    #[tokio::test]
+    async fn every_run_command_after_the_gate_refuses_a_switched_target() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_state = ProviderState::new();
+        {
+            let _switch = provider_state
+                .transfer_owner_write(Duration::from_secs(1))
+                .await
+                .unwrap();
+            *provider_state.provider.lock().await = Some(Box::new(Replacement(calls.clone())));
+            provider_state.advance_gui_target();
+        }
+        app.manage(provider_state);
+        app.manage(crate::AppState::new());
+        let handle = app.handle().clone();
+        // The run's target, read at the gate.
+        let gated = Some(0);
+        let dir = tempfile::tempdir().unwrap();
+        let local = |name: &str| dir.path().join(name).to_string_lossy().into_owned();
+        std::fs::write(local("kept.txt"), b"kept").unwrap();
+        std::fs::create_dir(local("empty")).unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+        let stamp = "20260925T070000Z".to_string();
+        let versions = ".aeroftp-versions".to_string();
+        let ec = |relative: &str| {
+            (
+                local(relative),
+                format!("/remote/{relative}"),
+                relative.to_string(),
+            )
+        };
+
+        let mut answers: Vec<(&str, Result<(), String>)> = Vec::new();
+        // Directory creation.
+        answers.push((
+            "provider_mkdir",
+            provider_mkdir(app.state(), "/remote/d".into(), None, gated, None).await,
+        ));
+        answers.push((
+            "create_remote_folder",
+            crate::create_remote_folder(app.state(), app.state(), "/remote/d".into(), gated, None)
+                .await,
+        ));
+        answers.push((
+            "create_local_folder",
+            crate::create_local_folder(local("made"), app.state(), gated, Some(true), None).await,
+        ));
+        // Backup moves.
+        answers.push((
+            "sync_backup_archive_remote",
+            crate::sync_backup_archive_remote(
+                app.state(),
+                app.state(),
+                true,
+                "/remote".into(),
+                versions.clone(),
+                stamp.clone(),
+                "docs/a.txt".into(),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_backup_archive_local",
+            crate::sync_backup_archive_local(
+                app.state(),
+                gated,
+                Some(true),
+                root.clone(),
+                versions.clone(),
+                stamp.clone(),
+                "kept.txt".into(),
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_backup_verify_receipt",
+            crate::sync_backup_verify_receipt(
+                app.state(),
+                app.state(),
+                "provider".into(),
+                "/remote".into(),
+                versions.clone(),
+                stamp.clone(),
+                "docs/a.txt".into(),
+                format!("/remote/{versions}/{stamp}/docs/a.txt"),
+                gated,
+            )
+            .await
+            .map(drop),
+        ));
+        // Single transfers, provider and legacy FTP.
+        answers.push((
+            "provider_upload_file",
+            provider_upload_file(
+                handle.clone(),
+                app.state(),
+                local("kept.txt"),
+                "/remote/up.txt".into(),
+                None,
+                Some(false),
+                None,
+                None,
+                gated,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "provider_download_file",
+            provider_download_file(
+                handle.clone(),
+                app.state(),
+                "/remote/down.txt".into(),
+                local("down.txt"),
+                None,
+                Some(false),
+                None,
+                None,
+                gated,
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "upload_file",
+            ipc_result(
+                "upload_file",
+                crate::upload_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    app.state(),
+                    crate::UploadParams {
+                        expected_gui_target: gated,
+                        local_path: local("kept.txt"),
+                        remote_path: "/remote/up.txt".into(),
+                        use_delta: false,
+                    },
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        answers.push((
+            "download_file",
+            ipc_result(
+                "download_file",
+                crate::download_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    app.state(),
+                    crate::DownloadParams {
+                        expected_gui_target: gated,
+                        remote_path: "/remote/down.txt".into(),
+                        local_path: local("legacy-down.txt"),
+                        modified: None,
+                        use_delta: false,
+                    },
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        // Deletes and folder removal.
+        answers.push((
+            "provider_delete_file",
+            ipc_result(
+                "provider_delete_file",
+                delete_file_for_ipc(
+                    &app.state::<ProviderState>(),
+                    "/remote/a".into(),
+                    None,
+                    gated,
+                    None,
+                )
+                .await,
+            ),
+        ));
+        answers.push((
+            "delete_remote_file",
+            ipc_result(
+                "delete_remote_file",
+                crate::delete_remote_file_for_ipc(
+                    handle.clone(),
+                    app.state(),
+                    Arc::new(AtomicBool::new(false)),
+                    app.state(),
+                    "/remote/a".into(),
+                    false,
+                    gated,
+                )
+                .await,
+            )
+            .map(drop),
+        ));
+        answers.push((
+            "delete_local_file",
+            crate::delete_local_file_with(
+                handle.clone(),
+                app.state(),
+                local("kept.txt"),
+                app.state(),
+                gated,
+                Some(true),
+                None,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        for target in ["provider", "local"] {
+            let path = if target == "local" {
+                local("empty")
+            } else {
+                "/remote/empty".into()
+            };
+            answers.push((
+                "sync_remove_empty_dir",
+                ipc_result(
+                    "sync_remove_empty_dir",
+                    crate::sync_remove_empty_dir_for_ipc(
+                        app.state(),
+                        app.state(),
+                        target.into(),
+                        path,
+                        gated,
+                        crate::sync_run_lease::admit(None).unwrap(),
+                    )
+                    .await,
+                )
+                .map(drop),
+            ));
+        }
+        // EC sidecars.
+        let (ec_local, ec_remote, ec_relative) = ec("kept.txt");
+        answers.push((
+            "sync_ec_generate",
+            crate::sync_ec_generate(
+                app.state(),
+                app.state(),
+                ec_local.clone(),
+                ec_remote.clone(),
+                ec_relative.clone(),
+                Some(10),
+                None,
+                Some(true),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "sync_ec_verify_repair",
+            crate::sync_ec_verify_repair(
+                app.state(),
+                app.state(),
+                ec_local,
+                ec_remote,
+                ec_relative,
+                None,
+                None,
+                Some(true),
+                gated,
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+
+        // The run's other guarded commands: its index, its resume check, its
+        // cancel reset, its speed limits, the bulk probe and the FTP keepalive.
+        // This pair's own index file: the folder is shared with every other
+        // test of the process, so only this name is looked at (the local
+        // root is this test's temporary folder, no other test has it).
+        let own_index = crate::sync::sync_index_dir()
+            .unwrap()
+            .join(crate::sync::index_filename(&root, "/remote"));
+        assert!(!own_index.exists(), "the pair had an index before the run");
+        let index: crate::sync::SyncIndex = serde_json::from_value(serde_json::json!({
+            "version": 2,
+            "last_sync": "2026-11-14T00:00:00Z",
+            "local_path": root.clone(),
+            "remote_path": "/remote",
+            "files": {},
+        }))
+        .unwrap();
+        answers.push((
+            "save_sync_index_cmd",
+            crate::save_sync_index_cmd(
+                app.state(),
+                index,
+                None,
+                gated,
+                Some("test-owner-v1".into()),
+                Some(true),
+                None,
+            )
+            .await,
+        ));
+        answers.push((
+            "load_sync_index_cmd",
+            crate::load_sync_index_cmd(
+                app.state(),
+                root.clone(),
+                "/remote".into(),
+                None,
+                gated,
+                Some("test-owner-v1".into()),
+                Some(true),
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "provider_gui_verify_resume_owner",
+            provider_gui_verify_resume_owner(app.state(), 0, true, "test-owner-v1".into()).await,
+        ));
+        answers.push((
+            "reset_cancel_flag",
+            crate::reset_cancel_flag(app.state(), app.state(), gated).await,
+        ));
+        answers.push((
+            "set_speed_limit",
+            crate::set_speed_limit(app.state(), app.state(), 512, 256, gated).await,
+        ));
+        answers.push((
+            "provider_set_speed_limit",
+            provider_set_speed_limit(app.state(), 256, 512, gated).await,
+        ));
+        answers.push((
+            "provider_bulk_support",
+            crate::provider_bulk_commands::provider_bulk_support(app.state(), gated)
+                .await
+                .map(drop),
+        ));
+        answers.push((
+            "ftp_noop",
+            crate::ftp_noop(app.state(), app.state(), gated).await,
+        ));
+
+        assert_eq!(answers.len(), 25);
+        // Every command that was not refused by the target, listed at once.
+        let not_refused: Vec<String> = answers
+            .iter()
+            .filter_map(|(command, answer)| match answer {
+                Err(error) if error.contains(CONNECTION_CHANGED_MARKER) => None,
+                Err(error) => Some(format!("{command}: {error}")),
+                Ok(()) => Some(format!("{command}: ran")),
+            })
+            .collect();
+        assert!(
+            not_refused.is_empty(),
+            "not refused by the switched target: {not_refused:#?}"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 0, "the replacement was used");
+        // Nothing local was created, moved or deleted.
+        let mut left: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(left, ["empty", "kept.txt"]);
+        assert_eq!(std::fs::read(local("kept.txt")).unwrap(), b"kept");
+        // No index of A was written under B, and B's limits are unchanged.
+        assert!(!own_index.exists(), "an index was written");
+        let limits = &app.state::<crate::AppState>().speed_limits;
+        assert_eq!(
+            (
+                limits.download_bps.load(Ordering::Relaxed),
+                limits.upload_bps.load(Ordering::Relaxed)
+            ),
+            (0, 0)
+        );
+        // The same target read after the switch is accepted: the refusal is
+        // the epoch, not the commands.
+        assert!(app
+            .state::<ProviderState>()
+            .pin_gui_target(Some(1))
+            .await
+            .is_ok());
+    }
+
+    /// E2: an overlay change is a target change. A run gated before the
+    /// overlay was armed, unlocked, locked to the view only or cleared has
+    /// its commands refused afterwards, and the provider is not called by
+    /// them; a run gated after the change is not refused.
+    #[tokio::test]
+    async fn a_run_command_after_an_overlay_change_is_refused() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(Replacement(calls.clone())));
+        app.manage(provider_state);
+        let state = app.state::<ProviderState>();
+        let epoch = || state.gui_target_epoch.load(Ordering::SeqCst);
+        let unlock: ApplyCryptOverlayParams = serde_json::from_value(serde_json::json!({
+            "kind": "rclone-crypt",
+            "remote_scope": "/",
+            "filename_encryption": "standard",
+            "directory_name_encryption": true,
+            "password": "test-password",
+            "salt": "test-salt",
+            "password_form": "clear",
+            "salt_form": "clear",
+        }))
+        .unwrap();
+        let mut unlock = Some(unlock);
+        for change in ["arm", "unlock", "view-only lock", "clear"] {
+            let gated = epoch();
+            match change {
+                "arm" => provider_arm_crypt_capability_inner(&state, None)
+                    .await
+                    .unwrap(),
+                "unlock" => {
+                    // The target moves before the vault work, whatever it
+                    // answers.
+                    let _ =
+                        provider_apply_crypt_overlay_inner(&state, unlock.take().unwrap()).await;
+                }
+                "view-only lock" => {
+                    provider_lock_crypt_overlay(app.state()).await.unwrap();
+                }
+                _ => {
+                    clear_crypt_overlay_with_wait(&state, true, Duration::from_secs(1))
+                        .await
+                        .unwrap();
+                }
+            }
+            assert_ne!(epoch(), gated, "{change}: the target did not move");
+            let before = calls.load(Ordering::SeqCst);
+            for (command, answer) in [
+                (
+                    "provider_mkdir",
+                    provider_mkdir(app.state(), "/remote/d".into(), None, Some(gated), None).await,
+                ),
+                (
+                    "provider_delete_file",
+                    ipc_result(
+                        "provider_delete_file",
+                        delete_file_for_ipc(&state, "/remote/a".into(), None, Some(gated), None)
+                            .await,
+                    ),
+                ),
+            ] {
+                let error = answer.expect_err(&format!("{change}: {command} ran"));
+                assert!(
+                    error.contains(CONNECTION_CHANGED_MARKER),
+                    "{change}: {command}: {error}"
+                );
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                before,
+                "{change}: a refused command reached the provider"
+            );
+            // A run gated after the change is not refused by the target.
+            assert!(
+                state.pin_gui_target(Some(epoch())).await.is_ok(),
+                "{change}"
+            );
+        }
+    }
+
     /// A provider whose mkdir fails with a given error and whose folder is
     /// or is not there, for `folder_is_there_after_failed_mkdir`.
     struct MkdirRefusal {
@@ -18278,6 +20750,7 @@ mod tests {
             CancellationToken::new(),
             direction,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(max_concurrent),
@@ -18567,6 +21040,7 @@ mod tests {
             CancellationToken::new(),
             TransferDirection::Upload,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(1),
@@ -18642,6 +21116,7 @@ mod tests {
             CancellationToken::new(),
             TransferDirection::Download,
             super::ProviderFileBatchParams {
+                expected_gui_target: None,
                 no_clobber: false,
                 entries,
                 max_concurrent: Some(3),
@@ -21863,6 +24338,30 @@ mod overlay_activation_discard_tests {
 #[cfg(test)]
 mod restored_transfer_owner_tests {
     use super::*;
+
+    #[tokio::test]
+    async fn index_owner_pin_refuses_another_binding_on_the_same_epoch() {
+        let state = state_with_profile();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let binding = state.gui_owner_binding(false).await.unwrap();
+        drop(
+            state
+                .pin_gui_index_owner(Some(epoch), Some(&binding), false)
+                .await
+                .unwrap(),
+        );
+        *state.legacy_owner_binding.lock().unwrap() =
+            Some(crate::sync_owner::epoch_binding("replacement-owner", epoch));
+        assert!(state
+            .pin_gui_index_owner(Some(epoch), Some(&binding), false)
+            .await
+            .is_err());
+        assert!(state
+            .pin_gui_index_owner(Some(epoch), None, false)
+            .await
+            .is_err());
+    }
+
     use crate::providers::edit_replace_tests::EditFake;
 
     fn state_with_profile() -> ProviderState {
@@ -21883,6 +24382,755 @@ mod restored_transfer_owner_tests {
             scope,
         )));
         state.overlay_wrapped.store(true, Ordering::SeqCst);
+    }
+
+    struct PausedDisconnect {
+        started: Arc<tokio::sync::Notify>,
+        release: Arc<tokio::sync::Notify>,
+    }
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for PausedDisconnect {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            "paused".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.started.notify_one();
+            self.release.notified().await;
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
+    /// The target a page-saved index records: the legacy FTP session's while
+    /// it is logged in, a local pair with no connection, and never a stale
+    /// one after the legacy session changes; a provider run with no provider
+    /// installed is a changed target, not a local pair.
+    #[tokio::test]
+    async fn the_gui_target_identity_follows_the_installed_session() {
+        let state = ProviderState::new();
+        assert_eq!(
+            state.gui_target_identity(false).await.unwrap(),
+            LOCAL_PAIR_TARGET_IDENTITY
+        );
+        assert_eq!(
+            state.gui_target_identity(true).await,
+            Err(ProviderError::TargetChanged.to_string())
+        );
+        let first = crate::cloud_provider_factory::legacy_ftp_target_identity("a.example", "u");
+        state.set_legacy_target_identity(first.clone());
+        assert_eq!(state.gui_target_identity(false).await.unwrap(), first);
+        let _change = state
+            .begin_legacy_ftp_target_change(Duration::from_secs(1))
+            .await
+            .unwrap();
+        assert_eq!(
+            state.gui_target_identity(false).await.unwrap(),
+            LOCAL_PAIR_TARGET_IDENTITY,
+            "a new legacy login records its own target"
+        );
+        drop(_change);
+    }
+
+    /// H1: tokens whose app is unknown (a record from before the app was
+    /// kept) give each connection an identity of its own: two such
+    /// connections on one account (two "app folder" apps) never share a
+    /// baseline, so neither takes the other's history as deletion authority.
+    /// A recorded app keeps one identity across reconnects.
+    /// T4: a WebDAV or S3 bridge (a Filen Desktop preset, any loopback
+    /// endpoint) can change its upstream account behind the same endpoint
+    /// and credentials. Each connection to it is a target of its own: the
+    /// index of the first gives the second no baseline, so a Compare after
+    /// the account change plans no deletion from it. A remote server keeps
+    /// one identity across reconnects.
+    #[tokio::test]
+    async fn a_bridge_account_change_across_reconnects_reuses_no_baseline() {
+        let config = |host: &str, provider_type, provider_id: Option<&str>| {
+            let mut extra = std::collections::HashMap::new();
+            if let Some(id) = provider_id {
+                extra.insert("provider_id".to_string(), id.to_string());
+            }
+            crate::providers::ProviderConfig {
+                name: "bridge".into(),
+                provider_type,
+                host: host.into(),
+                port: None,
+                username: Some("bridge-user".into()),
+                password: Some("bridge-pass".into()),
+                initial_path: Some("/".into()),
+                extra,
+            }
+        };
+        let with_endpoint = |mut config: crate::providers::ProviderConfig, endpoint: &str| {
+            config
+                .extra
+                .insert("endpoint".to_string(), endpoint.to_string());
+            config
+        };
+        let state = ProviderState::new();
+        let connect = |config: crate::providers::ProviderConfig| {
+            let state = &state;
+            async move {
+                install_connected_provider_with_config(
+                    state,
+                    Box::new(crate::providers::probe_fake::ProbeFake::new()),
+                    Some("p".into()),
+                    Some(config),
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                state.gui_target_identity(true).await.unwrap()
+            }
+        };
+        for bridge in [
+            config(
+                "http://127.0.0.1:1900/",
+                ProviderType::WebDav,
+                Some("filen-desktop-webdav"),
+            ),
+            config("http://localhost:8080/dav", ProviderType::WebDav, None),
+            config("127.0.0.1:1700", ProviderType::S3, Some("filen-desktop-s3")),
+            config("https://local.webdav.filen.io/", ProviderType::WebDav, None),
+            // U5: S3's explicit endpoint takes precedence over `host`; a
+            // remote-looking host with a loopback endpoint is a bridge.
+            with_endpoint(
+                config("s3.example.com", ProviderType::S3, None),
+                "http://127.0.0.1:9000",
+            ),
+        ] {
+            // The upstream account changes between the two connections.
+            let first = connect(bridge.clone()).await;
+            let second = connect(bridge.clone()).await;
+            assert!(
+                first.starts_with("target-v1:connection:"),
+                "{} {first}",
+                bridge.host
+            );
+            assert_ne!(first, second, "{}", bridge.host);
+            let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+            index.target_identity = Some(first);
+            index.files.insert(
+                "x.txt".into(),
+                crate::sync::SyncIndexEntry {
+                    size: 7,
+                    modified: None,
+                    is_dir: false,
+                    uploaded_at: None,
+                },
+            );
+            assert!(
+                crate::sync::bind_index_to_target(Some(index), &second).is_none(),
+                "{}: no baseline from the previous connection",
+                bridge.host
+            );
+        }
+        let server = config("https://dav.example.com/", ProviderType::WebDav, None);
+        assert_eq!(connect(server.clone()).await, connect(server).await);
+        // The other way round: a loopback `host` that the endpoint overrides
+        // is not what the connection reaches, so it keeps one identity.
+        let remote_s3 = with_endpoint(
+            config("127.0.0.1:9000", ProviderType::S3, None),
+            "https://s3.example.com",
+        );
+        assert_eq!(connect(remote_s3.clone()).await, connect(remote_s3).await);
+    }
+
+    #[tokio::test]
+    async fn tokens_of_an_unknown_app_get_no_identity_another_connection_shares() {
+        let config = crate::providers::ProviderConfig {
+            name: "repo".into(),
+            provider_type: crate::providers::ProviderType::GitHub,
+            host: "o/r".into(),
+            port: Some(443),
+            username: None,
+            password: Some("token".into()),
+            initial_path: Some("/".into()),
+            extra: std::collections::HashMap::new(),
+        };
+        let state = ProviderState::new();
+        let connect = |app: &str| {
+            let state = &state;
+            let config = config.clone();
+            let app = app.to_string();
+            async move {
+                let provider = crate::providers::github::GitHubProvider::connected_for_test(
+                    &config, "alice", "main",
+                );
+                install_connected_provider_with_owner(
+                    state,
+                    Box::new(provider),
+                    Some("p".into()),
+                    None,
+                    Some(app),
+                    None,
+                    Duration::from_secs(10),
+                )
+                .await
+                .unwrap();
+                state.gui_target_identity(true).await.unwrap()
+            }
+        };
+        let first = connect(UNRECORDED_TOKEN_APP).await;
+        let second = connect(UNRECORDED_TOKEN_APP).await;
+        assert!(first.starts_with("target-v1:connection:"), "{first}");
+        assert_ne!(first, second);
+        let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some(first.clone());
+        index.files.insert(
+            "x.txt".into(),
+            crate::sync::SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        assert!(
+            crate::sync::bind_index_to_target(Some(index), &second).is_none(),
+            "no baseline from the other connection"
+        );
+        // K7: an overlay transition on the same connection (each of them
+        // advances the GUI target, as `provider_apply_crypt_overlay_inner`
+        // does) is another target too: the old index gives no baseline.
+        let before_overlay = state.gui_target_identity(true).await.unwrap();
+        state.advance_gui_target();
+        let after_overlay = state.gui_target_identity(true).await.unwrap();
+        assert_ne!(before_overlay, after_overlay);
+        let mut index = crate::sync::SyncIndex::new("/local".into(), "/remote".into());
+        index.target_identity = Some(before_overlay);
+        index.files.insert(
+            "x.txt".into(),
+            crate::sync::SyncIndexEntry {
+                size: 7,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        assert!(crate::sync::bind_index_to_target(Some(index), &after_overlay).is_none());
+        // A recorded app: the same target on every connection.
+        assert_eq!(connect("app-a").await, connect("app-a").await);
+        assert_ne!(connect("app-a").await, connect("app-b").await);
+    }
+
+    /// A GitHub API whose `main` refuses direct pushes as protected and whose
+    /// working branch exists already; it records every request made after the
+    /// working-branch write. `hold_working_put` keeps that write waiting.
+    async fn protected_github_server(
+        hold_working_put: bool,
+    ) -> (
+        String,
+        Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::response::IntoResponse;
+        let requests_after_switch = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let switched = Arc::new(AtomicBool::new(false));
+        let (seen, on_working) = (requests_after_switch.clone(), switched.clone());
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| async move {
+                let path = uri.path().to_string();
+                if on_working.load(Ordering::SeqCst) {
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                }
+                if path.contains("/compare/") {
+                    // The working branch has a commit main does not.
+                    return axum::Json(serde_json::json!({"ahead_by": 1, "behind_by": 0}))
+                        .into_response();
+                }
+                if path.contains("/branches/") {
+                    // The working branch exists already, ahead of main.
+                    return axum::Json(serde_json::json!({
+                        "name": "aeroftp/alice/main", "protected": false,
+                        "commit": {"sha": "fedcba9876543210fedcba9876543210fedcba98"}
+                    }))
+                    .into_response();
+                }
+                if method == axum::http::Method::PUT && path.contains("/contents/") {
+                    if body.contains("\"branch\":\"main\"") {
+                        return (
+                            axum::http::StatusCode::FORBIDDEN,
+                            axum::Json(
+                                serde_json::json!({"message": "Protected branch update failed"}),
+                            ),
+                        )
+                            .into_response();
+                    }
+                    on_working.store(true, Ordering::SeqCst);
+                    if hold_working_put {
+                        // Held: the test drops the upload while it waits.
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    }
+                    return (
+                        axum::http::StatusCode::CREATED,
+                        axum::Json(serde_json::json!({"content": {"sha": "abc123"}})),
+                    )
+                        .into_response();
+                }
+                (
+                    axum::http::StatusCode::NOT_FOUND,
+                    axum::Json(serde_json::json!({"message": "Not Found"})),
+                )
+                    .into_response()
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (addr.to_string(), requests_after_switch, server)
+    }
+
+    /// E2: an upload refused on the protected branch makes GitHub write to a
+    /// working branch (here one that already exists, with other contents)
+    /// with no reconnect. That is another tree: the GUI target advances, so
+    /// the rest of a plan made against `main` is refused (a delete, the index
+    /// publication), and a page that reads the target again gets the working
+    /// branch's identity, never `main`'s. H2: a delete pinned before the
+    /// fallback and queued on the provider behind the upload reaches the
+    /// provider after the switch: it is refused before any request, so no
+    /// delete lands on the working branch; once no command pinned before the
+    /// change is alive, the provider serves again.
+    #[tokio::test]
+    async fn a_working_branch_fallback_stops_the_plan_made_against_the_protected_branch() {
+        let (addr, requests_after_switch, server) = protected_github_server(false).await;
+
+        let state = ProviderState::new();
+        let provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+            .await
+            .unwrap();
+        let before = state.gui_target_snapshot(true).await.unwrap();
+        assert!(state.pin_gui_target(Some(before.1)).await.is_ok());
+        // A delete of the same plan, pinned now, queued behind the upload.
+        let queued_delete = state.pin_gui_target(Some(before.1)).await.unwrap();
+
+        // The run's first upload: refused on main, written to the working branch.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        state
+            .provider
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .upload(file.to_str().unwrap(), "/a.txt", None)
+            .await
+            .unwrap();
+
+        // The queued delete gets the provider now: refused, nothing sent.
+        let delete = state
+            .provider
+            .lock()
+            .await
+            .as_mut()
+            .unwrap()
+            .delete("/b.txt")
+            .await;
+        assert!(
+            matches!(delete, Err(ProviderError::TargetChanged)),
+            "{delete:?}"
+        );
+        assert!(requests_after_switch.lock().unwrap().is_empty());
+        drop(queued_delete);
+
+        // Its next command and its index publication, pinned on main's target.
+        let refused = state.pin_gui_target(Some(before.1)).await.err().unwrap();
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        assert!(state
+            .pin_gui_index_owner(Some(before.1), Some("binding"), true)
+            .await
+            .is_err());
+        // Read again, the target is the working branch's.
+        let after = state.gui_target_snapshot(true).await.unwrap();
+        assert_ne!(after.1, before.1);
+        assert_ne!(after.0, before.0);
+        assert!(state.pin_gui_target(Some(after.1)).await.is_ok());
+        // M2: the session stays poisoned. A delete pinned on the new target,
+        // and one that names no target at all, are refused by the provider
+        // itself, before any request: nothing ever settles it back.
+        for expected in [Some(after.1), None] {
+            let delete = delete_file_for_ipc(&state, "/c.txt".into(), None, expected, None).await;
+            assert!(delete.is_err(), "{expected:?}");
+        }
+        assert!(requests_after_switch.lock().unwrap().is_empty());
+        server.abort();
+    }
+
+    /// K6: a recursive provider delete that walks the tree, cancelled from
+    /// its gesture's toast after its first child: no further child is
+    /// removed, and the delete answers as cancelled.
+    #[tokio::test]
+    async fn a_gesture_cancel_stops_a_recursive_provider_delete_between_children() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(crate::AppState::new());
+        let state = ProviderState::new();
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.recursive_children = vec!["/d/a".into(), "/d/b".into(), "/d/c".into()];
+        fake.child_gate = Some(gate.clone());
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let handle = app.handle().clone();
+        let deleting = provider_delete_dir_with(
+            &handle,
+            &state,
+            "/d".into(),
+            true,
+            None,
+            None,
+            Some("gesture-provider-0001".into()),
+        );
+        let cancelling = async {
+            gate.add_permits(1);
+            while writes.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            app.state::<crate::AppState>()
+                .cancel_operation("gesture-provider-0001");
+            // Were the walk still running, these would let it go on.
+            gate.add_permits(2);
+        };
+        let (deleted, ()) = tokio::join!(deleting, cancelling);
+        assert_eq!(deleted, Err(DELETION_CANCELLED.to_string()));
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*writes.lock().unwrap(), ["delete /d/a"]);
+    }
+
+    /// M1: a delete queued behind another provider operation (the provider
+    /// mutex held) ends at its cancel, before the mutex is free, and its
+    /// target pin goes with it; the provider never sees it.
+    #[tokio::test]
+    async fn a_cancelled_delete_waiting_for_the_provider_ends_and_releases_its_pin() {
+        let state = ProviderState::new();
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let busy = state.provider.lock().await;
+        let cancel = AtomicBool::new(false);
+        let deleting =
+            delete_file_for_ipc(&state, "/f.txt".into(), None, Some(epoch), Some(&cancel));
+        let cancelling = async {
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            cancel.store(true, Ordering::Relaxed);
+        };
+        let (deleted, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(deleting, cancelling)
+        })
+        .await
+        .expect("the cancel ends the wait, with the provider still busy");
+        assert!(matches!(deleted, Err(crate::sync::IpcError::Cancelled)));
+        // The pin is gone while the provider is still held.
+        assert!(state
+            .transfer_owner_write(Duration::from_millis(200))
+            .await
+            .is_ok());
+        drop(busy);
+        assert!(writes.lock().unwrap().is_empty());
+    }
+
+    /// L4: a cancel raised while a file removal is still preparing (the
+    /// lookup before the delete) keeps the delete from being sent, even
+    /// when the preparation finishes afterwards.
+    #[tokio::test]
+    async fn a_cancel_during_the_preparation_of_a_file_delete_sends_no_delete() {
+        let state = ProviderState::new();
+        let gate = Arc::new(tokio::sync::Semaphore::new(0));
+        let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut fake = crate::providers::probe_fake::ProbeFake::new();
+        fake.delete_gate = Some(gate.clone());
+        fake.shared_writes = Some(writes.clone());
+        install_connected_provider(&state, Box::new(fake), None)
+            .await
+            .unwrap();
+        let cancel = AtomicBool::new(false);
+        let deleting = delete_file_for_ipc(&state, "/f.txt".into(), None, None, Some(&cancel));
+        let cancelling = async {
+            while writes.lock().unwrap().is_empty() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            cancel.store(true, Ordering::Relaxed);
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            // The preparation finishes after the cancel.
+            gate.add_permits(1);
+        };
+        let (deleted, ()) = tokio::join!(deleting, cancelling);
+        assert!(matches!(deleted, Err(crate::sync::IpcError::Cancelled)));
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(*writes.lock().unwrap(), ["prepare /f.txt"]);
+
+        // Without a cancel the same delete goes through.
+        let done = AtomicBool::new(false);
+        gate.add_permits(1);
+        delete_file_for_ipc(&state, "/g.txt".into(), None, None, Some(&done))
+            .await
+            .unwrap();
+        assert!(writes
+            .lock()
+            .unwrap()
+            .contains(&"delete /g.txt".to_string()));
+    }
+
+    /// K9, now without any pass: an upload dropped while its write to the
+    /// working branch waits (a cancel, a timeout) leaves the session wholly
+    /// on the protected branch, not switched and not poisoned. Its target is
+    /// unchanged, and nothing the session sends afterwards goes to the
+    /// working branch through it.
+    #[tokio::test]
+    async fn a_dropped_fallback_upload_leaves_the_session_on_its_branch() {
+        let (addr, _requests_after_switch, server) = protected_github_server(true).await;
+        let state = ProviderState::new();
+        let provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+            .await
+            .unwrap();
+        let before = state.gui_target_snapshot(true).await.unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        {
+            let mut slot = state.provider.lock().await;
+            let provider = slot.as_mut().unwrap();
+            let upload = provider.upload(file.to_str().unwrap(), "/a.txt", None);
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(500), upload)
+                    .await
+                    .is_err(),
+                "the working-branch write is held"
+            );
+        }
+        {
+            let mut slot = state.provider.lock().await;
+            let github = crate::crypt_overlay_provider::concrete_provider_mut(
+                slot.as_mut().unwrap().as_mut(),
+            )
+            .as_any_mut()
+            .downcast_mut::<crate::providers::github::GitHubProvider>()
+            .unwrap();
+            assert_eq!(github.working_branch(), None);
+            assert!(!github
+                .target_poison()
+                .unwrap()
+                .load(std::sync::atomic::Ordering::SeqCst));
+        }
+        assert_eq!(state.gui_target_snapshot(true).await.unwrap(), before);
+        server.abort();
+    }
+
+    /// L6: a GitHub provider no GUI target watches (a CLI or AeroCloud sync)
+    /// holds a plan made against the protected branch. After the upload
+    /// that falls back to the working branch, the delete the plan had next
+    /// is refused before any request: it never reaches the working branch.
+    /// The next plan connects anew, and a new connection serves.
+    #[tokio::test]
+    async fn an_unwatched_plan_stops_after_a_fallback_and_a_new_connection_serves() {
+        let (addr, requests_after_switch, server) = protected_github_server(false).await;
+        let mut provider =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"a").unwrap();
+        provider
+            .upload(file.to_str().unwrap(), "/a.txt", None)
+            .await
+            .unwrap();
+        assert!(provider
+            .target_poison()
+            .unwrap()
+            .load(std::sync::atomic::Ordering::SeqCst));
+        let sent = requests_after_switch.lock().unwrap().len();
+        let planned_delete = provider.delete("/old.txt").await;
+        assert!(
+            matches!(planned_delete, Err(ProviderError::TargetChanged)),
+            "{planned_delete:?}"
+        );
+        assert_eq!(requests_after_switch.lock().unwrap().len(), sent);
+
+        // Reads stay allowed (the page reads the working branch again).
+        assert!(!matches!(
+            provider.stat("/b.txt").await,
+            Err(ProviderError::TargetChanged)
+        ));
+        let mut next =
+            crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
+        let stat = next.stat("/b.txt").await;
+        assert!(
+            !matches!(stat, Err(ProviderError::TargetChanged)),
+            "{stat:?}"
+        );
+        server.abort();
+    }
+
+    /// A compare that read target A, then saw B, then A again (A, B, A
+    /// reconnects while it scanned) reads equal identities: the epoch tells
+    /// the two A connections apart, so the compare refuses its rows.
+    #[tokio::test]
+    async fn an_a_b_a_reconnect_moves_the_target_epoch() {
+        // D4: the compare refuses such a change under the scan-completeness
+        // contract, which the page answers by failing closed.
+        assert!(compare_target_refusal().starts_with(crate::SCAN_INCOMPLETE_MARKER));
+        for source in [include_str!("lib.rs"), include_str!("provider_commands.rs")] {
+            assert!(source.matches("compare_target_refusal());").count() >= 1);
+        }
+        let state = ProviderState::new();
+        let a = crate::cloud_provider_factory::legacy_ftp_target_identity("a.example", "u");
+        let b = crate::cloud_provider_factory::legacy_ftp_target_identity("b.example", "u");
+        state.set_legacy_target_identity(a.clone());
+        let scanned = state.gui_target_snapshot(false).await.unwrap();
+        for next in [b, a.clone()] {
+            let _change = state
+                .begin_legacy_ftp_target_change(Duration::from_secs(1))
+                .await
+                .unwrap();
+            state.set_legacy_target_identity(next);
+        }
+        let now = state.gui_target_snapshot(false).await.unwrap();
+        assert_eq!(now.0, scanned.0, "the same target identity");
+        assert_ne!(now.1, scanned.1, "another connection");
+    }
+
+    /// A provider that reports no account and has no config (an OAuth
+    /// sign-in without an email, as 4shared allows) has no reusable target:
+    /// each connection gets its own identity, so a baseline saved under one
+    /// sign-in is no baseline of the next.
+    #[tokio::test]
+    async fn a_connection_without_an_account_gets_an_identity_of_its_own() {
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(super::tests::LeakyServer));
+        let first = state.gui_target_identity(true).await.unwrap();
+        assert!(first.starts_with("target-v1:connection:"), "{first}");
+        assert_eq!(state.gui_target_identity(true).await.unwrap(), first);
+        // Another sign-in on the same slot is another connection.
+        state.invalidate_overlay_key_cache();
+        assert_ne!(state.gui_target_identity(true).await.unwrap(), first);
+        // An overlay whose naming is not at hand is not identified either.
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        let overlaid = state.gui_target_identity(true).await.unwrap();
+        assert!(overlaid.starts_with("target-v1:connection:"), "{overlaid}");
+    }
+
+    #[tokio::test]
+    async fn interrupted_disconnect_cannot_leave_installed_connection_metadata() {
+        let state = Arc::new(state_with_profile());
+        let started = Arc::new(tokio::sync::Notify::new());
+        *state.config.lock().await = Some(mtp_config());
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        *state.legacy_owner_binding.lock().unwrap() = Some("old-binding".into());
+        *state.provider.lock().await = Some(Box::new(PausedDisconnect {
+            started: started.clone(),
+            release: Arc::new(tokio::sync::Notify::new()),
+        }));
+        let other = state.clone();
+        let replacement = tokio::spawn(async move {
+            install_connected_provider(
+                &other,
+                Box::new(EditFake::new(true, false)),
+                Some("B".into()),
+            )
+            .await
+        });
+        started.notified().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), state.config.lock())
+                .await
+                .expect("disconnect must not monopolize the config lock")
+                .is_none()
+        );
+        // Cancellation is stronger than a refused final owner check: no
+        // cleanup after disconnect can run, so retirement must already hold.
+        replacement.abort();
+        assert!(replacement.await.unwrap_err().is_cancelled());
+        assert!(state.provider.lock().await.is_none());
+        assert!(state.config.lock().await.is_none());
+        assert!(state.connected_profile_id.lock().unwrap().is_none());
+        assert!(state.legacy_owner_binding.lock().unwrap().is_none());
+        assert!(!state.overlay_wrapped.load(Ordering::SeqCst));
+        assert!(!state.active_crypt_overlay.load(Ordering::SeqCst));
+        assert_eq!(state.connection_generation.load(Ordering::SeqCst), 1);
+        assert!(state.transfer_owner_gate.try_write().is_ok());
     }
 
     #[tokio::test]
@@ -22236,5 +25484,418 @@ mod restored_transfer_owner_tests {
                 .await
                 .is_ok()
         );
+    }
+}
+
+/// A real `GuiOwnerContext` reads the account database and the process-wide
+/// session. A test that needs one runs again in a child process whose
+/// portable root is a private temporary folder, so it never opens the
+/// database of the user running the suite.
+#[cfg(test)]
+pub(crate) mod isolated_account_fixture {
+    const CHILD: &str = "AEROFTP_GUI_OWNER_FIXTURE_CHILD";
+
+    /// True in the isolated child, where the caller runs the test body. In the
+    /// parent it runs the test named `test` in such a child, asserts that it
+    /// passed and returns false.
+    pub(crate) fn in_isolated_child(test: &str) -> bool {
+        in_isolated_child_within(test, None)
+    }
+
+    /// K12: the parent's early return comes only after the child ran the
+    /// named test and reported it passed. A name that runs nothing (here, a
+    /// test that does not exist) fails the parent.
+    #[test]
+    #[should_panic(expected = "running 0 tests")]
+    fn a_child_that_runs_no_test_fails_the_parent() {
+        in_isolated_child("provider_commands::isolated_account_fixture::no_such_test");
+    }
+
+    /// [`in_isolated_child`] with a watchdog: a child that has not ended
+    /// within `deadline` (a loop that never yields, which no in-process
+    /// timeout can interrupt) is killed, and the test fails instead of hanging.
+    pub(crate) fn in_isolated_child_within(
+        test: &str,
+        deadline: Option<std::time::Duration>,
+    ) -> bool {
+        let executable = std::env::current_exe().unwrap();
+        if std::env::var_os(CHILD).is_some() {
+            let root = executable.parent().unwrap();
+            assert!(root.join("portable.marker").is_file());
+            // Fail closed before the test touches anything (K11): the data
+            // root, the vault's folder and the partition database must all
+            // resolve inside this child's temporary folder.
+            let resolved = [
+                crate::portable::aeroftp_data_root(),
+                crate::portable::credential_store_dir(),
+                crate::user_partitions::cli_db_path().ok(),
+            ];
+            for path in resolved {
+                let path = path.expect("an isolated child resolves every storage path");
+                assert!(
+                    path.starts_with(root),
+                    "{} is outside the isolated child {}",
+                    path.display(),
+                    root.display()
+                );
+            }
+            return true;
+        }
+        let root = tempfile::Builder::new()
+            .prefix("gui-owner-fixture-")
+            .tempdir_in(executable.parent().unwrap())
+            .unwrap();
+        let child = root.path().join(format!(
+            "gui-owner-fixture-test{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        std::fs::hard_link(&executable, &child)
+            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+            .unwrap();
+        std::fs::write(root.path().join("portable.marker"), b"").unwrap();
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).unwrap();
+        let child = std::process::Command::new(child)
+            .args(["--exact", test, "--nocapture", "--test-threads=1"])
+            .env(CHILD, "1")
+            .env("PATH", &empty_path)
+            .env("XDG_CONFIG_HOME", root.path().join("config"))
+            .env("XDG_DATA_HOME", root.path().join("data"))
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent-gui-owner-fixture",
+            )
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let output = match deadline {
+            None => child.wait_with_output().unwrap(),
+            Some(deadline) => {
+                let mut child = child;
+                let started = std::time::Instant::now();
+                loop {
+                    if child.try_wait().unwrap().is_some() {
+                        break child.wait_with_output().unwrap();
+                    }
+                    if started.elapsed() > deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        panic!("{test} did not end within {deadline:?}: killed by the watchdog");
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+            }
+        };
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            output.status.success() && stdout.contains("1 passed"),
+            "{stdout}\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        false
+    }
+
+    /// Two accounts without a passphrase in the isolated database, the first
+    /// one active. Call it under `user_partitions::test_lock()`.
+    pub(crate) fn two_accounts() -> (rusqlite::Connection, i64, i64) {
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root = [7u8; 32];
+        let first =
+            crate::user_partitions::create_user(&mut conn, &root, "first", None, None, None)
+                .unwrap()
+                .id;
+        let second =
+            crate::user_partitions::create_user(&mut conn, &root, "second", None, None, None)
+                .unwrap()
+                .id;
+        crate::user_partitions::set_active_user(&conn, first).unwrap();
+        (conn, first, second)
+    }
+}
+
+#[cfg(test)]
+mod installer_account_switch_tests {
+    use super::isolated_account_fixture::{in_isolated_child, two_accounts};
+    use super::*;
+
+    /// Records its own `disconnect`.
+    struct Recorded {
+        name: &'static str,
+        disconnected: Arc<AtomicBool>,
+    }
+    #[async_trait::async_trait]
+    impl crate::providers::StorageProvider for Recorded {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Ftp
+        }
+        fn display_name(&self) -> String {
+            self.name.into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.disconnected.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            !self.disconnected.load(Ordering::SeqCst)
+        }
+        async fn list(&mut self, _: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn upload(
+            &mut self,
+            _: &str,
+            _: &str,
+            _: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _: &str, _: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.into()))
+        }
+        async fn size(&mut self, _: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+    }
+
+    struct Installed {
+        state: Arc<ProviderState>,
+        previous_disconnected: Arc<AtomicBool>,
+        generation: u64,
+        epoch: u64,
+    }
+
+    /// Profile "A" on the provider "previous", installed by the installer.
+    async fn previous_connection() -> Installed {
+        let state = Arc::new(ProviderState::new());
+        let previous_disconnected = Arc::new(AtomicBool::new(false));
+        install_connected_provider(
+            &state,
+            Box::new(Recorded {
+                name: "previous",
+                disconnected: previous_disconnected.clone(),
+            }),
+            Some("A".into()),
+        )
+        .await
+        .unwrap();
+        Installed {
+            generation: state.connection_generation.load(Ordering::SeqCst),
+            epoch: state.gui_target_epoch.load(Ordering::SeqCst),
+            state,
+            previous_disconnected,
+        }
+    }
+
+    /// The real installer on a candidate for profile "B", owned by `owner`.
+    fn install_candidate(
+        state: &Arc<ProviderState>,
+        owner: crate::sync_owner::GuiOwnerContext,
+    ) -> (tokio::task::JoinHandle<Result<(), String>>, Arc<AtomicBool>) {
+        let disconnected = Arc::new(AtomicBool::new(false));
+        let candidate = Box::new(Recorded {
+            name: "candidate",
+            disconnected: disconnected.clone(),
+        });
+        let state = state.clone();
+        let installer = tokio::spawn(async move {
+            install_connected_provider_with_owner(
+                &state,
+                candidate,
+                Some("B".into()),
+                None,
+                None,
+                Some(owner),
+                Duration::from_secs(10),
+            )
+            .await
+        });
+        (installer, disconnected)
+    }
+
+    async fn installed_name(state: &ProviderState) -> Option<String> {
+        state
+            .provider
+            .lock()
+            .await
+            .as_ref()
+            .map(|p| p.display_name())
+    }
+
+    fn profile(state: &ProviderState) -> Option<String> {
+        state.connected_profile_id.lock().unwrap().clone()
+    }
+
+    /// One thread runs the test and every task, so the session lock taken by
+    /// the test is held wherever the installer or the account switch runs.
+    fn run(body: impl std::future::Future<Output = ()>) {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(body);
+    }
+
+    #[test]
+    fn account_switched_during_the_installer_drain_does_not_install_the_candidate() {
+        if !in_isolated_child(
+            "provider_commands::installer_account_switch_tests::\
+             account_switched_during_the_installer_drain_does_not_install_the_candidate",
+        ) {
+            return;
+        }
+        let _session = crate::user_partitions::test_lock();
+        run(async {
+            let (conn, first, second) = two_accounts();
+            let before = previous_connection().await;
+            let state = &before.state;
+            let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+            assert_eq!(owner.user(), Some(first));
+
+            // A transfer in flight: the installer takes the gate, finds its
+            // owner current and then waits in the drain.
+            let transfer = TransferOperationGuard::acquire(state);
+            let (installer, candidate_disconnected) = install_candidate(state, owner);
+            while state.transfer_owner_gate.try_read().is_ok() {
+                tokio::task::yield_now().await;
+            }
+            tokio::task::yield_now().await;
+            assert!(
+                !installer.is_finished(),
+                "the installer waits for the drain"
+            );
+            assert_eq!(installed_name(state).await.as_deref(), Some("previous"));
+            assert_eq!(profile(state).as_deref(), Some("A"));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation
+            );
+
+            // The account changes while the drain waits, then the drain ends.
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            drop(transfer);
+            let refused = installer.await.unwrap().unwrap_err();
+            assert_eq!(refused, crate::user_partitions::ACCOUNT_CHANGED);
+
+            // The candidate was closed and never reached the slot.
+            assert!(candidate_disconnected.load(Ordering::SeqCst));
+            assert_eq!(installed_name(state).await, None);
+            assert_eq!(profile(state), None);
+            assert!(state.config.lock().await.is_none());
+            assert!(state.gui_owner_context.lock().unwrap().is_none());
+            assert!(state.legacy_owner_binding.lock().unwrap().is_none());
+            // The drain had ended, so the previous connection was retired
+            // before the final owner check, once.
+            assert!(before.previous_disconnected.load(Ordering::SeqCst));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation + 1
+            );
+            assert_eq!(
+                state.gui_target_epoch.load(Ordering::SeqCst),
+                before.epoch + 1
+            );
+            let stale = state
+                .pin_gui_target(Some(before.epoch))
+                .await
+                .map(|_| ())
+                .unwrap_err();
+            assert!(stale.starts_with(CONNECTION_CHANGED_MARKER), "{stale}");
+            assert!(state.transfer_owner_gate.try_write().is_ok());
+        });
+    }
+
+    #[test]
+    fn account_switched_while_the_installer_waits_for_a_pin_keeps_the_previous_connection() {
+        if !in_isolated_child(
+            "provider_commands::installer_account_switch_tests::\
+             account_switched_while_the_installer_waits_for_a_pin_keeps_the_previous_connection",
+        ) {
+            return;
+        }
+        let _session = crate::user_partitions::test_lock();
+        run(async {
+            let (conn, _, second) = two_accounts();
+            let before = previous_connection().await;
+            let state = &before.state;
+            let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+
+            // A pinned transfer: the installer queues behind it on the gate.
+            let pin = state.pin_gui_target(Some(before.epoch)).await.unwrap();
+            let (installer, candidate_disconnected) = install_candidate(state, owner);
+            while state.transfer_owner_gate.try_read().is_ok() {
+                tokio::task::yield_now().await;
+            }
+            assert!(!installer.is_finished(), "the installer waits for the pin");
+
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            drop(pin);
+            let refused = installer.await.unwrap().unwrap_err();
+            assert_eq!(refused, ProviderError::TargetChanged.to_string());
+
+            // Refused before the drain: nothing of the previous connection
+            // was touched and the candidate was closed.
+            assert!(candidate_disconnected.load(Ordering::SeqCst));
+            assert!(!before.previous_disconnected.load(Ordering::SeqCst));
+            assert_eq!(installed_name(state).await.as_deref(), Some("previous"));
+            assert_eq!(profile(state).as_deref(), Some("A"));
+            assert_eq!(
+                state.connection_generation.load(Ordering::SeqCst),
+                before.generation
+            );
+            assert_eq!(state.gui_target_epoch.load(Ordering::SeqCst), before.epoch);
+            assert!(state.pin_gui_target(Some(before.epoch)).await.is_ok());
+        });
     }
 }
