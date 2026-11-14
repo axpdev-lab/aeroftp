@@ -559,8 +559,103 @@
     "expected": "{\"u\":\"ftp://host\",\"b\":\"x@y\"}  \n"
   },
   {
-    "name": "D1 parsers agree: a raw tab inside a string is not json, read as plain text (the tab ends the authority)",
+    "name": "D1 parsers agree: a raw tab inside a string is not json, read as plain text (over-masked by policy: no field boundary, and whitespace does not end the authority)",
     "input": "{\"u\":\"ftp://host\",\"b\":\"x\t@y\"}",
-    "expected": "{\"u\":\"ftp://host\",\"b\":\"x\t@y\"}"
+    "expected": "{\"u\":\"ftp://***REDACTED***@y\"}"
+  },
+  {
+    "name": "S1 escaped slashes in a valid json string are decoded: masked",
+    "input": "{\"url\":\"https:\\/\\/bob:secret@host/path\"}",
+    "expected": "{\"url\":\"https:\\/\\/***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "S1 an escaped colon in the scheme delimiter",
+    "input": "{\"url\":\"https\\u003a//bob:secret@host/path\"}",
+    "expected": "{\"url\":\"https\\u003a//***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "S1 unicode-escaped slashes in the scheme delimiter",
+    "input": "{\"url\":\"https:\\u002f\\u002fbob:secret@host\"}",
+    "expected": "{\"url\":\"https:\\u002f\\u002f***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1 an escaped at sign ending the userinfo: the escape is kept, the userinfo before it masked",
+    "input": "{\"url\":\"https://bob:secret\\u0040host/path\"}",
+    "expected": "{\"url\":\"https://***REDACTED***\\u0040host/path\"}"
+  },
+  {
+    "name": "S1 literal and escaped delimiters mixed",
+    "input": "{\"url\":\"ftp:/\\/bob:pa\\u003ass\\u0040host\\/x\"}",
+    "expected": "{\"url\":\"ftp:/\\/***REDACTED***\\u0040host\\/x\"}"
+  },
+  {
+    "name": "S1 an escaped at sign inside the password, a literal one last",
+    "input": "{\"url\":\"ftp://bob:pa\\u0040ss@host\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1 a document escaped inside a string is decoded in turn: two levels",
+    "input": "{\"log\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/bob:secret@host\\\"}\"}",
+    "expected": "{\"log\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/***REDACTED***@host\\\"}\"}"
+  },
+  {
+    "name": "S1 decoded at every level: three levels of serialized json",
+    "input": "{\"log\":\"{\\\"inner\\\": \\\"{\\\\\\\"url\\\\\\\": \\\\\\\"https://bob:secret@host\\\\\\\"}\\\"}\"}",
+    "expected": "{\"log\":\"{\\\"inner\\\": \\\"{\\\\\\\"url\\\\\\\": \\\\\\\"https://***REDACTED***@host\\\\\\\"}\\\"}\"}"
+  },
+  {
+    "name": "S1 a url in an escaped object key",
+    "input": "{\"https:\\/\\/bob:pw@h\":1}",
+    "expected": "{\"https:\\/\\/***REDACTED***@h\":1}"
+  },
+  {
+    "name": "S1 an escaped token with no userinfo stays, and the next field is not reached",
+    "input": "{\"m\":\"say \\\"hi\\\" at https://host/x\",\"b\":\"x@y\"}",
+    "expected": "{\"m\":\"say \\\"hi\\\" at https://host/x\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "S1 parsers agree: a lone surrogate escape in a token that holds an escaped url",
+    "input": "{\"s\":\"\\ud800 https:\\/\\/bob:pw@h\"}",
+    "expected": "{\"s\":\"\\ud800 https:\\/\\/***REDACTED***@h\"}"
+  },
+  {
+    "name": "S1 any scheme: an s3 url, in both entry points",
+    "input": "get s3://AKIAEXAMPLE:secretkey@bucket/key failed",
+    "expected": "get s3://***REDACTED***@bucket/key failed"
+  },
+  {
+    "name": "S1 any scheme: a database url",
+    "input": "connect postgres://app:pw@db/x",
+    "expected": "connect postgres://***REDACTED***@db/x"
+  },
+  {
+    "name": "S1 any scheme: no scheme name at all over-masks",
+    "input": "see ://bob:pw@host now",
+    "expected": "see ://***REDACTED***@host now"
+  },
+  {
+    "name": "S1 an escaped newline in a password ends the decoded authority but not the raw one: the union of both scans is masked",
+    "input": "{\"u\":\"ftp://bob:pa\\nss@host\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1b the url userinfo is masked before a rule can consume its at sign: x-api-key inside the userinfo",
+    "input": "https://tokenvalue123:x-api-key: foo@host/path",
+    "expected": "https://***REDACTED***@host/path"
+  },
+  {
+    "name": "S1b the same with a key=value secret inside the userinfo",
+    "input": "https://tok:password=abc@host/path",
+    "expected": "https://***REDACTED***@host/path"
+  },
+  {
+    "name": "S1b the same with an authorization header inside the userinfo",
+    "input": "https://tok:authorization: Basic abc@host/x",
+    "expected": "https://***REDACTED***@host/x"
+  },
+  {
+    "name": "S1b a space in a password does not end the userinfo",
+    "input": "ftp://bob:pass word@host/x",
+    "expected": "ftp://***REDACTED***@host/x"
   }
 ]

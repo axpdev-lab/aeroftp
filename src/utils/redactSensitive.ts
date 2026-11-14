@@ -62,13 +62,6 @@ type RedactionRule = { pattern: RegExp; replacement: string } | { apply: (text: 
 const applyRule = (text: string, rule: RedactionRule): string =>
     'apply' in rule ? rule.apply(text) : text.replace(rule.pattern, rule.replacement);
 
-const URL_CREDENTIAL_SCHEMES = new Set(['ftp', 'ftps', 'sftp', 'scp', 'http', 'https', 'webdav']);
-const isWordChar = (code: number) => (code >= 48 && code <= 57) || (code >= 65 && code <= 90)
-    || (code >= 97 && code <= 122) || code === 95;
-const isAsciiLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
-const isSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
-const isSchemeChar = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57)
-    || code === 43 || code === 45 || code === 46;
 /** Whether the whole text is one valid JSON value, by the real parser
  *  (validation only: nothing is re-serialized, the output keeps the input). */
 const isJsonDocument = (text: string): boolean => {
@@ -81,75 +74,77 @@ const isJsonDocument = (text: string): boolean => {
 };
 
 /** In valid JSON, the index of the quote that ends the string token whose
- *  content starts at `from` (a backslash escapes the next character). */
-const stringTokenEnd = (text: string, from: number): number => {
+ *  content starts at `from` (a backslash escapes the next character), and
+ *  whether the token holds an escape. */
+const scanStringToken = (text: string, from: number): [end: number, escaped: boolean] => {
     let k = from;
+    let escaped = false;
     while (k < text.length) {
         const code = text.charCodeAt(k);
         if (code === 92) {
+            escaped = true;
             k += 2;
             continue;
         }
-        if (code === 34) return k;
+        if (code === 34) return [k, escaped];
         k += 1;
     }
-    return text.length;
+    return [text.length, escaped];
 };
 
-/**
- * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
- * URLs in one pass over the text, so its time is linear whatever the input.
- * With an `@` in the authority, the userinfo is everything up to the LAST
- * `@`, and all of it becomes the placeholder, user name included: a token is
- * often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An authority
- * without `@` (`host:443`) stays.
- *
- * Where the authority ends (D1). Structure is never inferred from
- * characters; the real parser decides once whether the WHOLE text is JSON:
- * - valid JSON (`JSON.parse`): a plain string tokenizer, exact on valid
- *   JSON, gives each URL the string token it sits in. The authority ends at
- *   `/`, `?`, `#`, whitespace, or the end of that token; inside the token
- *   no quote ends it (they are all escaped content);
- * - anything else is plain text: no quote ever ends the authority, only
- *   `/`, `?`, `#`, whitespace or the end of the text.
- * Accepted consequence: in text that is not JSON as a whole (a log prefix
- * before JSON, raw escaped JSON), a URL with no path followed by a later
- * `@` in the same unbroken run over-masks into what follows. Nothing can
- * leak: leaking is the only failure that matters. No `key=` / `key:` rule
- * remains: in plain text the quote around such a value never ends the
- * authority, and the space or `/` after it does.
- * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs;
- * both run src/shared/redaction-cases.json.
- */
-export function redactUrlUserinfo(text: string, anyScheme = false): string {
+/** The content of the valid JSON string token `[from, end)`, decoded as
+ *  `JSON.parse` decodes it, and for each decoded code unit the index of the
+ *  raw character or escape it comes from (one more entry: `end`). */
+const decodeStringToken = (text: string, from: number, end: number): [decoded: string, raw: number[]] => {
+    const units: string[] = [];
+    const raw: number[] = [];
+    let k = from;
+    while (k < end) {
+        raw.push(k);
+        if (text.charCodeAt(k) !== 92) {
+            units.push(text[k]);
+            k += 1;
+            continue;
+        }
+        const escape = text[k + 1];
+        if (escape === 'u') {
+            units.push(String.fromCharCode(parseInt(text.slice(k + 2, k + 6), 16)));
+            k += 6;
+            continue;
+        }
+        units.push({ b: '\b', f: '\f', n: '\n', r: '\r', t: '\t' }[escape] ?? escape);
+        k += 2;
+    }
+    raw.push(end);
+    return [units.join(''), raw];
+};
+
+/** The userinfo spans `[start, end)` of `text`, in order (see
+ *  `redactUrlUserinfo`). */
+const userinfoSpans = (text: string): Array<[number, number]> => {
     const json = isJsonDocument(text);
-    let out = '';
-    let copied = 0;
+    const spans: Array<[number, number]> = [];
     let i = 0;
     // The string token the scan is in (valid JSON only): its closing quote.
     let tokenEnd = -1;
     while (i + 3 <= text.length) {
         const code = text.charCodeAt(i);
         if (json && i > tokenEnd && code === 34) {
-            tokenEnd = stringTokenEnd(text, i + 1);
+            const [end, escaped] = scanStringToken(text, i + 1);
+            tokenEnd = end;
+            if (escaped) {
+                // What the token says, mapped back onto the raw characters
+                // and escapes; the raw scan below still runs on the token
+                // too, so decoding never masks less (an escaped newline ends
+                // the decoded authority, not the raw one).
+                const [decoded, raw] = decodeStringToken(text, i + 1, end);
+                for (const [a, b] of userinfoSpans(decoded)) spans.push([raw[a], raw[b]]);
+            }
             i += 1;
             continue;
         }
         if (code !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;
-            continue;
-        }
-        // `anyScheme` (redactCredentials): any scheme name, `s3://` too, up
-        // to 32 characters back, so the scan stays linear.
-        let start = i;
-        const reach = anyScheme ? 32 : 7;
-        const schemeChar = anyScheme ? isSchemeChar : isAsciiLetter;
-        while (start > 0 && i - start < reach && schemeChar(text.charCodeAt(start - 1))) start -= 1;
-        while (anyScheme && start < i && !isAsciiLetter(text.charCodeAt(start))) start += 1;
-        const bounded = start === 0 || !isWordChar(text.charCodeAt(start - 1));
-        const named = anyScheme ? start < i : URL_CREDENTIAL_SCHEMES.has(text.slice(start, i).toLowerCase());
-        if (!bounded || !named) {
-            i += 3;
             continue;
         }
         const authority = i + 3;
@@ -158,7 +153,7 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
         let lastAt = -1;
         while (k < limit) {
             const c = text.charCodeAt(k);
-            if (c === 47 || c === 63 || c === 35 || isSpace(c)) break;
+            if (c === 47 || c === 63 || c === 35) break;
             if (c === 64) lastAt = k;
             k += 1;
         }
@@ -169,14 +164,71 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
             i = authority;
             continue;
         }
-        out += text.slice(copied, authority) + '***REDACTED***';
-        copied = lastAt;
+        spans.push([authority, lastAt]);
         i = lastAt + 1;
+    }
+    return spans;
+};
+
+/**
+ * Masks the userinfo of every URL, in time linear in the text for each
+ * level of escaping. Any `://` counts, whatever scheme comes before it
+ * (`s3://`, `postgres://`, none at all): the scope is every URL, and a
+ * `://` that is not one only over-masks (S1). With an `@` in the authority,
+ * the userinfo is everything up to the LAST `@`, and all of it becomes the
+ * placeholder, user name included: a token is often the user name
+ * (`ghp_x:x-oauth-basic@`, `token:@`). An authority without `@`
+ * (`host:443`) stays.
+ *
+ * Where the authority ends (D1). Structure is never inferred from
+ * characters; the real parser decides once whether the WHOLE text is JSON:
+ * - valid JSON (`JSON.parse`): a plain string tokenizer, exact on valid
+ *   JSON, gives each URL the string token it sits in. The authority ends at
+ *   `/`, `?`, `#`, or the end of that token; inside the token no quote ends
+ *   it (they are all escaped content);
+ * - anything else is plain text: no quote ever ends the authority, only
+ *   `/`, `?`, `#` or the end of the text.
+ * Whitespace does not end it either (S1b): a credential with a space in it
+ * (`user:x-api-key: foo@host`, `bob:pass word@host`) is not a valid URL,
+ * yet a log can hold one, and the part before the space would leak.
+ * A string token of valid JSON that holds an escape (`\/`, `\u0040`,
+ * `\"`...) is also scanned DECODED, by these same rules, so a document
+ * serialized inside it is decoded in turn, once per level (S1). The
+ * userinfo found there is mapped back onto the raw characters and escapes
+ * it was written with. The token is scanned raw as well, and the union of
+ * both is masked, so decoding never masks less than the raw text did.
+ * Accepted consequence: a URL with no path followed by a later `@` before
+ * the next `/`, `?`, `#` (in its JSON token, or anywhere in text that is
+ * not JSON as a whole) over-masks into what follows, the words and fields
+ * between them included. Nothing can leak: leaking is the only failure that
+ * matters. No `key=` / `key:` rule remains: in plain text the quote around
+ * such a value never ends the authority, and the `/` after it does.
+ * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs;
+ * both run src/shared/redaction-cases.json.
+ */
+export function redactUrlUserinfo(text: string): string {
+    // The decoded and the raw scan of a token can find the same userinfo, or
+    // overlapping ones: their union is masked once.
+    const spans = userinfoSpans(text).sort((x, y) => x[0] - y[0]);
+    let out = '';
+    let copied = 0;
+    for (let n = 0; n < spans.length;) {
+        const start = spans[n][0];
+        let end = spans[n][1];
+        for (n += 1; n < spans.length && spans[n][0] < end; n += 1) end = Math.max(end, spans[n][1]);
+        out += text.slice(copied, start) + '***REDACTED***';
+        copied = end;
     }
     return out + text.slice(copied);
 }
 
 const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
+    // Inline credentials in URLs, FIRST of all (S1b): a later rule can
+    // consume a delimiter of the authority (`x-api-key: foo@host` eats the
+    // `@`, `password=abc@host/x` the `@` and the `/`), and the userinfo
+    // before it would then stay. A linear scan, not a pattern (see
+    // `redactUrlUserinfo`); the Rust list starts with it too.
+    { apply: redactUrlUserinfo },
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
     // password. First of all, ahead of the key and Bearer rules, so
@@ -201,9 +253,6 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
     { pattern: new RegExp(String.raw`\bx-api-key\s*[:=]\s*${SECRET_VALUE}`, 'gi'), replacement: 'x-api-key: ***REDACTED***' },
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
-    // Inline credentials in URLs: a linear scan, not a pattern (see
-    // `redactUrlUserinfo`).
-    { apply: redactUrlUserinfo },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
@@ -257,10 +306,8 @@ export function redactSensitive(msg: string): string {
 const SIGNED_URL_PATTERNS: ReadonlyArray<RedactionRule> = [
     { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
     { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
-    // The whole userinfo of a URL of any scheme (`s3://` too), by the same
-    // linear scanner as the shared rule: never past the authority, a quote
-    // or a JSON field boundary (T11).
-    { apply: (text: string) => redactUrlUserinfo(text, true) },
+    // The userinfo of a URL of any scheme is the shared rule's, in
+    // `CREDENTIAL_PATTERNS` (S1): both entry points mask the same URLs.
 ];
 
 /**

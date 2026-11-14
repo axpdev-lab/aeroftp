@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
+import { REDACTION_PATTERNS, redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -69,6 +69,36 @@ describe('redactSensitive matrix', () => {
 
     it('leaves what is not a secret field alone', () => {
         for (const line of unchanged) expect(redactSensitive(line)).toBe(line);
+    });
+
+    // S1b, the class: no rule may consume a delimiter of a URL's authority
+    // before the userinfo is masked. The URL pass runs first of all, and
+    // every secret field and Authorization form of the matrix, put inside a
+    // URL's userinfo, leaves nothing of it (a form holding `/`, `?` or `#`
+    // ends the authority itself and is not one).
+    it('runs the URL userinfo pass before every other rule', () => {
+        expect(REDACTION_PATTERNS[0]).toEqual({ apply: redactUrlUserinfo });
+    });
+
+    it('masks the whole userinfo of a URL that holds any secret field or Authorization form', () => {
+        const userinfos: string[] = [];
+        for (const key of keys) {
+            for (const template of values) {
+                const value = template.replace('{v}', secret);
+                for (const sep of separators) {
+                    for (const form of valueForms) userinfos.push(`${key}${sep}${form.replace('{v}', value)}`);
+                }
+            }
+        }
+        for (const { credential } of authorization) userinfos.push(`authorization: ${credential}`);
+        let checked = 0;
+        for (const userinfo of userinfos.filter((u) => !/[/?#]/.test(u))) {
+            const input = `https://tok:${userinfo}@host/x`;
+            expect(redactSensitive(input), input).toBe('https://***REDACTED***@host/x');
+            expect(redactCredentials(input), input).toBe('https://***REDACTED***@host/x');
+            checked += 1;
+        }
+        expect(checked).toBeGreaterThan(100);
     });
 });
 
@@ -158,6 +188,22 @@ describe('redactCredentials: URL userinfo', () => {
     });
 });
 
+describe('S1: both entry points, every scheme and every escape form', () => {
+    it('masks each S1 shared case the same way through redactCredentials', () => {
+        for (const { name, input, expected } of cases.filter(({ name }) => name.startsWith('S1 '))) {
+            expect(redactCredentials(input), name).toBe(expected);
+        }
+    });
+
+    it('masks every URL of a 20k escaped-token document, each at its own token', () => {
+        const input = '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']';
+        const masked = redactUrlUserinfo(input);
+        expect(masked.match(/\*\*\*REDACTED\*\*\*/g)).toHaveLength(20_000);
+        expect(masked).not.toMatch(/u\d+:p/);
+        expect(redactUrlUserinfo(masked)).toBe(masked);
+    });
+});
+
 describe('redactCredentials: one URL rule, any scheme, never past a field (T11)', () => {
     it('keeps the field after an authority without userinfo', () => {
         expect(redactCredentials('{"a":"https://host:443","b":"x@y"}')).toBe('{"a":"https://host:443","b":"x@y"}');
@@ -206,6 +252,11 @@ describe('redactUrlUserinfo (H9: linear by construction)', () => {
             '"'.repeat(200_000) + 'ftp://u:p@h',
             // D1: a large valid JSON document, URLs throughout.
             JSON.stringify({ rows: Array.from({ length: 20_000 }, (_, n) => ({ id: n, url: `https://user${n}:secret@host${n}.example/p`, note: 'x@y' })) }),
+            // S1: 20k escaped tokens, each decoded once; a document of 20k
+            // URLs serialized inside one string; twelve levels of nesting.
+            '[' + Array.from({ length: 20_000 }, (_, n) => `"https:\\/\\/u${n}:p\\u0040h${n}\\/x"`).join(',') + ']',
+            JSON.stringify({ log: JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)) }),
+            Array.from({ length: 12 }).reduce<string>((inner) => JSON.stringify({ v: inner }), 'ftp://u:p@h/' + 'x'.repeat(1000)),
         ];
         for (const input of inputs) {
             const started = performance.now();
