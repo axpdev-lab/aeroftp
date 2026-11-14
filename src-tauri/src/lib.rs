@@ -17661,7 +17661,7 @@ enum PairRun {
 ///
 /// Creates its own provider connection per cycle to avoid conflicts with main UI.
 async fn background_sync_worker(app: AppHandle) {
-    use cloud_scan_schedule::{choose_pair_job, ledger, pair_key, PairJob};
+    use cloud_scan_schedule::{backlog_key, choose_pair_job, ledger, pair_key, PairJob};
     use cloud_service::{IncrementalPrep, REMOTE_WORK_LIMIT};
 
     info!("Background sync worker started (Phase 3A+ engine)");
@@ -17818,7 +17818,11 @@ async fn background_sync_worker(app: AppHandle) {
         let has_work = jobs.iter().any(|(cfg, job)| match job {
             PairJob::FullScan => true,
             PairJob::Changes => !backlog
-                .changes_for(&pair_key(cfg), &cfg.local_folder, std_now)
+                .changes_for(
+                    &backlog_key(cfg, &pair_key(cfg)),
+                    &cfg.local_folder,
+                    std_now,
+                )
                 .is_empty(),
             PairJob::Idle => false,
         });
@@ -17872,7 +17876,11 @@ async fn background_sync_worker(app: AppHandle) {
                         PairJob::FullScan => PairRun::Full,
                         PairJob::Idle => PairRun::Idle,
                         PairJob::Changes => {
-                            let changes = backlog.changes_for(&key, &cfg.local_folder, std_now);
+                            let changes = backlog.changes_for(
+                                &backlog_key(&cfg, &key),
+                                &cfg.local_folder,
+                                std_now,
+                            );
                             if changes.is_empty() {
                                 PairRun::Idle
                             } else {
@@ -18100,7 +18108,7 @@ async fn background_sync_worker(app: AppHandle) {
                             PairRun::Full => PairJob::FullScan,
                             _ => PairJob::Changes,
                         };
-                        (key.clone(), cfg.local_folder.as_path(), covered)
+                        (backlog_key(cfg, key), cfg.local_folder.as_path(), covered)
                     })
                     .collect();
                 backlog.settle(&roots, std_now);

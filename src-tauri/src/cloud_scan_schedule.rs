@@ -39,6 +39,21 @@ pub fn pair_key(config: &CloudConfig) -> String {
     )
 }
 
+/// A pair's identity for the change backlog: `key` (its [`pair_key`], or the
+/// key of the folder a cycle placed) on the server it syncs with. Paths alone
+/// are not enough there: a placement can give a `~/docs` pair on one server
+/// the key of a `/home/u/docs` pair on another, and a full scan of the first
+/// then counted as covering the second's watcher changes, which were dropped
+/// unsynced.
+pub fn backlog_key(config: &CloudConfig, key: &str) -> String {
+    let server = config
+        .server_profile_id
+        .as_deref()
+        .filter(|id| !id.trim().is_empty())
+        .unwrap_or(&config.server_profile);
+    format!("{server}\u{0}{key}")
+}
+
 #[derive(Debug, Default, Clone)]
 struct PairScanState {
     /// When the last full scan started (attempted, whatever its outcome).
@@ -645,6 +660,53 @@ mod tests {
             ..CloudConfig::default()
         };
         assert!(!ledger.hints("q", &compressed).compare_size);
+    }
+
+    /// Two pairs on `/local`, a `~/docs` one on server A and a `/home/u/docs`
+    /// one on server B: A's placement gives it B's path key. A full scan of A
+    /// covers only A, and B, idle, still has its watcher change to sync.
+    #[test]
+    fn a_placed_pair_with_another_servers_key_does_not_cover_its_changes() {
+        let pair = |profile: &str, remote: &str| CloudConfig {
+            local_folder: PathBuf::from("/local"),
+            remote_folder: remote.to_string(),
+            server_profile: profile.to_string(),
+            ..CloudConfig::default()
+        };
+        let a = pair("a", "~/docs");
+        let b = pair("b", "/home/u/docs");
+        let placed_a = pair_key(&CloudConfig {
+            remote_folder: "/home/u/docs".to_string(),
+            ..a.clone()
+        });
+        assert_eq!(placed_a, pair_key(&b), "the path keys collide");
+        let now = Instant::now();
+        let mut backlog = ChangeBacklog::default();
+        backlog.absorb(watcher_event(&["/local/f.txt"], false));
+        let root = Path::new("/local");
+        backlog.settle(
+            &[
+                (backlog_key(&a, &placed_a), root, PairJob::FullScan),
+                (backlog_key(&b, &pair_key(&b)), root, PairJob::Idle),
+            ],
+            now,
+        );
+        let left = backlog.changes_for(&backlog_key(&b, &pair_key(&b)), root, now);
+        assert_eq!(left.paths, vec![PathBuf::from("/local/f.txt")]);
+        assert!(backlog
+            .changes_for(&backlog_key(&a, &placed_a), root, now)
+            .is_empty());
+        // The worker keys the backlog this way everywhere it reads or settles it.
+        let worker = include_str!("lib.rs");
+        assert!(
+            !worker.contains(".changes_for(&pair_key("),
+            "a bare pair key reads the backlog"
+        );
+        assert_eq!(
+            worker.matches("backlog_key(").count(),
+            3,
+            "changes, run and settle"
+        );
     }
 
     fn watcher_event(paths: &[&str], overflow: bool) -> WatcherEvent {
