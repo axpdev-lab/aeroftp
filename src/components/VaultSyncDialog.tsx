@@ -167,6 +167,7 @@ const VaultSyncDialog: React.FC<VaultSyncDialogProps> = ({ vaultPath, password, 
         guard: step === 'comparing' || step === 'applying' ? 'busy' : null,
         onClose,
         backdrop: comparison || result ? 'never' : 'idle',
+        escape: true,
     });
 
     return (

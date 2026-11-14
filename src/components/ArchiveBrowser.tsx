@@ -149,11 +149,21 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const [showPassword, setShowPassword] = useState(false);
     const [needsPassword, setNeedsPassword] = useState(isEncrypted);
     const [extracting, setExtracting] = useState<string | null>(null);
+    // Extracts and previews can overlap: the guard counts every pending
+    // request so the first finisher cannot drop it while another runs.
+    const [pendingOps, setPendingOps] = useState(0);
     // Real byte-true extract progress (>=10MB only); RAR reports indeterminate.
     const progress = useArchiveProgress(extracting !== null);
     // Lock the modal during an extraction so a stray click / reflexive X can't abandon
-    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals).
-    const guarded = useGuardedClose({ guard: extracting !== null ? 'busy' : null, onClose });
+    // a big-file extract mid-flight (same pattern as the compressor + AeroVault modals);
+    // closing does not stop it, and the confirm says so. A password typed in the prompt
+    // asks before it is dropped, and an archive opened with one is kept from the
+    // backdrop, so a stray click never forces retyping it (Discussion #1527).
+    const guarded = useGuardedClose({
+        guard: pendingOps > 0 ? 'busy' : needsPassword && password !== '' ? 'dirty' : null,
+        onClose,
+        backdrop: !needsPassword && password !== '' ? 'never' : 'idle',
+    });
     const tempPreviewPathsRef = useRef<string[]>([]);
     const archivePasswordRef = useRef<HTMLInputElement>(null);
 
@@ -237,6 +247,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         if (!savePath) return;
 
         setExtracting(entryName);
+        setPendingOps(c => c + 1);
         try {
             const cmd = EXTRACT_ENTRY_COMMAND[archiveType];
             const args: Record<string, unknown> = {
@@ -249,6 +260,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         } catch (e) {
             setError(String(e));
         } finally {
+            setPendingOps(c => c - 1);
             setExtracting(null);
         }
     };
@@ -256,6 +268,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
     const handlePreview = async (entryName: string) => {
         // Extract to temp and open with system preview
         setExtracting(entryName);
+        setPendingOps(c => c + 1);
         try {
             const tempDirPath = await tempDir();
             const fileName = entryName.split(/[\\/]/).pop() || 'preview';
@@ -275,6 +288,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
         } catch (e) {
             setError(String(e));
         } finally {
+            setPendingOps(c => c - 1);
             setExtracting(null);
         }
     };
@@ -345,7 +359,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             role="dialog"
             aria-modal="true"
             aria-labelledby="archive-browser-title"
-            onClick={(e) => { if (e.target === e.currentTarget) guarded.requestBackdropClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 w-[840px] max-h-[85vh] flex flex-col animate-scale-in">
                 {/* Header */}
@@ -524,6 +538,7 @@ export const ArchiveBrowser: React.FC<ArchiveBrowserProps> = ({ archivePath, arc
             {guarded.confirmOpen && guarded.confirmKind && (
                 <GuardedCloseConfirm
                     kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
                     onKeep={guarded.cancelConfirm}
                     onConfirm={guarded.confirmAndClose}
                 />

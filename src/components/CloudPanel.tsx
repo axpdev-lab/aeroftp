@@ -16,6 +16,7 @@ import {
     Loader2, Shield, History, Link2
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
+import { useGuardedClose } from '../hooks/useGuardedClose';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
@@ -161,7 +162,8 @@ const CloudDashboard: React.FC<{
     onOpenFolder: () => void;
     onSettings: () => void;
     onManagePairs: () => void;
-}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs }) => {
+    settingsDisabled?: boolean;
+}> = ({ config, status, onSyncNow, onPause, onResume, onDisable, onOpenFolder, onSettings, onManagePairs, settingsDisabled }) => {
     const t = useTranslation();
     const caveatFor = useAeroCloudCaveat();
     const [countdown, setCountdown] = useState<string>('');
@@ -247,7 +249,7 @@ const CloudDashboard: React.FC<{
                         {countdown && <span className="countdown"> • {t('common.next')}: {countdown}</span>}
                     </p>
                 </div>
-                <button onClick={onSettings} className="btn-icon" title={t('common.settings')}>
+                <button onClick={onSettings} disabled={settingsDisabled} className="btn-icon disabled:opacity-50 disabled:cursor-not-allowed" title={t('common.settings')}>
                     <Settings size={20} />
                 </button>
                 <button onClick={onManagePairs} className="btn-icon" title={t('cloud.managePairs') || 'Manage pairs'} style={{ marginLeft: 4 }}>
@@ -368,6 +370,48 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const [workerErrors, setWorkerErrors] = useState<string[]>([]);
     const cycleErrors = [...new Set([...Object.values(errorsByScope).flat(), ...workerErrors])];
     const [hasCloudPairs, setHasCloudPairs] = useState<boolean | null>(null);
+    // The configuration as it was when the settings view opened. A click
+    // outside the settings closes the whole panel, so while edits are not
+    // saved it does nothing (Discussion #1527); the X and Cancel of the
+    // settings view only leave it, as before.
+    const [settingsBaseline, setSettingsBaseline] = useState<CloudConfig | null>(null);
+    // Settings does not open while Pause, Resume or Disable is in flight
+    // (pendingLifecycle, below): their result replaces the configuration and
+    // would drop a draft opened meanwhile. Every entry (the dashboard button,
+    // the re-authorize banner) goes through here.
+    const openSettings = () => {
+        if (pendingLifecycle > 0) return;
+        setSettingsBaseline(config);
+        setShowSettings(true);
+    };
+    // Edits live in `config` until Save persists them, so Cancel and X must
+    // hand the draft back to the baseline; otherwise a reopen would adopt the
+    // unsaved values as its baseline and the dirty guard would never fire.
+    // While a save is in flight they stay inert: restoring the baseline then
+    // would show a target the backend has not stored yet (Discussion #1527).
+    const [savingSettings, setSavingSettings] = React.useState(false);
+    // Pause, Resume and Disable replace the configuration when they resolve:
+    // Settings stays closed to new sessions while one is in flight, or an open
+    // draft would be dropped unasked by replaceConfig.
+    const [pendingLifecycle, setPendingLifecycle] = React.useState(0);
+    const closeSettings = () => {
+        if (savingSettings) return;
+        setConfig(settingsBaseline);
+        setShowSettings(false);
+    };
+    const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
+    // A save cannot be stopped: while it runs the whole settings view is busy,
+    // so the backdrop stays inert even when there are no unsaved edits.
+    const settingsGuard = useGuardedClose({ guard: savingSettings ? 'busy' : settingsEdited ? 'dirty' : null, onClose });
+    // A settings session belongs to one configuration: when the configuration
+    // is cleared or replaced from outside the settings view (Disable
+    // resolving, setup completing, a reload), an open settings must close and
+    // drop its baseline instead of editing or restoring the old one.
+    const replaceConfig = (next: CloudConfig | null) => {
+        setConfig(next);
+        setShowSettings(false);
+        setSettingsBaseline(null);
+    };
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
     // dedicated aerocloud commands (pause_aerocloud/resume_aerocloud/disable_aerocloud)
@@ -421,20 +465,38 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
     });
 
-    const loadConfig = async () => {
-        setIsLoading(true);
+    const loadConfig = async (refresh = false) => {
+        // A refresh only merges last_sync: the full-panel loading view would
+        // unmount an open settings draft behind an unguarded backdrop.
+        if (!refresh) setIsLoading(true);
         try {
             let cfg: CloudConfig;
             try {
                 cfg = await invoke<CloudConfig>('get_cloud_config');
             } catch (error) {
                 console.error('Failed to load cloud config:', error);
-                setConfig(null);
-                setConfigLoadError(String(error));
+                // A failed refresh leaves the configuration and an open draft
+                // as they are; a failed full load clears them, so nothing
+                // older stays editable over the unreadable file.
+                if (!refresh) {
+                    replaceConfig(null);
+                    setConfigLoadError(String(error));
+                }
                 return;
             }
-            setConfigLoadError(null);
-            setConfig(cfg);
+            if (refresh) {
+                // A sync only moves last_sync (the folders are inputs, not
+                // outputs), so merge that persisted field into the draft and
+                // the baseline: an open settings view is neither closed nor
+                // marked dirty by the refresh.
+                // A configuration cleared meanwhile (Disable) stays cleared: a
+                // late refresh must not bring the disabled setup back.
+                setConfig(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
+                setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync } : prev);
+            } else {
+                setConfigLoadError(null);
+                replaceConfig(cfg);
+            }
             // Pair-specific settings own Update whenever pairs exist. Failure
             // to read them must not expose an ineffective legacy checkbox.
             const pairs = await invoke<{ pairs: unknown[] }>('get_cloud_pairs_config').catch(() => null);
@@ -448,12 +510,12 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         } catch (error) {
             console.error('Failed to load cloud config:', error);
         } finally {
-            setIsLoading(false);
+            if (!refresh) setIsLoading(false);
         }
     };
 
     const handleSetupComplete = (newConfig: CloudConfig) => {
-        setConfig(newConfig);
+        replaceConfig(newConfig);
         setStatus({ type: 'idle' });
         // Notify parent that cloud is now active
         emit('cloud-sync-status', { status: 'active', message: t('cloud.aerocloudEnabled') });
@@ -471,8 +533,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             const result = await invoke<string>('trigger_cloud_sync');
             logger.debug('Sync result:', result);
             setStatus({ type: 'idle' });
-            // Reload config to update last_sync
-            loadConfig();
+            // Reload config to update last_sync: a refresh, not a new
+            // configuration: an open settings draft must survive it.
+            loadConfig(true);
         } catch (error) {
             console.error('Sync failed:', error);
             setStatus({ type: 'error', message: String(error) });
@@ -480,24 +543,30 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     };
 
     const handlePause = async () => {
+        setPendingLifecycle(c => c + 1);
         try {
             const updated = await invoke<CloudConfig>('pause_aerocloud');
-            setConfig(updated);
+            replaceConfig(updated);
             setStatus({ type: 'paused' });
             logger.debug('Sync paused');
         } catch (error) {
             console.error('Failed to pause sync:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
     const handleResume = async () => {
+        setPendingLifecycle(c => c + 1);
         try {
             const updated = await invoke<CloudConfig>('resume_aerocloud');
-            setConfig(updated);
+            replaceConfig(updated);
             setStatus({ type: 'idle', last_sync: config?.last_sync || undefined });
             logger.debug('Sync resumed');
         } catch (error) {
             console.error('Failed to resume sync:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
@@ -511,13 +580,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
 
     const performDisable = async () => {
         setPendingDisableConfirm(false);
+        setPendingLifecycle(c => c + 1);
         try {
             await invoke('disable_aerocloud');
-            setConfig(null);
+            replaceConfig(null);
             setStatus({ type: 'not_configured' });
             logger.debug('AeroCloud disabled');
         } catch (error) {
             logger.error('Failed to disable:', error);
+        } finally {
+            setPendingLifecycle(c => c - 1);
         }
     };
 
@@ -588,14 +660,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         const syncIntervalValue = isHours ? Math.round(syncSecs / 3600) : Math.round(syncSecs / 60);
 
         return (
-            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={onClose} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSettingsLabel')}>
+            <div className="fixed inset-0 bg-black/60 z-[9999] flex items-start justify-center backdrop-blur-sm overflow-y-auto py-6" onClick={settingsGuard.onBackdropClick} role="dialog" aria-modal="true" aria-label={t('cloud.dialogSettingsLabel')}>
                 <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl max-w-4xl w-full mx-4 my-auto flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
                     <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-200 dark:border-gray-700">
                         <h2 className="text-xl font-semibold flex items-center gap-2"><Settings className="text-cyan-500" /> {t('cloud.title')} {t('common.settings')}</h2>
-                        <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={20} /></button>
+                        <button onClick={closeSettings} disabled={savingSettings} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg disabled:opacity-50"><X size={20} /></button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto">
+                    <fieldset disabled={savingSettings} className="grid grid-cols-1 md:grid-cols-2 gap-6 p-6 overflow-y-auto border-0 m-0 min-w-0">
                         {/* LEFT COLUMN: Connection & Location */}
                         <section className="space-y-4">
                             <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('cloud.sectionConnection')}</h3>
@@ -779,6 +851,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         try {
                                             await invoke('update_excluded_folders', { excludedFolders: folders });
                                             setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
+                                            // Persisted immediately, so it must not count as an unsaved edit.
+                                            setSettingsBaseline(prev => prev ? { ...prev, excluded_folders: folders } : prev);
                                         } catch (e) {
                                             console.error('Failed to update excluded folders:', e);
                                         }
@@ -824,13 +898,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                 <WatcherStatus watchPath={config?.local_folder} />
                             </div>
                         </section>
-                    </div>
+                    </fieldset>
 
                     {/* Footer: full width */}
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button
                             onClick={async () => {
-                                if (config) {
+                                if (config && !savingSettings) {
+                                    setSavingSettings(true);
                                     try {
                                         await invoke('save_cloud_config_cmd', { config });
                                         // Sync interval to SyncSchedule so the background worker uses the correct value
@@ -846,16 +921,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);
+                                    } finally {
+                                        setSavingSettings(false);
                                     }
                                 }
                             }}
-                            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium"
+                            disabled={savingSettings}
+                            className="flex-1 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg font-medium disabled:opacity-60"
                         >
                             {t('common.save')} {t('common.settings')}
                         </button>
                         <button
-                            onClick={() => setShowSettings(false)}
-                            className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium"
+                            onClick={closeSettings}
+                            disabled={savingSettings}
+                            className="flex-1 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 rounded-lg font-medium disabled:opacity-50"
                         >
                             {t('common.cancel')}
                         </button>
@@ -880,8 +959,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                             <span>{reauthRequired.provider.toUpperCase()}: {t('cloud.reauthRequired')}</span>
                         </div>
                         <button
-                            onClick={() => { setReauthRequired(null); setShowSettings(true); }}
-                            className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700"
+                            onClick={() => { setReauthRequired(null); openSettings(); }}
+                            disabled={pendingLifecycle > 0}
+                            className="px-3 py-1 text-xs font-medium rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {t('cloud.reauthorize') || 'Re-authorize'}
                         </button>
@@ -896,8 +976,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     onResume={handleResume}
                     onDisable={handleDisable}
                     onOpenFolder={handleOpenFolder}
-                    onSettings={() => setShowSettings(true)}
+                    onSettings={openSettings}
                     onManagePairs={() => setShowCloudPairs(true)}
+                    settingsDisabled={pendingLifecycle > 0}
                 />
             </div>
             {showVersionBrowser && (

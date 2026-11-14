@@ -45,6 +45,7 @@ import {
   type PeerFriend, type PeerShareStarted, type PeerDriveAdded,
 } from '../../utils/aeroShare';
 import { copyText } from '../../utils/clipboard';
+import type { GuardKind } from '../../hooks/useGuardedClose';
 
 export type AeroShareMode = 'receive' | 'share' | 'contacts';
 
@@ -88,6 +89,10 @@ export interface AeroShareHandshakeBodyProps {
   /** Persist a peer-card edit. Required when editConnection is set; the host
    *  (ConnectionScreen) owns the saved-profile write. */
   onSaveEdit?: (values: { alias: string; localFolder: string; customIconUrl?: string }) => void | Promise<void>;
+  /** Tells a modal host what a close would lose: a handshake in flight
+   *  ('busy'), a pasted link or a typed recipient ('dirty'), and whether a
+   *  share link to send back is on screen (`keepResult`). */
+  onCloseGuardChange?: (guard: GuardKind | null, keepResult: boolean) => void;
 }
 
 interface PeerShareEvent {
@@ -170,6 +175,7 @@ export function AeroShareHandshakeBody({
   prefillShareFolder,
   editConnection,
   onSaveEdit,
+  onCloseGuardChange,
 }: AeroShareHandshakeBodyProps) {
   const t = useTranslation();
   const isPage = variant === 'page';
@@ -215,6 +221,44 @@ export function AeroShareHandshakeBody({
   const [shareError, setShareError] = useState('');
   const [shareResult, setShareResult] = useState<PeerShareStarted | null>(null);
   const [liveStatus, setLiveStatus] = useState('');
+
+  // The friends effect auto-picks the first saved recipient when the roster
+  // loads, so the opening values of the recipient picker are the seeded ones,
+  // not the literal useState defaults.
+  const recipientAutoSeeded = !prefillAfid && friends.length > 0;
+  const initialRecipientMode = recipientAutoSeeded ? 'saved' : 'paste';
+  const initialSelectedFriend = recipientAutoSeeded ? friends[0].afid : '';
+
+  // The friends effect auto-picks the first saved recipient when the roster
+  // loads, so the picker is clean both at the literal defaults and at the
+  // seeded values; only a user change away from either counts as dirty.
+  const recipientPickerClean = (recipientMode === 'paste' && selectedFriend === '')
+    || (recipientMode === initialRecipientMode && selectedFriend === initialSelectedFriend);
+
+  const recvFormDirty = recvPhase !== 'done' && (
+    link.trim() !== ''
+    || issuerAfid !== (editConnection?.afid ?? prefillAfid ?? '')
+    || issuerAlias !== (editConnection?.alias ?? prefillAlias ?? '')
+    || localFolder !== (editConnection?.localFolder ?? defaultLocalPath ?? '')
+    || customIcon !== editConnection?.customIconUrl
+  );
+  const shareFormDirty = sharePhase !== 'done' && (
+    shareFolder !== (prefillShareFolder ?? '')
+    || !recipientPickerClean
+    || recipientAfid !== (prefillAfid ?? '')
+    || recipientAlias !== (prefillAlias ?? '')
+    || driveName !== ''
+    || customIcon !== editConnection?.customIconUrl
+  );
+  const closeGuard: GuardKind | null = recvPhase === 'working' || sharePhase === 'working'
+    ? 'busy'
+    : recvFormDirty || shareFormDirty
+      ? 'dirty'
+      : null;
+  const keepShareResult = sharePhase === 'done' && shareResult !== null;
+  useEffect(() => {
+    onCloseGuardChange?.(closeGuard, keepShareResult);
+  }, [onCloseGuardChange, closeGuard, keepShareResult]);
 
   // Load my AFID + saved friends on open. autoCreate so the receiver always
   // has an ID to show (handoff §2 step 1). Skipped in edit mode: it shows the

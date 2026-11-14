@@ -8,6 +8,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { useModalFocusTrap } from '../hooks/useModalFocusTrap';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import {
   addBoxCollaborator,
   BOX_ROLES,
@@ -42,12 +45,17 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<BoxRole>('viewer');
   const [adding, setAdding] = useState(false);
-  const [removingId, setRemovingId] = useState<string | null>(null);
+  const removes = useInFlight<string>();
+  // Removes on different collaborators can overlap: count every pending
+  // request so the first finisher cannot drop the busy guard (review).
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
+  // An invite or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
+  // inert in both cases and the X asks first (Discussion #1527).
+  const guarded = useGuardedClose({ guard: adding || removes.count > 0 ? 'busy' : email.trim() ? 'dirty' : null, onClose });
 
   const roleLabel = (r: string) => (r in ROLE_KEY ? t(ROLE_KEY[r as BoxRole]) : r);
 
@@ -67,11 +75,11 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   useModalFocusTrap(panelRef, emailRef);
 
@@ -93,7 +101,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
   };
 
   const handleRemove = async (id: string) => {
-    setRemovingId(id);
+    removes.begin(id);
     setError(null);
     setNotice(null);
     try {
@@ -103,13 +111,13 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
     } catch (err) {
       setError(String(err));
     } finally {
-      setRemovingId(null);
+      removes.end(id);
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         ref={panelRef}
@@ -123,7 +131,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
             <Users size={16} className="text-blue-500" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('box.collaborators')}</h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700" aria-label={t('common.close')}>
             <X size={16} className="text-gray-500" />
           </button>
         </div>
@@ -147,12 +155,12 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
                 </div>
                 <button
                   onClick={() => void handleRemove(c.id)}
-                  disabled={removingId === c.id}
+                  disabled={removes.has(c.id)}
                   className="p-1 rounded text-red-500 hover:bg-red-500/10 disabled:opacity-50"
                   title={t('common.remove')}
                   aria-label={t('common.remove')}
                 >
-                  {removingId === c.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                  {removes.has(c.id) ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                 </button>
               </div>
             ))
@@ -186,7 +194,7 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
 
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
+            onClick={guarded.requestClose}
             className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {t('common.close')}
@@ -201,6 +209,9 @@ export function BoxCollaboratorsDialog({ path, name, onClose }: BoxCollaborators
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

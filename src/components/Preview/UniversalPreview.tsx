@@ -52,7 +52,11 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
     const [forceText, setForceText] = useState(false);
     // True while AeroImage has unsaved edits: guards an accidental close.
     const [previewDirty, setPreviewDirty] = useState(false);
-    const guarded = useGuardedClose({ guard: previewDirty ? 'dirty' : null, onClose });
+    // ESC goes through the shared stack like every other modal: only the
+    // modal opened last answers, so the image save dialog over the preview
+    // takes the key first, and a modal left open beneath the preview does
+    // not (Discussion #1527).
+    const guarded = useGuardedClose({ guard: previewDirty ? 'dirty' : null, onClose, escape: isOpen });
 
     // Reset error + the view-as-text override when the file changes
     useEffect(() => {
@@ -73,9 +77,6 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
         const handleKeyDown = (e: KeyboardEvent) => {
             switch (e.key) {
-                case 'Escape':
-                    guarded.requestClose();
-                    break;
                 case 'ArrowLeft':
                     if (hasPrevious && onPrevious && !previewDirty) onPrevious();
                     break;
@@ -87,7 +88,7 @@ export const UniversalPreview: React.FC<UniversalPreviewProps> = ({
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, guarded.requestClose, onNext, onPrevious, hasNext, hasPrevious, previewDirty]);
+    }, [isOpen, onNext, onPrevious, hasNext, hasPrevious, previewDirty]);
 
     // Prevent body scroll when modal is open
     useEffect(() => {

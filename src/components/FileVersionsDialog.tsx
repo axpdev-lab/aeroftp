@@ -8,6 +8,9 @@ import { X, Download, RotateCcw, History, RefreshCw, Trash2, AlertTriangle } fro
 import { useTranslation } from '../i18n';
 import { formatBytes } from '../utils/formatters';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface FileVersion {
   id: string;
@@ -29,8 +32,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
   const [versions, setVersions] = useState<FileVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const ops = useInFlight<string>();
   const [pendingPurge, setPendingPurge] = useState<FileVersion | null>(null);
+  // Operations on different versions can overlap: the guard counts every
+  // pending request, so the first one to finish cannot drop it (review).
+  // A download, restore or purge already sent goes on after a close: the backdrop is inert while it runs (Discussion #1527).
+  const guarded = useGuardedClose({ guard: ops.count > 0 ? 'busy' : null, onClose });
 
   useEffect(() => {
     loadVersions();
@@ -55,7 +62,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     const savePath = await pickSave({ defaultPath: defaultName });
     if (!savePath) return;
 
-    setActionInProgress(version.id);
+    ops.begin(version.id);
     try {
       await invoke('provider_download_version', {
         path: filePath,
@@ -65,12 +72,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Download version failed:', err);
     } finally {
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
   const handleRestore = async (version: FileVersion) => {
-    setActionInProgress(version.id);
+    ops.begin(version.id);
     try {
       await invoke('provider_restore_version', {
         path: filePath,
@@ -80,13 +87,13 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
     } catch (err) {
       console.error('Restore version failed:', err);
     } finally {
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
   const handlePurge = async (version: FileVersion) => {
     setPendingPurge(null);
-    setActionInProgress(version.id);
+    ops.begin(version.id);
     try {
       await invoke('provider_delete_version', {
         path: filePath,
@@ -97,12 +104,12 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
       console.error('Purge version failed:', err);
       setError(String(err));
     } finally {
-      setActionInProgress(null);
+      ops.end(version.id);
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[520px] max-h-[70vh] flex flex-col animate-scale-in"
@@ -114,7 +121,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
             <History size={18} className="text-blue-500" />
             <h3 className="font-semibold text-sm">{t('versions.title') || 'File Versions'}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={16} />
           </button>
         </div>
@@ -157,16 +164,16 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleDownload(v)}
-                          disabled={actionInProgress === v.id}
+                          disabled={ops.has(v.id)}
                           className="p-1 text-gray-400 hover:text-blue-500 disabled:opacity-50"
                           title={t('versions.download') || 'Download this version'}
                         >
-                          {actionInProgress === v.id ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                          {ops.has(v.id) ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                         </button>
                         {i > 0 && (
                           <button
                             onClick={() => handleRestore(v)}
-                            disabled={actionInProgress === v.id}
+                            disabled={ops.has(v.id)}
                             className="p-1 text-gray-400 hover:text-orange-500 disabled:opacity-50"
                             title={t('versions.restore') || 'Restore this version'}
                           >
@@ -175,7 +182,7 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                         )}
                         <button
                           onClick={() => setPendingPurge(v)}
-                          disabled={actionInProgress === v.id}
+                          disabled={ops.has(v.id)}
                           className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
                           title={t('versions.purge') || 'Permanently delete this version'}
                         >
@@ -217,6 +224,9 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
       )}
     </div>
   );

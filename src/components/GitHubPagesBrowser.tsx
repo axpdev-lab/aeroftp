@@ -18,6 +18,8 @@ import { formatDate as formatDateFull } from '../utils';
 import { GitHubPagesIcon } from './icons/GitHubPagesIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface PagesSite {
   url: string | null;
@@ -62,6 +64,12 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   const [configPath, setConfigPath] = useState('');
   const [configCname, setConfigCname] = useState('');
   const [savingConfig, setSavingConfig] = useState(false);
+  // A rebuild or a config save already sent goes on after a close, and an open config edit that differs from the
+  // site is unsaved: the backdrop is inert in both cases and the X asks first (Discussion #1527).
+  const configDirty = showConfigEdit && !!site && (
+    configBranch !== (site.source?.branch || '') || configPath !== (site.source?.path || '/') || configCname !== (site.cname || '')
+  );
+  const guarded = useGuardedClose({ guard: rebuilding || savingConfig ? 'busy' : configDirty ? 'dirty' : null, onClose });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -88,14 +96,14 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
     if (!isOpen) return;
     document.documentElement.classList.add('modal-open');
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => {
       document.documentElement.classList.remove('modal-open');
       window.removeEventListener('keydown', handleKey);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, guarded.requestClose]);
 
   const handleRebuild = useCallback(async () => {
     setRebuilding(true);
@@ -160,8 +168,8 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[5vh]">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
       <div
         {...modalDrag.panelProps}
         className="relative w-full max-w-2xl overflow-hidden rounded-lg shadow-2xl animate-scale-in"
@@ -183,7 +191,7 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
             >
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             </button>
-            <button onClick={onClose} className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">
+            <button onClick={guarded.requestClose} className="p-1.5 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400">
               <X size={14} />
             </button>
           </div>
@@ -468,6 +476,9 @@ export const GitHubPagesBrowser: React.FC<GitHubPagesBrowserProps> = ({
           )}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 };
