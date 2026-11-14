@@ -4331,6 +4331,8 @@ mod tests {
     /// error there made callers undo or retry a replace that had happened.
     #[tokio::test]
     async fn a_replace_whose_final_delete_fails_is_done_and_says_what_is_left() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let (mut provider, calls) = provider_with_cached_tree_refusing(
             &[
                 ("/dst", "22"),

@@ -250,53 +250,98 @@ const BODY_ESCAPES: Record<string, string> = { '"': '"', '\\': '\\', '/': '/', b
  *  escape or character it comes from (one more entry: the end); any other
  *  backslash is literal. One pass, linear. `null` when nothing decodes,
  *  which ends the recursion. */
-const decodeBody = (text: string): [decoded: string, raw: number[]] | null => {
-    const units: string[] = [];
-    const raw: number[] = [];
+const decodeBody = (text: string): [decoded: string, raw: ArrayLike<number>] | null => {
+    // Plain runs are copied whole, and the index map is a typed array: the
+    // work the budget counts stays cheap per character (R1).
+    const parts: string[] = [];
+    const raw = new Int32Array(text.length + 1);
+    let written = 0;
+    let run = 0;
     let changed = false;
     let k = 0;
     while (k < text.length) {
-        raw.push(k);
         if (text.charCodeAt(k) === 92 && k + 1 < text.length) {
             const escape = text[k + 1];
-            const simple = BODY_ESCAPES[escape];
-            if (simple !== undefined) {
-                units.push(simple);
-                k += 2;
-                changed = true;
-                continue;
+            let unit = BODY_ESCAPES[escape];
+            let length = 2;
+            if (unit === undefined && escape === 'u') {
+                const hex = text.slice(k + 2, k + 6);
+                if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                    unit = String.fromCharCode(parseInt(hex, 16));
+                    length = 6;
+                }
             }
-            const hex = text.slice(k + 2, k + 6);
-            if (escape === 'u' && /^[0-9a-fA-F]{4}$/.test(hex)) {
-                units.push(String.fromCharCode(parseInt(hex, 16)));
-                k += 6;
+            if (unit !== undefined) {
+                if (k > run) parts.push(text.slice(run, k));
+                parts.push(unit);
+                raw[written++] = k;
+                k += length;
+                run = k;
                 changed = true;
                 continue;
             }
         }
-        units.push(text[k]);
+        raw[written++] = k;
         k += 1;
     }
-    raw.push(text.length);
-    return changed ? [units.join(''), raw] : null;
+    if (!changed) return null;
+    if (run < text.length) parts.push(text.slice(run));
+    raw[written] = text.length;
+    return [parts.join(''), raw.subarray(0, written + 1)];
 };
 
 /** The userinfo spans `[start, end)` of `text`, in order (see
  *  `redactUrlUserinfo`). */
-const userinfoSpans = (text: string): Array<[number, number]> => {
+/** The bound on decoding (R1): the levels decoded inside one another,
+ *  and the work of every level together (each level is parsed, scanned
+ *  and decoded once, its length counted three times), whatever chain of
+ *  escapes the text holds. `\u005c` repeated decodes to itself shortened
+ *  by five characters at each level: without the bound, N levels and work
+ *  quadratic in N from text a server sent. */
+export const MAX_DECODE_DEPTH = 64;
+/** The work allowed per character of the text, over every level together:
+ *  about ten levels of the text's full length (each costs three units per
+ *  character), so a long nested dump decodes exactly where it can. A chain
+ *  that re-forms an escape at every level reaches this before
+ *  `MAX_DECODE_DEPTH` (64 such levels cost about 192 units per character):
+ *  the depth bound is the stack's backstop. */
+const DECODE_WORK_PER_CHARACTER = 32;
+const decodeWorkLimit = (length: number): number => DECODE_WORK_PER_CHARACTER * length + 4096;
+interface DecodeBudget { work: number; depth: number; readonly limit: number }
+
+/** A level that would go past the bound and still holds an escape that
+ *  decodes: what it hides is unknown, so all of it is masked (conservative,
+ *  never unmasked). */
+const pastTheBound = (budget: DecodeBudget, length: number): boolean =>
+    budget.depth >= MAX_DECODE_DEPTH || budget.work + length > budget.limit;
+
+const userinfoSpans = (
+    text: string,
+    budget: DecodeBudget = { work: 0, depth: 0, limit: decodeWorkLimit(text.length) },
+): Array<[number, number]> => {
+    budget.work += 2 * text.length;
     const json = isJsonDocument(text);
     const spans: Array<[number, number]> = [];
+    // One decoded level of `length` characters: `false` past the bound,
+    // where the caller masks what it would have decoded.
+    const deeper = (length: number, decode: () => [string, ArrayLike<number>] | null): boolean => {
+        if (pastTheBound(budget, length)) return false;
+        budget.work += length;
+        const level = decode();
+        if (!level) return true;
+        const [decoded, raw] = level;
+        budget.depth += 1;
+        for (const [a, b] of userinfoSpans(decoded, budget)) spans.push([raw[a], raw[b]]);
+        budget.depth -= 1;
+        return true;
+    };
     if (!json) {
         // X2: no whole-document JSON gates a mask. Text that is not JSON as
         // a whole (a prefix before a JSON dump, a suffix after it, a trailing
         // comma, single quotes) is also scanned decoded, as one string body,
         // by these same rules, and the spans are mapped back; the raw scan
         // below still runs, so decoding never masks less.
-        const body = decodeBody(text);
-        if (body) {
-            const [decoded, raw] = body;
-            for (const [a, b] of userinfoSpans(decoded)) spans.push([raw[a], raw[b]]);
-        }
+        if (!deeper(text.length, () => decodeBody(text)) && decodeBody(text)) return [[0, text.length]];
     }
     let i = 0;
     // The string token the scan is in (valid JSON only): its closing quote.
@@ -311,8 +356,11 @@ const userinfoSpans = (text: string): Array<[number, number]> => {
                 // and escapes; the raw scan below still runs on the token
                 // too, so decoding never masks less (an escaped newline ends
                 // the decoded authority, not the raw one).
-                const [decoded, raw] = decodeStringToken(text, i + 1, end);
-                for (const [a, b] of userinfoSpans(decoded)) spans.push([raw[a], raw[b]]);
+                const from = i + 1;
+                if (!deeper(end - from, () => decodeStringToken(text, from, end))) {
+                    // Past the bound: the whole token is masked.
+                    spans.push([from, end]);
+                }
             }
             i += 1;
             continue;
@@ -343,6 +391,11 @@ const userinfoSpans = (text: string): Array<[number, number]> => {
     }
     return spans;
 };
+
+/** The userinfo spans under a work limit of the caller's: for the tests,
+ *  which pin the depth bound alone with `Infinity`. */
+export const userinfoSpansWithin = (text: string, workLimit: number): Array<[number, number]> =>
+    userinfoSpans(text, { work: 0, depth: 0, limit: workLimit });
 
 /**
  * Masks the userinfo of every URL, in time linear in the text for each
@@ -375,11 +428,15 @@ const userinfoSpans = (text: string): Array<[number, number]> => {
  * too, all of it read as one string body (X2): `log: {"url":"https:\/\/
  * bob:pw@host"}` is masked although no `://` is written in it. Malformed
  * escapes are literal. Each level is one linear pass and the recursion
- * stops at the first level that decodes nothing; a level is shorter than
- * the one before by one character per escape, so a line full of
- * backslashes, halved at every level, costs twice its length in all. The
- * raw text is scanned as well, and the union of both is masked, so
- * decoding never masks less than the raw text did.
+ * stops at the first level that decodes nothing. A chain of escapes can
+ * re-form one at every level (`\u005c` repeated shortens by five
+ * characters per level), so the decoding is bounded (R1): at most
+ * `MAX_DECODE_DEPTH` levels inside one another, and 32n + 4096 units of
+ * work in all (n the text's length). A level past either bound that still
+ * holds an escape is masked whole (the text, or the JSON token):
+ * conservative, never unmasked. The raw text is scanned as well, and the
+ * union of both is masked, so decoding never masks less than the raw text
+ * did.
  * Accepted consequence: a URL with no path followed by a later `@` before
  * the next `/`, `?`, `#` (in its JSON token, or anywhere in text that is
  * not JSON as a whole) over-masks into what follows, the words and fields

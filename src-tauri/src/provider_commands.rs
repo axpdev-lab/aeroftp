@@ -14970,6 +14970,8 @@ mod tests {
     /// earlier one's, and nothing it reported is left in the queue.
     #[tokio::test]
     async fn a_connect_answers_its_own_warnings_once() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let _ = crate::providers::take_warnings();
         crate::providers::report_warning("another connection's".to_string());
         let connected = super::connected_with_warnings(async {

@@ -1124,6 +1124,15 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.account_email()
     }
 
+    /// The wrapped session's own namespace (CodeRabbit 4575254547): an
+    /// overlay changes what the files hold, never which account, mount or
+    /// branch they are on. Without it a wrapped GitHub session on `main` and
+    /// one on its working branch had one sync identity, the login, and the
+    /// baseline of one tree served the other.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.inner.sync_namespace_identity()
+    }
+
     async fn connect(&mut self) -> Result<(), ProviderError> {
         self.inner.connect().await
     }
@@ -6514,6 +6523,37 @@ pub(crate) mod tests {
                 "{scope:?} {start:?}"
             );
         }
+    }
+
+    /// CodeRabbit 4575254547: the overlay answers the wrapped session's
+    /// namespace identity and account, so a GitHub session on `main` and one
+    /// on its working branch stay two sync targets when wrapped, and the
+    /// digest the AeroCloud factory makes of each differs.
+    #[test]
+    fn the_overlay_forwards_the_wrapped_sessions_namespace_identity() {
+        let (on_main, on_branch) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        let expected = [
+            on_main.sync_namespace_identity(),
+            on_branch.sync_namespace_identity(),
+        ];
+        assert!(expected.iter().all(Option::is_some));
+        let wrapped = [
+            CryptOverlayProvider::new(Box::new(on_main), aerocrypt_keys(), "/"),
+            CryptOverlayProvider::new(Box::new(on_branch), aerocrypt_keys(), "/"),
+        ];
+        for (overlay, inner) in wrapped.iter().zip(&expected) {
+            assert_eq!(&overlay.sync_namespace_identity(), inner);
+            assert_eq!(overlay.account_email().as_deref(), Some("alice"));
+        }
+        assert_ne!(
+            wrapped[0].sync_namespace_identity(),
+            wrapped[1].sync_namespace_identity(),
+            "main and its working branch are two trees"
+        );
+        // A wrapped provider with no namespace of its own still has none.
+        let plain = CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), "/");
+        assert_eq!(plain.sync_namespace_identity(), None);
     }
 
     #[tokio::test]

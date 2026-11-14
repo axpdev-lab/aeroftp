@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { CREDENTIAL_RULES, REDACTION_PATTERNS, applyRules, redactCredentials, redactSensitive, redactUrlUserinfo, uncoveredIdentity, type Span } from './redactSensitive';
+import { CREDENTIAL_RULES, MAX_DECODE_DEPTH, REDACTION_PATTERNS, applyRules, redactCredentials, redactSensitive, redactUrlUserinfo, uncoveredIdentity, userinfoSpansWithin, type Span } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -297,6 +297,65 @@ describe('redactCredentials: one URL rule, any scheme, never past a field (T11)'
     });
 });
 
+// R1 (CodeRabbit 4575254533, Greptile 4575199182): chains of escapes that
+// re-form an escape at every level. Without a bound, `\` repeated N
+// times is N levels and work quadratic in N (and N frames of stack): the
+// decoding stops at MAX_DECODE_DEPTH levels or 32n + 4096 units of work, and
+// what is past the bound is masked whole, never returned unmasked.
+describe('redactUrlUserinfo (R1: decoding bounded on self-recreating escapes)', () => {
+    const chains: Record<string, (n: number) => string> = {
+        'the bot\'s chain': n => 'log: \\' + 'u005c'.repeat(n),
+        'a backslash run that re-forms \\u': n => 'log: ' + '\\\\'.repeat(n) + 'u005c'.repeat(n),
+        'escaped backslashes mixed with \\/': n => 'log: ' + '\\u005c\\/'.repeat(n),
+        'an escaped quote chain': n => 'log: "' + '\\u005c\\u0022'.repeat(n) + '"',
+    };
+    const URL = ' https:\\/\\/bob:hunter2@host/p';
+    for (const [name, chain] of Object.entries(chains)) {
+        it.each([10_000, 100_000])(`stays bounded on ${name} at %i links, and masks a password after it`, n => {
+            for (const input of [chain(n), chain(n) + URL]) {
+                const started = performance.now();
+                // A stack depth of n would throw here: the depth is bounded.
+                const masked = redactUrlUserinfo(input);
+                expect(performance.now() - started).toBeLessThan(2000);
+                expect(masked).not.toContain('hunter2');
+                expect(redactSensitive(input)).not.toContain('hunter2');
+                expect(redactUrlUserinfo(masked)).toBe(masked);
+            }
+        });
+    }
+    it('masks a chain within the bound exactly, and one past it whole', () => {
+        // Three links: decoded to the end, the userinfo alone is masked.
+        const short = 'log: https:\\u005c/\\u005c/bob:hunter2@host/p';
+        expect(redactUrlUserinfo(short)).toBe('log: https:\\u005c/\\u005c/***REDACTED***@host/p');
+        // Past the bound: conservative (the work bound ends first on such a
+        // chain, at 32n + 4096; see the depth pin below).
+        const long = 'log: \\' + 'u005c'.repeat(MAX_DECODE_DEPTH + 10) + URL;
+        expect(redactUrlUserinfo(long)).toBe('***REDACTED***');
+    });
+
+    // A long dump nested four levels deep: inside the work bound (32n), so
+    // it is masked exactly, never the whole line.
+    it('masks a URL four decodes deep in a line over 8 KB exactly', () => {
+        const escape = (s: string) => s.replace(/\\/g, '\\\\').replace(/\//g, '\\/');
+        const deep = (s: string) => escape(escape(escape(escape(s))));
+        const line = 'x'.repeat(9_000) + ' ' + deep('https://') + 'bob:hunter2@host' + deep('/p');
+        expect(line.length).toBeGreaterThan(8 * 1024);
+        expect(redactUrlUserinfo(line)).toBe('x'.repeat(9_000) + ' ' + deep('https://') + '***REDACTED***@host' + deep('/p'));
+    });
+
+    // The depth bound on its own, with no work limit: past MAX_DECODE_DEPTH
+    // levels the level is masked whole; below it, exactly.
+    it('masks past the depth bound whole, and below it exactly, with no work limit', () => {
+        const chain = (links: number) => 'log: \\' + 'u005c'.repeat(links) + URL;
+        const past = chain(MAX_DECODE_DEPTH + 10);
+        expect(userinfoSpansWithin(past, Infinity)).toContainEqual([0, past.length]);
+        const below = chain(MAX_DECODE_DEPTH - 2);
+        const spans = userinfoSpansWithin(below, Infinity);
+        expect(spans.length).toBeGreaterThan(0);
+        for (const [a, b] of spans) expect(below.slice(a, b)).toBe('bob:hunter2');
+    });
+});
+
 describe('redactUrlUserinfo (H9: linear by construction)', () => {
     it('stays linear on long adversarial input', () => {
         const inputs = [
@@ -318,7 +377,8 @@ describe('redactUrlUserinfo (H9: linear by construction)', () => {
             JSON.stringify({ log: JSON.stringify(Array.from({ length: 20_000 }, (_, n) => `ftp://u${n}:p@h${n}/x`)) }),
             Array.from({ length: 12 }).reduce<string>((inner) => JSON.stringify({ v: inner }), 'ftp://u:p@h/' + 'x'.repeat(1000)),
             // X2: long lines that are not JSON, full of backslashes, decoded
-            // as a string body at every level: a run halves at each one.
+            // as a string body at every level: a backslash run halves at each one
+            // (chains that re-form an escape are R1's, below).
             'log: ' + '\\'.repeat(400_000) + ' https:\\/\\/bob:hunter2@h/p',
             'log: ' + 'x\\y'.repeat(100_000) + ' https:\\/\\/bob:hunter2@h/p',
             'log: ' + '\\/'.repeat(200_000),
