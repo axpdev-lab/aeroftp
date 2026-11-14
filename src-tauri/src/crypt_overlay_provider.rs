@@ -1383,9 +1383,24 @@ impl StorageProvider for CryptOverlayProvider {
         Ok(())
     }
 
+    /// Up goes to the parent of the folder the session shows, as the panel's
+    /// Up does with the displayed parent: from the anchor of a home the
+    /// server reports under another name (`/usr/home/u/docs` for
+    /// `/home/u/docs`), the inner `CDUP` went to the physical parent, a
+    /// folder the display never named. At the root, or on a path with no
+    /// `/`, the inner provider answers as before.
     async fn cd_up(&mut self) -> Result<(), ProviderError> {
         self.settle_scope_alias().await?;
-        self.inner.cd_up().await
+        let shown = self.pwd().await?;
+        let shown = shown.trim_end_matches('/');
+        match shown.rfind('/') {
+            Some(0) if shown.len() > 1 => self.cd("/").await,
+            Some(at) if at > 0 => {
+                let parent = shown[..at].to_string();
+                self.cd(&parent).await
+            }
+            _ => self.inner.cd_up().await,
+        }
     }
 
     fn download_was_refused(&self) -> bool {
@@ -7868,6 +7883,44 @@ pub(crate) mod tests {
             compared.push(name);
         }
         assert!(compared.len() >= 10, "{compared:?}");
+    }
+
+    /// Up from the anchor of a home the server reports under another name
+    /// lands on the parent the display names, never the physical parent of
+    /// the other name, and `..` is the same move. Inside the vault and at the
+    /// root nothing changes.
+    #[tokio::test]
+    async fn up_from_the_anchor_goes_to_the_parent_the_display_names() {
+        async fn up(p: &mut CryptOverlayProvider, step: &str) -> Result<(), ProviderError> {
+            if step == ".." {
+                p.cd("..").await
+            } else {
+                p.cd_up().await
+            }
+        }
+        for (label, keys) in both_kinds() {
+            for step in ["cd_up", ".."] {
+                let mut mem = MemProvider::new();
+                mem.seed_raw_dir("/home/u/docs");
+                mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+                let mut provider =
+                    CryptOverlayProvider::new(Box::new(mem), keys.clone(), "/home/u/docs");
+                provider.cd("/home/u/docs").await.unwrap();
+                provider.mkdir("/home/u/docs/sub").await.unwrap();
+                provider.cd("/home/u/docs/sub").await.unwrap();
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(
+                    provider.pwd().await.unwrap(),
+                    "/home/u/docs",
+                    "{label} {step}"
+                );
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(provider.pwd().await.unwrap(), "/home/u", "{label} {step}");
+                up(&mut provider, step).await.unwrap();
+                up(&mut provider, step).await.unwrap();
+                assert_eq!(provider.pwd().await.unwrap(), "/", "{label} {step}");
+            }
+        }
     }
 
     async fn assert_the_alias_is_read_as_the_anchor(
