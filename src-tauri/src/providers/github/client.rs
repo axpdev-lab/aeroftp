@@ -48,6 +48,11 @@ pub struct GitHubHttpClient {
     /// raised, every request that writes the tree is refused before it is
     /// sent (see `writes_the_tree`).
     pub(super) poison: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// Whether the last request that writes the tree (`writes_the_tree`)
+    /// got a success answer. Lowered before each such request is sent, so a
+    /// write that failed, or was never answered (its future dropped), leaves
+    /// it down: what lets `refuse_stale_write` skip a check (S2 b).
+    pub(super) last_tree_write_ok: bool,
 }
 
 /// A request that writes the repository's files or refs: the contents API,
@@ -55,9 +60,35 @@ pub struct GitHubHttpClient {
 /// client uses only for commits. A poisoned session refuses these. A pull
 /// request, a release, a Pages build or an Actions run names its branch or
 /// tag itself and changes no file of the session's tree, so it goes through.
+///
+/// Read by position, not by substring (P6): the resource is the segment after
+/// `repos/{owner}/{repo}` (or `repositories/{id}`), so an owner or a
+/// repository named `contents`, `git` or `graphql` is never taken for one.
 pub(super) fn writes_the_tree(method: &Method, path: &str) -> bool {
-    !matches!(*method, Method::GET | Method::HEAD)
-        && (path.contains("/contents/") || path.contains("/git/") || path.ends_with("/graphql"))
+    if matches!(*method, Method::GET | Method::HEAD) {
+        return false;
+    }
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let resource = |at: usize| matches!(segments.get(at), Some(&"contents") | Some(&"git"));
+    // The first `repos` is the API's (an Enterprise base adds `api/v3`
+    // before it); owners and repositories come after it.
+    if let Some(at) = segments.iter().position(|s| *s == "repos") {
+        return resource(at + 3);
+    }
+    if let Some(at) = segments.iter().position(|s| *s == "repositories") {
+        return resource(at + 2);
+    }
+    // GraphQL: `/graphql`, or `/api/graphql` on Enterprise.
+    segments.last() == Some(&"graphql")
+}
+
+/// Whether `builder` sends a tree write ([`writes_the_tree`]). A request
+/// that cannot be read back is taken as one.
+fn sends_a_tree_write(builder: &RequestBuilder) -> bool {
+    builder
+        .try_clone()
+        .and_then(|clone| clone.build().ok())
+        .is_none_or(|request| writes_the_tree(request.method(), request.url().path()))
 }
 
 /// An empty hint is not a path.
@@ -118,6 +149,7 @@ impl GitHubHttpClient {
             #[cfg(test)]
             api_origin_override: None,
             poison: None,
+            last_tree_write_ok: false,
         })
     }
 
@@ -144,6 +176,10 @@ impl GitHubHttpClient {
         builder: RequestBuilder,
         path_hint: Option<&str>,
     ) -> Result<Response, GitHubError> {
+        let tree_write = sends_a_tree_write(&builder);
+        if tree_write {
+            self.last_tree_write_ok = false;
+        }
         let response = self.execute_unchecked(builder).await?;
 
         // Check for secondary rate limit (Retry-After header).
@@ -161,6 +197,9 @@ impl GitHubHttpClient {
 
         let status = response.status();
         if status.is_success() {
+            if tree_write {
+                self.last_tree_write_ok = true;
+            }
             return Ok(response);
         }
 
@@ -204,13 +243,24 @@ impl GitHubHttpClient {
 
     /// API-GH-011: Execute with bounded retry for secondary rate limits and transient 5xx.
     /// - SecondaryRateLimit: sleep `retry_after` seconds, retry once
-    /// - 5xx ServerError: sleep 1s, retry once
+    /// - 5xx ServerError: sleep 1s, retry once, unless the request writes the tree
     /// - All other errors: return immediately
+    ///
+    /// A tree write ([`writes_the_tree`]) answered 5xx is not sent again
+    /// (CodeRabbit 4573911774): the first attempt may have landed, and a
+    /// second one is then refused because it did (a 422 or a 409), an
+    /// answer that reads as "not written" (`proves_not_written`) and as the
+    /// tree's last word. The 5xx itself is returned, which says the write
+    /// may have landed, so the fallback write keeps its poison and
+    /// `last_tree_write_ok` stays down. A secondary rate limit is a refusal
+    /// the server sent before doing anything, so that wait and its one
+    /// retry hold for every request.
     pub async fn execute_with_retry(
         &mut self,
         builder: RequestBuilder,
         path_hint: Option<&str>,
     ) -> Result<Response, GitHubError> {
+        let tree_write = sends_a_tree_write(&builder);
         // First attempt: try_clone() the builder so we can retry
         let retry_builder = builder.try_clone();
         match self.execute(builder, path_hint).await {
@@ -230,6 +280,9 @@ impl GitHubHttpClient {
             }
             Err(GitHubError::ServerError(ref msg)) => {
                 let msg_owned = msg.clone();
+                if tree_write {
+                    return Err(GitHubError::ServerError(msg_owned));
+                }
                 log::info!("GitHub: server error: retrying after 1s: {}", msg_owned);
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 if let Some(rb) = retry_builder {
@@ -251,15 +304,9 @@ impl GitHubHttpClient {
             .poison
             .as_ref()
             .is_some_and(|poison| poison.load(std::sync::atomic::Ordering::SeqCst))
+            && sends_a_tree_write(&builder)
         {
-            // A request that cannot be read back is taken as a tree write.
-            let tree_write = builder
-                .try_clone()
-                .and_then(|clone| clone.build().ok())
-                .is_none_or(|request| writes_the_tree(request.method(), request.url().path()));
-            if tree_write {
-                return Err(GitHubError::TargetChanged);
-            }
+            return Err(GitHubError::TargetChanged);
         }
         let response = builder
             .send()

@@ -393,7 +393,7 @@ impl RusshSessionTransport {
         let addr = format!("{}:{}", config.host, config.port);
         let mut handle = client::connect(russh_config, &addr, handler)
             .await
-            .map_err(|e| AerorsyncError::transport(format!("russh connect {addr}: {e}")))?;
+            .map_err(|e| connect_error(&addr, e))?;
 
         // Auth precedence: password > agent > key-file. The paths are
         // exclusive on purpose: a profile that ships several credentials
@@ -959,6 +959,20 @@ impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream 
     }
 }
 
+/// The error of a refused or failed `client::connect`. A host key the
+/// handler refused (`check_server_key` answered false, which russh reports
+/// as `UnknownKey`) is a host key rejection, by the variant and never by the
+/// message: the caller stops on it, where any other connect failure only
+/// means the remote is not reachable for delta.
+fn connect_error(addr: &str, error: russh::Error) -> AerorsyncError {
+    match error {
+        russh::Error::UnknownKey => AerorsyncError::host_key_rejected(format!(
+            "russh connect {addr}: the server's host key is not the pinned one"
+        )),
+        other => AerorsyncError::transport(format!("russh connect {addr}: {other}")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1440,6 +1454,51 @@ mod tests {
             }
         });
         (port, nones, passwords)
+    }
+
+    /// A real handshake against a server whose host key is not the pinned
+    /// one: the connect is a host key rejection by kind, which the probe
+    /// renders as a hard refusal (the sync stops; see
+    /// `probe_error_to_rsync`), not as "delta not available" (the sync
+    /// would go on over the first connection). No credential is sent to
+    /// that server.
+    #[tokio::test]
+    async fn a_host_key_other_than_the_pinned_one_is_a_host_key_rejection() {
+        use crate::aerorsync::types::AerorsyncErrorKind as K;
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        let pinned = SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: "00".repeat(32),
+        };
+        let error = match RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            host_key_policy: pinned,
+            auth_password: Some(SecretString::from("testpass".to_string())),
+            ..dummy_config()
+        })
+        .await
+        {
+            Ok(_) => panic!("a server with another host key was accepted"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind, K::HostKeyRejected, "{error}");
+        assert_eq!(nones.load(Ordering::SeqCst), 0, "no login was attempted");
+        assert_eq!(passwords.load(Ordering::SeqCst), 0, "no password was sent");
+        // Control: the same server with no pin is reached.
+        RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            ..dummy_config()
+        })
+        .await
+        .expect("the unpinned control connects");
+    }
+
+    /// Any other connect failure stays a transport error: the remote is
+    /// only unavailable for delta.
+    #[test]
+    fn a_connect_failure_that_is_not_a_host_key_refusal_stays_a_transport_error() {
+        use crate::aerorsync::types::AerorsyncErrorKind as K;
+        let error = connect_error("h:22", russh::Error::Disconnect);
+        assert_eq!(error.kind, K::TransportFailure, "{error}");
     }
 
     #[tokio::test]

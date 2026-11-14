@@ -657,6 +657,91 @@ async fn scp_redial_after_a_none_login_never_offers_the_replaced_key() {
     );
 }
 
+/// P1: a key the server refused never becomes the session's pin. Key A is
+/// refused; its file is replaced by key B, which the server accepts; the SAME
+/// provider then gets in with B. SFTP, and the SCP provider on the same login
+/// (its SCP probe fails on this server afterwards, its login does not).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refused_key_is_not_pinned_and_its_replacement_gets_in() {
+    use ftp_client_gui_lib::providers::scp::provider::ScpProvider;
+
+    let _env = ENV_LOCK.lock().await;
+    let home = tempfile::tempdir().unwrap();
+    let _home_env = ScopedEnv::set("HOME", home.path());
+
+    let refused = random_key();
+    let accepted = random_key();
+    let key_path = home.path().join("id_ed25519");
+    let (port, policy) = start_server(Policy {
+        key: Some(accepted.public_key().clone()),
+        ..Policy::default()
+    })
+    .await;
+    let config = || SftpConfig {
+        host: "127.0.0.1".to_string(),
+        port,
+        username: "root".to_string(),
+        password: None,
+        private_key_path: Some(key_path.to_string_lossy().into_owned()),
+        key_passphrase: None,
+        initial_path: Some("/".to_string()),
+        timeout_secs: 5,
+        trust_unknown_hosts: true,
+    };
+    async fn dial<F: std::future::Future>(connect: F) -> F::Output {
+        tokio::time::timeout(Duration::from_secs(15), connect)
+            .await
+            .expect("connect timed out")
+    }
+
+    write_key(&key_path, &refused);
+    let mut sftp = SftpProvider::new(config());
+    let first = dial(sftp.connect()).await;
+    assert!(
+        matches!(first, Err(ProviderError::AuthenticationFailed(_))),
+        "key A is refused: {first:?}"
+    );
+    write_key(&key_path, &accepted);
+    dial(sftp.connect())
+        .await
+        .expect("the same SFTP provider gets in with the replacement key");
+    assert!(
+        policy
+            .offered_keys()
+            .contains(&fingerprint(accepted.public_key())),
+        "{:?}",
+        policy.offered_keys()
+    );
+
+    write_key(&key_path, &refused);
+    let mut scp = ScpProvider::new(config());
+    let first = dial(scp.connect()).await;
+    assert!(
+        matches!(first, Err(ProviderError::AuthenticationFailed(_))),
+        "key A is refused over SCP: {first:?}"
+    );
+    write_key(&key_path, &accepted);
+    let offers_before = policy
+        .offered_keys()
+        .iter()
+        .filter(|offered| **offered == fingerprint(accepted.public_key()))
+        .count();
+    let second = dial(scp.connect()).await;
+    assert!(
+        !matches!(
+            second,
+            Err(ProviderError::AuthenticationFailed(_) | ProviderError::TargetChanged)
+        ),
+        "the same SCP provider gets in with the replacement key: {second:?}"
+    );
+    let offers_after = policy
+        .offered_keys()
+        .iter()
+        .filter(|offered| **offered == fingerprint(accepted.public_key()))
+        .count();
+    assert!(offers_after > offers_before, "{:?}", policy.offered_keys());
+}
+
 /// A session that logged in with a key, whose key file is then replaced by
 /// another valid key. The delta transport it hands out signs with the login
 /// key: the server sees `publickey` requests for that key only, never the

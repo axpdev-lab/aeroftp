@@ -1294,8 +1294,10 @@ pub trait StorageProvider: Send + Sync {
     /// every write of the session (`TargetChanged`), whoever holds it: a
     /// plan made against the previous tree stops at its next write, and a
     /// new connection is a new provider. The GUI target reads the flag
-    /// without the provider lock to move its epoch, so the page reads the
-    /// target again.
+    /// without the provider lock, at every pin and target read
+    /// (`ProviderState::observe_target_poison`), and moves its epoch once,
+    /// so the page reads the target again before a compare can use a
+    /// listing of the previous tree.
     fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
         None
     }

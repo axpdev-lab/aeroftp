@@ -116,6 +116,9 @@ pub struct GitHubPullRequest {
     pub user: GitHubUser,
     pub created_at: String,
     pub mergeable: Option<bool>,
+    /// When it was merged; `None` while open or closed unmerged.
+    #[serde(default)]
+    pub merged_at: Option<String>,
 }
 
 /// Head/base reference in a pull request

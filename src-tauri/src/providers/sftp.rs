@@ -2632,11 +2632,16 @@ pub(crate) async fn ssh_login_pinned(
     };
     let method = select_auth_method(config, pinned, none_accepted)?;
     let mut via_keyboard_interactive = false;
+    // The key this login offers: the session's pinned one, or the file's,
+    // held here until the server accepts it (P1).
+    let mut offered_key = None;
     let authenticated = if method == SshAuthMethod::NoCredential {
         true
     } else if method == SshAuthMethod::PrivateKey {
         // Try key-based authentication
-        authenticate_with_key(config, &mut handle, &private_key).await?
+        let key = captured_key(config, &private_key)?;
+        offered_key = Some(key.clone());
+        authenticate_with_key(config, &mut handle, key).await?
     } else if let Some(password) = &config.password {
         // Try password authentication first, then keyboard-interactive as fallback
         use russh::client::KeyboardInteractiveAuthResponse;
@@ -2716,6 +2721,11 @@ pub(crate) async fn ssh_login_pinned(
         return Err(ProviderError::TargetChanged);
     }
     let _ = auth_method.set(succeeded);
+    // Pinned only now that it got in: a key the server refused is not the
+    // session's, and a retry reads the file again (P1).
+    if let Some(key) = offered_key {
+        let _ = private_key.set(key);
+    }
     Ok(handle)
 }
 
@@ -2727,8 +2737,11 @@ fn public_key_sha256(key: &keys::PrivateKey) -> String {
         .to_string()
 }
 
-/// Resolve the real key once. A file replacement after the connection was
-/// authorized cannot change any lazy pool worker's authentication.
+/// The key a login offers: the one the session already got in with, else
+/// the file's, parsed now. Read only: `ssh_login_pinned` pins it once the
+/// server accepts it, so a file replacement after the connection was
+/// authorized cannot change any lazy pool worker's authentication, and a key
+/// that was refused is never kept (P1).
 fn captured_key(
     config: &SftpConfig,
     captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
@@ -2753,19 +2766,15 @@ fn captured_key(
     let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
         .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
 
-    let key_pair = Arc::new(key_pair);
-    let _ = captured.set(key_pair.clone());
-    Ok(captured.get().cloned().unwrap_or(key_pair))
+    Ok(Arc::new(key_pair))
 }
 
 /// Authenticate using SSH private key
 async fn authenticate_with_key(
     config: &SftpConfig,
     handle: &mut Handle<SshHandler>,
-    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+    key_pair: Arc<keys::PrivateKey>,
 ) -> Result<bool, ProviderError> {
-    let key_pair = captured_key(config, captured)?;
-
     // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
     // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
     // disabled by default. We have to negotiate rsa-sha2-512 or
@@ -7709,9 +7718,11 @@ mod tests {
             timeout_secs: 30,
             trust_unknown_hosts: false,
         };
-        // The production capture: the key is parsed once, at login.
+        // The production capture: the key is parsed at login and pinned once
+        // the server accepts it.
         let captured = std::sync::OnceLock::new();
         let login = captured_key(&config, &captured).unwrap();
+        captured.set(login.clone()).unwrap();
         let login_sha256 = public_key_sha256(&login_key);
 
         let mut provider = SftpProvider::new(config);

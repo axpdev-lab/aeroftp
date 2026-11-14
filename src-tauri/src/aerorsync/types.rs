@@ -554,7 +554,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::events::AerorsyncEvent;
 
-    const ALL_KINDS: [AerorsyncErrorKind; 12] = [
+    const ALL_KINDS: [AerorsyncErrorKind; 13] = [
         AerorsyncErrorKind::UnsupportedVersion,
         AerorsyncErrorKind::InvalidFrame,
         AerorsyncErrorKind::TransportFailure,
@@ -566,6 +566,7 @@ mod tests {
         AerorsyncErrorKind::Cancelled,
         AerorsyncErrorKind::HostKeyRejected,
         AerorsyncErrorKind::PinnedKeyMismatch,
+        AerorsyncErrorKind::PinnedPasswordMismatch,
         AerorsyncErrorKind::Internal,
     ];
 
@@ -811,6 +812,7 @@ mod tests {
             AerorsyncErrorKind::UnexpectedMessage,
             AerorsyncErrorKind::HostKeyRejected,
             AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
             AerorsyncErrorKind::Internal,
             AerorsyncErrorKind::Cancelled,
         ] {
@@ -887,7 +889,7 @@ mod tests {
         checked += 2;
 
         assert_eq!(
-            checked, 194,
+            checked, 198,
             "the inherited case table shrank: {checked} cases checked"
         );
     }

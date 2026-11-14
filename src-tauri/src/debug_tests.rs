@@ -266,7 +266,14 @@ pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestRe
 /// What a rule puts where it matches.
 #[derive(Clone, Copy)]
 enum Replacement {
+    /// A credential: the match, its kept label (`$1`) left out, becomes the
+    /// text (`$1` expanded).
     Text(&'static str),
+    /// The same for an identity rule (an address, a home folder, a hash):
+    /// see [`redact`].
+    Identity(&'static str),
+    /// The e-mail rule, an identity rule whose spans know their `@` (U1).
+    Email(&'static str),
     /// The userinfo of a URL, masked by [`redact_url_userinfo`].
     UrlUserinfo,
     /// Every IPv4 address except the loopback and unspecified ones, which the
@@ -306,6 +313,10 @@ macro_rules! secret_value {
 }
 
 const REDACTION_RULES: &[(&str, Replacement)] = &[
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redact_url_userinfo`); the pattern only names the rule. Read on the
+    // original text like every rule (T3).
+    (r"://", Replacement::UrlUserinfo),
     // Authorization first, ahead of every key and Bearer rule below, so
     // `Authorization: Bearer sk-...` is one marker. Shared with
     // `ai::sanitize_error_message`.
@@ -341,9 +352,6 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
         Replacement::Text("***JWT-REDACTED***"),
     ),
-    // Inline credentials in URLs: a linear scan, not a pattern (see
-    // `redact_url_userinfo`); the pattern only names the rule.
-    (r"://", Replacement::UrlUserinfo),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     (
@@ -373,18 +381,25 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
     ),
     (
         r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
-        Replacement::Text("***@***"),
+        Replacement::Email("***@***"),
     ),
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
-    (r"/home/[A-Za-z0-9._-]+", Replacement::Text("/home/***")),
-    (r"/Users/[A-Za-z0-9._-]+", Replacement::Text("/Users/***")),
+    (r"/home/[A-Za-z0-9._-]+", Replacement::Identity("/home/***")),
     (
-        r"(?i)C:\\Users\\[^\\]+",
-        Replacement::Text("C:\\Users\\***"),
+        r"/Users/[A-Za-z0-9._-]+",
+        Replacement::Identity("/Users/***"),
+    ),
+    (
+        // Greedy to the next backslash, as on main, so a name with a space
+        // is masked whole; a credential it runs into is only partly
+        // covered, so the span is kept and joins the union (U1). A line
+        // break ends it.
+        r"(?i)C:\\Users\\[^\\\r\n]+",
+        Replacement::Identity("C:\\Users\\***"),
     ),
     (
         r"\b[A-Fa-f0-9]{32,}\b",
-        Replacement::Text("***HEX-REDACTED***"),
+        Replacement::Identity("***HEX-REDACTED***"),
     ),
 ];
 
@@ -405,102 +420,349 @@ fn redaction_patterns() -> &'static [(regex::Regex, Replacement)] {
     })
 }
 
-/// Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and
-/// `webdav` URLs in one pass over the text, so its time is linear whatever the
-/// input. After `scheme://` the authority runs to the first `/`, `?`, `#`,
-/// ASCII space or unescaped double quote (a backslash escapes the next
-/// character, as inside a JSON string). With an `@` in it, the userinfo is
-/// everything up to the LAST `@`, and all of it becomes the placeholder, user
-/// name included: a token is often the user name (`ghp_x:x-oauth-basic@`,
-/// `token:@`). An authority without `@` (`host:443`) stays. The TS twin is `redactUrlUserinfo` in
-/// src/utils/redactSensitive.ts; both run src/shared/redaction-cases.json.
-fn redact_url_userinfo(text: &str) -> String {
-    const SCHEMES: [&str; 7] = ["ftp", "ftps", "sftp", "scp", "http", "https", "webdav"];
+/// In valid JSON, the index of the quote that ends the string token whose
+/// content starts at `from` (a backslash escapes the next byte), and whether
+/// the token holds an escape.
+fn scan_string_token(bytes: &[u8], from: usize) -> (usize, bool) {
+    let mut k = from;
+    let mut escaped = false;
+    while k < bytes.len() {
+        match bytes[k] {
+            b'\\' => {
+                escaped = true;
+                k += 2;
+            }
+            b'"' => return (k, escaped),
+            _ => k += 1,
+        }
+    }
+    (bytes.len(), escaped)
+}
+
+/// The content of the valid JSON string token `[from, end)`, decoded, and
+/// for each decoded byte the index of the raw character or escape it comes
+/// from (one more entry: `end`). A lone surrogate escape decodes to U+FFFD:
+/// `serde_json` refuses it into a `String` where `JSON.parse` keeps it, and
+/// either way it is one character that is no delimiter, so the decision is
+/// the TS twin's (a shared case pins it).
+fn decode_string_token(text: &str, from: usize, end: usize) -> (String, Vec<usize>) {
     let bytes = text.as_bytes();
-    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
-    let is_space = |b: u8| b == b' ' || (b'\t'..=b'\r').contains(&b);
-    let mut out = String::with_capacity(text.len());
-    let mut copied = 0;
+    let hex = |at: usize| u32::from_str_radix(&text[at..at + 4], 16).unwrap_or(0xFFFD);
+    let mut decoded = String::with_capacity(end - from);
+    let mut raw = Vec::with_capacity(end - from + 1);
+    let mut k = from;
+    while k < end {
+        let start = k;
+        let ch = if bytes[k] != b'\\' {
+            let ch = text[k..].chars().next().unwrap_or('\u{FFFD}');
+            k += ch.len_utf8();
+            ch
+        } else {
+            let escape = bytes[k + 1];
+            k += 2;
+            match escape {
+                b'b' => '\u{8}',
+                b'f' => '\u{c}',
+                b'n' => '\n',
+                b'r' => '\r',
+                b't' => '\t',
+                b'u' => {
+                    let unit = hex(k);
+                    k += 4;
+                    let low = (bytes.get(k) == Some(&b'\\') && bytes.get(k + 1) == Some(&b'u'))
+                        .then(|| hex(k + 2))
+                        .filter(|low| {
+                            (0xD800..0xDC00).contains(&unit) && (0xDC00..0xE000).contains(low)
+                        });
+                    match low {
+                        Some(low) => {
+                            k += 6;
+                            char::from_u32(0x10000 + ((unit - 0xD800) << 10) + (low - 0xDC00))
+                                .unwrap_or('\u{FFFD}')
+                        }
+                        None => char::from_u32(unit).unwrap_or('\u{FFFD}'),
+                    }
+                }
+                other => other as char,
+            }
+        };
+        raw.extend(std::iter::repeat_n(start, ch.len_utf8()));
+        decoded.push(ch);
+    }
+    raw.push(end);
+    (decoded, raw)
+}
+
+/// The userinfo spans `[start, end)` of `text`, in order (see
+/// [`redact_url_userinfo`]).
+fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let json = serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok();
+    let mut spans = Vec::new();
     let mut i = 0;
+    // The string token the scan is in (valid JSON only): its closing quote.
+    let mut token_end: Option<usize> = None;
     while i + 3 <= bytes.len() {
+        if json && token_end.is_none_or(|end| i > end) && bytes[i] == b'"' {
+            let (end, escaped) = scan_string_token(bytes, i + 1);
+            token_end = Some(end);
+            if escaped {
+                // What the token says, mapped back onto the raw characters
+                // and escapes; the raw scan below still runs on the token
+                // too, so decoding never masks less (an escaped newline ends
+                // the decoded authority, not the raw one).
+                let (decoded, raw) = decode_string_token(text, i + 1, end);
+                spans.extend(
+                    userinfo_spans(&decoded)
+                        .into_iter()
+                        .map(|(a, b)| (raw[a], raw[b])),
+                );
+            }
+            i += 1;
+            continue;
+        }
         if &bytes[i..i + 3] != b"://" {
             i += 1;
             continue;
         }
-        let mut start = i;
-        while start > 0 && i - start < 7 && bytes[start - 1].is_ascii_alphabetic() {
-            start -= 1;
-        }
-        let bounded = start == 0 || !is_word(bytes[start - 1]);
-        if !bounded
-            || !SCHEMES
-                .iter()
-                .any(|scheme| scheme.eq_ignore_ascii_case(&text[start..i]))
-        {
-            i += 3;
-            continue;
-        }
         let authority = i + 3;
+        let limit = match token_end {
+            Some(end) if json && i < end => end,
+            _ => bytes.len(),
+        };
         let mut k = authority;
-        let mut escaped = false;
         let mut last_at = None;
-        while k < bytes.len() {
+        while k < limit {
             let b = bytes[k];
-            if matches!(b, b'/' | b'?' | b'#') || is_space(b) || (b == b'"' && !escaped) {
-                break;
-            }
-            // An escaped quote that closes a JSON value inside a string
-            // (`\",\"b\"`, `\"}`, `\"]`, `\":`, a space, the end) ends the
-            // authority; one followed by anything else is part of the value (T11).
-            if b == b'\\'
-                && !escaped
-                && bytes.get(k + 1) == Some(&b'"')
-                && bytes
-                    .get(k + 2)
-                    .is_none_or(|&next| matches!(next, b',' | b'}' | b']' | b':') || is_space(next))
-            {
+            // Whitespace does not end it (S1b): a credential with a space
+            // in it would leak the part before the space.
+            if matches!(b, b'/' | b'?' | b'#') {
                 break;
             }
             if b == b'@' {
                 last_at = Some(k);
             }
-            escaped = b == b'\\' && !escaped;
             k += 1;
         }
         let Some(at) = last_at else {
-            // No userinfo: go on right after this `://`. The authority ended
-            // at a `/`, and a scheme whose `://` starts just before it (one
-            // past an escaped JSON quote) is still scanned (L7). Nothing
-            // between holds a `://`, so each byte is read at most twice.
+            // No userinfo: go on right after this `://`; each byte is read at
+            // most twice.
             i = authority;
             continue;
         };
-        out.push_str(&text[copied..authority]);
-        out.push_str("***REDACTED***");
-        copied = at;
+        spans.push((authority, at));
         i = at + 1;
+    }
+    spans
+}
+
+/// Masks the userinfo of every URL: any `://`, whatever scheme comes before
+/// it (`s3://`, `postgres://`, none at all); a `://` that is not a URL only
+/// over-masks (S1). Where the authority ends is the TS twin's rule
+/// (`redactUrlUserinfo`, D1): the real parser decides once whether the WHOLE
+/// text is JSON (`serde_json` into `IgnoredAny`: syntax only, nothing is
+/// built or re-serialized). In valid JSON the authority ends at `/`, `?`,
+/// `#` or the end of its string token; anything else is plain text, where no
+/// quote ever ends it; whitespace never does (S1b). A string token of valid JSON that
+/// holds an escape is also scanned decoded by these same rules, a document
+/// serialized inside it decoded in turn, and the userinfo found there is
+/// mapped back onto the raw characters and escapes; the token is scanned raw
+/// as well and the union of both is masked (S1). With an
+/// `@` in it, the userinfo is everything up to the LAST `@`, and all of it
+/// becomes the placeholder. Both twins run src/shared/redaction-cases.json,
+/// the parser-agreement and escape cases included.
+// What `redact` does with the URL rule alone; the tests time and check it.
+#[cfg(test)]
+fn redact_url_userinfo(text: &str) -> String {
+    // The decoded and the raw scan of a token can find the same userinfo, or
+    // overlapping ones: their union is masked once.
+    let mut spans = userinfo_spans(text);
+    spans.sort_by_key(|&(start, _)| start);
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut n = 0;
+    while n < spans.len() {
+        let (start, mut end) = spans[n];
+        n += 1;
+        while n < spans.len() && spans[n].0 < end {
+            end = end.max(spans[n].1);
+            n += 1;
+        }
+        out.push_str(&text[copied..start]);
+        out.push_str("***REDACTED***");
+        copied = end;
     }
     out.push_str(&text[copied..]);
     out
 }
 
-pub(crate) fn redact(s: &str) -> String {
-    let mut out = s.to_owned();
-    for (re, replacement) in redaction_patterns() {
-        out = match replacement {
-            Replacement::Text(text) => re.replace_all(&out, *text).into_owned(),
-            Replacement::UrlUserinfo => redact_url_userinfo(&out),
-            Replacement::Ipv4 => re
-                .replace_all(&out, |caps: &regex::Captures<'_>| {
-                    if matches!(&caps[0], "127.0.0.1" | "0.0.0.0") {
-                        caps[0].to_owned()
-                    } else {
-                        "***.***.***.***".to_owned()
-                    }
-                })
-                .into_owned(),
-        };
+/// A part of the original text a rule masks, and what replaces it; an
+/// e-mail span also knows its `@`, a URL userinfo span that it is one (U1).
+struct Span {
+    start: usize,
+    end: usize,
+    replacement: String,
+    at: Option<usize>,
+    userinfo: bool,
+}
+
+/// The spans of one pattern rule, read on the ORIGINAL text (T3): each match,
+/// the leading part its replacement repeats (a field's label, `$1`) left out,
+/// so the label stays visible.
+fn pattern_spans(re: &regex::Regex, text: &str, template: &str) -> Vec<Span> {
+    re.captures_iter(text)
+        .filter_map(|caps| {
+            let whole = caps.get(0)?;
+            let replaced = template.replace("$1", caps.get(1).map_or("", |g| g.as_str()));
+            let kept: usize = whole
+                .as_str()
+                .chars()
+                .zip(replaced.chars())
+                .take_while(|(a, b)| a == b)
+                .map(|(a, _)| a.len_utf8())
+                .sum();
+            let span = Span {
+                start: whole.start() + kept,
+                end: whole.end(),
+                replacement: replaced[kept..].to_string(),
+                at: None,
+                userinfo: false,
+            };
+            (span.end > span.start || !span.replacement.is_empty()).then_some(span)
+        })
+        .collect()
+}
+
+/// The identity spans the credentials do not cover ENTIRELY
+/// ([`redact_with`], U1), the TS twin's `uncoveredIdentity`: one covered only
+/// in part is kept and joins the union, so nothing an identity rule hid
+/// becomes visible. One named exception, the one the fixed point needs: an
+/// e-mail span whose local part lies inside a URL userinfo span that ends at
+/// its `@` (`https://token@host`) is dropped; the userinfo already masks the
+/// secret, and the host stays. Linear in the spans after the sort: the
+/// credentials are merged once into sorted disjoint ranges, then the
+/// identity spans are walked in start order with one index that only moves
+/// forward; the userinfo spans are found by their end. `steps`, for the
+/// tests, counts the comparisons.
+fn uncovered_identity(
+    mut identity: Vec<Span>,
+    credentials: &[Span],
+    steps: &mut usize,
+) -> Vec<Span> {
+    let mut sorted: Vec<&Span> = credentials.iter().collect();
+    sorted.sort_by_key(|span| span.start);
+    let mut covered: Vec<(usize, usize)> = Vec::new();
+    let mut userinfo_ends: std::collections::HashMap<usize, usize> =
+        std::collections::HashMap::new();
+    for span in sorted {
+        *steps += 1;
+        if span.userinfo {
+            let start = userinfo_ends.entry(span.end).or_insert(span.start);
+            *start = (*start).min(span.start);
+        }
+        if span.end <= span.start {
+            continue;
+        }
+        match covered.last_mut() {
+            Some(last) if span.start <= last.1 => last.1 = last.1.max(span.end),
+            _ => covered.push((span.start, span.end)),
+        }
     }
+    identity.sort_by_key(|span| span.start);
+    let mut next = 0;
+    identity.retain(|span| {
+        while next < covered.len() && covered[next].1 <= span.start {
+            *steps += 1;
+            next += 1;
+        }
+        *steps += 1;
+        let inside =
+            next < covered.len() && covered[next].0 <= span.start && span.end <= covered[next].1;
+        let mail_in_userinfo = span
+            .at
+            .and_then(|at| userinfo_ends.get(&at))
+            .is_some_and(|&start| start <= span.start);
+        !inside && !mail_in_userinfo
+    });
+    identity
+}
+
+/// Every rule's spans, all read on the original text, masked once: the TS
+/// twin's `applyRules` (T3). No rule sees another's output, so none can
+/// consume a delimiter another needs, and the order of the rules changes
+/// nothing. The credential spans (every rule but the identity ones) are
+/// masked as their UNION; an identity span the credentials cover entirely
+/// is dropped, one they cover in part joins the union, and an e-mail whose
+/// local part is a URL's userinfo is that URL's ([`uncovered_identity`],
+/// U1). Overlapping spans merge into one,
+/// replaced by the replacement of the span that starts first; on equal
+/// starts, of the longer one; then of the replacement that sorts first.
+pub(crate) fn redact(s: &str) -> String {
+    redact_with(s, redaction_patterns())
+}
+
+fn redact_with(s: &str, rules: &[(regex::Regex, Replacement)]) -> String {
+    let mut credentials = Vec::new();
+    let mut identity = Vec::new();
+    for (re, replacement) in rules {
+        match replacement {
+            Replacement::Text(text) => credentials.extend(pattern_spans(re, s, text)),
+            Replacement::UrlUserinfo => {
+                credentials.extend(userinfo_spans(s).into_iter().map(|(start, end)| Span {
+                    start,
+                    end,
+                    replacement: "***REDACTED***".to_string(),
+                    at: None,
+                    userinfo: true,
+                }))
+            }
+            Replacement::Identity(text) => identity.extend(pattern_spans(re, s, text)),
+            Replacement::Email(text) => {
+                identity.extend(pattern_spans(re, s, text).into_iter().map(|span| Span {
+                    at: s[span.start..].find('@').map(|at| span.start + at),
+                    ..span
+                }))
+            }
+            Replacement::Ipv4 => identity.extend(
+                re.find_iter(s)
+                    .filter(|m| !matches!(m.as_str(), "127.0.0.1" | "0.0.0.0"))
+                    .map(|m| Span {
+                        start: m.start(),
+                        end: m.end(),
+                        replacement: "***.***.***.***".to_string(),
+                        at: None,
+                        userinfo: false,
+                    }),
+            ),
+        }
+    }
+    let identity = uncovered_identity(identity, &credentials, &mut 0);
+    let mut spans = credentials;
+    spans.extend(identity);
+    spans.sort_by(|a, b| {
+        a.start
+            .cmp(&b.start)
+            .then(b.end.cmp(&a.end))
+            .then(a.replacement.cmp(&b.replacement))
+    });
+    let mut out = String::with_capacity(s.len());
+    let mut copied = 0;
+    let mut n = 0;
+    while n < spans.len() {
+        let first = &spans[n];
+        let mut end = first.end;
+        n += 1;
+        // Touching spans merge too (U1): two masks side by side would
+        // read as a home folder again on a second pass.
+        while n < spans.len() && spans[n].start <= end {
+            end = end.max(spans[n].end);
+            n += 1;
+        }
+        out.push_str(&s[copied..first.start]);
+        out.push_str(&first.replacement);
+        copied = end;
+    }
+    out.push_str(&s[copied..]);
     out
 }
 
@@ -683,6 +945,36 @@ mod tests {
             format!("ftp://{}", ":".repeat(200_000)),
             format!("{}{}", "x".repeat(100_000), "://".repeat(100_000)),
             "ftp://ftp://".repeat(50_000),
+            // D1: long whitespace and many strings, valid JSON and not, and
+            // a large valid JSON document with URLs throughout.
+            format!("{{\"a\":\"{}ftp://u:p@h\"}}", " ".repeat(200_000)),
+            serde_json::to_string(
+                &(0..20_000)
+                    .map(|n| format!("ftp://u{n}:p@h{n}/x"))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap(),
+            serde_json::to_string(&vec!["s"; 20_000]).unwrap() + " tail",
+            "\"".repeat(200_000) + "ftp://u:p@h",
+            serde_json::json!({ "rows": (0..20_000).map(|n| serde_json::json!({
+                "id": n,
+                "url": format!("https://user{n}:secret@host{n}.example/p"),
+                "note": "x@y",
+            })).collect::<Vec<_>>() })
+            .to_string(),
+            // S1: 20k escaped tokens, each decoded once; a document of 20k
+            // URLs serialized inside one string; twelve levels of nesting.
+            escaped_url_tokens(20_000),
+            serde_json::json!({ "log": serde_json::to_string(
+                &(0..20_000)
+                    .map(|n| format!("ftp://u{n}:p@h{n}/x"))
+                    .collect::<Vec<_>>(),
+            )
+            .unwrap() })
+            .to_string(),
+            (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(1000)), |inner, _| {
+                serde_json::json!({ "v": inner }).to_string()
+            }),
         ];
         for input in &inputs {
             let started = std::time::Instant::now();
@@ -693,6 +985,24 @@ mod tests {
         let started = std::time::Instant::now();
         assert_eq!(redact(&finding), finding);
         assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    /// `[ "https:\/\/u0:p\u0040h0\/x", ... ]`: every delimiter escaped.
+    fn escaped_url_tokens(count: usize) -> String {
+        let tokens: Vec<String> = (0..count)
+            .map(|n| format!(r#""https:\/\/u{n}:p\u0040h{n}\/x""#))
+            .collect();
+        format!("[{}]", tokens.join(","))
+    }
+
+    /// S1: every URL of a 20k escaped-token document is masked at its own
+    /// token, and the result is a fixed point.
+    #[test]
+    fn every_escaped_url_token_is_masked_at_its_own_token() {
+        let masked = redact_url_userinfo(&escaped_url_tokens(20_000));
+        assert_eq!(masked.matches("***REDACTED***").count(), 20_000);
+        assert!(!regex::Regex::new(r"u\d+:p").unwrap().is_match(&masked));
+        assert_eq!(redact_url_userinfo(&masked), masked);
     }
 
     #[test]
@@ -728,6 +1038,74 @@ mod tests {
 
     /// The policy once lost its IPv4 rule without a word: `regex` rejects the
     /// look-around it was written with and the rule was dropped on the error.
+    /// T3: the identity spans a credential covers are dropped in one walk.
+    /// 20k URLs whose `secret@host` is also an e-mail, and 20k e-mails beside
+    /// them; and the walk's comparisons, counted: linear in the spans.
+    #[test]
+    fn the_identity_spans_a_credential_covers_are_dropped_in_linear_time() {
+        let n = 20_000;
+        let input = (0..n)
+            .map(|k| format!("ftp://user{k}:secret@host{k}.example/x"))
+            .chain((0..n).map(|k| format!("mail{k}@x{k}.example")))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let started = std::time::Instant::now();
+        let out = redact(&input);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert!(!out.contains("secret") && !out.contains("user1:"));
+        assert_eq!(
+            regex::Regex::new(r"ftp://\*\*\*REDACTED\*\*\*@host\d+\.example/x")
+                .unwrap()
+                .find_iter(&out)
+                .count(),
+            n
+        );
+        assert_eq!(out.matches(" ***@***").count(), n);
+
+        let span = |start: usize, end: usize| Span {
+            start,
+            end,
+            replacement: "x".to_string(),
+            at: None,
+            userinfo: false,
+        };
+        let credentials: Vec<Span> = (0..n).map(|k| span(10 * k, 10 * k + 5)).collect();
+        let identity: Vec<Span> = (0..2 * n).map(|k| span(5 * k, 5 * k + 3)).collect();
+        let mut steps = 0;
+        assert_eq!(
+            uncovered_identity(identity, &credentials, &mut steps).len(),
+            n
+        );
+        assert!(steps <= 2 * (n + 2 * n), "{steps} comparisons");
+    }
+
+    /// T3: every rule reads the original text, so the order of the rules
+    /// means nothing: any order gives the same output on every shared case.
+    #[test]
+    fn the_order_of_the_rules_changes_nothing() {
+        let rules: Vec<(regex::Regex, Replacement)> = redaction_patterns()
+            .iter()
+            .map(|(re, replacement)| (re.clone(), *replacement))
+            .collect();
+        // A fixed shuffle, so a failure can be replayed.
+        let mut seed: u64 = 7;
+        for _ in 0..8 {
+            let mut shuffled = rules.clone();
+            for i in (1..shuffled.len()).rev() {
+                seed = (seed * 1103515245 + 12345) % 2147483648;
+                shuffled.swap(i, (seed % (i as u64 + 1)) as usize);
+            }
+            for case in redaction_cases() {
+                assert_eq!(
+                    redact_with(&case.input, &shuffled),
+                    redact(&case.input),
+                    "{}",
+                    case.name
+                );
+            }
+        }
+    }
+
     #[test]
     fn every_redaction_rule_compiles() {
         for (pattern, _) in REDACTION_RULES {
