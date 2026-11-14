@@ -57,6 +57,9 @@ import { ConfirmOverlay } from './common/ConfirmOverlay';
 import { MODAL_Z } from '../utils/modalLayers';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface UsersManagePanelProps {
     isOpen: boolean;
@@ -97,7 +100,9 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [stats, setStats] = React.useState<UserStorageStats[]>([]);
     const [unlockStatus, setUnlockStatus] = React.useState<UserUnlockStatus | null>(null);
     const [loading, setLoading] = React.useState(false);
-    const [busyUserId, setBusyUserId] = React.useState<number | null>(null);
+    // Every account with an operation in flight: its row stays disabled until
+    // that operation settles, and the close guard stays busy while any runs.
+    const userOps = useInFlight<number>();
     const [error, setError] = React.useState('');
     const [newName, setNewName] = React.useState('');
     const [newAvatar, setNewAvatar] = React.useState(AVATAR_CHOICES[0]);
@@ -130,6 +135,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     const [avatarDraftEmoji, setAvatarDraftEmoji] = React.useState('');
     const [avatarDraftColor, setAvatarDraftColor] = React.useState(COLOR_CHOICES[0]);
     const [avatarSaving, setAvatarSaving] = React.useState(false);
+    const [pendingAdds, setPendingAdds] = React.useState(0);
     const [showIconPicker, setShowIconPicker] = React.useState(false);
     // N3 (#270): the default account that skips the welcome screen on next
     // boot. Mirrors the AccountLockScreen checkbox and shares the same
@@ -199,13 +205,16 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         }
     }, [t]);
 
+    const beginUserOp = userOps.begin;
+    const endUserOp = userOps.end;
+
     const toggleDefaultAccount = React.useCallback(
         async (user: UserMetadata) => {
             // Only password-free accounts can skip the welcome screen (a protected
             // account always shows its prompt), matching the AccountLockScreen rule.
             if (user.hasPassphrase) return;
             const makeDefault = defaultAccountId !== user.id;
-            setBusyUserId(user.id);
+            beginUserOp(user.id);
             setError('');
             try {
                 // Single-winner DB flag, shared with the CLI `users -i` Fav verb.
@@ -214,7 +223,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             } catch (err) {
                 setError(mapUserPartitionError(err, t));
             } finally {
-                setBusyUserId(null);
+                endUserOp(user.id);
             }
         },
         [defaultAccountId, refresh, t],
@@ -224,14 +233,39 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         if (isOpen) void refresh();
     }, [isOpen, refresh]);
 
+    // An account change in flight goes on after a close, and a new account,
+    // a rename or a passphrase change being typed would be lost: the backdrop
+    // is inert then, and the X and ESC ask first (Discussion #1527).
+    const formTyped = newName.trim() !== '' || newPassphrase !== '' || newConfirmPassphrase !== ''
+        || editingUserId !== null || passphraseForm !== null;
+    const guarded = useGuardedClose({
+        guard: userOps.count > 0 || avatarSaving || pendingAdds > 0 ? 'busy' : formTyped ? 'dirty' : null,
+        onClose,
+    });
+
     React.useEffect(() => {
         if (!isOpen) return;
         const handleKey = (event: KeyboardEvent) => {
-            if (event.key === 'Escape') onClose();
+            if (event.key === 'Escape') guarded.requestClose();
         };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [isOpen, onClose]);
+    }, [isOpen, guarded.requestClose]);
+
+    // Closing drops what was typed (the user discarded it, or nothing was
+    // typed): the panel stays mounted, so a reopen must start clean. Work in
+    // flight is left alone: a close never cancels it.
+    React.useEffect(() => {
+        if (isOpen) return;
+        setNewName('');
+        setNewPassphrase('');
+        setNewConfirmPassphrase('');
+        setAcknowledgeNoRecoveryNew(false);
+        setEditingUserId(null);
+        setEditingName('');
+        setPassphraseForm(null);
+        setAcknowledgeNoRecoveryForm(false);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
@@ -249,6 +283,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             return;
         }
         setError('');
+        setPendingAdds(count => count + 1);
         try {
             await addUser(newName.trim(), newAvatar, newColor, newPassphrase || null);
             setNewName('');
@@ -261,6 +296,8 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             notifyProfilesChanged(onChanged);
         } catch (err) {
             setError(mapUserPartitionError(err, t));
+        } finally {
+            setPendingAdds(count => count - 1);
         }
     };
 
@@ -276,7 +313,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setEditingUserId(null);
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await renameUser(user.id, name);
@@ -286,7 +323,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp(user.id);
         }
     };
 
@@ -311,7 +348,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
     };
 
     const performDelete = async (user: UserMetadata) => {
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await deleteUser(user.id);
@@ -320,7 +357,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp(user.id);
         }
     };
 
@@ -333,7 +370,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('manageUsers.copyLockedHint'));
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             // No explicit name: the backend auto-names it "<source> (copy)",
@@ -344,7 +381,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp(user.id);
         }
     };
 
@@ -385,7 +422,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(t('password.mismatch'));
             return;
         }
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await changeUserPassphrase(
@@ -400,12 +437,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp(user.id);
         }
     };
 
     const handleSetAdmin = async (user: UserMetadata, isAdmin: boolean) => {
-        setBusyUserId(user.id);
+        beginUserOp(user.id);
         setError('');
         try {
             await setUserAdmin(user.id, isAdmin);
@@ -414,7 +451,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
         } catch (err) {
             setError(mapUserPartitionError(err, t));
         } finally {
-            setBusyUserId(null);
+            endUserOp(user.id);
         }
     };
 
@@ -434,8 +471,9 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
 
     const handleAvatarSave = async () => {
         if (!avatarEditingUser) return;
+        const avatarUserId = avatarEditingUser.id;
         setAvatarSaving(true);
-        setBusyUserId(avatarEditingUser.id);
+        beginUserOp(avatarUserId);
         setError('');
         try {
             await setUserAvatar(avatarEditingUser.id, avatarDraftEmoji || null, avatarDraftColor || null);
@@ -447,7 +485,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
             setError(mapUserPartitionError(err, t));
         } finally {
             setAvatarSaving(false);
-            setBusyUserId(null);
+            endUserOp(avatarUserId);
         }
     };
 
@@ -484,7 +522,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                 type="button"
                 aria-label={t('manageUsers.closePanel')}
                 className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-                onClick={onClose}
+                onClick={guarded.requestBackdropClose}
             />
             <div
                 {...modalDrag.panelProps}
@@ -500,7 +538,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                     </div>
                     <button
                         type="button"
-                        onClick={onClose}
+                        onClick={guarded.requestClose}
                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                         aria-label={t('manageUsers.close')}
                     >
@@ -691,7 +729,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             <button
                                                 type="button"
                                                 onClick={() => openAvatarEditor(user)}
-                                                disabled={busyUserId === user.id}
+                                                disabled={userOps.has(user.id)}
                                                 className="group/avatar relative shrink-0 rounded-full outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
                                                 title={t('manageUsers.editAvatar')}
                                                 aria-label={t('manageUsers.editAvatar')}
@@ -717,7 +755,12 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         value={editingName}
                                                         onChange={(event) => setEditingName(event.target.value)}
                                                         autoFocus
-                                                        onBlur={() => { void commitRename(user); }}
+                                                        onBlur={(event) => {
+                                                            // Focus moving into the close confirm is not a commit:
+                                                            // the user has not chosen to keep or discard yet.
+                                                            if ((event.relatedTarget as Element | null)?.closest('[role="alertdialog"]')) return;
+                                                            void commitRename(user);
+                                                        }}
                                                         className="min-w-0 rounded-lg border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
                                                     />
                                                     <button
@@ -761,7 +804,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => void toggleDefaultAccount(user)}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors disabled:opacity-50 ${
                                                         defaultAccountId === user.id
                                                             ? 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30'
@@ -778,7 +821,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                     <button
                                                         type="button"
                                                         onClick={() => startRename(user)}
-                                                        disabled={busyUserId === user.id}
+                                                        disabled={userOps.has(user.id)}
                                                         className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                         title={t('manageUsers.rename')}
                                                     >
@@ -790,7 +833,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleCopy(user); }}
-                                                    disabled={busyUserId === user.id || !canCopy}
+                                                    disabled={userOps.has(user.id) || !canCopy}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                     title={canCopy ? t('manageUsers.copy') : t('manageUsers.copyLockedHint')}
                                                 >
@@ -808,7 +851,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                         showOld: false,
                                                         showNew: false,
                                                     })}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800 disabled:opacity-50 dark:hover:bg-gray-700 dark:hover:text-gray-100"
                                                     title={user.hasPassphrase ? t('manageUsers.changeMyPassword') : t('manageUsers.setPassword')}
                                                 >
@@ -819,7 +862,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => setResetTarget(user)}
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50 dark:hover:bg-red-950/30"
                                                     title={t('manageUsers.resetPassword')}
                                                 >
@@ -830,7 +873,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleSetAdmin(user, !user.isAdmin); }}
-                                                    disabled={busyUserId === user.id || (user.isAdmin && isLastAdmin)}
+                                                    disabled={userOps.has(user.id) || (user.isAdmin && isLastAdmin)}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-emerald-950/30"
                                                     title={user.isAdmin ? t('manageUsers.revokeAdmin') : t('manageUsers.promoteAdmin')}
                                                 >
@@ -841,7 +884,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                                 <button
                                                     type="button"
                                                     onClick={() => { void handleDelete(user); }}
-                                                    disabled={busyUserId === user.id || !canDelete}
+                                                    disabled={userOps.has(user.id) || !canDelete}
                                                     className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
                                                     title={isLastAdmin ? t('manageUsers.cannotDeleteLastAdmin') : t('manageUsers.delete')}
                                                 >
@@ -908,7 +951,7 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     type="submit"
-                                                    disabled={busyUserId === user.id}
+                                                    disabled={userOps.has(user.id)}
                                                     className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-blue-300"
                                                 >
                                                     <Check size={15} />
@@ -1096,6 +1139,14 @@ export const UsersManagePanel: React.FC<UsersManagePanelProps> = ({ isOpen, onCl
                     onConfirm={pendingConfirm.onConfirm}
                     onCancel={() => setPendingConfirm(null)}
                     zClass={MODAL_Z.modalConfirm}
+                />
+            )}
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
                 />
             )}
         </div>

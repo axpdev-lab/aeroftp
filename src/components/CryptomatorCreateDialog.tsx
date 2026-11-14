@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from '../i18n';
 import { X, Lock, Loader2, Shield } from 'lucide-react';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { PasswordInput } from './common/PasswordInput';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { InlinePasswordGenerator } from './common/InlinePasswordGenerator';
@@ -31,13 +33,21 @@ interface IngestReport {
 export default function CryptomatorCreateDialog({ outputDir, files, onClose, onCreated }: CryptomatorCreateDialogProps) {
   const t = useTranslation();
   const modalDrag = useDraggableModal();
-  const [vaultName, setVaultName] = useState(() => t('cryptomator.defaultVaultName'));
+  const [initialVaultName] = useState(() => t('cryptomator.defaultVaultName'));
+  const [vaultName, setVaultName] = useState(initialVaultName);
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [skipped, setSkipped] = useState<string[] | null>(null);
+  // A vault being created is written after a close, and typed passwords
+  // would have to be typed again: the backdrop is inert then, and the X and
+  // ESC ask first (Discussion #1527).
+  const guarded = useGuardedClose({
+    guard: creating ? 'busy' : !skipped && (password || confirmPassword || vaultName !== initialVaultName) ? 'dirty' : null,
+    onClose,
+  });
 
   const selectionCount = files?.length ?? 0;
   const isValid = vaultName.trim().length > 0 && password.length >= 8 && password === confirmPassword;
@@ -89,14 +99,14 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') guarded.requestClose();
     if (e.key === 'Enter' && isValid && !creating) handleCreate();
   };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={onClose}
+      onClick={guarded.onBackdropClick}
       onKeyDown={handleKeyDown}
     >
       <div
@@ -115,7 +125,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
               {t('cryptomator.createVault') || 'Create Cryptomator Vault'}
             </h2>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
             <X size={18} className="text-gray-600 dark:text-gray-400" />
           </button>
         </div>
@@ -227,7 +237,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
         <div className="flex justify-end gap-2">
           {skipped ? (
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2"
             >
               {t('cryptomator.done') || 'Done'}
@@ -235,7 +245,7 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
           ) : (
             <>
               <button
-                onClick={onClose}
+                onClick={guarded.requestClose}
                 className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
               >
                 {t('common.cancel') || 'Cancel'}
@@ -261,6 +271,14 @@ export default function CryptomatorCreateDialog({ outputDir, files, onClose, onC
           )}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 }

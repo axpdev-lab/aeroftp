@@ -1,0 +1,232 @@
+// @vitest-environment jsdom
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
+import { act, createElement } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import english from '../i18n/locales/en.json';
+import { UsersManagePanel } from './UsersManagePanel';
+import { addUser, copyUser, listUsers, renameUser } from '../utils/userPartitions';
+
+const { adminUser } = vi.hoisted(() => ({
+    adminUser: {
+        id: 1, name: 'admin', hasPassphrase: false, sortOrder: 0, createdAt: 0, updatedAt: 0,
+        isActive: true, isAdmin: true, isDefault: true,
+    },
+}));
+vi.mock('../utils/userPartitions', () => ({
+    addUser: vi.fn(), changeUserPassphrase: vi.fn(), copyUser: vi.fn(), deleteUser: vi.fn(),
+    getUserStorageStats: vi.fn(async () => []),
+    getUnlockStatus: vi.fn(async () => ({ isUnlocked: true, unlockedUserId: 1, activeUserId: 1 })),
+    defaultUserIdFromList: vi.fn(() => 1),
+    initUserPartitions: vi.fn(async () => ({
+        schemaVersion: '1', createdDefaultUser: false, migratedProfiles: 0,
+        migratedSettingsScopes: 0, alreadyMigrated: true,
+    })),
+    legacyDefaultToMigrate: vi.fn(() => false),
+    listUsers: vi.fn(async () => [adminUser]),
+    readDefaultAccountId: vi.fn(() => null), renameUser: vi.fn(), reorderUsers: vi.fn(),
+    setDefaultUser: vi.fn(), setUserAdmin: vi.fn(), setUserAvatar: vi.fn(),
+    writeDefaultAccountId: vi.fn(),
+}));
+vi.mock('../utils/serverProfileStore', () => ({ PROFILES_CHANGED_EVENT: 'profiles-changed' }));
+const translate = (key: string) => key.split('.').reduce<unknown>(
+    (value, part) => (value as Record<string, unknown>)?.[part], english.translations,
+) as string;
+vi.mock('../i18n', () => ({ useTranslation: () => translate }));
+vi.mock('../hooks/useDraggableModal', () => ({
+    useDraggableModal: () => ({ panelProps: {}, dragHandleProps: {} }),
+}));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => undefined) }));
+
+let root: Root;
+let host: HTMLDivElement;
+
+const render = async (el: React.ReactElement) => {
+    await act(async () => root.render(el));
+};
+const flush = async () => {
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+};
+
+beforeEach(() => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    vi.mocked(listUsers).mockResolvedValue([adminUser]);
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+});
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); });
+
+it('reports account creation as busy, not dirty, until addUser settles', async () => {
+    let resolveAdd!: () => void;
+    vi.mocked(addUser).mockImplementation(() => new Promise<typeof adminUser>(res => { resolveAdd = () => res(adminUser); }));
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const nameInput = host.querySelector<HTMLInputElement>('input[placeholder]');
+    expect(nameInput).not.toBeNull();
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, 'newbie');
+        nameInput!.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const submit = host.querySelector<HTMLButtonElement>('button[type=submit]');
+    await act(async () => { submit!.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+    await flush();
+    expect(addUser).toHaveBeenCalled();
+    // Close while creation is in flight: the confirm must be the busy one.
+    const x = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.innerHTML.includes('lucide-x'));
+    await act(async () => { x!.click(); });
+    const alert = host.querySelector('[role=alertdialog]');
+    expect(alert).not.toBeNull();
+    expect(alert!.textContent).toContain('Operation in progress');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { resolveAdd(); });
+    await flush();
+});
+
+it('stays busy while a second account creation is still pending', async () => {
+    const resolvers: Array<() => void> = [];
+    vi.mocked(addUser).mockImplementation(() => new Promise<typeof adminUser>(res => {
+        resolvers.push(() => res(adminUser));
+    }));
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const nameInput = host.querySelector<HTMLInputElement>('input[placeholder]')!;
+    const submitForm = async () => {
+        const submit = host.querySelector<HTMLButtonElement>('button[type=submit]')!;
+        await act(async () => { submit.closest('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
+        await flush();
+    };
+    const typeName = async (value: string) => {
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput, value);
+            nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    };
+    const clickX = async () => {
+        const x = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.innerHTML.includes('lucide-x'))!;
+        await act(async () => { x.click(); });
+    };
+    await typeName('first');
+    await submitForm();
+    await typeName('second');
+    await submitForm();
+    expect(addUser).toHaveBeenCalledTimes(2);
+    expect(resolvers.length).toBe(2);
+    // The first creation settles while the second is still in flight.
+    await act(async () => { resolvers[0](); });
+    await flush();
+    await clickX();
+    const alert = host.querySelector('[role=alertdialog]');
+    expect(alert).not.toBeNull();
+    expect(alert!.textContent).toContain('Operation in progress');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { resolvers[1](); });
+    await flush();
+});
+
+it('stays busy while a second account operation is still pending', async () => {
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const resolvers: Array<() => void> = [];
+    vi.mocked(copyUser).mockImplementation(() => new Promise<typeof adminUser>(res => { resolvers.push(() => res(adminUser)); }));
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const copies = [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => b.title?.includes('Duplicate user'));
+    expect(copies.length).toBe(2);
+    const clickX = async () => {
+        const x = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.innerHTML.includes('lucide-x'))!;
+        await act(async () => { x.click(); });
+    };
+    await act(async () => { copies[0].click(); });
+    await act(async () => { copies[1].click(); });
+    await flush();
+    expect(resolvers.length).toBe(2);
+    // Copy A settles while copy B is still in flight.
+    await act(async () => { resolvers[0](); });
+    await flush();
+    await clickX();
+    const alert = host.querySelector('[role=alertdialog]');
+    expect(alert).not.toBeNull();
+    expect(alert!.textContent).toContain('Operation in progress');
+    expect(onClose).not.toHaveBeenCalled();
+    await act(async () => { resolvers[1](); });
+    await flush();
+    await clickX();
+    expect(onClose).toHaveBeenCalledTimes(1);
+});
+
+it('keeps each account row disabled until its own operation settles', async () => {
+    // One "busy row" value: starting B re-enabled A's row while A still ran,
+    // and A finishing re-enabled B's row while B still ran.
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const resolvers: Array<() => void> = [];
+    vi.mocked(copyUser).mockImplementation(() => new Promise<typeof adminUser>(res => { resolvers.push(() => res(adminUser)); }));
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose: vi.fn(), onChanged: vi.fn() }));
+    await flush();
+    const copies = () => [...host.querySelectorAll<HTMLButtonElement>('button')].filter(b => b.title?.includes('Duplicate user'));
+    await act(async () => { copies()[0].click(); });
+    await flush();
+    expect(copies()[0].disabled).toBe(true);
+    await act(async () => { copies()[1].click(); });
+    await flush();
+    // Both run: both rows stay disabled.
+    expect(copies()[0].disabled).toBe(true);
+    expect(copies()[1].disabled).toBe(true);
+    await act(async () => { resolvers[0](); });
+    await flush();
+    // A settled: only A's row is free again.
+    expect(copies()[0].disabled).toBe(false);
+    expect(copies()[1].disabled).toBe(true);
+    await act(async () => { resolvers[1](); });
+    await flush();
+    expect(copies()[1].disabled).toBe(false);
+});
+
+it('does not send a typed rename when ESC opens the close confirm and the draft is discarded', async () => {
+    // The confirm takes focus on open; the rename input's blur used to
+    // commit the rename before the user had chosen to keep or discard it.
+    const userB = { ...adminUser, id: 2, name: 'bob', isAdmin: false, isDefault: false, sortOrder: 1 };
+    vi.mocked(listUsers).mockResolvedValue([adminUser, userB]);
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const rename = [...host.querySelectorAll<HTMLButtonElement>(`button[title="${translate('manageUsers.rename')}"]`)];
+    await act(async () => { rename[rename.length - 1].click(); });
+    const input = host.querySelector<HTMLInputElement>('form input[value="bob"]')!;
+    expect(input).not.toBeNull();
+    await act(async () => { input.focus(); });
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, 'robert');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    await flush();
+    expect(host.querySelector('[role=alertdialog]')).not.toBeNull();
+    expect(renameUser).not.toHaveBeenCalled();
+    const discard = [...host.querySelectorAll<HTMLButtonElement>('[role=alertdialog] button')].find(b => b.textContent?.trim() === translate('modalGuard.discardAndClose'))!;
+    await act(async () => { discard.click(); });
+    await flush();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(renameUser).not.toHaveBeenCalled();
+});
+
+it('forgets discarded drafts when the panel closes', async () => {
+    // Both parents keep the panel mounted: a draft dropped by closing came
+    // back on the next open.
+    const onClose = vi.fn();
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    const nameInput = () => host.querySelector<HTMLInputElement>('input[placeholder]')!;
+    await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(nameInput(), 'draft-name');
+        nameInput().dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await render(createElement(UsersManagePanel, { isOpen: false, onClose, onChanged: vi.fn() }));
+    await render(createElement(UsersManagePanel, { isOpen: true, onClose, onChanged: vi.fn() }));
+    await flush();
+    expect(nameInput().value).toBe('');
+});

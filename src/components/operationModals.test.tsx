@@ -71,10 +71,11 @@ import { CrossProfilePanel } from './CrossProfile/CrossProfilePanel';
 import { ShareLinkModal } from './ShareLinkModal';
 import { TotpSetup } from './TotpSetup';
 import { ServerHealthCheck } from './ServerHealthCheck';
-import VaultSyncDialog from './VaultSyncDialog';
 import { UnifiedTransferPlanDialog } from './UnifiedTransferPlanDialog';
 import { ConfirmDialog, InputDialog } from './Dialogs';
 import { VaultPanel } from './VaultPanel';
+import { CanaryResultDialog } from './Sync/CanaryResultDialog';
+import VaultSyncDialog from './VaultSyncDialog';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -286,6 +287,44 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(findButton('transfer.crossProfile.executeTransfer')).toBeTruthy();
     };
 
+    it('asks on ESC before dropping a setup edited by hand', async () => {
+        // ESC now closes the panel: an edited destination path was dropped
+        // without a word.
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        const dest = host.querySelector<HTMLInputElement>('input[placeholder="transfer.crossProfile.destinationPathPlaceholder"]')!;
+        await typeInto(dest, '/sentinel/dest');
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(dest.value).toBe('/sentinel/dest');
+        await click('modalGuard.discardAndClose');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes on ESC at once when a hand edit was undone', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        const dest = host.querySelector<HTMLInputElement>('input[placeholder="transfer.crossProfile.destinationPathPlaceholder"]')!;
+        const original = dest.value;
+        await typeInto(dest, '/sentinel/dest');
+        await typeInto(dest, original);
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes an untouched setup on ESC at once', async () => {
+        const onClose = vi.fn();
+        await open(onClose);
+        await flush();
+        await escape();
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('keeps a plan being built from the backdrop, and the X asks first', async () => {
         const onClose = vi.fn();
         const pending = deferred<unknown>();
@@ -328,6 +367,27 @@ describe('CrossProfilePanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('modalGuard.stopAndClose');
         expect(mocks.invoke).toHaveBeenCalledWith('cross_profile_cancel', { transferId: 'plan-1' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC like the X: a ready plan closes, a running transfer asks first', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        const execution = deferred<unknown>();
+        mocks.handlers.cross_profile_execute = () => execution.promise;
+        await click('transfer.crossProfile.executeTransfer');
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+        await click('modalGuard.wait');
+        expect(confirmOpen()).toBe(false);
+        expect(mocks.invoke).not.toHaveBeenCalledWith('cross_profile_cancel', expect.anything());
+    });
+
+    it('closes from ESC once a plan is shown', async () => {
+        const onClose = vi.fn();
+        await planReady(onClose);
+        await escape();
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
@@ -671,6 +731,90 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('answers ESC like the X: an opened vault closes, an operation asks first', async () => {
+        const onClose = vi.fn();
+        vault('open');
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        onClose.mockClear();
+        vault('open', true);
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(true);
+    });
+
+    it('leaves ESC to a dialog of its own open over it, but keeps its stack place', async () => {
+        const onClose = vi.fn();
+        const onSubClose = vi.fn();
+        // A sub-dialog registers in the stack when it opens, above the panel.
+        const SubDialog = () => { useGuardedClose({ guard: null, onClose: onSubClose, escape: true }); return null; };
+        vault('browse');
+        mocks.vaultState.showRepairDialog = true;
+        await render(<VaultPanel onClose={onClose} />);
+        await render(<><VaultPanel onClose={onClose} /><SubDialog /></>);
+        expect(isEscapeClaimed()).toBe(true);
+        await escape();
+        expect(onSubClose).toHaveBeenCalledTimes(1);
+        expect(onClose).not.toHaveBeenCalled();
+        expect(confirmOpen()).toBe(false);
+    });
+
+    it('asks on ESC before dropping a create form being filled in, or a password typed to open', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1', confirmPassword: '', description: '', stagedFiles: [], stagedDirs: [] });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        vault('open');
+        Object.assign(mocks.vaultState, { password: 'sentinel-pass-1' });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('asks on ESC before dropping files staged for a new vault, and Keep keeps them', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '', stagedFiles: ['/sentinel/a.txt'], stagedDirs: [] });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(confirmOpen()).toBe(true);
+        expect(onClose).not.toHaveBeenCalled();
+        await click('modalGuard.keepEditing');
+        expect(confirmOpen()).toBe(false);
+        expect(onClose).not.toHaveBeenCalled();
+        await escape();
+        await click('modalGuard.discardAndClose');
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('closes an empty create form on ESC at once', async () => {
+        const onClose = vi.fn();
+        vault('create');
+        Object.assign(mocks.vaultState, { password: '', confirmPassword: '', description: '', stagedFiles: [], stagedDirs: [] });
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('answers ESC when a sub-dialog flag is left set but its dialog is not mounted', async () => {
+        // The new-folder bar lives in VaultBrowse: after switching to Recent
+        // the bar is unmounted while showNewDirDialog stays true, and ESC
+        // must still reach the panel.
+        const onClose = vi.fn();
+        vault('browse');
+        mocks.vaultState.showNewDirDialog = true;
+        await render(<VaultPanel onClose={onClose} />);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('closes from the backdrop on the home screen, unless an operation runs', async () => {
         const onClose = vi.fn();
         vault('home');
@@ -684,6 +828,23 @@ describe('VaultPanel (Discussion #1527)', () => {
         expect(onClose).not.toHaveBeenCalled();
         await click('common.close');
         expect(confirmOpen()).toBe(true);
+    });
+});
+
+describe('VaultSyncDialog over VaultPanel (Discussion #1527)', () => {
+    const SuspendedPanel = ({ onClose }: { onClose: () => void }) => {
+        useGuardedClose({ guard: null, onClose, escape: true, escapeSuspended: true });
+        return null;
+    };
+
+    it('takes one ESC for itself and leaves the suspended panel open', async () => {
+        const onPanel = vi.fn();
+        const onClose = vi.fn();
+        await render(<><SuspendedPanel onClose={onPanel} />
+            <VaultSyncDialog vaultPath="/vaults/sample.aerovault" password="pw" onClose={onClose} onSynced={vi.fn()} /></>);
+        await escape();
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(onPanel).not.toHaveBeenCalled();
     });
 });
 
@@ -707,6 +868,28 @@ describe('TwoFactorPromptDialog over a modal (Discussion #1527)', () => {
         await render(<><Underneath onClose={onUnder} />{prompt(onCancel)}</>);
         await escape();
         expect(onCancel).toHaveBeenCalledTimes(1);
+        expect(onUnder).not.toHaveBeenCalled();
+    });
+});
+
+describe('CanaryResultDialog over a modal (Discussion #1527)', () => {
+    const result = {
+        sampled_files: 1, total_files: 4, results: [],
+        summary: { would_upload: 1, would_download: 0, would_delete: 0, conflicts: 0, errors: 0, estimated_transfer_size: 10 },
+    };
+    // Stands for AeroSync, which stays open under the canary result.
+    const Underneath = ({ onClose }: { onClose: () => void }) => {
+        useGuardedClose({ guard: null, onClose, escape: true });
+        return null;
+    };
+
+    it('takes one ESC for itself and leaves the modal underneath open', async () => {
+        const onUnder = vi.fn();
+        const onCanary = vi.fn();
+        await render(<Underneath onClose={onUnder} />);
+        await render(<><Underneath onClose={onUnder} /><CanaryResultDialog result={result} onClose={onCanary} onApprove={vi.fn()} /></>);
+        await escape();
+        expect(onCanary).toHaveBeenCalledTimes(1);
         expect(onUnder).not.toHaveBeenCalled();
     });
 });

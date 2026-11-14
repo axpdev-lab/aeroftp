@@ -13,6 +13,8 @@ import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { formatDate as formatDateFull } from '../utils';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 import { changeNoteType, createTagOnNote, deleteTag, renameTag, tagNote, untagNote } from '../utils/filenNoteTags';
 
 // ─── Types ───
@@ -101,10 +103,18 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const [selectedNote, setSelectedNote] = useState<FilenNote | null>(null);
   const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
+  // The title as last persisted: the auto-save only writes content, so a
+  // title edit must keep the close guard up on its own (Discussion #1527).
+  const [savedTitle, setSavedTitle] = useState('');
   const [noteType, setNoteType] = useState<NoteTypeOption>('text');
   const [loadingContent, setLoadingContent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // An edited note not yet saved is lost on close, and a save in flight goes
+  // on after it: the backdrop is inert then, and the X and ESC ask first
+  // (Discussion #1527).
+  const titleUnsaved = selectedNote !== null && noteTitle !== savedTitle;
+  const guarded = useGuardedClose({ guard: saving ? 'busy' : dirty || titleUnsaved ? 'dirty' : null, onClose });
 
   // State: history view
   const [history, setHistory] = useState<FilenNoteHistoryEntry[] | null>(null);
@@ -125,6 +135,13 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   // Refs
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Bumped on every edit: a save clears `dirty` only when no edit came in
+  // while it ran, so a later edit keeps the close guard up (Discussion #1527).
+  const editVersionRef = useRef(0);
+  // The note on screen: a save that completes after the user left its note
+  // must not touch the state of the note opened since (Discussion #1527).
+  const currentNoteUuidRef = useRef<string | null>(null);
+  useEffect(() => { currentNoteUuidRef.current = selectedNote?.uuid ?? null; }, [selectedNote]);
   // The open note, so a late request result is applied only to the note it was made on
   const selectedUuidRef = useRef<string | null>(null);
   const creatingTagRef = useRef(false);
@@ -169,6 +186,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const openNote = useCallback(async (note: FilenNote) => {
     setSelectedNote(note);
     setNoteTitle(note.title);
+    setSavedTitle(note.title);
     setNoteType(note.noteType);
     setLoadingContent(true);
     setDirty(false);
@@ -185,36 +203,50 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   }, []);
 
   const handleBackToList = useCallback(async () => {
+    // Leaving waits for a save in flight: navigating away under it would let
+    // its late completion land on the next note opened.
+    if (saving) return;
     // Cancel pending auto-save to prevent stale overwrites
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
-    if (dirty && selectedNote) {
+    // A title edit outlives the content auto-save, which clears `dirty`, so
+    // it is saved on its own; and a failed save keeps the editor and its
+    // edits on screen instead of leaving them behind (Discussion #1527).
+    if (selectedNote && (dirty || noteTitle !== savedTitle)) {
+      const startVersion = editVersionRef.current;
       setSaving(true);
       try {
-        await invoke('filen_notes_edit_content', {
-          uuid: selectedNote.uuid,
-          content: noteContent,
-          noteType: noteType,
-        });
-        if (noteTitle !== selectedNote.title) {
+        if (dirty) {
+          await invoke('filen_notes_edit_content', {
+            uuid: selectedNote.uuid,
+            content: noteContent,
+            noteType: noteType,
+          });
+        }
+        if (noteTitle !== savedTitle) {
           await invoke('filen_notes_edit_title', {
             uuid: selectedNote.uuid,
             title: noteTitle,
           });
+          setSavedTitle(noteTitle);
         }
       } catch (err) {
         setError(String(err));
+        return;
       } finally {
         setSaving(false);
       }
+      // An edit typed while this save ran was not part of it: stay on the
+      // note, still dirty, instead of leaving it unsaved behind.
+      if (editVersionRef.current !== startVersion) return;
     }
     setSelectedNote(null);
     setNoteContent('');
     setDirty(false);
     loadNotes();
-  }, [dirty, selectedNote, noteContent, noteTitle, noteType, loadNotes]);
+  }, [saving, dirty, selectedNote, noteContent, noteTitle, savedTitle, noteType, loadNotes]);
 
   // ── Keyboard ──
 
@@ -227,22 +259,25 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         } else if (selectedNote) {
           handleBackToList();
         } else {
-          onClose();
+          guarded.requestClose();
         }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, selectedNote, history, onClose, handleBackToList]);
+  }, [isOpen, selectedNote, history, guarded.requestClose, handleBackToList]);
 
   const handleContentChange = useCallback((value: string) => {
     setNoteContent(value);
     setDirty(true);
+    editVersionRef.current += 1;
 
     // Auto-save after 2s of inactivity
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(async () => {
       if (!selectedNote) return;
+      const savedVersion = editVersionRef.current;
+      const noteUuid = selectedNote.uuid;
       setSaving(true);
       try {
         await invoke('filen_notes_edit_content', {
@@ -250,7 +285,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           content: value,
           noteType: noteType,
         });
-        setDirty(false);
+        if (currentNoteUuidRef.current === noteUuid && editVersionRef.current === savedVersion) setDirty(false);
       } catch (err) {
         setError(String(err));
       } finally {
@@ -262,6 +297,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
   const handleTitleChange = useCallback((value: string) => {
     setNoteTitle(value);
     setDirty(true);
+    editVersionRef.current += 1;
   }, []);
 
   const saveNow = useCallback(async () => {
@@ -271,6 +307,8 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
     }
+    const savedVersion = editVersionRef.current;
+    const noteUuid = selectedNote.uuid;
     setSaving(true);
     const logId = humanLog.logRaw('activity.provider_operation', 'INFO', { provider: 'Filen' }, 'running');
     try {
@@ -279,21 +317,22 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
         content: noteContent,
         noteType: noteType,
       });
-      if (noteTitle !== selectedNote.title) {
+      if (noteTitle !== savedTitle) {
         await invoke('filen_notes_edit_title', {
           uuid: selectedNote.uuid,
           title: noteTitle,
         });
+        if (currentNoteUuidRef.current === noteUuid) setSavedTitle(noteTitle);
       }
       humanLog.updateEntry(logId, { status: 'success', message: t('activity.note_saved', { provider: 'Filen', title: noteTitle }) });
-      setDirty(false);
+      if (currentNoteUuidRef.current === noteUuid && editVersionRef.current === savedVersion) setDirty(false);
     } catch (err) {
       humanLog.updateEntry(logId, { status: 'error', message: t('activity.note_save_error', { provider: 'Filen' }) });
       setError(String(err));
     } finally {
       setSaving(false);
     }
-  }, [selectedNote, saving, noteContent, noteTitle, noteType, humanLog, t]);
+  }, [selectedNote, saving, noteContent, noteTitle, savedTitle, noteType, humanLog, t]);
 
   const createNote = useCallback(async () => {
     if (!newTitle.trim()) return;
@@ -653,7 +692,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
               <Loader2 size={11} className="animate-spin" />
               {t('filenNotes.saving')}
             </span>
-          ) : dirty ? (
+          ) : dirty || titleUnsaved ? (
             <span className="flex items-center gap-1 text-[10px] text-amber-400">
               <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
               {t('filenNotes.unsaved')}
@@ -666,7 +705,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           ) : null}
           <button
             onClick={saveNow}
-            disabled={!dirty || saving}
+            disabled={!(dirty || titleUnsaved) || saving}
             className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 disabled:opacity-30 disabled:cursor-default"
             title={t('filenNotes.saveNow')}
           >
@@ -969,7 +1008,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-start justify-center pt-[5vh]">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/50" onClick={guarded.requestBackdropClose} />
       <div
         className="relative bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[600px] h-[70vh] flex flex-col animate-scale-in overflow-hidden"
         role="dialog"
@@ -986,7 +1025,7 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
               ({filteredNotes.length})
             </span>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
+          <button onClick={guarded.requestClose} className="p-1 rounded hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500">
             <X size={16} />
           </button>
         </div>
@@ -1004,6 +1043,14 @@ export function FilenNotesPanel({ isOpen, onClose }: FilenNotesPanelProps) {
           </p>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 }

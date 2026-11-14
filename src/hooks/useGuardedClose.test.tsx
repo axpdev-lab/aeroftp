@@ -170,6 +170,20 @@ describe('useGuardedClose', () => {
         expect(onUnder).not.toHaveBeenCalled();
     });
 
+    it('follows the guard while its confirm is open, so the confirm says what a close would lose now', () => {
+        // A delete running next to a typed message: the busy confirm stayed
+        // busy after the delete finished, although closing now discards the
+        // message, not an operation.
+        render({ guard: 'busy', abort: true });
+        act(() => api.requestClose());
+        expect(api.confirmKind).toBe('busy');
+        render({ guard: 'dirty', abort: true });
+        expect(api.confirmKind).toBe('dirty');
+        act(() => api.confirmAndClose());
+        expect(onAbort).not.toHaveBeenCalled();
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
     it('drops an open confirm once the guard is gone, so a reopened modal does not show it', () => {
         render({ guard: 'busy', abort: true });
         act(() => api.requestClose());

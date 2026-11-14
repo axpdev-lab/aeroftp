@@ -96,8 +96,10 @@ export function useGuardedClose({ guard, onClose, onAbort, backdrop = 'idle', es
   // A confirm asks about an operation or input that is there now: once the
   // guard is gone (the operation ended, the input was saved) it has nothing
   // left to ask, and a modal that stays mounted must not show it next time.
+  // While it is open it follows the guard, so it always says what a close
+  // would lose now (an operation that finished leaves typed input behind).
   useEffect(() => {
-    if (!guard) setConfirmKind(null);
+    setConfirmKind(current => (current === null ? null : guard || null));
   }, [guard]);
 
   const requestClose = useCallback(() => {

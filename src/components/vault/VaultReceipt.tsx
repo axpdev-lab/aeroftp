@@ -18,6 +18,7 @@ import { pickSave } from '../../utils/pickPath';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type { VaultReport } from './useVaultState';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 
 interface VaultReceiptProps {
     report: VaultReport;
@@ -75,6 +76,9 @@ async function saveReceipt(defaultName: string, ext: string, content: string): P
 
 export function VaultReceipt({ report, t, onClose }: VaultReceiptProps): React.ReactElement {
     const modalDrag = useDraggableModal();
+    // Mounted only while shown, so it takes the top ESC slot over VaultPanel,
+    // which stays suspended meanwhile (Discussion #1527).
+    useGuardedClose({ guard: null, onClose, escape: true });
     const [revealed, setRevealed] = useState(0);
     const [saveResult, setSaveResult] = useState<SaveOutcome>(null);
     const termRef = useRef<HTMLDivElement>(null);

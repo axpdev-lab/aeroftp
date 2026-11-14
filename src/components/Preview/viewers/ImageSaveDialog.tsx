@@ -14,6 +14,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { EditState, ImageResult, OUTPUT_FORMATS, buildOperations, formatLossKind, isLossyReencode } from '../types';
 import { useI18n } from '../../../i18n';
 import { useDraggableModal } from '../../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from '../../GuardedCloseConfirm';
 
 interface ImageSaveDialogProps {
     isOpen: boolean;
@@ -96,13 +98,11 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
         setAckReencode(false);
     }, [format]);
 
-    // Escape key handler
-    useEffect(() => {
-        if (!isOpen) return;
-        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [isOpen, onClose]);
+    // A save in flight writes the file after a close: the backdrop is inert
+    // while it runs, and the X and ESC ask first (Discussion #1527).
+    // ESC goes through the hook too, which holds the key for the topmost
+    // modal: the preview underneath leaves it alone while this is open.
+    const guarded = useGuardedClose({ guard: saving !== null ? 'busy' : null, onClose, escape: isOpen });
 
     const outputDims = useMemo(
         () => computeOutputDimensions(originalDimensions, editState),
@@ -144,7 +144,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
             role="dialog"
             aria-modal="true"
-            onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+            onClick={guarded.onBackdropClick}
         >
             <div
                 {...modalDrag.panelProps}
@@ -158,7 +158,7 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">
                         {label('saveTitle', 'Save Image')}
                     </h2>
-                    <button onClick={onClose} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
+                    <button onClick={guarded.requestClose} className="text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] transition-colors">
                         <X size={18} />
                     </button>
                 </div>
@@ -289,6 +289,14 @@ export const ImageSaveDialog: React.FC<ImageSaveDialogProps> = ({
                     <p className="text-xs text-red-400 mt-2 break-words">{error}</p>
                 )}
             </div>
+            {guarded.confirmOpen && guarded.confirmKind && (
+                <GuardedCloseConfirm
+                    kind={guarded.confirmKind}
+                    canAbort={guarded.canAbort}
+                    onKeep={guarded.cancelConfirm}
+                    onConfirm={guarded.confirmAndClose}
+                />
+            )}
         </div>
     );
 };

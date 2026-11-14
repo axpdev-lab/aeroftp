@@ -7,7 +7,7 @@
  * User can approve full sync or dismiss.
  */
 
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
     X, FlaskConical, Upload, Download, AlertTriangle, HardDrive,
     CheckCircle2, XCircle, SkipForward, Trash2, FileSearch, Zap
@@ -15,6 +15,7 @@ import {
 import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { useGuardedClose } from '../../hooks/useGuardedClose';
 
 // --- Backend types (from Rust sync_canary_run) ---
 
@@ -63,12 +64,10 @@ export const CanaryResultDialog: React.FC<CanaryResultDialogProps> = ({
     const t = useTranslation();
     const modalDrag = useDraggableModal();
 
-    // Escape to close
-    useEffect(() => {
-        const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-        window.addEventListener('keydown', handler);
-        return () => window.removeEventListener('keydown', handler);
-    }, [onClose]);
+    // ESC closes it through the hook, which gives the key to the topmost
+    // modal: the canary result opens over AeroSync, and one press used to
+    // close both and drop the comparison (Discussion #1527).
+    useGuardedClose({ guard: null, onClose, escape: true });
 
     const samplePercent = result.total_files > 0
         ? Math.round((result.sampled_files / result.total_files) * 100)
