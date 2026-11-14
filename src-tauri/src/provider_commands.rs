@@ -20118,10 +20118,13 @@ mod tests {
 
         // The run's other guarded commands: its index, its resume check, its
         // cancel reset, its speed limits, the bulk probe and the FTP keepalive.
-        let index_dir = crate::sync::sync_index_dir().unwrap();
-        let indexes_before = std::fs::read_dir(&index_dir)
-            .map(|entries| entries.count())
-            .unwrap_or(0);
+        // This pair's own index file: the folder is shared with every other
+        // test of the process, so only this name is looked at (the local
+        // root is this test's temporary folder, no other test has it).
+        let own_index = crate::sync::sync_index_dir()
+            .unwrap()
+            .join(crate::sync::index_filename(&root, "/remote"));
+        assert!(!own_index.exists(), "the pair had an index before the run");
         let index: crate::sync::SyncIndex = serde_json::from_value(serde_json::json!({
             "version": 2,
             "last_sync": "2026-11-14T00:00:00Z",
@@ -20209,10 +20212,7 @@ mod tests {
         assert_eq!(left, ["empty", "kept.txt"]);
         assert_eq!(std::fs::read(local("kept.txt")).unwrap(), b"kept");
         // No index of A was written under B, and B's limits are unchanged.
-        let indexes_after = std::fs::read_dir(&index_dir)
-            .map(|entries| entries.count())
-            .unwrap_or(0);
-        assert_eq!(indexes_after, indexes_before, "an index was written");
+        assert!(!own_index.exists(), "an index was written");
         let limits = &app.state::<crate::AppState>().speed_limits;
         assert_eq!(
             (
