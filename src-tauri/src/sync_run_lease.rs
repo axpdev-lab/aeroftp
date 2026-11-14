@@ -465,14 +465,18 @@ pub(crate) mod page_load_selftest {
 
     /// The pages: each document binds itself from its script with a fresh
     /// nonce and asks for the lease; after a refusal it binds and asks
-    /// again, as `beginRunLease` does, until it is granted or gone. It keeps
-    /// its nonce for the "which document is displayed" question.
+    /// again, as `beginRunLease` does. It goes on for as long as it lives,
+    /// asking again whenever it holds no live lease: a lease granted before
+    /// the document's own first `Finished` is orphaned by that event (the
+    /// rule of [`bind_page`]), and a document that stopped at its first
+    /// grant would then never hold one. It keeps its nonce for the "which
+    /// document is displayed" question.
     const PAGE: &str = r#"<!doctype html><title>selftest</title><script>
 window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
 (async () => {
   const call = step => fetch(location.origin + '/' + step + '/' + window.__doc).then(r => r.status);
   for (;;) {
-    if (await call('bind') === 204 && await call('lease') === 204) return;
+    if (await call('held') !== 204 && await call('bind') === 204) await call('lease');
     await new Promise(r => setTimeout(r, 100));
   }
 })();
@@ -630,6 +634,17 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
                         }
                     }
                     check(&mut run, &format!("lease {nonce}"));
+                } else if let Some(nonce) = path.strip_prefix("/held/") {
+                    // Whether this document holds a live lease now.
+                    let held = REGISTRY.lock().is_ok_and(|registry| {
+                        registry.leases.iter().any(|(token, lease)| {
+                            lease.window == WINDOW
+                                && run.holders.get(token).map(String::as_str) == Some(nonce)
+                        })
+                    });
+                    if !held {
+                        status = 404;
+                    }
                 } else if let Some(nonce) = path.strip_prefix("/alive/") {
                     run.alive = Some(nonce.to_string());
                 } else {
@@ -1016,6 +1031,49 @@ mod tests {
         bind_page(window, &new).unwrap();
         let token = acquire_at(dir.path(), pair, window, &new).unwrap();
         release(&token).unwrap();
+    }
+
+    /// A document that binds and is granted a lease before its own first
+    /// `Finished` (its script ran while the page was still loading): that
+    /// event ends the binding and orphans the lease, by the rule above. The
+    /// lease admits nothing more, the pair stays locked until what it
+    /// admitted has settled, and the same document, asking again, is granted
+    /// the pair. It must ask again: nothing gives the lease back to it.
+    #[test]
+    fn a_lease_granted_before_the_first_finished_is_orphaned_and_asked_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/early-local", "/early-remote");
+        let window = "early-window";
+        let document = nonce("early");
+        orphan_window(window);
+        bind_page(window, &document).unwrap();
+        let early = acquire_at(dir.path(), pair.clone(), window, &document).unwrap();
+        let work = admit(Some(&early)).unwrap();
+        // The document's own first `Finished`.
+        let orphans = page_finished(window);
+        assert_eq!(orphans, std::slice::from_ref(&early));
+        assert!(
+            admit(Some(&early)).is_err(),
+            "the early lease admits no more"
+        );
+        // The document asks again: its binding is gone, then the pair is
+        // still kept by the work the early lease admitted.
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &document),
+            "SYNC_RUN_PAGE_REPLACED"
+        ));
+        assert!(bind_page(window, &document).unwrap().is_empty());
+        assert!(refused_as(
+            &acquire_at(dir.path(), pair.clone(), window, &document),
+            "SYNC_RUN_BUSY"
+        ));
+        drop(work);
+        release_orphans(&orphans);
+        let live = acquire_at(dir.path(), pair, window, &document).unwrap();
+        // A later `Finished` of the same generation leaves it alone.
+        assert!(page_finished(window).is_empty());
+        assert!(admit(Some(&live)).is_ok());
+        release(&live).unwrap();
     }
 
     /// T6a: the first `Finished` of a generation was spurious, and the old
