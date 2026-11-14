@@ -3698,17 +3698,16 @@ pub async fn sync_one_config(
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
     let mut config = config;
-    let unplaced_key = crate::cloud_scan_schedule::pair_key(&config);
     let opened = open_aerocloud_connection(&mut config, store, !dry_run).await?;
     if !dry_run {
         // "Sync now" is a full scan: the background scheduler counts it, so
         // a provider's floor between two scans spans it too. It is recorded
         // under the key of the folder this connect opened, which a `~/...`
-        // folder placed here changed, and what the old key held moves there.
-        let placed_key = crate::cloud_scan_schedule::pair_key(&config);
-        let mut ledger = crate::cloud_scan_schedule::ledger();
-        ledger.moved(&unplaced_key, &placed_key);
-        ledger.record_full_scan(&placed_key, std::time::Instant::now());
+        // folder placed (and its ledger state moved) here changed.
+        crate::cloud_scan_schedule::ledger().record_full_scan(
+            &crate::cloud_scan_schedule::pair_key(&config),
+            std::time::Instant::now(),
+        );
     }
     sync_opened_config(config, opened, app, dry_run).await
 }
@@ -4001,21 +4000,40 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     {
         edit();
     }
+    let mut persisted = false;
     if place_config {
-        cloud_config::with_cloud_config_mut(|stored| {
-            if config_unplaced(stored) {
+        persisted |= cloud_config::with_cloud_config_mut(|stored| {
+            let unplaced = config_unplaced(stored);
+            if unplaced {
                 stored.remote_folder = placed.clone();
             }
-            Ok(())
+            Ok(unplaced)
         })?;
     }
     if place_pairs {
-        cloud_pairs::with_cloud_pairs_mut(|pairs| {
+        persisted |= cloud_pairs::with_cloud_pairs_mut(|pairs| {
+            let mut moved = false;
             for pair in pairs.pairs.iter_mut().filter(|pair| pair_unplaced(pair)) {
                 pair.remote_path = placed.clone();
+                moved = true;
             }
-            Ok(())
+            Ok(moved)
         })?;
+    }
+    // The saved entries now carry the absolute folder, so the scheduler
+    // reads them under its key: what the scan ledger held under the `~` key
+    // (a request, a floor) moves with them. Every caller that places, the
+    // manual sync, the background cycles and the folder picker, goes
+    // through here; an entry left unplaced keeps its ledger state.
+    if persisted {
+        let placed_config = CloudConfig {
+            remote_folder: placed.clone(),
+            ..config.clone()
+        };
+        crate::cloud_scan_schedule::ledger().moved(
+            &crate::cloud_scan_schedule::pair_key(config),
+            &crate::cloud_scan_schedule::pair_key(&placed_config),
+        );
     }
     Ok(Some(placed))
 }
@@ -8184,6 +8202,87 @@ mod baseline_tests {
                 .await
                 .unwrap();
             assert_eq!(saved_forms(), ("~/docs".to_string(), "~/docs".to_string()));
+        });
+    }
+
+    /// The placement moves the pair's scan ledger state with the entries it
+    /// saves: a full scan asked for under the `~` key is due under the
+    /// absolute key the scheduler reads next, whoever placed it (the manual
+    /// sync, a background cycle, the folder picker). A placement that saves
+    /// nothing leaves the ledger where it was.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_placement_moves_the_scan_ledger_with_the_saved_entries() {
+        with_scratch_index(async {
+            let login = || MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            let seed = |local: &str| {
+                let config = CloudConfig {
+                    local_folder: local.into(),
+                    ..seed_unplaced_entries()
+                };
+                let pair = crate::cloud_pairs::CloudPathPair::from_legacy(&config);
+                cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                    pairs.pairs = vec![pair];
+                    Ok(())
+                })
+                .unwrap();
+                let stored = config.clone();
+                cloud_config::with_cloud_config_mut(move |disk| {
+                    *disk = stored;
+                    Ok(())
+                })
+                .unwrap();
+                config
+            };
+            let key = crate::cloud_scan_schedule::pair_key;
+            let now = std::time::Instant::now();
+
+            // Placed and saved: the request follows the entries.
+            let config = seed("/sync/ledger-moves");
+            let tilde_key = key(&config);
+            crate::cloud_scan_schedule::ledger()
+                .request_full_scan(&tilde_key, "the watcher lost events");
+            let resolution = ProfileResolution::for_connection(None, &config, None).unwrap();
+            let resolution = ProfileResolution {
+                names_read: true,
+                ..resolution
+            };
+            let placed =
+                anchor_login_relative_remote_folder(&mut login(), &config, &resolution, None)
+                    .await
+                    .unwrap();
+            assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+            let placed_key = key(&cloud_config::load_cloud_config());
+            assert_ne!(placed_key, tilde_key);
+            {
+                let ledger = crate::cloud_scan_schedule::ledger();
+                assert!(ledger.pending_full_scan_due(&placed_key, now));
+                assert!(!ledger.pending_full_scan_due(&tilde_key, now));
+            }
+
+            // Nothing saved (the names were not read): the request stays
+            // under the key the entries still carry.
+            let config = seed("/sync/ledger-stays");
+            let tilde_key = key(&config);
+            crate::cloud_scan_schedule::ledger()
+                .request_full_scan(&tilde_key, "the watcher lost events");
+            let unread = ProfileResolution::for_connection(None, &config, None).unwrap();
+            anchor_login_relative_remote_folder(&mut login(), &config, &unread, None)
+                .await
+                .unwrap();
+            assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
+            let ledger = crate::cloud_scan_schedule::ledger();
+            assert!(ledger.pending_full_scan_due(&tilde_key, now));
+            assert!(!ledger.pending_full_scan_due(
+                &key(&CloudConfig {
+                    remote_folder: "/home/u/docs".to_string(),
+                    ..config
+                }),
+                now
+            ));
         });
     }
 
