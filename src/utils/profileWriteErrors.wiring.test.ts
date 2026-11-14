@@ -431,12 +431,16 @@ describe('saved profile write rejection in production handlers', () => {
     it.each(['4shared', 'OAuth new', 'OAuth edit'] as const)('%s does not connect as saved after a failed write', async mode => {
         const f = fixture();
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
-        const marker = mode === '4shared' ? 'onConnected={async (displayName) => {' : 'onConnected={async (displayName, extraOptions) => {';
+        const marker = mode === '4shared'
+            ? 'onConnected={afterBackendSwap(async (handOff, displayName: string) => {'
+            : 'onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {';
         const start = connection.indexOf(marker);
-        const end = connection.indexOf('\n                                }}', start);
-        const helpers = connection.includes('const readProfilesForSave =')
-            ? declaration(connection, 'readProfilesForSave') + declaration(connection, 'persistProfilesForSave') : '';
-        await snippet(helpers + '\nconst onConnected = ' + connection.slice(start + 'onConnected={'.length, end) + '\n};\nawait onConnected("Cloud", {});', f.context);
+        const end = connection.indexOf('\n                                })}', start);
+        expect(start, marker).toBeGreaterThan(-1);
+        const helpers = (connection.includes('const readProfilesForSave =')
+            ? declaration(connection, 'readProfilesForSave') + declaration(connection, 'persistProfilesForSave') : '')
+            + declaration(connection, 'afterBackendSwap');
+        await snippet(helpers + '\nconst onConnected = ' + connection.slice(start + 'onConnected={'.length, end) + '\n});\nawait onConnected("Cloud", {});', f.context);
         expect(f.store).toHaveBeenCalled();
         expect(f.context.onConnect).not.toHaveBeenCalled();
         expect(f.context.setGitHubAlert).toHaveBeenCalled();

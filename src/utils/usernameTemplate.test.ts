@@ -205,14 +205,37 @@ describe('the start folder of a connect', () => {
         for (const reader of readers) expect(allowed.some(a => a.test(reader)), reader).toBe(true);
 
         const calls = [...appSource.matchAll(/connectStartFolder\(/g)].map(m => m.index!).filter(i => !appSource.slice(i - 30, i).includes('import'));
-        expect(calls).toHaveLength(6);
+        // Every connect branch declares its kind, in source order: a new one
+        // must be added here. An OAuth branch runs after its sign-in component
+        // swapped the backend, so it puts the live tab aside before any await,
+        // exit or throw (else a write queued for the old tab could reach the
+        // new account); the other branches have not swapped yet, so the guard
+        // comes before the park.
+        // `parked-by-caller`: My Servers puts the live tab aside
+        // (onParkActiveSession) before its sign-in swaps the backend, pinned in
+        // parkActiveSession.wiring.test.ts; the branch itself must not park again.
+        const KINDS = ['oauth', 'direct', 'direct', 'parked-by-caller', 'direct', 'direct'] as const;
+        expect(calls).toHaveLength(KINDS.length);
+        const code = (text: string) => text.replace(/\/\/[^\n]*/g, '');
+        calls.forEach((call, k) => {
+            if (KINDS[k] !== 'oauth') return;
+            const line = appSource.slice(0, call).split('\n').length;
+            const entry = Math.max(appSource.lastIndexOf('const connectToFtpImpl = async', call), appSource.lastIndexOf('onSavedServerConnect={asConnectPhase(async', call));
+            const park = appSource.indexOf('parkActiveSession(', entry);
+            expect(park > entry && park < call, `line ${line}: the OAuth branch does not park before its guard`).toBe(true);
+            const beforePark = code(appSource.slice(appSource.indexOf('=>', entry), park));
+            for (const exit of ['await ', 'return', 'throw ', 'invoke(', 'setIsConnected(']) {
+                expect(beforePark.includes(exit), `line ${line}: ${exit} before the OAuth park`).toBe(false);
+            }
+        });
         const branchStart = /if \(isOAuth\) \{|const logId = [^;\n]*humanLog\.logStart\('CONNECT'/g;
         const starts = [...appSource.matchAll(branchStart)].map(m => m.index!);
-        for (const call of calls) {
+        for (const [k, call] of calls.entries()) {
             const line = appSource.slice(0, call).split('\n').length;
             const start = Math.max(...starts.filter(s => s < call));
             const before = appSource.slice(start, call);
-            for (const write of ['parkActiveSession(', 'setIsConnected(', 'invoke(', 'runConnect(', 'setShowConnectionScreen(']) {
+            const writes = ['setIsConnected(', 'invoke(', 'runConnect(', 'setShowConnectionScreen('];
+            for (const write of KINDS[k] === 'oauth' ? writes : ['parkActiveSession(', ...writes]) {
                 expect(before.includes(write), `line ${line}: ${write} before the start folder`).toBe(false);
             }
             // The call is the first statement of a try, so its refusal reaches

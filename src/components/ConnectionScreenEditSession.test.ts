@@ -37,6 +37,19 @@ describe('ConnectionScreen edit sessions', () => {
         }
     });
 
+    it('hands every sign-in that swapped the backend to App or reports it', () => {
+        // OAuthConnect and FourSharedConnect swap the backend before their
+        // onConnected runs: each goes through afterBackendSwap, whose finally
+        // reports an exit that did not hand the connect over.
+        const handlers = source.match(/onConnected=\{/g) ?? [];
+        const wrapped = source.match(/onConnected=\{afterBackendSwap\(/g) ?? [];
+        expect(handlers.length).toBeGreaterThanOrEqual(2);
+        expect(wrapped).toHaveLength(handlers.length);
+        expect(bodyOf('afterBackendSwap')).toContain("window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned'))");
+        // Neither sign-in can start while the form would refuse its connect.
+        expect(source.match(/disabled=\{remotePathEscapesOverlay \|\| overlaySaveBlocked\}\n\s+(provider=|rightColumn=)/g) ?? []).toHaveLength(2);
+    });
+
     it('gates every path that writes overlay fields on the one overlay predicate', () => {
         // The predicate holds every overlay state a save must not persist,
         // the rclone-crypt form recorded for one secret only among them.

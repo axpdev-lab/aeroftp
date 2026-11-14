@@ -17,8 +17,8 @@ vi.mock('../i18n', () => ({
 vi.mock('../hooks/useActivityLog', () => ({ useActivityLog: () => ({ log: mocks.log }) }));
 // Keep the real QuickConnect controls and save handlers, without signing in.
 vi.mock('./OAuthConnect', () => ({
-    OAuthConnect: ({ rightColumn, onConnected }: { rightColumn: React.ReactNode; onConnected: (name: string) => void }) =>
-        React.createElement('div', null, rightColumn,
+    OAuthConnect: ({ rightColumn, onConnected, disabled }: { rightColumn: React.ReactNode; onConnected: (name: string) => void; disabled?: boolean }) =>
+        React.createElement('div', { 'data-sign-in-disabled': String(!!disabled) }, rightColumn,
             React.createElement('button', { onClick: () => onConnected('Account') }, 'Test OAuth sign-in')),
 }));
 vi.mock('./IconPickerDialog', () => ({
@@ -45,6 +45,9 @@ let profiles: ServerProfile[];
 let container: HTMLDivElement;
 let root: Root;
 let onFormSaved: ReturnType<typeof vi.fn<() => void>>;
+let onConnectSpy: ReturnType<typeof vi.fn<(overrideParams?: ConnectionParams) => void>>;
+let abandoned: number;
+const countAbandoned = () => { abandoned += 1; };
 
 beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -52,6 +55,9 @@ beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.log.mockReset();
     onFormSaved = vi.fn<() => void>();
+    onConnectSpy = vi.fn<(overrideParams?: ConnectionParams) => void>();
+    abandoned = 0;
+    window.addEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     mocks.invoke.mockImplementation(async (command: string, args?: { profiles?: ServerProfile[]; expectedUserId?: number }) => {
         if (command === 'user_partitions_load_active_server_profiles') return structuredClone(profiles);
         if (command === 'user_partitions_load_active_server_profiles_scoped') return { userId: 1, profiles: structuredClone(profiles) };
@@ -72,6 +78,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    window.removeEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
@@ -96,7 +103,7 @@ async function renderEditor() {
         return React.createElement(ConnectionScreen, {
             connectionParams: params, quickConnectDirs: dirs, loading: false,
             onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
-            onConnect: vi.fn(), editingProfile: profile, onFormSaved,
+            onConnect: onConnectSpy, editingProfile: profile, onFormSaved,
         });
     }
     await act(async () => root.render(React.createElement(Harness)));
@@ -624,5 +631,49 @@ describe('A crypt overlay folder the user name cannot fill', () => {
             .filter(command => /save_active_server_profiles|store_credential|credential_store|aerocrypt/.test(String(command)));
         expect(writes).toEqual([]);
         expect(profiles).toEqual(before);
+        // The sign-in is offered disabled, and the swapped backend is reported
+        // so App puts the live tab aside.
+        expect(container.querySelector('[data-sign-in-disabled]')!.getAttribute('data-sign-in-disabled')).toBe('true');
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+});
+
+describe('A sign-in that swapped the backend', () => {
+    // OAuthConnect and FourSharedConnect swap the backend before the form
+    // decides: every exit either hands the connect to App, which parks the
+    // live tab first, or reports the abandoned sign-in so App parks it.
+    it('hands an OAuth sign-in to App and reports nothing', async () => {
+        await openEditor('googledrive');
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).toHaveBeenCalledOnce();
+        expect(abandoned).toBe(0);
+    });
+
+    it('reports an OAuth sign-in whose profile read fails', async () => {
+        await openEditor('googledrive');
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return previous(command, args);
+        });
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+
+    it('reports a 4shared connect whose profile read fails', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? true : previous(command, args));
+        await openEditor('fourshared');
+        const withTokens = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return withTokens(command, args);
+        });
+        await act(async () => button('connection.fourshared.connectTo4shared').click());
+        expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_connect')).toBe(true);
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
     });
 });

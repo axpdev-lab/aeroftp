@@ -132,9 +132,11 @@ interface ConnectionScreenProps {
 interface FourSharedConnectProps {
     rightColumn: React.ReactNode;
     onConnected: (displayName: string) => void | Promise<void>;
+    /** The sign-in cannot start: it would swap the backend for a connect the form then refuses. */
+    disabled?: boolean;
 }
 
-const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected }) => {
+const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected, disabled }) => {
     const t = useTranslation();
     const [hasExistingTokens, setHasExistingTokens] = useState(false);
     const [isChecking, setIsChecking] = useState(true);
@@ -176,6 +178,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     }, []);
 
     const handleConnect = async () => {
+        if (disabled) return;
         if (!consumerKey || !consumerSecret) return;
         setIsConnecting(true);
         setError(null);
@@ -192,7 +195,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     };
 
     const handleSignIn = async () => {
-        if (!consumerKey || !consumerSecret) return;
+        if (disabled || !consumerKey || !consumerSecret) return;
         setIsAuthenticating(true);
         setError(null);
         try {
@@ -250,7 +253,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
                 {useExistingAccount && (
                     <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5"><Check size={14} />{t('connection.fourshared.previouslyAuthenticated')}</p>
                 )}
-                <button type="button" onClick={useExistingAccount ? handleConnect : handleSignIn} disabled={busy || !consumerKey || !consumerSecret} className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="button" onClick={useExistingAccount ? handleConnect : handleSignIn} disabled={disabled || busy || !consumerKey || !consumerSecret} className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
                     {busy ? (
                         <><Loader2 size={20} className="animate-spin" />{t(isAuthenticating ? 'connection.authenticating' : 'connection.connecting')}</>
                     ) : (
@@ -1093,6 +1096,26 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // default-salt intent the backend would reject for entropy (#276), and an
     // rclone-crypt form recorded for one secret only.
     const overlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded;
+
+    // A sign-in component (OAuthConnect, FourSharedConnect) has already swapped
+    // the backend when its onConnected runs. Every exit that does not hand the
+    // connection to App (an overlay gate, a failed profile read or save, a
+    // throw) tells App to put the live tab aside, so it is never left live over
+    // another account's backend. App's connect parks first, synchronously, so
+    // once the hand-off is called the tab is already parked.
+    const afterBackendSwap = <A extends unknown[]>(handler: (handOff: (params?: ConnectionParams) => void, ...args: A) => Promise<void>) =>
+        async (...args: A) => {
+            let handedOff = false;
+            const handOff = (params?: ConnectionParams) => {
+                handedOff = true;
+                onConnect(params);
+            };
+            try {
+                await handler(handOff, ...args);
+            } finally {
+                if (!handedOff) window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned'));
+            }
+        };
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -4057,6 +4080,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : isFourSharedProvider(protocol) ? (
                             <FourSharedConnect
+                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
@@ -4069,7 +4093,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         }
                                         : { disabled: false, buttonColorClass: '', hideSaveButton: true },
                                 )}
-                                onConnected={async (displayName) => {
+                                onConnected={afterBackendSwap(async (handOff, displayName: string) => {
                                     if (remotePathEscapesOverlay || overlaySaveBlocked) return;
                                     let connectedSavedId: string | undefined = editingProfileId || undefined;
                                     if (saveConnection) {
@@ -4117,11 +4141,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             connectedSavedId = duplicate.id;
                                         }
                                     }
-                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
-                                }}
+                                    handOff(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
+                                })}
                             />
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
+                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 provider={protocol as 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
@@ -4142,7 +4167,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
                                 isEditing={!!editingProfileId}
-                                onConnected={async (displayName, extraOptions) => {
+                                onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {
                                     // #369: same anchor-escape rule as the other save
                                     // paths. Edit mode implies saveConnection=true, so
                                     // completing the OAuth sign-in would persist the
@@ -4211,8 +4236,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     // (and unlocks its crypt overlay) regardless of how many accounts
                                     // share the provider. No id (fresh unsaved connect) keeps the old
                                     // no-arg behaviour + provider-unique linkage fallback.
-                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
-                                }}
+                                    handOff(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
+                                })}
                             />
                         ) : isPeer && !editingProfileId && !editingProfile ? (
                             /* AeroShare peer-ADD (reached via the Discover tile ->

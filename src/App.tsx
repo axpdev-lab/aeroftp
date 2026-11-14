@@ -8219,6 +8219,16 @@ const App: React.FC = () => {
     return () => window.removeEventListener('aeroftp-cancel-totp-autoretry', cancel);
   }, []);
 
+  // A sign-in in the connection form (OAuthConnect, FourSharedConnect) swaps
+  // the backend before the form decides; when the form then stops short of
+  // handing the connect over (a gate, a failed save, a throw), it says so here
+  // and the live tab is put aside, as the connect itself would have done.
+  useEffect(() => {
+    const abandoned = () => parkActiveSession();
+    window.addEventListener('aeroftp-sign-in-abandoned', abandoned);
+    return () => window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
+  }, []);
+
   // FTP operations
   const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
@@ -8262,6 +8272,12 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
+    if (isOAuth) {
+      // An OAuth connect arrives after the connection form's sign-in swapped
+      // the backend: the live tab is put aside before any lookup, await or exit
+      // below, so none of them leaves it live over another account's backend.
+      parkActiveSession();
+    }
     const isProvider = !!protocol && !isOAuth && usesProviderApi(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
@@ -8329,9 +8345,7 @@ const App: React.FC = () => {
         return;
       }
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
-      // Just switch to file manager view. The component replaced the backend,
-      // so the live tab is put aside first.
-      parkActiveSession();
+      // Just switch to file manager view; the live tab was put aside above.
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
@@ -19736,6 +19750,9 @@ const App: React.FC = () => {
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
 
                 if (isOAuth) {
+                  // My Servers put the live tab aside (onParkActiveSession)
+                  // before its sign-in swapped the backend, so the refusal
+                  // below leaves no tab live over another account's backend.
                   // A start folder the user name cannot fill is refused before
                   // the view or the session changes (connectStartFolder).
                   let savedOauthStartFolder: string | null;
