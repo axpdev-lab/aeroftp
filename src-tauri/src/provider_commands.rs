@@ -19823,9 +19823,12 @@ mod tests {
     /// command the runner issues after the gate is called as the webview
     /// calls it, with the run's expected target (`expectedGuiTarget`, or
     /// `params.expected_gui_target` for the legacy transfers): directory
-    /// creation, backup moves, single transfers, deletes, folder removal and
-    /// EC. Each is refused with the owner change, and neither B, the legacy
-    /// FTP session nor the local filesystem is touched. The bulk transfer is
+    /// creation, backup moves, single transfers, deletes, folder removal, EC,
+    /// and the run's other guarded commands (its index load and save, the
+    /// resume owner check, the cancel reset, both speed limits, the bulk
+    /// probe and the FTP keepalive). Each is refused with the owner change,
+    /// and neither B, the legacy FTP session, the local filesystem, the index
+    /// folder nor the speed limits are touched. The bulk transfer is
     /// `provider_bulk_commands::stale_gui_bulk_is_refused_before_the_replacement_provider_is_used`.
     #[tokio::test]
     async fn every_run_command_after_the_gate_refuses_a_switched_target() {
@@ -20113,7 +20116,76 @@ mod tests {
             .map(drop),
         ));
 
-        assert_eq!(answers.len(), 17);
+        // The run's other guarded commands: its index, its resume check, its
+        // cancel reset, its speed limits, the bulk probe and the FTP keepalive.
+        let index_dir = crate::sync::sync_index_dir().unwrap();
+        let indexes_before = std::fs::read_dir(&index_dir)
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        let index: crate::sync::SyncIndex = serde_json::from_value(serde_json::json!({
+            "version": 2,
+            "last_sync": "2026-11-14T00:00:00Z",
+            "local_path": root.clone(),
+            "remote_path": "/remote",
+            "files": {},
+        }))
+        .unwrap();
+        answers.push((
+            "save_sync_index_cmd",
+            crate::save_sync_index_cmd(
+                app.state(),
+                index,
+                None,
+                gated,
+                Some("test-owner-v1".into()),
+                Some(true),
+                None,
+            )
+            .await,
+        ));
+        answers.push((
+            "load_sync_index_cmd",
+            crate::load_sync_index_cmd(
+                app.state(),
+                root.clone(),
+                "/remote".into(),
+                None,
+                gated,
+                Some("test-owner-v1".into()),
+                Some(true),
+                None,
+            )
+            .await
+            .map(drop),
+        ));
+        answers.push((
+            "provider_gui_verify_resume_owner",
+            provider_gui_verify_resume_owner(app.state(), 0, true, "test-owner-v1".into()).await,
+        ));
+        answers.push((
+            "reset_cancel_flag",
+            crate::reset_cancel_flag(app.state(), app.state(), gated).await,
+        ));
+        answers.push((
+            "set_speed_limit",
+            crate::set_speed_limit(app.state(), app.state(), 512, 256, gated).await,
+        ));
+        answers.push((
+            "provider_set_speed_limit",
+            provider_set_speed_limit(app.state(), 256, 512, gated).await,
+        ));
+        answers.push((
+            "provider_bulk_support",
+            crate::provider_bulk_commands::provider_bulk_support(app.state(), gated)
+                .await
+                .map(drop),
+        ));
+        answers.push((
+            "ftp_noop",
+            crate::ftp_noop(app.state(), app.state(), gated).await,
+        ));
+
+        assert_eq!(answers.len(), 25);
         // Every command that was not refused by the target, listed at once.
         let not_refused: Vec<String> = answers
             .iter()
@@ -20136,6 +20208,19 @@ mod tests {
         left.sort();
         assert_eq!(left, ["empty", "kept.txt"]);
         assert_eq!(std::fs::read(local("kept.txt")).unwrap(), b"kept");
+        // No index of A was written under B, and B's limits are unchanged.
+        let indexes_after = std::fs::read_dir(&index_dir)
+            .map(|entries| entries.count())
+            .unwrap_or(0);
+        assert_eq!(indexes_after, indexes_before, "an index was written");
+        let limits = &app.state::<crate::AppState>().speed_limits;
+        assert_eq!(
+            (
+                limits.download_bps.load(Ordering::Relaxed),
+                limits.upload_bps.load(Ordering::Relaxed)
+            ),
+            (0, 0)
+        );
         // The same target read after the switch is accepted: the refusal is
         // the epoch, not the commands.
         assert!(app
@@ -20143,6 +20228,88 @@ mod tests {
             .pin_gui_target(Some(1))
             .await
             .is_ok());
+    }
+
+    /// E2: an overlay change is a target change. A run gated before the
+    /// overlay was armed, unlocked, locked to the view only or cleared has
+    /// its commands refused afterwards, and the provider is not called by
+    /// them; a run gated after the change is not refused.
+    #[tokio::test]
+    async fn a_run_command_after_an_overlay_change_is_refused() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_state = ProviderState::new();
+        *provider_state.provider.lock().await = Some(Box::new(Replacement(calls.clone())));
+        app.manage(provider_state);
+        let state = app.state::<ProviderState>();
+        let epoch = || state.gui_target_epoch.load(Ordering::SeqCst);
+        let unlock: ApplyCryptOverlayParams = serde_json::from_value(serde_json::json!({
+            "kind": "rclone-crypt",
+            "remote_scope": "/",
+            "filename_encryption": "standard",
+            "directory_name_encryption": true,
+            "password": "test-password",
+            "salt": "test-salt",
+            "password_form": "clear",
+            "salt_form": "clear",
+        }))
+        .unwrap();
+        let mut unlock = Some(unlock);
+        for change in ["arm", "unlock", "view-only lock", "clear"] {
+            let gated = epoch();
+            match change {
+                "arm" => provider_arm_crypt_capability_inner(&state, None)
+                    .await
+                    .unwrap(),
+                "unlock" => {
+                    // The target moves before the vault work, whatever it
+                    // answers.
+                    let _ =
+                        provider_apply_crypt_overlay_inner(&state, unlock.take().unwrap()).await;
+                }
+                "view-only lock" => {
+                    provider_lock_crypt_overlay(app.state()).await.unwrap();
+                }
+                _ => {
+                    clear_crypt_overlay_with_wait(&state, true, Duration::from_secs(1))
+                        .await
+                        .unwrap();
+                }
+            }
+            assert_ne!(epoch(), gated, "{change}: the target did not move");
+            let before = calls.load(Ordering::SeqCst);
+            for (command, answer) in [
+                (
+                    "provider_mkdir",
+                    provider_mkdir(app.state(), "/remote/d".into(), None, Some(gated), None).await,
+                ),
+                (
+                    "provider_delete_file",
+                    ipc_result(
+                        "provider_delete_file",
+                        delete_file_for_ipc(&state, "/remote/a".into(), None, Some(gated), None)
+                            .await,
+                    ),
+                ),
+            ] {
+                let error = answer.expect_err(&format!("{change}: {command} ran"));
+                assert!(
+                    error.contains(CONNECTION_CHANGED_MARKER),
+                    "{change}: {command}: {error}"
+                );
+            }
+            assert_eq!(
+                calls.load(Ordering::SeqCst),
+                before,
+                "{change}: a refused command reached the provider"
+            );
+            // A run gated after the change is not refused by the target.
+            assert!(
+                state.pin_gui_target(Some(epoch())).await.is_ok(),
+                "{change}"
+            );
+        }
     }
 
     /// A provider whose mkdir fails with a given error and whose folder is
