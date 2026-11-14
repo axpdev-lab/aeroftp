@@ -4807,11 +4807,17 @@ pub fn export_rclone(
                     if proto == "sftp" {
                         crypt_folder = Some(String::new());
                     }
-                } else if path.ends_with(char::is_whitespace) {
+                } else if alias_path.ends_with(char::is_whitespace) {
+                    // Checked on the folder as filled: a user name with an edge
+                    // space ends the folder in a space although the template
+                    // ends in `}`.
+                    let shown =
+                        crate::connection_manifest::expand_username_in_path(path, &server.username)
+                            .unwrap_or_else(|_| path.to_string());
                     notes.push_str(&format!(
                         "# start-folder alias for '{}' omitted: rclone's config cannot hold '{}', whose name ends in a space\n",
                         server.name.replace(['\n', '\r'], " "),
-                        path.replace(['\n', '\r'], " ")
+                        shown.replace(['\n', '\r'], " ")
                     ));
                     crypt_folder = Some(alias_path);
                 } else {
@@ -12264,6 +12270,41 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         }
         assert!(
             section_of(&conf, "lc template").contains("override.no_check_certificate = true\n"),
+            "{conf}"
+        );
+    }
+
+    #[test]
+    fn a_start_folder_alias_is_checked_for_an_edge_space_after_the_fill() {
+        let lc = |name: &str, folder: &str| RcloneExportServer {
+            id: format!("lc-{name}"),
+            name: name.into(),
+            host: "".into(),
+            port: 443,
+            username: "alice ".into(),
+            protocol: Some("webdav".into()),
+            options: Some(serde_json::json!({ "initial_path": folder })),
+            provider_id: Some("lifetimecloud".into()),
+        };
+        let servers = [
+            // The template ends in `}`, the filled folder in a space: rclone
+            // would read the alias as another folder.
+            lc("lc space", "/dav/{username}/Photos/{username}"),
+            // The template only in the middle segment: the alias holds.
+            lc("lc mid", "/dav/{username}/Photos"),
+        ];
+        let (_, conf) = export_to_string(&servers, "lc-space-export");
+        assert!(
+            conf.contains(
+                "# start-folder alias for 'lc space' omitted: rclone's config cannot hold '/dav/alice /Photos/alice ', whose name ends in a space"
+            ),
+            "{conf}"
+        );
+        assert!(!conf.contains("Photos/alice \n"), "{conf}");
+        assert!(!conf.contains("alias for 'lc mid' omitted"), "{conf}");
+        assert!(
+            conf.lines()
+                .any(|l| l.starts_with("remote = ") && l.ends_with(":Photos")),
             "{conf}"
         );
     }
