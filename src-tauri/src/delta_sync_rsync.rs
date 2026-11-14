@@ -816,7 +816,10 @@ pub async fn invalidate_session_cache(session_key: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Only the unix tests build an `RsyncConfig` (Windows CI denies unused imports).
+    #[cfg(unix)]
     use crate::rsync_over_ssh::RsyncConfig;
+    #[cfg(unix)]
     use std::path::PathBuf;
 
     // The probe cache is a process-global static; tests that clear it and assert

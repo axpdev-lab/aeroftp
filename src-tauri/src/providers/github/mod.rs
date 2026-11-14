@@ -712,25 +712,67 @@ impl GitHubProvider {
         )
     }
 
-    /// The working branch for this account and base, and what it holds: the
-    /// first of the candidate names (`workflow_branch_name`, then `-2` to
-    /// `-9`) that is not MERGED. A merged branch kept on the server is never
-    /// adopted nor written again; the next name takes its place, and pending
-    /// work stays on one branch however often the base moves (Q1, Q4).
+    /// The candidate working branches that exist: one
+    /// `GET /git/matching-refs/heads/<name>` lists every branch whose name
+    /// starts with the account's working-branch name, `-2` to `-9` included,
+    /// so no candidate needs a request of its own to say it is missing.
+    async fn existing_working_branches(
+        &mut self,
+        own: &str,
+    ) -> Result<std::collections::HashSet<String>, ProviderError> {
+        #[derive(serde::Deserialize)]
+        struct MatchingRef {
+            #[serde(rename = "ref")]
+            name: String,
+        }
+        let url = format!("{}/git/matching-refs/heads/{own}", self.repo_url());
+        let refs: Vec<MatchingRef> = self
+            .client
+            .get_json(&url)
+            .await
+            .map_err(ProviderError::from)?;
+        Ok(refs
+            .into_iter()
+            .filter_map(|r| r.name.strip_prefix("refs/heads/").map(str::to_string))
+            .collect())
+    }
+
+    /// The working branch for this account and base, and what it holds (Q1,
+    /// Q4, B). Every candidate name (`workflow_branch_name`, then `-2` to
+    /// `-9`) is looked at, not only up to the first gap: a merged original
+    /// deleted on GitHub must not hide the pending work of a later one. The
+    /// rule: the first PENDING candidate, if any (connect adopts it, a
+    /// refused write goes there); with none pending, the first empty one
+    /// (fast-forwarded), else the first missing name (created from the base).
+    /// A MERGED one is never written again. The cost is one listing, plus
+    /// one compare per candidate that exists (and the pull-request lookup
+    /// only for a diverged one): one request when there is none.
     async fn current_working_branch(
         &mut self,
     ) -> Result<(String, WorkingBranchState), ProviderError> {
         let own = self.own_working_branch()?;
         let base = self.active_branch().to_string();
+        let existing = self.existing_working_branches(&own).await?;
+        let mut states = Vec::new();
         for n in 1..=WORKING_BRANCH_CANDIDATES {
             let name = if n == 1 {
                 own.clone()
             } else {
                 format!("{own}-{n}")
             };
-            match self.classify_working_branch(&base, &name).await? {
-                WorkingBranchState::Merged => continue,
-                state => return Ok((name, state)),
+            let state = if existing.contains(&name) {
+                self.classify_working_branch(&base, &name).await?
+            } else {
+                WorkingBranchState::Missing
+            };
+            if state == WorkingBranchState::Pending {
+                return Ok((name, state));
+            }
+            states.push((name, state));
+        }
+        for wanted in [WorkingBranchState::NotAhead, WorkingBranchState::Missing] {
+            if let Some(found) = states.iter().find(|(_, state)| *state == wanted) {
+                return Ok(found.clone());
             }
         }
         Err(ProviderError::InvalidConfig(format!(
@@ -2323,6 +2365,16 @@ mod tests {
                         if path.contains("/compare/") {
                             return reply(compare.0, compare.1);
                         }
+                        // The listing names the branch whenever the
+                        // comparison does not say it is missing.
+                        if let Some((_, prefix)) = path.split_once("/git/matching-refs/heads/") {
+                            let refs = if compare.0 == 404 {
+                                serde_json::json!([])
+                            } else {
+                                serde_json::json!([{"ref": format!("refs/heads/{prefix}")}])
+                            };
+                            return reply(200, refs);
+                        }
                         if method == axum::http::Method::GET && path.ends_with("/pulls") {
                             return reply(200, serde_json::json!([]));
                         }
@@ -2401,7 +2453,20 @@ mod tests {
                                 .map(|(_, b)| b.clone())
                         };
                         let not_found = serde_json::json!({"message": "Not Found"});
-                        if let Some((_, head)) = path.split_once("/compare/main...") {
+                        if let Some((_, prefix)) = path.split_once("/git/matching-refs/heads/") {
+                            let refs: Vec<_> = branches
+                                .iter()
+                                .filter(|(name, _)| name.starts_with(prefix))
+                                .map(|(name, _)| serde_json::json!({"ref": format!("refs/heads/{name}")}))
+                                .collect();
+                            return reply(200, serde_json::json!(refs));
+                        }
+                        // Against `main` or its head SHA alike (the fallback's
+                        // fast-forward check compares with the SHA).
+                        if let Some((_, head)) = path
+                            .split_once("/compare/")
+                            .and_then(|(_, range)| range.split_once("..."))
+                        {
                             return match named(head) {
                                 Some(b) => reply(
                                     200,
@@ -2567,6 +2632,68 @@ mod tests {
             provider.start_on_existing_working_branch().await.unwrap();
             assert_eq!(provider.working_branch(), Some(fresh.as_str()));
             server.abort();
+        }
+
+        /// B: the merged original was deleted on GitHub and `-2` holds
+        /// pending work: connect adopts `-2`, and a refused write of a
+        /// session that did not adopt it goes there too, never to a fresh
+        /// original. Deleted original, merged `-2`, pending `-3`: `-3`.
+        #[tokio::test]
+        async fn pending_work_behind_a_deleted_or_merged_candidate_is_found() {
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let pending = Branch {
+                ahead: 1,
+                behind: 0,
+                tip: TIP,
+                pulls: vec![],
+            };
+            let merged = Branch {
+                ahead: 3,
+                behind: 2,
+                tip: TIP,
+                pulls: vec![(true, TIP)],
+            };
+            let second = format!("{own}-2");
+            let third = format!("{own}-3");
+            for (branches, expected) in [
+                (vec![(second.clone(), pending.clone())], second.clone()),
+                (
+                    vec![
+                        (second.clone(), merged.clone()),
+                        (third.clone(), pending.clone()),
+                    ],
+                    third.clone(),
+                ),
+            ] {
+                let (origin, _log, server) = api_per_branch(branches.clone(), 200).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                provider.start_on_existing_working_branch().await.unwrap();
+                assert_eq!(provider.working_branch(), Some(expected.as_str()));
+                server.abort();
+
+                let (origin, log, server) = api_per_branch(branches, 200).await;
+                let mut provider = GitHubProvider::protected_for_test(origin);
+                let dir = tempfile::tempdir().unwrap();
+                let file = dir.path().join("a.txt");
+                std::fs::write(&file, b"a").unwrap();
+                provider
+                    .upload(file.to_str().unwrap(), "/a.txt", None)
+                    .await
+                    .unwrap();
+                let writes = log.lock().unwrap().clone();
+                assert!(
+                    writes.iter().any(|w| w.starts_with("PUT ")
+                        && w.contains(&format!("\"branch\":\"{expected}\""))),
+                    "{writes:?}"
+                );
+                assert!(
+                    !writes
+                        .iter()
+                        .any(|w| w.starts_with("POST ") && w.contains("/git/refs")),
+                    "no branch is created: {writes:?}"
+                );
+                server.abort();
+            }
         }
 
         /// Q1, Q4: a pull-request lookup that fails fails the connect, never

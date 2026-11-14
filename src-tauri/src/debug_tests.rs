@@ -421,14 +421,16 @@ fn quote_level(mut run: usize) -> usize {
 /// Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and
 /// `webdav` URLs in one pass over the text, so its time is linear whatever the
 /// input. After `scheme://` the authority runs to the first `/`, `?`, `#`,
-/// ASCII space or a quote that ends the string the URL sits in (Q3; the
-/// table is on the TS twin, `redactUrlUserinfo`, and the shared cases cover
-/// each cell). The level of that string is the level of the LAST quote
-/// before the scheme ([`quote_level`]), leaving out the quotes inside an
-/// authority already read; a quote ends the authority when its own level is
-/// that level or less, and a deeper one is part of the value. Nothing else
-/// about what follows a quote is read, so a password holding `\",`, `\":` or
-/// `\"}` is masked whole. With an `@` in it, the userinfo is everything up to
+/// ASCII space or a quote that certainly ends the string the URL sits in
+/// (Q3, A; the table is on the TS twin, `redactUrlUserinfo`, and the shared
+/// cases cover each cell). From the start of the text the open strings are
+/// tracked on a stack: a quote of level L ([`quote_level`]) closes the open
+/// string of level L, or opens one, structural when a JSON value starts
+/// there (after `{`, `[`, `:`, `,`, `=` or at the start) and prose otherwise.
+/// A quote ends the authority only when its level is open as a structural
+/// string; a prose level is never trusted. Leaking is the only failure that
+/// matters: uncertain, the userinfo is masked to the last `@` before the first
+/// certain terminator. With an `@` in it, the userinfo is everything up to
 /// the LAST `@`, and all of it becomes the placeholder, user name included: a
 /// token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
 /// authority without `@` (`host:443`) stays. Both twins run
@@ -445,16 +447,32 @@ fn redact_url_userinfo(text: &str) -> String {
             .take_while(|&&b| b == b'\\')
             .count()
     };
+    // Whether the quote whose escapes start at `from` opens a JSON value.
+    let opens_a_value = |from: usize| {
+        bytes[..from]
+            .iter()
+            .rev()
+            .find(|&&b| !is_space(b))
+            .is_none_or(|&b| matches!(b, b'{' | b'[' | b':' | b',' | b'='))
+    };
     let mut out = String::with_capacity(text.len());
     let mut copied = 0;
     let mut i = 0;
-    // The level of the string the scan is in: the last quote read, outside
-    // the authorities (`untracked`).
-    let mut level = 0;
+    // The strings open at the scan's position, `(level, structural)`, from
+    // the quotes read outside the authorities (`untracked`).
+    let mut open: Vec<(usize, bool)> = Vec::new();
     let mut untracked = 0;
     while i + 3 <= bytes.len() {
         if bytes[i] == b'"' && i >= untracked {
-            level = quote_level(backslashes_before(i));
+            let run = backslashes_before(i);
+            let level = quote_level(run);
+            match open
+                .iter()
+                .rposition(|&(open_level, _)| open_level == level)
+            {
+                Some(at) => open.truncate(at),
+                None => open.push((level, opens_a_value(i - run))),
+            }
         }
         if &bytes[i..i + 3] != b"://" {
             i += 1;
@@ -482,8 +500,14 @@ fn redact_url_userinfo(text: &str) -> String {
             if matches!(b, b'/' | b'?' | b'#') || is_space(b) {
                 break;
             }
-            if b == b'"' && quote_level(run) <= level {
-                break;
+            if b == b'"' {
+                let quote = quote_level(run);
+                if open
+                    .iter()
+                    .any(|&(level, structural)| structural && level == quote)
+                {
+                    break;
+                }
             }
             if b == b'@' {
                 last_at = Some(k);

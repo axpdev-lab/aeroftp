@@ -91,30 +91,52 @@ const quoteLevel = (run: number): number => {
     return level;
 };
 
+/** One open string: its escape level, and whether a JSON value opened it. */
+interface OpenString {
+    level: number;
+    structural: boolean;
+}
+
+// Whether the quote whose escapes start at `from` opens a JSON value: the
+// character before it, spaces skipped, is `{`, `[`, `:`, `,` or `=`, or there
+// is none. Anything else (a letter, `;`) is prose quoting a word.
+const opensAValue = (text: string, from: number): boolean => {
+    let k = from - 1;
+    while (k >= 0 && isSpace(text.charCodeAt(k))) k -= 1;
+    if (k < 0) return true;
+    const code = text.charCodeAt(k);
+    return code === 123 || code === 91 || code === 58 || code === 44 || code === 61;
+};
+
 /**
  * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
  * URLs in one pass over the text, so its time is linear whatever the input.
  * After `scheme://` the authority runs to the first `/`, `?`, `#`, ASCII
  * space or unescaped double quote (a backslash escapes the next character,
- * as inside a JSON string). Which quote ends it is decided by the string the
- * URL sits in (Q3, the whole rule; the cases of
- * src/shared/redaction-cases.json cover each cell):
+ * as inside a JSON string). Which quote ends it is decided by the strings
+ * open around the URL (Q3, A; the cases of src/shared/redaction-cases.json
+ * cover each cell). Leaking is the only failure that matters: when the
+ * state is uncertain, the userinfo is masked to the last `@` before the
+ * first terminator that is certain.
  *
- * | the URL starts                           | its level | a quote ends the authority   |
- * |------------------------------------------|-----------|------------------------------|
- * | in bare text, no quote before it         | 0         | `"` (level 0)                |
- * | after a `"` (plain JSON), at its start   | 0         | `"`; `\"` is the value's     |
- * | after a `"`, text before it (mid-string) | 0         | `"`; `\"` is the value's     |
- * | after a `\"` (JSON in a string), start   | 1         | `\"` or `"`; `\\\"` the value's |
- * | after a `\"`, mid-string                 | 1         | `\"` or `"`; `\\\"` the value's |
- * | after a `\\\"` (two levels down)          | 2         | a quote of level 2 or less   |
+ * From the start of the text, every quote outside an authority already read
+ * is tracked on a stack of open strings. A quote of level L (0 `"`, 1 `\"`,
+ * 2 `\\\"`, see `quoteLevel`) closes the open string of level L when there
+ * is one (and any deeper one left open inside it); otherwise it opens one,
+ * STRUCTURAL when a JSON value starts there (after `{`, `[`, `:`, `,`, `=` or
+ * at the start of the text) and PROSE otherwise (`said \"hi\"`).
  *
- * The level of the string is the level of the LAST quote before the scheme
- * (the one that opened it, or a closing one when the URL is outside strings),
- * leaving out the quotes inside an authority already read. A quote ends the
- * authority when its own level is that level or less: a deeper one is part
- * of the value. Nothing else about what follows a quote is read, so a
- * password holding `\",`, `\":` or `\"}` is masked whole.
+ * | strings open when the scheme starts        | a quote ends the authority          |
+ * |--------------------------------------------|-------------------------------------|
+ * | none (bare text, or between JSON values)   | never: only `/ ? # space` do        |
+ * | structural level 0 (plain JSON)            | `"`; `\"` is the value's            |
+ * | structural level 1 (JSON in a string)      | `\"` or `"`; `\\\"` is the value's  |
+ * | structural level 2                         | a quote of level 2, 1 or 0          |
+ * | a prose level on top (`he said \"hi then`) | only one closing a structural level |
+ *
+ * A quote ends the authority when its level is open as a STRUCTURAL string:
+ * it is certainly that string's end. A prose level is never trusted: an
+ * unbalanced `\"` in a sentence cannot cut a password short.
  * With an `@` in it, the userinfo is everything up
  * to the LAST `@`, and all of it becomes the placeholder, user name included:
  * a token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
@@ -125,13 +147,18 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
     let out = '';
     let copied = 0;
     let i = 0;
-    // The level of the string the scan is in: the last quote read, outside
+    // The strings open at the scan's position, from the quotes read outside
     // the authorities (`untracked`).
-    let level = 0;
+    const open: OpenString[] = [];
     let untracked = 0;
     while (i + 3 <= text.length) {
         if (text.charCodeAt(i) === 34 && i >= untracked) {
-            level = quoteLevel(backslashesBefore(text, i));
+            const run = backslashesBefore(text, i);
+            const level = quoteLevel(run);
+            let at = open.length - 1;
+            while (at >= 0 && open[at].level !== level) at -= 1;
+            if (at >= 0) open.length = at;
+            else open.push({ level, structural: opensAValue(text, i - run) });
         }
         if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;
@@ -157,7 +184,10 @@ export function redactUrlUserinfo(text: string, anyScheme = false): string {
         while (k < text.length) {
             const code = text.charCodeAt(k);
             if (code === 47 || code === 63 || code === 35 || isSpace(code)) break;
-            if (code === 34 && quoteLevel(run) <= level) break;
+            if (code === 34) {
+                const quote = quoteLevel(run);
+                if (open.some((string) => string.structural && string.level === quote)) break;
+            }
             if (code === 64) lastAt = k;
             run = code === 92 ? run + 1 : 0;
             k += 1;

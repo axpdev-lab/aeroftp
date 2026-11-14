@@ -462,5 +462,35 @@
     "name": "Q3 a quote inside an earlier password sets no level for the next url",
     "input": "{\"m\":\"ftp://a:p\\\\\\\"q@h1 and ftp://bob:pa\\\":ss@h2\"}",
     "expected": "{\"m\":\"ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2\"}"
+  },
+  {
+    "name": "A prose quotes before the url, then an escaped quote and colon in the password",
+    "input": "{\"message\":\"note \\\"hello\\\" then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"note \\\"hello\\\" then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A prose quotes before the url, then an escaped quote in the password",
+    "input": "{\"message\":\"say \\\"hi\\\" then ftp://bob:pa\\\"ss@host/file\"}",
+    "expected": "{\"message\":\"say \\\"hi\\\" then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A prose quotes and a semicolon before the url",
+    "input": "{\"message\":\"server said \\\"retry\\\"; upload to ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"server said \\\"retry\\\"; upload to ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A an unbalanced prose quote before the url is not trusted: masked",
+    "input": "{\"m\":\"he said \\\"hi then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"m\":\"he said \\\"hi then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A two urls in one string, the second with an escaped quote in its password",
+    "input": "{\"m\":\"a ftp://a:p1@h1 and ftp://b:p\\\":2@h2/x\"}",
+    "expected": "{\"m\":\"a ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2/x\"}"
+  },
+  {
+    "name": "A a url in nested escaped json after prose quotes keeps the next field",
+    "input": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
+    "expected": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}"
   }
 ]
