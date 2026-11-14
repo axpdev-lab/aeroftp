@@ -227,6 +227,32 @@ describe('storageDedup', () => {
         expect(summary.totalUsed).toBe(3_000_000);
     });
 
+    it('case 4c5: the unchanged Puter default URL keys by the user name', () => {
+        // The form saves `https://dav.puter.com/{username}` unchanged, so
+        // the placeholder must not become the account of every profile.
+        const template = 'https://dav.puter.com/{username}';
+        const puter = (id: string, host: string, username: string, used = 0) => make({
+            id, protocol: 'webdav', providerId: 'puter-webdav',
+            host, port: 443, username, used, total: 25_000_000,
+        });
+        const alice = puter('t1', template, 'alice', 1_000_000);
+        const bob = puter('t2', template, 'bob', 2_000_000);
+        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice');
+        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob');
+        const summary = aggregateByDedupKey([alice, bob]);
+        expect(summary.uniqueCount).toBe(2);
+        expect(summary.totalUsed).toBe(3_000_000);
+        // The same account written with the expanded URL is the same drive.
+        expect(getStorageDedupKey(puter('t3', 'https://dav.puter.com/alice', 'alice')))
+            .toBe(getStorageDedupKey(alice));
+        // The percent-encoded spelling of the placeholder is the same case.
+        expect(getStorageDedupKey(puter('t4', 'https://dav.puter.com/%7Busername%7D', 'alice')))
+            .toBe(getStorageDedupKey(alice));
+        // Under token auth the placeholder resolves to `-token`, which names
+        // no account: each profile keeps its own id.
+        expect(getStorageDedupKey(puter('t5', template, '-token'))).toBe('id:t5');
+    });
+
     it('case 4c3: a Puter token profile with no account path never dedups', () => {
         // Without the account in the URL two `-token` profiles are
         // indistinguishable, so each falls back to its own id.
@@ -246,6 +272,25 @@ describe('storageDedup', () => {
             host: 'dav.puter.com', port: 443, username: 'carol',
         });
         expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav:carol');
+        // The password profile with no path and the token profile with the
+        // account path name the same drive, so they share one key.
+        const carolToken = make({
+            id: 'p6', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/carol', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(carolToken)).toBe(getStorageDedupKey(c));
+        // An account written only in the query or fragment is no account
+        // path: the key falls back as if there were none.
+        const queryOnly = make({
+            id: 'p7', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com?next=/carol', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(queryOnly)).toBe('id:p7');
+        const fragmentOnly = make({
+            id: 'p8', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com#/carol', port: 443, username: 'dave',
+        });
+        expect(getStorageDedupKey(fragmentOnly)).toBe('webdav:puter-webdav:dave');
     });
 
     it('case 4c4: user-hosted WebDAV presets key by host too', () => {
@@ -305,6 +350,33 @@ describe('storageDedup', () => {
     it('normalizeHost strips URL userinfo so secrets never reach a key', () => {
         expect(normalizeHost('https://user:pass@nas.example.com:8080/dav')).toBe('nas.example.com:8080');
         expect(normalizeHost('user:pass@nas.example.com/dav')).toBe('nas.example.com');
+    });
+
+    it('normalizeHost strips the query and fragment so secrets never reach a key', () => {
+        expect(normalizeHost('https://cloud.example.com?access_token=SECRET')).toBe('cloud.example.com');
+        expect(normalizeHost('cloud.example.com:8443#SECRET')).toBe('cloud.example.com:8443');
+        expect(normalizeHost('https://cloud.example.com/dav?access_token=SECRET')).toBe('cloud.example.com');
+        // An `@` inside the query is not userinfo: the host stays.
+        expect(normalizeHost('https://cloud.example.com?next=a@b.example')).toBe('cloud.example.com');
+        const withQuery = make({
+            id: 'q1', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud.example.com?access_token=SECRET', port: 443, username: 'alice',
+        });
+        const plain = make({
+            id: 'q2', protocol: 'webdav', providerId: 'nextcloud',
+            host: 'https://cloud.example.com', port: 443, username: 'alice',
+        });
+        expect(getStorageDedupKey(withQuery)).not.toContain('secret');
+        expect(getStorageDedupKey(withQuery)).toBe(getStorageDedupKey(plain));
+        const s3 = make({
+            id: 'q3', protocol: 's3', host: 'https://s3.example.com?X-Amz-Signature=SECRET',
+            port: 443, username: 'AKIAEXAMPLE',
+        });
+        expect(getStorageDedupKey(s3)).not.toContain('secret');
+        const ftp = make({
+            id: 'q4', protocol: 'ftp', host: 'ftp.example.com#SECRET', port: 21, username: 'bob',
+        });
+        expect(getStorageDedupKey(ftp)).not.toContain('secret');
     });
 
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {

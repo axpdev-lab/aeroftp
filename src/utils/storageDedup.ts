@@ -89,7 +89,7 @@ const S3_PRESET_IDS = new Set<string>([
     'neon-s3',
 ]);
 
-/** Lowercase, trim, strip scheme + www. + trailing path. */
+/** Lowercase, trim, strip scheme, userinfo, www., path, query and fragment. */
 export const normalizeHost = (raw: string | undefined): string => {
     if (!raw) return '';
     let s = raw.trim().toLowerCase();
@@ -99,23 +99,21 @@ export const normalizeHost = (raw: string | undefined): string => {
             break;
         }
     }
+    // The authority ends at the path, the query or the fragment; none of
+    // them names the server, and a query can carry a credential that a
+    // dedup key printed by the logs must never hold.
+    const authorityEnd = s.search(/[/?#]/);
+    if (authorityEnd !== -1) {
+        s = s.slice(0, authorityEnd);
+    }
     // URL userinfo (`user:pass@host`) is never part of the server identity
-    // and must not reach a dedup key that logs can print.
-    const authorityEnd = s.indexOf('/');
-    const authority = authorityEnd === -1 ? s : s.slice(0, authorityEnd);
-    const at = authority.lastIndexOf('@');
+    // either.
+    const at = s.lastIndexOf('@');
     if (at !== -1) {
         s = s.slice(at + 1);
     }
     if (s.startsWith('www.')) {
         s = s.slice(4);
-    }
-    const slash = s.indexOf('/');
-    if (slash !== -1) {
-        s = s.slice(0, slash);
-    }
-    while (s.endsWith('/')) {
-        s = s.slice(0, -1);
     }
     return s;
 };
@@ -242,9 +240,16 @@ const puterAccount = (rawHost: string | undefined): string => {
             break;
         }
     }
+    // A query or fragment is not part of the path: an account named only
+    // inside it is no account.
+    const query = s.search(/[?#]/);
+    if (query !== -1) s = s.slice(0, query);
     const slash = s.indexOf('/');
     if (slash === -1) return '';
-    const segment = s.slice(slash + 1).split(/[/?#]/)[0];
+    const segment = s.slice(slash + 1).split('/')[0];
+    // The form saves the default `https://dav.puter.com/{username}` as it
+    // is: the placeholder names no account, the profile's user name does.
+    if (segment.includes('{username}') || segment.includes('%7busername%7d')) return '';
     return segment;
 };
 

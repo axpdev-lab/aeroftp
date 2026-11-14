@@ -84,8 +84,8 @@ pub fn classify(protocol: &str) -> ProtocolClass {
     }
 }
 
-/// Lowercase, trim, strip leading scheme + `www.` and trailing path. Mirrors
-/// the TS `normalizeHost` helper.
+/// Lowercase, trim, strip scheme, userinfo, `www.`, path, query and fragment.
+/// Mirrors the TS `normalizeHost` helper.
 pub fn normalize_host(raw: &str) -> String {
     let mut s = raw.trim().to_ascii_lowercase();
     for scheme in ["https://", "http://", "webdavs://", "webdav://"] {
@@ -94,20 +94,19 @@ pub fn normalize_host(raw: &str) -> String {
             break;
         }
     }
+    // The authority ends at the path, the query or the fragment; none of
+    // them names the server, and a query can carry a credential that a
+    // dedup key printed by the logs must never hold.
+    if let Some(end) = s.find(['/', '?', '#']) {
+        s.truncate(end);
+    }
     // URL userinfo (`user:pass@host`) is never part of the server identity
-    // and must not reach a dedup key that logs can print.
-    let authority_end = s.find('/').unwrap_or(s.len());
-    if let Some(at) = s[..authority_end].rfind('@') {
+    // either.
+    if let Some(at) = s.rfind('@') {
         s = s[at + 1..].to_string();
     }
     if let Some(stripped) = s.strip_prefix("www.") {
         s = stripped.to_string();
-    }
-    if let Some(idx) = s.find('/') {
-        s.truncate(idx);
-    }
-    while s.ends_with('/') {
-        s.pop();
     }
     s
 }
@@ -124,14 +123,21 @@ pub fn puter_account(raw_host: &str) -> String {
             break;
         }
     }
+    // A query or fragment is not part of the path: an account named only
+    // inside it is no account.
+    if let Some(query) = s.find(['?', '#']) {
+        s.truncate(query);
+    }
     let Some(idx) = s.find('/') else {
         return String::new();
     };
-    s[idx + 1..]
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .to_string()
+    let segment = s[idx + 1..].split('/').next().unwrap_or("");
+    // The form saves the default `https://dav.puter.com/{username}` as it
+    // is: the placeholder names no account, the profile's user name does.
+    if segment.contains("{username}") || segment.contains("%7busername%7d") {
+        return String::new();
+    }
+    segment.to_string()
 }
 
 /// Lowercase + trim. Returns `None` for opaque tokens (long random strings)
@@ -938,6 +944,44 @@ mod tests {
     }
 
     #[test]
+    fn the_unchanged_puter_default_url_keys_by_the_user_name() {
+        // The form saves `https://dav.puter.com/{username}` unchanged, so
+        // the placeholder must not become the account of every profile.
+        let template = "https://dav.puter.com/{username}";
+        let puter = |id: &'static str, host: &'static str, user: &'static str, used| {
+            p(
+                id,
+                "webdav",
+                Some("puter-webdav"),
+                host,
+                443,
+                user,
+                Some(used),
+                Some(25_000_000),
+            )
+        };
+        let profiles = [
+            puter("t1", template, "alice", 1_000_000),
+            puter("t2", template, "bob", 2_000_000),
+        ];
+        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice");
+        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob");
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 2);
+        assert_eq!(summary.total_used, 3_000_000);
+        // The same account written with the expanded URL is the same drive.
+        let expanded = puter("t3", "https://dav.puter.com/alice", "alice", 0);
+        assert_eq!(dedup_key(&expanded), dedup_key(&profiles[0]));
+        // The percent-encoded spelling of the placeholder is the same case.
+        let encoded = puter("t4", "https://dav.puter.com/%7Busername%7D", "alice", 0);
+        assert_eq!(dedup_key(&encoded), dedup_key(&profiles[0]));
+        // Under token auth the placeholder resolves to `-token`, which names
+        // no account: each profile keeps its own id.
+        let token = puter("t5", template, "-token", 0);
+        assert_eq!(dedup_key(&token), "id:t5");
+    }
+
+    #[test]
     fn a_puter_token_profile_with_no_account_path_never_dedups() {
         // Without the account in the URL two `-token` profiles are
         // indistinguishable, so each falls back to its own id.
@@ -975,6 +1019,43 @@ mod tests {
             None,
         );
         assert_eq!(dedup_key(&c), "webdav:puter-webdav:carol");
+        // The password profile with no path and the token profile with the
+        // account path name the same drive, so they share one key.
+        let carol_token = p(
+            "p6",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/carol",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&carol_token), dedup_key(&c));
+        // An account written only in the query or fragment is no account
+        // path: the key falls back as if there were none.
+        let query_only = p(
+            "p7",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com?next=/carol",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&query_only), "id:p7");
+        let fragment_only = p(
+            "p8",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com#/carol",
+            443,
+            "dave",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&fragment_only), "webdav:puter-webdav:dave");
     }
 
     #[test]
@@ -1096,6 +1177,71 @@ mod tests {
             normalize_host("user:pass@nas.example.com/dav"),
             "nas.example.com"
         );
+    }
+
+    #[test]
+    fn normalize_host_strips_the_query_and_fragment_so_secrets_never_reach_a_key() {
+        assert_eq!(
+            normalize_host("https://cloud.example.com?access_token=SECRET"),
+            "cloud.example.com"
+        );
+        assert_eq!(
+            normalize_host("cloud.example.com:8443#SECRET"),
+            "cloud.example.com:8443"
+        );
+        assert_eq!(
+            normalize_host("https://cloud.example.com/dav?access_token=SECRET"),
+            "cloud.example.com"
+        );
+        // An `@` inside the query is not userinfo: the host stays.
+        assert_eq!(
+            normalize_host("https://cloud.example.com?next=a@b.example"),
+            "cloud.example.com"
+        );
+        let with_query = p(
+            "q1",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud.example.com?access_token=SECRET",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        let plain = p(
+            "q2",
+            "webdav",
+            Some("nextcloud"),
+            "https://cloud.example.com",
+            443,
+            "alice",
+            None,
+            None,
+        );
+        assert!(!dedup_key(&with_query).contains("secret"));
+        assert_eq!(dedup_key(&with_query), dedup_key(&plain));
+        let s3 = p(
+            "q3",
+            "s3",
+            None,
+            "https://s3.example.com?X-Amz-Signature=SECRET",
+            443,
+            "AKIAEXAMPLE",
+            None,
+            None,
+        );
+        assert!(!dedup_key(&s3).contains("secret"));
+        let ftp = p(
+            "q4",
+            "ftp",
+            None,
+            "ftp.example.com#SECRET",
+            21,
+            "bob",
+            None,
+            None,
+        );
+        assert!(!dedup_key(&ftp).contains("secret"));
     }
 
     #[test]
