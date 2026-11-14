@@ -413,6 +413,139 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(saved.map(config => config.remote_folder)).toEqual(['/new', '/new']);
     });
 
+    it('applies only the latest read: an older refresh released after a newer one keeps the placed folder', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const base = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', server_profile: 'nas', protocol_type: 'sftp', exclude_patterns: [], excluded_folders: [] };
+        let disk: { remote_folder?: string } = { ...base, remote_folder: '~/docs' };
+        const saved: { remote_folder?: string; update_only?: boolean }[] = [];
+        let holdNext = false;
+        let releaseA!: (config: unknown) => void;
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
+            if (command === 'get_cloud_config') {
+                if (holdNext) { holdNext = false; return new Promise(resolve => { releaseA = resolve; }); }
+                return disk;
+            }
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config ?? {}); disk = args?.config ?? {}; return null; }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        // A: the refresh after a sync read the file before the placement and waits.
+        holdNext = true;
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        // A background cycle places the folder; B: opening Settings reads it.
+        disk = { ...disk, remote_folder: '/home/u/docs' };
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        await React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(remoteFolder()?.value).toBe('/home/u/docs');
+        // A lands now with the file as it read it.
+        await React.act(async () => releaseA({ ...base, remote_folder: '~/docs' }));
+        expect(remoteFolder()?.value).toBe('/home/u/docs');
+        // An unrelated save keeps the placed folder.
+        const update = Array.from(host.querySelectorAll('label')).find(label => label.textContent?.includes('aerosync.updateOnly'))!;
+        await React.act(async () => update.querySelector('input')!.click());
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.save common.settings')!.click());
+        expect(saved.map(config => config.remote_folder)).toEqual(['/home/u/docs']);
+        expect(saved[0].update_only).toBe(false);
+    });
+
+    it('drops a read still in flight when the panel closes, and reads the file again on reopen', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const base = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', server_profile: 'nas', protocol_type: 'sftp', exclude_patterns: [], excluded_folders: [] };
+        let disk: unknown = { ...base, remote_folder: '/remote' };
+        let holdNext = false;
+        let release!: (config: unknown) => void;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_config') {
+                if (holdNext) { holdNext = false; return new Promise(resolve => { release = resolve; }); }
+                return disk;
+            }
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        const render = (isOpen: boolean) => React.act(async () => root!.render(<CloudPanel isOpen={isOpen} onClose={vi.fn()} />));
+        await render(true);
+        holdNext = true;
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        await render(false);
+        // The file changes while the panel is closed; the old read lands late.
+        disk = { ...base, remote_folder: '/new' };
+        await React.act(async () => release({ ...base, remote_folder: '/old' }));
+        // The reopen reads the file again; until that read lands the panel
+        // shows what it had, never the dropped reply.
+        holdNext = true;
+        await render(true);
+        expect(host.textContent).toContain('/remote');
+        expect(host.textContent).not.toContain('/old');
+        await React.act(async () => release(disk));
+        expect(host.textContent).toContain('/new');
+        expect(host.textContent).not.toContain('/old');
+    });
+
+    it('loads the configuration on reopen when the first load was dropped by a close', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const disk = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', server_profile: 'nas', protocol_type: 'sftp', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+        let reads = 0;
+        let releaseFirst!: (config: unknown) => void;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_config') {
+                reads += 1;
+                if (reads === 1) return new Promise(resolve => { releaseFirst = resolve; });
+                return disk;
+            }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        const render = (isOpen: boolean) => React.act(async () => root!.render(<CloudPanel isOpen={isOpen} onClose={vi.fn()} />));
+        await render(true);
+        await render(false);
+        await render(true);
+        await React.act(async () => releaseFirst({ ...disk, remote_folder: '/old' }));
+        expect(reads).toBe(2);
+        expect(host.textContent).toContain('/remote');
+        expect(host.querySelector('button[title="common.settings"]')).not.toBeNull();
+    });
+
+    it('replaces the panel with a refreshed file that names another account instead of merging its folder', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const base = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', protocol_type: 'sftp', exclude_patterns: [], excluded_folders: [] };
+        let disk: unknown = { ...base, server_profile: 'nas', remote_folder: '/remote' };
+        const saved: unknown[] = [];
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: unknown }) => {
+            if (command === 'get_cloud_config') return disk;
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config); return null; }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        expect(host.textContent).toContain('nas');
+        // Another window set AeroCloud up on another profile meanwhile.
+        disk = { ...base, server_profile: 'office', remote_folder: '/home/o/docs' };
+        await React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        // The settings of the old account close: nothing of theirs is saved over the new one.
+        expect(host.querySelector('input[placeholder="/cloud/"]')).toBeNull();
+        expect(host.textContent).toContain('office');
+        expect(saved).toEqual([]);
+    });
+
     it('drops a post-sync refresh that read the file before Disable and a new setup', async () => {
         mocks.setupResult = { enabled: true, cloud_name: 'fresh', local_folder: '/local2', remote_folder: '/new', sync_interval_secs: 300, sync_direction: 'bidirectional', exclude_patterns: [], excluded_folders: [] };
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;

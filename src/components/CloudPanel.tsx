@@ -426,6 +426,19 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // Bumped whenever the configuration is replaced or saved: a post-sync
     // refresh started before that carries an older file and is dropped.
     const configGeneration = useRef(0);
+    // Every read of the file takes the next number, and only the latest
+    // read's reply is applied: two refreshes can resolve out of order, and
+    // the older file would bring back a folder the newer one placed. Closing
+    // the panel takes a number too, so a reply still in flight is dropped
+    // and the reopen reads the file again. While a full load is pending a
+    // refresh stands in for it (`fullLoadPending`), so dropping the load
+    // never leaves the panel without a configuration.
+    const latestRead = useRef(0);
+    const fullLoadPending = useRef(false);
+    // The configuration as of the latest commit, for a reply that resolves
+    // after an await.
+    const configRef = useRef(config);
+    useEffect(() => { configRef.current = config; }, [config]);
     const replaceConfig = (next: CloudConfig | null) => {
         configGeneration.current += 1;
         setConfig(next);
@@ -445,6 +458,16 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     useEffect(() => {
         loadConfig();
     }, []);
+
+    // A reopened panel reads what changed while it was closed; closing drops
+    // the replies still in flight.
+    const openedOnce = useRef(false);
+    useEffect(() => {
+        if (!isOpen) return;
+        if (openedOnce.current) void loadConfig(true);
+        openedOnce.current = true;
+        return () => { latestRead.current += 1; };
+    }, [isOpen]);
 
     // Listen for status changes: useTauriListener handles late-resolution cleanup
     useTauriListener<CloudSyncStatus>('cloud_status_change', (event) => {
@@ -485,16 +508,21 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setReauthRequired({ provider: event.payload.provider, message: event.payload.message });
     });
 
-    const loadConfig = async (refresh = false) => {
+    const loadConfig = async (requestedRefresh = false) => {
+        const read = ++latestRead.current;
+        if (!requestedRefresh) fullLoadPending.current = true;
+        const refresh = requestedRefresh && !fullLoadPending.current;
         // A refresh only merges last_sync: the full-panel loading view would
         // unmount an open settings draft behind an unguarded backdrop.
         if (!refresh) setIsLoading(true);
         const generation = configGeneration.current;
+        const superseded = () => read !== latestRead.current;
         try {
             let cfg: CloudConfig;
             try {
                 cfg = await invoke<CloudConfig>('get_cloud_config');
             } catch (error) {
+                if (superseded()) return;
                 console.error('Failed to load cloud config:', error);
                 // A failed refresh leaves the configuration and an open draft
                 // as they are; a failed full load clears them, so nothing
@@ -509,9 +537,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             }
             // A refresh that read the file before a save or a replacement
             // would bring an older folder back into the newer configuration.
+            if (superseded()) return;
             if (refresh && generation !== configGeneration.current) return;
             setRefreshError(null);
-            if (refresh) {
+            // A file that names another account (another profile or local
+            // folder) is not this configuration's: it replaces the panel's,
+            // with any draft, instead of lending it a folder.
+            const shown = configRef.current;
+            const sameAccount = !shown || (
+                (shown.server_profile_id ?? null) === (cfg.server_profile_id ?? null)
+                && shown.server_profile === cfg.server_profile
+                && shown.local_folder === cfg.local_folder
+                && shown.protocol_type === cfg.protocol_type
+            );
+            if (refresh && sameAccount) {
                 // A sync moves last_sync, and places a `~/...` remote folder
                 // under the login folder and saves the absolute path. Both
                 // persisted fields are merged into the draft and the
@@ -545,7 +584,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         } catch (error) {
             console.error('Failed to load cloud config:', error);
         } finally {
-            if (!refresh) setIsLoading(false);
+            if (!refresh && !superseded()) {
+                fullLoadPending.current = false;
+                setIsLoading(false);
+            }
         }
     };
 
