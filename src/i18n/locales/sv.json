@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Av: dataanslutningar går till värden du anslöt till, som curl gör. Slå bara på för en server som skickar data från en annan adress.",
             "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort krävs)",
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per projektgren (5 GB gratis per projekt)",
-            "discoverPuter": "Puter-molnlagring via WebDAV (25 MB test, inget kort)",
+            "discoverPuter": "Puter-molnlagring via WebDAV (25 MB gratis, inget kort)",
             "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, inget kort)"
         },
         "shortcuts": {

@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Вимкнено: з'єднання для даних ідуть на хост, до якого ви підключилися, як у curl. Вмикайте лише для сервера, що надсилає дані з іншої адреси.",
             "discoverFastly": "Fastly Object Storage: S3-сумісне сховище у 12 регіонах (5 GB безкоштовно, потрібна картка)",
             "discoverNeon": "Neon Object Storage: сховище, сумісне з S3, для кожної гілки проєкту (5 GB безкоштовно на проєкт)",
-            "discoverPuter": "Хмарне сховище Puter через WebDAV (25 МБ пробний період, без картки)",
+            "discoverPuter": "Хмарне сховище Puter через WebDAV (25 МБ безкоштовно, без картки)",
             "discoverLifetimeCloud": "Сховище LifetimeCloud через WebDAV (1 GB безкоштовно, без картки)"
         },
         "shortcuts": {

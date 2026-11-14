@@ -765,8 +765,8 @@
     "company": "Puter",
     "logoId": "puter",
     "country": "US",
-    "freeGb": null,
-    "freeNote": "25 MB trial",
+    "freeGb": 0.025,
+    "freeNote": "limited: 25 MB in total",
     "freeRequiresCard": false,
     "regions": [
       "US"
@@ -776,7 +776,7 @@
         "label": "WebDAV",
         "protocol": "webdav",
         "providerId": "puter-webdav",
-        "paid": true,
+        "paid": false,
         "category": "webdav",
         "note": null
       }

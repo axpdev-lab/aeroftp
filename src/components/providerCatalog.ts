@@ -281,12 +281,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'ibm-cos', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
-    // A 25 MB trial allowance (puter.com/pricing, 2026-11), no card required:
-    // too small to call a free plan (owner, 2026-11-14), so no freeStorageGb.
-    { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: null,
-      freeNote: '25 MB trial', healthCheckUrl: 'https://api.puter.com',
+    // Puter publishes a Free plan: 25 MB, no card, no time limit
+    // (puter.com/pricing, 2026-11-14). Printed as "25 MB".
+    { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: 0.025,
+      freeNote: 'limited: 25 MB in total', healthCheckUrl: 'https://api.puter.com',
       searchAliases: ['puter', 'dav.puter.com'],
-      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav', paid: true }] },
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
     // A free plan: 1 GB, no card, no time limit, limited use (at most 50 MB per
     // file and 50 files; account card and lifetimecloud.me/it, 2026-11-14).
     { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: 1,

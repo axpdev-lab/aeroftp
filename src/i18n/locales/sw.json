@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Zima: miunganisho ya data huenda kwa mwenyeji uliyeunganishwa naye, kama curl inavyofanya. Washa tu kwa seva inayotuma data kutoka anwani nyingine.",
             "discoverFastly": "Fastly Object Storage: hifadhi inayooana na S3 katika maeneo 12 (5 GB bila malipo, kadi inahitajika)",
             "discoverNeon": "Neon Object Storage: hifadhi inayooana na S3 kwa kila tawi la mradi (5 GB bure kwa mradi)",
-            "discoverPuter": "Hifadhi ya wingu ya Puter kupitia WebDAV (MB 25 za majaribio, bila kadi)",
+            "discoverPuter": "Hifadhi ya wingu ya Puter kupitia WebDAV (MB 25 bila malipo, bila kadi)",
             "discoverLifetimeCloud": "Hifadhi ya LifetimeCloud kupitia WebDAV (1 GB bure, bila kadi)"
         },
         "shortcuts": {

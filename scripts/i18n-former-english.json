@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "47700e9205e368a1a0b57c7f5b6020bd12fb688cd6fa9d4a59221e7630b57475",
+    "enHash": "420b877e8a59bfa981ef47eeae14d451ca4bd5959a011588f4afffc5ec1e753c",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -552,7 +552,7 @@
             "S3-compatible, Pro plan required, 4 regions (EU/CA)"
         ],
         "protocol.discoverPuter": [
-            "Puter cloud storage via WebDAV (25 MB free, no card)"
+            "Puter cloud storage via WebDAV (25 MB trial, no card)"
         ],
         "protocol.discoverTabDigital": [
             "Tab.digital (8 GB free, Nextcloud-based, EU/GDPR, regional subdomains)"

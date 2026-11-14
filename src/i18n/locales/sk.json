@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "Vypnuté: dátové spojenia smerujú na hostiteľa, ku ktorému ste sa pripojili, rovnako ako pri curl. Zapnite len pre server, ktorý posiela dáta z inej adresy.",
             "discoverFastly": "Fastly Object Storage: úložisko kompatibilné s S3 v 12 regiónoch (5 GB zdarma, vyžaduje sa karta)",
             "discoverNeon": "Neon Object Storage: úložisko kompatibilné s S3 pre každú vetvu projektu (5 GB zadarmo na projekt)",
-            "discoverPuter": "Cloudové úložisko Puter cez WebDAV (25 MB skúšobne, bez karty)",
+            "discoverPuter": "Cloudové úložisko Puter cez WebDAV (25 MB zadarmo, bez karty)",
             "discoverLifetimeCloud": "Úložisko LifetimeCloud cez WebDAV (1 GB zadarmo, bez karty)"
         },
         "shortcuts": {

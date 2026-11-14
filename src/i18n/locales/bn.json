@@ -2381,7 +2381,7 @@
             "trustPasvAddressHelp": "বন্ধ: ডেটা সংযোগ curl-এর মতো আপনি যে হোস্টে সংযুক্ত হয়েছেন সেখানেই যায়। শুধু এমন সার্ভারের জন্য চালু করুন যে অন্য ঠিকানা থেকে ডেটা পাঠায়।",
             "discoverFastly": "Fastly Object Storage: ১২টি অঞ্চলে S3-সামঞ্জস্যপূর্ণ স্টোরেজ (5 GB বিনামূল্যে, কার্ড প্রয়োজন)",
             "discoverNeon": "Neon Object Storage: প্রতিটি প্রজেক্ট ব্রাঞ্চের জন্য S3-এর সাথে সামঞ্জস্যপূর্ণ স্টোরেজ (প্রতি প্রজেক্টে 5 GB ফ্রি)",
-            "discoverPuter": "Puter ক্লাউড স্টোরেজ WebDAV-এর মাধ্যমে (25 MB ট্রায়াল, কোনো কার্ড লাগে না)",
+            "discoverPuter": "Puter ক্লাউড স্টোরেজ WebDAV-এর মাধ্যমে (25 MB ফ্রি, কোনো কার্ড লাগে না)",
             "discoverLifetimeCloud": "WebDAV-এর মাধ্যমে LifetimeCloud স্টোরেজ (1 GB ফ্রি, কার্ড ছাড়া)"
         },
         "shortcuts": {
