@@ -2455,6 +2455,19 @@ async fn verify_repair_sync_ec_after_download(
     }
 }
 
+/// The text of a failed transfer or delete: the operation, then the error.
+/// A refusal for a changed target is kept as the provider worded it, with
+/// nothing in front, so every reader of the text finds its marker where it
+/// starts.
+fn operation_failure(operation: &str, error: &dyn std::fmt::Display) -> String {
+    let text = error.to_string();
+    if crate::providers::types::is_target_changed_text(&text, None) {
+        text
+    } else {
+        format!("{operation} failed: {text}")
+    }
+}
+
 macro_rules! authorize_sync_io {
     ($scope:expr, $root:expr, $rel:expr) => {
         if let Err(error) = crate::sync_core::access::authorize($scope, $root, $rel) {
@@ -2630,7 +2643,7 @@ pub(crate) async fn perform_upload(
                             }
                         }
                         Err(e) => FileOutcome::Failed {
-                            error: format!("upload failed: {}", e),
+                            error: operation_failure("upload", &e),
                         },
                     };
                 }
@@ -2659,7 +2672,7 @@ pub(crate) async fn perform_upload(
             }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("upload failed: {}", e),
+            error: operation_failure("upload", &e),
         },
     }
 }
@@ -2839,7 +2852,7 @@ pub(crate) async fn perform_download(
                             }
                         }
                         Err(e) => FileOutcome::Failed {
-                            error: format!("download failed: {}", e),
+                            error: operation_failure("download", &e),
                         },
                     };
                 }
@@ -2879,7 +2892,7 @@ pub(crate) async fn perform_download(
             }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("download failed: {}", e),
+            error: operation_failure("download", &e),
         },
     }
 }
@@ -2987,7 +3000,7 @@ pub(crate) async fn perform_remote_delete(
             FileOutcome::Deleted { ec_sidecar_status }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("delete failed: {}", e),
+            error: operation_failure("delete", &e),
         },
     }
 }
@@ -3014,7 +3027,7 @@ pub(crate) fn perform_local_delete(
             ec_sidecar_status: None,
         },
         Err(e) => FileOutcome::Failed {
-            error: format!("delete failed: {}", e),
+            error: operation_failure("delete", &e),
         },
     }
 }
@@ -4639,6 +4652,21 @@ fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, boo
 
 /// Classify a raw error message into a structured SyncErrorInfo
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    // A changed target is decided by its marker, on the text as given, before
+    // the caller's path is taken out of it: the path is removed as a
+    // substring, so a file named `a` used to strip the words the branches
+    // below look for and leave `connection`, which is retryable. The marker
+    // counts wherever it stands: the operation that failed, or the window,
+    // may have put its own words in front (`upload failed: ...`). The refusal
+    // is final for this session: the same write is refused again.
+    if crate::providers::types::is_target_changed_text(raw, file_path) {
+        return SyncErrorInfo {
+            kind: SyncErrorKind::Auth,
+            message: raw.to_string(),
+            retryable: false,
+            file_path: file_path.map(|s| s.to_string()),
+        };
+    }
     let lower = classification_text(raw, file_path);
 
     // An OS error is classified by its code before any text: the text is the
@@ -7740,6 +7768,250 @@ mod tests {
         assert_eq!(status, SyncStatus::LocalOnly);
     }
 
+    /// The refusal of a changed target is final for the session, whatever
+    /// the file is called: the caller's path is taken out of the text as a
+    /// substring, and a path such as `a` used to remove the words the
+    /// classifier looks for and leave `connection`, a retryable kind. The
+    /// text also claims no more than the code: it does not say that the
+    /// authorization changed, since a moved write target gives it too.
+    #[test]
+    fn a_changed_target_is_not_retried_whatever_the_file_is_called() {
+        let text = crate::providers::ProviderError::TargetChanged.to_string();
+        assert!(text.starts_with(crate::providers::types::TARGET_CHANGED_MARKER));
+        assert!(!text.contains("authorization"), "{text}");
+        assert!(text.contains("write target"), "{text}");
+        for path in [
+            None,
+            Some("a"),
+            Some("e"),
+            Some("o"),
+            Some("connection"),
+            Some("target"),
+        ] {
+            for raw in [text.clone(), format!("  {text}")] {
+                let info = classify_sync_error(&raw, path);
+                assert!(!info.retryable, "{path:?}: {raw}");
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path:?}: {raw}");
+                assert_eq!(info.message, raw);
+            }
+        }
+        // CodeRabbit 4575757882: the operation that failed, or the window,
+        // puts its own words in front of the refusal. It is the same refusal
+        // wherever its marker stands, for every refusal of the family.
+        let family =
+            "CONNECTION_CHANGED: the restored transfer connection changed; nothing was transferred";
+        for wrapped in [
+            format!("upload failed: {text}"),
+            format!("download failed: {text}"),
+            format!("delete failed: {text}"),
+            format!("Transfer failed: upload failed: {text}"),
+            format!("Error: {family}"),
+            family.to_string(),
+        ] {
+            for path in [None, Some("a"), Some("notes.txt"), Some("upload")] {
+                let info = classify_sync_error(&wrapped, path);
+                assert!(!info.retryable, "{path:?}: {wrapped}");
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path:?}: {wrapped}");
+            }
+        }
+        // A file named after the marker is not the refusal: its own path is
+        // taken out before the marker is looked for, and the error under it
+        // is classified as what it is.
+        let named = "CONNECTION_CHANGED: notes.txt";
+        let mentioned = classify_sync_error(
+            &format!("Connection reset while reading {named}"),
+            Some(named),
+        );
+        assert_eq!(mentioned.kind, SyncErrorKind::Network);
+        assert!(mentioned.retryable);
+        // And a refusal about that very file is still the refusal.
+        let both = classify_sync_error(&format!("upload failed: {text} ({named})"), Some(named));
+        assert!(!both.retryable);
+        // The two spellings of the marker in the crate are one family.
+        assert_eq!(
+            crate::providers::types::TARGET_CHANGED_MARKER,
+            format!("{}:", crate::provider_commands::CONNECTION_CHANGED_MARKER)
+        );
+    }
+
+    /// CodeRabbit 4575757882, through the operations themselves: an upload,
+    /// a download and a remote delete the provider refuses for a changed
+    /// target report the refusal as the provider worded it, its marker
+    /// first, and the classifier answers that it is not retried. Any other
+    /// provider error keeps the operation's words in front.
+    #[tokio::test]
+    async fn a_changed_target_refused_by_an_operation_is_not_retried() {
+        use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
+
+        struct Refusing(bool);
+        impl Refusing {
+            fn refusal(&self) -> ProviderError {
+                if self.0 {
+                    ProviderError::TargetChanged
+                } else {
+                    ProviderError::ServerError("HTTP 500".into())
+                }
+            }
+        }
+        #[async_trait::async_trait]
+        impl StorageProvider for Refusing {
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+                self
+            }
+            fn provider_type(&self) -> ProviderType {
+                ProviderType::Ftp
+            }
+            fn display_name(&self) -> String {
+                "refusing".into()
+            }
+            async fn connect(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn disconnect(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            fn is_connected(&self) -> bool {
+                true
+            }
+            async fn list(&mut self, _p: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+                Ok(vec![])
+            }
+            async fn pwd(&mut self) -> Result<String, ProviderError> {
+                Ok("/".into())
+            }
+            async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn cd_up(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn download(
+                &mut self,
+                _remote: &str,
+                _local: &str,
+                _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+            ) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+                Err(self.refusal())
+            }
+            async fn upload(
+                &mut self,
+                _local: &str,
+                _remote: &str,
+                _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+            ) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn delete(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rename(&mut self, _f: &str, _t: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
+                Err(ProviderError::NotSupported("stat".into()))
+            }
+            async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
+                Ok(0)
+            }
+            async fn exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
+                Ok(true)
+            }
+            async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn server_info(&mut self) -> Result<String, ProviderError> {
+                Ok("refusing".into())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a"), b"x").unwrap();
+        let local_root = dir.path().to_str().unwrap();
+        let options = SyncErrorCorrectionOptions::default();
+        let spec = || SyncTransferSpec {
+            local_access: None,
+            rel: "a",
+            total: 1,
+            decision_policy: DeltaPolicy::Mtime,
+            requested_policy: DeltaPolicy::Mtime,
+        };
+        for changed in [true, false] {
+            let mut provider: Box<dyn StorageProvider> = Box::new(Refusing(changed));
+            let mut sink = NoopProgressSink;
+            let upload = perform_upload(
+                &mut provider,
+                local_root,
+                "/remote",
+                spec(),
+                false,
+                &mut sink,
+                &mut None,
+                &options,
+            )
+            .await;
+            let download = perform_download(
+                &mut provider,
+                local_root,
+                "/remote",
+                spec(),
+                1,
+                false,
+                &mut sink,
+                &mut None,
+                None,
+                &options,
+            )
+            .await;
+            let delete = perform_remote_delete(
+                &mut provider,
+                local_root,
+                None,
+                "/remote",
+                "a",
+                DeltaPolicy::Mtime,
+                false,
+                &mut sink,
+                &options,
+            )
+            .await;
+            for (operation, outcome) in [
+                ("upload", upload),
+                ("download", download),
+                ("delete", delete),
+            ] {
+                let FileOutcome::Failed { error } = outcome else {
+                    panic!("{operation} (changed={changed}) did not fail");
+                };
+                let info = classify_sync_error(&error, Some("a"));
+                if changed {
+                    assert!(
+                        error.starts_with(crate::providers::types::TARGET_CHANGED_MARKER),
+                        "{operation}: {error}"
+                    );
+                    assert!(!info.retryable, "{operation}: {error}");
+                    assert_eq!(info.kind, SyncErrorKind::Auth, "{operation}: {error}");
+                } else {
+                    assert!(
+                        error.starts_with(&format!("{operation} failed: ")),
+                        "{operation}: {error}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_classify_sync_error_network() {
         let err = classify_sync_error("Connection refused by remote host", Some("test.txt"));
@@ -7926,7 +8198,7 @@ mod tests {
                 // Renders the payload with no label; the leading-status check
                 // in `mentions_ftp_status` is what recognises this one.
                 PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
-                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::NotConnected | PE::TargetChanged | PE::Cancelled | PE::Timeout => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
                 // file operation: there is never a server reply behind it.

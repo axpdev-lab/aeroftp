@@ -170,16 +170,25 @@ async fn authenticate_none(
 /// that does NOT include the password value. The username is included
 /// because it is part of the public auth identity (the same string the
 /// remote logs in its own auth log).
+///
+/// `pinned`: the session logged in with this password, so the server's
+/// refusal of it is a [`AerorsyncError::pinned_login_refused`] (X1, see
+/// [`RusshSessionTransport::connect`]); an unpinned refusal only says the
+/// delta login cannot log in.
 async fn authenticate_password(
     handle: &mut Handle<RusshHandler>,
     username: &str,
     password: &secrecy::SecretString,
+    pinned: bool,
 ) -> Result<(), AerorsyncError> {
     match handle
         .authenticate_password(username, password.expose_secret())
         .await
     {
         Ok(AuthResult::Success) => Ok(()),
+        Ok(AuthResult::Failure { .. }) if pinned => Err(AerorsyncError::pinned_login_refused(
+            format!("the server refused the password {username} logged in with"),
+        )),
         Ok(AuthResult::Failure { .. }) => Err(AerorsyncError::transport(format!(
             "russh password auth {username} rejected by server"
         ))),
@@ -192,17 +201,26 @@ async fn authenticate_password(
 /// Original publickey path, lifted out of [`RusshSessionTransport::connect`]
 /// so the new password branch above stays small and the publickey
 /// behaviour (RSA SHA-2 fallback chain) is preserved verbatim.
+///
+/// The key is the config's pinned in-memory key when there is one, and only
+/// otherwise the file at `private_key_path`: with a pinned key the path is
+/// not opened, so what is in that file now cannot change who signs.
 async fn authenticate_publickey_with_rsa_fallbacks(
     handle: &mut Handle<RusshHandler>,
     config: &SshTransportConfig,
 ) -> Result<(), AerorsyncError> {
-    let key_pair = keys::load_secret_key(&config.private_key_path, None).map_err(|e| {
-        AerorsyncError::transport(format!(
-            "load private key {}: {e}",
-            config.private_key_path.display()
-        ))
-    })?;
-    let key_pair = Arc::new(key_pair);
+    let key_pair = match &config.pinned_private_key {
+        // Checked against the login fingerprint before anything is offered.
+        Some(pinned) => pinned.verified_key()?,
+        None => Arc::new(
+            keys::load_secret_key(&config.private_key_path, None).map_err(|e| {
+                AerorsyncError::transport(format!(
+                    "load private key {}: {e}",
+                    config.private_key_path.display()
+                ))
+            })?,
+        ),
+    };
 
     let is_rsa = matches!(key_pair.algorithm(), Algorithm::Rsa { .. });
     let attempts: Vec<Option<HashAlg>> = if is_rsa {
@@ -212,6 +230,9 @@ async fn authenticate_publickey_with_rsa_fallbacks(
     };
 
     let mut last_error: Option<String> = None;
+    // Whether the server answered a refusal to any form of the key: its
+    // authentication result, not the text of a transport error, decides.
+    let mut refused = false;
     for hash in attempts {
         let key_with_hash = PrivateKeyWithHashAlg::new(key_pair.clone(), hash);
         match handle
@@ -219,7 +240,10 @@ async fn authenticate_publickey_with_rsa_fallbacks(
             .await
         {
             Ok(AuthResult::Success) => return Ok(()),
-            Ok(AuthResult::Failure { .. }) => continue,
+            Ok(AuthResult::Failure { .. }) => {
+                refused = true;
+                continue;
+            }
             Err(e) => {
                 last_error = Some(e.to_string());
                 continue;
@@ -227,6 +251,14 @@ async fn authenticate_publickey_with_rsa_fallbacks(
         }
     }
 
+    // X1: the session logged in with this key, and the server refuses it
+    // now (see `RusshSessionTransport::connect`).
+    if refused && config.pinned_private_key.is_some() {
+        return Err(AerorsyncError::pinned_login_refused(format!(
+            "the server refused the key {} logged in with",
+            config.username
+        )));
+    }
     let detail = last_error.unwrap_or_else(|| "auth rejected by server".to_string());
     Err(AerorsyncError::transport(format!(
         "russh pubkey auth {} failed after RSA SHA-512/256/1 negotiation attempts: {detail}",
@@ -324,7 +356,54 @@ impl RusshSessionTransport {
     /// `config.host_key_policy` and authenticate: `none` first, then exactly
     /// one configured credential (password, else agent, else key file).
     /// Returns a transport whose `handshake_count` is 1.
+    ///
+    /// X1, every way this second login can be refused after the session's
+    /// first one logged in, and the verdict (hard: the sync stops before
+    /// any write, at the gate or at the transfer; unavailable: the sync goes
+    /// on over the first connection, which is still logged in as the user
+    /// approved):
+    /// - the host key is not the pinned one (`russh::Error::UnknownKey` at
+    ///   connect): hard, `HostKeyRejected`;
+    /// - the pinned key is not the login key (local fingerprint check,
+    ///   nothing offered): hard, `PinnedKeyMismatch`;
+    /// - a password pin this login cannot repeat: hard,
+    ///   `PinnedPasswordMismatch`;
+    /// - the server answers `Failure` to the pinned key (every RSA hash
+    ///   form) or the pinned password: hard, `PinnedLoginRefused`. SSH gives
+    ///   the same answer for a revoked key, a changed password, a disabled
+    ///   or locked account and a server that now wants another factor
+    ///   (`partial_success`): each is that refusal;
+    /// - too many authentication failures: the server disconnects; after a
+    ///   `Failure` it answered, that is the refusal above (hard); a
+    ///   disconnect, a timeout or a dropped connection with no refusal
+    ///   answered is unavailable (`TransportFailure`): an unanswered
+    ///   credential says nothing about it;
+    /// - an unpinned login refused (no recorded method: the CLI, a profile
+    ///   without one): unavailable, there is no pin it breaks;
+    /// - an ssh-agent login: never pinned (no agent identity is recorded at
+    ///   login, and the GUI's SFTP session has no agent method, so no delta
+    ///   login of a GUI session goes through the agent); a refused agent
+    ///   identity, or no agent at all, is unavailable;
+    /// - a keyboard-interactive or `none` session makes no second login at
+    ///   all (`SftpProvider::rsync_config_for_delta` gives it none): it
+    ///   stays on the pinned SFTP path.
     pub async fn connect(config: SshTransportConfig) -> Result<Self, AerorsyncError> {
+        // A pinned key that is not the login key is refused before the
+        // socket opens, so the server sees no connection from it at all.
+        if let Some(pinned) = &config.pinned_private_key {
+            pinned.verified_key()?;
+        }
+        // The same before the socket opens for a session that logged in
+        // with a password: this login repeats that method or none at all.
+        if config.pinned_password
+            && (config.usable_password().is_none()
+                || config.pinned_private_key.is_some()
+                || config.auth_agent)
+        {
+            return Err(AerorsyncError::pinned_password_mismatch(
+                "the session logged in with a password and this login has no password to repeat it",
+            ));
+        }
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let handshake_count = Arc::new(AtomicU32::new(0));
         let raw_open_count = Arc::new(AtomicU32::new(0));
@@ -368,7 +447,7 @@ impl RusshSessionTransport {
         let addr = format!("{}:{}", config.host, config.port);
         let mut handle = client::connect(russh_config, &addr, handler)
             .await
-            .map_err(|e| AerorsyncError::transport(format!("russh connect {addr}: {e}")))?;
+            .map_err(|e| connect_error(&addr, e))?;
 
         // Auth precedence: password > agent > key-file. The paths are
         // exclusive on purpose: a profile that ships several credentials
@@ -378,10 +457,25 @@ impl RusshSessionTransport {
         // `none` goes before all three: it sends no credential, so it
         // blurs nothing, and an account the server lets in with no
         // credential is reachable only through it.
-        if authenticate_none(&mut handle, &config.username).await? {
+        //
+        // A pinned key overrides all of that: the caller's session logged
+        // in with that key, so this one offers that key and nothing else,
+        // `none` included.
+        //
+        // A password pin does the same for a password session: `none`
+        // would let a server that accepts it later put this login in an
+        // account or root the session is not in.
+        if config.pinned_private_key.is_some() {
+            authenticate_publickey_with_rsa_fallbacks(&mut handle, &config).await?;
+        } else if config.pinned_password {
+            let password = config.usable_password().ok_or_else(|| {
+                AerorsyncError::pinned_password_mismatch("the password pin has no password")
+            })?;
+            authenticate_password(&mut handle, &config.username, password, true).await?;
+        } else if authenticate_none(&mut handle, &config.username).await? {
             tracing::info!("aerorsync: server accepted the account with no credential");
         } else if let Some(password) = config.usable_password() {
-            authenticate_password(&mut handle, &config.username, password).await?;
+            authenticate_password(&mut handle, &config.username, password, false).await?;
         } else if config.auth_agent {
             authenticate_agent(&mut handle, &config.username).await?;
         } else {
@@ -647,6 +741,8 @@ pub(crate) fn test_dummy_config() -> SshTransportConfig {
         },
         auth_password: None,
         auth_agent: false,
+        pinned_private_key: None,
+        pinned_password: false,
     }
 }
 
@@ -914,6 +1010,20 @@ impl crate::aerorsync::transport::BidirectionalByteStream for RusshUnusedStream 
 
     async fn shutdown(&mut self) -> Result<(), AerorsyncError> {
         Ok(())
+    }
+}
+
+/// The error of a refused or failed `client::connect`. A host key the
+/// handler refused (`check_server_key` answered false, which russh reports
+/// as `UnknownKey`) is a host key rejection, by the variant and never by the
+/// message: the caller stops on it, where any other connect failure only
+/// means the remote is not reachable for delta.
+fn connect_error(addr: &str, error: russh::Error) -> AerorsyncError {
+    match error {
+        russh::Error::UnknownKey => AerorsyncError::host_key_rejected(format!(
+            "russh connect {addr}: the server's host key is not the pinned one"
+        )),
+        other => AerorsyncError::transport(format!("russh connect {addr}: {other}")),
     }
 }
 
@@ -1400,6 +1510,51 @@ mod tests {
         (port, nones, passwords)
     }
 
+    /// A real handshake against a server whose host key is not the pinned
+    /// one: the connect is a host key rejection by kind, which the probe
+    /// renders as a hard refusal (the sync stops; see
+    /// `probe_error_to_rsync`), not as "delta not available" (the sync
+    /// would go on over the first connection). No credential is sent to
+    /// that server.
+    #[tokio::test]
+    async fn a_host_key_other_than_the_pinned_one_is_a_host_key_rejection() {
+        use crate::aerorsync::types::AerorsyncErrorKind as K;
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        let pinned = SshHostKeyPolicy::PinnedFingerprintSha256 {
+            sha256_hex: "00".repeat(32),
+        };
+        let error = match RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            host_key_policy: pinned,
+            auth_password: Some(SecretString::from("testpass".to_string())),
+            ..dummy_config()
+        })
+        .await
+        {
+            Ok(_) => panic!("a server with another host key was accepted"),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind, K::HostKeyRejected, "{error}");
+        assert_eq!(nones.load(Ordering::SeqCst), 0, "no login was attempted");
+        assert_eq!(passwords.load(Ordering::SeqCst), 0, "no password was sent");
+        // Control: the same server with no pin is reached.
+        RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            ..dummy_config()
+        })
+        .await
+        .expect("the unpinned control connects");
+    }
+
+    /// Any other connect failure stays a transport error: the remote is
+    /// only unavailable for delta.
+    #[test]
+    fn a_connect_failure_that_is_not_a_host_key_refusal_stays_a_transport_error() {
+        use crate::aerorsync::types::AerorsyncErrorKind as K;
+        let error = connect_error("h:22", russh::Error::Disconnect);
+        assert_eq!(error.kind, K::TransportFailure, "{error}");
+    }
+
     #[tokio::test]
     async fn connect_gets_in_through_none_with_no_credential() {
         // `dummy_config()` has no password and a key path that cannot load
@@ -1432,6 +1587,77 @@ mod tests {
         assert_eq!(passwords.load(Ordering::SeqCst), 1);
     }
 
+    /// A password session's delta login on a server that now accepts
+    /// `none`: it never sends `none`, and gets in with the password.
+    #[tokio::test]
+    async fn a_password_pin_never_sends_none_even_where_none_would_get_in() {
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        let pinned = SshTransportConfig {
+            port,
+            auth_password: Some(SecretString::from("testpass".to_string())),
+            pinned_password: true,
+            ..dummy_config()
+        };
+        for _login in 0..2 {
+            // The same config serves every later login (probe, transfer,
+            // reconnect): each one repeats the password.
+            RusshSessionTransport::connect(pinned.clone())
+                .await
+                .expect("in through the password");
+        }
+        assert_eq!(nones.load(Ordering::SeqCst), 0);
+        assert_eq!(passwords.load(Ordering::SeqCst), 2);
+    }
+
+    /// A password pin with nothing to repeat it, or with another credential
+    /// beside it: a typed hard rejection before the socket opens, never a
+    /// login by another method.
+    #[tokio::test]
+    async fn a_password_pin_without_its_password_is_refused_before_any_attempt() {
+        let (port, nones, passwords) = start_none_server(true, Some("testpass")).await;
+        for config in [
+            SshTransportConfig {
+                port,
+                pinned_password: true,
+                ..dummy_config()
+            },
+            SshTransportConfig {
+                port,
+                auth_password: Some(SecretString::from(String::new())),
+                pinned_password: true,
+                ..dummy_config()
+            },
+            SshTransportConfig {
+                port,
+                auth_password: Some(SecretString::from("testpass".to_string())),
+                auth_agent: true,
+                pinned_password: true,
+                ..dummy_config()
+            },
+        ] {
+            let err = RusshSessionTransport::connect(config)
+                .await
+                .err()
+                .expect("refused");
+            assert_eq!(
+                err.kind,
+                crate::aerorsync::types::AerorsyncErrorKind::PinnedPasswordMismatch
+            );
+            assert_eq!(
+                crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+                crate::aerorsync::fallback_policy::FallbackVerdict::HardError
+            );
+        }
+        assert_eq!(nones.load(Ordering::SeqCst), 0);
+        assert_eq!(passwords.load(Ordering::SeqCst), 0);
+        // The key-file leg refuses it too, and the pin routes away from it.
+        let libssh2 = SshTransportConfig {
+            pinned_password: true,
+            ..dummy_config()
+        };
+        assert!(libssh2.prefers_russh_leg());
+    }
+
     #[tokio::test]
     async fn connect_goes_on_to_the_key_when_none_is_refused_and_no_password_is_set() {
         let (port, nones, passwords) = start_none_server(false, None).await;
@@ -1445,5 +1671,247 @@ mod tests {
         assert!(err.to_string().contains("load private key"), "{err}");
         assert_eq!(nones.load(Ordering::SeqCst), 1);
         assert_eq!(passwords.load(Ordering::SeqCst), 0);
+    }
+
+    /// What reached a [`KeyServer`]: how many `none` and password requests,
+    /// and the SHA-256 fingerprint of every public key offered, whether or
+    /// not a signature followed.
+    #[derive(Default)]
+    struct KeyServerLog {
+        nones: AtomicU32,
+        passwords: AtomicU32,
+        offered: std::sync::Mutex<Vec<String>>,
+    }
+
+    /// Accepts `none` (so a client that sent it would get in and be seen)
+    /// and exactly one public key.
+    struct KeyServer {
+        accepted: keys::PublicKey,
+        log: Arc<KeyServerLog>,
+    }
+
+    impl russh::server::Handler for KeyServer {
+        type Error = russh::Error;
+
+        async fn auth_none(&mut self, _user: &str) -> Result<russh::server::Auth, Self::Error> {
+            self.log.nones.fetch_add(1, Ordering::SeqCst);
+            Ok(russh::server::Auth::Accept)
+        }
+
+        async fn auth_password(
+            &mut self,
+            _user: &str,
+            _password: &str,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            self.log.passwords.fetch_add(1, Ordering::SeqCst);
+            Ok(russh::server::Auth::reject())
+        }
+
+        async fn auth_publickey_offered(
+            &mut self,
+            _user: &str,
+            offer: russh::server::PublicKeyOffer<'_>,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            self.log
+                .offered
+                .lock()
+                .unwrap()
+                .push(offer.public_key.fingerprint(HashAlg::Sha256).to_string());
+            Ok(if offer.public_key.key_data() == self.accepted.key_data() {
+                russh::server::Auth::Accept
+            } else {
+                russh::server::Auth::reject()
+            })
+        }
+
+        async fn auth_publickey(
+            &mut self,
+            _user: &str,
+            key: russh::server::VerifiedPublicKey<'_>,
+        ) -> Result<russh::server::Auth, Self::Error> {
+            Ok(if key.public_key.key_data() == self.accepted.key_data() {
+                russh::server::Auth::Accept
+            } else {
+                russh::server::Auth::reject()
+            })
+        }
+    }
+
+    async fn start_key_server(accepted: keys::PublicKey) -> (u16, Arc<KeyServerLog>) {
+        let log = Arc::new(KeyServerLog::default());
+        let host_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let config = Arc::new(russh::server::Config {
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            auth_rejection_time: Duration::ZERO,
+            keys: vec![host_key],
+            ..Default::default()
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server_log = log.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let handler = KeyServer {
+                    accepted: accepted.clone(),
+                    log: server_log.clone(),
+                };
+                let cfg = config.clone();
+                tokio::spawn(async move {
+                    let _ = russh::server::run_stream(cfg, stream, handler).await;
+                });
+            }
+        });
+        (port, log)
+    }
+
+    fn write_key_file(path: &std::path::Path, key: &keys::PrivateKey) {
+        std::fs::write(
+            path,
+            key.to_openssh(keys::ssh_key::LineEnding::LF)
+                .expect("openssh key")
+                .as_bytes(),
+        )
+        .unwrap();
+    }
+
+    /// The session logged in with one key; afterwards the file at the
+    /// configured path is replaced by another valid key that the server
+    /// would also refuse. A transport built with the session key pinned
+    /// offers the session key only: the replacement never reaches the
+    /// server, and neither does `none` or a password.
+    #[tokio::test]
+    async fn pinned_key_is_the_only_identity_offered_after_the_key_file_is_replaced() {
+        let session_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let replacement = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("id_ed25519");
+        write_key_file(&key_path, &session_key);
+
+        let (port, log) = start_key_server(session_key.public_key().clone()).await;
+        let pinned = crate::aerorsync::ssh_transport::PinnedPrivateKey::new(
+            Arc::new(session_key.clone()),
+            crate::aerorsync::ssh_transport::PinnedPrivateKey::fingerprint_of(&session_key),
+        );
+        let session_fingerprint = pinned.public_fingerprint();
+        let replacement_fingerprint = replacement
+            .public_key()
+            .fingerprint(HashAlg::Sha256)
+            .to_string();
+        assert_ne!(session_fingerprint, replacement_fingerprint);
+
+        write_key_file(&key_path, &replacement);
+
+        let transport = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            private_key_path: key_path.clone(),
+            pinned_private_key: Some(pinned),
+            ..dummy_config()
+        })
+        .await
+        .expect("in with the session key");
+        assert_eq!(transport.handshake_count(), 1);
+        let offered = log.offered.lock().unwrap().clone();
+        assert!(!offered.is_empty());
+        assert!(
+            offered.iter().all(|f| *f == session_fingerprint),
+            "only the session key may be offered, got {offered:?}"
+        );
+        assert_eq!(log.nones.load(Ordering::SeqCst), 0);
+        assert_eq!(log.passwords.load(Ordering::SeqCst), 0);
+
+        // Control: the same server and config without the pin sends `none`,
+        // which this server accepts. The pinned connect above did not.
+        let unpinned = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            private_key_path: key_path,
+            ..dummy_config()
+        })
+        .await
+        .expect("the unpinned transport takes the server's none");
+        assert_eq!(unpinned.handshake_count(), 1);
+        assert_eq!(log.nones.load(Ordering::SeqCst), 1);
+    }
+
+    /// A pinned key the server does not accept is a refusal. The transport
+    /// does not go on to `none`, a password, or the key file, although the
+    /// file holds the key the server would accept.
+    #[tokio::test]
+    async fn pinned_key_refused_by_the_server_tries_nothing_else() {
+        let session_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let on_disk = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("id_ed25519");
+        write_key_file(&key_path, &on_disk);
+
+        let (port, log) = start_key_server(on_disk.public_key().clone()).await;
+        let login = crate::aerorsync::ssh_transport::PinnedPrivateKey::fingerprint_of(&session_key);
+        let pinned =
+            crate::aerorsync::ssh_transport::PinnedPrivateKey::new(Arc::new(session_key), login);
+        let session_fingerprint = pinned.public_fingerprint();
+        let err = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            private_key_path: key_path,
+            auth_password: Some(SecretString::from("unused".to_string())),
+            pinned_private_key: Some(pinned),
+            ..dummy_config()
+        })
+        .await
+        .err()
+        .expect("the server refuses the pinned key");
+        // X1: by the server's answer, a refusal of the session's own login,
+        // which stops the sync (never a fallback to classic SFTP).
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::PinnedLoginRefused,
+            "{err}"
+        );
+        assert_eq!(
+            crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+            crate::aerorsync::fallback_policy::FallbackVerdict::HardError
+        );
+        let offered = log.offered.lock().unwrap().clone();
+        assert_eq!(offered, vec![session_fingerprint]);
+        assert_eq!(log.nones.load(Ordering::SeqCst), 0);
+        assert_eq!(log.passwords.load(Ordering::SeqCst), 0);
+    }
+
+    /// The key handed over is not the one the session logged in with: its
+    /// fingerprint differs from the one recorded at login. The transport
+    /// refuses with a typed `PinnedKeyMismatch` before it offers anything,
+    /// although the server would accept the handed-over key.
+    #[tokio::test]
+    async fn pinned_key_that_is_not_the_login_key_is_refused_before_any_offer() {
+        let login_key = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let other = keys::PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("ed25519 key");
+        let (port, log) = start_key_server(other.public_key().clone()).await;
+        let login = crate::aerorsync::ssh_transport::PinnedPrivateKey::fingerprint_of(&login_key);
+        let pinned = crate::aerorsync::ssh_transport::PinnedPrivateKey::new(Arc::new(other), login);
+        let err = RusshSessionTransport::connect(SshTransportConfig {
+            port,
+            auth_password: Some(SecretString::from("unused".to_string())),
+            pinned_private_key: Some(pinned),
+            ..dummy_config()
+        })
+        .await
+        .err()
+        .expect("a key that is not the login key is refused");
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::PinnedKeyMismatch
+        );
+        assert!(log.offered.lock().unwrap().is_empty());
+        assert_eq!(log.nones.load(Ordering::SeqCst), 0);
+        assert_eq!(log.passwords.load(Ordering::SeqCst), 0);
+        assert_eq!(
+            crate::aerorsync::fallback_policy::classify_fallback(&err, false),
+            crate::aerorsync::fallback_policy::FallbackVerdict::HardError
+        );
     }
 }

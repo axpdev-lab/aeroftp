@@ -17794,6 +17794,8 @@ mod tests {
     /// total matches, and the rename publishes the mixture.
     #[tokio::test]
     async fn the_segmented_executor_refuses_an_object_replaced_under_it() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         use std::sync::atomic::{AtomicUsize, Ordering};
         use std::sync::Arc;
         const SIZE: usize = 8 * 1024 * 1024;
@@ -17939,6 +17941,8 @@ mod tests {
     /// the file and the total would still be exactly right.
     #[tokio::test]
     async fn the_segmented_executor_refuses_a_server_that_ignores_the_range() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         const SIZE: usize = 8 * 1024 * 1024;
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
@@ -18001,6 +18005,8 @@ mod tests {
     /// succeeds and the file is published cut to the old length.
     #[tokio::test]
     async fn the_segmented_executor_refuses_a_plan_built_for_another_size() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         const PLANNED: usize = 8 * 1024 * 1024;
         const ACTUAL: usize = 6 * 1024 * 1024;
         let (addr, _gets) = spawn_range_server(ACTUAL, Some("\"v2\""), 206).await;

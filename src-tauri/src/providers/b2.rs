@@ -6288,6 +6288,8 @@ mod tests {
     /// on the download host, and its time goes to the local file.
     #[tokio::test]
     async fn a_download_after_a_refusal_reads_one_stream() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         const MILLIS: i64 = 1_792_000_000_000;
         let app = axum::Router::new().fallback(axum::routing::any(|| async {
             axum::response::Response::builder()
@@ -7419,7 +7421,8 @@ mod tests {
         let (mut provider, ops, _) = provider_for_rename(false, 200).await;
         provider.rename("/a.txt", "/a.txt").await.expect("rename");
         provider.replace("/a.txt", "/a.txt").await.expect("replace");
-        assert!(ops.lock().unwrap().is_empty(), "{:?}", ops.lock().unwrap());
+        let seen = ops.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 
     #[tokio::test]
@@ -7488,6 +7491,8 @@ mod tests {
     /// there to read on one stream, and the progress callback follows it.
     #[tokio::test]
     async fn a_window_answered_for_another_range_falls_back_to_one_stream() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::sync::Arc;
         // A 206 that names a window nobody asked for.

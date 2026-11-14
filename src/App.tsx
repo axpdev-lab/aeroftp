@@ -23,7 +23,7 @@ import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelec
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
@@ -96,6 +96,29 @@ interface ConnectedRemoteRunOptions {
   maniac?: boolean;
   /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
   errorCorrection?: { enabled: boolean; pct: number } | null;
+  /**
+   * E1, E3, P1: the connection the plan's comparison was taken on, captured
+   * by `openAeroSync` (`connectionAtAction`) before the compare and the
+   * journal load, and stored with that comparison; so before the plan is
+   * built and before anything the action waits on (a canary trial and its
+   * approval). The sync-start gate compares the generation with the current
+   * one before ANY launch, whatever the protocol; the delta probe is chosen
+   * from this protocol, never the latest one. A run reads neither for
+   * itself. Required, so no caller can omit it; null (none captured) fails
+   * closed at the gate.
+   */
+  requestedConnection: ConnectionAtAction | null;
+}
+
+/** The connection a comparison, and every sync action on it, was started on
+ *  (E3, P1). */
+interface ConnectionAtAction {
+  /** `provider_connection_generation`, asked for at the capture, for every
+   *  protocol: every remote session is a provider whose connect, disconnect
+   *  and tab switch move it. */
+  generation: Promise<number>;
+  /** The session's protocol at the capture. */
+  protocol: ProviderType | undefined;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -244,7 +267,7 @@ import {
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
-import { useAeroSyncContextActions } from './components/AeroSync/useAeroSyncContextActions';
+import { useAeroSyncContextActions, type AeroSyncState } from './components/AeroSync/useAeroSyncContextActions';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
@@ -460,7 +483,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, runDeltaGate, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -1091,6 +1114,13 @@ const App: React.FC = () => {
   const [aeroSync, setAeroSync] = useState<{
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
+    /**
+     * P1: the connection the comparison in `context` was taken on, captured
+     * by the `openAeroSync` call that built this state (null for a pair with
+     * no remote). Every plan an action builds comes from this comparison or
+     * its journal, so the sync-start gate compares this generation.
+     */
+    connection: ConnectionAtAction | null;
   } | null>(null);
   // A sync or a restore runs inside the window, which owns their state.
   const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
@@ -2605,8 +2635,28 @@ const App: React.FC = () => {
   // connect emits. Names the protocol in the UI only.
   const wentOnOverScpRef = useRef(false);
 
+  // What a provider reported while it connected (`provider_connect` answers
+  // `{ message, warnings }`, the connect's own warnings and no other's): each
+  // is shown once, titled with the existing warning key, its text the
+  // backend's, and kept in the activity log. Any other answer (an older
+  // backend's plain string) holds none (CodeRabbit 4573911765).
+  const showConnectWarnings = useCallback((answer: unknown) => {
+    const warnings = typeof answer === 'object' && answer !== null
+      ? (answer as { warnings?: unknown }).warnings
+      : undefined;
+    if (!Array.isArray(warnings)) return;
+    for (const warning of warnings) {
+      if (typeof warning !== 'string' || !warning) continue;
+      notify.warning(t('common.warning'), warning);
+      // A finished, informational line: 'pending' would count as a running
+      // operation and leave the activity badge active after the connect.
+      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'success');
+    }
+  }, [humanLog, notify, t]);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
-  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`,
+  // then shows what the provider reported while it connected.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
@@ -2616,7 +2666,10 @@ const App: React.FC = () => {
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }), [cancellableConnect]);
+  }).then((answer) => {
+    if (command === 'provider_connect') showConnectWarnings(answer);
+    return answer;
+  }), [cancellableConnect, showConnectWarnings]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -12405,6 +12458,12 @@ const App: React.FC = () => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
+    // P1: the connection this comparison is taken on, read before the
+    // compare and the journal load start. It is stored in the state this call
+    // builds, beside the context, so entries, journal and connection are
+    // replaced together; a click acts on one state, never on a newer
+    // connection with older entries.
+    const connection = connectionAtAction();
     const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
 
     const toCompareEntry = (item: { name: string; is_dir: boolean; size: number | null; modified: string | null }): CompareInputEntry => {
@@ -12432,6 +12491,7 @@ const App: React.FC = () => {
 
       setAeroSync({
         initialTab,
+        connection: null,
         context: {
           compareResult: canRecurse
             ? null
@@ -12548,6 +12608,7 @@ const App: React.FC = () => {
       // responsive while the recursive scan runs.
       setAeroSync({
         initialTab,
+        connection,
         context: {
           compareResult: null,
           compareLoading: startScan,
@@ -12664,6 +12725,7 @@ const App: React.FC = () => {
 
     setAeroSync({
       initialTab,
+      connection: null,
       context: {
         compareResult: null,
         leftLabel: currentLocalPath || t('browser.local'),
@@ -12686,6 +12748,20 @@ const App: React.FC = () => {
   // panels. Both the Plan tab preset executor and the Compare-tab mirror
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
+  //
+  // E1 (D2, Q5), E3, P1: the connection, asked for by `openAeroSync` before
+  // it starts the comparison every plan comes from, so before the plan is
+  // built and before any wait (a canary trial and its approval): its
+  // generation, for every protocol, and its protocol. It is stored with the
+  // comparison; a run carries it to the sync-start gate, which compares the
+  // generation with the current one before any launch, SFTP or not.
+  const connectionAtAction = useLatestCallback((): ConnectionAtAction => {
+    const generation = invoke<number>('provider_connection_generation');
+    // An unread rejection would surface as unhandled when no gate awaits it.
+    generation.catch(() => undefined);
+    return { generation, protocol: activeUnifiedRemoteProfile?.protocol };
+  });
+
   const runConnectedRemoteSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
@@ -12704,7 +12780,9 @@ const App: React.FC = () => {
       return;
     }
 
-    const protocol = activeUnifiedRemoteProfile?.protocol;
+    // E3: the protocol of the action's connection. A later one belongs to
+    // another connection, which the gate refuses.
+    const protocol = opts.requestedConnection?.protocol;
     // AeroSync runner routing must match how the connection was actually
     // dialled. A modern FTP/FTPS session lives in `state.provider` (the
     // StorageProvider impl), exactly like SFTP and the cloud providers, and
@@ -12807,28 +12885,45 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the probe entirely.
-    const shouldProbe = protocol === 'sftp' && !!opts.profileId;
-    if (!shouldProbe) {
-      launchRun();
-      return;
-    }
-
-    void (async () => {
-      try {
-        const stored = await loadSavedServerProfiles();
-        const profile = stored.find((p) => p.id === opts.profileId);
-        if (profile?.skipDeltaEligibilityPrompt) {
-          launchRun();
-          return;
+    // unavailable. Every SFTP session is probed, an ad-hoc one (no saved
+    // profile) too: it reaches native delta and pins its login key like any
+    // other. A saved per-server opt-out, or having no saved profile, skips
+    // the question about continuing without delta, never the probe: a hard
+    // refusal stops the run before any write (C2, D2, `runDeltaGate`).
+    // E3: every run goes through the gate, which compares the action's
+    // generation with the current one before any launch; only a run whose
+    // action saw an SFTP session probes.
+    void runDeltaGate({
+      // No connection captured with the comparison: nothing to compare
+      // with, so the gate reports a change and launches nothing (P1).
+      requested: opts.requestedConnection?.generation
+        ?? Promise.reject(new Error('no connection was captured with this comparison')),
+      probeDelta: protocol === 'sftp',
+      generation: () => invoke<number>('provider_connection_generation'),
+      // The question keeps its answer in a saved profile: a session with no
+      // saved profile (no id, or the fallback id of an ad-hoc session, which
+      // no saved profile has) skips it, as an unreadable profile list does
+      // (`runDeltaGate`). The probe and a hard refusal apply all the same.
+      skipPrompt: async () => {
+        if (!opts.profileId) return true;
+        const profile = (await loadSavedServerProfiles()).find((p) => p.id === opts.profileId);
+        return !profile || profile.skipDeltaEligibilityPrompt === true;
+      },
+      probe: () => invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility'),
+      launch: launchRun,
+      refuse: (message) => notify.error(t('aerosync.title'), message),
+      failed: (err) => {
+        if (debugMode) {
+          // eslint-disable-next-line no-console
+          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
         }
-        const verdict = await invoke<DeltaEligibilityProbeResult>(
-          'sftp_probe_delta_eligibility',
+        notify.error(
+          t('aerosync.deltaEligibility.title'),
+          `${t('aerosync.deltaEligibility.heading')} ${t('common.retry')}`,
         );
-        if (verdict.eligible) {
-          launchRun();
-          return;
-        }
+      },
+      changed: () => notify.error(t('aerosync.title'), t('toast.remoteTargetChanged')),
+      ask: (verdict, onContinue) => {
         const reason = verdict.reason
           || t('aerosync.deltaEligibility.heading')
           || 'Delta sync unavailable for this server.';
@@ -12839,17 +12934,10 @@ const App: React.FC = () => {
           reason,
           serverLabel,
           profileId: opts.profileId!,
-          onContinue: () => { launchRun(); },
+          onContinue,
         });
-      } catch (err) {
-        // Probe failures should not block the run; log and proceed.
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
-        }
-        launchRun();
-      }
-    })();
+      },
+    });
   });
 
   // GAP-10: shared local-local sync launcher. A dual-local AeroFile pair has
@@ -12948,6 +13036,9 @@ const App: React.FC = () => {
   });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -12978,6 +13069,7 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        requestedConnection,
       });
     }
   }, [
@@ -12987,6 +13079,9 @@ const App: React.FC = () => {
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13013,6 +13108,7 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        requestedConnection,
       });
     }
   }, [
@@ -13027,6 +13123,9 @@ const App: React.FC = () => {
   // local-local pair resumes through `runLocalLocalSync`, every other pair
   // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
+    // E1, P1: the connection the journal was loaded on, captured with the
+    // comparison by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
@@ -13046,11 +13145,22 @@ const App: React.FC = () => {
       retryPolicy: journal.retry_policy,
       resumeJournal: journal,
       profileId: context.activeProfileId,
+      requestedConnection,
     });
   }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
 
+  // The context hook edits the comparison it was given; the connection that
+  // comparison was taken on travels with it unchanged (P1).
+  const setAeroSyncComparison = useCallback<Dispatch<SetStateAction<AeroSyncState | null>>>((action) => {
+    setAeroSync((prev) => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next === prev) return prev;
+      return next ? { ...next, connection: prev?.connection ?? null } : null;
+    });
+  }, []);
+
   const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
-    useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
+    useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);
 
 
   /**
@@ -13064,6 +13174,11 @@ const App: React.FC = () => {
    * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
+    // E1, P1: the connection of the comparison the plan comes from, captured
+    // by the openAeroSync call that built this state, before the compare: a
+    // run approved after a connection switch (a canary wait included) is the
+    // earlier connection's plan, and the gate must see that.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13146,6 +13261,7 @@ const App: React.FC = () => {
           maniac: runtime.speedMode === 'maniac',
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
+          requestedConnection,
         });
       };
 
@@ -18917,7 +19033,7 @@ const App: React.FC = () => {
               // switch that lands after the check above is refused there too.
               await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
             } catch (e) {
-              if (String(e).startsWith('CONNECTION_CHANGED')) sessionChanged();
+              if (String(e).includes('CONNECTION_CHANGED')) sessionChanged();
               else notify.error(t('common.failed'), String(e));
               return;
             } finally {

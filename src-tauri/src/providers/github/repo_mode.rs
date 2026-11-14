@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use crate::providers::{ProviderError, RemoteEntry, StorageProvider};
 
 use super::model::{GitHubContent, GitHubContentDelete, GitHubContentUpdate};
-use super::releases_mode::delete_release;
+use super::releases_mode::{delete_release, delete_release_asset};
 use super::{GitHubVirtualPath, GitHubWriteMode};
 
 /// Maximum number of files to fetch commit dates for (avoids rate-limit pressure)
@@ -150,7 +150,8 @@ impl GitHubProvider {
 
         let http = self.client.client.clone();
         let token = format!("Bearer {}", self.client.token.expose_secret());
-        let branch = self.branch.clone();
+        // S3a: the dates of the tree being listed, the content branch's.
+        let branch = self.content_branch().to_string();
 
         // Collect (index, repo_path) pairs: strip leading "/" from entry paths
         let tasks: Vec<(usize, String)> = entries
@@ -221,7 +222,10 @@ impl GitHubProvider {
         if norm.is_empty() {
             format!(
                 "{}/repos/{}/{}/contents?ref={}",
-                API_BASE, self.owner, self.repo, self.branch
+                API_BASE,
+                self.owner,
+                self.repo,
+                self.encoded_content_branch_for_query()
             )
         } else {
             {
@@ -232,7 +236,11 @@ impl GitHubProvider {
                     .join("/");
                 format!(
                     "{}/repos/{}/{}/contents/{}?ref={}",
-                    API_BASE, self.owner, self.repo, encoded_path, self.branch
+                    API_BASE,
+                    self.owner,
+                    self.repo,
+                    encoded_path,
+                    self.encoded_content_branch_for_query()
                 )
             }
         }
@@ -243,7 +251,10 @@ impl GitHubProvider {
         let norm = normalize_path(path);
         format!(
             "https://raw.githubusercontent.com/{}/{}/{}/{}",
-            self.owner, self.repo, self.branch, norm
+            self.owner,
+            self.repo,
+            self.content_branch(),
+            norm
         )
     }
 
@@ -311,7 +322,10 @@ impl GitHubProvider {
     async fn fetch_full_tree(&mut self) -> Result<Vec<GitTreeEntry>, ProviderError> {
         let url = format!(
             "{}/repos/{}/{}/git/trees/{}?recursive=1",
-            API_BASE, self.owner, self.repo, self.branch
+            API_BASE,
+            self.owner,
+            self.repo,
+            urlencoding::encode(self.content_branch())
         );
 
         gh_log(&format!("Fetching full tree: {}", url));
@@ -499,6 +513,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -586,6 +601,7 @@ impl GitHubProvider {
         remote_path: &str,
         commit_message: Option<&str>,
     ) -> Result<(), ProviderError> {
+        self.refuse_stale_write().await?;
         // Enforce write-mode policy
         if let GitHubWriteMode::ReadOnly { ref reason } = self.write_mode {
             return Err(ProviderError::PermissionDenied(reason.clone()));
@@ -653,6 +669,8 @@ impl GitHubProvider {
                 "Creating GitHub releases via mkdir is not supported".to_string(),
             ));
         }
+        // After the release path is answered, which is not the tree (Q2).
+        self.refuse_stale_write().await?;
 
         let gitkeep_path = format!("{}/.gitkeep", norm);
         let default_msg = format!("Create directory {} via AeroFTP", norm);
@@ -704,11 +722,24 @@ impl GitHubProvider {
                 GitHubVirtualPath::ReleaseTag(tag) => {
                     delete_release(&mut self.client, &self.owner, &self.repo, &tag).await
                 }
-                GitHubVirtualPath::ReleaseAsset { .. } => {
-                    self.delete_file(path, commit_message).await
+                // An asset is the release's, deleted as the provider's
+                // `delete` deletes one, not through the contents API.
+                GitHubVirtualPath::ReleaseAsset { tag, asset_name } => {
+                    delete_release_asset(
+                        &mut self.client,
+                        &self.owner,
+                        &self.repo,
+                        &tag,
+                        &asset_name,
+                    )
+                    .await
                 }
             };
         }
+        // A release (an asset, a tag) is not the session's tree: it was
+        // dispatched above, and only a tree write is refused after a
+        // fallback (Q2), as `rmdir_recursive` does.
+        self.refuse_stale_write().await?;
 
         // Each child's path is built from a name the API gave: every one
         // must be inside the folder before any of them is deleted.
@@ -836,12 +867,18 @@ impl GitHubProvider {
         if is_private {
             format!(
                 "https://github.com/{}/{}/blob/{}/{}",
-                self.owner, self.repo, self.branch, norm
+                self.owner,
+                self.repo,
+                self.content_branch(),
+                norm
             )
         } else {
             format!(
                 "https://raw.githubusercontent.com/{}/{}/{}/{}",
-                self.owner, self.repo, self.branch, norm
+                self.owner,
+                self.repo,
+                self.content_branch(),
+                norm
             )
         }
     }
@@ -850,7 +887,10 @@ impl GitHubProvider {
     pub async fn get_head_sha(&mut self) -> Result<String, ProviderError> {
         let url = format!(
             "{}/repos/{}/{}/git/ref/heads/{}",
-            API_BASE, self.owner, self.repo, self.branch
+            API_BASE,
+            self.owner,
+            self.repo,
+            self.content_branch()
         );
 
         gh_log(&format!("get_head_sha: {}", url));
@@ -863,7 +903,8 @@ impl GitHubProvider {
 
         gh_log(&format!(
             "HEAD sha for {}: {}",
-            self.branch, ref_resp.object.sha
+            self.content_branch(),
+            ref_resp.object.sha
         ));
 
         Ok(ref_resp.object.sha)

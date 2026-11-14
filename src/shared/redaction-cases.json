@@ -266,11 +266,501 @@
   {
     "name": "sftp url credential",
     "input": "connect sftp://admin:hunter2@host/path",
-    "expected": "connect sftp://admin:***REDACTED***@host/path"
+    "expected": "connect sftp://***REDACTED***@host/path"
   },
   {
     "name": "scp url credential",
     "input": "connect scp://root:hunter2@router.lan:22/",
-    "expected": "connect scp://root:***REDACTED***@router.lan:22/"
+    "expected": "connect scp://***REDACTED***@router.lan:22/"
+  },
+  {
+    "name": "url password holding @",
+    "input": "connect ftp://bob:p@ss@host/file",
+    "expected": "connect ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url with a port and @ in the path",
+    "input": "GET https://host:443/docs/me@home",
+    "expected": "GET https://host:443/docs/me@home"
+  },
+  {
+    "name": "url with a port and @ in the query",
+    "input": "GET https://host:443/a?to=x@y",
+    "expected": "GET https://host:443/a?to=x@y"
+  },
+  {
+    "name": "url with a port and @ in the fragment",
+    "input": "GET https://host:443/a#x@y",
+    "expected": "GET https://host:443/a#x@y"
+  },
+  {
+    "name": "url followed by a json password field",
+    "input": "{\"url\":\"ftp://bob:pw1@host\",\"password\":\"foo@bar\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url username holding @",
+    "input": "open ftp://alice@example.com:secret@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url password holding an apostrophe",
+    "input": "open ftp://bob:pa'ss@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url user name holding an apostrophe",
+    "input": "open ftp://o'brien:secret@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url inside backticks",
+    "input": "see `ftp://bob:pw@host/x` now",
+    "expected": "see `ftp://***REDACTED***@host/x` now"
+  },
+  {
+    "name": "url password holding a backtick and parentheses",
+    "input": "(ftp://bob:p`(w)@host)",
+    "expected": "(ftp://***REDACTED***@host)"
+  },
+  {
+    "name": "url password holding an escaped quote inside a json string",
+    "input": "{\"url\":\"ftp://bob:pa\\\"ss@host\",\"password\":\"x\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url password ending in a backslash",
+    "input": "open ftp://bob:pw\\@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url password ending in a backslash inside a json string",
+    "input": "{\"url\":\"ftp://bob:pw\\\\@host/file\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "url user name ending in a backslash, password holding a colon (over-masked by policy: the `secret:` field value runs through the at sign and takes the host)",
+    "input": "open ftp://bob\\:secret:tail@host/file",
+    "expected": "open ftp://***REDACTED***"
+  },
+  {
+    "name": "url token as user name, no colon",
+    "input": "GET https://ghp_tokenvalue123@github.com/o/r",
+    "expected": "GET https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url empty password",
+    "input": "open ftp://user:@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url password holding colons",
+    "input": "open ftp://u:p:q@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url password holding several @",
+    "input": "open ftp://u:a@b@c@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url ipv6 host after the userinfo",
+    "input": "open sftp://u:p@[::1]:22/x",
+    "expected": "open sftp://***REDACTED***@[::1]:22/x"
+  },
+  {
+    "name": "url authority with a port and no userinfo",
+    "input": "GET https://host:443/x",
+    "expected": "GET https://host:443/x"
+  },
+  {
+    "name": "url token user name with a nonempty password",
+    "input": "git clone https://ghp_tokenvalue123:x-oauth-basic@github.com/o/r",
+    "expected": "git clone https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url token user name with an empty password",
+    "input": "git clone https://ghp_tokenvalue123:@github.com/o/r",
+    "expected": "git clone https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url token after a url without userinfo in an escaped json string",
+    "input": "{\\\"a\\\":\\\"https://public.example\\\",\\\"b\\\":\\\"https://ghp_abcdefghijklmnop:@internal/path\\\"}",
+    "expected": "{\\\"a\\\":\\\"https://public.example\\\",\\\"b\\\":\\\"https://***REDACTED***@internal/path\\\"}"
+  },
+  {
+    "name": "url password after a url without userinfo in an escaped json string",
+    "input": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://bob:s3cret@host/x\\\"}",
+    "expected": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://***REDACTED***@host/x\\\"}"
+  },
+  {
+    "name": "a url without userinfo in an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"a\\\":\\\"https://***REDACTED***@y\\\"}"
+  },
+  {
+    "name": "url password in an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}"
+  },
+  {
+    "name": "url password holding an escaped quote and a comma in plain json",
+    "input": "{\"url\":\"https://bob:pa\\\",ss@host/path\"}",
+    "expected": "{\"url\":\"https://***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "url password holding a deeper escaped quote inside an escaped json string (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\\\"u\\\":\\\"ftp://bob:pa\\\\\\\",ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}"
+  },
+  {
+    "name": "url password holding an escaped quote and a comma in a sentence",
+    "input": "upload to ftp://bob:pa\\\",ss@host failed",
+    "expected": "upload to ftp://***REDACTED***@host failed"
+  },
+  {
+    "name": "Q3 cell bare text: an escaped quote and colon in a password",
+    "input": "upload to ftp://bob:pa\\\":ss@host failed",
+    "expected": "upload to ftp://***REDACTED***@host failed"
+  },
+  {
+    "name": "Q3 cell plain json at the string start: escaped quote and brace in a password, next field kept",
+    "input": "{\"url\":\"ftp://bob:pa\\\"}ss@host\",\"b\":\"x@y\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "Q3 cell plain json mid-string: the reported input",
+    "input": "{\"message\":\"upload to ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"upload to ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "Q3 cell plain json mid-string: an authority without userinfo keeps the next field",
+    "input": "{\"m\":\"see ftp://mirror.example\",\"b\":\"x@y\"}",
+    "expected": "{\"m\":\"see ftp://mirror.example\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "Q3 cell escaped json mid-string: a deeper quote and colon in a password (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\\\"m\\\":\\\"upload to ftp://bob:pa\\\\\\\":ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"m\\\":\\\"upload to ftp://***REDACTED***@y\\\"}"
+  },
+  {
+    "name": "Q3 cell two levels down: masked (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://bob:pw@host\\\\\\\",\\\\\\\"b\\\\\\\":\\\\\\\"x@y\\\\\\\"}",
+    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@y\\\\\\\"}"
+  },
+  {
+    "name": "Q3 cell two levels down: a three-level quote in a password",
+    "input": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://bob:pa\\\\\\\\\\\\\\\"ss@host\\\\\\\"}",
+    "expected": "{\\\\\\\"u\\\\\\\":\\\\\\\"ftp://***REDACTED***@host\\\\\\\"}"
+  },
+  {
+    "name": "Q3 cell outside a string, after a closing quote",
+    "input": "{\"k\": ftp://bob:p\\\"w@host}",
+    "expected": "{\"k\": ftp://***REDACTED***@host}"
+  },
+  {
+    "name": "Q3 a quote inside an earlier password sets no level for the next url",
+    "input": "{\"m\":\"ftp://a:p\\\\\\\"q@h1 and ftp://bob:pa\\\":ss@h2\"}",
+    "expected": "{\"m\":\"ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2\"}"
+  },
+  {
+    "name": "A prose quotes before the url, then an escaped quote and colon in the password",
+    "input": "{\"message\":\"note \\\"hello\\\" then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"note \\\"hello\\\" then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A prose quotes before the url, then an escaped quote in the password",
+    "input": "{\"message\":\"say \\\"hi\\\" then ftp://bob:pa\\\"ss@host/file\"}",
+    "expected": "{\"message\":\"say \\\"hi\\\" then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A prose quotes and a semicolon before the url",
+    "input": "{\"message\":\"server said \\\"retry\\\"; upload to ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"server said \\\"retry\\\"; upload to ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A an unbalanced prose quote before the url is not trusted: masked",
+    "input": "{\"m\":\"he said \\\"hi then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"m\":\"he said \\\"hi then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "A two urls in one string, the second with an escaped quote in its password",
+    "input": "{\"m\":\"a ftp://a:p1@h1 and ftp://b:p\\\":2@h2/x\"}",
+    "expected": "{\"m\":\"a ftp://***REDACTED***@h1 and ftp://***REDACTED***@h2/x\"}"
+  },
+  {
+    "name": "C3 a url in escaped json after prose in the same string: not a json document, over-masked, never leaked",
+    "input": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
+    "expected": "{\"m\":\"note \\\"x\\\" {\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}\"}"
+  },
+  {
+    "name": "C3 a prose quote after a colon: note",
+    "input": "{\"message\":\"note: \\\"hello then ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"note: \\\"hello then ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "C3 a prose quote after a colon: warning",
+    "input": "{\"message\":\"warning: \\\"retry ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"warning: \\\"retry ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "C3 a brace-less sentence with a colon and quotes before the url",
+    "input": "{\"m\":\"status: \\\"ok\\\" and then ftp://bob:pa\\\":ss@host/x\"}",
+    "expected": "{\"m\":\"status: \\\"ok\\\" and then ftp://***REDACTED***@host/x\"}"
+  },
+  {
+    "name": "C3 a serialized json document inside a string after leading spaces (over-masked by policy: one string token or not JSON as a whole)",
+    "input": "{\"m\":\"  {\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}\"}",
+    "expected": "{\"m\":\"  {\\\"u\\\":\\\"ftp://***REDACTED***@y\\\"}\"}"
+  },
+  {
+    "name": "C3 a string that starts with a brace but is not json: masked",
+    "input": "{\"m\":\"{not json \\\"x ftp://u:p\\\"w@h/\"}",
+    "expected": "{\"m\":\"{not json \\\"x ftp://***REDACTED***@h/\"}"
+  },
+  {
+    "name": "D1 a leading brace in a sentence is not json either",
+    "input": "{\"message\":\"{warning: \\\"retry ftp://bob:pa\\\":ss@host/file\"}",
+    "expected": "{\"message\":\"{warning: \\\"retry ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "D1 valid json: an authority without userinfo keeps the next field exactly",
+    "input": "{\"a\":\"https://host:443\",\"b\":\"x@y\"}",
+    "expected": "{\"a\":\"https://host:443\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 valid json: a password ends at its own string token, the next field kept",
+    "input": "{\"u\":\"ftp://bob:pw@host\",\"b\":\"x@y\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 a log prefix before json is not json as a whole (over-masked by policy)",
+    "input": "log: {\"u\":\"ftp://host:443\",\"b\":\"x@y\"}",
+    "expected": "log: {\"u\":\"ftp://***REDACTED***@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: duplicate keys are valid json",
+    "input": "{\"u\":\"ftp://bob:pw@host\",\"u\":\"x@y\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\",\"u\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: a number past the double range is valid json",
+    "input": "{\"n\":1e400,\"u\":\"ftp://host\",\"b\":\"x@y\"}",
+    "expected": "{\"n\":1e400,\"u\":\"ftp://host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: a lone surrogate escape is valid json",
+    "input": "{\"s\":\"\\ud800\",\"u\":\"ftp://host\",\"b\":\"x@y\"}",
+    "expected": "{\"s\":\"\\ud800\",\"u\":\"ftp://host\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "D1 parsers agree: trailing whitespace is valid json",
+    "input": "{\"u\":\"ftp://host\",\"b\":\"x@y\"}  \n",
+    "expected": "{\"u\":\"ftp://host\",\"b\":\"x@y\"}  \n"
+  },
+  {
+    "name": "D1 parsers agree: a raw tab inside a string is not json, read as plain text (over-masked by policy: no field boundary, and whitespace does not end the authority)",
+    "input": "{\"u\":\"ftp://host\",\"b\":\"x\t@y\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@y\"}"
+  },
+  {
+    "name": "S1 escaped slashes in a valid json string are decoded: masked",
+    "input": "{\"url\":\"https:\\/\\/bob:secret@host/path\"}",
+    "expected": "{\"url\":\"https:\\/\\/***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "S1 an escaped colon in the scheme delimiter",
+    "input": "{\"url\":\"https\\u003a//bob:secret@host/path\"}",
+    "expected": "{\"url\":\"https\\u003a//***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "S1 unicode-escaped slashes in the scheme delimiter",
+    "input": "{\"url\":\"https:\\u002f\\u002fbob:secret@host\"}",
+    "expected": "{\"url\":\"https:\\u002f\\u002f***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1 an escaped at sign ending the userinfo: the escape is kept, the userinfo before it masked",
+    "input": "{\"url\":\"https://bob:secret\\u0040host/path\"}",
+    "expected": "{\"url\":\"https://***REDACTED***\\u0040host/path\"}"
+  },
+  {
+    "name": "S1 literal and escaped delimiters mixed",
+    "input": "{\"url\":\"ftp:/\\/bob:pa\\u003ass\\u0040host\\/x\"}",
+    "expected": "{\"url\":\"ftp:/\\/***REDACTED***\\u0040host\\/x\"}"
+  },
+  {
+    "name": "S1 an escaped at sign inside the password, a literal one last",
+    "input": "{\"url\":\"ftp://bob:pa\\u0040ss@host\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1 a document escaped inside a string is decoded in turn: two levels",
+    "input": "{\"log\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/bob:secret@host\\\"}\"}",
+    "expected": "{\"log\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/***REDACTED***@host\\\"}\"}"
+  },
+  {
+    "name": "S1 decoded at every level: three levels of serialized json",
+    "input": "{\"log\":\"{\\\"inner\\\": \\\"{\\\\\\\"url\\\\\\\": \\\\\\\"https://bob:secret@host\\\\\\\"}\\\"}\"}",
+    "expected": "{\"log\":\"{\\\"inner\\\": \\\"{\\\\\\\"url\\\\\\\": \\\\\\\"https://***REDACTED***@host\\\\\\\"}\\\"}\"}"
+  },
+  {
+    "name": "S1 a url in an escaped object key",
+    "input": "{\"https:\\/\\/bob:pw@h\":1}",
+    "expected": "{\"https:\\/\\/***REDACTED***@h\":1}"
+  },
+  {
+    "name": "S1 an escaped token with no userinfo stays, and the next field is not reached",
+    "input": "{\"m\":\"say \\\"hi\\\" at https://host/x\",\"b\":\"x@y\"}",
+    "expected": "{\"m\":\"say \\\"hi\\\" at https://host/x\",\"b\":\"x@y\"}"
+  },
+  {
+    "name": "S1 parsers agree: a lone surrogate escape in a token that holds an escaped url",
+    "input": "{\"s\":\"\\ud800 https:\\/\\/bob:pw@h\"}",
+    "expected": "{\"s\":\"\\ud800 https:\\/\\/***REDACTED***@h\"}"
+  },
+  {
+    "name": "S1 any scheme: an s3 url, in both entry points",
+    "input": "get s3://AKIAEXAMPLE:secretkey@bucket/key failed",
+    "expected": "get s3://***REDACTED***@bucket/key failed"
+  },
+  {
+    "name": "S1 any scheme: a database url",
+    "input": "connect postgres://app:pw@db/x",
+    "expected": "connect postgres://***REDACTED***@db/x"
+  },
+  {
+    "name": "S1 any scheme: no scheme name at all over-masks",
+    "input": "see ://bob:pw@host now",
+    "expected": "see ://***REDACTED***@host now"
+  },
+  {
+    "name": "S1 an escaped newline in a password ends the decoded authority but not the raw one: the union of both scans is masked",
+    "input": "{\"u\":\"ftp://bob:pa\\nss@host\"}",
+    "expected": "{\"u\":\"ftp://***REDACTED***@host\"}"
+  },
+  {
+    "name": "S1b/T3 x-api-key inside the userinfo: the userinfo and the field's value are masked as one (over-masked by policy: the value takes the host)",
+    "input": "https://tokenvalue123:x-api-key: foo@host/path",
+    "expected": "https://***REDACTED***"
+  },
+  {
+    "name": "S1b/T3 a key=value secret inside the userinfo, masked with it (over-masked by policy)",
+    "input": "https://tok:password=abc@host/path",
+    "expected": "https://***REDACTED***"
+  },
+  {
+    "name": "S1b/T3 an authorization header inside the userinfo, masked with it (over-masked by policy)",
+    "input": "https://tok:authorization: Basic abc@host/x",
+    "expected": "https://***REDACTED***"
+  },
+  {
+    "name": "S1b a space in a password does not end the userinfo",
+    "input": "ftp://bob:pass word@host/x",
+    "expected": "ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "T3 the bot's input: a password field after a url with no path keeps nothing of its value",
+    "input": "connect https://example.com password=\\\"prefix@sensitive/suffix\\\"",
+    "expected": "connect https://***REDACTED***"
+  },
+  {
+    "name": "T3 the same with plain quotes",
+    "input": "connect https://example.com password=\"prefix@sensitive/suffix\"",
+    "expected": "connect https://***REDACTED***"
+  },
+  {
+    "name": "T3 a secret field after a url with no path: the field's value and the userinfo are masked as one",
+    "input": "fetch https://host token=abc@x done",
+    "expected": "fetch https://***REDACTED*** done"
+  },
+  {
+    "name": "T3 a url inside a secret field's value",
+    "input": "password=https://u:p@h/x next",
+    "expected": "password=***REDACTED*** next"
+  },
+  {
+    "name": "T3 two secret fields that overlap",
+    "input": "x-api-key: token=abc rest",
+    "expected": "x-api-key: ***REDACTED*** rest"
+  },
+  {
+    "name": "U1 the bot's input: a Windows home folder that runs into a password field keeps its mask and covers the field",
+    "input": "open C:\\Users\\Alice password=\"hunter2\"",
+    "expected": "open C:\\Users\\***"
+  },
+  {
+    "name": "U1 the same with escaped quotes",
+    "input": "open C:\\Users\\Alice password=\\\"hunter2\\\"",
+    "expected": "open C:\\Users\\***"
+  },
+  {
+    "name": "U1 a Windows home folder with a space is masked whole",
+    "input": "C:\\Users\\John Smith\\Documents\\a.txt",
+    "expected": "C:\\Users\\***\\Documents\\a.txt"
+  },
+  {
+    "name": "U1 a Windows home folder with a space before a password field",
+    "input": "C:\\Users\\John Smith password=x",
+    "expected": "C:\\Users\\***"
+  },
+  {
+    "name": "U1 a line break ends a Windows home folder",
+    "input": "C:\\Users\\Alice\nnext line",
+    "expected": "C:\\Users\\***\nnext line"
+  },
+  {
+    "name": "U1 the POSIX twin",
+    "input": "open /home/alice password=\"hunter2\"",
+    "expected": "open /home/*** password=***REDACTED***"
+  },
+  {
+    "name": "U1 an identity span straddling a credential on both sides keeps its mask and joins the union",
+    "input": "C:\\Users\\bob-token=abc,def",
+    "expected": "C:\\Users\\***"
+  },
+  {
+    "name": "X2 the bot's line: escaped URL delimiters after a prefix, the text not JSON as a whole",
+    "input": "log: {\"url\":\"https:\\/\\/bob:hunter2@host/path\"}",
+    "expected": "log: {\"url\":\"https:\\/\\/***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "X2 the same with unicode escapes",
+    "input": "log: {\"url\":\"https\\u003a\\u002f\\u002fbob:hunter2\\u0040host\\u002fpath\"}",
+    "expected": "log: {\"url\":\"https\\u003a\\u002f\\u002f***REDACTED***\\u0040host\\u002fpath\"}"
+  },
+  {
+    "name": "X2 two levels deep after a prefix",
+    "input": "log: {\"a\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/bob:hunter2@host\\\\\\/p\\\"}\"}",
+    "expected": "log: {\"a\":\"{\\\"url\\\":\\\"https:\\\\\\/\\\\\\/***REDACTED***@host\\\\\\/p\\\"}\"}"
+  },
+  {
+    "name": "X2 a prefix and a suffix around the JSON",
+    "input": "GET 500 {\"url\":\"https:\\/\\/bob:hunter2@host/p\"} took 3ms",
+    "expected": "GET 500 {\"url\":\"https:\\/\\/***REDACTED***@host/p\"} took 3ms"
+  },
+  {
+    "name": "X2 JSON with a trailing comma, invalid, still masked",
+    "input": "{\"url\":\"https:\\/\\/bob:hunter2@host/p\",}",
+    "expected": "{\"url\":\"https:\\/\\/***REDACTED***@host/p\",}"
+  },
+  {
+    "name": "X2 JSON with single quotes, invalid, still masked",
+    "input": "{'url':'https:\\/\\/bob:hunter2@host/p'}",
+    "expected": "{'url':'https:\\/\\/***REDACTED***@host/p'}"
+  },
+  {
+    "name": "X2 malformed escapes are literal, the escaped URL beside them is masked",
+    "input": "C:\\tmp\\x1 https:\\/\\/bob:hunter2\\u12@host/p",
+    "expected": "C:\\tmp\\x1 https:\\/\\/***REDACTED***@host/p"
+  },
+  {
+    "name": "R1 delimiters spelled through a re-forming escape, within the bound, masked exactly",
+    "input": "log: https:\\u005c/\\u005c/bob:hunter2@host/p",
+    "expected": "log: https:\\u005c/\\u005c/***REDACTED***@host/p"
+  },
+  {
+    "name": "R1 a backslash run that re-forms an escape, within the bound, masked exactly",
+    "input": "log: https:\\\\\\\\u002f\\\\\\\\u002fbob:hunter2@host/p",
+    "expected": "log: https:\\\\\\\\u002f\\\\\\\\u002f***REDACTED***@host/p"
   }
 ]

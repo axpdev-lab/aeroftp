@@ -2163,10 +2163,40 @@ pub(crate) fn without_unclassified_items(raw: &str) -> &str {
     }
 }
 
+/// How the display text of [`ProviderError::TargetChanged`] starts, and of
+/// every refusal of its family (the `CONNECTION_CHANGED: ...` errors of the
+/// window's commands): what the session acts on is no longer what the caller
+/// asked for.
+pub const TARGET_CHANGED_MARKER: &str = "CONNECTION_CHANGED:";
+
+/// Whether a rendered error is a refusal of that family, wherever the marker
+/// stands in it: an operation that reports a failure puts its own words in
+/// front (`upload failed: CONNECTION_CHANGED: ...`), and so can the window.
+/// The caller's own file path is taken out first when it holds the marker
+/// itself, and only then, so a file named after the marker is not read as
+/// the refusal and a short path (`a`) removes nothing from the text. A text
+/// that names the marker for any other reason is read as the refusal: the
+/// answer then is not to retry, which is the safe one.
+pub fn is_target_changed_text(raw: &str, file_path: Option<&str>) -> bool {
+    match file_path.filter(|path| path.contains(TARGET_CHANGED_MARKER)) {
+        Some(path) => raw.replace(path, "").contains(TARGET_CHANGED_MARKER),
+        None => raw.contains(TARGET_CHANGED_MARKER),
+    }
+}
+
 /// Provider error type
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum ProviderError {
+    /// What the session acts on is no longer what the caller's plan was made
+    /// for: another account's authorization, or a write target that moved
+    /// (a GitHub session that left its protected branch). The text starts
+    /// with [`TARGET_CHANGED_MARKER`] and claims no more than that.
+    #[error(
+        "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again"
+    )]
+    TargetChanged,
+
     #[error("Not connected to server")]
     NotConnected,
 

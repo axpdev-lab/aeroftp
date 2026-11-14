@@ -1114,8 +1114,23 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.display_name()
     }
 
+    /// The wrapped session's poison: the inner provider refuses the writes,
+    /// and the GUI target reads the flag through the overlay.
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        self.inner.target_poison()
+    }
+
     fn account_email(&self) -> Option<String> {
         self.inner.account_email()
+    }
+
+    /// The wrapped session's own namespace (CodeRabbit 4575254547): an
+    /// overlay changes what the files hold, never which account, mount or
+    /// branch they are on. Without it a wrapped GitHub session on `main` and
+    /// one on its working branch had one sync identity, the login, and the
+    /// baseline of one tree served the other.
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.inner.sync_namespace_identity()
     }
 
     async fn connect(&mut self) -> Result<(), ProviderError> {
@@ -4589,6 +4604,35 @@ pub(crate) mod tests {
     /// holds, which is the overlay: a Proton CLI behind encryption must still
     /// purge a live path, and a Koofr behind it must still say its trash was
     /// left.
+    /// M10: GitHub wrapped in a crypt or a compress overlay. The inner
+    /// session refuses its own writes after the working-branch fallback, and
+    /// the overlay hands its poison on, so the GUI target sees it and moves
+    /// its epoch as for a bare session.
+    #[test]
+    fn the_overlays_forward_the_session_poison_of_the_inner_provider() {
+        let github = || -> Box<dyn StorageProvider> {
+            Box::new(
+                crate::providers::github::GitHubProvider::protected_for_test(
+                    "http://127.0.0.1:9".into(),
+                ),
+            )
+        };
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let crypt = CryptOverlayProvider::new(inner, aerocrypt_keys(), "/Vault");
+        assert!(std::sync::Arc::ptr_eq(
+            &crypt.target_poison().unwrap(),
+            &poison
+        ));
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let compress = crate::compress_overlay_provider::CompressOverlayProvider::new(inner, 3);
+        assert!(std::sync::Arc::ptr_eq(
+            &compress.target_poison().unwrap(),
+            &poison
+        ));
+    }
+
     #[tokio::test]
     async fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
         for (label, keys) in both_kinds() {
@@ -6479,6 +6523,37 @@ pub(crate) mod tests {
                 "{scope:?} {start:?}"
             );
         }
+    }
+
+    /// CodeRabbit 4575254547: the overlay answers the wrapped session's
+    /// namespace identity and account, so a GitHub session on `main` and one
+    /// on its working branch stay two sync targets when wrapped, and the
+    /// digest the AeroCloud factory makes of each differs.
+    #[test]
+    fn the_overlay_forwards_the_wrapped_sessions_namespace_identity() {
+        let (on_main, on_branch) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        let expected = [
+            on_main.sync_namespace_identity(),
+            on_branch.sync_namespace_identity(),
+        ];
+        assert!(expected.iter().all(Option::is_some));
+        let wrapped = [
+            CryptOverlayProvider::new(Box::new(on_main), aerocrypt_keys(), "/"),
+            CryptOverlayProvider::new(Box::new(on_branch), aerocrypt_keys(), "/"),
+        ];
+        for (overlay, inner) in wrapped.iter().zip(&expected) {
+            assert_eq!(&overlay.sync_namespace_identity(), inner);
+            assert_eq!(overlay.account_email().as_deref(), Some("alice"));
+        }
+        assert_ne!(
+            wrapped[0].sync_namespace_identity(),
+            wrapped[1].sync_namespace_identity(),
+            "main and its working branch are two trees"
+        );
+        // A wrapped provider with no namespace of its own still has none.
+        let plain = CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), "/");
+        assert_eq!(plain.sync_namespace_identity(), None);
     }
 
     #[tokio::test]

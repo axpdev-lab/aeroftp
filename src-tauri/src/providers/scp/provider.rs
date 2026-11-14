@@ -1,7 +1,7 @@
 //! SCP as a storage provider: the explicit SCP protocol, and the mode an SFTP
 //! connection continues in when its server has no SFTP.
 //!
-//! Both run on a connection made by [`crate::providers::sftp::ssh_login`], so
+//! Both run on a connection made by [`crate::providers::sftp::ssh_login_pinned`], so
 //! host-key trust and the order of the authentication methods are exactly
 //! those of SFTP. The operations are [`ScpSession`]'s.
 //!
@@ -20,7 +20,7 @@ use tokio::sync::Mutex as TokioMutex;
 use super::listing::{Entry, Kind, Meta};
 use super::session::ScpSession;
 use crate::providers::sftp::{
-    format_permissions, resolve_remote_path, resolve_start_dir, ssh_login, SharedSshHandle,
+    format_permissions, resolve_remote_path, resolve_start_dir, ssh_login_pinned, SharedSshHandle,
     SshHandler,
 };
 use crate::providers::shell_quote::shell_quote;
@@ -63,6 +63,8 @@ pub struct ScpProvider {
     /// False when the connection belongs to an `SftpProvider` that went on in
     /// SCP mode: that provider dials, reconnects and disconnects it.
     owns_connection: bool,
+    private_key: Arc<std::sync::OnceLock<Arc<russh::keys::PrivateKey>>>,
+    auth_method: Arc<std::sync::OnceLock<super::super::sftp::SshAuthMethod>>,
     home_dir: String,
     current_dir: String,
     /// The accepted host key's SHA-256, filled during the handshake.
@@ -87,6 +89,8 @@ impl ScpProvider {
             handle: None,
             session: None,
             owns_connection: true,
+            private_key: Arc::default(),
+            auth_method: Arc::default(),
             home_dir: "/".to_string(),
             current_dir: "/".to_string(),
             host_key_sha256_hex: Arc::new(std::sync::OnceLock::new()),
@@ -410,7 +414,14 @@ impl StorageProvider for ScpProvider {
             self.config.host,
             self.config.port
         );
-        let handle = ssh_login(&self.config, false, self.host_key_sha256_hex.clone()).await?;
+        let handle = ssh_login_pinned(
+            &self.config,
+            false,
+            self.host_key_sha256_hex.clone(),
+            self.private_key.clone(),
+            self.auth_method.clone(),
+        )
+        .await?;
         self.start(Arc::new(TokioMutex::new(handle))).await
     }
 
@@ -914,6 +925,8 @@ impl StorageProvider for ScpProvider {
             handle: Some(handle.clone()),
             session: Some(session.worker()),
             owns_connection: false,
+            private_key: self.private_key.clone(),
+            auth_method: self.auth_method.clone(),
             home_dir: self.home_dir.clone(),
             current_dir: self.current_dir.clone(),
             host_key_sha256_hex: self.host_key_sha256_hex.clone(),
