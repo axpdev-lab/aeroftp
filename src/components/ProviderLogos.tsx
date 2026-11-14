@@ -623,6 +623,10 @@ export const MailruCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
     <img src="/icons/providers/mailru-cloud.png" alt="Mail.ru Cloud" width={size} height={size} style={{ objectFit: 'contain' }} />
 );
 
+export const LifetimeCloudLogo: React.FC<LogoProps> = ({ size = 24 }) => (
+    <img src="/icons/providers/lifetimecloud.png" alt="LifetimeCloud" width={size} height={size} style={{ objectFit: 'contain' }} />
+);
+
 /** Map of provider ID → logo component */
 export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'amazon-s3': AwsLogo,
@@ -707,4 +711,5 @@ export const PROVIDER_LOGOS: Record<string, React.FC<LogoProps>> = {
     'cloudinary': CloudinaryLogo,
     'ibm-cos': IbmCosLogo,
     'mailru-cloud': MailruCloudLogo,
+    'lifetimecloud': LifetimeCloudLogo,
 };
