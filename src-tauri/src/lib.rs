@@ -14607,6 +14607,7 @@ mod native_work_in_blocking_tests {
     fn the_admission_guard_lives_in_the_blocking_work() {
         let source = include_str!("lib.rs");
         for command in [
+            "create_local_folder",
             "load_sync_index_cmd",
             "save_sync_index_cmd",
             "sync_intent_begin_cmd",
@@ -14629,6 +14630,20 @@ mod native_work_in_blocking_tests {
                 .unwrap_or_else(|| panic!("{command}: guard moved"));
             assert!(admit < spawn && spawn < moved, "{command}");
         }
+        // The local backup move: admitted by the command, owned by the
+        // blocking work of its inner function.
+        let command = &source[source
+            .find("\nasync fn sync_backup_archive_local(")
+            .unwrap()..];
+        let command = &command[..command.find("\n}\n").unwrap()];
+        assert!(command.contains("let native_work = crate::sync_run_lease::admit("));
+        assert!(command.contains("sync_backup_archive_local_inner(native_work, "));
+        let archive = &source[source
+            .find("\nasync fn sync_backup_archive_local_inner(")
+            .unwrap()..];
+        let archive = &archive[..archive.find("\n}\n").unwrap()];
+        let spawn = archive.find("spawn_blocking(move || {").unwrap();
+        assert!(archive[spawn..].contains("let _native_work = native_work;"));
         let removal = &source[source
             .find("\nasync fn sync_remove_empty_dir_for_ipc(")
             .unwrap()..];
@@ -18660,14 +18675,18 @@ async fn sync_backup_archive_local(
     rel: String,
     sync_run_lease: Option<String>,
 ) -> Result<Option<String>, String> {
-    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    let native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
     let _target = provider_state
         .pin_gui_local_target(expected_gui_target, is_provider.unwrap_or(false))
         .await?;
-    sync_backup_archive_local_inner(root, dir, stamp, rel).await
+    sync_backup_archive_local_inner(native_work, root, dir, stamp, rel).await
 }
 
+/// `native_work` is the command's admission. As in `copy_local_file`, the
+/// blocking work owns it: the move of the file counts as work of the run
+/// until it ends, not until the handler that awaited it is gone.
 async fn sync_backup_archive_local_inner(
+    native_work: crate::sync_run_lease::NativeWork,
     root: String,
     dir: String,
     stamp: String,
@@ -18675,6 +18694,7 @@ async fn sync_backup_archive_local_inner(
 ) -> Result<Option<String>, String> {
     validate_path(&root)?;
     tokio::task::spawn_blocking(move || {
+        let _native_work = native_work;
         let dir = sync_backup::BackupDir::parse(&dir).map_err(|e| e.to_string())?;
         sync::validate_relative_path(&rel)?;
         sync_backup::archive_local(std::path::Path::new(&root), &dir, &stamp, &rel)
@@ -29940,6 +29960,7 @@ mod sync_backup_archive_local_tests {
     async fn a_root_that_is_not_a_clean_absolute_path_is_refused() {
         for root in ["relative/dir", "/tmp/../etc", "/tmp/a\0b"] {
             let outcome = super::sync_backup_archive_local_inner(
+                crate::sync_run_lease::admit(None).unwrap(),
                 root.to_string(),
                 ".aeroftp-versions".to_string(),
                 "20260925T070000Z".to_string(),
