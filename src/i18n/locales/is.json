@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi.",
             "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)",
             "discoverNeon": "Neon Object Storage: S3-samhæft geymslupláss fyrir hverja verkgrein (5 GB ókeypis á verk)",
-            "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (25 MB prufa, engin kort)"
+            "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (25 MB prufa, engin kort)",
+            "discoverLifetimeCloud": "LifetimeCloud geymsla í gegnum WebDAV (1 GB prufuáskrift, ekkert kort)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

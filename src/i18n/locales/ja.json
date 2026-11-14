@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "オフ: データ接続は curl と同様に、接続したホストへ向かいます。別のアドレスからデータを送信するサーバーの場合のみオンにしてください。",
             "discoverFastly": "Fastly Object Storage: 12リージョンで利用できるS3互換ストレージ (5 GB無料、カードが必要)",
             "discoverNeon": "Neon Object Storage：プロジェクトブランチごとのS3互換ストレージ（プロジェクトごとに5 GB無料）",
-            "discoverPuter": "WebDAV経由のPuterクラウドストレージ（25 MBトライアル、カード不要）"
+            "discoverPuter": "WebDAV経由のPuterクラウドストレージ（25 MBトライアル、カード不要）",
+            "discoverLifetimeCloud": "WebDAV 経由の LifetimeCloud ストレージ (1 GB トライアル、カード不要)"
         },
         "shortcuts": {
             "title": "キーボードショートカット",

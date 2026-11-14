@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "Naka-off: ang mga koneksyon ng data ay pupunta sa host na kinonektahan mo, tulad ng ginagawa ng curl. I-on lang para sa server na nagpapadala ng data mula sa ibang address.",
             "discoverFastly": "Fastly Object Storage: storage na compatible sa S3 sa 12 rehiyon (5 GB libre, kailangan ng card)",
             "discoverNeon": "Neon Object Storage: S3-compatible na storage para sa bawat project branch (5 GB libre kada proyekto)",
-            "discoverPuter": "Puter cloud storage sa pamamagitan ng WebDAV (25 MB trial, walang card)"
+            "discoverPuter": "Puter cloud storage sa pamamagitan ng WebDAV (25 MB trial, walang card)",
+            "discoverLifetimeCloud": "Imbakan ng LifetimeCloud sa pamamagitan ng WebDAV (pagsubok na 1 GB, walang card)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

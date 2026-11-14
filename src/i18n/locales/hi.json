@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "बंद: डेटा कनेक्शन उसी होस्ट पर जाते हैं जिससे आप जुड़े हैं, जैसा curl करता है। केवल ऐसे सर्वर के लिए चालू करें जो किसी अन्य पते से डेटा भेजता है।",
             "discoverFastly": "Fastly Object Storage: 12 क्षेत्रों में S3-संगत स्टोरेज (5 GB मुफ़्त, कार्ड आवश्यक)",
             "discoverNeon": "Neon Object Storage: हर प्रोजेक्ट ब्रांच के लिए S3-संगत स्टोरेज (प्रति प्रोजेक्ट 5 GB मुफ़्त)",
-            "discoverPuter": "WebDAV के माध्यम से Puter क्लाउड स्टोरेज (25 MB ट्रायल, बिना कार्ड)"
+            "discoverPuter": "WebDAV के माध्यम से Puter क्लाउड स्टोरेज (25 MB ट्रायल, बिना कार्ड)",
+            "discoverLifetimeCloud": "WebDAV के माध्यम से LifetimeCloud स्टोरेज (1 GB ट्रायल, बिना कार्ड)"
         },
         "shortcuts": {
             "title": "कीबोर्ड शॉर्टकट",

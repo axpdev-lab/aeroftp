@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "Nonaktif: koneksi data menuju host tempat Anda terhubung, seperti yang dilakukan curl. Aktifkan hanya untuk server yang mengirim data dari alamat lain.",
             "discoverFastly": "Fastly Object Storage: penyimpanan kompatibel S3 di 12 wilayah (5 GB gratis, perlu kartu)",
             "discoverNeon": "Neon Object Storage: penyimpanan kompatibel S3 untuk setiap cabang proyek (5 GB gratis per proyek)",
-            "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (25 MB uji coba, tanpa kartu)"
+            "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (25 MB uji coba, tanpa kartu)",
+            "discoverLifetimeCloud": "Penyimpanan LifetimeCloud melalui WebDAV (uji coba 1 GB, tanpa kartu)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",

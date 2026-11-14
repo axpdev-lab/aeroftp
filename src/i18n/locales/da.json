@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "Fra: dataforbindelser går til den vært, du har forbundet til, som curl gør. Slå kun til for en server, der sender data fra en anden adresse.",
             "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort påkrævet)",
             "discoverNeon": "Neon Object Storage: S3-kompatibel lagring pr. projektgren (5 GB gratis pr. projekt)",
-            "discoverPuter": "Puter-skystorage via WebDAV (25 MB prøve, intet kort)"
+            "discoverPuter": "Puter-skystorage via WebDAV (25 MB prøve, intet kort)",
+            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB prøveperiode, intet kort)"
         },
         "shortcuts": {
             "title": "Tastaturgenveje",

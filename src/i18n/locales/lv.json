@@ -2381,7 +2381,8 @@
             "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses.",
             "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)",
             "discoverNeon": "Neon Object Storage: ar S3 saderīga krātuve katram projekta zaram (5 GB bez maksas par projektu)",
-            "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (25 MB izmēģinājums, bez kartes)"
+            "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (25 MB izmēģinājums, bez kartes)",
+            "discoverLifetimeCloud": "LifetimeCloud krātuve, izmantojot WebDAV (1 GB izmēģinājuma versija, bez kartes)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

@@ -182,6 +182,7 @@ export const DISCOVER_DESC_KEYS: Record<string, string> = {
     'nextcloud': 'protocol.discoverNextcloud',
     'pcloud-webdav': 'protocol.discoverPCloudWebdav',
     'puter-webdav': 'protocol.discoverPuter',
+    'lifetimecloud': 'protocol.discoverLifetimeCloud',
     // FTP registry providers
     'hetzner-storage-box': 'protocol.discoverHetzner',
     'sourceforge': 'protocol.discoverSourceForge',
