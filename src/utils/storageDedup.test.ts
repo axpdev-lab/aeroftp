@@ -227,6 +227,21 @@ describe('storageDedup', () => {
         expect(summary.totalUsed).toBe(3_000_000);
     });
 
+    it('case 4c6: a percent-encoded Puter account keys like its user name', () => {
+        // The connect writes `a@b` into the URL as `a%40b` when it fills the
+        // template; both spellings of the account are one drive.
+        const encoded = make({
+            id: 'e1', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/a%40b', port: 443, username: '-token',
+        });
+        const template = make({
+            id: 'e2', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/{username}', port: 443, username: 'a@b',
+        });
+        expect(getStorageDedupKey(encoded)).toBe('webdav:puter-webdav:a@b');
+        expect(getStorageDedupKey(encoded)).toBe(getStorageDedupKey(template));
+    });
+
     it('case 4c5: the unchanged Puter default URL keys by the user name', () => {
         // The form saves `https://dav.puter.com/{username}` unchanged, so
         // the placeholder must not become the account of every profile.

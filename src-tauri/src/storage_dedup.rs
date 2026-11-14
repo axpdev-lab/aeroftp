@@ -131,13 +131,19 @@ pub fn puter_account(raw_host: &str) -> String {
     let Some(idx) = s.find('/') else {
         return String::new();
     };
-    let segment = s[idx + 1..].split('/').next().unwrap_or("");
+    let raw = s[idx + 1..].split('/').next().unwrap_or("");
+    // The URL holds the account percent-encoded (`a%40b`), the user name
+    // decoded (`a@b`): decoded, both spellings of one account key alike.
+    let segment = percent_encoding::percent_decode_str(raw)
+        .decode_utf8()
+        .map(|d| d.into_owned())
+        .unwrap_or_else(|_| raw.to_string());
     // The form saves the default `https://dav.puter.com/{username}` as it
     // is: the placeholder names no account, the profile's user name does.
-    if segment.contains("{username}") || segment.contains("%7busername%7d") {
+    if segment.contains("{username}") {
         return String::new();
     }
-    segment.to_string()
+    segment
 }
 
 /// Lowercase + trim. Returns `None` for opaque tokens (long random strings)
@@ -943,6 +949,35 @@ mod tests {
         let summary = aggregate(&profiles);
         assert_eq!(summary.unique_count, 2);
         assert_eq!(summary.total_used, 3_000_000);
+    }
+
+    #[test]
+    fn a_percent_encoded_puter_account_keys_like_its_user_name() {
+        // The connect writes `a@b` into the URL as `a%40b` when it fills the
+        // template; a profile saved with that URL and one saved with the
+        // template plus the user name `a@b` are the same drive.
+        let encoded = p(
+            "e1",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/a%40b",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        let template = p(
+            "e2",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com/{username}",
+            443,
+            "a@b",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&encoded), "webdav:puter-webdav:a@b");
+        assert_eq!(dedup_key(&encoded), dedup_key(&template));
     }
 
     #[test]

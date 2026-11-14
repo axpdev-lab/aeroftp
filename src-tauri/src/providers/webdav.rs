@@ -6662,6 +6662,65 @@ mod tests {
         assert!(!local.exists(), "a stalled download leaves no file behind");
     }
 
+    /// The path a `{username}` server template puts on the wire: one level of
+    /// percent-encoding, read from the request the server receives rather
+    /// than from the string we build. Plain names, `@` and a space reach the
+    /// server exactly as before the template had its own encoding; `%`, `/`,
+    /// `?` and `#` used to reach it raw, as a broken escape, a second path
+    /// level, a query or a fragment.
+    #[tokio::test]
+    async fn a_username_template_reaches_the_server_encoded_exactly_once() {
+        let cases = [
+            ("alice", "/dav/alice/"),
+            ("alice@example.com", "/dav/alice@example.com/"),
+            ("a b", "/dav/a%20b/"),
+            ("50%", "/dav/50%25/"),
+            ("a/b", "/dav/a%2Fb/"),
+            ("a?b", "/dav/a%3Fb/"),
+            ("a#b", "/dav/a%23b/"),
+        ];
+        for (user, wire_path) in cases {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            let record = seen.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let record = record.clone();
+                    async move {
+                        let raw = req
+                            .uri()
+                            .path_and_query()
+                            .map(|pq| pq.as_str().to_string())
+                            .unwrap_or_default();
+                        record.lock().unwrap().push(raw);
+                        axum::http::StatusCode::MULTI_STATUS
+                    }
+                },
+            ));
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("tls_mode".to_string(), "http".to_string());
+            let config = crate::providers::ProviderConfig {
+                name: "template".to_string(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: format!("{base}/dav/{{username}}/"),
+                port: None,
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            };
+            let dav = WebDavConfig::from_provider_config(&config).expect("config");
+            let mut provider = WebDavProvider::new(dav).expect("provider");
+            let _ = provider.connect().await;
+            server.abort();
+            let seen = seen.lock().unwrap().clone();
+            assert!(!seen.is_empty(), "{user}: no request reached the server");
+            assert_eq!(seen[0], wire_path, "{user}: {seen:?}");
+        }
+    }
+
     /// Nextcloud and ownCloud refuse a PROPFIND on `/`; the root found under
     /// `/remote.php/dav/files/<user>/` takes the initial folder as given.
     #[tokio::test]

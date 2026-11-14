@@ -2993,6 +2993,7 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
         {
             Some("the profile has no host, which rclone needs to reach the server".to_string())
         }
+        "webdav" => webdav_username_template_problem(server),
         "swift" if swift_auth_url(server).is_none() => Some(
             "the profile has no auth URL, which rclone's swift backend needs as `auth`".to_string(),
         ),
@@ -3472,6 +3473,30 @@ fn push_rclone_ftp_tls(body: &mut String, protocol: &str, options: Option<&serde
     }
 }
 
+/// Why a WebDAV profile cannot be exported because of its `{username}`
+/// template: the server URL (saved, or the preset default an empty host
+/// takes) or a start folder needs a user name the profile does not have, or
+/// one that cannot sit in a folder path. Written as `url = .../dav//` or with
+/// the literal placeholder, the remote would dial the wrong address.
+fn webdav_username_template_problem(server: &RcloneExportServer) -> Option<String> {
+    let host = crate::profile_loader::apply_webdav_profile_defaults(
+        server.provider_id.as_deref(),
+        &server.host,
+    )
+    .unwrap_or_else(|| server.host.clone());
+    if let Err(reason) = crate::connection_manifest::expand_username_in_url(&host, &server.username)
+    {
+        return Some(reason);
+    }
+    let options = server.options.as_ref()?;
+    ["initial_path", "rcloneCryptOverlayScope"]
+        .iter()
+        .filter_map(|key| options.get(*key).and_then(|v| v.as_str()))
+        .find_map(|path| {
+            crate::connection_manifest::expand_username_in_path(path, &server.username).err()
+        })
+}
+
 /// The start folder of a WebDAV profile as a path under the URL its remote
 /// was written with. The URL already ends in the DAV collection (a Nextcloud
 /// `/remote.php/dav/files/<user>/`, a `basePath`), and Nextcloud-derived
@@ -3492,7 +3517,12 @@ fn webdav_alias_path(url: &str, initial_path: &str, username: &str) -> String {
             .unwrap_or_else(|_| p.to_string())
     };
     let trim = |p: &str| p.trim_matches('/').to_string();
-    let start = trim(&initial_path.replace("{username}", username));
+    // A user name that cannot fill the template was refused before the
+    // export reached this point (`webdav_username_template_problem`).
+    let start = trim(
+        &crate::connection_manifest::expand_username_in_path(initial_path, username)
+            .unwrap_or_else(|_| initial_path.to_string()),
+    );
     let url_path = url
         .split_once("://")
         .map(|(_, rest)| rest)
@@ -4150,7 +4180,12 @@ pub fn export_rclone(
                 // Resolve {username} template that Nextcloud-derived
                 // presets store verbatim in the URL or initial path
                 // (TAB.DIGITAL, FeliCloud).
-                let url = url.replace("{username}", &server.username);
+                // A blank user name was refused before this point
+                // (`webdav_username_template_problem`), so the template
+                // always fills here.
+                let url =
+                    crate::connection_manifest::expand_username_in_url(&url, &server.username)
+                        .unwrap_or(url);
                 // rclone's `nextcloud`/`owncloud` vendors do not auto-discover
                 // the DAV collection root the way AeroFTP does at connect time
                 // (PROPFIND probe -> `/remote.php/dav/files/<user>/`). They
@@ -10058,6 +10093,185 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     // ---- 2026-11-06 live round trip: 118 profiles through rclone v1.75.2 ----
+
+    /// The URL a WebDAV profile dials, the way the CLI and MCP connect builds
+    /// it: the saved host, or the preset default an empty one takes, then the
+    /// `{username}` template filled. `Err` is the refusal the connect gives.
+    fn webdav_connect_url(
+        provider_id: &str,
+        host: &str,
+        port: u32,
+        user: &str,
+    ) -> Result<String, String> {
+        let profile = serde_json::json!({
+            "protocol": "webdav", "providerId": provider_id, "host": host,
+            "port": port, "username": user
+        });
+        let (extra, resolved_host) = crate::profile_loader::profile_connection_extra(
+            &profile,
+            crate::providers::ProviderType::WebDav,
+            host,
+        );
+        let config = crate::providers::ProviderConfig {
+            name: provider_id.to_string(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: resolved_host,
+            port: Some(port as u16),
+            username: Some(user.to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        crate::providers::WebDavConfig::from_provider_config(&config)
+            .map(|dav| dav.url)
+            .map_err(|e| e.to_string())
+    }
+
+    /// The URL a Cyberduck bookmark addresses: Protocol, Hostname, Port, Path.
+    fn duck_url(duck: &str) -> String {
+        let value = |key: &str| {
+            let marker = format!("<key>{key}</key>\n\t<string>");
+            duck.find(&marker).map(|i| {
+                let rest = &duck[i + marker.len()..];
+                rest[..rest.find("</string>").unwrap()].to_string()
+            })
+        };
+        let scheme = if value("Protocol").as_deref() == Some("davs") {
+            "https"
+        } else {
+            "http"
+        };
+        let port = value("Port")
+            .filter(|p| p != "443" && p != "80")
+            .map(|p| format!(":{p}"));
+        format!(
+            "{scheme}://{}{}{}",
+            value("Hostname").unwrap_or_default(),
+            port.unwrap_or_default(),
+            value("Path").unwrap_or_default()
+        )
+    }
+
+    /// Every named WebDAV preset with a default server: a profile saved with
+    /// an empty host dials that server, and the rclone and Cyberduck exports
+    /// write the same address, for plain user names and for ones that need
+    /// encoding in the path. A blank user name on a template preset is
+    /// refused by all three instead of dialling `/dav//`.
+    #[test]
+    fn every_webdav_preset_default_resolves_alike_in_connect_and_both_exports() {
+        let presets: Vec<_> = crate::connection_manifest::manifest()
+            .presets
+            .iter()
+            .filter(|p| p.protocol == "webdav" && !p.generic)
+            .filter_map(|p| {
+                let server = p.defaults.get("server")?.as_str()?.to_string();
+                let port = p
+                    .defaults
+                    .get("port")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(443) as u32;
+                Some((p.id.clone(), server, port))
+            })
+            .collect();
+        assert!(presets.len() >= 10, "{presets:?}");
+        for (id, server, port) in &presets {
+            let users: &[&str] = if server.contains("{username}") {
+                &["alice", "alice@example.com", "a b", "50%", "a/b"]
+            } else {
+                &["alice"]
+            };
+            for user in users {
+                let expected =
+                    crate::connection_manifest::expand_username_in_url(server, user).unwrap();
+                let connect = webdav_connect_url(id, "", *port, user).unwrap();
+                let norm = |u: &str| u.trim_end_matches('/').to_string();
+                // A server written with its scheme is dialled as written; a
+                // bare host (Filen Desktop's local server) gets the scheme
+                // and port the connect derives, which the exports must match.
+                if server.contains("://") {
+                    assert_eq!(norm(&connect), norm(&expected), "connect {id} {user}");
+                } else {
+                    assert!(
+                        connect.contains(&expected),
+                        "connect {id} {user}: {connect}"
+                    );
+                }
+
+                let mut rserver =
+                    server_with(id, "webdav", "", *port, Some(id), serde_json::json!({}));
+                rserver.username = user.to_string();
+                let (outcome, conf) = export_to_string(&[rserver], "matrix");
+                assert_eq!(outcome.exported, 1, "rclone {id} {user}: {conf}");
+                let url = section_of(&conf, id)
+                    .lines()
+                    .find_map(|l| l.strip_prefix("url = "))
+                    .unwrap_or_else(|| panic!("no url for {id}:\n{conf}"));
+                assert_eq!(norm(url), norm(&connect), "rclone {id} {user}");
+
+                let duck_server: crate::cyberduck_import::CyberduckExportServer =
+                    serde_json::from_value(serde_json::json!({
+                        "id": id, "name": id, "host": "", "port": port, "username": user,
+                        "protocol": "webdav", "providerId": id
+                    }))
+                    .unwrap();
+                let dir = tempfile::tempdir().unwrap();
+                let duck_outcome = crate::cyberduck_import::export_cyberduck(
+                    &[duck_server],
+                    &std::collections::HashMap::new(),
+                    dir.path(),
+                )
+                .unwrap();
+                assert_eq!(
+                    duck_outcome.exported, 1,
+                    "cyberduck {id} {user}: {:?}",
+                    duck_outcome.skipped
+                );
+                let file = std::fs::read_dir(dir.path())
+                    .unwrap()
+                    .next()
+                    .unwrap()
+                    .unwrap()
+                    .path();
+                let duck = std::fs::read_to_string(file).unwrap();
+                assert_eq!(
+                    norm(&duck_url(&duck)),
+                    norm(&connect),
+                    "cyberduck {id} {user}:\n{duck}"
+                );
+            }
+            if server.contains("{username}") {
+                assert!(
+                    webdav_connect_url(id, "", *port, "")
+                        .unwrap_err()
+                        .contains(crate::connection_manifest::USERNAME_TEMPLATE_MISSING),
+                    "connect {id} blank user"
+                );
+                let mut rserver =
+                    server_with(id, "webdav", "", *port, Some(id), serde_json::json!({}));
+                rserver.username = String::new();
+                let (outcome, conf) = export_to_string(&[rserver], "matrix-blank");
+                assert_eq!(outcome.exported, 0, "rclone {id} blank user: {conf}");
+                assert!(
+                    !conf.contains("{username}") && !conf.contains("//\n"),
+                    "{conf}"
+                );
+                let duck_server: crate::cyberduck_import::CyberduckExportServer =
+                    serde_json::from_value(serde_json::json!({
+                        "id": id, "name": id, "host": "", "port": port, "username": "",
+                        "protocol": "webdav", "providerId": id
+                    }))
+                    .unwrap();
+                let dir = tempfile::tempdir().unwrap();
+                let duck_outcome = crate::cyberduck_import::export_cyberduck(
+                    &[duck_server],
+                    &std::collections::HashMap::new(),
+                    dir.path(),
+                )
+                .unwrap();
+                assert_eq!(duck_outcome.exported, 0, "cyberduck {id} blank user");
+            }
+        }
+    }
 
     fn server_with(
         name: &str,

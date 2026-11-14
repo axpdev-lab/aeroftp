@@ -514,11 +514,14 @@ impl WebDavConfig {
         // CloudMe, Nextcloud, Tab.digital presets that pin to the per-user
         // WebDAV root `/remote.php/dav/files/{username}`).
         let username = config.username.clone().unwrap_or_default();
-        let url = raw_url.replace("{username}", &username);
+        let url = crate::connection_manifest::expand_username_in_url(&raw_url, &username)
+            .map_err(ProviderError::InvalidConfig)?;
         let initial_path = config
             .initial_path
             .as_ref()
-            .map(|p| p.replace("{username}", &username));
+            .map(|p| crate::connection_manifest::expand_username_in_path(p, &username))
+            .transpose()
+            .map_err(ProviderError::InvalidConfig)?;
         let provider_id = config
             .extra
             .get("provider_id")

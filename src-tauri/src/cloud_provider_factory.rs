@@ -328,11 +328,14 @@ fn profile_root(profile: &serde_json::Value) -> String {
         .get("username")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let root = profile
+    let raw_root = profile
         .get("initialPath")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .replace("{username}", username);
+        .unwrap_or("");
+    // A user name that cannot fill the template keeps it as written, never a
+    // shorter path; the connect refuses such a profile before any request.
+    let root = crate::connection_manifest::expand_username_in_path(raw_root, username)
+        .unwrap_or_else(|_| raw_root.to_string());
     let root = root.trim();
     let ssh = matches!(
         profile.get("protocol").and_then(|v| v.as_str()),

@@ -2670,7 +2670,8 @@ pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .map(|s| match username {
-                Some(u) => s.replace("{username}", u),
+                Some(u) => crate::connection_manifest::expand_username_in_path(s, u)
+                    .unwrap_or_else(|_| s.to_string()),
                 None => s.to_string(),
             })
     };

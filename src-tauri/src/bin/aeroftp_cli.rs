@@ -4090,6 +4090,33 @@ enum Commands {
 mod cli_dispatch;
 
 #[cfg(test)]
+mod username_template_tests {
+    use super::cli_username_template;
+    use ftp_client_gui_lib::connection_manifest::USERNAME_TEMPLATE_MISSING;
+
+    /// A saved profile whose server URL or start folder needs a user name the
+    /// profile does not have: exit 5 with the text every surface gives, never
+    /// a connect to `/dav//`.
+    #[test]
+    fn a_blank_user_name_on_a_template_profile_is_a_configuration_error() {
+        assert_eq!(
+            cli_username_template("https://lifetimecloud.me/dav/{username}/", "", true),
+            Err((5, USERNAME_TEMPLATE_MISSING.to_string()))
+        );
+        assert_eq!(
+            cli_username_template("/remote.php/dav/files/{username}/", " ", false),
+            Err((5, USERNAME_TEMPLATE_MISSING.to_string()))
+        );
+        assert_eq!(
+            cli_username_template("https://lifetimecloud.me/dav/{username}/", "a b", true),
+            Ok("https://lifetimecloud.me/dav/a%20b/".to_string())
+        );
+        let (code, _) = cli_username_template("/files/{username}/", "..", false).unwrap_err();
+        assert_eq!(code, 5);
+    }
+}
+
+#[cfg(test)]
 mod warning_line_tests {
     use super::{warning_line, OutputFormat};
 
@@ -31395,6 +31422,22 @@ fn profile_to_provider_config(
     profile_value_to_provider_config(profile, &store, cli, format)
 }
 
+/// A profile's `{username}` template filled for the CLI: the server URL
+/// (`url`) or the start folder. A blank or unusable user name is a
+/// configuration error, exit 5, with the same text every surface gives.
+fn cli_username_template(
+    template: &str,
+    username: &str,
+    url: bool,
+) -> Result<String, (i32, String)> {
+    let filled = if url {
+        ftp_client_gui_lib::connection_manifest::expand_username_in_url(template, username)
+    } else {
+        ftp_client_gui_lib::connection_manifest::expand_username_in_path(template, username)
+    };
+    filled.map_err(|reason| (5, reason))
+}
+
 /// Build a `ProviderConfig` from an ALREADY resolved saved-profile value.
 ///
 /// Split out of `profile_to_provider_config` so callers that do not have a
@@ -31429,7 +31472,13 @@ fn profile_value_to_provider_config(
     // `WebDavConfig::from_provider_config` does the same substitution for
     // its `url` field, but the raw host is also used by the banner and by
     // some option lookups before WebDavConfig is built.
-    let mut host = raw_host.replace("{username}", &username_for_template);
+    let mut host = match cli_username_template(&raw_host, &username_for_template, true) {
+        Ok(h) => h,
+        Err((code, msg)) => {
+            print_error(format, &msg, code);
+            return Err(code);
+        }
+    };
     let port = profile
         .get("port")
         .and_then(|v| v.as_u64())
@@ -31452,7 +31501,13 @@ fn profile_value_to_provider_config(
     // (banner, scratch-dir creation, path resolution) sees a concrete path
     // rather than the literal placeholder. Same semantics as
     // `WebDavConfig::from_provider_config` does for the URL.
-    let initial_path = initial_path.replace("{username}", &username);
+    let initial_path = match cli_username_template(&initial_path, &username, false) {
+        Ok(p) => p,
+        Err((code, msg)) => {
+            print_error(format, &msg, code);
+            return Err(code);
+        }
+    };
     // Auto-strip the legacy Nextcloud-style WebDAV root when it was saved
     // both as part of the host URL and again as initial_path. Mirrors the
     // frontend `stripLegacyNextcloudWebdavRoot` helper so profiles that

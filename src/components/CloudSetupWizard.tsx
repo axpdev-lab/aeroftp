@@ -6,6 +6,7 @@
 // through saved profiles, so there is no connection form here: a user without
 // a compatible profile is sent to My Servers before the wizard starts.
 
+import { expandUsernameInPath } from '../utils/usernameTemplate';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -33,9 +34,8 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
-    // Every occurrence, as the backend resolves it (`replaceAll` needs ES2021).
-    const base = (profile.initialPath || '')
-        .split('{username}').join(profile.username || '')
+    // The same expansion as the backend's (`expand_username_in_path`).
+    const base = expandUsernameInPath(profile.initialPath || '', profile.username)
         .trim()
         .replace(/\/+$/, '');
     if (!base) return '';

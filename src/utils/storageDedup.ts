@@ -247,10 +247,17 @@ const puterAccount = (rawHost: string | undefined): string => {
     if (query !== -1) s = s.slice(0, query);
     const slash = s.indexOf('/');
     if (slash === -1) return '';
-    const segment = s.slice(slash + 1).split('/')[0];
+    let segment = s.slice(slash + 1).split('/')[0];
+    // The URL holds the account percent-encoded (`a%40b`), the user name
+    // decoded (`a@b`): decoded, both spellings of one account key alike.
+    try {
+        segment = decodeURIComponent(segment);
+    } catch {
+        // A malformed escape stays as written.
+    }
     // The form saves the default `https://dav.puter.com/{username}` as it
     // is: the placeholder names no account, the profile's user name does.
-    if (segment.includes('{username}') || segment.includes('%7busername%7d')) return '';
+    if (segment.includes('{username}')) return '';
     return segment;
 };
 
