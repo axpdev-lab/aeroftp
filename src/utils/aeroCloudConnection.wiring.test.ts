@@ -152,3 +152,42 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   expect(reset.options).toMatchObject({ webdavScheme: 'https' });
   expect(await connectWith('webdav', 'custom-webdav', reset.options)).toMatchObject({ tls_mode: 'https' });
 });
+
+const navStart = app.indexOf('const navigateToRemoteFolder = async');
+const navEnd = app.indexOf('// Connection params to set', navStart);
+if (navStart < 0 || navEnd < 0) throw new Error('Missing AeroCloud navigation closure');
+const navCode = (await transformWithOxc(app.slice(navStart, navEnd), 'aerocloud-navigation.ts')).code;
+
+it('bases Navigation Sync on the folder the session lists, not on the saved form', async () => {
+  const { relativeSyncSegments } = await import('./syncNavigationPath');
+  // A `~/docs` saved before the first sync placed it, on a server whose home
+  // is a symlink: the session lists `/usr/home/u/docs`.
+  const listed: string[] = [];
+  const context = {
+    isProvider: true,
+    cloudConfig: { remote_folder: '~/docs' },
+    placeStartFolder: vi.fn(async (path: string) => path === '~/docs' ? '/home/u/docs' : path),
+    invoke: vi.fn(async (_command: string, args: { path: string }) => { listed.push(args.path); return { files: [], current_path: '/usr/home/u/docs' }; }),
+    withRemoteListSpinner: (run: () => Promise<unknown>) => run(),
+    listingReason: () => '',
+    setRemoteFiles: vi.fn(),
+    setCurrentRemotePath: vi.fn(),
+  };
+  const open = new Function(...Object.keys(context), `${navCode}; return openCloudRemoteFolder;`)(...Object.values(context));
+  const base = await open();
+  expect(listed).toEqual(['/home/u/docs']);
+  expect(base).toBe('/usr/home/u/docs');
+  // At the listed folder the lock reads the root (Up disabled), one level
+  // down a sub-folder; the saved form read every listing as outside.
+  expect(relativeSyncSegments('/usr/home/u/docs', base)).toEqual([]);
+  expect(relativeSyncSegments('/usr/home/u/docs/a', base)).toEqual(['a']);
+  expect(relativeSyncSegments('/usr/home/u/docs', '~/docs')).toBeNull();
+  // Both AeroCloud entries take that folder for the lock, the badges and the share link.
+  const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
+  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(\);\s*setSyncBasePaths\(\{ remote: listedFolder,/);
+  expect(lock).toContain('setCloudRemoteFolder(listedFolder);');
+  const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
+  expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder();');
+  expect(fresh).toContain('setCloudRemoteFolder(listedCloudFolder);');
+  expect(app).not.toMatch(/navigateToRemoteFolder\(cloudConfig\.remote_folder\)/);
+});

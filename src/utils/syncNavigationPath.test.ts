@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalSyncSuffixEqual, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
 
 const nfd = 'εσωτερικο\u0301ς';
 const nfc = nfd.normalize('NFC');
@@ -124,5 +124,20 @@ describe.skipIf(process.platform !== 'linux')('real destination directory invent
             expect(readFileSync(join(left, nfd, 'same.txt'), 'utf8')).toBe('same bytes');
             expect(readFileSync(join(right, nfc, 'same.txt'), 'utf8')).toBe('same bytes');
         } finally { rmSync(root, { recursive: true }); }
+    });
+});
+
+describe('isWithinSyncFolder', () => {
+    it('reads a folder and what is under it at a component boundary', () => {
+        expect(isWithinSyncFolder('/docs', '/docs')).toBe(true);
+        expect(isWithinSyncFolder('/docs/a', '/docs')).toBe(true);
+        expect(isWithinSyncFolder('/docs/a', '/docs/')).toBe(true);
+        expect(isWithinSyncFolder('/docs2', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs2/a', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud\\a', 'C:\\Users\\u\\AeroCloud')).toBe(true);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud2', 'C:\\Users\\u\\AeroCloud')).toBe(false);
+        expect(isWithinSyncFolder('/a', '/')).toBe(true);
+        expect(isWithinSyncFolder('/a', '')).toBe(false);
+        expect(isWithinSyncFolder('', '/docs')).toBe(false);
     });
 });

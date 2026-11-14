@@ -179,6 +179,36 @@ pub mod portable;
 /// under the login folder before it writes: the settings, the pair list and
 /// a new pair. The files stay as they were.
 #[cfg(test)]
+mod remote_share_link_tests {
+    use super::remote_share_link;
+
+    /// A file is shared from the folder it is under, at a component
+    /// boundary, in the form the session listed it.
+    #[test]
+    fn a_share_link_is_built_only_for_a_path_under_the_folder() {
+        let link = |root, path| remote_share_link("https://files.example/pub/", root, path);
+        assert_eq!(
+            link("/usr/home/u/docs", "/usr/home/u/docs/a/b.txt").unwrap(),
+            "https://files.example/pub/a/b.txt"
+        );
+        assert_eq!(
+            link("/docs/", "/docs/b.txt").unwrap(),
+            "https://files.example/pub/b.txt"
+        );
+        assert_eq!(
+            link("/docs", "/docs").unwrap(),
+            "https://files.example/pub/"
+        );
+        assert_eq!(
+            link("/", "/a.txt").unwrap(),
+            "https://files.example/pub/a.txt"
+        );
+        assert!(link("/docs", "/docs2/a.txt").is_err());
+        assert!(link("/home/u/docs", "/usr/home/u/docs/a.txt").is_err());
+    }
+}
+
+#[cfg(test)]
 mod parent_step_save_tests {
     use super::*;
 
@@ -16983,14 +17013,25 @@ fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
 
 /// Generate share link from remote path (when browsing remote files)
 #[tauri::command]
-async fn generate_share_link_remote(remote_path: String) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || generate_share_link_remote_blocking(remote_path))
-        .await
-        .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
+async fn generate_share_link_remote(
+    remote_path: String,
+    remote_root: Option<String>,
+) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        generate_share_link_remote_blocking(remote_path, remote_root)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("generate_share_link_remote task failed: {err}")))
 }
 
 /// The body of `generate_share_link_remote`, kept synchronous and run on the blocking pool.
-fn generate_share_link_remote_blocking(remote_path: String) -> Result<String, String> {
+///
+/// `remote_root` is the AeroCloud folder as the session listed it, the form
+/// `remote_path` comes in; without it the saved folder is used.
+fn generate_share_link_remote_blocking(
+    remote_path: String,
+    remote_root: Option<String>,
+) -> Result<String, String> {
     let config = cloud_config::load_cloud_config();
 
     if !config.enabled {
@@ -17002,25 +17043,27 @@ fn generate_share_link_remote_blocking(remote_path: String) -> Result<String, St
             .to_string()
     })?;
 
-    // Check if path is within AeroCloud remote folder
-    let remote_folder = config.remote_folder.trim_end_matches('/');
-    if !remote_path.starts_with(remote_folder) {
-        return Err("File is not in AeroCloud remote folder".to_string());
-    }
-
-    // Get relative path from remote folder
-    let relative_path = remote_path
-        .strip_prefix(remote_folder)
-        .unwrap_or(&remote_path)
-        .trim_start_matches('/');
-
-    // Construct public URL
-    let base = public_base.trim_end_matches('/');
-    let url = format!("{}/{}", base, relative_path);
+    let root = remote_root
+        .filter(|root| !root.trim().is_empty())
+        .unwrap_or_else(|| config.remote_folder.clone());
+    let url = remote_share_link(public_base, &root, &remote_path)?;
 
     info!("Generated share link (remote): {}", url);
 
     Ok(url)
+}
+
+/// The public URL of `remote_path` under the AeroCloud folder `root`. The
+/// path must be `root` or under it at a component boundary: `/docs2/a` is
+/// not under `/docs`, and read as its `2/a` gave a link to another file.
+fn remote_share_link(public_base: &str, root: &str, remote_path: &str) -> Result<String, String> {
+    let root = root.trim_end_matches('/');
+    let relative_path = match remote_path.strip_prefix(root) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.trim_start_matches('/'),
+        _ => return Err("File is not in AeroCloud remote folder".to_string()),
+    };
+    let base = public_base.trim_end_matches('/');
+    Ok(format!("{}/{}", base, relative_path))
 }
 
 /// Generate share link for any server with a configured public URL base.

@@ -49,7 +49,7 @@ import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCry
 import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
-import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
 interface DownloadFolderParams {
@@ -1875,7 +1875,7 @@ const App: React.FC = () => {
     // Check if current path is within cloud folder (local or remote)
     const currentPath = isLocal ? currentLocalPath : currentRemotePath;
     const cloudFolder = isLocal ? cloudLocalFolder : cloudRemoteFolder;
-    const isInCloudFolder = currentPath.startsWith(cloudFolder) || currentPath === cloudFolder;
+    const isInCloudFolder = isWithinSyncFolder(currentPath, cloudFolder);
 
     if (!isInCloudFolder) return null;
 
@@ -9858,8 +9858,9 @@ const App: React.FC = () => {
 
       // Helper: navigate to remote folder using correct API. Both arms are a
       // foreground listing on a freshly connected server, so both raise the
-      // spinner and name the folder they are waiting on.
-      const navigateToRemoteFolder = async (folder: string): Promise<void> => {
+      // spinner and name the folder they are waiting on. Returns the folder
+      // as the session reports it.
+      const navigateToRemoteFolder = async (folder: string): Promise<string> => {
         if (isProvider) {
           const response = await withRemoteListSpinner(
             () => invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null }),
@@ -9871,6 +9872,7 @@ const App: React.FC = () => {
           }));
           setRemoteFiles(files);
           setCurrentRemotePath(response.current_path);
+          return response.current_path;
         } else {
           const response = await withRemoteListSpinner(
             () => invoke<FileListResponse>('change_directory', { path: folder }),
@@ -9878,8 +9880,19 @@ const App: React.FC = () => {
           );
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
+          return response.current_path;
         }
       };
+
+      // The AeroCloud remote folder, listed, as the session names it: a
+      // `~/...` folder saved before the first sync placed it is placed under
+      // the login folder first, and the folder comes back as the server
+      // reports it (a symlinked home lists `/usr/home/u/docs` for a saved
+      // `/home/u/docs`). Navigation Sync, the sync badges and the share link
+      // compare that form with the listing paths: the saved one never matched
+      // them, so the lock read every folder as above the root.
+      const openCloudRemoteFolder = async (): Promise<string> =>
+        navigateToRemoteFolder(await placeStartFolder(cloudConfig.remote_folder) ?? cloudConfig.remote_folder);
 
       // Connection params to set (for protocol detection in other parts of the app)
       const connParams = {
@@ -9980,11 +9993,12 @@ const App: React.FC = () => {
 
         // Navigate to cloud folders
         try {
-          await navigateToRemoteFolder(cloudConfig.remote_folder);
+          const listedFolder = await openCloudRemoteFolder();
+          setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-          setCloudRemoteFolder(cloudConfig.remote_folder);
+          setCloudRemoteFolder(listedFolder);
           setCloudLocalFolder(cloudConfig.local_folder);
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
@@ -10020,11 +10034,11 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
 
       // Navigate to cloud folders
-      await navigateToRemoteFolder(cloudConfig.remote_folder);
+      const listedCloudFolder = await openCloudRemoteFolder();
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
-      setCloudRemoteFolder(cloudConfig.remote_folder);
+      setCloudRemoteFolder(listedCloudFolder);
       setCloudLocalFolder(cloudConfig.local_folder);
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
@@ -15893,14 +15907,14 @@ const App: React.FC = () => {
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
-    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && file.path.startsWith(cloudRemoteFolder)) {
+    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && isWithinSyncFolder(file.path, cloudRemoteFolder)) {
       items.push({
         label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
         disabled: cryptOverlayActive,
         action: async () => {
           try {
-            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path });
+            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path, remoteRoot: cloudRemoteFolder });
             await copyText(shareUrl);
             notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {

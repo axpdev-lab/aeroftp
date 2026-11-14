@@ -27,6 +27,18 @@ export function relativeSyncSegments(path: string, base: string): string[] | nul
     return parts.some(p => p === '.' || p === '..' || p.includes('\0')) ? null : parts;
 }
 
+/**
+ * Whether `path` is `folder` or under it, at a component boundary: a sibling
+ * such as `/docs2` is not under `/docs`. Either separator ends a component,
+ * so a Windows local path compares as a remote one does. Empty names nothing.
+ */
+export function isWithinSyncFolder(path: string, folder: string): boolean {
+    if (!path || !folder) return false;
+    const root = folder.replace(/[\\/]+$/u, '');
+    if (!root) return /^[\\/]/u.test(path);
+    return path === root || path === folder || path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
+}
+
 /** Display coherence only; this equality never chooses a destination for I/O. */
 export function canonicalSyncSuffixEqual(left: string, right: string): boolean {
     return left.normalize('NFC') === right.normalize('NFC');
