@@ -323,31 +323,84 @@ fn saved_profile(
 /// is also in the target identity, so a config made when `docs` read from
 /// the root starts a fresh index instead of reading the old folder's state
 /// against another folder.
-fn profile_root(profile: &serde_json::Value) -> Result<String, String> {
+pub(crate) fn profile_root(profile: &serde_json::Value) -> Result<String, String> {
+    // The folder is used as written (#1449), never trimmed before or after
+    // the fill, as the connect opens it and the overlay anchor reads it
+    // (`profile_overlay_scope`): a trimmed root sat outside its own encrypted
+    // folder. Only a blank folder means the server root.
+    let folder = filled_starting_folder(profile)?;
+    Ok(placed_root(&folder, profile))
+}
+
+/// The root an AeroCloud identity carries. The identity follows the data
+/// path. The sync enters the root, then `cd`s into the config's
+/// `remote_folder`. When that folder does not depend on the root (absolute,
+/// or under the login folder on SFTP and SCP), the data path never moved with
+/// the root, so the identity keeps the form every existing index was made with
+/// (filled, trimmed, placed, as `profile_root` read it before it took the
+/// folder as written): a folder with edge spaces does not re-index. When the
+/// folder is opened under the root (relative or blank), the data path is the
+/// literal root plus that folder, so the identity carries the literal root:
+/// a root that changes by one space is another folder, and a baseline made for
+/// one must never plan against the other. Pinned by
+/// `identity_root_follows_the_data_path`.
+fn identity_root(profile: &serde_json::Value, remote_folder: &str) -> Result<String, String> {
+    let folder = filled_starting_folder(profile)?;
+    Ok(
+        if remote_folder_is_root_independent(remote_folder, profile) {
+            placed_root(folder.trim(), profile)
+        } else {
+            placed_root(&folder, profile)
+        },
+    )
+}
+
+/// Whether `remote_folder` names a folder the root does not place, as `cd`
+/// resolves it after the root is entered: an absolute path, or on SFTP and
+/// SCP one under the login folder (`~`, `~/...`,
+/// [`crate::providers::sftp::resolve_remote_path`]). A blank folder is the
+/// root itself and any other relative one is opened under it.
+fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::Value) -> bool {
+    remote_folder.starts_with('/')
+        || (is_ssh_profile(profile)
+            && crate::crypt_overlay_provider::is_login_relative_scope(remote_folder))
+}
+
+fn is_ssh_profile(profile: &serde_json::Value) -> bool {
+    matches!(
+        profile.get("protocol").and_then(|v| v.as_str()),
+        Some("sftp" | "scp")
+    )
+}
+
+/// The starting folder with `{username}` filled. A user name that cannot fill
+/// the template keeps it as written, never a shorter path, and a folder still
+/// holding the placeholder is refused: synced as is, it would be a server
+/// folder literally named `{username}`.
+fn filled_starting_folder(profile: &serde_json::Value) -> Result<String, String> {
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let raw_root = profile
+    let raw = profile
         .get("initialPath")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    // A user name that cannot fill the template keeps it as written, never a
-    // shorter path, and a root still holding the placeholder is refused: synced
-    // as is, it would be a server folder literally named `{username}`.
-    let root = crate::connection_manifest::expand_username_in_path(raw_root, username)
-        .unwrap_or_else(|_| raw_root.to_string());
-    crate::connection_manifest::refuse_unresolved_username_template(&root)?;
-    let root = root.trim();
-    let ssh = matches!(
-        profile.get("protocol").and_then(|v| v.as_str()),
-        Some("sftp" | "scp")
-    );
-    Ok(if root.is_empty() {
+    let folder = crate::connection_manifest::expand_username_in_path(raw, username)
+        .unwrap_or_else(|_| raw.to_string());
+    crate::connection_manifest::refuse_unresolved_username_template(&folder)?;
+    Ok(folder)
+}
+
+/// A filled folder as the protocol opens it: SFTP and SCP place a relative one
+/// under the login folder; a blank one is the server root.
+fn placed_root(folder: &str, profile: &serde_json::Value) -> String {
+    let ssh = is_ssh_profile(profile);
+    if folder.trim().is_empty() {
         "/".to_string()
     } else {
-        crate::crypt_overlay_provider::login_relative_form(root, ssh).into_owned()
-    })
+        crate::crypt_overlay_provider::login_relative_form(folder, ssh).into_owned()
+    }
 }
 
 /// Open the profile root on a provider that connected at the account root
@@ -569,6 +622,11 @@ async fn create_via_factory(
     }
 
     // Config identity is immutable here; authenticated identity further isolates API accounts.
+    // The provider is built: the config now only feeds the identity, whose
+    // root keeps the trimmed form every existing index was made with.
+    if let Some(profile) = &profile {
+        provider_config.initial_path = Some(identity_root(profile, &config.remote_folder)?);
+    }
     let identity = resolved_target_identity(
         &provider_config,
         &binding,
@@ -604,6 +662,7 @@ async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, Stri
                 YandexDiskProvider::new(tokens.access_token.clone(), None),
                 &profile_id,
                 profile.as_ref(),
+                &config.remote_folder,
             )
             .await;
         }
@@ -611,13 +670,38 @@ async fn create_yandex(config: &CloudConfig) -> Result<OpenedCloudProvider, Stri
     create_via_factory(config, ProviderType::YandexDisk).await
 }
 
+/// The identity of a Yandex Disk AeroCloud target: the profile id, the root
+/// in its identity form (`identity_root`, `None` without a profile), the account and the
+/// overlay binding. Every existing config is matched by this digest, so its
+/// inputs keep the exact form and serialization they had: the root is an
+/// `Option<&str>`, as `profile.map(profile_root)` gave before the root could
+/// be refused. Pinned by `yandex_identity_digest_is_unchanged_for_existing_configs`.
+fn yandex_identity(
+    profile_id: &str,
+    root: Option<&str>,
+    account: &str,
+    binding: &serde_json::Value,
+) -> String {
+    identity_digest(serde_json::json!([
+        "yandexdisk",
+        profile_id,
+        root,
+        account,
+        overlay_identity(binding)
+    ]))
+}
+
 /// Finish both production OAuth-token connections and isolated provider probes.
 async fn open_yandex_oauth(
     mut provider: YandexDiskProvider,
     profile_id: &str,
     profile: Option<&serde_json::Value>,
+    remote_folder: &str,
 ) -> Result<OpenedCloudProvider, String> {
     let root = profile.map(profile_root).transpose()?;
+    let identity_root = profile
+        .map(|profile| identity_root(profile, remote_folder))
+        .transpose()?;
     provider
         .connect()
         .await
@@ -628,17 +712,7 @@ async fn open_yandex_oauth(
         .sync_namespace_identity()
         .or_else(|| provider.account_email())
         .filter(|account| !account.trim().is_empty())
-        .map(|account| {
-            identity_digest(serde_json::json!([
-                "yandexdisk",
-                profile_id,
-                // The root resolved above: an Option<String>, serialized as
-                // before, so the identity of an existing config is unchanged.
-                root.as_deref(),
-                account,
-                overlay_identity(&binding)
-            ]))
-        });
+        .map(|account| yandex_identity(profile_id, identity_root.as_deref(), &account, &binding));
     Ok(OpenedCloudProvider {
         provider: Box::new(provider),
         identity,
@@ -1013,7 +1087,7 @@ mod tests {
         };
         let open =
             |url: &str| YandexDiskProvider::new("token".into(), None).with_test_api_base(url);
-        let first = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+        let first = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile), "/cloud/")
             .await
             .unwrap();
         assert!(first.identity.is_some());
@@ -1025,7 +1099,7 @@ mod tests {
         let generic = opened_oauth(first.provider, &oauth);
         assert!(generic.identity.is_some());
         *user.lock().unwrap() = serde_json::json!({"uid":"uid-two","login":"display"});
-        let second = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+        let second = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile), "/cloud/")
             .await
             .unwrap();
         assert_ne!(second.identity, first.identity);
@@ -1034,7 +1108,7 @@ mod tests {
             generic.identity
         );
         *user.lock().unwrap() = serde_json::Value::Null;
-        let unknown = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile))
+        let unknown = open_yandex_oauth(open(&endpoint), "same-slot", Some(&profile), "/cloud/")
             .await
             .unwrap();
         assert!(unknown.identity.is_none());
@@ -1115,8 +1189,238 @@ mod tests {
         assert_eq!(port, Some(8080));
     }
 
+    /// Every existing Yandex Disk AeroCloud config is matched by this digest:
+    /// a different value here changes every such identity, and each config
+    /// would start a fresh index. The golden values were computed by hand from
+    /// origin/main at 94dc427a7 (profile_root returning a String, the
+    /// identity built from `profile.map(profile_root)`): the same canonical
+    /// JSON array (compact, keys sorted, as `identity_digest` serializes it),
+    /// SHA-256 in lowercase hex.
+    #[test]
+    fn yandex_identity_digest_is_unchanged_for_existing_configs() {
+        let digest = |profile: Option<serde_json::Value>| {
+            // The configs these digests stand for keep an absolute remote
+            // folder (the wizard's `/cloud/`), so the identity keeps main's
+            // trimmed root; the padded cases below are absolute ones too.
+            let root = profile
+                .as_ref()
+                .map(|profile| identity_root(profile, "/cloud/"))
+                .transpose()
+                .unwrap();
+            yandex_identity(
+                "yd-1",
+                root.as_deref(),
+                "alice@example.com",
+                &overlay_binding(profile.as_ref()),
+            )
+        };
+        let cases = [
+            (
+                Some(serde_json::json!({ "initialPath": "/Photos" })),
+                "94544ea7ca48f51c1a58de426f9141ec32db179928c78043c37106f48677ceb5",
+            ),
+            (
+                Some(serde_json::json!({ "initialPath": "" })),
+                "abed7ccfc7846c1bce6c605e172d58cae5014fca779db6025c259f7eea102ea7",
+            ),
+            (
+                Some(serde_json::json!({
+                    "initialPath": "/users/{username}/sync",
+                    "username": "alice"
+                })),
+                "872e631de77d4cc85a77aadaf0892c9d7a0f2d2da709eefb18237b7e65f36713",
+            ),
+            (
+                None,
+                "c1f0f12f753dde975556797d5ea50e61d0dc4850ffedb24663a65435ddd27052",
+            ),
+            // Folders with edge spaces: main trimmed them, so their indexes
+            // carry the trimmed root (the first one is `/Photos` above).
+            (
+                Some(serde_json::json!({ "initialPath": " /Photos " })),
+                "94544ea7ca48f51c1a58de426f9141ec32db179928c78043c37106f48677ceb5",
+            ),
+            (
+                Some(serde_json::json!({
+                    "initialPath": "/users/{username}",
+                    "username": "alice "
+                })),
+                "2ec264e82135bf84547c770bb336cfd1422d2a500246a806cea6384c73a3396d",
+            ),
+        ];
+        for (profile, golden) in cases {
+            assert_eq!(
+                digest(profile.clone()),
+                golden,
+                "the Yandex Disk AeroCloud identity changed for {profile:?}: every existing \
+                 config would get a new identity and start a fresh index"
+            );
+        }
+    }
+
     fn root_ok(profile: serde_json::Value) -> String {
         profile_root(&profile).expect("a resolvable root")
+    }
+
+    /// The identity follows the data path. With an absolute remote folder
+    /// (or one under the SFTP login folder) the data path does not depend on
+    /// the root, so the identity keeps main's form (filled, trimmed, placed)
+    /// and nobody re-indexes; with a relative or blank one the data path is
+    /// the literal root plus that folder, so the identity carries the literal
+    /// root. The data path is resolved as `cd` resolves it
+    /// (`resolve_remote_path` from the entered root). The factory digests are
+    /// the ones main computed, hashed by hand from main's
+    /// `resolved_target_identity` (canonical JSON, SHA-256).
+    #[test]
+    fn identity_root_follows_the_data_path() {
+        let opened = |profile: &serde_json::Value, remote: &str| {
+            crate::providers::sftp::resolve_remote_path(
+                &profile_root(profile).unwrap(),
+                "/home/u",
+                remote,
+            )
+        };
+        // Root-independent remote folders: main's trimmed form.
+        let absolute = [
+            (
+                serde_json::json!({ "initialPath": "/reports " }),
+                "/cloud/",
+                "/reports",
+                "/reports ",
+            ),
+            (
+                serde_json::json!({ "initialPath": " /reports" }),
+                "/cloud/",
+                "/reports",
+                " /reports",
+            ),
+            (
+                serde_json::json!({ "initialPath": "/users/{username}", "username": "alice " }),
+                "/cloud/",
+                "/users/alice",
+                "/users/alice ",
+            ),
+            (
+                serde_json::json!({ "protocol": "sftp", "initialPath": "docs " }),
+                "~/cloud",
+                "~/docs",
+                "~/docs ",
+            ),
+            (
+                serde_json::json!({ "protocol": "sftp", "initialPath": " docs" }),
+                "/cloud/",
+                "~/docs",
+                "~/ docs",
+            ),
+            (
+                serde_json::json!({ "initialPath": "  " }),
+                "/cloud/",
+                "/",
+                "/",
+            ),
+        ];
+        for (profile, remote, identity, root) in absolute {
+            assert_eq!(
+                identity_root(&profile, remote).unwrap(),
+                identity,
+                "{profile} {remote}"
+            );
+            assert_eq!(profile_root(&profile).unwrap(), root, "{profile}");
+        }
+        // Folders opened under the root: the literal root. `~/cloud` is
+        // under the login folder only on SFTP and SCP.
+        for (profile, remote, identity) in [
+            (
+                serde_json::json!({ "initialPath": "/reports " }),
+                "cloud/",
+                "/reports ",
+            ),
+            (
+                serde_json::json!({ "initialPath": "/reports " }),
+                "",
+                "/reports ",
+            ),
+            (
+                serde_json::json!({ "initialPath": "/reports " }),
+                "~/cloud",
+                "/reports ",
+            ),
+            (
+                serde_json::json!({ "initialPath": "/users/{username}", "username": "alice " }),
+                "cloud/",
+                "/users/alice ",
+            ),
+        ] {
+            assert_eq!(
+                identity_root(&profile, remote).unwrap(),
+                identity,
+                "{profile} {remote:?}"
+            );
+        }
+
+        // One profile whose folder is edited by one trailing space.
+        let before = serde_json::json!({ "protocol": "webdav", "initialPath": "/reports" });
+        let after = serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " });
+        // Absolute remote folder: the same data path, so the same identity.
+        assert_eq!(opened(&before, "/cloud/"), opened(&after, "/cloud/"));
+        assert_eq!(
+            identity_root(&before, "/cloud/").unwrap(),
+            identity_root(&after, "/cloud/").unwrap()
+        );
+        // Relative remote folder: another data path, so another identity.
+        assert_eq!(opened(&before, "cloud"), "/reports/cloud");
+        assert_eq!(opened(&after, "cloud"), "/reports /cloud");
+        assert_ne!(
+            identity_root(&before, "cloud").unwrap(),
+            identity_root(&after, "cloud").unwrap()
+        );
+
+        let config = |root: String| ProviderConfig {
+            name: "padded".into(),
+            provider_type: ProviderType::WebDav,
+            host: "dav.example.test".into(),
+            port: Some(443),
+            username: Some("alice".into()),
+            password: None,
+            initial_path: Some(root),
+            extra: HashMap::new(),
+        };
+        let binding = serde_json::Value::Null;
+        for (folder, user, remote, golden) in [
+            // Absolute remote folders: padded folders keep main's digest.
+            (
+                "/reports ",
+                "alice",
+                "/cloud/",
+                "72d819bbedf5054f7aa4614af41d575cd609561d8f55569c693cca6827abbac9",
+            ),
+            (
+                "/users/{username}",
+                "alice ",
+                "/cloud/",
+                "c2874d1d749ec91b678a2429a5b9c654c560f1d24667ed20b304ec5dcbdee950",
+            ),
+            // A relative remote folder under an unpadded root keeps main's
+            // digest too: existing relative installs do not re-index.
+            (
+                "/reports",
+                "alice",
+                "cloud/",
+                "72d819bbedf5054f7aa4614af41d575cd609561d8f55569c693cca6827abbac9",
+            ),
+        ] {
+            let profile = serde_json::json!({
+                "protocol": "webdav",
+                "initialPath": folder,
+                "username": user,
+            });
+            let root = identity_root(&profile, remote).unwrap();
+            assert_eq!(
+                resolved_target_identity(&config(root), &binding, Some("account-one")).unwrap(),
+                golden,
+                "the AeroCloud identity changed for {folder:?} with {remote:?}: the install would start a fresh index"
+            );
+        }
     }
 
     #[test]

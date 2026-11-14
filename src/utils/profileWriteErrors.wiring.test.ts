@@ -54,7 +54,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptConfirmMismatch: false, overlaysRemotePathError: false, defaultSaltEntropyMismatch: false,
         cryptFormsHalfRecorded: false, remotePathEscapesOverlay: false, aeroCryptEnabled: false,
         mtpFingerprint: undefined, persistModeCredentials: true, inModeGroup: true,
-        oauthOverlaySaveBlocked: false,
+        overlaySaveBlocked: false,
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,

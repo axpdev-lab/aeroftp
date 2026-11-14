@@ -28,6 +28,11 @@ export function hasUnresolvedUsernameTemplate(location: string | null | undefine
  * `..`), leaves the template as it is: never a shorter path, so a derived
  * scope or root can never climb above the user's folder. The connect then
  * refuses such a profile before any request is made.
+ *
+ * Nothing is trimmed, before or after, as in the backend: a folder's edge
+ * spaces are part of its name (#1449), as are the user name's, so the
+ * AeroCloud root and the crypt overlay anchor name one folder. The shared
+ * table's `compositions` cases fail if the helper or a reader trims.
  */
 export function expandUsernameInPath(template: string, username: string | null | undefined): string {
     if (!template.includes(USERNAME_TEMPLATE)) return template;

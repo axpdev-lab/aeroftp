@@ -2666,18 +2666,22 @@ pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
         .get("username")
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let field = |value: Option<&serde_json::Value>| {
-        value
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.is_empty())
-            .map(|s| {
-                crate::connection_manifest::expand_username_in_path(s, username)
-                    .unwrap_or_else(|_| s.to_string())
-            })
+    let field = |value: Option<&str>| {
+        value.filter(|s| !s.is_empty()).map(|s| {
+            crate::connection_manifest::expand_username_in_path(s, username)
+                .unwrap_or_else(|_| s.to_string())
+        })
     };
-    field(profile.pointer("/aeroCryptOverlay/remoteScope"))
-        .or_else(|| field(profile.get("initialPath")))
-        .unwrap_or_default()
+    // Both folders are read as written, as the AeroCloud root reads the
+    // starting folder (`profile_root`): with no folder of its own the anchor
+    // is the root, edge spaces included (#1449).
+    field(
+        profile
+            .pointer("/aeroCryptOverlay/remoteScope")
+            .and_then(|v| v.as_str()),
+    )
+    .or_else(|| field(profile.get("initialPath").and_then(|v| v.as_str())))
+    .unwrap_or_default()
 }
 
 /// AeroCrypt overlay builder for the AeroCloud stack.
@@ -6505,6 +6509,78 @@ pub(crate) mod tests {
             });
             let expected = case["path"].as_str().unwrap_or(template);
             assert_eq!(profile_overlay_scope(&p), expected, "{user:?}");
+        }
+    }
+
+    /// Every pair of twin readers composes one profile alike: the AeroCloud
+    /// root (`profile_root`) and the overlay anchor run the shared table's
+    /// `compositions`, which the TS twins run too. A root outside its own
+    /// anchor was a plaintext upload in mixed mode, so the folder the root
+    /// names is written through the overlay and must land encrypted.
+    #[tokio::test]
+    async fn the_root_and_the_anchor_compose_one_profile_alike() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let bare = |p: &str| p.trim_end_matches('/').to_string();
+        let cases = table["compositions"].as_array().unwrap();
+        assert!(cases.len() >= 8);
+        for case in cases {
+            let name = case["case"].as_str().unwrap();
+            let mut binding = serde_json::json!({ "kind": "aerocrypt" });
+            if let Some(scope) = case.get("remoteScope") {
+                binding["remoteScope"] = scope.clone();
+            }
+            let profile = serde_json::json!({
+                "protocol": "webdav",
+                "initialPath": case["initialPath"],
+                "username": case["user"],
+                "aeroCryptOverlay": binding,
+            });
+            let root = crate::cloud_provider_factory::profile_root(&profile);
+            let scope = profile_overlay_scope(&profile);
+            match case["root"].as_str() {
+                Some(expected) => assert_eq!(
+                    root.as_deref().ok().map(bare),
+                    Some(bare(expected)),
+                    "{name}"
+                ),
+                None => assert!(root.is_err(), "{name}: {root:?}"),
+            }
+            let Some(expected_scope) = case["scope"].as_str() else {
+                assert!(
+                    scope.contains(crate::connection_manifest::USERNAME_TEMPLATE),
+                    "{name}: {scope:?}"
+                );
+                continue;
+            };
+            assert_eq!(bare(&scope), bare(expected_scope), "{name}");
+            if case.get("remoteScope").is_some() {
+                continue;
+            }
+            // With no folder of its own the anchor is the root, and a folder
+            // AeroCloud makes there is written encrypted.
+            let root = root.unwrap();
+            let mut provider =
+                CryptOverlayProvider::new(Box::new(MemProvider::new()), aerocrypt_keys(), &scope);
+            provider
+                .mkdir(&format!("{}/cloud", bare(&root)))
+                .await
+                .expect("mkdir under the root");
+            let mem = provider
+                .as_any_mut()
+                .downcast_mut::<CryptOverlayProvider>()
+                .unwrap()
+                .inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap();
+            let dirs = mem.raw_dirs();
+            assert!(
+                !dirs.iter().any(|d| d.ends_with("/cloud")),
+                "{name}: the root's folder went up in plaintext: {dirs:?}"
+            );
         }
     }
 

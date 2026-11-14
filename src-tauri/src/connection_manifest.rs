@@ -146,6 +146,14 @@ pub fn refuse_unresolved_username_template(location: &str) -> Result<(), String>
 /// it is (a path is a decoded string; the WebDAV client encodes it on the
 /// wire). A blank user name is an error, and so is one that could move the
 /// folder: a `/`, `\\` or NUL inside it, or a name of `.` or `..`.
+///
+/// Nothing is trimmed, before or after: the folder is filled as written, and
+/// a folder's edge spaces are part of its name (`/reports ` is its own
+/// folder, #1449), as are the user name's. Every reader of a location gets
+/// this from here, so two readers of one profile (the AeroCloud root and the
+/// crypt overlay anchor) name one folder; a trim on either side put the
+/// AeroCloud folder outside the encrypted one. The shared table's
+/// `compositions` cases fail if the helper or a reader trims.
 pub fn expand_username_in_path(template: &str, username: &str) -> Result<String, String> {
     if !template.contains(USERNAME_TEMPLATE) {
         return Ok(template.to_string());
@@ -463,7 +471,8 @@ pub fn resolve_profile(
 #[cfg(test)]
 mod tests {
     use super::{
-        expand_username_in_path, expand_username_in_url, resolve_profile, USERNAME_TEMPLATE_MISSING,
+        expand_username_in_path, expand_username_in_url, resolve_profile, USERNAME_TEMPLATE,
+        USERNAME_TEMPLATE_MISSING,
     };
 
     #[test]
@@ -635,6 +644,41 @@ mod tests {
     /// Blankness is judged inside the helpers only. The check reads every call
     /// site's user-name argument and the `let` that binds it in the 40 lines
     /// above the call.
+    #[test]
+    fn the_path_helper_fills_the_folder_as_written_and_never_trims() {
+        // The shared table's templated compositions, which hold a folder and
+        // user names with edge spaces: each fails if the helper trims the
+        // folder or the filled result. The TS twin runs the same cases.
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let mut padded = false;
+        for case in table["compositions"].as_array().unwrap() {
+            let (Some(folder), Some(root)) = (case["initialPath"].as_str(), case["root"].as_str())
+            else {
+                continue;
+            };
+            if !folder.contains(USERNAME_TEMPLATE) {
+                continue;
+            }
+            padded |= folder != folder.trim();
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_path(folder, user)
+                    .unwrap()
+                    .trim_end_matches('/'),
+                root.trim_end_matches('/'),
+                "{}",
+                case["case"]
+            );
+        }
+        assert!(
+            padded,
+            "the table keeps a templated folder with an edge space"
+        );
+    }
+
     #[test]
     fn no_caller_trims_the_user_name_it_passes_to_the_helpers() {
         let call = regex::Regex::new(

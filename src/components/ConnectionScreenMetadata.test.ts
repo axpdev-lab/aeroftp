@@ -560,5 +560,39 @@ describe('A crypt overlay folder the user name cannot fill', () => {
         });
         expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
     });
-});
 
+    it('checks a relative Overlays Path on the scope it saves, under the templated Remote Path', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                // A backslash cannot fill a folder path: the scope keeps the placeholder.
+                username: 'DOMAIN\\alice',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        const overlayPath = container.querySelector<HTMLInputElement>('input[placeholder="/"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(overlayPath, 'crypt');
+            overlayPath.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // `crypt` alone holds no placeholder, but it is saved as
+        // `/files/{username}/crypt`, which the backend refuses to unlock.
+        expect(overlayPath.value).toBe('crypt');
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+    });
+});

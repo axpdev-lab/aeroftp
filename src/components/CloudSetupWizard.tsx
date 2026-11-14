@@ -34,11 +34,12 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
-    // The same expansion as the backend's (`expand_username_in_path`).
-    const base = expandUsernameInPath(profile.initialPath || '', profile.username)
-        .trim()
-        .replace(/\/+$/, '');
-    if (!base) return '';
+    // The same expansion as the backend's (`expand_username_in_path`), with
+    // the folder used as written (#1449) as the overlay anchor reads it: a
+    // trimmed root sat outside its own encrypted folder. Only a blank folder
+    // means the server root.
+    const base = expandUsernameInPath(profile.initialPath || '', profile.username).replace(/\/+$/, '');
+    if (!base.trim()) return '';
     return base.startsWith('/') ? base : `/${base}`;
 }
 

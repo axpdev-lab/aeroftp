@@ -5,7 +5,8 @@
     "path: the folder template filled as written (null = refused, and the TS helper keeps the template). url: the server URL template filled as one percent-encoded path segment (Rust only; null = refused).",
     "A user name of '.' or '..' is refused in both forms: in a URL the parser would resolve it and climb out of the user's folder.",
     "unresolvedMessage: what every user of a derived location (the crypt overlay unlock, the AeroCloud root, the window) shows instead of acting on a location still holding the placeholder; the Rust constant USERNAME_TEMPLATE_UNRESOLVED must equal it.",
-    "A user name that contains {username} itself is refused by both helpers with unresolvedMessage: filled, it would leave the placeholder in place."
+    "A user name that contains {username} itself is refused by both helpers with unresolvedMessage: filled, it would leave the placeholder in place.",
+    "compositions: one profile per case, read by every pair of twin readers of a derived location: the AeroCloud root (Rust profile_root, TS profileRoot), the crypt overlay anchor (Rust profile_overlay_scope, TS profileOverlayScope) and the AeroCloud base (TS aeroCloudBase); overlayInputs are what the form's Overlays Path may hold, and each must save as remoteScope (TS resolveOverlayScope). root and scope are compared without a trailing slash; null means refused (the root) or still holding the placeholder (the scope). Nothing is trimmed, before or after the fill: a folder's edge spaces are part of its name (#1449), as are the user name's; the edge space cases fail if the helper or a reader trims."
   ],
   "pathTemplate": "/remote.php/dav/files/{username}/",
   "urlTemplate": "https://dav.example.test/dav/{username}/",
@@ -74,6 +75,85 @@
       "user": ".",
       "path": null,
       "url": null
+    }
+  ],
+  "compositions": [
+    {
+      "case": "edge space in the user name, template at the end",
+      "initialPath": "/users/{username}",
+      "user": "alice ",
+      "root": "/users/alice ",
+      "scope": "/users/alice "
+    },
+    {
+      "case": "folder with a trailing space, filled as written",
+      "initialPath": "/users/{username}/reports ",
+      "user": " bob",
+      "root": "/users/ bob/reports ",
+      "scope": "/users/ bob/reports "
+    },
+    {
+      "case": "template in the middle, leading space in the user name",
+      "initialPath": "/a/{username}/b/",
+      "user": " bob",
+      "root": "/a/ bob/b",
+      "scope": "/a/ bob/b"
+    },
+    {
+      "case": "scope under the templated folder, given relative or absolute, with or without a trailing slash",
+      "initialPath": "/files/{username}/",
+      "remoteScope": "/files/{username}/crypt",
+      "overlayInputs": [
+        "crypt",
+        "crypt/",
+        "/files/{username}/crypt",
+        "/files/{username}/crypt/"
+      ],
+      "user": "bob",
+      "root": "/files/bob",
+      "scope": "/files/bob/crypt"
+    },
+    {
+      "case": "template in the middle of the scope only",
+      "initialPath": "/vault",
+      "remoteScope": "/vault/{username}/in",
+      "overlayInputs": [
+        "{username}/in",
+        "/vault/{username}/in"
+      ],
+      "user": "carol",
+      "root": "/vault",
+      "scope": "/vault/carol/in"
+    },
+    {
+      "case": "relative scope under a folder ending in the user name with an edge space",
+      "initialPath": "/users/{username}",
+      "remoteScope": "/users/{username}/vault",
+      "overlayInputs": [
+        "vault",
+        "vault/"
+      ],
+      "user": "alice ",
+      "root": "/users/alice ",
+      "scope": "/users/alice /vault"
+    },
+    {
+      "case": "a user name the folder refuses",
+      "initialPath": "/files/{username}/",
+      "remoteScope": "/files/{username}/crypt",
+      "overlayInputs": [
+        "crypt"
+      ],
+      "user": "DOMAIN\\alice",
+      "root": null,
+      "scope": null
+    },
+    {
+      "case": "folder with a trailing space and no template, its own folder",
+      "initialPath": "/reports ",
+      "user": "x",
+      "root": "/reports ",
+      "scope": "/reports "
     }
   ],
   "unresolvedMessage": "This location still holds the {username} placeholder because the profile's user name cannot fill it (it is blank, contains '/', '\\' or NUL, is '.' or '..', or is literally {username}): set the user name, or write the folder in full instead of the placeholder"

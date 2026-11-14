@@ -8,6 +8,7 @@ import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_
 import cases from '../shared/username-template-cases.json';
 import { profileOverlayScope, resolveUsernameTemplate } from './cryptScope';
 import { aeroCloudBase, profileRoot } from '../components/CloudSetupWizard';
+import { resolveOverlayScope } from './overlayScope';
 import type { ServerProfile } from '../types';
 
 describe('expandUsernameInPath', () => {
@@ -121,5 +122,58 @@ describe('expandUsernameInPath', () => {
         };
         walk(join(process.cwd(), 'src'));
         expect(offenders).toEqual([]);
+    });
+});
+
+describe('the twin readers of one profile', () => {
+    // The Rust twins run the same cases
+    // (`the_root_and_the_anchor_compose_one_profile_alike`).
+    const bare = (p: string) => p.replace(/\/+$/, '');
+    type Composition = {
+        case: string; initialPath: string; user: string; remoteScope?: string; overlayInputs?: string[];
+        root: string | null; scope: string | null;
+    };
+    const compositions = (cases as unknown as { compositions: Composition[] }).compositions;
+
+    it('compose the root, the anchor and the base alike', () => {
+        expect(compositions.length).toBeGreaterThanOrEqual(8);
+        for (const c of compositions) {
+            const profile = {
+                protocol: 'webdav', initialPath: c.initialPath, username: c.user,
+                aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', ...(c.remoteScope ? { remoteScope: c.remoteScope } : {}) },
+            } as unknown as ServerProfile;
+            const root = profileRoot(profile);
+            const scope = profileOverlayScope(profile);
+            if (c.root === null) expect(hasUnresolvedUsernameTemplate(root), c.case).toBe(true);
+            else expect(bare(root), c.case).toBe(bare(c.root));
+            if (c.scope === null) {
+                expect(hasUnresolvedUsernameTemplate(scope), c.case).toBe(true);
+                continue;
+            }
+            expect(bare(scope), c.case).toBe(bare(c.scope));
+            // The base AeroCloud writes in sits inside the anchor the overlay
+            // encrypts, or its uploads go up in plaintext.
+            const base = bare(aeroCloudBase(profile));
+            const anchor = bare(scope);
+            expect(base === anchor || base.startsWith(`${anchor}/`), `${c.case}: ${base} outside ${anchor}`).toBe(true);
+        }
+    });
+
+    it('get the fill from the helper: the folder as written, nothing trimmed before or after', () => {
+        // A folder and user names with edge spaces: each case fails if the
+        // helper trims the folder or the filled result.
+        const templated = compositions.filter(c => c.root !== null && c.initialPath.includes('{username}'));
+        expect(templated.some(c => c.initialPath !== c.initialPath.trim())).toBe(true);
+        for (const c of templated) {
+            expect(bare(expandUsernameInPath(c.initialPath, c.user)), c.case).toBe(bare(c.root!));
+        }
+    });
+
+    it('save every Overlays Path spelling as the scope the backend reads', () => {
+        for (const c of compositions) {
+            for (const input of c.overlayInputs ?? []) {
+                expect(resolveOverlayScope(input, c.initialPath, 'webdav'), `${c.case}: ${input}`).toBe(c.remoteScope);
+            }
+        }
     });
 });
