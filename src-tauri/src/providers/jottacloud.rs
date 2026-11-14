@@ -4259,11 +4259,10 @@ mod tests {
                 "{to}: {outcome:?}"
             );
         }
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
         provider
             .rename("/a.txt", "/c.txt")
             .await
@@ -4282,11 +4281,10 @@ mod tests {
             outcome.is_err() && !matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
         );
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
         assert!(matches!(
             provider.stat("/gone.txt").await,
             Err(ProviderError::NotFound(_))
@@ -4348,11 +4346,10 @@ mod tests {
             garbage.is_err() && !matches!(garbage, Err(ProviderError::NotFound(_))),
             "{garbage:?}"
         );
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
     }
 
     /// What `mvDir` does onto an existing folder is not documented: a
@@ -4365,11 +4362,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
     }
 
     /// `replace` keeps the move without the look (whatever JFS does with the
@@ -4382,11 +4378,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
         provider.replace("/a.txt", "/b.txt").await.expect("replace");
         let posts = posts.lock().unwrap().clone();
         assert_eq!(posts.len(), 1, "{posts:?}");

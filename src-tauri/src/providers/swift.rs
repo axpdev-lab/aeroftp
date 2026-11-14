@@ -3045,11 +3045,14 @@ mod tests {
             p.rmdir_recursive("/d")
                 .await
                 .unwrap_or_else(|e| panic!("{count} objects, pages of {cap}: {e}"));
-            assert!(
-                stored.lock().unwrap().is_empty(),
-                "{count} objects, pages of {cap}: left {:?}",
-                stored.lock().unwrap()
-            );
+            {
+                let seen_stored = stored.lock().unwrap().clone();
+                assert!(
+                    seen_stored.is_empty(),
+                    "{count} objects, pages of {cap}: left {:?}",
+                    seen_stored
+                );
+            }
         }
     }
 

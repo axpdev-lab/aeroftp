@@ -3788,11 +3788,10 @@ mod tests {
             }
             other => panic!("the failed lookup must be returned: {other:?}"),
         }
-        assert!(
-            posts.lock().unwrap().is_empty(),
-            "{:?}",
-            posts.lock().unwrap()
-        );
+        {
+            let seen_posts = posts.lock().unwrap().clone();
+            assert!(seen_posts.is_empty(), "{:?}", seen_posts);
+        }
     }
 
     /// After `/a` moved to `/b`, the cache still mapped `/a` (and `/a/sub`)
@@ -3880,11 +3879,10 @@ mod tests {
     async fn a_permanent_delete_does_not_take_a_trashed_file_of_another_case() {
         let (mut p, changes) = provider_on_drive(&[("TA", "A.txt", "trash:root")]).await;
         assert!(!p.delete_permanent("/a.txt").await.expect("delete"));
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The trash search went by name alone: with `/old/a.txt` and
@@ -3920,11 +3918,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The trash search read its first page only: with the two generations
@@ -3946,11 +3943,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The folder cache keeps each spelling a lookup used, so a folder whose
@@ -4009,11 +4005,10 @@ mod tests {
                 "{from} -> {to}: {outcome:?}"
             );
         }
-        assert!(
-            patches.lock().unwrap().is_empty(),
-            "{:?}",
-            patches.lock().unwrap()
-        );
+        {
+            let seen_patches = patches.lock().unwrap().clone();
+            assert!(seen_patches.is_empty(), "{:?}", seen_patches);
+        }
     }
 
     /// After `cd /docs`: `/x` and `x` name different folders, `/x` the

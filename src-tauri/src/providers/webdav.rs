@@ -8233,11 +8233,10 @@ mod tests {
         p.replace("/d/a.txt", "/d/a.txt")
             .await
             .expect("replace onto itself");
-        assert!(
-            moves.lock().unwrap().is_empty(),
-            "{:?}",
-            moves.lock().unwrap()
-        );
+        {
+            let seen_moves = moves.lock().unwrap().clone();
+            assert!(seen_moves.is_empty(), "{:?}", seen_moves);
+        }
     }
 
     /// Files by path, as a [`dav_store_server`] holds them.
@@ -9125,11 +9124,10 @@ mod tests {
                 }
             }
         }
-        assert!(
-            seen.lock().unwrap().is_empty(),
-            "{:?}",
-            seen.lock().unwrap()
-        );
+        {
+            let seen_seen = seen.lock().unwrap().clone();
+            assert!(seen_seen.is_empty(), "{:?}", seen_seen);
+        }
 
         // Any other path is refused before a request, whoever asks.
         for outcome in [
@@ -9143,11 +9141,10 @@ mod tests {
                 "{outcome:?}"
             );
         }
-        assert!(
-            seen.lock().unwrap().is_empty(),
-            "{:?}",
-            seen.lock().unwrap()
-        );
+        {
+            let seen_seen = seen.lock().unwrap().clone();
+            assert!(seen_seen.is_empty(), "{:?}", seen_seen);
+        }
     }
 
     /// Issue #591 — vanilla WebDAV (SFTPGo, nginx DAV, Apache) must advertise

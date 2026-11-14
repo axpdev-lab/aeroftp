@@ -446,11 +446,10 @@ mod tests {
         let (callback, updates) = recorder();
         let progress = UploadProgress::new(Some(callback), 0);
         progress.start();
-        assert!(
-            updates.lock().unwrap().is_empty(),
-            "{:?}",
-            updates.lock().unwrap()
-        );
+        {
+            let seen_updates = updates.lock().unwrap().clone();
+            assert!(seen_updates.is_empty(), "{:?}", seen_updates);
+        }
         progress.complete();
         assert_eq!(*updates.lock().unwrap(), [(0, 0)]);
     }

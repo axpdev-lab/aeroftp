@@ -20,6 +20,8 @@ import { GitHubReleaseIcon } from './icons/GitHubReleaseIcon';
 import { useHumanizedLog } from '../hooks/useHumanizedLog';
 import { Checkbox } from './ui/Checkbox';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface GitHubReleaseBrowserProps {
   isOpen: boolean;
@@ -86,6 +88,19 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
   const [creating, setCreating] = useState(false);
   const [importingChangelog, setImportingChangelog] = useState(false);
   const [previewBody, setPreviewBody] = useState(false);
+  // A release create already sent goes on after a close, and a create form with typed content is unsaved: the
+  // backdrop is inert in both cases and the X asks first (Discussion #1527).
+  const formDirty = view === 'create' && (formTag.trim() !== '' || formName.trim() !== '' || formBody.trim() !== '' || formDraft || formPrerelease);
+  const createGuard = creating ? 'busy' : formDirty ? 'dirty' : null;
+  const guarded = useGuardedClose({ guard: createGuard, onClose });
+  // Back from the create form drops the draft (the next release starts
+  // empty): it asks while the form is dirty and does nothing while a
+  // create runs, like the X, ESC and the backdrop (Discussion #1527).
+  const [confirmBack, setConfirmBack] = useState(false);
+  const requestBack = () => {
+    if (!createGuard) setView('list');
+    else if (createGuard === 'dirty') setConfirmBack(true);
+  };
 
   /** Suggest next patch version from existing releases */
   const suggestedTag = React.useMemo(() => {
@@ -183,15 +198,17 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       if (e.key === 'Escape') {
         e.preventDefault();
         if (view === 'create') {
-          setView('list');
+          // ESC in the create form is Back: it asks before dropping a typed
+          // draft and does nothing while a create runs.
+          requestBack();
         } else {
-          onClose();
+          guarded.requestClose();
         }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, view, onClose]);
+  }, [isOpen, view, createGuard, guarded.requestClose]);
 
   const handleToggleExpand = useCallback(async (tag: string) => {
     if (expandedTag === tag) {
@@ -335,7 +352,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={view === 'create' ? () => setView('list') : onClose}
+        onClick={view === 'create' ? () => { if (!createGuard) setView('list'); } : guarded.requestBackdropClose}
       />
 
       {/* Dialog */}
@@ -354,7 +371,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
           <div className="flex items-center gap-2">
             {view === 'create' ? (
               <button
-                onClick={() => setView('list')}
+                onClick={requestBack}
                 className="p-1 rounded transition-colors hover:opacity-80"
                 style={{ color: 'var(--color-text-secondary)' }}
               >
@@ -395,7 +412,7 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
               </button>
             )}
             <button
-              onClick={onClose}
+              onClick={guarded.requestClose}
               className="p-1 rounded transition-colors hover:opacity-80"
               style={{ color: 'var(--color-text-secondary)' }}
             >
@@ -481,6 +498,17 @@ export const GitHubReleaseBrowser: React.FC<GitHubReleaseBrowserProps> = ({
             </div>
           </div>
         </div>
+      )}
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
+      {confirmBack && (
+        <GuardedCloseConfirm
+          kind="dirty"
+          canAbort={false}
+          onKeep={() => setConfirmBack(false)}
+          onConfirm={() => { setConfirmBack(false); setView('list'); }}
+        />
       )}
     </div>
   );

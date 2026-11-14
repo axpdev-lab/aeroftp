@@ -3447,11 +3447,10 @@ mod tests {
                 "{from} -> {to}: {outcome:?}"
             );
         }
-        assert!(
-            patches.lock().unwrap().is_empty(),
-            "{:?}",
-            patches.lock().unwrap()
-        );
+        {
+            let seen_patches = patches.lock().unwrap().clone();
+            assert!(seen_patches.is_empty(), "{:?}", seen_patches);
+        }
     }
 
     /// Onto its own path a rename has nothing to move, and a replace must not
@@ -3461,11 +3460,10 @@ mod tests {
         let (mut provider, patches) = provider_on_graph(false).await;
         provider.rename("/a.txt", "/a.txt").await.expect("rename");
         provider.replace("/a.txt", "/a.txt").await.expect("replace");
-        assert!(
-            patches.lock().unwrap().is_empty(),
-            "{:?}",
-            patches.lock().unwrap()
-        );
+        {
+            let seen_patches = patches.lock().unwrap().clone();
+            assert!(seen_patches.is_empty(), "{:?}", seen_patches);
+        }
     }
 
     /// A download of a missing file returned Graph's error JSON as the

@@ -697,11 +697,10 @@ async fn plain_webdav_purge_sends_nothing() {
         .await;
     assert_eq!(captured.len(), 1);
     assert_eq!(captured[0].as_ref().ok().and_then(|id| id.as_deref()), None);
-    assert!(
-        hits.lock().unwrap().is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(seen_hits.is_empty(), "{:?}", seen_hits);
+    }
 }
 
 fn assert_one_delete(hits: &[DavHit], id: &str) {
@@ -845,11 +844,10 @@ async fn nextcloud_purge_refuses_a_trash_listing_that_breaks_after_the_first_ent
     let mut provider = nextcloud_at(&base);
     let purged = provider.delete_permanent("/docs/a.txt").await;
     assert!(purged.is_err(), "{purged:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// The trash body is cut after the first complete response, with no
@@ -860,11 +858,10 @@ async fn nextcloud_purge_refuses_a_trash_listing_cut_after_the_first_response() 
     let mut provider = nextcloud_at(&base);
     let purged = provider.delete_permanent("/docs/a.txt").await;
     assert!(purged.is_err(), "{purged:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// The file-id body is cut after the collection response. Capture must fail,
@@ -881,11 +878,14 @@ async fn nextcloud_purge_refuses_a_file_id_listing_cut_before_the_document_ends(
             .delete_permanent_with_identity("/docs/a.txt", identity.as_deref())
             .await;
     }
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "captured={captured:?} hits={:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(
+            deletes(&seen_hits).is_empty(),
+            "captured={captured:?} hits={:?}",
+            seen_hits
+        );
+    }
     assert!(
         captured.first().is_some_and(|result| result.is_err()),
         "{captured:?}"
@@ -899,11 +899,10 @@ async fn nextcloud_purge_accepts_a_complete_empty_trash_listing() {
     let mut provider = nextcloud_at(&base);
     let purged = provider.delete_permanent("/docs/a.txt").await;
     assert!(matches!(purged, Ok(false)), "{purged:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// A finished file-id document with no responses is `Ok(None)`, not an error.
@@ -915,11 +914,10 @@ async fn nextcloud_purge_capture_keeps_a_complete_empty_file_id_listing() {
         .capture_trash_identities(&["/docs/a.txt".to_string()])
         .await;
     assert!(matches!(captured.first(), Some(Ok(None))), "{captured:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// Two finished file responses still yield both ids.
@@ -955,11 +953,10 @@ async fn nextcloud_purge_leaves_a_trailing_space_name_when_the_plain_path_is_del
     let mut provider = nextcloud_at(&base);
     let purged = provider.delete_permanent("/docs/a.txt").await;
     assert!(matches!(purged, Ok(false)), "{purged:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// Both names are in the trash. The plain path deletes only the plain item.
@@ -982,11 +979,10 @@ async fn nextcloud_purge_leaves_a_leading_space_name_when_the_plain_path_is_dele
     let mut provider = nextcloud_at(&base);
     let purged = provider.delete_permanent("/a.txt").await;
     assert!(matches!(purged, Ok(false)), "{purged:?}");
-    assert!(
-        deletes(&hits.lock().unwrap()).is_empty(),
-        "{:?}",
-        hits.lock().unwrap()
-    );
+    {
+        let seen_hits = hits.lock().unwrap().clone();
+        assert!(deletes(&seen_hits).is_empty(), "{:?}", seen_hits);
+    }
 }
 
 /// Both names are in the trash. The plain path deletes only the plain item.

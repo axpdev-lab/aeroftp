@@ -175,3 +175,24 @@ it('vault-ready rehydrates the fallback and preserves a pending human edit', asy
     expect(host.textContent).not.toContain('Local Fixture');
     expect(button('ai.settings.disabled')).toBeDefined();
 });
+
+it('keeps a dirty model editor draft on Escape until explicitly discarded', async () => {
+    await act(async () => host.querySelector<HTMLButtonElement>('#ai-settings-tab-models')!.click());
+    await until(() => host.querySelector('[data-model-group]') !== null);
+    const addModel = [...host.querySelectorAll('button')].find(b => b.textContent?.includes('ai.settings.addCustomModel'));
+    expect(addModel).toBeTruthy();
+    await act(async () => addModel!.click());
+    const editor = () => host.querySelector('[role="dialog"][aria-label="ai.settings.modelEditorAria"]');
+    expect(editor()).toBeTruthy();
+    const nameInput = host.querySelector<HTMLInputElement>('input[placeholder="ai.settings.modelNamePlaceholder"]')!;
+    await typeKey(nameInput, 'sentinel-model');
+    await act(async () => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })); });
+    expect(host.textContent).toContain('modalGuard.dirtyTitle');
+    expect(editor()).toBeTruthy();
+    expect(nameInput.value).toBe('sentinel-model');
+    await act(async () => button('modalGuard.keepEditing').click());
+    expect(editor()).toBeTruthy();
+    expect(nameInput.value).toBe('sentinel-model');
+    await act(async () => button('ai.settings.cancel').click());
+    expect(editor()).toBeFalsy();
+});

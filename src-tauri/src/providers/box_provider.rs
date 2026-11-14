@@ -3885,11 +3885,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// A one-byte local file to upload.

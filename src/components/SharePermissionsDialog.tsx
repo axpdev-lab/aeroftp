@@ -6,6 +6,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, UserPlus, Trash2, RefreshCw, Users } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { useInFlight } from '../hooks/useInFlight';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface SharePermission {
   role: string;
@@ -33,8 +36,15 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState('reader');
-  const [adding, setAdding] = useState(false);
-  const [removing, setRemoving] = useState<string | null>(null);
+  // Adds can overlap (Enter twice before the first settles): count every
+  // pending request so the first finisher cannot drop the busy guard.
+  const [pendingAdds, setPendingAdds] = useState(0);
+  const removes = useInFlight<string>();
+  // Removes on different permissions can overlap: count every pending
+  // request so the first finisher cannot drop the busy guard (review).
+  // A share or removal already sent goes on after a close, and a typed email is lost by one: the backdrop is
+  // inert in both cases and the X asks first (Discussion #1527).
+  const guarded = useGuardedClose({ guard: pendingAdds > 0 || removes.count > 0 ? 'busy' : newEmail.trim() ? 'dirty' : null, onClose });
 
   // Hide scrollbars when dialog is open (WebKitGTK fix)
   useEffect(() => {
@@ -61,7 +71,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
 
   const handleAdd = async () => {
     if (!newEmail.trim()) return;
-    setAdding(true);
+    setPendingAdds(c => c + 1);
     try {
       await invoke('provider_add_permission', {
         path: filePath,
@@ -74,19 +84,19 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
     } catch (err) {
       setError(String(err));
     } finally {
-      setAdding(false);
+      setPendingAdds(c => c - 1);
     }
   };
 
   const handleRemove = async (target: string) => {
-    setRemoving(target);
+    removes.begin(target);
     try {
       await invoke('provider_remove_permission', { path: filePath, target });
       await loadPermissions();
     } catch (err) {
       setError(String(err));
     } finally {
-      setRemoving(null);
+      removes.end(target);
     }
   };
 
@@ -96,7 +106,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[70vh] flex flex-col animate-scale-in"
@@ -108,7 +118,7 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
             <Users size={18} className="text-blue-500" />
             <h3 className="font-semibold text-sm">{t('sharing.title') || 'Sharing'}</h3>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+          <button onClick={guarded.requestClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
             <X size={16} />
           </button>
         </div>
@@ -139,10 +149,10 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
           </select>
           <button
             onClick={handleAdd}
-            disabled={adding || !newEmail.trim()}
+            disabled={pendingAdds > 0 || !newEmail.trim()}
             className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-sm rounded-lg flex items-center gap-1"
           >
-            {adding ? <RefreshCw size={13} className="animate-spin" /> : <UserPlus size={13} />}
+            {pendingAdds > 0 ? <RefreshCw size={13} className="animate-spin" /> : <UserPlus size={13} />}
             {t('sharing.add') || 'Add'}
           </button>
         </div>
@@ -168,11 +178,11 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
                   {p.role !== 'owner' && (
                     <button
                       onClick={() => handleRemove(p.target)}
-                      disabled={removing === p.target}
+                      disabled={removes.has(p.target)}
                       className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50 flex-shrink-0"
                       title={t('sharing.remove') || 'Remove'}
                     >
-                      {removing === p.target ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      {removes.has(p.target) ? <RefreshCw size={13} className="animate-spin" /> : <Trash2 size={13} />}
                     </button>
                   )}
                 </div>
@@ -181,6 +191,9 @@ export function SharePermissionsDialog({ filePath, fileName, onClose }: Props) {
           )}
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

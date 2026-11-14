@@ -3095,11 +3095,10 @@ mod tests {
     async fn a_rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_refusing_moves().await;
         provider.rename("/a.txt", "/a.txt").await.expect("no-op");
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A Dropbox double that keeps `items` (path, content, is a folder) in
@@ -3252,11 +3251,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The replace sets the old item aside, so the name is empty for a

@@ -11,6 +11,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GitCommit, X, FileUp, Trash2, AlertTriangle, GitBranch, UserPlus, Users, Plus } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 // ── Co-Author Storage ──────────────────────────────────────────────
 
@@ -64,6 +66,8 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
   const t = useTranslation();
   const modalDrag = useDraggableModal();
   const [message, setMessage] = useState('');
+  // The message filled in on open: anything else was typed by the user.
+  const [generatedMessage, setGeneratedMessage] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const [coAuthors, setCoAuthors] = useState<CoAuthor[]>(loadCoAuthors);
   const [showCoAuthors, setShowCoAuthors] = useState(() => loadCoAuthors().some(a => a.enabled));
@@ -99,6 +103,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
         : `${files.length} items`;
       const verb = operation === 'delete' ? 'Delete' : 'Update';
       setMessage(`${verb} ${fileName} via AeroFTP`);
+      setGeneratedMessage(`${verb} ${fileName} via AeroFTP`);
       setTimeout(() => inputRef.current?.select(), 100);
     }
   }, [isOpen, files, operation]);
@@ -113,18 +118,26 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
     }
   }, [isOpen]);
 
+  // Cancelling writes nothing, but a message or a co-author being typed is
+  // lost: the backdrop is inert then, and the X and ESC ask first
+  // (Discussion #1527). Cancel is an explicit answer and does not ask.
+  const guarded = useGuardedClose({
+    guard: message !== generatedMessage || newCoAuthor.trim() !== '' ? 'dirty' : null,
+    onClose: onCancel,
+  });
+
   // Keyboard handler
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onCancel();
+        guarded.requestClose();
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, onCancel]);
+  }, [isOpen, guarded.requestClose]);
 
   if (!isOpen) return null;
 
@@ -159,7 +172,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
       aria-label={t('github.commitDialogTitle') || 'Commit Message'}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={guarded.requestBackdropClose} />
 
       {/* Dialog */}
       <div
@@ -187,7 +200,7 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
             </h2>
           </div>
           <button
-            onClick={onCancel}
+            onClick={guarded.requestClose}
             className="p-1 rounded transition-colors hover:opacity-80"
             style={{ color: 'var(--color-text-secondary)' }}
           >
@@ -396,6 +409,14 @@ export const GitHubCommitDialog: React.FC<GitHubCommitDialogProps> = ({
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm
+          kind={guarded.confirmKind}
+          canAbort={guarded.canAbort}
+          onKeep={guarded.cancelConfirm}
+          onConfirm={guarded.confirmAndClose}
+        />
+      )}
     </div>
   );
 };

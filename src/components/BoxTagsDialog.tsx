@@ -7,6 +7,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { Tag, X, Plus, Loader2 } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { useDraggableModal } from '../hooks/useDraggableModal';
+import { useGuardedClose } from '../hooks/useGuardedClose';
+import { GuardedCloseConfirm } from './GuardedCloseConfirm';
 
 interface BoxTagsDialogProps {
   filePath: string;
@@ -25,13 +27,18 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const hasChanges = JSON.stringify([...tags].sort()) !== JSON.stringify([...currentTags].sort());
+  // A save already sent goes on after a close, and changed tags or a typed tag are unsaved: the backdrop is inert
+  // in both cases and the X asks first (Discussion #1527).
+  const guarded = useGuardedClose({ guard: saving ? 'busy' : hasChanges || input.trim() ? 'dirty' : null, onClose });
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') guarded.requestClose();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, [guarded.requestClose]);
 
   const addTag = () => {
     const trimmed = input.trim().toLowerCase();
@@ -65,10 +72,8 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
     }
   };
 
-  const hasChanges = JSON.stringify(tags.sort()) !== JSON.stringify([...currentTags].sort());
-
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50" onClick={guarded.onBackdropClick}>
       <div
         {...modalDrag.panelProps}
         className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-2xl w-[400px] flex flex-col animate-scale-in"
@@ -85,7 +90,7 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={guarded.requestClose}
             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
           >
             <X size={14} />
@@ -146,8 +151,9 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
         {/* Footer */}
         <div className="flex justify-end gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-700">
           <button
-            onClick={onClose}
-            className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            onClick={guarded.requestClose}
+            disabled={saving}
+            className="px-4 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"
           >
             {t('common.cancel')}
           </button>
@@ -161,6 +167,9 @@ export function BoxTagsDialog({ filePath, currentTags, onClose, onUpdated, comma
           </button>
         </div>
       </div>
+      {guarded.confirmOpen && guarded.confirmKind && (
+        <GuardedCloseConfirm kind={guarded.confirmKind} canAbort={guarded.canAbort} onKeep={guarded.cancelConfirm} onConfirm={guarded.confirmAndClose} />
+      )}
     </div>
   );
 }

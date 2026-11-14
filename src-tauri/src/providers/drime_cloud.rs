@@ -2992,11 +2992,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The move keeps the old name: with `/dst/a.txt` present it put a
@@ -3590,11 +3589,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// An upload deletes the file it replaces first, and took a folder of
@@ -3617,11 +3615,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::InvalidPath(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// A share link asked for `a.txt` beside only `A.txt` found `A.txt`
@@ -3644,11 +3641,10 @@ mod tests {
             matches!(removed, Err(ProviderError::NotFound(_))),
             "{removed:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// A delete forgot the cached ids only after a success, so a delete
@@ -3726,11 +3722,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// With `A.txt` listed before `a.txt`, `stat /d/a.txt` took the first
