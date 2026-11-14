@@ -111,6 +111,20 @@ pub fn normalize_host(raw: &str) -> String {
     s
 }
 
+/// The port a WebDAV host with no port of its own connects to: 80 for a clear
+/// scheme (`http://`, and `webdav://`, which `normalize_host` reads the same
+/// way), 443 for `https://`, `webdavs://` and a host with no scheme (the
+/// connect opens those over https). Read from the host as written, before
+/// `normalize_host` drops the scheme. Mirrors the TS `defaultWebDavPort`.
+pub fn default_webdav_port(raw_host: &str) -> u64 {
+    let s = raw_host.trim().to_ascii_lowercase();
+    if s.starts_with("http://") || s.starts_with("webdav://") {
+        80
+    } else {
+        443
+    }
+}
+
 /// First path segment of the server URL: for `https://dav.puter.com/alice`
 /// that is `alice`, the Puter account the WebDAV root belongs to. Token auth
 /// uses the literal username `-token` for every account, so without this the
@@ -394,7 +408,11 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
                 }
                 _ => (normalized, None),
             };
-            let port = embedded_port.unwrap_or(if profile.port == 0 { 443 } else { profile.port });
+            let port = embedded_port.unwrap_or(if profile.port == 0 {
+                default_webdav_port(profile.host)
+            } else {
+                profile.port
+            });
             let port_part = if port == 443 {
                 String::new()
             } else {
@@ -1148,6 +1166,37 @@ mod tests {
             None,
         );
         assert_eq!(dedup_key(&fragment_only), "webdav:puter-webdav:dave");
+    }
+
+    #[test]
+    fn the_default_port_follows_the_scheme_as_the_ts_twin_does() {
+        // The table lives once, in the TS twin's test, between two markers.
+        let source = include_str!("../../src/utils/storageDedup.test.ts");
+        let start = source.find("/* dedup-port-cases:begin */").unwrap();
+        let end = source.find("/* dedup-port-cases:end */").unwrap();
+        let block = &source[start..end];
+        let json = &block[block.find("= [").unwrap() + 2..=block.rfind(']').unwrap()];
+        let cases: Vec<serde_json::Value> = serde_json::from_str(json).unwrap();
+        assert!(cases.len() >= 10);
+        for c in cases {
+            let host = c["host"].as_str().unwrap();
+            let port = c["port"].as_u64().unwrap();
+            let profile = p(
+                "n",
+                "webdav",
+                Some("nextcloud"),
+                host,
+                port,
+                "alice",
+                None,
+                None,
+            );
+            assert_eq!(
+                dedup_key(&profile),
+                c["key"].as_str().unwrap(),
+                "{host} port {port}"
+            );
+        }
     }
 
     #[test]

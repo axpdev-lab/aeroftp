@@ -226,6 +226,18 @@ const isWebDavPreset = (providerId: string | undefined): boolean =>
     !!providerId && WEBDAV_PRESET_IDS.has(providerId);
 
 /**
+ * The port a WebDAV host with no port of its own connects to: 80 for a clear
+ * scheme (`http://`, and `webdav://`, which `normalizeHost` reads the same
+ * way), 443 for `https://`, `webdavs://` and a host with no scheme. Read from
+ * the host as written, before `normalizeHost` drops the scheme. Mirrors the
+ * Rust `default_webdav_port`.
+ */
+const defaultWebDavPort = (rawHost: string | undefined): number => {
+    const s = (rawHost || '').trim().toLowerCase();
+    return s.startsWith('http://') || s.startsWith('webdav://') ? 80 : 443;
+};
+
+/**
  * First path segment of the server URL: for `https://dav.puter.com/alice`
  * that is `alice`, the Puter account the WebDAV root belongs to. Token auth
  * uses the literal username `-token` for every account, so without this the
@@ -318,7 +330,7 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
             const host = embedded ? normalized.slice(0, embedded.index) : normalized;
             const port = embedded
                 ? Number(embedded[1])
-                : server.port || 443;
+                : server.port || defaultWebDavPort(server.host);
             const portPart = port === 443 ? '' : `:${port}`;
             return `webdav:${providerId}:${host}${portPart}:${userOrId}`;
         }

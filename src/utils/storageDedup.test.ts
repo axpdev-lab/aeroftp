@@ -339,6 +339,35 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(fragmentOnly)).toBe('webdav:puter-webdav:dave');
     });
 
+    // One table for both twins: the Rust test reads the JSON between the
+    // markers (`the_default_port_follows_the_scheme_as_the_ts_twin_does`).
+    /* dedup-port-cases:begin */
+    const DEDUP_PORT_CASES: Array<{ host: string; port: number; key: string }> = [
+        { "host": "http://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "http://nas.example:80", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "http://nas.example", "port": 80, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": " HTTP://NAS.example/dav/", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "webdav://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "https://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "https://nas.example:443", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "webdavs://nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "nas.example", "port": 0, "key": "webdav:nextcloud:nas.example:alice" },
+        { "host": "https://nas.example:80", "port": 0, "key": "webdav:nextcloud:nas.example:80:alice" },
+        { "host": "https://nas.example", "port": 8443, "key": "webdav:nextcloud:nas.example:8443:alice" }
+    ];
+    /* dedup-port-cases:end */
+
+    it('a user-hosted WebDAV host with no port keys with the port its scheme connects to', () => {
+        // `http://nas.example` connects to port 80: keyed with 443 it was two
+        // drives beside `http://nas.example:80`, and the quota counted twice.
+        for (const c of DEDUP_PORT_CASES) {
+            const key = getStorageDedupKey(make({
+                id: 'n', protocol: 'webdav', providerId: 'nextcloud', host: c.host, port: c.port, username: 'alice',
+            }));
+            expect(key, `${c.host} port ${c.port}`).toBe(c.key);
+        }
+    });
+
     it('case 4c4: user-hosted WebDAV presets key by host too', () => {
         // nextcloud, seafile and infinicloud take the server URL from the
         // user: the same user name on two servers is two drives, while case
