@@ -267,6 +267,8 @@ pub async fn debug_test_plugin_integrity(app: tauri::AppHandle) -> Result<TestRe
 #[derive(Clone, Copy)]
 enum Replacement {
     Text(&'static str),
+    /// The userinfo of a URL, masked by [`redact_url_userinfo`].
+    UrlUserinfo,
     /// Every IPv4 address except the loopback and unspecified ones, which the
     /// log keeps for local debugging. The `regex` crate has no look-around, so
     /// the exception is decided on the match, not in the pattern.
@@ -339,10 +341,9 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         r"\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}",
         Replacement::Text("***JWT-REDACTED***"),
     ),
-    (
-        r"(?i)\b((?:ftps?|sftp|scp|https?|webdav)://[^:\s@/]+:)[^@\s]+(@)",
-        Replacement::Text("$1***REDACTED***$2"),
-    ),
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redact_url_userinfo`); the pattern only names the rule.
+    (r"://", Replacement::UrlUserinfo),
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     (
@@ -404,11 +405,130 @@ fn redaction_patterns() -> &'static [(regex::Regex, Replacement)] {
     })
 }
 
+/// Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and
+/// `webdav` URLs in one pass over the text, so its time is linear whatever the
+/// input. After `scheme://` the authority runs to the first `/`, `?`, `#`,
+/// ASCII space or unescaped double quote (a backslash escapes the next
+/// character, as inside a JSON string). An escaped quote ends it only where it
+/// is the end of the string the URL sits in, read from the quote that opened
+/// that string just before the scheme (P9, U10): after a bare `"` never (the
+/// value's own, `"https://bob:pa\",ss@host"`); after an escaped `\"` its own
+/// `\"` does and a deeper `\\\"` is the value's; with no quote, only
+/// `\",\"`, `\":`, `\"}`, `\"]` or the end of the text. Anything else is
+/// part of the value: when it cannot be told the scan masks more, since a
+/// leaked password is worse than a lost field. With an `@` in it, the userinfo is
+/// everything up to the LAST `@`, and all of it becomes the placeholder, user
+/// name included: a token is often the user name (`ghp_x:x-oauth-basic@`,
+/// `token:@`). An authority without `@` (`host:443`) stays. The TS twin is `redactUrlUserinfo` in
+/// src/utils/redactSensitive.ts; both run src/shared/redaction-cases.json.
+fn redact_url_userinfo(text: &str) -> String {
+    const SCHEMES: [&str; 7] = ["ftp", "ftps", "sftp", "scp", "http", "https", "webdav"];
+    let bytes = text.as_bytes();
+    let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+    let is_space = |b: u8| b == b' ' || (b'\t'..=b'\r').contains(&b);
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    let mut i = 0;
+    while i + 3 <= bytes.len() {
+        if &bytes[i..i + 3] != b"://" {
+            i += 1;
+            continue;
+        }
+        let mut start = i;
+        while start > 0 && i - start < 7 && bytes[start - 1].is_ascii_alphabetic() {
+            start -= 1;
+        }
+        let bounded = start == 0 || !is_word(bytes[start - 1]);
+        if !bounded
+            || !SCHEMES
+                .iter()
+                .any(|scheme| scheme.eq_ignore_ascii_case(&text[start..i]))
+        {
+            i += 3;
+            continue;
+        }
+        let authority = i + 3;
+        // The quote that opened the string holding this URL: an even run of
+        // backslashes before it is a real quote (plain JSON), a run of
+        // 1 (mod 4) an escaped JSON string's own delimiter.
+        #[derive(PartialEq)]
+        enum Opener {
+            Plain,
+            Escaped,
+            None,
+        }
+        let opener = if start > 0 && bytes[start - 1] == b'"' {
+            let run = bytes[..start - 1]
+                .iter()
+                .rev()
+                .take_while(|&&b| b == b'\\')
+                .count();
+            if run % 2 == 0 {
+                Opener::Plain
+            } else if run % 4 == 1 {
+                Opener::Escaped
+            } else {
+                Opener::None
+            }
+        } else {
+            Opener::None
+        };
+        // After a `\"` at `quote`, the rest of an escaped JSON: `\",\"`
+        // (spaces after the comma), `\":`, `\"}`, `\"]` or the end. A bare
+        // `\",` is as much a password's `",`.
+        let closes_json_value = |quote: usize| match bytes.get(quote + 1) {
+            None | Some(b':' | b'}' | b']') => true,
+            Some(b',') => {
+                let rest = &bytes[quote + 2..];
+                let skip = rest.iter().take_while(|&&b| is_space(b)).count();
+                rest[skip..].starts_with(b"\\\"")
+            }
+            Some(_) => false,
+        };
+        let mut k = authority;
+        let mut run = 0usize;
+        let mut last_at = None;
+        while k < bytes.len() {
+            let b = bytes[k];
+            if matches!(b, b'/' | b'?' | b'#') || is_space(b) {
+                break;
+            }
+            if b == b'"'
+                && (run.is_multiple_of(2)
+                    || (opener == Opener::Escaped && run % 4 == 1)
+                    || (opener == Opener::None && run == 1 && closes_json_value(k)))
+            {
+                break;
+            }
+            if b == b'@' {
+                last_at = Some(k);
+            }
+            run = if b == b'\\' { run + 1 } else { 0 };
+            k += 1;
+        }
+        let Some(at) = last_at else {
+            // No userinfo: go on right after this `://`. The authority ended
+            // at a `/`, and a scheme whose `://` starts just before it (one
+            // past an escaped JSON quote) is still scanned (L7). Nothing
+            // between holds a `://`, so each byte is read at most twice.
+            i = authority;
+            continue;
+        };
+        out.push_str(&text[copied..authority]);
+        out.push_str("***REDACTED***");
+        copied = at;
+        i = at + 1;
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
 pub(crate) fn redact(s: &str) -> String {
     let mut out = s.to_owned();
     for (re, replacement) in redaction_patterns() {
         out = match replacement {
             Replacement::Text(text) => re.replace_all(&out, *text).into_owned(),
+            Replacement::UrlUserinfo => redact_url_userinfo(&out),
             Replacement::Ipv4 => re
                 .replace_all(&out, |caps: &regex::Captures<'_>| {
                     if matches!(&caps[0], "127.0.0.1" | "0.0.0.0") {
@@ -589,6 +709,29 @@ mod tests {
                     .then(|| format!("{}: got {got:?}, want {:?}", case.name, case.expected))
             })
             .collect()
+    }
+
+    /// H9: the URL userinfo scan is linear by construction: long
+    /// adversarial inputs (backslashes with no `@`, colons, bare `://`) end
+    /// well under the bound, through the whole pipeline too.
+    #[test]
+    fn the_url_userinfo_scan_stays_linear_on_adversarial_input() {
+        let inputs = [
+            format!("ftp://bob:{}x", "\\".repeat(200_000)),
+            format!("ftp://bob\\:{}", "\\".repeat(200_000)),
+            format!("ftp://{}", ":".repeat(200_000)),
+            format!("{}{}", "x".repeat(100_000), "://".repeat(100_000)),
+            "ftp://ftp://".repeat(50_000),
+        ];
+        for input in &inputs {
+            let started = std::time::Instant::now();
+            redact_url_userinfo(input);
+            assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        }
+        let finding = format!("ftp://bob:{}x", "\\".repeat(20_000));
+        let started = std::time::Instant::now();
+        assert_eq!(redact(&finding), finding);
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 
     #[test]

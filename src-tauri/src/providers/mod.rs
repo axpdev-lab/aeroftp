@@ -1281,6 +1281,18 @@ pub trait StorageProvider: Send + Sync {
         None
     }
 
+    /// Raised once the tree this session reads and writes is no longer the
+    /// one it connected to (GitHub switching to a working branch after a
+    /// protected-branch refusal). From then on the provider itself refuses
+    /// every write of the session (`TargetChanged`), whoever holds it: a
+    /// plan made against the previous tree stops at its next write, and a
+    /// new connection is a new provider. The GUI target reads the flag
+    /// without the provider lock to move its epoch, so the page reads the
+    /// target again.
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        None
+    }
+
     /// Stable identity for the process-global transfer governor. Direct
     /// providers normally expose a `user@host` display name; cloud providers
     /// expose their account or tenant label. Implementations with richer

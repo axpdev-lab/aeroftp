@@ -320,6 +320,11 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.provider_type()
     }
 
+    /// The wrapped session's poison (see the crypt overlay).
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        self.inner.target_poison()
+    }
+
     fn manages_upload_retries(&self) -> bool {
         self.inner.manages_upload_retries()
     }

@@ -266,11 +266,156 @@
   {
     "name": "sftp url credential",
     "input": "connect sftp://admin:hunter2@host/path",
-    "expected": "connect sftp://admin:***REDACTED***@host/path"
+    "expected": "connect sftp://***REDACTED***@host/path"
   },
   {
     "name": "scp url credential",
     "input": "connect scp://root:hunter2@router.lan:22/",
-    "expected": "connect scp://root:***REDACTED***@router.lan:22/"
+    "expected": "connect scp://***REDACTED***@router.lan:22/"
+  },
+  {
+    "name": "url password holding @",
+    "input": "connect ftp://bob:p@ss@host/file",
+    "expected": "connect ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url with a port and @ in the path",
+    "input": "GET https://host:443/docs/me@home",
+    "expected": "GET https://host:443/docs/me@home"
+  },
+  {
+    "name": "url with a port and @ in the query",
+    "input": "GET https://host:443/a?to=x@y",
+    "expected": "GET https://host:443/a?to=x@y"
+  },
+  {
+    "name": "url with a port and @ in the fragment",
+    "input": "GET https://host:443/a#x@y",
+    "expected": "GET https://host:443/a#x@y"
+  },
+  {
+    "name": "url followed by a json password field",
+    "input": "{\"url\":\"ftp://bob:pw1@host\",\"password\":\"foo@bar\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url username holding @",
+    "input": "open ftp://alice@example.com:secret@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url password holding an apostrophe",
+    "input": "open ftp://bob:pa'ss@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url user name holding an apostrophe",
+    "input": "open ftp://o'brien:secret@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url inside backticks",
+    "input": "see `ftp://bob:pw@host/x` now",
+    "expected": "see `ftp://***REDACTED***@host/x` now"
+  },
+  {
+    "name": "url password holding a backtick and parentheses",
+    "input": "(ftp://bob:p`(w)@host)",
+    "expected": "(ftp://***REDACTED***@host)"
+  },
+  {
+    "name": "url password holding an escaped quote inside a json string",
+    "input": "{\"url\":\"ftp://bob:pa\\\"ss@host\",\"password\":\"x\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host\",\"password\":\"***REDACTED***\"}"
+  },
+  {
+    "name": "url password ending in a backslash",
+    "input": "open ftp://bob:pw\\@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url password ending in a backslash inside a json string",
+    "input": "{\"url\":\"ftp://bob:pw\\\\@host/file\"}",
+    "expected": "{\"url\":\"ftp://***REDACTED***@host/file\"}"
+  },
+  {
+    "name": "url user name ending in a backslash, password holding a colon",
+    "input": "open ftp://bob\\:secret:tail@host/file",
+    "expected": "open ftp://***REDACTED***@host/file"
+  },
+  {
+    "name": "url token as user name, no colon",
+    "input": "GET https://ghp_tokenvalue123@github.com/o/r",
+    "expected": "GET https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url empty password",
+    "input": "open ftp://user:@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url password holding colons",
+    "input": "open ftp://u:p:q@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url password holding several @",
+    "input": "open ftp://u:a@b@c@host/x",
+    "expected": "open ftp://***REDACTED***@host/x"
+  },
+  {
+    "name": "url ipv6 host after the userinfo",
+    "input": "open sftp://u:p@[::1]:22/x",
+    "expected": "open sftp://***REDACTED***@[::1]:22/x"
+  },
+  {
+    "name": "url authority with a port and no userinfo",
+    "input": "GET https://host:443/x",
+    "expected": "GET https://host:443/x"
+  },
+  {
+    "name": "url token user name with a nonempty password",
+    "input": "git clone https://ghp_tokenvalue123:x-oauth-basic@github.com/o/r",
+    "expected": "git clone https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url token user name with an empty password",
+    "input": "git clone https://ghp_tokenvalue123:@github.com/o/r",
+    "expected": "git clone https://***REDACTED***@github.com/o/r"
+  },
+  {
+    "name": "url token after a url without userinfo in an escaped json string",
+    "input": "{\\\"a\\\":\\\"https://public.example\\\",\\\"b\\\":\\\"https://ghp_abcdefghijklmnop:@internal/path\\\"}",
+    "expected": "{\\\"a\\\":\\\"https://public.example\\\",\\\"b\\\":\\\"https://***REDACTED***@internal/path\\\"}"
+  },
+  {
+    "name": "url password after a url without userinfo in an escaped json string",
+    "input": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://bob:s3cret@host/x\\\"}",
+    "expected": "{\\\"a\\\":\\\"ftp://mirror.example\\\",\\\"b\\\":\\\"sftp://***REDACTED***@host/x\\\"}"
+  },
+  {
+    "name": "a url without userinfo in an escaped json string keeps the next field",
+    "input": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"a\\\":\\\"https://host:443\\\",\\\"b\\\":\\\"x@y\\\"}"
+  },
+  {
+    "name": "url password in an escaped json string ends at its field",
+    "input": "{\\\"u\\\":\\\"ftp://bob:pw@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+  },
+  {
+    "name": "url password holding an escaped quote and a comma in plain json",
+    "input": "{\"url\":\"https://bob:pa\\\",ss@host/path\"}",
+    "expected": "{\"url\":\"https://***REDACTED***@host/path\"}"
+  },
+  {
+    "name": "url password holding a deeper escaped quote inside an escaped json string",
+    "input": "{\\\"u\\\":\\\"ftp://bob:pa\\\\\\\",ss@host\\\",\\\"b\\\":\\\"x@y\\\"}",
+    "expected": "{\\\"u\\\":\\\"ftp://***REDACTED***@host\\\",\\\"b\\\":\\\"x@y\\\"}"
+  },
+  {
+    "name": "url password holding an escaped quote and a comma in a sentence",
+    "input": "upload to ftp://bob:pa\\\",ss@host failed",
+    "expected": "upload to ftp://***REDACTED***@host failed"
   }
 ]

@@ -7926,7 +7926,7 @@ mod tests {
                 // Renders the payload with no label; the leading-status check
                 // in `mentions_ftp_status` is what recognises this one.
                 PE::Other(_) | PE::ParallelRefused(_) | PE::PinRefused(_) => true,
-                PE::NotConnected | PE::Cancelled | PE::Timeout => false,
+                PE::NotConnected | PE::TargetChanged | PE::Cancelled | PE::Timeout => false,
                 PE::RestrictedChar { .. } => false,
                 // Our own sentence about the server's key, built before any
                 // file operation: there is never a server reply behind it.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import cases from '../shared/redaction-cases.json';
 import matrix from '../shared/redaction-matrix.json';
-import { redactSensitive } from './redactSensitive';
+import { redactCredentials, redactSensitive, redactUrlUserinfo } from './redactSensitive';
 
 // The Rust table (`debug_tests.rs`, `redaction_patterns`) redacts the on-disk
 // log tail with the same policy and reads this very file, so a rule that
@@ -101,3 +101,104 @@ describe('redactSensitive on a long line', () => {
         expect(redactSensitive('mail bob.smith+tag@example.org sent')).toBe('mail ***@*** sent');
     });
 });
+
+describe('redactCredentials', () => {
+    const M = '***REDACTED***';
+    it.each([
+        ['Bearer in Authorization', 'GET failed: Authorization: Bearer abcdefghijklmnop (401)', 'GET failed: authorization: ***REDACTED*** (401)'],
+        ['Basic in Authorization', 'sent Authorization: Basic dXNlcjpwYXNz then 403', 'sent authorization: ***REDACTED*** then 403'],
+        ['bare Bearer token', 'refused Bearer abcdefghijklmnop for /a.txt', `refused Bearer ${M} for /a.txt`],
+        ['access_token', 'GET /a?access_token=tok123 failed', `GET /a?access_token=${M} failed`],
+        ['refresh_token', 'refresh_token=rt123 expired', `refresh_token=${M} expired`],
+        ['id_token', 'id_token: idt123 rejected', `id_token: ${M} rejected`],
+        ['token', 'token=t123 invalid', `token=${M} invalid`],
+        ['api_key', 'api_key=k123 invalid', `api_key=${M} invalid`],
+        ['apikey', 'apikey=k123 invalid', `apikey=${M} invalid`],
+        ['key query parameter', 'GET https://h/o?key=k123&alt=json 403', `GET https://h/o?key=${M}&alt=json 403`],
+        ['secret', 'secret=s123 wrong', `secret=${M} wrong`],
+        ['password', 'password=p123 wrong', `password=${M} wrong`],
+        ['signature', 'signature=abc123 mismatch', `signature=${M} mismatch`],
+        ['sig query parameter', 'GET https://h/b?sv=1&sig=abc123&se=2 403', `GET https://h/b?sv=1&sig=${M}&se=2 403`],
+        ['X-Amz-Signature', 'GET https://s3/b?X-Amz-Date=1&X-Amz-Signature=abc123 403', `GET https://s3/b?X-Amz-Date=1&X-Amz-Signature=${M} 403`],
+        ['X-Amz-Credential', 'GET https://s3/b?X-Amz-Credential=AKIA%2F1&X-Amz-Date=1 403', `GET https://s3/b?X-Amz-Credential=${M}&X-Amz-Date=1 403`],
+        ['X-Amz-Security-Token', 'X-Amz-Security-Token=st123 expired', `X-Amz-Security-Token=${M} expired`],
+        ['URL userinfo with a password', 'connect ftp://bob:hunter2@ftp.example.com:21/srv failed', `connect ftp://${M}@ftp.example.com:21/srv failed`],
+        ['URL userinfo of another scheme', 'open s3://AKIA1:wJal@bucket/key.txt failed', `open s3://${M}@bucket/key.txt failed`],
+    ])('masks %s and keeps the rest', (_name, input, expected) => {
+        expect(redactCredentials(input)).toBe(expected);
+    });
+
+    it('leaves a message without credentials as it is', () => {
+        const plain = 'Delete failed: docs/a.txt - 550 Permission denied on /home/u/work/a.txt (bob@example.org at 192.168.1.3, sha 0123456789abcdef0123456789abcdef, key docs/a.txt)';
+        expect(redactCredentials(plain)).toBe(plain);
+    });
+});
+
+describe('redactCredentials: URL userinfo', () => {
+    it.each([
+        ['ftp://bob:first@second@host/file', 'ftp://***REDACTED***@host/file'],
+        ['sftp://bob:p@ss@w0rd@host:22/a', 'sftp://***REDACTED***@host:22/a'],
+        ['https://user:pa@ss@example.com?x=1', 'https://***REDACTED***@example.com?x=1'],
+    ])('masks a password that holds @: %s', (raw, masked) => {
+        expect(redactCredentials(`Upload failed: ${raw}`)).toBe(`Upload failed: ${masked}`);
+        expect(redactCredentials(raw)).not.toMatch(/first|second|ss@w0rd|pa@ss/);
+    });
+
+    it.each([
+        ['an @ in the path', 'ftp://host/docs/me@home.txt'],
+        ['an @ in the query', 'https://host/a?to=me@example.com'],
+        ['an @ in the fragment', 'https://host/a#me@example.com'],
+    ])('leaves a URL without userinfo alone, with %s', (_label, raw) => {
+        expect(redactCredentials(raw)).toBe(raw);
+    });
+
+    it('stops at the authority when the path also holds an @', () => {
+        expect(redactCredentials('ftp://bob:x@y@host/docs/me@home.txt'))
+            .toBe('ftp://***REDACTED***@host/docs/me@home.txt');
+    });
+});
+
+describe('redactCredentials: one URL rule, any scheme, never past a field (T11)', () => {
+    it('keeps the field after an authority without userinfo', () => {
+        expect(redactCredentials('{"a":"https://host:443","b":"x@y"}')).toBe('{"a":"https://host:443","b":"x@y"}');
+    });
+    it('keeps it in JSON escaped inside a string too', () => {
+        const escaped = '{\\"a\\":\\"https://host:443\\",\\"b\\":\\"x@y\\"}';
+        expect(redactCredentials(escaped)).toBe(escaped);
+    });
+    it('still masks the userinfo of other schemes', () => {
+        expect(redactCredentials('get s3://AKIAEXAMPLE:secretkey@bucket/key failed'))
+            .toBe('get s3://***REDACTED***@bucket/key failed');
+    });
+    // P9 (U10): an escaped quote and a comma inside a password, in plain
+    // JSON, is the password's, not the end of the field.
+    it('masks a password that holds an escaped quote and a comma', () => {
+        const raw = String.raw`{"url":"https://bob:pa\",ss@host/path"}`;
+        expect(redactCredentials(raw)).toBe(String.raw`{"url":"https://***REDACTED***@host/path"}`);
+        const s3 = String.raw`{"src":"s3://AKIAEXAMPLE:se\",cret@bucket/key"}`;
+        expect(redactCredentials(s3)).toBe(String.raw`{"src":"s3://***REDACTED***@bucket/key"}`);
+    });
+});
+
+describe('redactUrlUserinfo (H9: linear by construction)', () => {
+    it('stays linear on long adversarial input', () => {
+        const inputs = [
+            'ftp://bob:' + '\\'.repeat(200_000) + 'x',
+            'ftp://bob\\:' + '\\'.repeat(200_000),
+            'ftp://' + ':'.repeat(200_000),
+            'x'.repeat(100_000) + '://'.repeat(100_000),
+            'ftp://ftp://'.repeat(50_000),
+        ];
+        for (const input of inputs) {
+            const started = performance.now();
+            redactUrlUserinfo(input);
+            expect(performance.now() - started).toBeLessThan(1000);
+        }
+        // The input of the finding, through the whole pipeline.
+        const finding = 'ftp://bob:' + '\\'.repeat(20_000) + 'x';
+        const started = performance.now();
+        expect(redactSensitive(finding)).toBe(finding);
+        expect(performance.now() - started).toBeLessThan(1000);
+    });
+});
+

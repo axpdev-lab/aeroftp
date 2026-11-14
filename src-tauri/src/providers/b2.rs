@@ -7404,7 +7404,8 @@ mod tests {
         let (mut provider, ops, _) = provider_for_rename(false, 200).await;
         provider.rename("/a.txt", "/a.txt").await.expect("rename");
         provider.replace("/a.txt", "/a.txt").await.expect("replace");
-        assert!(ops.lock().unwrap().is_empty(), "{:?}", ops.lock().unwrap());
+        let seen = ops.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 
     #[tokio::test]

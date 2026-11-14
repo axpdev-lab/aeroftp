@@ -44,6 +44,37 @@ pub struct GitHubHttpClient {
     rate_limit: RateLimitState,
     #[cfg(test)]
     pub(super) api_origin_override: Option<String>,
+    /// The session's poison (`StorageProvider::target_poison`): once it is
+    /// raised, every request that writes the tree is refused before it is
+    /// sent (see `writes_the_tree`).
+    pub(super) poison: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+/// A request that writes the repository's files or refs: the contents API,
+/// the git data API (refs, trees, commits, blobs) and GraphQL, which this
+/// client uses only for commits. A poisoned session refuses these. A pull
+/// request, a release, a Pages build or an Actions run names its branch or
+/// tag itself and changes no file of the session's tree, so it goes through.
+///
+/// Read by position, not by substring (P6): the resource is the segment after
+/// `repos/{owner}/{repo}` (or `repositories/{id}`), so an owner or a
+/// repository named `contents`, `git` or `graphql` is never taken for one.
+pub(super) fn writes_the_tree(method: &Method, path: &str) -> bool {
+    if matches!(*method, Method::GET | Method::HEAD) {
+        return false;
+    }
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+    let resource = |at: usize| matches!(segments.get(at), Some(&"contents") | Some(&"git"));
+    // The first `repos` is the API's (an Enterprise base adds `api/v3`
+    // before it); owners and repositories come after it.
+    if let Some(at) = segments.iter().position(|s| *s == "repos") {
+        return resource(at + 3);
+    }
+    if let Some(at) = segments.iter().position(|s| *s == "repositories") {
+        return resource(at + 2);
+    }
+    // GraphQL: `/graphql`, or `/api/graphql` on Enterprise.
+    segments.last() == Some(&"graphql")
 }
 
 /// An empty hint is not a path.
@@ -103,6 +134,7 @@ impl GitHubHttpClient {
             rate_limit: RateLimitState::new(),
             #[cfg(test)]
             api_origin_override: None,
+            poison: None,
         })
     }
 
@@ -232,6 +264,20 @@ impl GitHubHttpClient {
         &mut self,
         builder: RequestBuilder,
     ) -> Result<Response, GitHubError> {
+        if self
+            .poison
+            .as_ref()
+            .is_some_and(|poison| poison.load(std::sync::atomic::Ordering::SeqCst))
+        {
+            // A request that cannot be read back is taken as a tree write.
+            let tree_write = builder
+                .try_clone()
+                .and_then(|clone| clone.build().ok())
+                .is_none_or(|request| writes_the_tree(request.method(), request.url().path()));
+            if tree_write {
+                return Err(GitHubError::TargetChanged);
+            }
+        }
         let response = builder
             .send()
             .await

@@ -1114,6 +1114,12 @@ impl StorageProvider for CryptOverlayProvider {
         self.inner.display_name()
     }
 
+    /// The wrapped session's poison: the inner provider refuses the writes,
+    /// and the GUI target reads the flag through the overlay.
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        self.inner.target_poison()
+    }
+
     fn account_email(&self) -> Option<String> {
         self.inner.account_email()
     }
@@ -4589,6 +4595,35 @@ pub(crate) mod tests {
     /// holds, which is the overlay: a Proton CLI behind encryption must still
     /// purge a live path, and a Koofr behind it must still say its trash was
     /// left.
+    /// M10: GitHub wrapped in a crypt or a compress overlay. The inner
+    /// session refuses its own writes after the working-branch fallback, and
+    /// the overlay hands its poison on, so the GUI target sees it and moves
+    /// its epoch as for a bare session.
+    #[test]
+    fn the_overlays_forward_the_session_poison_of_the_inner_provider() {
+        let github = || -> Box<dyn StorageProvider> {
+            Box::new(
+                crate::providers::github::GitHubProvider::protected_for_test(
+                    "http://127.0.0.1:9".into(),
+                ),
+            )
+        };
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let crypt = CryptOverlayProvider::new(inner, aerocrypt_keys(), "/Vault");
+        assert!(std::sync::Arc::ptr_eq(
+            &crypt.target_poison().unwrap(),
+            &poison
+        ));
+        let inner = github();
+        let poison = inner.target_poison().unwrap();
+        let compress = crate::compress_overlay_provider::CompressOverlayProvider::new(inner, 3);
+        assert!(std::sync::Arc::ptr_eq(
+            &compress.target_poison().unwrap(),
+            &poison
+        ));
+    }
+
     #[tokio::test]
     async fn the_overlay_forwards_the_trash_hooks_of_the_inner_provider() {
         for (label, keys) in both_kinds() {

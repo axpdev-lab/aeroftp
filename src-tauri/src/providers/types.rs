@@ -2167,6 +2167,10 @@ pub(crate) fn without_unclassified_items(raw: &str) -> &str {
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum ProviderError {
+    /// The installed session must not adopt another account's authorization.
+    #[error("CONNECTION_CHANGED: the authorization changed; reconnect and compare again")]
+    TargetChanged,
+
     #[error("Not connected to server")]
     NotConnected,
 

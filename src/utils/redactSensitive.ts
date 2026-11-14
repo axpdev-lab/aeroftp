@@ -54,7 +54,127 @@ const SECRET_NAME = String.raw`(?:(?:[A-Za-z0-9]{1,24}[_-]){0,8}(?:password|pass
 // bare word up to the next delimiter.
 const SECRET_VALUE = String.raw`(?:\*\*\*REDACTED\*\*\*|\\"${ESCAPED_BODY}(?:\\")?|"(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|[^\s,;'"<>]+)`;
 
-export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: string }> = [
+// The rules for credentials only. `REDACTION_PATTERNS` starts with them, in
+// this order, and `redactCredentials` applies them without the identity rules.
+/** A rule: a pattern and its replacement, or a function of the whole text. */
+type RedactionRule = { pattern: RegExp; replacement: string } | { apply: (text: string) => string };
+
+const applyRule = (text: string, rule: RedactionRule): string =>
+    'apply' in rule ? rule.apply(text) : text.replace(rule.pattern, rule.replacement);
+
+const URL_CREDENTIAL_SCHEMES = new Set(['ftp', 'ftps', 'sftp', 'scp', 'http', 'https', 'webdav']);
+const isWordChar = (code: number) => (code >= 48 && code <= 57) || (code >= 65 && code <= 90)
+    || (code >= 97 && code <= 122) || code === 95;
+const isAsciiLetter = (code: number) => (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+const isSpace = (code: number) => code === 32 || (code >= 9 && code <= 13);
+const isSchemeChar = (code: number) => isAsciiLetter(code) || (code >= 48 && code <= 57)
+    || code === 43 || code === 45 || code === 46;
+// Whether the escaped quote whose quote is at `quote` closes a JSON value
+// inside an escaped string: what follows it is the rest of that JSON, `\",\"`
+// (spaces allowed after the comma), `\":`, `\"}`, `\"]`, or the end of the
+// text. A bare `\",` is not: it is as much a password's `",` (P9, U10).
+const closesJsonValue = (text: string, quote: number): boolean => {
+    const next = quote + 1;
+    if (next >= text.length) return true;
+    const code = text.charCodeAt(next);
+    if (code === 58 || code === 125 || code === 93) return true;
+    if (code !== 44) return false;
+    let k = next + 1;
+    while (k < text.length && isSpace(text.charCodeAt(k))) k += 1;
+    return text.charCodeAt(k) === 92 && text.charCodeAt(k + 1) === 34;
+};
+
+/** Backslashes that run back from just before `end`. */
+const backslashesBefore = (text: string, end: number): number => {
+    let n = 0;
+    while (end - 1 - n >= 0 && text.charCodeAt(end - 1 - n) === 92) n += 1;
+    return n;
+};
+
+/**
+ * Masks the userinfo of `ftp`, `ftps`, `sftp`, `scp`, `http(s)` and `webdav`
+ * URLs in one pass over the text, so its time is linear whatever the input.
+ * After `scheme://` the authority runs to the first `/`, `?`, `#`, ASCII
+ * space or unescaped double quote (a backslash escapes the next character,
+ * as inside a JSON string). An escaped quote ends it only where it is the
+ * end of the string the URL sits in (P9, U10), read from the quote that
+ * opened that string, just before the scheme:
+ * - a bare `"` (plain JSON): never, an escaped quote is the value's own
+ *   (`"https://bob:pa\",ss@host"`);
+ * - an escaped `\"` (JSON inside a JSON string): its own `\"` does, and a
+ *   deeper `\\\"` is the value's;
+ * - no quote (a URL inside a sentence): only `\",\"`, `\":`, `\"}`, `\"]` or
+ *   the end of the text.
+ * Anything else is part of the value: when it cannot be told, the scan goes
+ * on and masks more, since a leaked password is worse than a lost field.
+ * With an `@` in it, the userinfo is everything up
+ * to the LAST `@`, and all of it becomes the placeholder, user name included:
+ * a token is often the user name (`ghp_x:x-oauth-basic@`, `token:@`). An
+ * authority without `@` (`host:443`) stays.
+ * The Rust twin is `redact_url_userinfo` in src-tauri/src/debug_tests.rs.
+ */
+export function redactUrlUserinfo(text: string, anyScheme = false): string {
+    let out = '';
+    let copied = 0;
+    let i = 0;
+    while (i + 3 <= text.length) {
+        if (text.charCodeAt(i) !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
+            i += 1;
+            continue;
+        }
+        // `anyScheme` (redactCredentials): any scheme name, `s3://` too, up
+        // to 32 characters back, so the scan stays linear.
+        let start = i;
+        const reach = anyScheme ? 32 : 7;
+        const schemeChar = anyScheme ? isSchemeChar : isAsciiLetter;
+        while (start > 0 && i - start < reach && schemeChar(text.charCodeAt(start - 1))) start -= 1;
+        while (anyScheme && start < i && !isAsciiLetter(text.charCodeAt(start))) start += 1;
+        const bounded = start === 0 || !isWordChar(text.charCodeAt(start - 1));
+        const named = anyScheme ? start < i : URL_CREDENTIAL_SCHEMES.has(text.slice(start, i).toLowerCase());
+        if (!bounded || !named) {
+            i += 3;
+            continue;
+        }
+        const authority = i + 3;
+        // The quote that opened the string holding this URL: an even run of
+        // backslashes before it is a real quote (plain JSON), a run of
+        // 1 (mod 4) an escaped JSON string's own delimiter.
+        const opener = start > 0 && text.charCodeAt(start - 1) === 34
+            ? backslashesBefore(text, start - 1)
+            : -1;
+        const context = opener < 0 ? 'none' : opener % 2 === 0 ? 'plain' : opener % 4 === 1 ? 'escaped' : 'none';
+        let k = authority;
+        let run = 0;
+        let lastAt = -1;
+        while (k < text.length) {
+            const code = text.charCodeAt(k);
+            if (code === 47 || code === 63 || code === 35 || isSpace(code)) break;
+            if (code === 34) {
+                if (run % 2 === 0) break;
+                if (context === 'escaped' && run % 4 === 1) break;
+                if (context === 'none' && run === 1 && closesJsonValue(text, k)) break;
+            }
+            if (code === 64) lastAt = k;
+            run = code === 92 ? run + 1 : 0;
+            k += 1;
+        }
+        if (lastAt < 0) {
+            // No userinfo: go on right after this `://`. The authority ended
+            // at a `/`, and a scheme whose `://` starts just before it (one
+            // past an escaped JSON quote, `\",\"b\":\"https://`) is still
+            // scanned (L7). Nothing between holds a `://`, so each character
+            // is read at most twice.
+            i = authority;
+            continue;
+        }
+        out += text.slice(copied, authority) + '***REDACTED***';
+        copied = lastAt;
+        i = lastAt + 1;
+    }
+    return out + text.slice(copied);
+}
+
+const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
     // Authorization (and Proxy-Authorization) carries `scheme credentials`, and
     // the whole value goes, not its first word: `Basic dXNlcjpwYXNz` is a
     // password. First of all, ahead of the key and Bearer rules, so
@@ -79,8 +199,9 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
     { pattern: new RegExp(String.raw`\bx-api-key\s*[:=]\s*${SECRET_VALUE}`, 'gi'), replacement: 'x-api-key: ***REDACTED***' },
     // JWT-shaped tokens (3 base64url segments separated by '.')
     { pattern: /\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}/g, replacement: '***JWT-REDACTED***' },
-    // Inline credentials in URLs: ftp://user:pass@host -> ftp://user:***@host
-    { pattern: /\b((?:ftps?|sftp|scp|https?|webdav):\/\/[^:\s@/]+:)[^@\s]+(@)/gi, replacement: '$1***REDACTED***$2' },
+    // Inline credentials in URLs: a linear scan, not a pattern (see
+    // `redactUrlUserinfo`).
+    { apply: redactUrlUserinfo },
     // Serialized secret fields in JSON: "password":"..." -> "password":"***REDACTED***".
     // The value ends at its closing quote; an escaped quote inside it does not end it.
     {
@@ -98,6 +219,10 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
         pattern: new RegExp(String.raw`(\b${SECRET_NAME}\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
+];
+
+export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
+    ...CREDENTIAL_PATTERNS,
     // Email addresses. The local part is at most 64 characters (RFC 5321), which
     // also keeps a long run of such characters without an `@` (a hex or base64url
     // dump) from costing a quadratic scan on every start position.
@@ -118,8 +243,34 @@ export const REDACTION_PATTERNS: ReadonlyArray<{ pattern: RegExp; replacement: s
 export function redactSensitive(msg: string): string {
     if (!msg) return msg;
     let result = msg;
-    for (const { pattern, replacement } of REDACTION_PATTERNS) {
-        result = result.replace(pattern, replacement);
+    for (const rule of REDACTION_PATTERNS) {
+        result = applyRule(result, rule);
+    }
+    return result;
+}
+
+// Signed URL parameters and the userinfo of any URL. They are not part of
+// `REDACTION_PATTERNS`, whose rules the Rust twin mirrors. `key` and `sig` go
+// only as a query parameter, so an object key named in the error text stays.
+const SIGNED_URL_PATTERNS: ReadonlyArray<RedactionRule> = [
+    { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    // The whole userinfo of a URL of any scheme (`s3://` too), by the same
+    // linear scanner as the shared rule: never past the authority, a quote
+    // or a JSON field boundary (T11).
+    { apply: (text: string) => redactUrlUserinfo(text, true) },
+];
+
+/**
+ * Masks credentials in an error text a user will read (a sync journal, report
+ * or status line) and keeps the rest of it: paths, hosts, codes and the error
+ * wording. Unlike `redactSensitive`, emails, addresses, home folders and hashes stay.
+ */
+export function redactCredentials(msg: string): string {
+    if (!msg) return msg;
+    let result = msg;
+    for (const rule of [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS]) {
+        result = applyRule(result, rule);
     }
     return result;
 }
