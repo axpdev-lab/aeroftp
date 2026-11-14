@@ -530,6 +530,22 @@ pub struct CryptOverlayProvider {
     alias_pending: Option<String>,
 }
 
+/// An error of the same kind as `error`, for each item of a batch that one
+/// failure refused: retry and reconnect decide by the variant, so it must not
+/// become a plain message.
+fn same_kind(error: &ProviderError) -> ProviderError {
+    match error {
+        ProviderError::NotConnected => ProviderError::NotConnected,
+        ProviderError::Timeout => ProviderError::Timeout,
+        ProviderError::ConnectionLost(m) => ProviderError::ConnectionLost(m.clone()),
+        ProviderError::ConnectionFailed(m) => ProviderError::ConnectionFailed(m.clone()),
+        ProviderError::NetworkError(m) => ProviderError::NetworkError(m.clone()),
+        ProviderError::ServerError(m) => ProviderError::ServerError(m.clone()),
+        ProviderError::InvalidPath(m) => ProviderError::InvalidPath(m.clone()),
+        other => ProviderError::Other(other.to_string()),
+    }
+}
+
 impl CryptOverlayProvider {
     /// Display-only labels for encrypted components of the anchor (#1077).
     /// `pwd`, entry paths and scope checks keep the server's anchor verbatim.
@@ -678,10 +694,13 @@ impl CryptOverlayProvider {
         if self.learn_scope_alias_from(&wire, reported) {
             return Ok(());
         }
-        self.alias_pending = Some(wire.clone());
-        Err(ProviderError::InvalidPath(format!(
-            "the server reports the encrypted folder {wire} as {reported}, which cannot be told apart from folders outside it; open a folder by its full path"
-        )))
+        // The server's reply stays out of the message, which crosses IPC
+        // and the logs: only our own path is named.
+        let error = ProviderError::InvalidPath(format!(
+            "the server names the encrypted folder {wire} in a way that cannot be told apart from folders outside it; open a folder by its full path"
+        ));
+        self.alias_pending = Some(wire);
+        Err(error)
     }
 
     /// The part of the absolute `wire` below the anchor (`""` for the
@@ -1571,10 +1590,11 @@ impl StorageProvider for CryptOverlayProvider {
         paths: &[String],
     ) -> Vec<Result<Option<String>, ProviderError>> {
         if let Err(error) = self.settle_scope_alias().await {
-            return paths
-                .iter()
-                .map(|_| Err(ProviderError::Other(error.to_string())))
-                .collect();
+            let mut out: Vec<_> = (1..paths.len()).map(|_| Err(same_kind(&error))).collect();
+            if !paths.is_empty() {
+                out.insert(0, Err(error));
+            }
+            return out;
         }
         let mapped = paths
             .iter()
@@ -1925,6 +1945,13 @@ impl StorageProvider for CryptOverlayProvider {
     /// digest is an ordinary plaintext one and is reported as such: the
     /// warning appears exactly where it is true.
     fn checksum_capability(&self, path: &str) -> ChecksumCapability {
+        // Synchronous, so it cannot ask the server: while a `cd` into the
+        // anchor waits for its answer, a path under the anchor's other name
+        // cannot be told from one outside it, and no digest is offered rather
+        // than a digest of ciphertext presented as one of plaintext.
+        if self.alias_pending.is_some() {
+            return ChecksumCapability::default();
+        }
         let inner = self.inner.checksum_capability(path);
         if inner.algorithms.is_empty() || !self.target_is_encrypted(path) {
             return inner;
@@ -5860,7 +5887,7 @@ pub(crate) mod tests {
         async fn pwd(&mut self) -> Result<String, ProviderError> {
             if self.pwd_failures > 0 {
                 self.pwd_failures -= 1;
-                return Err(ProviderError::ConnectionFailed("PWD timed out".into()));
+                return Err(ProviderError::ConnectionLost("PWD timed out".into()));
             }
             let cwd = self.cwd.lock().unwrap().clone();
             Ok(self.as_reported(&cwd))
@@ -7110,9 +7137,158 @@ pub(crate) mod tests {
                 Some(&b"never in clear"[..]),
                 "{label}"
             );
+            // The refusal names our own path and never the server's reply.
+            let mut p = overlay(keys.clone());
+            mem_of(&mut p).reports_as = Some(("/home/u/docs", "/home/u/docs/server-said-zq"));
+            p.cd("/home/u/docs").await.unwrap();
+            let error = p.list(".").await.unwrap_err().to_string();
+            assert!(error.contains("/home/u/docs"), "{label}: {error}");
+            assert!(!error.contains("server-said-zq"), "{label}: {error}");
 
             let _ = tokio::fs::remove_dir_all(&dir).await;
         }
+    }
+
+    /// `checksum_capability` cannot ask the server (it is synchronous): while
+    /// a `cd` into the anchor waits for its answer it offers no digest, and
+    /// once the alias is known a path under it is marked as ciphertext.
+    #[tokio::test]
+    async fn no_digest_is_offered_while_the_anchor_alias_is_unknown() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 1;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            let offered = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(!offered.algorithms.is_empty(), "{label}: {offered:?}");
+            p.cd("/home/u/docs").await.unwrap();
+            let pending = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(pending.algorithms.is_empty(), "{label}: {pending:?}");
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+            let known = p.checksum_capability("/srv/docs/secret.txt");
+            assert!(
+                known.ciphertext && !known.algorithms.is_empty(),
+                "{label}: {known:?}"
+            );
+        }
+    }
+
+    /// A batch refused because the server did not say where the session is
+    /// keeps the kind of the server's error in every slot, so the caller
+    /// that reconnects on a lost connection still sees one.
+    #[tokio::test]
+    async fn a_refused_batch_keeps_the_kind_of_the_pwd_error() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            mem.pwd_failures = 2;
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            p.cd("/home/u/docs").await.unwrap();
+            let paths: Vec<String> = ["a", "b", "c"]
+                .iter()
+                .map(|n| format!("/srv/docs/{n}.txt"))
+                .collect();
+            let out = p.capture_trash_identities(&paths).await;
+            assert_eq!(out.len(), 3, "{label}");
+            for slot in &out {
+                let error = slot.as_ref().unwrap_err();
+                assert!(error.is_connection_lost(), "{label}: {error:?}");
+            }
+        }
+    }
+
+    /// The overlay knows the anchor by the name in the profile and by the
+    /// name the server reports after a `cd` into it. A path that reaches the
+    /// anchor through any other name (another symlink, or the alias typed
+    /// before the server ever reported it) is outside by name, as EF-01
+    /// defines outside, and passes through as plaintext. A decision, pinned.
+    #[tokio::test]
+    async fn the_anchor_is_known_by_its_profile_name_and_the_name_the_server_reports() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            let dir = std::env::temp_dir().join(format!("crypt_alias_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("f.txt");
+            let local = local.to_str().unwrap();
+            tokio::fs::write(local, b"by name").await.unwrap();
+            // The alias typed before the server reported it.
+            p.upload(local, "/srv/docs/typed.txt", None).await.unwrap();
+            // Another name for the anchor the server never reports.
+            p.cd("/home/u/docs").await.unwrap();
+            p.upload(local, "/opt/docs/other.txt", None).await.unwrap();
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+            let mem = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            assert_eq!(
+                mem.raw_bytes("/srv/docs/typed.txt").as_deref(),
+                Some(&b"by name"[..]),
+                "{label}"
+            );
+            assert_eq!(
+                mem.raw_bytes("/opt/docs/other.txt").as_deref(),
+                Some(&b"by name"[..]),
+                "{label}"
+            );
+        }
+    }
+
+    /// Every method of the overlay's `StorageProvider` impl that maps or
+    /// classifies a path settles a pending alias probe before it does, so a
+    /// method added later cannot skip it unnoticed. `checksum_capability` is
+    /// synchronous and fails closed instead
+    /// (`no_digest_is_offered_while_the_anchor_alias_is_unknown`).
+    #[test]
+    fn every_path_mapping_method_settles_the_alias_first() {
+        let source = include_str!("crypt_overlay_provider.rs");
+        let start = source
+            .find("impl StorageProvider for CryptOverlayProvider {")
+            .expect("impl");
+        let end = start + source[start..].find("\n}\n").expect("impl end");
+        let body = &source[start..end];
+        const MAPPING: &[&str] = &[
+            "self.map(",
+            "map_existing(",
+            "target_is_encrypted(",
+            "unalias(",
+        ];
+        const SETTLES: &[&str] = &[
+            "settle_scope_alias(",
+            "note_reported_cwd(",
+            "list_counting(",
+        ];
+        let mut methods = 0;
+        let mut checked = Vec::new();
+        let async_methods = body.split("\n    async fn ").skip(1);
+        for chunk in async_methods.chain(body.split("\n    fn ").skip(1)) {
+            let name: String = chunk
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            let method = chunk.split("\n    }\n").next().unwrap();
+            methods += 1;
+            let Some(first_map) = MAPPING.iter().filter_map(|m| method.find(m)).min() else {
+                continue;
+            };
+            if name == "checksum_capability" {
+                assert!(
+                    method.contains("alias_pending.is_some()"),
+                    "checksum_capability"
+                );
+                continue;
+            }
+            let first_settle = SETTLES.iter().filter_map(|m| method.find(m)).min();
+            assert!(
+                first_settle.is_some_and(|at| at < first_map),
+                "{name} maps a path before it settles the alias probe"
+            );
+            checked.push(name);
+        }
+        assert!(methods > 70, "parsed {methods} methods");
+        assert!(checked.len() >= 28, "{checked:?}");
     }
 
     async fn assert_the_alias_is_read_as_the_anchor(
