@@ -2881,12 +2881,12 @@ pub(crate) fn aerocloud_overlay_profile(profile: &serde_json::Value) -> serde_js
 /// binding without a folder as the whole remote, which anchored above the
 /// vault the app wrote at the starting folder.
 pub fn profile_overlay_scope(profile: &serde_json::Value) -> String {
-    // An empty username leaves the template as written, as the window does.
+    // The user name goes in exactly as saved, as the window inserts it
+    // (`resolveUsernameTemplate`); a blank one leaves the template as written.
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|u| !u.is_empty());
+        .filter(|u| !u.trim().is_empty());
     let field = |value: Option<&serde_json::Value>| {
         value
             .and_then(|v| v.as_str())

@@ -34,12 +34,11 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
-    // Every occurrence, as the backend resolves it (`replaceAll` needs ES2021).
-    // No trim, as the backend's `profile_root`: a space is part of the folder
-    // name, so `"/var/www "` is a different folder than `"/var/www"`. Only an
-    // all-blank path is the server root.
-    const base = (profile.initialPath || '')
-        .split('{username}').join(profile.username || '')
+    // The user name goes in as the backend's `profile_root` inserts it
+    // (`username-template-cases.json` pins both). No trim, as the backend:
+    // a space is part of the folder name, so `"/var/www "` is a different
+    // folder than `"/var/www"`. Only an all-blank path is the server root.
+    const base = (resolveUsernameTemplate(profile.initialPath, profile.username) || '')
         .replace(/\/+$/, '');
     if (base.trim() === '') return '';
     return base.startsWith('/') ? base : `/${base}`;
@@ -72,7 +71,11 @@ export function aeroCloudBase(profile: ServerProfile): string {
         if (!initial || initial.trim() === '') return '';
         return normalizeOverlayAnchor(loginRelativeForm(initial, profile.protocol));
     }
-    const scope = getServerCryptOverlay(profile) ? normCryptScope(profile.aeroCryptOverlay?.remoteScope) : '';
+    // The overlay folder takes the user name as the starting folder does, as
+    // the backend's `profile_overlay_scope` fills it.
+    const scope = getServerCryptOverlay(profile)
+        ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username))
+        : '';
     return scope || profileRoot(profile);
 }
 

@@ -335,8 +335,16 @@ fn profile_root(profile: &serde_json::Value) -> String {
     let root = profile
         .get("initialPath")
         .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .replace("{username}", username);
+        .unwrap_or("");
+    // The user name goes in exactly as saved, as the connect sends it and
+    // `resolveUsernameTemplate` inserts it; a blank one leaves the
+    // placeholder rather than an empty folder name. One literal pass, so a
+    // user name that reads `{username}` is not expanded again.
+    let root = if username.trim().is_empty() {
+        root.to_string()
+    } else {
+        root.replace("{username}", username)
+    };
     // No trim: the session opens the space as part of the folder name
     // (#1523, `549820d79`), so `" /var/www "` is a different folder than
     // `"/var/www"`. Trimming here named a folder the connect never opened.
@@ -1226,6 +1234,43 @@ mod tests {
         let (host, port) = parse_server_field("[fe80::1%25eth0]:8080");
         assert_eq!(host, "fe80::1%25eth0");
         assert_eq!(port, Some(8080));
+    }
+
+    /// The cases of `src/shared/username-template-cases.json`, which the
+    /// frontend's `resolveUsernameTemplate` and the setup wizard pass too:
+    /// both sides insert the user name into the same folder name.
+    #[test]
+    fn the_username_fills_the_folder_as_the_frontend_fills_it() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let cases = table["cases"].as_array().unwrap();
+        assert!(cases.len() >= 10);
+        for case in cases {
+            let (template, username, expected) = (
+                case["template"].as_str().unwrap(),
+                case["username"].as_str().unwrap(),
+                case["expected"].as_str().unwrap(),
+            );
+            let starting = serde_json::json!({
+                "protocol": "webdav",
+                "initialPath": template,
+                "username": username,
+            });
+            assert_eq!(profile_root(&starting), expected, "{case}");
+            let bound = serde_json::json!({
+                "protocol": "webdav",
+                "initialPath": "/",
+                "username": username,
+                "aeroCryptOverlay": { "remoteScope": template },
+            });
+            assert_eq!(
+                crate::crypt_overlay_provider::profile_overlay_scope(&bound),
+                expected,
+                "{case}"
+            );
+        }
     }
 
     #[test]

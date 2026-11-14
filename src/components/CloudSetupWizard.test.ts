@@ -4,10 +4,33 @@
 import { describe, it, expect } from 'vitest';
 import { aeroCloudBase, aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
 import { profileMatchesQuery } from './common/ProfileRail';
+import { profileOverlayScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import type { ServerProfile } from '../types';
+import usernameCases from '../shared/username-template-cases.json';
 
 const profile = (fields: Partial<ServerProfile>): ServerProfile =>
     ({ id: 'srv_1', name: 'Profile', host: 'example.com', port: 21, username: '', ...fields }) as ServerProfile;
+
+describe('the {username} placeholder', () => {
+    // The same table the backend's `profile_root` and `profile_overlay_scope`
+    // pass: both sides insert the user name into the same folder name.
+    it.each(usernameCases.cases)('$template with $username', ({ template, username, expected }) => {
+        expect(resolveUsernameTemplate(template, username)).toBe(expected);
+        const webdav = { protocol: 'webdav', username } as Partial<ServerProfile>;
+        expect(profileRoot(profile({ ...webdav, initialPath: template }))).toBe(expected);
+        expect(profileOverlayScope({ ...webdav, initialPath: template } as ServerProfile)).toBe(expected);
+        const bound = profile({
+            ...webdav,
+            initialPath: '/',
+            aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: template },
+        } as Partial<ServerProfile>);
+        expect(profileOverlayScope(bound)).toBe(expected);
+        expect(aeroCloudBase(bound)).toBe(expected);
+        expect(aeroCloudRemoteFolder(bound, 'cloud')).toBe(`${expected}/cloud/`);
+        const sftp = profile({ protocol: 'sftp', username, initialPath: template.slice(1) });
+        expect(aeroCloudBase(sftp)).toBe(`~/${expected.slice(1)}`);
+    });
+});
 
 describe('profileRoot', () => {
     it('is the server root when the profile has no starting folder', () => {

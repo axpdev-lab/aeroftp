@@ -55,15 +55,22 @@ export const placeUnderLoginFolder = (path: string | null | undefined, loginFold
 export const knownCryptScope = (s?: string | null): string =>
   isLoginRelativeScope(s) ? '' : normCryptScope(s);
 
+/**
+ * `path` with every `{username}` replaced by the user name exactly as saved,
+ * spaces included, as the connect sends it and the backend's `profile_root`
+ * inserts it. The text goes in literally (`$&` is no pattern, and a user
+ * name that reads `{username}` is not expanded again). A blank user name
+ * leaves the placeholder, never an empty folder name.
+ */
 export const resolveUsernameTemplate = (
   path: string | null | undefined,
   username: string | null | undefined,
 ): string | null => {
   if (!path) return null;
   if (!path.includes('{username}')) return path;
-  const u = (username || '').trim();
-  if (!u) return path;
-  return path.replace(/\{username\}/g, u);
+  const u = username || '';
+  if (!u.trim()) return path;
+  return path.split('{username}').join(u);
 };
 
 /**
