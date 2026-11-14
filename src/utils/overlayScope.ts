@@ -1,3 +1,5 @@
+import { locationProblem } from './syncNavigationPath';
+
 const normalizeSegments = (value: string): string[] => {
     const segments: string[] = [];
     for (const part of value.split('/')) {
@@ -80,6 +82,9 @@ export const normalizeLoginRelative = (p: string): string => {
 // anchor above the vault is the misconfiguration that produces the empty-listing).
 export const isValidOverlayScope = (scope: string, remotePath: string, protocol?: string | null): boolean => {
     if (!scope) return true;
+    // A scope that is not plain names no folder this form can compare
+    // (`locationProblem`, the backend's `util::path_location` rule).
+    if (locationProblem(scope)) return false;
     // A `..` would leave the login folder: the backend refuses it, so the form does too.
     if (isLoginRelativeScope(scope) && normalizeLoginRelative(scope).split('/').includes('..')) return false;
     const remote = loginRelativeForm(remotePath, protocol);
@@ -101,12 +106,17 @@ export const isValidOverlayScope = (scope: string, remotePath: string, protocol?
 // interpreting it RELATIVE to the Remote Path so the prefix is never re-typed
 // (#369 UX). Blank or "/" means "the Remote Path itself". A value already equal
 // to or under the Remote Path is kept verbatim (an operator may still paste the
-// full absolute path). Anything else is treated as a subfolder name and nested
-// under the Remote Path, so the anchor can never escape the Remote Path by
-// construction and isValidOverlayScope(resolveOverlayScope(x, r), r) is always
-// true. The returned value is normalized (the exact form the backend reads).
+// full absolute path). An input with a `.`, `..` or empty step is returned as
+// typed, never normalized into another folder, and isValidOverlayScope refuses
+// it. Anything else is treated as a subfolder name and nested under the Remote
+// Path, so the anchor cannot escape it. The returned value is normalized (the
+// exact form the backend reads).
 export const resolveOverlayScope = (input: string, remotePath: string, protocol?: string | null): string => {
     const raw = input || '';
+    // A `.`, `..` or empty step is kept as typed, in either form, so
+    // `isValidOverlayScope` refuses it: nested or normalized, `~/../vault`
+    // became `~/docs/vault`, a folder the operator never named.
+    if (locationProblem(raw)) return raw;
     const remote = loginRelativeForm(remotePath, protocol);
     if (isLoginRelativeScope(remote)) {
         // Only the session places the login folder, so the anchor stays in

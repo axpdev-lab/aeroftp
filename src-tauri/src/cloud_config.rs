@@ -432,28 +432,15 @@ const SERVER_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 /// Protocol types that require absolute remote paths
 const ABSOLUTE_PATH_PROTOCOLS: &[&str] = &["ftp", "ftps", "sftp", "webdav"];
 
-/// A remote folder under the login folder (`~/...`, or relative, on SFTP,
-/// SCP, FTP and FTPS) with a `..` segment would leave the login folder, and
-/// the placement refuses it at the first connect. Every surface that saves a
-/// folder the user wrote (the setup, the settings, the pairs, the CLI)
-/// refuses it there instead, as written: it is never collapsed into the
-/// folder it might have meant.
-pub fn refuse_a_parent_step_under_login(
-    remote_folder: &str,
-    protocol_type: &str,
-) -> Result<(), String> {
-    if crate::crypt_overlay_provider::login_relative_protocol(protocol_type)
-        && !remote_folder.starts_with('/')
-        && remote_folder
-            .split(['/', '\\'])
-            .any(|segment| segment == "..")
-    {
-        return Err(format!(
-            "The remote folder '{remote_folder}' contains '..', which would leave the login \
-             folder: choose a folder inside it"
-        ));
-    }
-    Ok(())
+/// A remote folder the user wrote is used as written: joined to the login
+/// folder, compared with the listing paths, the badges and the share link.
+/// A `.`, `..` or empty step (a doubled slash) would name another folder
+/// there, so every surface that saves one (the setup, the settings, the
+/// pairs, the CLI) refuses it, as written, on every protocol: it is never
+/// collapsed into the folder it might have meant
+/// ([`crate::util::path_location`]).
+pub fn refuse_an_unusable_remote_folder(remote_folder: &str) -> Result<(), String> {
+    crate::util::path_location::refuse_an_unusable_location("remote folder", remote_folder)
 }
 
 /// Validate cloud configuration
@@ -508,7 +495,7 @@ pub fn validate_config(config: &CloudConfig) -> Result<(), String> {
     {
         return Err("Remote folder must be an absolute path for server protocols".to_string());
     }
-    refuse_a_parent_step_under_login(&config.remote_folder, &config.protocol_type)?;
+    refuse_an_unusable_remote_folder(&config.remote_folder)?;
 
     Ok(())
 }
@@ -759,34 +746,36 @@ mod tests {
     /// folder, or one on a protocol that does not open under the login
     /// folder, is not this rule's.
     #[test]
-    fn a_parent_step_under_the_login_folder_is_refused() {
-        for protocol in ["sftp", "scp", "ftp", "ftps"] {
+    fn a_folder_that_is_not_plain_is_refused_on_every_protocol() {
+        for protocol in ["sftp", "scp", "ftp", "ftps", "webdav", "s3", "googledrive"] {
             for folder in [
                 "~/..",
                 "~/docs/../shared",
-                "~/docs/..",
                 "docs/../x",
                 "~/a\\..\\b",
+                "/srv/../etc",
+                "/docs/./a",
+                "~//docs",
+                "/docs//a",
             ] {
-                let err = refuse_a_parent_step_under_login(folder, protocol)
-                    .expect_err(&format!("{protocol} {folder}"));
+                let config = CloudConfig {
+                    server_profile: "nas".to_string(),
+                    protocol_type: protocol.to_string(),
+                    remote_folder: folder.to_string(),
+                    connection_params: serde_json::json!({"bucket": "b", "client_id": "c"}),
+                    ..CloudConfig::default()
+                };
+                assert!(validate_config(&config).is_err(), "{protocol} {folder}");
+                let err = refuse_an_unusable_remote_folder(folder).unwrap_err();
                 assert!(err.contains(&format!("'{folder}'")), "{err}");
             }
-            for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/../etc", "~"] {
+            for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/data/", "/", "~"] {
                 assert!(
-                    refuse_a_parent_step_under_login(folder, protocol).is_ok(),
+                    refuse_an_unusable_remote_folder(folder).is_ok(),
                     "{protocol} {folder}"
                 );
             }
         }
-        assert!(refuse_a_parent_step_under_login("docs/../x", "webdav").is_ok());
-        let config = CloudConfig {
-            server_profile: "nas".to_string(),
-            protocol_type: "sftp".to_string(),
-            remote_folder: "~/docs/../shared/cloud/".to_string(),
-            ..CloudConfig::default()
-        };
-        assert!(validate_config(&config).is_err());
     }
 
     #[test]

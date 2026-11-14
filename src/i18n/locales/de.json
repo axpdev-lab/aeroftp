@@ -1613,7 +1613,7 @@
             "conflictsCount": "Zu prüfende Konflikte: {count}",
             "updateOnlyHint": "Die Einweg-Aktualisierung behält neuere Zieldateien bei. Bei deaktivierter additiver Sicherung werden nur unveränderte Dateien gelöscht, die ausschließlich im Ziel vorhanden sind und einen verifizierten AeroCloud-Übertragungsbeleg haben. Andere Dateien bleiben zur Prüfung in AeroSync erhalten. Die Konfliktrichtlinie wird ignoriert; unbekannte Datumsangaben bleiben ungeklärt.",
             "untrackedDestinationFiles": "{count} Zieldateien wurden zur Prüfung beibehalten: Ihr Übertragungsverlauf ist unbestätigt oder sie wurden seit der letzten AeroCloud-Übertragung geändert. Prüfen Sie sie in AeroSync, bevor Sie über eine Löschung entscheiden.",
-            "remoteFolderParentStep": "Der Remote-Ordner {folder} enthält \"..\" und würde den Ordner verlassen, in dem AeroCloud arbeitet. Wählen Sie einen Unterordner ohne \"..\" oder entfernen Sie es aus dem Startordner des Serverprofils."
+            "remoteFolderNotPlain": "Der entfernte Ordner {folder} enthält einen Schritt \".\" oder \"..\" oder einen doppelten Schrägstrich. AeroCloud verwendet einen Ordner so, wie er geschrieben ist, und löst diese nicht auf. Wählen Sie einen Unterordner ohne sie oder entfernen Sie sie aus dem Startordner oder Overlay-Ordner des Serverprofils."
         },
         "statusBar": {
             "connected": "Verbunden",

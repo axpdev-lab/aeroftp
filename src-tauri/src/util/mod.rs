@@ -12,6 +12,7 @@
 pub mod abort_on_drop;
 pub mod endpoint;
 pub mod json_error;
+pub mod path_location;
 pub mod profile_name;
 pub mod provider_guard;
 pub mod scratch;

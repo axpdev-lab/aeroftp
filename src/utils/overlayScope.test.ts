@@ -96,9 +96,14 @@ describe('resolveOverlayScope (#369 relative UX)', () => {
         expect(resolveOverlayScope('/other', '/data')).toBe('/data/other');
     });
 
-    it('neutralizes dot-segment traversal by treating it as relative input', () => {
-        expect(resolveOverlayScope('../sibling', '/data/vault')).toBe('/data/vault/sibling');
-        expect(resolveOverlayScope('/data/vault/../sibling', '/data/vault')).toBe('/data/vault/data/sibling');
+    it('keeps a dot step, a parent step or a doubled slash as typed, and refuses it', () => {
+        // Nested or normalized, `../sibling` became `/data/vault/sibling`, a
+        // folder the operator never named: the form refuses it instead.
+        for (const input of ['../sibling', '/data/vault/../sibling', './vault', 'sub//x', '/data/vault/./x']) {
+            expect(resolveOverlayScope(input, '/data/vault')).toBe(input);
+            expect(isValidOverlayScope(resolveOverlayScope(input, '/data/vault'), '/data/vault')).toBe(false);
+            expect(isValidOverlayScope(resolveOverlayScope(input, '/'), '/')).toBe(false);
+        }
     });
 
     it('keeps an already-absolute in-scope path verbatim', () => {
@@ -180,7 +185,11 @@ describe('an overlay scope under the login folder', () => {
             expect(resolveOverlayScope('', '~/docs/', protocol)).toBe('~/docs');
             expect(resolveOverlayScope('sub', 'docs', protocol)).toBe('~/docs/sub');
             expect(resolveOverlayScope('~/docs/sub', '~/docs', protocol)).toBe('~/docs/sub');
-            expect(resolveOverlayScope('../x', '~/docs', protocol)).toBe('~/docs/x');
+            // A `..` is kept as typed and refused, in either form.
+            for (const input of ['../x', '~/../vault', '~/docs/./x', '~//docs/x']) {
+                expect(resolveOverlayScope(input, '~/docs', protocol)).toBe(input);
+                expect(isValidOverlayScope(resolveOverlayScope(input, 'docs', protocol), 'docs', protocol)).toBe(false);
+            }
             expect(resolveOverlayScope('~/vault', '', protocol)).toBe('~/vault');
             expect(resolveOverlayScope('', '~', protocol)).toBe('~');
             // An absolute folder under an unplaced one is kept as typed and refused.

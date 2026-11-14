@@ -19,6 +19,7 @@ import { pickFile } from '../utils/pickPath';
 import { normCryptScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import { loginRelativeForm, loginRelativeProtocol, normalizeOverlayAnchor } from '../utils/overlayScope';
 import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
+import { locationProblem } from '../utils/syncNavigationPath';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
 import { AeroCloudMaturityBadge, isAeroCloudProtocol, useAeroCloudCaveat } from './AeroCloudProtocols';
@@ -52,6 +53,11 @@ export function profileRoot(profile: ServerProfile): string {
  * encrypted folder.
  */
 export function aeroCloudBase(profile: ServerProfile): string {
+    // A folder with a `.`, `..` or empty step comes back as written, so the
+    // wizard names it and refuses it (`aeroCloudFolderNotPlain`): normalized,
+    // `/srv/../data` read as `/data`, a folder the profile never named.
+    const written = baseAsWritten(profile);
+    if (locationProblem(written)) return loginRelativeForm(written, profile.protocol);
     if (loginRelativeProtocol(profile.protocol)) {
         // On SFTP, SCP, FTP and FTPS a relative folder opens under the login
         // folder, which only the connected session knows: the base stays in
@@ -90,31 +96,33 @@ export function aeroCloudRemoteFolder(profile: ServerProfile, subfolder: string)
     return sub ? `${base}/${sub}/` : `${base}/`;
 }
 
-const hasParentStep = (path: string | null | undefined): boolean =>
-    (path || '').split(/[\\/]/).includes('..');
-
 /**
- * Whether the remote folder the wizard would save steps out with `..`: a
- * sub-folder never does, and on SFTP, SCP, FTP and FTPS neither does the
- * base under the login folder, which the backend refuses to place. The base
- * is checked as written, before any normalization: `~/docs/../shared` is
- * refused, never read as `~/shared`.
+ * The text the base comes from, before any normalization: the overlay
+ * folder when it names one, else the starting folder, with the user name
+ * filled in. A `/` overlay folder names none, as `aeroCloudBase` reads it.
  */
-export function aeroCloudFolderLeavesBase(profile: ServerProfile, subfolder: string): boolean {
-    if (hasParentStep(subfolder.trim())) return true;
-    if (!loginRelativeProtocol(profile.protocol)) return false;
-    // The text `aeroCloudBase` reads: the overlay folder when it names one,
-    // else the starting folder.
-    const rawScope = getServerCryptOverlay(profile)
+function baseAsWritten(profile: ServerProfile): string {
+    const scope = getServerCryptOverlay(profile)
         ? resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username) || ''
         : '';
-    // An absolute folder names where it is on the server and follows the
-    // absolute-path rules; only one under the login folder is refused here,
-    // as the backend's `refuse_a_parent_step_under_login` refuses it.
-    const underLogin = (path: string | null | undefined) => !!path && !path.startsWith('/') && hasParentStep(path);
-    if (underLogin(rawScope)) return true;
-    const scope = rawScope ? normalizeOverlayAnchor(loginRelativeForm(rawScope, profile.protocol)) : '';
-    return !scope && underLogin(resolveUsernameTemplate(profile.initialPath, profile.username));
+    if (locationProblem(scope)) return scope;
+    const named = scope && (loginRelativeProtocol(profile.protocol)
+        ? normalizeOverlayAnchor(loginRelativeForm(scope, profile.protocol))
+        : normCryptScope(scope));
+    return named ? scope : resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+}
+
+/**
+ * Whether the remote folder the wizard would save is not plain: its
+ * sub-folder or its base, as written, has a `.`, `..` or empty step
+ * (`locationProblem`, the rule of the backend's `util::path_location`). The
+ * backend refuses such a folder on every save, on every protocol, so the
+ * wizard refuses it first and names it as written: `~/docs/../shared` is
+ * never read as `~/shared`, nor `/srv/../data` as `/data`.
+ */
+export function aeroCloudFolderNotPlain(profile: ServerProfile, subfolder: string): boolean {
+    return !!locationProblem(subfolder.trim().replace(/^\/+|\/+$/g, ''))
+        || !!locationProblem(aeroCloudBase(profile));
 }
 
 const STEPS = ['cloud.stepFolder', 'cloud.stepServer', 'cloud.stepSettings'] as const;
@@ -167,11 +175,11 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
 
     const rootLabel = `${profile ? aeroCloudBase(profile) : ''}/`;
     const remoteLabel = `${rootLabel}${subfolder.trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
-    const leavesBase = !!profile && aeroCloudFolderLeavesBase(profile, subfolder);
-    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !leavesBase;
+    const notPlain = !!profile && aeroCloudFolderNotPlain(profile, subfolder);
+    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !notPlain;
 
     const handleComplete = async () => {
-        if (!profile || aeroCloudFolderLeavesBase(profile, subfolder)) return;
+        if (!profile || aeroCloudFolderNotPlain(profile, subfolder)) return;
         setSaving(true);
         setError(null);
         try {
@@ -327,9 +335,9 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     className={`${INPUT_CLASS} rounded-l-none font-mono min-w-0`} />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>
-                            {leavesBase && (
+                            {notPlain && (
                                 <p role="alert" className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400 mt-1">
-                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderParentStep', { folder: remoteLabel })}</span>
+                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderNotPlain', { folder: remoteLabel })}</span>
                                 </p>
                             )}
                         </div>
@@ -400,7 +408,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} disabled={saving || leavesBase} className={PRIMARY_BUTTON_CLASS}>
+                        <button onClick={handleComplete} disabled={saving || notPlain} className={PRIMARY_BUTTON_CLASS}>
                             {saving ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>

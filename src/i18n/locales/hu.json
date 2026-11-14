@@ -1613,7 +1613,7 @@
             "conflictsCount": "{count} ütközés figyelmet igényel",
             "updateOnlyHint": "Az egyirányú frissítés megtartja az újabb célfájlokat. Ha a hozzáadó biztonsági mentés ki van kapcsolva, csak azok a változatlan, kizárólag a célhelyen lévő fájlok törlődnek, amelyekhez ellenőrzött AeroCloud-átviteli bizonylat tartozik. A többi fájl megmarad az AeroSyncben történő ellenőrzéshez. Az ütközési szabály figyelmen kívül marad; az ismeretlen dátumok megoldatlanok maradnak.",
             "untrackedDestinationFiles": "{count} célfájl megmaradt ellenőrzésre: az átviteli előzményeik nincsenek igazolva, vagy megváltoztak az utolsó AeroCloud-átvitel óta. Ellenőrizze őket az AeroSyncben, mielőtt a törlésükről dönt.",
-            "remoteFolderParentStep": "A(z) {folder} távoli mappa \"..\" részt tartalmaz, amely kilépne abból a mappából, amelyben az AeroCloud dolgozik. Válasszon \"..\" nélküli almappát, vagy távolítsa el a kiszolgálóprofil kezdőmappájából."
+            "remoteFolderNotPlain": "A(z) {folder} távoli mappa \".\" vagy \"..\" lépést, illetve dupla perjelet tartalmaz. Az AeroCloud a mappát úgy használja, ahogy meg van adva, és nem oldja fel ezeket. Válasszon olyan almappát, amely nem tartalmazza ezeket, vagy távolítsa el őket a szerverprofil kezdőmappájából vagy rétegmappájából."
         },
         "statusBar": {
             "connected": "Csatlakozva",

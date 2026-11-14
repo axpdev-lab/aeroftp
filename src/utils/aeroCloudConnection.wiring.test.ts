@@ -153,28 +153,20 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   expect(await connectWith('webdav', 'custom-webdav', reset.options)).toMatchObject({ tls_mode: 'https' });
 });
 
-const navStart = app.indexOf('const navigateToRemoteFolder = async');
-const navEnd = app.indexOf('// Connection params to set', navStart);
-if (navStart < 0 || navEnd < 0) throw new Error('Missing AeroCloud navigation closure');
-const navCode = (await transformWithOxc(app.slice(navStart, navEnd), 'aerocloud-navigation.ts')).code;
-
 it('bases Navigation Sync on the folder the session lists, not on the saved form', async () => {
   const { relativeSyncSegments } = await import('./syncNavigationPath');
+  const { openAeroCloudFolder } = await import('./liveConnection');
+  // The AeroCloud tab opens its folder through the helper, with the
+  // placement and the listing the app uses; a provider connect listing ''
+  // lists the folder it stands in.
+  expect(app).toContain('openAeroCloudFolder(cloudConfig.remote_folder, isProvider, placeStartFolder, navigateToRemoteFolder)');
+  const nav = app.slice(app.indexOf('const navigateToRemoteFolder = async'), app.indexOf('// Connection params to set'));
+  expect(nav).toContain("invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null })");
   // A `~/docs` saved before the first sync placed it, on a server whose home
   // is a symlink: the session lists `/usr/home/u/docs`.
   const listed: string[] = [];
-  const context = {
-    isProvider: true,
-    cloudConfig: { remote_folder: '~/docs' },
-    placeStartFolder: vi.fn(async (path: string) => path === '~/docs' ? '/home/u/docs' : path),
-    invoke: vi.fn(async (_command: string, args: { path: string }) => { listed.push(args.path); return { files: [], current_path: '/usr/home/u/docs' }; }),
-    withRemoteListSpinner: (run: () => Promise<unknown>) => run(),
-    listingReason: () => '',
-    setRemoteFiles: vi.fn(),
-    setCurrentRemotePath: vi.fn(),
-  };
-  const open = new Function(...Object.keys(context), `${navCode}; return openCloudRemoteFolder;`)(...Object.values(context));
-  const base = await open();
+  const navigate = vi.fn(async (folder: string) => { listed.push(folder); return '/usr/home/u/docs'; });
+  const base = await openAeroCloudFolder('~/docs', true, async path => path === '~/docs' ? '/home/u/docs' : path, navigate);
   expect(listed).toEqual(['/home/u/docs']);
   expect(base).toBe('/usr/home/u/docs');
   // At the listed folder the lock reads the root (Up disabled), one level
@@ -190,6 +182,32 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder();');
   expect(fresh).toContain('setCloudRemoteFolder(listedCloudFolder);');
   expect(app).not.toMatch(/navigateToRemoteFolder\(cloudConfig\.remote_folder\)/);
+});
+
+it('lists the folder the connect opened when the session cannot place the saved one', async () => {
+  const { openAeroCloudFolder } = await import('./liveConnection');
+  const cannotPlace = async () => null;
+  // A provider connect took `docs` as its starting folder: '' lists where it
+  // stands. Listed again as `docs` it was resolved from there, `docs/docs`.
+  const provider = vi.fn(async (folder: string) => folder);
+  await openAeroCloudFolder('docs', true, cannotPlace, provider);
+  expect(provider).toHaveBeenCalledWith('');
+  expect(provider).not.toHaveBeenCalledWith('docs');
+  // FTP's `connect_ftp` opened no folder: `docs` is entered from the login folder.
+  const ftp = vi.fn(async (folder: string) => folder);
+  await openAeroCloudFolder('docs', false, cannotPlace, ftp);
+  expect(ftp).toHaveBeenCalledWith('docs');
+});
+
+it('refuses a saved folder that is not plain before listing anything, named as written', async () => {
+  const { openAeroCloudFolder } = await import('./liveConnection');
+  for (const folder of ['/docs/../private', '~/docs/./a', '~//docs', '/docs//a']) {
+    const place = vi.fn(async (path: string) => path);
+    const navigate = vi.fn(async (path: string) => path);
+    await expect(openAeroCloudFolder(folder, true, place, navigate)).rejects.toThrow(`'${folder}'`);
+    expect(place).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  }
 });
 
 it('offers the sync badges and the share link only on the AeroCloud connection', async () => {

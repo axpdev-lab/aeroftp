@@ -527,8 +527,10 @@ async fn enter_login_relative_root_through_session(
         }
     };
     provider.cd(&home).await.map_err(failed)?;
+    // The rest after `~` as the connect's placement reads it: `~//docs`
+    // left as `/docs` would be a folder at the server root.
     provider
-        .cd(root.strip_prefix("~/").unwrap_or(root))
+        .cd(crate::util::path_location::login_relative_rest(root).unwrap_or(root))
         .await
         .map_err(failed)?;
     provider.pwd().await.map_err(failed)
@@ -1603,6 +1605,19 @@ mod tests {
             &serde_json::json!({ "protocol": "ftp", "initialPath": "docs/../shared" }),
         );
         assert_eq!(root, "~/docs/../shared");
+        let mut provider = connected_ftp(port, &root).await;
+        let placed = enter_profile_root(&mut provider, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(placed.as_deref(), Some("/home/u/shared"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/shared");
+
+        // Repeated slashes after `~` name the same folder the connect opened,
+        // not `/docs/../shared` at the server root.
+        let root = profile_root(
+            &serde_json::json!({ "protocol": "ftp", "initialPath": "~//docs/../shared" }),
+        );
+        assert_eq!(root, "~//docs/../shared");
         let mut provider = connected_ftp(port, &root).await;
         let placed = enter_profile_root(&mut provider, Some(&root))
             .await

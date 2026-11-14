@@ -1613,7 +1613,7 @@
             "conflictsCount": "Konflikty wymagające uwagi: {count}",
             "updateOnlyHint": "Aktualizacja jednokierunkowa zachowuje nowsze pliki docelowe. Gdy kopia zapasowa z dodawaniem jest wyłączona, usuwane są tylko niezmienione pliki istniejące wyłącznie w miejscu docelowym ze zweryfikowanym potwierdzeniem transferu AeroCloud. Pozostałe pliki pozostają do sprawdzenia w AeroSync. Zasady konfliktów są ignorowane; nieznane daty pozostają nierozstrzygnięte.",
             "untrackedDestinationFiles": "{count} plików docelowych zachowano do sprawdzenia: ich historia transferów nie została zweryfikowana lub zmieniły się od ostatniego transferu AeroCloud. Sprawdź je w AeroSync przed podjęciem decyzji o usunięciu.",
-            "remoteFolderParentStep": "Folder zdalny {folder} zawiera \"..\", co wyszłoby poza folder, w którym działa AeroCloud. Wybierz podfolder bez \"..\" lub usuń to z folderu początkowego profilu serwera."
+            "remoteFolderNotPlain": "Folder zdalny {folder} zawiera krok \".\" lub \"..\" albo podwójny ukośnik. AeroCloud używa folderu dokładnie tak, jak został zapisany, i ich nie rozwiązuje. Wybierz podfolder bez nich lub usuń je z folderu początkowego albo folderu nakładki w profilu serwera."
         },
         "statusBar": {
             "connected": "Połączono",

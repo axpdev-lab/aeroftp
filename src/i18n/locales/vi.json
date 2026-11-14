@@ -1613,7 +1613,7 @@
             "conflictsCount": "{count} xung đột cần xử lý",
             "updateOnlyHint": "Cập nhật một chiều giữ lại các tệp đích mới hơn. Khi tắt sao lưu bổ sung, chỉ những tệp không thay đổi, chỉ có ở đích và có biên nhận truyền AeroCloud đã được xác minh mới bị xóa. Các tệp khác được giữ lại để xem xét trong AeroSync. Chính sách xung đột bị bỏ qua; các ngày không xác định vẫn chưa được giải quyết.",
             "untrackedDestinationFiles": "{count} tệp đích đã được giữ lại để xem xét: lịch sử truyền của chúng chưa được xác minh hoặc chúng đã thay đổi sau lần truyền AeroCloud gần nhất. Hãy xem xét chúng trong AeroSync trước khi quyết định xóa.",
-            "remoteFolderParentStep": "Thư mục từ xa {folder} chứa \"..\", điều này sẽ thoát ra khỏi thư mục mà AeroCloud làm việc. Hãy chọn một thư mục con không có \"..\", hoặc xóa nó khỏi thư mục bắt đầu của hồ sơ máy chủ."
+            "remoteFolderNotPlain": "Thư mục từ xa {folder} chứa bước \".\" hoặc \"..\" hoặc dấu gạch chéo kép. AeroCloud dùng thư mục đúng như được viết và không phân giải chúng. Hãy chọn một thư mục con không có chúng, hoặc xóa chúng khỏi thư mục bắt đầu hoặc thư mục lớp phủ của hồ sơ máy chủ."
         },
         "statusBar": {
             "connected": "Đã kết nối",

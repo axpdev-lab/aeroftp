@@ -1613,7 +1613,7 @@
             "conflictsCount": "{count} konflik memerlukan perhatian",
             "updateOnlyHint": "Kemas Kini Sehala mengekalkan fail destinasi yang lebih baharu. Apabila sandaran aditif dimatikan, hanya fail yang tidak berubah, ada di destinasi sahaja dan mempunyai resit pemindahan AeroCloud yang disahkan akan dipadam. Fail lain kekal untuk semakan dalam AeroSync. Dasar konflik diabaikan; tarikh yang tidak diketahui kekal belum diselesaikan.",
             "untrackedDestinationFiles": "{count} fail destinasi dikekalkan untuk semakan: sejarah pemindahannya belum disahkan atau fail telah berubah selepas pemindahan AeroCloud terakhir. Semak fail tersebut dalam AeroSync sebelum memutuskan untuk memadamnya.",
-            "remoteFolderParentStep": "Folder jauh {folder} mengandungi \"..\", yang akan keluar daripada folder tempat AeroCloud bekerja. Pilih subfolder tanpa \"..\", atau buangnya daripada folder permulaan profil pelayan."
+            "remoteFolderNotPlain": "Folder jauh {folder} mengandungi langkah \".\" atau \"..\" atau garis condong berganda. AeroCloud menggunakan folder seperti yang ditulis dan tidak menyelesaikannya. Pilih subfolder tanpanya, atau buangnya daripada folder permulaan atau folder tindanan profil pelayan."
         },
         "statusBar": {
             "connected": "Disambung",

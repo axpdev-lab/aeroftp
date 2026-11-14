@@ -4,7 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import { breadcrumbMayEnter, canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, relativeSyncSegments, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import locationCases from '../shared/path-location-cases.json';
+import breadcrumb from '../components/BreadcrumbBar.tsx?raw';
+import syncNavigationSource from './syncNavigationPath.ts?raw';
+import overlayScopeSource from './overlayScope.ts?raw';
+import liveConnectionSource from './liveConnection.ts?raw';
+import wizardSource from '../components/CloudSetupWizard.tsx?raw';
 
 const nfd = 'εσωτερικο\u0301ς';
 const nfc = nfd.normalize('NFC');
@@ -23,7 +29,9 @@ const resolveSyncNavigationPath = (
 it('bounds relative suffixes by complete components and preserves literal names', () => {
     expect(relativeSyncSegments('/base-other/sub', '/base')).toBeNull();
     expect(relativeSyncSegments('/base/../escape', '/base')).toBeNull();
-    expect(relativeSyncSegments('/base/..\\kept', '/base')).toEqual(['..\\kept']);
+    // A `..` before a backslash is a parent step on a Windows panel the
+    // segments are joined to: refused, as every location (`locationProblem`).
+    expect(relativeSyncSegments('/base/..\\kept', '/base')).toBeNull();
     expect(relativeSyncSegments('/base/🇯🇵/dir\\name', '/base/')).toEqual(['🇯🇵', 'dir\\name']);
     expect(relativeSyncSegments('C:/sub', 'C:/')).toEqual(['sub']);
     expect(relativeSyncSegments('C:/', 'C:/')).toEqual([]);
@@ -139,5 +147,95 @@ describe('isWithinSyncFolder', () => {
         expect(isWithinSyncFolder('/a', '/')).toBe(true);
         expect(isWithinSyncFolder('/a', '')).toBe(false);
         expect(isWithinSyncFolder('', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('\\\\nas\\share\\sync\\a', '\\\\nas\\share\\sync')).toBe(true);
+    });
+
+    it('reads a path that is not plain as under no folder', () => {
+        expect(isWithinSyncFolder('/docs/../private/a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs/./a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/docs//a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/private/a.txt', '/docs/../private')).toBe(false);
+        expect(isWithinSyncFolder('C:\\sync\\..\\other', 'C:\\sync')).toBe(false);
+    });
+});
+
+describe('locationProblem', () => {
+    // The cases the backend's `location_problem` passes too
+    // (`util/path_location.rs`): both sides refuse the same paths.
+    it('refuses the paths of the shared table for the same reason', () => {
+        expect(locationCases.cases.length).toBeGreaterThanOrEqual(20);
+        for (const { path, problem } of locationCases.cases) {
+            expect(locationProblem(path), JSON.stringify(path)).toBe(problem);
+        }
+    });
+
+    it('takes no relative steps from a path that is not plain', () => {
+        expect(relativeSyncSegments('/docs/a/../../private', '/docs')).toBeNull();
+        expect(relativeSyncSegments('/docs//a', '/docs')).toBeNull();
+        expect(relativeSyncSegments('/private/a', '/docs/../private')).toBeNull();
+        expect(relativeSyncSegments('/docs/a/', '/docs/')).toEqual(['a']);
+    });
+});
+
+describe('breadcrumbMayEnter', () => {
+    it('closes the ancestors of the boundary, and a typed path that is not plain', () => {
+        expect(breadcrumbMayEnter('/', undefined)).toBe(true);
+        expect(breadcrumbMayEnter('/docs/../etc', undefined)).toBe(true);
+        expect(breadcrumbMayEnter('/docs', '/docs/')).toBe(true);
+        expect(breadcrumbMayEnter('/docs/a', '/docs')).toBe(true);
+        expect(breadcrumbMayEnter('/', '/docs')).toBe(false);
+        expect(breadcrumbMayEnter('/home', '/home/u/docs')).toBe(false);
+        for (const typed of ['/docs/../etc', '/docs/./a', '/docs//a', 'C:\\sync\\..\\x']) {
+            expect(breadcrumbMayEnter(typed, '/docs'), typed).toBe(false);
+        }
+    });
+
+    it('is the check the breadcrumb runs on segments and typed paths', () => {
+        expect(breadcrumb).toContain('!breadcrumbMayEnter(segmentPath, minPath)');
+        expect(breadcrumb).toMatch(/if \(trimmed && trimmed !== currentPath && !isAboveMinPath\(trimmed\)\)/);
+        expect(breadcrumb).not.toMatch(/mp\.startsWith/);
+    });
+});
+
+describe('every location site checks the path first', () => {
+    // Each function of these files that strips, slices or compares a path by
+    // its prefix calls `locationProblem` before it, or is listed with the
+    // reason it needs no check of its own. A new one fails here until it
+    // does one or the other; the backend twin is
+    // `every_location_site_checks_the_path_first` (util/path_location.rs).
+    const EXEMPT: Record<string, string> = {
+        rootPath: 'a helper of relativeSyncSegments, which checks first',
+        resolveSyncNavigationPath: 'takes the segments relativeSyncSegments checked',
+        isLoginRelativeScope: 'tells the `~` form apart, strips nothing',
+        loginRelativeForm: 'prefixes `~/`; every caller here checks the text first',
+        normalizeLoginRelative: 'a normalizer the checked functions call; keeps `..` as written',
+        hostOf: 'a host name, not a path',
+        profileRoot: 'the starting folder the server reads; aeroCloudBase checks the text it comes from',
+        aeroCloudRemoteFolder: 'joined only after aeroCloudFolderNotPlain refused (handleComplete)',
+        CloudSetupWizard: 'the label it shows, not a location it uses',
+    };
+    it('checks each path before it strips or compares it', () => {
+        const checked: string[] = [];
+        for (const source of [syncNavigationSource, overlayScopeSource, liveConnectionSource, wizardSource]) {
+            for (const part of source.split(/\n(?=export (?:async )?function |export const |function |const [a-zA-Z]+ = \()/u)) {
+                const name = /^(?:export )?(?:async )?(?:function |const )([A-Za-z0-9_]+)/u.exec(part)?.[1];
+                if (!name || name === 'locationProblem') continue;
+                const first = part.search(/\.startsWith\(|\.slice\(|\.replace\(\/\^/u);
+                if (first < 0 || name in EXEMPT) continue;
+                const check = part.indexOf('locationProblem(');
+                expect(check >= 0 && check < first, `${name} strips or compares a path before it checks it`).toBe(true);
+                checked.push(name);
+            }
+        }
+        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'breadcrumbMayEnter', 'isValidOverlayScope', 'resolveOverlayScope', 'aeroCloudFolderNotPlain']));
+        // The exempt names still exist: a rename cannot hide a new site.
+        const all = syncNavigationSource + overlayScopeSource + liveConnectionSource + wizardSource;
+        for (const name of Object.keys(EXEMPT)) expect(all, name).toMatch(new RegExp(`(function|const) ${name}\\b`, 'u'));
+        // The wizard refuses before it builds the folder it saves, and the
+        // AeroCloud tab before it lists the saved one.
+        const complete = wizardSource.slice(wizardSource.indexOf('const handleComplete = async'));
+        expect(complete.indexOf('aeroCloudFolderNotPlain(profile, subfolder)')).toBeLessThan(complete.indexOf('aeroCloudRemoteFolder('));
+        const open = liveConnectionSource.slice(liveConnectionSource.indexOf('export async function openAeroCloudFolder'));
+        expect(open.indexOf('locationProblem(remoteFolder)')).toBeLessThan(open.indexOf('await place('));
     });
 });

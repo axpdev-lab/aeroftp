@@ -1613,7 +1613,7 @@
             "conflictsCount": "Spori, ki zahtevajo pozornost: {count}",
             "updateOnlyHint": "Enosmerno posodabljanje ohrani novejše ciljne datoteke. Ko je dodajalno varnostno kopiranje izklopljeno, se izbrišejo le nespremenjene datoteke, ki obstajajo izključno na cilju in imajo preverjeno potrdilo o prenosu prek AeroCloud. Druge datoteke ostanejo za pregled v AeroSync. Pravilnik o sporih se prezre; neznani datumi ostanejo nerazrešeni.",
             "untrackedDestinationFiles": "{count} ciljnih datotek je bilo ohranjenih za pregled: njihova zgodovina prenosov ni preverjena ali pa so bile spremenjene po zadnjem prenosu prek AeroCloud. Pred odločitvijo o izbrisu jih preglejte v AeroSync.",
-            "remoteFolderParentStep": "Oddaljena mapa {folder} vsebuje \"..\", kar bi zapustilo mapo, v kateri deluje AeroCloud. Izberite podmapo brez \"..\" ali to odstranite iz začetne mape profila strežnika."
+            "remoteFolderNotPlain": "Oddaljena mapa {folder} vsebuje korak \".\" ali \"..\" ali dvojno poševnico. AeroCloud uporablja mapo tako, kot je zapisana, in jih ne razreši. Izberite podmapo brez njih ali jih odstranite iz začetne mape ali mape prekrivanja v profilu strežnika."
         },
         "statusBar": {
             "connected": "Povezano",

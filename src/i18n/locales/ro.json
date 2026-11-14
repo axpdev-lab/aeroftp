@@ -1613,7 +1613,7 @@
             "conflictsCount": "Conflicte care necesită atenție: {count}",
             "updateOnlyHint": "Actualizarea unidirecțională păstrează fișierele mai noi de la destinație. Când backupul aditiv este dezactivat, sunt șterse doar fișierele nemodificate care există exclusiv la destinație și au o confirmare verificată a transferului AeroCloud. Celelalte fișiere rămân pentru verificare în AeroSync. Politica de conflicte este ignorată; datele necunoscute rămân nerezolvate.",
             "untrackedDestinationFiles": "{count} fișiere de la destinație au fost păstrate pentru verificare: istoricul transferurilor nu este verificat sau au fost modificate după ultimul transfer AeroCloud. Verificați-le în AeroSync înainte de a decide dacă le ștergeți.",
-            "remoteFolderParentStep": "Folderul la distanță {folder} conține \"..\", ceea ce ar ieși din folderul în care lucrează AeroCloud. Alegeți un subfolder fără \"..\" sau eliminați-l din folderul de pornire al profilului serverului."
+            "remoteFolderNotPlain": "Folderul la distanță {folder} conține un pas \".\" sau \"..\" ori o bară oblică dublă. AeroCloud folosește folderul exact așa cum este scris și nu le rezolvă. Alegeți un subfolder fără ele sau eliminați-le din folderul de pornire ori din folderul suprapunerii din profilul serverului."
         },
         "statusBar": {
             "connected": "Conectat",

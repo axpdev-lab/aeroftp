@@ -1613,7 +1613,7 @@
             "conflictsCount": "Migogoro inayohitaji umakini: {count}",
             "updateOnlyHint": "Usasishaji wa upande mmoja huhifadhi faili mpya zaidi za lengwa. Hifadhi rudufu ya kuongeza ikiwa imezimwa, ni faili zisizobadilika, zilizopo kwenye lengwa pekee na zenye risiti ya uhamishaji wa AeroCloud iliyothibitishwa tu zinazofutwa. Faili nyingine hubaki kwa ukaguzi katika AeroSync. Sera ya migongano hupuuzwa; tarehe zisizojulikana hubaki bila kutatuliwa.",
             "untrackedDestinationFiles": "Faili {count} za lengwa zimehifadhiwa kwa ukaguzi: historia yake ya uhamishaji haijathibitishwa au zimebadilika baada ya uhamishaji wa mwisho wa AeroCloud. Zikague katika AeroSync kabla ya kuamua kuzifuta.",
-            "remoteFolderParentStep": "Folda ya mbali {folder} ina \"..\", jambo ambalo lingetoka nje ya folda ambayo AeroCloud inafanyia kazi. Chagua folda ndogo isiyo na \"..\", au iondoe kwenye folda ya kuanzia ya wasifu wa seva."
+            "remoteFolderNotPlain": "Folda ya mbali {folder} ina hatua ya \".\" au \"..\" au mkwaju maradufu. AeroCloud hutumia folda kama ilivyoandikwa na haizitatui. Chagua folda ndogo isiyo nazo, au uziondoe kwenye folda ya kuanzia au folda ya tabaka ya wasifu wa seva."
         },
         "statusBar": {
             "connected": "Imeunganishwa",

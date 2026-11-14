@@ -525,7 +525,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { connectionNumberOf, connectionTargetKey, isAeroCloudConnection, isSameConnection, liveSavedServerId, resolveLiveConnectionParams, savedProfileIdOf, selectAeroCloudProfile } from './utils/liveConnection';
+import { connectionNumberOf, connectionTargetKey, isAeroCloudConnection, isSameConnection, liveSavedServerId, openAeroCloudFolder, resolveLiveConnectionParams, savedProfileIdOf, selectAeroCloudProfile } from './utils/liveConnection';
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
@@ -9897,15 +9897,11 @@ const App: React.FC = () => {
         }
       };
 
-      // The AeroCloud remote folder, listed, as the session names it: a
-      // `~/...` folder saved before the first sync placed it is placed under
-      // the login folder first, and the folder comes back as the server
-      // reports it (a symlinked home lists `/usr/home/u/docs` for a saved
-      // `/home/u/docs`). Navigation Sync, the sync badges and the share link
-      // compare that form with the listing paths: the saved one never matched
-      // them, so the lock read every folder as above the root.
-      const openCloudRemoteFolder = async (): Promise<string> =>
-        navigateToRemoteFolder(await placeStartFolder(cloudConfig.remote_folder) ?? cloudConfig.remote_folder);
+      // The AeroCloud remote folder, listed, as the session names it
+      // (`openAeroCloudFolder`): the saved form never matched the listing
+      // paths, so the lock read every folder as above the root.
+      const openCloudRemoteFolder = (): Promise<string> =>
+        openAeroCloudFolder(cloudConfig.remote_folder, isProvider, placeStartFolder, navigateToRemoteFolder);
 
       // Connection params to set (for protocol detection in other parts of the app)
       const connParams = {

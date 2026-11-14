@@ -3853,7 +3853,10 @@ pub(crate) async fn resolve_home_scope(
     if !is_login_relative_scope(scope) {
         return Ok(None);
     }
-    let segments: Vec<&str> = scope.strip_prefix("~/").unwrap_or("").split('/').collect();
+    let segments: Vec<&str> = crate::util::path_location::login_relative_rest(scope)
+        .unwrap_or("")
+        .split('/')
+        .collect();
     if segments.contains(&"..") {
         return Err(format!(
             "the overlay folder {scope} leaves the login folder"

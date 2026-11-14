@@ -1613,7 +1613,7 @@
             "conflictsCount": "Conflitos por revisar: {count}",
             "updateOnlyHint": "A actualización unidireccional conserva os ficheiros de destino máis recentes. Coa copia de seguranza aditiva desactivada, só se eliminan os ficheiros exclusivos do destino que non cambiaron e teñen un comprobante de transferencia de AeroCloud verificado. Os demais ficheiros quedan para revisalos en AeroSync. Ignórase a política de conflitos; as datas descoñecidas quedan sen resolver.",
             "untrackedDestinationFiles": "Conserváronse {count} ficheiros de destino para revisalos: o seu historial de transferencias non está verificado ou cambiaron desde a última transferencia de AeroCloud. Revísanos en AeroSync antes de decidir se os queres eliminar.",
-            "remoteFolderParentStep": "O cartafol remoto {folder} contén \"..\", o que sairía do cartafol no que traballa AeroCloud. Escolle un subcartafol sen \"..\" ou quítao do cartafol inicial do perfil do servidor."
+            "remoteFolderNotPlain": "O cartafol remoto {folder} contén un paso \".\" ou \"..\" ou unha barra dobre. AeroCloud usa o cartafol tal como está escrito e non os resolve. Escolle un subcartafol sen eles ou quítaos do cartafol inicial ou do cartafol de superposición do perfil do servidor."
         },
         "statusBar": {
             "connected": "Conectado",

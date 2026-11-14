@@ -3880,6 +3880,9 @@ pub(crate) async fn place_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
 ) -> Result<Option<String>, String> {
+    // A folder saved before the saves refused it, or written by hand, is
+    // refused before anything is placed or synced against it.
+    crate::cloud_config::refuse_an_unusable_remote_folder(&config.remote_folder)?;
     // The connected provider decides, not the config's protocol field, which a
     // legacy config may leave empty.
     if !matches!(
@@ -7720,6 +7723,35 @@ mod baseline_tests {
             .unwrap_err();
             assert!(err.contains("literal '~' directory"), "{err}");
             assert!(err.contains("~/docs"), "{err}");
+        });
+    }
+
+    /// A saved folder with a `.`, `..` or empty step (written by hand, or
+    /// saved before the saves refused it) is refused before it is placed or
+    /// synced against, on every protocol, and named as written.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_saved_folder_that_is_not_plain_is_refused_before_placing() {
+        with_scratch_index(async {
+            for kind in [
+                crate::providers::ProviderType::WebDav,
+                crate::providers::ProviderType::Sftp,
+            ] {
+                let mut provider = MemoryProvider {
+                    kind: Some(kind),
+                    ..Default::default()
+                };
+                for remote in ["/docs/../private", "~/docs/./a", "~//docs", "/docs//a"] {
+                    let config = CloudConfig {
+                        remote_folder: remote.to_string(),
+                        ..Default::default()
+                    };
+                    let err = place_login_relative_remote_folder(&mut provider, &config)
+                        .await
+                        .expect_err(remote);
+                    assert!(err.contains(&format!("'{remote}'")), "{err}");
+                }
+            }
         });
     }
 

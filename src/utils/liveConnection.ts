@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { ConnectionParams } from '../types';
+import { locationProblem } from './syncNavigationPath';
 
 /** The part of a session tab this resolution reads. */
 export interface LiveConnectionSession {
@@ -192,3 +193,32 @@ export function selectAeroCloudProfile<P extends { id: string; name: string }>(
     return profiles.find(p => p.name === profileName) ?? profiles.find(p => p.id === profileName);
 }
 
+
+/**
+ * Open the AeroCloud remote folder and return it as the session lists it.
+ * A `~/...` or relative folder saved before the first sync placed it is
+ * placed under the login folder first (`place`), and the folder comes back
+ * as the server reports it (a symlinked home lists `/usr/home/u/docs` for a
+ * saved `/home/u/docs`): Navigation Sync, the sync badges and the share link
+ * compare that form with the listing paths.
+ *
+ * When `place` cannot place it (null), a connect that opened the folder
+ * (`connectOpenedIt`: a provider connect, which takes it as its starting
+ * folder) lists the folder it stands in. Listed again as given, `docs` was
+ * resolved from there and named `docs/docs`. A connect that opened no folder
+ * (FTP's `connect_ftp`) lists it as given, from the login folder. A saved
+ * folder that is not plain (`locationProblem`) is refused before anything is
+ * listed, named as written.
+ */
+export async function openAeroCloudFolder(
+    remoteFolder: string,
+    connectOpenedIt: boolean,
+    place: (folder: string) => Promise<string | null>,
+    navigate: (folder: string) => Promise<string>,
+): Promise<string> {
+    if (locationProblem(remoteFolder)) {
+        throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '.' or '..' step or a doubled slash: set it again as a plain path`);
+    }
+    const placed = await place(remoteFolder);
+    return navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));
+}

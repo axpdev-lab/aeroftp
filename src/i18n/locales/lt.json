@@ -1613,7 +1613,7 @@
             "conflictsCount": "Konfliktai, kuriems reikia dėmesio: {count}",
             "updateOnlyHint": "Vienkryptis atnaujinimas išsaugo naujesnius paskirties failus. Kai papildomasis atsarginis kopijavimas išjungtas, pašalinami tik nepakeisti failai, esantys vien paskirties vietoje ir turintys patikrintą AeroCloud perdavimo patvirtinimą. Kiti failai lieka peržiūrai programoje AeroSync. Konfliktų politika nepaisoma; nežinomos datos lieka neišspręstos.",
             "untrackedDestinationFiles": "{count} paskirties failų išsaugota peržiūrai: jų perdavimo istorija nepatvirtinta arba jie pakeisti po paskutinio AeroCloud perdavimo. Prieš nuspręsdami dėl pašalinimo, peržiūrėkite juos programoje AeroSync.",
-            "remoteFolderParentStep": "Nuotolinis aplankas {folder} turi \"..\", todėl išeitų iš aplanko, kuriame veikia AeroCloud. Pasirinkite poaplankį be \"..\" arba pašalinkite tai iš serverio profilio pradinio aplanko."
+            "remoteFolderNotPlain": "Nuotoliniame aplanke {folder} yra žingsnis \".\" arba \"..\" arba dvigubas pasvirasis brūkšnys. AeroCloud naudoja aplanką tiksliai taip, kaip jis parašytas, ir jų neišskleidžia. Pasirinkite poaplankį be jų arba pašalinkite juos iš serverio profilio pradinio aplanko ar sluoksnio aplanko."
         },
         "statusBar": {
             "connected": "Prisijungta",

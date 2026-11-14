@@ -1613,7 +1613,7 @@
             "conflictsCount": "Konflikter som krever oppmerksomhet: {count}",
             "updateOnlyHint": "Enveisoppdatering beholder nyere målfiler. Når additiv sikkerhetskopiering er slått av, slettes bare uendrede filer som kun finnes på målet og har en bekreftet kvittering for en AeroCloud-overføring. Andre filer blir liggende til gjennomgang i AeroSync. Konfliktregelen ignoreres; ukjente datoer forblir uavklarte.",
             "untrackedDestinationFiles": "{count} målfiler ble beholdt for gjennomgang: Overføringshistorikken er ikke bekreftet, eller de er endret etter den siste AeroCloud-overføringen. Gå gjennom dem i AeroSync før du avgjør om de skal slettes.",
-            "remoteFolderParentStep": "Fjernmappen {folder} inneholder \"..\", noe som ville forlate mappen AeroCloud jobber i. Velg en undermappe uten \"..\", eller fjern det fra serverprofilens startmappe."
+            "remoteFolderNotPlain": "Den eksterne mappen {folder} inneholder et \".\"- eller \"..\"-trinn eller en dobbel skråstrek. AeroCloud bruker mappen slik den er skrevet og løser dem ikke opp. Velg en undermappe uten dem, eller fjern dem fra startmappen eller overleggsmappen i serverprofilen."
         },
         "statusBar": {
             "connected": "Tilkoblet",

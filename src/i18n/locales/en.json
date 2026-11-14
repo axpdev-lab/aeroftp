@@ -1621,7 +1621,7 @@
             "onePerLineHint": "(one per line)",
             "pairsEditorLabel": "AeroCloud Pairs Editor",
             "remoteSubfolderPlaceholder": "cloud",
-            "remoteFolderParentStep": "The remote folder {folder} contains \"..\", which would leave the folder AeroCloud works in. Choose a sub-folder without \"..\", or remove it from the server profile's starting folder.",
+            "remoteFolderNotPlain": "The remote folder {folder} contains a \".\" or \"..\" step or a doubled slash. AeroCloud uses a folder as written and does not resolve them. Choose a sub-folder without them, or remove them from the server profile's starting folder or overlay folder.",
             "countdownSoon": "Soon...",
             "aerocloudEnabled": "AeroCloud enabled",
             "selectPairLocalFolder": "Select local folder for pair",

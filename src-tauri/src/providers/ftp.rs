@@ -308,13 +308,9 @@ impl FtpProvider {
     /// login, so the server resolves it under the login folder, as it always
     /// did for a relative start path. A relative path stays relative.
     fn place_initial_path(&self, path: &str) -> Option<String> {
-        let Some(rest) = path.strip_prefix('~') else {
+        let Some(rest) = crate::util::path_location::login_relative_rest(path) else {
             return Some(path.to_string());
         };
-        if !rest.is_empty() && !rest.starts_with('/') {
-            return Some(path.to_string());
-        }
-        let rest = rest.trim_start_matches('/');
         let Some(home) = self.login_folder.as_deref() else {
             return (!rest.is_empty()).then(|| rest.to_string());
         };

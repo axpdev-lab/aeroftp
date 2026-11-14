@@ -1613,7 +1613,7 @@
             "conflictsCount": "Huomiota vaativat ristiriidat: {count}",
             "updateOnlyHint": "Yksisuuntainen päivitys säilyttää uudemmat kohdetiedostot. Kun lisäävä varmuuskopiointi on pois käytöstä, vain muuttumattomat, pelkästään kohteessa olevat tiedostot, joilla on vahvistettu AeroCloud-siirtokuitti, poistetaan. Muut tiedostot jäävät tarkistettaviksi AeroSyncissä. Ristiriitakäytäntö ohitetaan; tuntemattomat päivämäärät jäävät ratkaisematta.",
             "untrackedDestinationFiles": "{count} kohdetiedostoa säilytettiin tarkistettaviksi: niiden siirtohistoriaa ei ole vahvistettu tai niitä on muutettu viimeisimmän AeroCloud-siirron jälkeen. Tarkista ne AeroSyncissä ennen kuin päätät poistamisesta.",
-            "remoteFolderParentStep": "Etäkansio {folder} sisältää \"..\", mikä poistuisi kansiosta, jossa AeroCloud toimii. Valitse alikansio ilman \"..\" tai poista se palvelinprofiilin aloituskansiosta."
+            "remoteFolderNotPlain": "Etäkansio {folder} sisältää vaiheen \".\" tai \"..\" tai kaksoiskauttaviivan. AeroCloud käyttää kansiota sellaisenaan eikä tulkitse niitä. Valitse alikansio ilman niitä tai poista ne palvelinprofiilin aloituskansiosta tai peitekansiosta."
         },
         "statusBar": {
             "connected": "Yhdistetty",

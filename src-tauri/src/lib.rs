@@ -218,6 +218,34 @@ mod remote_share_link_tests {
         );
         assert!(link("/docs", "/docs2/a.txt").is_err());
         assert!(link("/home/u/docs", "/usr/home/u/docs/a.txt").is_err());
+        assert!(link("/docs", "/docs/../private/a.txt").is_err());
+        assert!(link("/docs", "/docs/a/../../private/a.txt").is_err());
+        assert!(link("/docs", "/docs/./a.txt").is_err());
+        assert!(link("/docs", "/docs/..").is_err());
+        assert!(link("/docs", "/docs//a.txt").is_err());
+        assert!(link("/docs/../private", "/private/a.txt").is_err());
+    }
+
+    /// The share link of any server with a public URL base: a path under
+    /// the web root at a component boundary is linked from it, any other
+    /// path whole, and a path that is not plain is refused.
+    #[test]
+    fn a_server_share_link_strips_the_root_only_at_a_folder_boundary() {
+        let link = |root, path| super::server_share_link("https://www.example/", root, path);
+        assert_eq!(
+            link("/var/www", "/var/www/a b.txt").unwrap(),
+            "https://www.example/a%20b.txt"
+        );
+        assert_eq!(
+            link("/docs", "/docs2/a.txt").unwrap(),
+            "https://www.example/docs2/a.txt"
+        );
+        assert_eq!(link("", "/a.txt").unwrap(), "https://www.example/a.txt");
+        assert!(link("/docs", "/docs").is_err());
+        for path in ["/docs/../private/a.txt", "/docs/./a.txt", "/docs//a.txt"] {
+            let err = link("/docs", path).unwrap_err();
+            assert!(err.contains(&format!("'{path}'")), "{err}");
+        }
     }
 }
 
@@ -16309,7 +16337,7 @@ async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<()
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
 fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
-    cloud_config::refuse_a_parent_step_under_login(&config.remote_folder, &config.protocol_type)?;
+    cloud_config::refuse_an_unusable_remote_folder(&config.remote_folder)?;
     cloud_config::save_cloud_config(&config)
 }
 
@@ -16341,7 +16369,7 @@ fn save_cloud_pairs_config_cmd_blocking(
     config: cloud_pairs::CloudPairsConfig,
 ) -> Result<(), String> {
     for pair in &config.pairs {
-        cloud_config::refuse_a_parent_step_under_login(&pair.remote_path, &pair.protocol_type)?;
+        cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path)?;
     }
     cloud_pairs::save_cloud_pairs_config(&config)
 }
@@ -16359,7 +16387,7 @@ async fn add_cloud_pair(
 fn add_cloud_pair_blocking(
     pair: cloud_pairs::CloudPathPair,
 ) -> Result<cloud_pairs::CloudPairsConfig, String> {
-    cloud_config::refuse_a_parent_step_under_login(&pair.remote_path, &pair.protocol_type)?;
+    cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path)?;
     cloud_pairs::with_cloud_pairs_mut(|config| {
         if cloud_pairs::pair_exists(&pair.local_path, &pair.remote_path, &config.pairs) {
             return Err("A pair with the same local and remote path already exists".to_string());
@@ -17097,7 +17125,11 @@ fn share_link_connection_check(
 /// The public URL of `remote_path` under the AeroCloud folder `root`. The
 /// path must be `root` or under it at a component boundary: `/docs2/a` is
 /// not under `/docs`, and read as its `2/a` gave a link to another file.
+/// Both paths must be plain ([`util::path_location`]): `/docs/../private/a`
+/// starts with `/docs` and names a file outside it.
 fn remote_share_link(public_base: &str, root: &str, remote_path: &str) -> Result<String, String> {
+    util::path_location::refuse_an_unusable_location("AeroCloud folder", root)?;
+    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
     let root = root.trim_end_matches('/');
     let relative_path = match remote_path.strip_prefix(root) {
         Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.trim_start_matches('/'),
@@ -17124,18 +17156,31 @@ fn generate_server_share_link(
         return Err("Public URL base must start with http:// or https://".to_string());
     }
 
+    server_share_link(&public_url_base, &initial_path, &remote_path)
+}
+
+/// The public URL of `remote_path` on a server whose web root is
+/// `initial_path`. A path under the root, at a component boundary, is linked
+/// from the root (`/docs2/a` is not under `/docs`, and read as its `2/a`
+/// gave a link to another file); any other path is linked whole. A path that
+/// is not plain ([`util::path_location`]) is refused: a `..` in a URL is
+/// resolved by the browser and named a file the path did not.
+fn server_share_link(
+    public_url_base: &str,
+    initial_path: &str,
+    remote_path: &str,
+) -> Result<String, String> {
+    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
     let root = initial_path.trim_end_matches('/');
     let base = public_url_base.trim_end_matches('/');
 
     // Strip server root from remote path to get relative path
-    let relative = if !root.is_empty() && remote_path.starts_with(root) {
-        remote_path
-            .strip_prefix(root)
-            .unwrap_or(&remote_path)
-            .trim_start_matches('/')
-    } else {
+    let relative = match remote_path.strip_prefix(root) {
+        Some(rest) if !root.is_empty() && (rest.is_empty() || rest.starts_with('/')) => {
+            rest.trim_start_matches('/')
+        }
         // No initial path or path doesn't match: use full remote path
-        remote_path.trim_start_matches('/')
+        _ => remote_path.trim_start_matches('/'),
     };
 
     if relative.is_empty() {
