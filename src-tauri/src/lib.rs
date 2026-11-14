@@ -17449,25 +17449,49 @@ const WATCHER_CHANNEL_CAPACITY: usize = 1024;
 /// The enabled AeroCloud pairs as sync configs: every enabled pair of
 /// `cloud_pairs.json`, or the legacy single config when there are none.
 ///
-/// FIX-1: resolve protocol_type per-pair from vault (same as CLI pair sync)
-/// before to_cloud_config(), so non-FTP pairs (SFTP/MEGA/S3/...) work in
-/// GUI background worker (not only explicit `aerocloud pair sync`).
+/// Each carries the protocol its saved profile speaks and that profile's id,
+/// at the one exit both branches leave by. The connect of a cycle takes the
+/// protocol from there ([`cloud_provider_factory::apply_saved_profile_protocol`]),
+/// and a watcher plan prepared from a config still storing another one (the
+/// default `"ftp"` of a config saved without the vault) never matched the
+/// connected config, so every pass was refused and answered with a full
+/// scan. The id keys the pair in the scheduler
+/// ([`cloud_scan_schedule::pair_key`]), as the connect then keys it.
 fn enabled_cloud_configs() -> Vec<cloud_config::CloudConfig> {
-    let mut pc = cloud_pairs::load_cloud_pairs_config();
-    if pc.pairs.is_empty() {
+    let pc = cloud_pairs::load_cloud_pairs_config();
+    let mut configs: Vec<cloud_config::CloudConfig> = if pc.pairs.is_empty() {
         let legacy = cloud_config::load_cloud_config();
-        return if legacy.enabled { vec![legacy] } else { vec![] };
-    }
+        if legacy.enabled {
+            vec![legacy]
+        } else {
+            vec![]
+        }
+    } else {
+        pc.pairs
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.to_cloud_config())
+            .collect()
+    };
     if let Some(store) = credential_store::CredentialStore::from_cache() {
-        for p in &mut pc.pairs {
-            cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, p);
+        for config in &mut configs {
+            cloud_provider_factory::apply_saved_profile_protocol(&store, config);
+            let unresolved = cloud_scan_schedule::pair_key(config);
+            config.resolved_profile_id =
+                cloud_provider_factory::aerocloud_profile_id(&store, config)
+                    .ok()
+                    .flatten();
+            // A config read while the vault was locked was keyed by how it
+            // names its profile; resolved now, it takes what the ledger held
+            // there (a full scan the watcher asked for, the provider's floor),
+            // as a placed pair takes it to its new key. A no-op once moved.
+            // The backlog needs no move: a key it has not seen counts every
+            // pending change as not yet covered.
+            cloud_scan_schedule::ledger()
+                .moved(&unresolved, &cloud_scan_schedule::pair_key(config));
         }
     }
-    pc.pairs
-        .iter()
-        .filter(|p| p.enabled)
-        .map(|p| p.to_cloud_config())
-        .collect()
+    configs
 }
 
 /// The local folders the watchers cover: those of `configs`, leaving out a
@@ -17661,7 +17685,7 @@ enum PairRun {
 ///
 /// Creates its own provider connection per cycle to avoid conflicts with main UI.
 async fn background_sync_worker(app: AppHandle) {
-    use cloud_scan_schedule::{backlog_key, choose_pair_job, ledger, pair_key, PairJob};
+    use cloud_scan_schedule::{choose_pair_job, ledger, pair_key, PairJob};
     use cloud_service::{IncrementalPrep, REMOTE_WORK_LIMIT};
 
     info!("Background sync worker started (Phase 3A+ engine)");
@@ -17818,11 +17842,7 @@ async fn background_sync_worker(app: AppHandle) {
         let has_work = jobs.iter().any(|(cfg, job)| match job {
             PairJob::FullScan => true,
             PairJob::Changes => !backlog
-                .changes_for(
-                    &backlog_key(cfg, &pair_key(cfg)),
-                    &cfg.local_folder,
-                    std_now,
-                )
+                .changes_for(&pair_key(cfg), &cfg.local_folder, std_now)
                 .is_empty(),
             PairJob::Idle => false,
         });
@@ -17876,11 +17896,7 @@ async fn background_sync_worker(app: AppHandle) {
                         PairJob::FullScan => PairRun::Full,
                         PairJob::Idle => PairRun::Idle,
                         PairJob::Changes => {
-                            let changes = backlog.changes_for(
-                                &backlog_key(&cfg, &key),
-                                &cfg.local_folder,
-                                std_now,
-                            );
+                            let changes = backlog.changes_for(&key, &cfg.local_folder, std_now);
                             if changes.is_empty() {
                                 PairRun::Idle
                             } else {
@@ -18108,7 +18124,7 @@ async fn background_sync_worker(app: AppHandle) {
                             PairRun::Full => PairJob::FullScan,
                             _ => PairJob::Changes,
                         };
-                        (backlog_key(cfg, key), cfg.local_folder.as_path(), covered)
+                        (key.clone(), cfg.local_folder.as_path(), covered)
                     })
                     .collect();
                 backlog.settle(&roots, std_now);

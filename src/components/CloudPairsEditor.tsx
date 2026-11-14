@@ -7,7 +7,7 @@
  * Separate from AeroSync's MultiPathEditor / PathPair (do not touch AeroSync code).
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
     X, Plus, Trash2, Folder, Globe, ToggleLeft, ToggleRight, Server, Edit2,
@@ -93,6 +93,11 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     // Save: they count as busy too, so a stray click cannot close the editor
     // before their result or error shows (Discussion #1527).
     const requests = useInFlight<string>();
+    // The opening the editor's state belongs to: every load takes the next
+    // number, and so does a close. A reply (the load's, an add, a remove, a
+    // toggle, the import, the save, the folder picker) is applied only while
+    // the opening that asked is still the current one.
+    const opening = useRef(0);
     const guarded = useGuardedClose({ guard: saving || requests.count > 0 ? 'busy' : pairsChanged ? 'dirty' : null, onClose });
 
     useEffect(() => {
@@ -107,17 +112,18 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         setLoading(true);
         // A load from an earlier opening may finish after a later one: only
         // the latest load writes the editor's state.
-        let active = true;
+        const asked = ++opening.current;
+        const active = () => asked === opening.current;
 
         (async () => {
             try {
                 // Load pairs
                 const cfg = await invoke<CloudPairsConfig>('get_cloud_pairs_config').catch(e => {
                     logger.error('[CloudPairsEditor] get_cloud_pairs_config failed:', e);
-                    if (active) setLoadError(String(e));
+                    if (active()) setLoadError(String(e));
                     return null;
                 });
-                if (!active) return;
+                if (!active()) return;
                 if (cfg) setLoadError(null);
                 // On a failed load both are empty, so the failure itself does
                 // not mark the editor dirty.
@@ -127,12 +133,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
 
                 // Load saved servers for profile picker
                 const servers = await loadSavedServerProfiles().catch(() => []);
-                if (!active) return;
+                if (!active()) return;
                 setSavedServers(servers || []);
 
                 // Load legacy for possible import
                 const leg = await invoke<any>('get_cloud_config').catch(() => null);
-                if (!active) return;
+                if (!active()) return;
                 if (cfg && leg && leg.enabled && (cfg.pairs || []).length === 0) {
                     setLegacyConfig(leg);
                 } else {
@@ -140,21 +146,23 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                 }
             } catch (e) {
                 logger.error('[CloudPairsEditor] load failed:', e);
-                if (!active) return;
+                if (!active()) return;
                 setLoadError(String(e));
                 setPairs([]);
                 setPersistedPairs([]);
             } finally {
-                if (active) setLoading(false);
+                if (active()) setLoading(false);
             }
         })();
-        return () => { active = false; };
+        return () => { opening.current += 1; };
     }, [isOpen]);
 
     const handleAdd = async () => {
         // After a failed load an add that also failed would leave a local-only
         // pair that Save may not write: nothing is added until a load succeeds.
-        if (loadError || pairs.length >= MAX_CLOUD_PAIRS) return;
+        // Nor while it runs: a load that fails after the add was sent clears
+        // the list, and the add's local fallback would land on that unknown one.
+        if (loading || loadError || pairs.length >= MAX_CLOUD_PAIRS) return;
 
         // Seed sensible defaults; prefer legacy values if present for first pair UX
         const base = legacyConfig || {};
@@ -179,15 +187,18 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             last_sync: null,
         };
 
+        const asked = opening.current;
         requests.begin(newPair.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: newPair });
+            if (asked !== opening.current) return;
             setPairs(updated.pairs || []);
             setPersistedPairs(updated.pairs || []);
             // Clear legacy hint after first real add
             if (legacyConfig) setLegacyConfig(null);
         } catch (e) {
             logger.error('[CloudPairsEditor] add_cloud_pair failed:', e);
+            if (asked !== opening.current) return;
             // fallback local add (will save on explicit Save)
             setPairs(prev => [...prev, newPair]);
         } finally {
@@ -196,13 +207,16 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleRemove = async (pairId: string) => {
+        const asked = opening.current;
         requests.begin(pairId);
         try {
             const updated = await invoke<CloudPairsConfig>('remove_cloud_pair', { pairId });
+            if (asked !== opening.current) return;
             setPairs(updated.pairs || []);
             setPersistedPairs(updated.pairs || []);
         } catch (e) {
             logger.error('[CloudPairsEditor] remove_cloud_pair failed:', e);
+            if (asked !== opening.current) return;
             setPairs(prev => prev.filter(p => p.id !== pairId));
         } finally {
             requests.end(pairId);
@@ -215,15 +229,18 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
         );
         setPairs(updated);
+        const asked = opening.current;
         requests.begin(pairId);
         try {
             // persist immediately for toggle (like multi path)
             await invoke('save_cloud_pairs_config_cmd', {
                 config: { pairs: updated, parallel_pairs: false },
             });
+            if (asked !== opening.current) return;
             setPersistedPairs(updated);
         } catch (e) {
             logger.error('[CloudPairsEditor] toggle save failed, rolling back:', e);
+            if (asked !== opening.current) return;
             setPairs(previous);
         } finally {
             requests.end(pairId);
@@ -260,7 +277,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const selectLocalFolder = async (pairId: string) => {
+        const asked = opening.current;
         const selected = await pickFile({ directory: true, multiple: false, title: t('cloud.selectPairLocalFolder') });
+        if (asked !== opening.current) return;
         if (selected) {
             updatePairField(pairId, 'local_path', selected as string);
         }
@@ -270,11 +289,13 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         // Save writes the whole pair list: sent while an add, remove or
         // toggle is still in flight it would revert that change on disk.
         if (requests.count > 0) return;
+        const asked = opening.current;
         setSaving(true);
         try {
             await invoke('save_cloud_pairs_config_cmd', {
                 config: { pairs, parallel_pairs: false },
             });
+            if (asked !== opening.current) return;
             onClose();
         } catch (e) {
             logger.error('[CloudPairsEditor] save failed:', e);
@@ -306,14 +327,17 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             exclude_patterns: legacyConfig.exclude_patterns || [],
             last_sync: legacyConfig.last_sync || null,
         };
+        const asked = opening.current;
         requests.begin(imported.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: imported });
+            if (asked !== opening.current) return;
             setPairs(updated.pairs || []);
             setPersistedPairs(updated.pairs || []);
             setLegacyConfig(null);
         } catch (e) {
             logger.error('[CloudPairsEditor] import legacy failed:', e);
+            if (asked !== opening.current) return;
             setPairs(prev => [...prev, imported]);
             setLegacyConfig(null);
         } finally {
@@ -580,7 +604,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                     <button
                         className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/25 hover:bg-cyan-500/25 disabled:opacity-40"
                         onClick={handleAdd}
-                        disabled={loadError !== null || pairs.length >= MAX_CLOUD_PAIRS}
+                        disabled={loading || loadError !== null || pairs.length >= MAX_CLOUD_PAIRS}
                     >
                         <Plus size={12} /> {t('cloud.pairsAdd') || 'Add pair'}
                     </button>

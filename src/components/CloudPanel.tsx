@@ -270,7 +270,7 @@ const CloudDashboard: React.FC<{
                 <button onClick={onSettings} disabled={settingsDisabled} className="btn-icon disabled:opacity-50 disabled:cursor-not-allowed" title={t('common.settings')}>
                     <Settings size={20} />
                 </button>
-                <button onClick={onManagePairs} className="btn-icon" title={t('cloud.managePairs') || 'Manage pairs'} style={{ marginLeft: 4 }}>
+                <button onClick={onManagePairs} disabled={lifecycleBusy} className="btn-icon disabled:opacity-50 disabled:cursor-not-allowed" title={t('cloud.managePairs') || 'Manage pairs'} style={{ marginLeft: 4 }}>
                     <Server size={20} />
                 </button>
             </div>
@@ -453,6 +453,11 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // never leaves the panel without a configuration.
     const latestRead = useRef(0);
     const fullLoadPending = useRef(false);
+    // Pause, Resume and Disable run one at a time (runLifecycle, below). One
+    // started takes the panel from the reads: those still in flight began
+    // before it and are dropped, and none starts until it lands, as its reply
+    // is the configuration a read would bring back.
+    const lifecycleRunning = useRef(false);
     // The configuration as of the latest commit, for a reply that resolves
     // after an await.
     const configRef = useRef(config);
@@ -536,6 +541,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     });
 
     const loadConfig = async (requestedRefresh = false) => {
+        if (lifecycleRunning.current) return;
         const read = ++latestRead.current;
         if (!requestedRefresh) fullLoadPending.current = true;
         const refresh = requestedRefresh && !fullLoadPending.current;
@@ -648,6 +654,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
             if (!isBackgroundSyncRunning) {
                 await startBackgroundSync();
             }
+            // The sync command takes no configuration: it syncs whichever one
+            // is saved when it runs, so it is not sent for a replaced one.
+            if (asked !== configIdentity.current) return;
             const result = await invoke<string>('trigger_cloud_sync');
             logger.debug('Sync result:', result);
             if (asked !== configIdentity.current) return;
@@ -667,10 +676,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // identity the first moves on, and its reply (a successful Disable
     // included) was dropped. A ref, not the pending count, so two clicks in
     // the same tick are both caught; the buttons are disabled meanwhile.
-    const lifecycleRunning = useRef(false);
     const runLifecycle = async (command: () => Promise<void>) => {
         if (lifecycleRunning.current) return;
         lifecycleRunning.current = true;
+        latestRead.current += 1;
         setPendingLifecycle(c => c + 1);
         try {
             await command();
@@ -1061,15 +1070,20 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         await invoke('save_cloud_config_cmd', { config });
                                         if (asked !== configIdentity.current) return;
                                         configGeneration.current += 1;
-                                        // Sync interval to SyncSchedule so the background worker uses the correct value
+                                        // Sync interval to SyncSchedule so the background worker uses the correct value.
+                                        // The schedule is one for all and its commands
+                                        // take no configuration: it is written, and the
+                                        // view closed, only while this save's
+                                        // configuration is the one shown.
                                         try {
                                             const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
-                                            if (schedule) {
+                                            if (schedule && asked === configIdentity.current) {
                                                 await invoke('save_sync_schedule_cmd', {
                                                     schedule: { ...schedule, interval_secs: config.sync_interval_secs }
                                                 });
                                             }
                                         } catch { /* scheduler may not be initialized yet */ }
+                                        if (asked !== configIdentity.current) return;
                                         setSettingsSaveError(null);
                                         setShowSettings(false);
                                         // What was saved is now the configuration: the
@@ -1138,7 +1152,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     lifecycleBusy={pendingLifecycle > 0}
                     onOpenFolder={handleOpenFolder}
                     onSettings={openSettings}
-                    onManagePairs={() => setShowCloudPairs(true)}
+                    onManagePairs={() => { if (!lifecycleRunning.current) setShowCloudPairs(true); }}
                     settingsDisabled={pendingLifecycle > 0}
                 />
             </div>

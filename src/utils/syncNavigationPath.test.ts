@@ -213,7 +213,9 @@ describe('every location site checks the path first', () => {
                 checked.push(name);
             }
         }
-        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'isValidOverlayScope', 'resolveOverlayScope', 'aeroCloudFolderNotPlain']));
+        // `aeroCloudFolderNotPlain` is no site: it checks the sub-folder as
+        // written and strips nothing (CloudSetupWizard.render.test.tsx).
+        expect(checked).toEqual(expect.arrayContaining(['relativeSyncSegments', 'isWithinSyncFolder', 'isValidOverlayScope', 'resolveOverlayScope']));
         // The exempt names still exist: a rename cannot hide a new site.
         const all = syncNavigationSource + overlayScopeSource + liveConnectionSource + wizardSource;
         for (const name of Object.keys(EXEMPT)) expect(all, name).toMatch(new RegExp(`(function|const) ${name}\\b`, 'u'));

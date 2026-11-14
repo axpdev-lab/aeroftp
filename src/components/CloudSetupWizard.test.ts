@@ -172,6 +172,14 @@ describe('aeroCloudFolderNotPlain', () => {
                 expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(true);
             }
             expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), 'a..b')).toBe(false);
+            // Read before the outer separators are stripped: repeated ones are
+            // an empty step, a single one is none.
+            for (const sub of ['a//', '//a', '/a//', '//']) {
+                expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(true);
+            }
+            for (const sub of ['/a', 'a/', '/a/', '/', '']) {
+                expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(false);
+            }
         }
     });
 });

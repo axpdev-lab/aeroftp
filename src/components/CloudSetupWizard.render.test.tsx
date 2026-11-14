@@ -58,14 +58,20 @@ it('refuses a sub-folder that is not plain on a plain starting folder, and lets 
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
         input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    for (const sub of ['../escape', './cloud', 'a//cloud']) {
+    // Repeated outer separators are empty steps too: refused, and named as
+    // written, not stripped into a plain `~/docs/a/`.
+    for (const sub of ['../escape', './cloud', 'a//cloud', 'a//', '//a', '/a//']) {
         await type(sub);
         expect(host.querySelector('[role="alert"]')?.textContent, sub).toContain('cloud.remoteFolderNotPlain');
+        expect(host.querySelector('[role="alert"]')?.textContent, sub).toContain(sub);
         expect(button('common.next')!.disabled, sub).toBe(true);
     }
-    await type('cloud');
-    expect(host.querySelector('[role="alert"]')).toBeNull();
-    expect(button('common.next')!.disabled).toBe(false);
+    // One leading or trailing separator is no step.
+    for (const sub of ['cloud', '/cloud', 'cloud/', '/cloud/']) {
+        await type(sub);
+        expect(host.querySelector('[role="alert"]'), sub).toBeNull();
+        expect(button('common.next')!.disabled, sub).toBe(false);
+    }
 });
 
 it('lets a starting folder without `..` through', async () => {

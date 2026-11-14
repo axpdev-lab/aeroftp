@@ -29,29 +29,32 @@ pub fn full_scan_interval(user_interval: Duration, floor: Option<Duration>) -> D
     floor.map_or(user_interval, |floor| user_interval.max(floor))
 }
 
-/// A pair's identity for the scheduler: the paths its baseline is keyed by,
-/// so the same folder pair is the same entry whichever list it came from.
+/// A pair's identity for the scheduler, its ledger and the change backlog:
+/// the saved profile it syncs with and the paths its baseline is keyed by.
+/// The profile is the id the config resolved to
+/// ([`CloudConfig::resolved_profile_id`]), so a config naming a profile by
+/// id and a pair naming the same one by name are one entry, whichever list
+/// they came from. A config not resolved (no vault) is keyed by its pinned
+/// id or else its name, each tagged, so a name equal to another profile's id
+/// never shares its key. Paths alone were not enough: a placement can give a
+/// `~/docs` pair on one server the paths of a `/home/u/docs` pair on another,
+/// and a full scan of the first then cleared the second's pending recovery
+/// scan and counted its watcher changes as covered.
 pub fn pair_key(config: &CloudConfig) -> String {
+    let pinned = config
+        .resolved_profile_id
+        .as_deref()
+        .or(config.server_profile_id.as_deref())
+        .filter(|id| !id.trim().is_empty());
+    let server = match pinned {
+        Some(id) => format!("id:{id}"),
+        None => format!("name:{}", config.server_profile),
+    };
     format!(
-        "{}|{}",
+        "{server}\u{0}{}|{}",
         config.local_folder.to_string_lossy(),
         config.remote_folder
     )
-}
-
-/// A pair's identity for the change backlog: `key` (its [`pair_key`], or the
-/// key of the folder a cycle placed) on the server it syncs with. Paths alone
-/// are not enough there: a placement can give a `~/docs` pair on one server
-/// the key of a `/home/u/docs` pair on another, and a full scan of the first
-/// then counted as covering the second's watcher changes, which were dropped
-/// unsynced.
-pub fn backlog_key(config: &CloudConfig, key: &str) -> String {
-    let server = config
-        .server_profile_id
-        .as_deref()
-        .filter(|id| !id.trim().is_empty())
-        .unwrap_or(&config.server_profile);
-    format!("{server}\u{0}{key}")
 }
 
 #[derive(Debug, Default, Clone)]
@@ -663,50 +666,124 @@ mod tests {
     }
 
     /// Two pairs on `/local`, a `~/docs` one on server A and a `/home/u/docs`
-    /// one on server B: A's placement gives it B's path key. A full scan of A
-    /// covers only A, and B, idle, still has its watcher change to sync.
+    /// one on server B: A's placement gives it B's paths, never B's key. A
+    /// full scan of A covers only A, and B, idle, still has its watcher change
+    /// to sync.
     #[test]
-    fn a_placed_pair_with_another_servers_key_does_not_cover_its_changes() {
-        let pair = |profile: &str, remote: &str| CloudConfig {
-            local_folder: PathBuf::from("/local"),
-            remote_folder: remote.to_string(),
-            server_profile: profile.to_string(),
-            ..CloudConfig::default()
-        };
-        let a = pair("a", "~/docs");
-        let b = pair("b", "/home/u/docs");
+    fn a_placed_pair_with_another_servers_paths_does_not_cover_its_changes() {
+        let a = on_server("srv_a", "~/docs");
+        let b = on_server("srv_b", "/home/u/docs");
         let placed_a = pair_key(&CloudConfig {
             remote_folder: "/home/u/docs".to_string(),
             ..a.clone()
         });
-        assert_eq!(placed_a, pair_key(&b), "the path keys collide");
+        assert_ne!(placed_a, pair_key(&b), "same paths, another server");
         let now = Instant::now();
         let mut backlog = ChangeBacklog::default();
         backlog.absorb(watcher_event(&["/local/f.txt"], false));
         let root = Path::new("/local");
         backlog.settle(
             &[
-                (backlog_key(&a, &placed_a), root, PairJob::FullScan),
-                (backlog_key(&b, &pair_key(&b)), root, PairJob::Idle),
+                (placed_a.clone(), root, PairJob::FullScan),
+                (pair_key(&b), root, PairJob::Idle),
             ],
             now,
         );
-        let left = backlog.changes_for(&backlog_key(&b, &pair_key(&b)), root, now);
+        let left = backlog.changes_for(&pair_key(&b), root, now);
         assert_eq!(left.paths, vec![PathBuf::from("/local/f.txt")]);
-        assert!(backlog
-            .changes_for(&backlog_key(&a, &placed_a), root, now)
-            .is_empty());
-        // The worker keys the backlog this way everywhere it reads or settles it.
-        let worker = include_str!("lib.rs");
+        assert!(backlog.changes_for(&placed_a, root, now).is_empty());
+    }
+
+    /// The same two pairs in the ledger: B's recovery scan, deferred by its
+    /// provider's floor, still waits after A's scan, which records A only.
+    #[test]
+    fn a_scan_on_one_server_leaves_another_servers_recovery_request() {
+        let placed_a = CloudConfig {
+            remote_folder: "/home/u/docs".to_string(),
+            ..on_server("srv_a", "~/docs")
+        };
+        let b = on_server("srv_b", "/home/u/docs");
+        let start = Instant::now();
+        let mut ledger = ScanLedger::default();
+        ledger.record_full_scan(&pair_key(&b), start);
+        ledger.request_full_scan(&pair_key(&b), "the watcher lost events");
+        ledger.record_full_scan(&pair_key(&placed_a), start);
         assert!(
-            !worker.contains(".changes_for(&pair_key("),
-            "a bare pair key reads the backlog"
+            ledger.pending_full_scan_due(&pair_key(&b), start),
+            "A's scan must not answer B's request"
         );
+        ledger.record_full_scan(&pair_key(&b), start);
+        assert!(!ledger.pending_full_scan_due(&pair_key(&b), start));
+    }
+
+    /// The key is the profile a config selects, never how it names it: a
+    /// config pinned by id and a pair naming the same profile by name share
+    /// one key once resolved, two profiles with one name do not, and an
+    /// unresolved name equal to another profile's id is not that id.
+    #[test]
+    fn a_pair_key_names_the_selected_profile() {
+        let resolved = |id: &str, config: CloudConfig| CloudConfig {
+            resolved_profile_id: Some(id.to_string()),
+            ..config
+        };
+        let by_id = on_server("srv_a", "/docs");
+        let by_name = CloudConfig {
+            server_profile_id: None,
+            server_profile: "nas".to_string(),
+            ..by_id.clone()
+        };
         assert_eq!(
-            worker.matches("backlog_key(").count(),
-            3,
-            "changes, run and settle"
+            pair_key(&resolved("srv_a", by_id.clone())),
+            pair_key(&resolved("srv_a", by_name.clone())),
+            "one profile, one key"
         );
+        assert_ne!(
+            pair_key(&resolved("srv_a", by_name.clone())),
+            pair_key(&resolved("srv_b", by_name.clone())),
+            "two profiles named alike"
+        );
+        let name_is_an_id = CloudConfig {
+            server_profile: "srv_a".to_string(),
+            ..by_name
+        };
+        assert_ne!(pair_key(&name_is_an_id), pair_key(&by_id));
+        // The worker keys the ledger and the backlog by this key only.
+        let worker = include_str!("lib.rs");
+        assert!(!worker.contains("backlog_key("), "one key for a pair");
+    }
+
+    /// A change the backlog holds is not lost when its pair's key changes
+    /// (the vault opened and a name-only config resolved its profile): a
+    /// key the backlog has not seen counts it as not yet covered.
+    #[test]
+    fn a_pending_change_is_reported_under_a_pairs_new_key() {
+        let now = Instant::now();
+        let mut backlog = ChangeBacklog::default();
+        backlog.absorb(watcher_event(&["/local/f.txt"], false));
+        let root = Path::new("/local");
+        let by_name = CloudConfig {
+            server_profile_id: None,
+            ..on_server("srv_a", "/docs")
+        };
+        let resolved = CloudConfig {
+            resolved_profile_id: Some("srv_a".to_string()),
+            ..by_name.clone()
+        };
+        backlog.settle(&[(pair_key(&by_name), root, PairJob::Idle)], now);
+        assert_eq!(
+            backlog.changes_for(&pair_key(&resolved), root, now).paths,
+            vec![PathBuf::from("/local/f.txt")]
+        );
+    }
+
+    fn on_server(id: &str, remote: &str) -> CloudConfig {
+        CloudConfig {
+            local_folder: PathBuf::from("/local"),
+            remote_folder: remote.to_string(),
+            server_profile: "nas".to_string(),
+            server_profile_id: Some(id.to_string()),
+            ..CloudConfig::default()
+        }
     }
 
     fn watcher_event(paths: &[&str], overflow: bool) -> WatcherEvent {

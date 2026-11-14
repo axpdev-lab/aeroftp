@@ -258,6 +258,37 @@ pub struct FtpProvider {
 /// same in every mode that asks for it. The upgrade runs before `login`, so the
 /// connection stops before the user name and password are sent (CodeRabbit on
 /// #1524).
+/// A `PWD` reply as the session keeps it. A path that starts with `/` is a
+/// POSIX one and is kept as the server spells it: there a `\` is a
+/// character of a folder name, and read as a separator it named another
+/// folder (`/home/a\b` as `/home/a/b`). Any other reply is a Windows-style
+/// path, whose backslashes are separators.
+fn server_path(reply: String) -> String {
+    if reply.starts_with('/') {
+        reply
+    } else {
+        reply.replace('\\', "/")
+    }
+}
+
+/// The folder a `CWD` or `CDUP` entered: the server's `PWD`, read as
+/// [`server_path`] reads it. When the server does not answer, an absolute
+/// request names the folder; a relative one or a parent step (`None`) does
+/// not, and the change fails rather than record a folder the session may not
+/// be in.
+fn folder_entered(
+    reported: Result<String, impl std::fmt::Display>,
+    requested: Option<&str>,
+) -> Result<String, ProviderError> {
+    match (reported, requested) {
+        (Ok(reply), _) => Ok(server_path(reply)),
+        (Err(_), Some(path)) if path.starts_with('/') => Ok(path.to_string()),
+        (Err(e), _) => Err(ProviderError::ServerError(format!(
+            "changed directory, but the server did not report the folder entered: {e}"
+        ))),
+    }
+}
+
 fn tls_upgrade_refused(error: impl std::fmt::Display) -> ProviderError {
     ProviderError::ConnectionFailed(format!(
         "TLS upgrade failed: {error}. The server did not accept explicit TLS, so the \
@@ -1667,9 +1698,7 @@ impl FtpProvider {
                 outcome = self.stream_mut()?.pwd().await;
             }
         }
-        let path = outcome
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
-            .replace('\\', "/");
+        let path = server_path(outcome.map_err(|e| ProviderError::ServerError(e.to_string()))?);
         self.current_path = path.clone();
         Ok(path)
     }
@@ -1687,13 +1716,14 @@ impl FtpProvider {
             }
         }
         outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-        self.current_path = self
-            .stream_mut()?
-            .pwd()
-            .await
-            .unwrap_or_else(|_| path.to_string())
-            .replace('\\', "/");
-        Ok(())
+        let reported = self.stream_mut()?.pwd().await;
+        match folder_entered(reported, Some(path)) {
+            Ok(folder) => {
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(failure) => Err(self.return_to_the_recorded_folder(failure).await),
+        }
     }
 
     /// The body of `cd_up`: the parent directory, then record the server's own path.
@@ -1705,13 +1735,33 @@ impl FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
-        self.current_path = stream
-            .pwd()
-            .await
-            .unwrap_or_else(|_| "/".to_string())
-            .replace('\\', "/");
+        let reported = stream.pwd().await;
+        match folder_entered(reported, None) {
+            Ok(folder) => {
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(failure) => Err(self.return_to_the_recorded_folder(failure).await),
+        }
+    }
 
-        Ok(())
+    /// A `CWD` or `CDUP` succeeded and the `PWD` after it did not: the server
+    /// stands in a folder nobody recorded, and a listing of `.` or a relative
+    /// name would run there. The session goes back to the recorded folder,
+    /// which is absolute, so the server and `current_path` name the same
+    /// folder again; if it cannot, the error says the folder is unknown.
+    async fn return_to_the_recorded_folder(&mut self, failure: ProviderError) -> ProviderError {
+        let recorded = self.current_path.clone();
+        let back = match self.stream_mut() {
+            Ok(stream) => stream.cwd(&recorded).await.map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        match back {
+            Ok(()) => failure,
+            Err(e) => ProviderError::ServerError(format!(
+                "{failure}; returning to {recorded} failed too ({e}): the session's folder is unknown"
+            )),
+        }
     }
 }
 
@@ -1845,14 +1895,15 @@ impl StorageProvider for FtpProvider {
         // not expand `CWD ~`, so it is read here, before `initial_path` moves
         // the session, and kept for `login_folder_hint`. A server that does
         // not answer this PWD leaves the field empty; the connect goes on.
-        // A login folder that is not absolute (a Windows `C:\Users\u` PWD,
-        // read `C:/Users/u`) is not a folder the `~/...` placement can name:
-        // kept, it would read as relative and place `~/docs` under nothing.
+        // Read as [`server_path`] reads every PWD. A login folder that is not
+        // absolute then (a Windows `C:\Users\u` PWD, read `C:/Users/u`) is
+        // not a folder the `~/...` placement can name: kept, it would read as
+        // relative and place `~/docs` under nothing.
         self.login_folder = stream
             .pwd()
             .await
             .ok()
-            .map(|dir| dir.replace('\\', "/"))
+            .map(server_path)
             .filter(|dir| dir.starts_with('/'));
 
         // Navigate to initial path if specified.
@@ -1902,11 +1953,12 @@ impl StorageProvider for FtpProvider {
         };
 
         // Get current directory (normalize Windows backslashes from FTP servers)
-        self.current_path = stream
-            .pwd()
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
-            .replace('\\', "/");
+        self.current_path = server_path(
+            stream
+                .pwd()
+                .await
+                .map_err(|e| ProviderError::ServerError(e.to_string()))?,
+        );
 
         self.stream = Some(stream);
         self.abandoned_command.store(false, Ordering::Relaxed);
@@ -4339,12 +4391,9 @@ impl FtpProvider {
             guard.disarm();
             return Err(err);
         }
-        self.current_path = stream
-            .pwd()
-            .await
-            .unwrap_or_else(|_| previous.to_string())
-            .replace('\\', "/");
+        let entered = folder_entered(stream.pwd().await, Some(previous));
         guard.disarm();
+        self.current_path = entered?;
         Ok(())
     }
 
@@ -6101,6 +6150,121 @@ pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
 mod tests {
 
     use super::*;
+
+    /// A POSIX PWD keeps its `\` as a name character; a Windows-style one
+    /// reads its backslashes as separators.
+    /// A relative `CWD` the server honours, then a `PWD` it refuses: the
+    /// session goes back to the folder it recorded, so the server's folder
+    /// and the recorded one are the same, and a listing of `.` afterwards
+    /// lists the recorded folder. The same for a `CDUP`.
+    #[tokio::test]
+    async fn a_change_the_server_did_not_report_returns_to_the_recorded_folder() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let server_log = log.clone();
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (read, mut write) = stream.into_split();
+            let mut lines = BufReader::new(read).lines();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            let mut cwd = "/home/u".to_string();
+            let mut refuse_next_pwd = false;
+            while let Ok(Some(line)) = lines.next_line().await {
+                let mut parts = line.splitn(2, ' ');
+                let cmd = parts.next().unwrap_or("").to_uppercase();
+                let arg = parts.next().unwrap_or("").to_string();
+                server_log.lock().unwrap().push(line.clone());
+                let reply = match cmd.as_str() {
+                    "USER" => "331 password please\r\n".to_string(),
+                    "PASS" => "230 logged in\r\n".to_string(),
+                    "CWD" => {
+                        cwd = if arg.starts_with('/') {
+                            arg
+                        } else {
+                            refuse_next_pwd = true;
+                            format!("{cwd}/{arg}")
+                        };
+                        "250 directory changed\r\n".to_string()
+                    }
+                    "CDUP" => {
+                        refuse_next_pwd = true;
+                        cwd = "/home".to_string();
+                        "250 directory changed\r\n".to_string()
+                    }
+                    "PWD" if std::mem::take(&mut refuse_next_pwd) => {
+                        "550 PWD not available\r\n".to_string()
+                    }
+                    "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address: false,
+        });
+        provider.connect().await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u");
+
+        let refused = provider.cd("docs").await.unwrap_err();
+        assert!(refused.to_string().contains("did not report"), "{refused}");
+        assert!(
+            log.lock().unwrap().iter().any(|l| l == "CWD /home/u"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+        assert_eq!(provider.current_path, "/home/u", "the recorded folder");
+        assert_eq!(
+            provider.pwd().await.unwrap(),
+            "/home/u",
+            "the server's folder"
+        );
+
+        let refused = provider.cd_up().await.unwrap_err();
+        assert!(refused.to_string().contains("did not report"), "{refused}");
+        assert_eq!(provider.current_path, "/home/u", "the recorded folder");
+        assert_eq!(
+            provider.pwd().await.unwrap(),
+            "/home/u",
+            "the server's folder"
+        );
+    }
+
+    /// After a `CWD` or `CDUP` the session records the folder the server
+    /// reports; with no report, only an absolute request names it.
+    #[test]
+    fn a_folder_change_records_only_a_folder_it_knows() {
+        let silent = || Err::<String, _>("PWD refused");
+        assert_eq!(
+            folder_entered(Ok::<_, &str>("/home/a\\b".into()), Some("b")).unwrap(),
+            "/home/a\\b"
+        );
+        assert_eq!(
+            folder_entered(silent(), Some("/home/u/docs")).unwrap(),
+            "/home/u/docs"
+        );
+        assert!(folder_entered(silent(), Some("docs")).is_err());
+        assert!(folder_entered(silent(), None).is_err());
+    }
+
+    #[test]
+    fn a_pwd_reply_is_kept_as_the_server_spells_a_posix_path() {
+        assert_eq!(server_path("/home/a\\b".into()), "/home/a\\b");
+        assert_eq!(server_path("/".into()), "/");
+        assert_eq!(server_path("C:\\Users\\u".into()), "C:/Users/u");
+        assert_eq!(server_path("\\dir\\sub".into()), "/dir/sub");
+    }
 
     /// One refusal text for both modes that ask for explicit TLS (CodeRabbit
     /// on #1524): it names what the code guarantees and how to choose plain FTP.

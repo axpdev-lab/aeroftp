@@ -16,6 +16,8 @@ import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { createTauriListener } from './useTauriListener';
 import { logger } from '../utils/logger';
+import { selectAeroCloudProfile } from '../utils/liveConnection';
+import { loadSavedServerProfiles } from '../utils/serverProfileStore';
 import type { ActivityLogContextValue } from './useActivityLog';
 import type { useHumanizedLog } from './useHumanizedLog';
 
@@ -60,8 +62,18 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
     };
 
-    // Check initial cloud config
+    // Every read of the config takes the next number, and so does a disable:
+    // a reply is applied only while its read is the latest, so a read that
+    // started before AeroCloud was disabled cannot bring the cleared identity
+    // back, and an older read cannot land over a newer one.
+    let latestRead = 0;
+
+    // Read the cloud config: on mount, and again when AeroCloud reports itself
+    // active (a setup completing, a sync), so a setup after a disable brings
+    // its profile and folders back without opening the AeroCloud tab.
     const checkCloudConfig = async () => {
+      const read = ++latestRead;
+      const owns = () => read === latestRead;
       try {
         const config = await invoke<{
           enabled: boolean;
@@ -75,6 +87,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           public_url_base?: string | null;
           protocol_type?: string;
         }>('get_cloud_config');
+        if (!owns()) return;
         setIsCloudActive(config.enabled);
         setIsCloudPaused(Boolean(config.paused));
         if (config.cloud_name) {
@@ -85,9 +98,20 @@ export function useCloudSync(options: UseCloudSyncOptions) {
         if (config.last_sync) setCloudLastSync(config.last_sync);
         if (config.local_folder) setCloudLocalFolder(config.local_folder);
         if (config.remote_folder) setCloudRemoteFolder(config.remote_folder);
-        setCloudProfileId(config.server_profile_id || null);
         if (config.public_url_base) setCloudPublicUrlBase(config.public_url_base);
         if (config.protocol_type) setCloudProtocolType(config.protocol_type);
+        // A config saved before it carried the profile id names the profile
+        // only: it is resolved with the rule the AeroCloud tab and the backend
+        // select it by (`selectAeroCloudProfile`), so the badges and the share
+        // link are there before the tab is opened. An id it carries is kept as
+        // saved.
+        if (!config.enabled || config.server_profile_id || !config.server_profile) {
+          setCloudProfileId(config.server_profile_id || null);
+        } else {
+          const profiles = await loadSavedServerProfiles().catch(() => []);
+          if (!owns()) return;
+          setCloudProfileId(selectAeroCloudProfile(profiles, null, config.server_profile)?.id ?? null);
+        }
       } catch (e) {
         console.error('Failed to check cloud config:', e);
       }
@@ -112,6 +136,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       lastCloudLogTime = now;
 
       if (status === 'active') {
+        void checkCloudConfig();
         setCloudSyncing(false);
         setIsCloudActive(true);
         setIsCloudPaused(false);
@@ -150,6 +175,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
           hl.logRaw('activity.sync_error', 'ERROR', { server: csn, message }, 'error');
         }
       } else if (status === 'disabled') {
+        latestRead += 1;
         setCloudSyncing(false);
         setIsCloudActive(false);
         setIsCloudPaused(false);

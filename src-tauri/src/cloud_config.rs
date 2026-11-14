@@ -36,6 +36,15 @@ pub struct CloudConfig {
     /// the id was stored, which keeps resolving by exact name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_profile_id: Option<String>,
+    /// The id of the saved profile this config selects, as the connect
+    /// selects it: set where a config is read to sync (the background worker)
+    /// and by the connect from the profile it used. The scheduler keys a
+    /// pair by it ([`crate::cloud_scan_schedule::pair_key`]), so the same
+    /// profile is one key whether a config names it by id or by name, and two
+    /// profiles never share one. Never saved, and not part of a config's
+    /// identity.
+    #[serde(skip)]
+    pub resolved_profile_id: Option<String>,
     /// Sync interval in seconds (0 = disabled)
     pub sync_interval_secs: u64,
     /// Enable real-time sync on file changes
@@ -165,6 +174,7 @@ impl Default for CloudConfig {
             remote_folder: "/cloud/".to_string(),
             server_profile: String::new(),
             server_profile_id: None,
+            resolved_profile_id: None,
             sync_interval_secs: 86400, // 24 hours (watcher handles real-time, this is safety net)
             sync_on_change: true,
             sync_on_startup: false,

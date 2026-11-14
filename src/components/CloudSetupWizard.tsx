@@ -121,7 +121,10 @@ function baseAsWritten(profile: ServerProfile): string {
  * never read as `~/shared`, nor `/srv/../data` as `/data`.
  */
 export function aeroCloudFolderNotPlain(profile: ServerProfile, subfolder: string): boolean {
-    return !!locationProblem(subfolder.trim().replace(/^\/+|\/+$/g, ''))
+    // The sub-folder is read before its outer separators are stripped: one
+    // leading or trailing `/` is no step, but `a//` or `//a` has an empty one,
+    // which stripping would hide and the saved folder would never show.
+    return !!locationProblem(subfolder.trim())
         || !!locationProblem(aeroCloudBase(profile));
 }
 
@@ -174,7 +177,10 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
     };
 
     const rootLabel = `${profile ? aeroCloudBase(profile) : ''}/`;
-    const remoteLabel = `${rootLabel}${subfolder.trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
+    // A sub-folder refused for an empty step is named as written: stripped,
+    // `a//` would read `.../a/`, a folder with nothing wrong in it.
+    const sub = subfolder.trim();
+    const remoteLabel = `${rootLabel}${locationProblem(sub) ? sub : sub.replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
     const notPlain = !!profile && aeroCloudFolderNotPlain(profile, subfolder);
     const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !notPlain;
 

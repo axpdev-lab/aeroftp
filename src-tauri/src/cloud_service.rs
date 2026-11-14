@@ -4146,6 +4146,10 @@ async fn open_aerocloud_connection(
     let opened = cloud_provider_factory::create_cloud_connection(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
+    // The scheduler keys the pair by the profile this connection used.
+    if opened.profile_id.is_some() {
+        config.resolved_profile_id = opened.profile_id.clone();
+    }
     compose_aerocloud_connection(opened, config, store, persist_placement).await
 }
 
@@ -8233,6 +8237,47 @@ mod baseline_tests {
         });
     }
 
+    /// A login folder with a `\` in a name (`/home/a\b` on a POSIX server)
+    /// places `~/docs` under it as the server spells it: the session never
+    /// enters `/home/a/b/docs`, another folder the user may also have.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_backslash_in_the_login_folder_is_kept_on_the_wire() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/a\\b").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_bs", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "~/docs", "srv_bs");
+            let stored = config.clone();
+            cloud_config::with_cloud_config_mut(move |disk| {
+                *disk = stored;
+                Ok(())
+            })
+            .unwrap();
+
+            let report = run_pair_full_cycle(config, Some(&store), None)
+                .await
+                .unwrap();
+            assert!(
+                report.result.errors.is_empty(),
+                "{:?}",
+                report.result.errors
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(
+                log.contains("STOR /home/a\\b/docs/note.txt"),
+                "commands:\n{log}"
+            );
+            assert!(!log.contains("/home/a/b"), "commands:\n{log}");
+            assert_eq!(
+                cloud_config::load_cloud_config().remote_folder,
+                "/home/a\\b/docs"
+            );
+        });
+    }
+
     /// A preview places a `~/...` folder for its own run only: both saved
     /// files keep their exact bytes, and the preview still reads the placed
     /// folder, never a literal `~`.
@@ -9215,6 +9260,238 @@ mod baseline_tests {
                     .any(|command| command.starts_with("STOR") && command.contains("third.txt")),
                 "commands:\n{log}"
             );
+        });
+    }
+
+    /// A full scan, then two watcher passes, each as the background worker
+    /// runs it: the config `enabled_cloud_configs` reads, a plan prepared
+    /// from it, and the incremental cycle on that plan. Both passes must run
+    /// as passes: one refused for a changed configuration is answered with a
+    /// full scan, and the next pass is refused again.
+    async fn scan_then_two_watcher_passes(
+        store: &credential_store::CredentialStore,
+        local: &std::path::Path,
+        ftp: &ScriptedFtp,
+        plans_with: &str,
+    ) {
+        let configs = crate::enabled_cloud_configs();
+        assert_eq!(configs.len(), 1, "one enabled config");
+        run_pair_full_cycle(configs[0].clone(), Some(store), None)
+            .await
+            .unwrap_or_else(|e| panic!("full scan: {}", e.message));
+        for name in ["first.txt", "second.txt"] {
+            std::fs::write(local.join(name), name.as_bytes()).unwrap();
+            let config = crate::enabled_cloud_configs().remove(0);
+            let changes = LocalChanges {
+                paths: vec![local.join(name)],
+                renames: Vec::new(),
+            };
+            let plan = match prepare_incremental(
+                &config,
+                &changes,
+                IncrementalHints { compare_size: true },
+            )
+            .unwrap()
+            {
+                IncrementalPrep::Work { plan, .. } => plan,
+                _ => panic!("{name}: expected a work plan"),
+            };
+            let report = run_pair_incremental_cycle(config, Some(store), None, plan, false)
+                .await
+                .unwrap_or_else(|e| panic!("{name}: the pass was refused: {}", e.message));
+            assert!(!report.ran_full_scan, "{name}: a pass, not a full scan");
+        }
+        let log = ftp.log.lock().unwrap().join("\n");
+        assert!(
+            log.lines()
+                .any(|command| command.starts_with("STOR") && command.contains("second.txt")),
+            "commands:\n{log}"
+        );
+        assert_eq!(
+            crate::enabled_cloud_configs()[0].protocol_type,
+            plans_with,
+            "the protocol the watcher plans with"
+        );
+    }
+
+    /// The legacy config, with no folder pairs, saved with the default
+    /// `"ftp"` on a profile that speaks another protocol (here the reverse,
+    /// `"sftp"` stored on an FTP profile, so the scripted server answers):
+    /// the watcher plans with the protocol the connect takes, so its passes
+    /// are not refused. Before, only the pair branch took it, and every pass
+    /// of a legacy config was refused and paid a full remote scan.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn legacy_config_with_a_stale_protocol_keeps_its_watcher_passes_incremental() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_w", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            let mut config = aerocloud_config(local.path(), "/home/u/docs", "srv_w");
+            config.protocol_type = "sftp".to_string();
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = config.clone();
+                Ok(())
+            })
+            .unwrap();
+            scan_then_two_watcher_passes(&store, local.path(), &ftp, "ftp").await;
+        });
+    }
+
+    /// The same on a folder pair, so both branches of
+    /// `enabled_cloud_configs` leave with the saved profile's protocol.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn pair_with_a_stale_protocol_keeps_its_watcher_passes_incremental() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_w", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            let mut pair = cloud_pairs::new_cloud_path_pair(
+                "p1".into(),
+                "docs".into(),
+                local.path().to_path_buf(),
+                "/home/u/docs".into(),
+                "nas".into(),
+            );
+            pair.protocol_type = "sftp".to_string();
+            cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                pairs.pairs = vec![pair];
+                Ok(())
+            })
+            .unwrap();
+            scan_then_two_watcher_passes(&store, local.path(), &ftp, "ftp").await;
+        });
+    }
+
+    /// The worker keys a pair by the profile its config selects, resolved by
+    /// the rule the connect uses. Profile A has id `srv_a` and name `srv_b`,
+    /// profile B has id `srv_b`: a config naming `srv_b` selects A, so it
+    /// shares A's key and never B's. Of two profiles named `nas`, a config
+    /// naming `nas` selects the first and shares only its key.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_worker_keys_a_pair_by_the_profile_its_config_selects() {
+        with_scratch_index(async {
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let key_of = |server_profile: &str, id: Option<&str>| {
+                let config = CloudConfig {
+                    enabled: true,
+                    server_profile: server_profile.to_string(),
+                    server_profile_id: id.map(str::to_string),
+                    local_folder: "/sync/a".into(),
+                    remote_folder: "/docs".to_string(),
+                    ..Default::default()
+                };
+                cloud_config::with_cloud_config_mut(|stored| {
+                    *stored = config.clone();
+                    Ok(())
+                })
+                .unwrap();
+                crate::cloud_scan_schedule::pair_key(&crate::enabled_cloud_configs()[0])
+            };
+            set_saved_profiles(&store, &[("srv_a", "srv_b"), ("srv_b", "Backup")]);
+            assert_eq!(key_of("srv_b", None), key_of("Backup", Some("srv_a")));
+            assert_ne!(key_of("srv_b", None), key_of("Backup", Some("srv_b")));
+            set_saved_profiles(&store, &[("p1", "nas"), ("p2", "nas")]);
+            assert_eq!(key_of("nas", None), key_of("nas", Some("p1")));
+            assert_ne!(key_of("nas", None), key_of("nas", Some("p2")));
+        });
+    }
+
+    /// A name-only config read while the vault was locked is keyed by its
+    /// name; once the vault opens it is keyed by its profile's id. The full
+    /// scan the watcher asked for under the first key is still due under the
+    /// second, so the scheduler runs it instead of an incremental pass, and
+    /// nothing stays pending under a key no config has.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_full_scan_asked_before_the_vault_opened_is_kept_for_the_resolved_key() {
+        with_scratch_index(async {
+            let config = CloudConfig {
+                enabled: true,
+                server_profile: "nas".to_string(),
+                local_folder: "/sync/unlock-test".into(),
+                remote_folder: "/docs".to_string(),
+                ..Default::default()
+            };
+            let stored = config.clone();
+            cloud_config::with_cloud_config_mut(move |disk| {
+                *disk = stored;
+                Ok(())
+            })
+            .unwrap();
+            let locked_key = crate::cloud_scan_schedule::pair_key(&config);
+            assert!(locked_key.starts_with("name:"), "{locked_key}");
+            crate::cloud_scan_schedule::ledger()
+                .request_full_scan(&locked_key, "the watcher lost events");
+
+            let (_vault_dir, store, _guard) = open_test_vault();
+            set_saved_profiles(&store, &[("srv_u", "nas")]);
+            let resolved = crate::enabled_cloud_configs().remove(0);
+            let key = crate::cloud_scan_schedule::pair_key(&resolved);
+            assert!(key.starts_with("id:srv_u"), "{key}");
+            let ledger = crate::cloud_scan_schedule::ledger();
+            let job = crate::cloud_scan_schedule::choose_pair_job(
+                &ledger,
+                &key,
+                std::time::Instant::now(),
+                std::time::Duration::from_secs(3600),
+                false,
+                false,
+                true,
+            );
+            assert_eq!(job, crate::cloud_scan_schedule::PairJob::FullScan);
+            assert!(!ledger.pending_full_scan_due(&locked_key, std::time::Instant::now()));
+        });
+    }
+
+    /// A saved profile with no protocol leaves the stored one, which the
+    /// connect then speaks too, so the passes stay incremental. A config
+    /// whose profile is gone keeps its stored protocol as well, and its cycle
+    /// fails before connecting without asking a full scan, so nothing loops.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn legacy_config_without_a_saved_protocol_keeps_the_stored_one() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_w", ftp.port, None);
+            let mut profiles: Vec<serde_json::Value> =
+                serde_json::from_str(&store.get("config_server_profiles").unwrap()).unwrap();
+            profiles[0].as_object_mut().unwrap().remove("protocol");
+            store
+                .store(
+                    "config_server_profiles",
+                    &serde_json::json!(profiles).to_string(),
+                )
+                .unwrap();
+            let local = tempfile::tempdir().unwrap();
+            let config = aerocloud_config(local.path(), "/home/u/docs", "srv_w");
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = config.clone();
+                Ok(())
+            })
+            .unwrap();
+            scan_then_two_watcher_passes(&store, local.path(), &ftp, "ftp").await;
+
+            let mut gone = config.clone();
+            gone.server_profile = "gone".to_string();
+            gone.server_profile_id = Some("srv_gone".to_string());
+            gone.protocol_type = "sftp".to_string();
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = gone.clone();
+                Ok(())
+            })
+            .unwrap();
+            let configs = crate::enabled_cloud_configs();
+            assert_eq!(configs[0].protocol_type, "sftp", "the stored protocol");
+            let err = run_pair_full_cycle(configs[0].clone(), Some(&store), None)
+                .await
+                .unwrap_err();
+            assert!(!err.needs_full_scan, "{}", err.message);
         });
     }
 

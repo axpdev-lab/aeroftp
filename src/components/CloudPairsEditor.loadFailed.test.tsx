@@ -51,6 +51,31 @@ describe('CloudPairsEditor after a failed load', () => {
         expect(host.querySelector('button[title="cloud.disable"]')).toBeNull();
     });
 
+    it('adds no pair while the pairs file is still being read, so a failed add cannot land after a failed read', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let failRead!: () => void;
+        let failAdd: (() => void) | null = null;
+        mocks.invoke.mockImplementation((command: string) => {
+            if (command === 'get_cloud_pairs_config') return new Promise((_, reject) => { failRead = () => reject(new Error('permission denied')); });
+            if (command === 'add_cloud_pair') return new Promise((_, reject) => { failAdd = () => reject(new Error('permission denied')); });
+            return Promise.resolve(undefined);
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPairsEditor isOpen onClose={vi.fn()} />));
+        const add = () => Array.from(host.querySelectorAll('button')).find(button => button.textContent?.includes('cloud.pairsAdd'))!;
+        const disabledWhileLoading = add().disabled;
+        await React.act(async () => add().click());
+        // The read fails, then the add's own failure is released.
+        await React.act(async () => failRead());
+        if (failAdd) await React.act(async () => failAdd!());
+        expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('add_cloud_pair');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        // No editable pair from an unconfirmed list.
+        expect(host.querySelector('button[title="cloud.disable"]')).toBeNull();
+        expect(host.querySelector('input')).toBeNull();
+        expect(disabledWhileLoading).toBe(true);
+    });
+
     it('hides an earlier legacy import offer when a reload of the pairs fails', async () => {
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
         let readable = true;

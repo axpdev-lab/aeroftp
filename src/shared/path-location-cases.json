@@ -210,6 +210,16 @@
       "path": "/backup//docs",
       "problem": "empty",
       "savedProblem": null
+    },
+    {
+      "path": "/home/a\\b/docs",
+      "problem": null,
+      "savedProblem": null
+    },
+    {
+      "path": "//docs//",
+      "problem": "empty",
+      "savedProblem": null
     }
   ]
 }
