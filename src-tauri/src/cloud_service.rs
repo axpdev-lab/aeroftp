@@ -3858,6 +3858,13 @@ pub(crate) async fn place_login_relative_remote_folder(
         .map(Some)
 }
 
+/// A test's edit between the placement's first read and its locked writes,
+/// as another window saving meanwhile would make. Tests that set it run
+/// under the scratch-config lock, one at a time.
+#[cfg(test)]
+static BETWEEN_PLACEMENT_READ_AND_WRITE: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>> =
+    std::sync::Mutex::new(None);
+
 /// Place a `~/...` remote folder under the login folder on the connected
 /// provider and persist the absolute value, so the index identity is born on
 /// the folder the session opens and never on the `~` form. Refusals as
@@ -3904,6 +3911,14 @@ pub(crate) async fn anchor_login_relative_remote_folder(
         .pairs
         .iter()
         .any(pair_unplaced);
+    #[cfg(test)]
+    if let Some(edit) = BETWEEN_PLACEMENT_READ_AND_WRITE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
+        edit();
+    }
     if place_config {
         cloud_config::with_cloud_config_mut(|stored| {
             if config_unplaced(stored) {
@@ -7371,6 +7386,66 @@ mod baseline_tests {
     /// A placement with no entry to place rewrites no file: a pairs file
     /// holding only other folders keeps its exact bytes, and an absent
     /// legacy config is not created.
+    /// A pair edited between the placement's first read and its locked
+    /// write (another window saved it meanwhile) no longer names the `~`
+    /// form: the write re-checks under the lock, places nothing over the
+    /// edit, and saves nothing, so the file keeps the bytes the edit wrote.
+    #[test]
+    fn anchor_leaves_a_pair_edited_after_its_first_read() {
+        with_scratch_index(async {
+            let pairs_path = cloud_pairs::get_pairs_path();
+            std::fs::create_dir_all(pairs_path.parent().unwrap()).unwrap();
+            let pair = |remote: &str| -> cloud_pairs::CloudPathPair {
+                serde_json::from_value(serde_json::json!({
+                    "id": "p1",
+                    "name": "docs",
+                    "local_path": "/sync/a",
+                    "remote_path": remote,
+                    "enabled": true,
+                    "server_profile": "nas",
+                }))
+                .unwrap()
+            };
+            let compact = |remote: &str| {
+                serde_json::to_vec(&cloud_pairs::CloudPairsConfig {
+                    pairs: vec![pair(remote)],
+                    ..Default::default()
+                })
+                .unwrap()
+            };
+            std::fs::write(&pairs_path, compact("~/docs")).unwrap();
+            let edited = compact("/srv/elsewhere");
+            {
+                let pairs_path = pairs_path.clone();
+                let edited = edited.clone();
+                *BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap() = Some(Box::new(move || {
+                    std::fs::write(&pairs_path, &edited).unwrap()
+                }));
+            }
+            let config_path = cloud_config::get_config_path();
+            let _ = std::fs::remove_file(&config_path);
+            let config = CloudConfig {
+                enabled: true,
+                local_folder: std::path::PathBuf::from("/sync/a"),
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            };
+            let mut provider = MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            let placed =
+                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
+                    .await
+                    .unwrap();
+            assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+            assert!(BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap().is_none());
+            assert_eq!(std::fs::read(&pairs_path).unwrap(), edited);
+        });
+    }
+
     #[test]
     #[cfg(target_os = "linux")]
     fn anchor_rewrites_no_file_without_an_entry_to_place() {

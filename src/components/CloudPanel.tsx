@@ -416,7 +416,11 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // is cleared or replaced from outside the settings view (Disable
     // resolving, setup completing, a reload), an open settings must close and
     // drop its baseline instead of editing or restoring the old one.
+    // Bumped whenever the configuration is replaced or saved: a post-sync
+    // refresh started before that carries an older file and is dropped.
+    const configGeneration = useRef(0);
     const replaceConfig = (next: CloudConfig | null) => {
+        configGeneration.current += 1;
         setConfig(next);
         setShowSettings(false);
         setSettingsBaseline(null);
@@ -478,6 +482,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         // A refresh only merges last_sync: the full-panel loading view would
         // unmount an open settings draft behind an unguarded backdrop.
         if (!refresh) setIsLoading(true);
+        const generation = configGeneration.current;
         try {
             let cfg: CloudConfig;
             try {
@@ -495,6 +500,9 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                 }
                 return;
             }
+            // A refresh that read the file before a save or a replacement
+            // would bring an older folder back into the newer configuration.
+            if (refresh && generation !== configGeneration.current) return;
             setRefreshError(null);
             if (refresh) {
                 // A sync moves last_sync, and places a `~/...` remote folder
@@ -940,6 +948,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                     setSavingSettings(true);
                                     try {
                                         await invoke('save_cloud_config_cmd', { config });
+                                        configGeneration.current += 1;
                                         // Sync interval to SyncSchedule so the background worker uses the correct value
                                         try {
                                             const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');

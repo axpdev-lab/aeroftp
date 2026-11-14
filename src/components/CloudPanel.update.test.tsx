@@ -316,6 +316,82 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(mocks.invoke).toHaveBeenCalledWith('save_cloud_config_cmd', expect.objectContaining({ config: expect.objectContaining({ remote_folder: '/home/u/docs', update_only: false }) }));
     });
 
+    it('drops a post-sync refresh that read the file before a settings save', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let releaseRefresh!: (config: unknown) => void;
+        let reads = 0;
+        const saved: { remote_folder?: string }[] = [];
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
+            if (command === 'get_cloud_config') {
+                reads += 1;
+                if (reads === 2) return new Promise(resolve => { releaseRefresh = resolve; });
+                return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            }
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config ?? {}); return null; }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        // The sync ends and its refresh read waits.
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(reads).toBe(2);
+        // Meanwhile the user saves another folder and reopens Settings.
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '/new');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.save common.settings')!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        await openSettings();
+        // The old read lands now: it must not bring /remote back.
+        await React.act(async () => releaseRefresh({ enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] }));
+        expect(remoteFolder()?.value).toBe('/new');
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.save common.settings')!.click());
+        expect(saved.map(config => config.remote_folder)).toEqual(['/new', '/new']);
+    });
+
+    it('drops a post-sync refresh that read the file before Disable and a new setup', async () => {
+        mocks.setupResult = { enabled: true, cloud_name: 'fresh', local_folder: '/local2', remote_folder: '/new', sync_interval_secs: 300, sync_direction: 'bidirectional', exclude_patterns: [], excluded_folders: [] };
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let releaseRefresh!: (config: unknown) => void;
+        let reads = 0;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_config') {
+                reads += 1;
+                if (reads === 2) return new Promise(resolve => { releaseRefresh = resolve; });
+                return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            }
+            if (command === 'trigger_cloud_sync') return 'done';
+            if (command === 'disable_aerocloud') return null;
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(reads).toBe(2);
+        await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        const confirmOverlay = host.querySelector('[aria-label="cloud.disableConfirm"]')!;
+        await React.act(async () => [...confirmOverlay.querySelectorAll('button')].find(b => b.textContent?.trim() === 'cloud.disable')!.click());
+        await React.act(async () => { await Promise.resolve(); });
+        await React.act(async () => host.querySelector<HTMLButtonElement>('[data-testid="setup-complete"]')!.click());
+        expect(host.textContent).toContain('/new');
+        await React.act(async () => releaseRefresh({ enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [], last_sync: new Date().toISOString() }));
+        expect(host.textContent).toContain('/new');
+        expect(host.textContent).not.toContain('/remote');
+        expect(host.textContent).not.toContain('cloud.justNow');
+    });
+
     it('drops the stale settings baseline when Disable replaces the configuration', async () => {
         mocks.setupResult = { enabled: true, cloud_name: 'fresh', local_folder: '/local2', remote_folder: '/new', sync_interval_secs: 300, sync_direction: 'bidirectional', exclude_patterns: [], excluded_folders: [] };
         const savedConfigs: { remote_folder?: string }[] = [];
