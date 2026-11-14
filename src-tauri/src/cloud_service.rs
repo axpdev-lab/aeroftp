@@ -3793,9 +3793,16 @@ async fn open_aerocloud_connection(
     let opened = cloud_provider_factory::create_cloud_connection(config)
         .await
         .map_err(|e| format!("failed to connect provider: {e}"))?;
+    // The account every read below answers for: the captured one, or the
+    // legacy owner only (never the active account for a legacy capture, U9).
+    let reads = opened.reads_account();
     let mut provider = opened.provider;
-    let account = opened.account.as_ref().and_then(|account| account.user);
-    if cloud_provider_factory::current_overlay_binding(config, store, account)?
+    let Some(account) = reads else {
+        let _ = provider.disconnect().await;
+        return Err("the connection captured no account".into());
+    };
+    let account_ref = Some(account);
+    if cloud_provider_factory::current_overlay_binding(config, store, account_ref)?
         != opened.overlay_binding
     {
         let _ = provider.disconnect().await;
@@ -3807,6 +3814,7 @@ async fn open_aerocloud_connection(
         config.server_profile_id.as_deref(),
         &config.server_profile,
         store,
+        account,
     )
     .await
     .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
@@ -3817,7 +3825,7 @@ async fn open_aerocloud_connection(
             config.compress_level,
         ));
     }
-    if cloud_provider_factory::current_overlay_binding(config, store, account)?
+    if cloud_provider_factory::current_overlay_binding(config, store, account_ref)?
         != opened.overlay_binding
     {
         let _ = provider.disconnect().await;

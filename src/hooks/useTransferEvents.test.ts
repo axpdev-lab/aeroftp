@@ -226,6 +226,32 @@ describe('privacy completion ownership', () => {
         expect(queue.addItem).not.toHaveBeenCalled();
     });
 
+    // U8(b): the same with the id App.tsx makes (`ul-files-<time>-<rand>`),
+    // whose `-files-` once sent the child's skip to the aggregate lookup.
+    it('settles a production-id batch row skipped before its file_start', async () => {
+        let items = [
+            { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+            { id: 'q2', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'pending' },
+        ] as TransferItem[];
+        const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+            completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+            addItem: vi.fn(() => 'duplicate'),
+        });
+        Object.defineProperty(queue, 'items', { get: () => items });
+        const { controls } = await mount(queue);
+        const batchId = 'ul-files-1731542400000-k3x9qa';
+        controls.registerFileBatchRows(batchId, ['q1', 'q2']);
+        await emit({ event_type: 'file_skip', transfer_id: `${batchId}-1`, filename: 'b.txt', path: '/b.txt', direction: 'upload', message: 'Destination already exists' });
+        expect(items.find(item => item.id === 'q2')?.status).toBe('completed');
+        expect(items.find(item => item.id === 'q1')?.status).toBe('pending');
+        expect(queue.addItem).not.toHaveBeenCalled();
+        // The other child still starts and completes on its own row.
+        await emit({ event_type: 'file_start', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        await emit({ event_type: 'file_complete', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        expect(items.find(item => item.id === 'q1')?.status).toBe('completed');
+        expect(queue.addItem).not.toHaveBeenCalled();
+    });
+
     // A folder's start registers the folder row under the bare id. A child
     // skipped before any file_start must not complete that row: the bare id
     // is found only for a single-file transfer.
@@ -250,7 +276,9 @@ describe('privacy completion ownership', () => {
         // T10: a symlink skipped inside the folder carries the folder's id;
         // its progress and its end still reach the folder row.
         await emit({ event_type: 'file_skip', transfer_id: 'ul-folder-7', filename: 'link', path: '/docs/link', direction: 'upload', message: 'Symlink skipped' });
-        await emit({ event_type: 'progress', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload', progress: { transfer_id: 'ul-folder-7', filename: 'docs', total: 3, transferred: 2, percentage: 66, speed_bps: 0, eta_seconds: 0 } });
+        await emit({ event_type: 'progress', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload', progress: { transfer_id: 'ul-folder-7', filename: 'docs', total: 3, transferred: 2, percentage: 66, speed_bps: 0, eta_seconds: 0, total_files: 3 } });
+        // U8(a): the progress reaches the folder row itself.
+        expect(queue.updateFolderProgress).toHaveBeenLastCalledWith('folder', 3, 2);
         expect(items.find(item => item.id === 'folder')?.status).toBe('transferring');
         await emit({ event_type: 'complete', transfer_id: 'ul-folder-7', filename: 'docs', path: '/docs', direction: 'upload' });
         expect(items.find(item => item.id === 'folder')?.status).toBe('completed');

@@ -289,6 +289,48 @@ pub(crate) async fn release_orphans_once_settled(tokens: Vec<String>, settled: i
     release_orphans(&tokens);
 }
 
+/// What a page-load event of `window` does to the registry: `Started`
+/// orphans the window ([`orphan_window`]), `Finished` ends the generation's
+/// binding once ([`page_finished`]). The orphans go to
+/// [`release_orphans_once_settled`]. The app and the page-load self-test
+/// call this same function, so the self-test replays the engine's real
+/// events through the production code (U11).
+pub(crate) fn page_load_event(window: &str, finished: bool) -> Vec<String> {
+    if finished {
+        page_finished(window)
+    } else {
+        orphan_window(window)
+    }
+}
+
+/// [`bind_page`] on a task of its own, which also hands the orphans of a
+/// takeover to [`release_orphans_once_settled`] (U11). The command only
+/// waits for it: a command future dropped while the bind runs (a page that
+/// went away) leaves the task to finish, so the orphaned pairs always get
+/// their cleanup and never stay locked for good.
+pub(crate) async fn bind_page_and_schedule_cleanup<S>(
+    window: String,
+    nonce: String,
+    settled: S,
+) -> Result<(), String>
+where
+    S: Fn() -> bool + Send + 'static,
+{
+    // On the runtime the command runs on (a command is always awaited inside
+    // one): the tasks outlive the command's future, not the runtime.
+    tokio::spawn(async move {
+        let orphans = tokio::task::spawn_blocking(move || bind_page(&window, &nonce))
+            .await
+            .map_err(|_| "Sync run lock worker failed".to_string())??;
+        if !orphans.is_empty() {
+            tokio::spawn(release_orphans_once_settled(orphans, settled));
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|_| "Sync run lock worker failed".to_string())?
+}
+
 pub(crate) fn guard(local: &str, remote: &str, token: &str) -> Result<Arc<File>, String> {
     let pair = crate::sync::index_filename(local, remote);
     let registry = REGISTRY
@@ -320,6 +362,269 @@ pub(crate) fn with_guard<T>(
 ) -> Result<T, String> {
     let _lease = guard(local, remote, token)?;
     write()
+}
+
+/// The page-load self-test (U11): a real webview (WebView2 on Windows,
+/// WKWebView on macOS) is reloaded and navigated over itself, round after
+/// round. Every `PageLoadEvent` the engine reports goes through
+/// [`page_load_event`], the app's own handler. Each document binds and takes
+/// a lease from its own script, as the sync runner does at start (with its
+/// one retry). After every event and every binding the registry is checked:
+/// the window's live leases all belong to the document bound now (never two
+/// documents with admitted work); and at the end the document actually
+/// displayed is the bound one.
+///
+/// It proves the invariants on the orders the engine produced in that run.
+/// It cannot force the rare interleavings; the order-independent unit tests
+/// of this module cover every order.
+#[cfg(any(
+    all(test, any(windows, target_os = "linux")),
+    feature = "page-load-selftest"
+))]
+// Built on Linux too, so the shared code is checked where the suite runs;
+// it runs on Windows (a lib test) and macOS (the feature's binary).
+#[cfg_attr(not(any(windows, feature = "page-load-selftest")), allow(dead_code))]
+pub(crate) mod page_load_selftest {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    const WINDOW: &str = "page-load-selftest";
+
+    /// One page-load event as the engine reported it.
+    #[derive(Debug, Clone)]
+    pub(crate) struct Seen {
+        pub finished: bool,
+        pub url: String,
+    }
+
+    /// What the run saw and decided, shared with the engine's callbacks.
+    #[derive(Default)]
+    struct Run {
+        seen: Vec<Seen>,
+        /// Lease token -> the document (nonce) that took it.
+        holders: HashMap<String, String>,
+        violation: Option<String>,
+        alive: Option<String>,
+        last_event: Option<Instant>,
+    }
+
+    /// The pages: each document binds itself from its script with a fresh
+    /// nonce, retries once on a refusal (as `beginRunLease` does), and keeps
+    /// its nonce for the final "which document is displayed" question.
+    const PAGE: &str = r#"<!doctype html><title>selftest</title><script>
+window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
+(async () => {
+  const bind = () => fetch(location.origin + '/bind/' + window.__doc);
+  const first = await bind();
+  if (first.status === 409) { await new Promise(r => setTimeout(r, 200)); await bind(); }
+})();
+</script>"#;
+
+    #[cfg(windows)]
+    const ORIGIN: &str = "http://selftest.localhost";
+    #[cfg(not(windows))]
+    const ORIGIN: &str = "selftest://localhost";
+
+    /// The invariant, read from the registry itself.
+    fn check(run: &mut Run, when: &str) {
+        let Ok(registry) = REGISTRY.lock() else {
+            return;
+        };
+        let bound = registry
+            .bindings
+            .get(WINDOW)
+            .map(|(_, nonce)| nonce.clone());
+        let documents: std::collections::BTreeSet<&String> = registry
+            .leases
+            .iter()
+            .filter(|(_, lease)| lease.window == WINDOW)
+            .filter_map(|(token, _)| run.holders.get(token))
+            .collect();
+        let wrong = documents.len() > 1
+            || documents
+                .iter()
+                .any(|holder| Some(*holder) != bound.as_ref());
+        if wrong && run.violation.is_none() {
+            run.violation = Some(format!(
+                "{when}: live leases of {documents:?} while {bound:?} is bound"
+            ));
+        }
+    }
+
+    /// The self-test build's whole program: run on the main thread (macOS
+    /// allows the event loop nowhere else) and exit 0, or 1 on a broken
+    /// invariant.
+    #[cfg(feature = "page-load-selftest")]
+    pub(crate) fn run_and_exit() -> ! {
+        let code = match run(tauri::Builder::default(), 25, Duration::from_secs(300)) {
+            Ok(seen) => {
+                println!(
+                    "page-load self-test passed: {} events, {} finished, last {}",
+                    seen.len(),
+                    seen.iter().filter(|event| event.finished).count(),
+                    seen.last().map(|event| event.url.as_str()).unwrap_or("")
+                );
+                0
+            }
+            Err(error) => {
+                eprintln!("page-load self-test FAILED: {error}");
+                1
+            }
+        };
+        std::process::exit(code);
+    }
+
+    /// Run `rounds` rounds of reload and overlapping navigations on a window
+    /// of `builder`'s app, within `budget`. `Err` names the violated
+    /// invariant, or what had not happened by the deadline.
+    pub(crate) fn run(
+        builder: tauri::Builder<tauri::Wry>,
+        rounds: u32,
+        budget: Duration,
+    ) -> Result<Vec<Seen>, String> {
+        let dir =
+            std::env::temp_dir().join(format!("aeroftp-page-load-selftest-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let pair = crate::sync::index_filename("/selftest-local", "/selftest-remote");
+        let state: Arc<Mutex<Run>> = Arc::default();
+        let (on_load, on_request) = (state.clone(), state.clone());
+        let lease_dir = dir.clone();
+        let app = builder
+            .register_uri_scheme_protocol("selftest", move |_ctx, request| {
+                let path = request.uri().path().to_string();
+                let mut status = 204;
+                let mut body = Vec::new();
+                let mut run = on_request.lock().unwrap();
+                if let Some(nonce) = path.strip_prefix("/bind/") {
+                    match bind_page(WINDOW, nonce) {
+                        Ok(orphans) => {
+                            release_orphans(&orphans);
+                            if let Ok(token) = acquire_at(&lease_dir, pair.clone(), WINDOW, nonce) {
+                                run.holders.insert(token, nonce.to_string());
+                            }
+                        }
+                        Err(_) => status = 409,
+                    }
+                    check(&mut run, &format!("bind {nonce}"));
+                } else if let Some(nonce) = path.strip_prefix("/alive/") {
+                    run.alive = Some(nonce.to_string());
+                } else {
+                    status = 200;
+                    body = PAGE.as_bytes().to_vec();
+                }
+                tauri::http::Response::builder()
+                    .status(status)
+                    .header("Content-Type", "text/html")
+                    .body(body)
+                    .unwrap()
+            })
+            .on_page_load(move |_webview, payload| {
+                let finished = payload.event() == tauri::webview::PageLoadEvent::Finished;
+                // The production handler, then the work it orphaned settles
+                // at once: this test runs none.
+                let orphans = page_load_event(WINDOW, finished);
+                release_orphans(&orphans);
+                let mut run = on_load.lock().unwrap();
+                run.seen.push(Seen {
+                    finished,
+                    url: payload.url().to_string(),
+                });
+                run.last_event = Some(Instant::now());
+                check(&mut run, if finished { "Finished" } else { "Started" });
+            })
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .map_err(|e| format!("the app did not build: {e}"))?;
+        let page = |n: u32| -> tauri::Url { format!("{ORIGIN}/doc/{n}").parse().unwrap() };
+        let window = tauri::WebviewWindowBuilder::new(
+            &app,
+            WINDOW,
+            tauri::WebviewUrl::CustomProtocol(page(0)),
+        )
+        .build()
+        .map_err(|e| format!("the window did not open: {e}"))?;
+        let driver_state = state.clone();
+        let handle = app.handle().clone();
+        let deadline = Instant::now() + budget;
+        let driver = std::thread::spawn(move || -> Result<(), String> {
+            // Quiet for 400 ms: the engine has nothing more to report.
+            let settle = |what: &str| -> Result<(), String> {
+                loop {
+                    if Instant::now() > deadline {
+                        return Err(format!("timed out waiting for {what}"));
+                    }
+                    let quiet = driver_state
+                        .lock()
+                        .unwrap()
+                        .last_event
+                        .is_some_and(|at| at.elapsed() > Duration::from_millis(400));
+                    if quiet {
+                        return Ok(());
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+            };
+            settle("the first page")?;
+            for round in 0..rounds {
+                // Two navigations back to back, then a reload over them.
+                window
+                    .navigate(page(2 * round + 1))
+                    .map_err(|e| e.to_string())?;
+                window
+                    .navigate(page(2 * round + 2))
+                    .map_err(|e| e.to_string())?;
+                window.reload().map_err(|e| e.to_string())?;
+                settle(&format!("round {round}"))?;
+            }
+            // Ask the displayed document which one it is.
+            window
+                .eval("fetch(location.origin + '/alive/' + window.__doc)")
+                .map_err(|e| e.to_string())?;
+            while driver_state.lock().unwrap().alive.is_none() {
+                if Instant::now() > deadline {
+                    return Err("timed out waiting for the displayed document".into());
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Ok(())
+        });
+        let exit = handle.clone();
+        let watcher = std::thread::spawn(move || {
+            let outcome = driver
+                .join()
+                .unwrap_or_else(|_| Err("the driver panicked".into()));
+            exit.exit(0);
+            outcome
+        });
+        app.run_return(|_, _| {});
+        let driven = watcher
+            .join()
+            .unwrap_or_else(|_| Err("the watcher panicked".into()));
+        let run = std::mem::take(&mut *state.lock().unwrap());
+        // The document bound now, read before the registry is left as found.
+        let bound = REGISTRY.lock().ok().and_then(|registry| {
+            registry
+                .bindings
+                .get(WINDOW)
+                .map(|(_, nonce)| nonce.clone())
+        });
+        let leftovers = orphan_window(WINDOW);
+        release_orphans(&leftovers);
+        let _ = std::fs::remove_dir_all(&dir);
+        driven?;
+        if let Some(violation) = run.violation {
+            return Err(violation);
+        }
+        let Some(alive) = run.alive else {
+            return Err("the displayed document never answered".into());
+        };
+        if bound.as_deref() != Some(alive.as_str()) {
+            return Err(format!(
+                "the displayed document {alive} is not the bound one ({bound:?}) after {} events",
+                run.seen.len()
+            ));
+        }
+        Ok(run.seen)
+    }
 }
 
 #[cfg(test)]
@@ -534,6 +839,86 @@ mod tests {
         // Settled: the new document acquires the pair, with no reload.
         release_orphans(&orphans);
         let token = acquire_at(dir.path(), pair, window, &new).unwrap();
+        release(&token).unwrap();
+    }
+
+    /// U11 (b): the page-load self-test on WebView2, the engine of every
+    /// Windows install, through the production page-load handler. See
+    /// [`page_load_selftest`] for what it proves and what it cannot.
+    #[cfg(windows)]
+    #[test]
+    fn webview2_page_loads_keep_one_document_with_work_and_bind_the_live_one() {
+        let seen = page_load_selftest::run(
+            tauri::Builder::default().any_thread(),
+            25,
+            std::time::Duration::from_secs(180),
+        )
+        .unwrap_or_else(|error| panic!("WebView2 page-load self-test: {error}"));
+        assert!(
+            seen.iter().filter(|event| event.finished).count() >= 25,
+            "fewer page loads than rounds: {seen:?}"
+        );
+    }
+
+    /// U11: the command that binds is dropped while its bind waits (the
+    /// registry is busy): the bind still runs, takes the window over, and
+    /// its orphan is still released once the old work settles. The pair is
+    /// then the new document's.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_abandoned_bind_still_releases_the_orphans_it_makes() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/abandoned-local", "/abandoned-remote");
+        // Its own window: `an_abandoned_copy_keeps_its_admission_until_the_copy_ends`
+        // orphans "abandoned-window" while it runs.
+        let window = "abandoned-bind-window";
+        let (old, new) = (nonce("old"), nonce("new"));
+        bind_page(window, &old).unwrap();
+        let stale = acquire_at(dir.path(), pair.clone(), window, &old).unwrap();
+        let settled = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let flag = settled.clone();
+        // The registry is busy (held on a thread of its own): the bind waits
+        // on its worker.
+        let (locked_tx, locked_rx) = std::sync::mpsc::channel();
+        let (free_tx, free_rx) = std::sync::mpsc::channel::<()>();
+        let holder = std::thread::spawn(move || {
+            let _busy = REGISTRY.lock().unwrap();
+            locked_tx.send(()).unwrap();
+            let _ = free_rx.recv();
+        });
+        locked_rx.recv().unwrap();
+        let command = bind_page_and_schedule_cleanup(window.into(), new.clone(), move || {
+            flag.load(std::sync::atomic::Ordering::SeqCst)
+        });
+        // Polled, then dropped: the page that sent it went away.
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), command)
+                .await
+                .is_err()
+        );
+        free_tx.send(()).unwrap();
+        holder.join().unwrap();
+        // The bind ran: the old lease is orphaned, the pair still locked.
+        // Generous: the cleanup polls every 250 ms on the shared async
+        // runtime, which a full parallel test run keeps busy.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        while admit(Some(&stale)).is_ok() {
+            assert!(std::time::Instant::now() < deadline, "the bind never ran");
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        assert!(acquire_at(dir.path(), pair.clone(), window, &new).is_err());
+        // The old work settles: the cleanup the bind scheduled releases it.
+        settled.store(true, std::sync::atomic::Ordering::SeqCst);
+        let token = loop {
+            let attempt = acquire_at(dir.path(), pair.clone(), window, &new);
+            if let Ok(token) = attempt {
+                break token;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the orphan was never released: {attempt:?}"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        };
         release(&token).unwrap();
     }
 

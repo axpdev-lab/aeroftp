@@ -23,6 +23,11 @@ on:
       - 'LICENSE*'
       - '.github/ISSUE_TEMPLATE/**'
   workflow_dispatch:
+    inputs:
+      page_load_selftest:
+        description: "Also run the WKWebView page-load self-test on the macOS arm64 leg (one extra debug build)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -356,7 +361,8 @@ jobs:
 
       # Compilation alone does not exercise missing-tail case aliases on APFS.
       # Run the policy fixtures natively once, on the arm64 macOS leg, with
-      # the native local copy (fcopyfile: extended attributes, Stop).
+      # the native local copy (fcopyfile: extended attributes, Stop) and the
+      # logged command error, captured in an isolated child process (U4).
       - name: MCP and archive path policy regressions (macOS)
         if: matrix.target == 'macos' && matrix.arch == 'aarch64'
         working-directory: src-tauri
@@ -364,6 +370,25 @@ jobs:
           cargo test --locked --lib mcp::security::tests
           cargo test --locked --lib requested102
           cargo test --locked --lib native_local_copy
+          cargo test --locked --lib the_logged_tracing_event_of_a_command_error_holds_no_server_text
+        env:
+          CARGO_BUILD_JOBS: "1"
+          CARGO_INCREMENTAL: "0"
+          CARGO_PROFILE_DEV_DEBUG: "0"
+          CARGO_PROFILE_TEST_DEBUG: "0"
+
+      # On demand only (workflow_dispatch, `page_load_selftest`): the app
+      # binary built with the self-test feature drives a real WKWebView,
+      # which AppKit allows on the main thread only (not in the unit-test
+      # harness), replays its page-load events through the production
+      # handler and exits non-zero on a broken invariant (U11).
+      - name: WKWebView page-load self-test (macOS, on demand)
+        if: matrix.target == 'macos' && matrix.arch == 'aarch64' && github.event_name == 'workflow_dispatch' && inputs.page_load_selftest
+        working-directory: src-tauri
+        timeout-minutes: 60
+        run: |
+          cargo build --locked --bin aeroftp --features page-load-selftest
+          ./target/debug/aeroftp
         env:
           CARGO_BUILD_JOBS: "1"
           CARGO_INCREMENTAL: "0"

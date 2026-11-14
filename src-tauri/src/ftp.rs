@@ -1313,7 +1313,8 @@ impl FtpManager {
         let entry =
             crate::providers::ftp_listing::parse_listing_at(listing, &self.current_path, now)
                 .ok_or_else(|| {
-                    FtpManagerError::InvalidPath(format!("Unrecognised listing row: {listing}"))
+                    // The row is server text: kept out of the error (U6).
+                    FtpManagerError::InvalidPath("Unrecognised listing row".to_string())
                 })?;
         let size =
             (!crate::providers::ftp_listing::size_is_unreadable(&entry)).then_some(entry.size);
@@ -1467,15 +1468,15 @@ LIST "lrwxrwxrwx    1 user     group           7 Jan 20 10:00 dangling"
 LIST "-rw-r--r--    1 user     group        ???? Jan 20 10:00 odd.txt"
   name="odd.txt" path="/odd.txt" dir=false size=None perms=Some("-rw-r--r--") mod=Some("2026-01-20 10:00")
 LIST "-rw-r--r-- 1 user group 123 Jan 20 10:00"
-  <err: Invalid path: Unrecognised listing row: -rw-r--r-- 1 user group 123 Jan 20 10:00>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x    2 user     group        4096 Jan 20 10:00 .."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x    2 user     group        4096 Jan 20 10:00 ..>
+  <err: Invalid path: Unrecognised listing row>
 LIST ""
   <err: Invalid path: Empty listing>
 LIST "total 12"
-  <err: Invalid path: Unrecognised listing row: total 12>
+  <err: Invalid path: Unrecognised listing row>
 LIST "01-23-24  10:30AM       <DIR>          folder"
   name="folder" path="/folder" dir=true size=Some(0) perms=None mod=Some("2024-01-23 10:30")
 LIST "01-23-24  10:30AM           12345      file.txt"
@@ -1487,9 +1488,9 @@ LIST "01-23-24  10:30AM           12345      my file.txt"
 LIST "01-23-24 10:30AM 12345 a b c d e f"
   name="a b c d e f" path="/a b c d e f" dir=false size=Some(12345) perms=None mod=Some("2024-01-23 10:30")
 LIST "not-a-date 10:30AM <DIR> folder"
-  <err: Invalid path: Unrecognised listing row: not-a-date 10:30AM <DIR> folder>
+  <err: Invalid path: Unrecognised listing row>
 LIST "drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 ."
-  <err: Invalid path: Unrecognised listing row: drwxr-xr-x 2 1001 1001 4096 Jul 21 09:41 .>"#;
+  <err: Invalid path: Unrecognised listing row>"#;
 }
 
 #[cfg(test)]

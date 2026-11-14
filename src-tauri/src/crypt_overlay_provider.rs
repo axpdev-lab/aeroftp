@@ -2672,19 +2672,34 @@ pub(crate) async fn wrap_connected_provider_for_profile_in_scope(
 ///
 /// The overlay is anchored by [`aerocloud_overlay_profile`], where the app
 /// anchors it when it opens the profile.
+///
+/// `account` is the one the connection began with (U9): the profile and its
+/// overlay secrets are that account's, whichever is active by now, the
+/// legacy owner's only for `LEGACY_ONLY_ACCOUNT`. Read for the active one, a
+/// switch while connecting wrapped the session in another account's overlay,
+/// and a headed recovery could write its marker on this account's remote.
 pub async fn wrap_connected_provider_for_profile_named(
     inner: Box<dyn StorageProvider>,
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+    let profiles = crate::user_partitions::mcp_list_server_profiles(store, Some(account))?;
     let Some(profile) = select_aerocloud_profile(&profiles, profile_id, profile_name) else {
         return Ok(inner);
     };
     let profile = aerocloud_overlay_profile(profile);
     refuse_login_relative_aerocloud_scope(&profile)?;
-    wrap_connected_provider_for_profile(inner, &profile, store).await
+    wrap_connected_provider_for_profile_in_scope(
+        inner,
+        &profile,
+        &crate::profile_auth::AuthScope {
+            store,
+            user_id: Some(account),
+        },
+    )
+    .await
 }
 
 /// AeroCloud names its remote folders as absolute paths below the profile's
@@ -2777,8 +2792,9 @@ pub async fn build_aerocloud_overlay_stack(
     profile_id: Option<&str>,
     profile_name: &str,
     store: &crate::credential_store::CredentialStore,
+    account: i64,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store).await
+    wrap_connected_provider_for_profile_named(inner, profile_id, profile_name, store, account).await
 }
 
 /// The saved profile an AeroCloud config names: by its stable id when the

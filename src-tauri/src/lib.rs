@@ -14646,7 +14646,12 @@ mod sync_ec_ipc_tests {
     const EC_LEAKED: &str = r#"{"errors":[{"status":"403","detail":"CONNECTION_CHANGED Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123456789 session zq8Xv2Lr9TmPq4Ks7Wd1Hy"}]}"#;
     const EC_SECRET: &str = "zq8Xv2Lr9TmPq4Ks7Wd1Hy";
 
-    struct SyncEcLeakyProvider;
+    /// Records every upload it refuses: the command test proves the
+    /// sanitized failure is the upload's, not an earlier one.
+    #[derive(Default)]
+    struct SyncEcLeakyProvider {
+        uploads: Arc<std::sync::Mutex<Vec<String>>>,
+    }
 
     #[async_trait::async_trait]
     impl StorageProvider for SyncEcLeakyProvider {
@@ -14697,9 +14702,10 @@ mod sync_ec_ipc_tests {
         async fn upload(
             &mut self,
             _local_path: &str,
-            _remote_path: &str,
+            remote_path: &str,
             _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
         ) -> Result<(), ProviderError> {
+            self.uploads.lock().unwrap().push(remote_path.to_string());
             Err(ProviderError::Other(EC_LEAKED.to_string()))
         }
         async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
@@ -14759,7 +14765,9 @@ mod sync_ec_ipc_tests {
         let app = tauri::test::mock_app();
         app.manage(AppState::new());
         let provider_state = provider_commands::ProviderState::new();
-        *provider_state.provider.lock().await = Some(Box::new(SyncEcLeakyProvider));
+        let leaky = SyncEcLeakyProvider::default();
+        let uploads = leaky.uploads.clone();
+        *provider_state.provider.lock().await = Some(Box::new(leaky));
         app.manage(provider_state);
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("data.bin");
@@ -14790,6 +14798,12 @@ mod sync_ec_ipc_tests {
         assert!(!wire.contains(EC_SECRET), "{wire}");
         assert!(!wire.contains("detail"), "{wire}");
         assert!(wire.contains("generate_failed"), "{wire}");
+        // The failure is the parity upload's: generation got that far and
+        // the refused call is the sidecar's, not an earlier exit.
+        let uploads = uploads.lock().unwrap().clone();
+        assert_eq!(uploads.len(), 1, "{uploads:?}");
+        assert!(uploads[0].starts_with("/remote/"), "{uploads:?}");
+        assert_ne!(uploads[0], "/remote/data.bin", "{uploads:?}");
     }
 }
 
@@ -16177,22 +16191,18 @@ async fn sync_run_page_bind_cmd(
     window: tauri::Window,
     page_nonce: String,
 ) -> Result<(), String> {
-    let window = window.label().to_string();
-    let orphans =
-        tokio::task::spawn_blocking(move || sync_run_lease::bind_page(&window, &page_nonce))
-            .await
-            .map_err(|_| "Sync run lock worker failed".to_string())??;
-    if !orphans.is_empty() {
-        tauri::async_runtime::spawn(async move {
-            sync_run_lease::release_orphans_once_settled(orphans, || {
-                app.state::<provider_commands::ProviderState>()
-                    .gui_work_settled()
-                    && sync_run_lease::native_work_settled()
-            })
-            .await;
-        });
-    }
-    Ok(())
+    // The bind and the cleanup of its orphans run on a task of their own:
+    // this command being dropped mid-bind cannot skip the cleanup (U11).
+    sync_run_lease::bind_page_and_schedule_cleanup(
+        window.label().to_string(),
+        page_nonce,
+        move || {
+            app.state::<provider_commands::ProviderState>()
+                .gui_work_settled()
+                && sync_run_lease::native_work_settled()
+        },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -18955,7 +18965,9 @@ async fn list_remote_folders_tree(
     let max_d = max_depth.unwrap_or(3).min(5);
     // `create_cloud_provider` returns the provider connected and standing in
     // the profile root; connecting again would reset it to the account root.
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    let opened = cloud_provider_factory::create_cloud_connection(&config).await?;
+    let account = opened.reads_account();
+    let mut provider = opened.provider;
 
     // Crypt-overlay chokepoint (fail-closed). A crypt-bound AeroCloud profile
     // must show DECRYPTED folder names in the selective-sync tree (and match
@@ -18963,11 +18975,13 @@ async fn list_remote_folders_tree(
     // wrap the tree would list ciphertext directory names and exclusions would
     // never match. Mirrors the background-sync chokepoint.
     if let Some(store) = credential_store::CredentialStore::from_cache() {
+        let account = account.ok_or("the connection captured no account")?;
         provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
             provider,
             config.server_profile_id.as_deref(),
             &config.server_profile,
             &store,
+            account,
         )
         .await?;
     }
@@ -23618,7 +23632,14 @@ mod linux_renderer_tests {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+// The self-test build exits before the app: the rest of `run` is not reached.
+#[cfg_attr(feature = "page-load-selftest", allow(unreachable_code))]
 pub fn run() {
+    // The WKWebView page-load self-test (U11): a build made with this
+    // feature (CI, on demand) runs it on the main thread and exits. Never in
+    // a release build.
+    #[cfg(feature = "page-load-selftest")]
+    sync_run_lease::page_load_selftest::run_and_exit();
     #[cfg(windows)]
     if file_associations::handle_uninstall_history_arg() {
         return;
@@ -24798,27 +24819,10 @@ pub fn run() {
             // orphans what was bound or taken since `Started` (it may be the
             // old document's); a later `Finished` of the same generation does
             // nothing (`sync_run_lease::bind_page`).
-            if payload.event() == tauri::webview::PageLoadEvent::Finished {
-                let orphans = sync_run_lease::page_finished(webview.window().label());
-                if !orphans.is_empty() {
-                    let app = webview.app_handle().clone();
-                    tauri::async_runtime::spawn(async move {
-                        sync_run_lease::release_orphans_once_settled(orphans, || {
-                            app.state::<provider_commands::ProviderState>()
-                                .gui_work_settled()
-                                && sync_run_lease::native_work_settled()
-                        })
-                        .await;
-                    });
-                }
-                return;
-            }
-            if payload.event() != tauri::webview::PageLoadEvent::Started {
-                return;
-            }
-            // This also ends the page generation, so a lease the lost page
-            // asked for but had not registered yet is refused.
-            let orphans = sync_run_lease::orphan_window(webview.window().label());
+            // One handler for both events, the one the page-load self-test
+            // replays the engine's real events through (U11).
+            let finished = payload.event() == tauri::webview::PageLoadEvent::Finished;
+            let orphans = sync_run_lease::page_load_event(webview.window().label(), finished);
             if orphans.is_empty() {
                 return;
             }

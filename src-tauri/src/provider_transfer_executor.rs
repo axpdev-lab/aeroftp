@@ -2168,9 +2168,8 @@ impl ProviderUploadExecutor {
     }
 
     fn failed_upload(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
-        let failure = if self.cancel_token.is_cancelled()
-            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-        {
+        // The token, never the text (U12).
+        let failure = if self.cancel_token.is_cancelled() {
             TransferFailure::new(
                 crate::transfer_domain::TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",

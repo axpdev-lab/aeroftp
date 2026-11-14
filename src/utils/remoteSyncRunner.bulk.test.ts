@@ -137,17 +137,29 @@ describe('remoteSyncRunner on a native bulk', () => {
     // Mixed results: one file failed (it may have landed) and the target
     // changed for another. The journal the run saves is already unsafe.
     it('marks the journal unsafe when a bulk answer mixes failed and target_changed', async () => {
+        // The destination, modelled: every upload command writes into it. The
+        // "failed" file landed anyway (the answer was lost, not the write).
+        const destination = new Map<string, string>();
         const h = harness({
-            provider_sync_transfer_bulk: () => [{ status: 'failed', message: 'refused' }, { status: 'target_changed' }],
+            provider_sync_transfer_bulk: (args) => {
+                const items = args?.items as BulkItem[];
+                destination.set(items[0].remotePath, `bytes of ${items[0].localPath}`);
+                return [{ status: 'failed', message: 'refused' }, { status: 'target_changed' }];
+            },
+            provider_upload_file: (args) => { destination.set(String(args?.remotePath), 'replayed upload'); },
         });
         await runRemoteSync(files(2, 'upload'), { remote: [], local: [] }, config(), {}, h.deps).catch(() => undefined);
         const saved = h.of('save_sync_journal_cmd').map((call) => (call.args?.journal as SyncJournal));
         const failedSaved = saved.filter((journal) => journal.entries.some((e) => e.status === 'failed'));
         expect(failedSaved.length).toBeGreaterThan(0);
         expect(failedSaved.every((journal) => journal.resume_safe === false)).toBe(true);
-        // T3: the destination is edited after the run (the failed file may
-        // have landed and been changed since). Resume from the saved journal
-        // is refused and dispatches no replacement transfer.
+        // T3: the committed file is edited after the run. Resume from the
+        // saved journal is refused, dispatches no replacement transfer, and
+        // the edit is still there afterwards.
+        const committed = '/my-files/work/docs/f0.txt';
+        expect(destination.get(committed)).toBe('bytes of /home/u/work/docs/f0.txt');
+        destination.set(committed, 'user edit after the run');
+        const snapshot = new Map(destination);
         const journal = failedSaved[failedSaved.length - 1];
         const dispatched = () => h.of('provider_sync_transfer_bulk').length + h.of('provider_upload_file').length
             + h.of('provider_download_file').length;
@@ -155,6 +167,8 @@ describe('remoteSyncRunner on a native bulk', () => {
         await expect(runRemoteSync(filesFromJournal(journal), { remote: [], local: [] }, config(), {}, { ...h.deps, resumeJournal: journal }))
             .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
         expect(dispatched()).toBe(before);
+        expect(destination.get(committed)).toBe('user edit after the run');
+        expect(destination).toEqual(snapshot);
     });
 
     it('takes a failed file as final and sends a file the bulk did not take on its own', async () => {

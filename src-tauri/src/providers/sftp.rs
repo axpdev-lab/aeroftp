@@ -4671,8 +4671,12 @@ impl StorageProvider for SftpProvider {
         // The entry's own type, which STAT does not give (it follows a link):
         // LSTAT. When LSTAT is refused or answers no type bits, nothing says
         // the name is not a link to the file STAT read, so the entry's type
-        // is marked unconfirmed and a backup receipt refuses it (T2). Not over
+        // is marked unconfirmed and a backup receipt refuses it (T2). So is a
+        // LSTAT type that is not STAT's (a directory or a FIFO where STAT read
+        // a regular file): the path changed between the two calls, or the
+        // server contradicts itself, and neither answer can be kept. Not over
         // a transport that ended while it was asked (checked below).
+        let stat_type = metadata.permissions.map(|p| p & 0o170000);
         let link_meta = until_sftp_ends(&sftp.ended, sftp.symlink_metadata(&full_path)).await;
         match link_meta.ok().and_then(|meta| meta.permissions) {
             Some(perms) if (perms & 0o170000) == 0o120000 => {
@@ -4681,7 +4685,7 @@ impl StorageProvider for SftpProvider {
                     entry.link_target = Some(target);
                 }
             }
-            Some(perms) if (perms & 0o170000) != 0 => {}
+            Some(perms) if (perms & 0o170000) != 0 && Some(perms & 0o170000) == stat_type => {}
             _ => crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry),
         }
         if sftp.ended.is_cancelled() {
@@ -8577,12 +8581,16 @@ mod tests {
     }
 
     /// How [`LinkStatServer`] answers LSTAT.
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug)]
     enum LstatAnswer {
         Refused,
         Typeless,
         Regular,
         Symlink,
+        /// A type that is not STAT's regular file: the path changed between
+        /// the calls, or the server contradicts itself (U1).
+        Directory,
+        Fifo,
     }
 
     /// An SFTP server whose STAT finds a regular file (as it does through a
@@ -8623,6 +8631,8 @@ mod tests {
                 LstatAnswer::Typeless => Some(0o644),
                 LstatAnswer::Regular => Some(0o100644),
                 LstatAnswer::Symlink => Some(0o120777),
+                LstatAnswer::Directory => Some(0o040755),
+                LstatAnswer::Fifo => Some(0o010644),
             };
             Ok(russh_sftp::protocol::Attrs {
                 id,
@@ -8649,14 +8659,17 @@ mod tests {
     /// T2: a backup receipt is a regular file only when LSTAT says so. A
     /// refused or type-less LSTAT leaves the entry's own type unknown (the
     /// name may be a link STAT followed), and the receipt is refused; a link
-    /// is refused; a confirmed regular file is accepted. Through the
-    /// production `stat` and `provider_receipt_is_file`.
+    /// is refused; a confirmed regular file is accepted. A LSTAT type that
+    /// contradicts STAT's regular file (a directory, a FIFO) is refused too
+    /// (U1). Through the production `stat` and `provider_receipt_is_file`.
     #[tokio::test]
     async fn a_receipt_needs_lstat_to_confirm_a_regular_file() {
         for (answer, accepted) in [
             (LstatAnswer::Refused, false),
             (LstatAnswer::Typeless, false),
             (LstatAnswer::Symlink, false),
+            (LstatAnswer::Directory, false),
+            (LstatAnswer::Fifo, false),
             (LstatAnswer::Regular, true),
         ] {
             let (client, server) = tokio::io::duplex(1 << 16);
@@ -8667,7 +8680,7 @@ mod tests {
                 crate::sync_backup::provider_receipt_is_file(&mut provider, "/backup/a.txt")
                     .await
                     .unwrap();
-            assert_eq!(receipt, accepted);
+            assert_eq!(receipt, accepted, "{answer:?}");
         }
     }
 

@@ -611,15 +611,16 @@ impl FtpProvider {
     /// without the "invalid response" that `is_stale_data_connection_error`
     /// reads as one: the callers that reconnect and try again on a stale
     /// session sent the whole file a second time for a refusal.
+    ///
+    /// The reply keeps its status typed and never its text (U6): a final
+    /// `451 upstream said HTTP 403` is a transient 451 to the IPC classifier,
+    /// not a refusal read out of the server's words.
     fn transfer_verdict_error(err: FtpError) -> ProviderError {
         match err {
-            FtpError::UnexpectedResponse(response)
-                if matches!(response.status.code() / 100, 4 | 5) =>
-            {
-                ProviderError::TransferFailed(format!(
-                    "the server refused the transfer: {response}"
-                ))
-            }
+            FtpError::UnexpectedResponse(response) => ProviderError::FtpRefused {
+                code: response.status.code() as u16,
+                during: " (at the end of the transfer)".to_string(),
+            },
             other => ProviderError::TransferFailed(other.to_string()),
         }
     }
@@ -631,9 +632,12 @@ impl FtpProvider {
     /// through here would send each refused administrative command twice.
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
         // 125 (a data connection already open) and 425 (none could be
-        // opened), as the typed status the reply left (T8).
+        // opened), as the typed status the reply left (T8). A positive reply
+        // (below 400) where an error was raised was not the reply the command
+        // waited for: the session is out of step, as suppaftp's "invalid
+        // response" text used to say (U6).
         if let ProviderError::FtpRefused { code, .. } = err {
-            return matches!(code, 125 | 425);
+            return matches!(code, 125 | 425) || *code < 400;
         }
         let message = match err {
             ProviderError::ServerError(msg)
@@ -689,7 +693,7 @@ impl FtpProvider {
     /// transfer landed.
     fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
         if let ProviderError::FtpRefused { code, .. } = err {
-            return matches!(code, 125 | 425);
+            return matches!(code, 125 | 425) || *code < 400;
         }
         let message = match err {
             ProviderError::ServerError(msg)
@@ -1607,6 +1611,19 @@ impl FtpProvider {
 /// its status, typed ([`ProviderError::FtpRefused`]), never the server's text,
 /// which can hold anything (`425 ... HTTP 403`); any other failure keeps the
 /// client library's own description.
+/// What an [`FtpError`] may say in an error: a reply by its status only
+/// ("FTP status 530: command rejected"), never its text, which a server can
+/// fill with anything (an echoed credential, a word the classifier reads, U6).
+/// The other kinds are our own or the transport's words.
+fn ftp_error_text(err: &FtpError) -> String {
+    match err {
+        FtpError::UnexpectedResponse(reply) => {
+            format!("FTP status {}: command rejected", reply.status.code())
+        }
+        other => other.to_string(),
+    }
+}
+
 fn ftp_failure(err: &FtpError) -> ProviderError {
     ftp_failure_during(err, String::new())
 }
@@ -1694,13 +1711,13 @@ impl FtpProvider {
         let mut outcome = self.stream_mut()?.cwd(path).await;
         if let Err(err) = &outcome {
             if self.closed_control_failure(err).await {
-                let failure = ProviderError::InvalidPath(err.to_string());
+                let failure = ProviderError::InvalidPath(ftp_error_text(err));
                 self.reconnect_after_data_error("CWD", path, &failure)
                     .await?;
                 outcome = self.stream_mut()?.cwd(path).await;
             }
         }
-        outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+        outcome.map_err(|e| ProviderError::InvalidPath(ftp_error_text(&e)))?;
         self.current_path = self
             .stream_mut()?
             .pwd()
@@ -1778,13 +1795,13 @@ impl StorageProvider for FtpProvider {
                 // Plain FTP - no TLS
                 FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?
             }
             FtpTlsMode::Explicit => {
                 // Explicit TLS (AUTH TLS) - connect plain, then upgrade
                 let stream = FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
                 // Never a silent fall back to plaintext: say how to choose
                 // plain FTP on purpose (#1506 Requested 198, a saved profile
@@ -1792,7 +1809,7 @@ impl StorageProvider for FtpProvider {
                 stream
                     .into_secure(connector, &domain)
                     .await
-                    .map_err(tls_upgrade_refused)?
+                    .map_err(|e| tls_upgrade_refused(ftp_error_text(&e)))?
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
@@ -1801,7 +1818,10 @@ impl StorageProvider for FtpProvider {
                 FtpControl::connect_secure_implicit(&addr, connector, &domain)
                     .await
                     .map_err(|e| {
-                        ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e))
+                        ProviderError::ConnectionFailed(format!(
+                            "Implicit TLS failed: {}",
+                            ftp_error_text(&e)
+                        ))
                     })?
             }
             FtpTlsMode::ExplicitIfAvailable => {
@@ -1810,7 +1830,7 @@ impl StorageProvider for FtpProvider {
                 // is a security risk. If TLS fails, return an error instead.
                 let stream = FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
                 match stream.into_secure(connector, &domain).await {
                     Ok(secure) => {
@@ -1825,7 +1845,7 @@ impl StorageProvider for FtpProvider {
                             self.config.port,
                             e
                         );
-                        return Err(tls_upgrade_refused(e));
+                        return Err(tls_upgrade_refused(ftp_error_text(&e)));
                     }
                 }
             }
@@ -1843,7 +1863,7 @@ impl StorageProvider for FtpProvider {
         stream
             .login(self.config.username.as_str(), pwd)
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(e.to_string()))?;
+            .map_err(|e| ProviderError::AuthenticationFailed(ftp_error_text(&e)))?;
 
         // Implicit FTPS encrypts the session from the first byte, but a server
         // keeps the data connections in the clear until the client asks for
@@ -1857,7 +1877,10 @@ impl StorageProvider for FtpProvider {
                     .custom_command(command, &[Status::CommandOk])
                     .await
                     .map_err(|e| {
-                        ProviderError::ConnectionFailed(format!("{command} refused: {e}"))
+                        ProviderError::ConnectionFailed(format!(
+                            "{command} refused: {}",
+                            ftp_error_text(&e)
+                        ))
                     })?;
             }
         }
@@ -1884,7 +1907,7 @@ impl StorageProvider for FtpProvider {
                 stream
                     .cwd(initial_path)
                     .await
-                    .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                    .map_err(|e| ProviderError::InvalidPath(ftp_error_text(&e)))?;
             }
         }
 
@@ -2325,9 +2348,17 @@ impl StorageProvider for FtpProvider {
                         Ok(()) => Err(ProviderError::AlreadyExists(path.to_string())),
                         // The directory is not there, so the mkdir failed for its
                         // own reason and that is what the caller gets.
-                        Err(ProviderError::NotFound(_)) => Err(ProviderError::ServerError(
-                            Self::doing("creating", path, response),
-                        )),
+                        // Its status, never the server's text (U6).
+                        Err(ProviderError::NotFound(_)) => {
+                            Err(ProviderError::ServerError(Self::doing(
+                                "creating",
+                                path,
+                                format_args!(
+                                    "FTP status {}: command rejected",
+                                    response.status.code()
+                                ),
+                            )))
+                        }
                         // Anything else is about the probe, not about the mkdir,
                         // and one of those is the probe having entered the
                         // directory and failed to come back out. Collapsing that
@@ -2744,7 +2775,7 @@ impl StorageProvider for FtpProvider {
             stream.resume_transfer(offset as usize).await.map_err(|e| {
                 ProviderError::TransferFailed(format!(
                     "Failed to prepare FTP restart offset: {}",
-                    e
+                    ftp_error_text(&e)
                 ))
             })?;
 
@@ -3212,7 +3243,10 @@ impl StorageProvider for FtpProvider {
 
             // Queue the offset; REST is sent by the next RETR, after PASV.
             stream.resume_transfer(offset as usize).await.map_err(|e| {
-                ProviderError::TransferFailed(format!("Failed to prepare FTP restart offset: {}", e))
+                ProviderError::TransferFailed(format!(
+                "Failed to prepare FTP restart offset: {}",
+                ftp_error_text(&e)
+            ))
             })?;
 
             let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
@@ -3277,7 +3311,8 @@ impl StorageProvider for FtpProvider {
             if let Err(err) = channel.close().await? {
                 let _ = self.disconnect().await;
                 return Err(ProviderError::TransferFailed(format!(
-                    "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
+                    "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {}",
+                    ftp_error_text(&err)
                 )));
             }
 
@@ -4552,7 +4587,7 @@ impl FtpProvider {
         let changed = stream
             .cwd(previous)
             .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()));
+            .map_err(|e| ProviderError::InvalidPath(ftp_error_text(&e)));
         if let Err(err) = changed {
             guard.disarm();
             return Err(err);
@@ -4625,11 +4660,14 @@ impl FtpProvider {
                 return ProviderError::NotSupported(Self::doing(
                     operation,
                     &at_offset,
-                    format_args!("the server does not support restarting a transfer: {err}"),
+                    format_args!(
+                        "FTP status {}: the server does not support restarting a transfer",
+                        response.status.code()
+                    ),
                 ));
             }
         }
-        let reply = err.to_string();
+        let reply = ftp_error_text(&err);
         match Self::classify_data_failure(operation, path, err) {
             ProviderError::TransferFailed(_) => {
                 ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))
@@ -5301,7 +5339,10 @@ async fn ftp_download_one_range(
         let stream = worker.stream_mut()?;
         // Queue the offset; REST is sent by the next RETR, after PASV.
         stream.resume_transfer(start as usize).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to prepare FTP restart offset: {}", e))
+            ProviderError::TransferFailed(format!(
+                "Failed to prepare FTP restart offset: {}",
+                ftp_error_text(&e)
+            ))
         })?;
     }
 
@@ -6354,6 +6395,203 @@ mod tests {
             ProviderError::FtpRefused { code: 425, .. }
         ));
         assert!(FtpProvider::is_stale_data_connection_error(&command));
+    }
+
+    /// U6: the reply that ends a transfer (upload, resumed upload, download:
+    /// all read it through `transfer_verdict_error`) keeps its status typed.
+    /// A `451` whose text says `HTTP 403` is a transient 451 at the IPC
+    /// boundary, retryable and not a permission refusal, and the text is
+    /// gone. It is no stale session either, so it is not sent again; an
+    /// unexpected POSITIVE reply is (the session is out of step).
+    #[test]
+    fn a_final_transfer_reply_crosses_the_boundary_as_its_status_not_its_text() {
+        let reply = |status, body: &str| {
+            FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+                status,
+                body.as_bytes().to_vec(),
+            ))
+        };
+        let verdict = FtpProvider::transfer_verdict_error(reply(
+            Status::from(451),
+            "451 upstream said HTTP 403 Forbidden",
+        ));
+        assert!(
+            matches!(verdict, ProviderError::FtpRefused { code: 451, .. }),
+            "{verdict:?}"
+        );
+        assert!(!verdict.to_string().contains("403"), "{verdict}");
+        assert!(!verdict.to_string().contains("upstream"), "{verdict}");
+        let rendered =
+            crate::sync::ipc_error_render("upload_file", &crate::sync::IpcError::from(verdict));
+        assert!(rendered.contains("(FTP 451)"), "{rendered}");
+        assert!(!rendered.contains("permission_denied"), "{rendered}");
+        assert!(rendered.ends_with(":true]"), "retryable: {rendered}");
+        let refused =
+            FtpProvider::transfer_verdict_error(reply(Status::FileUnavailable, "550 HTTP 403"));
+        assert!(!FtpProvider::is_stale_data_connection_error(&refused));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&refused));
+        // A 226 read where a refusal was raised: out of step, redialed.
+        let out_of_step = FtpProvider::transfer_verdict_error(reply(
+            Status::ClosingDataConnection,
+            "226 Transfer complete",
+        ));
+        assert!(FtpProvider::is_stale_data_connection_error(&out_of_step));
+        assert!(FtpProvider::is_desync_before_transfer_error(&out_of_step));
+    }
+
+    /// U6, both FTP implementations: no reply text is formatted into an
+    /// error. A reply's words are read only to decide (the decision lines
+    /// below); an error says the status (`ftp_error_text`, `ftp_failure`,
+    /// `FtpManager::safe_ftp_error`). Every other place that turns an error
+    /// value into text is listed with the reason it holds no reply, so a new
+    /// one fails here until it is shown not to.
+    #[test]
+    fn no_ftp_reply_text_is_formatted_into_an_error() {
+        // The source without its `#[cfg(test)] mod … { … }` blocks (rustfmt
+        // closes a top-level module with a `}` alone on its line).
+        fn production(source: &str) -> Vec<&str> {
+            let mut kept = Vec::new();
+            let mut lines = source.lines().peekable();
+            while let Some(line) = lines.next() {
+                if line == "#[cfg(test)]"
+                    && lines
+                        .peek()
+                        .is_some_and(|next| next.contains("mod ") && next.ends_with('{'))
+                {
+                    for skipped in lines.by_ref() {
+                        if skipped == "}" {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                kept.push(line);
+            }
+            kept
+        }
+        let to_text = regex::Regex::new(
+            r"\b(e|err|error|other|response|reply)\.to_string\(\)|\{(e|err|error|other|response|reply)(:\?)?\}|,\s*(e|err|error|other|response|reply)\s*$|doing\([^)]*,\s*(e|err|error|other|response|reply)\)|format!\(.*,\s*(e|err|error|other|response|reply)\)",
+        )
+        .unwrap();
+        let log = regex::Regex::new(r"tracing::|\b(warn|debug|info|error|trace)!\(").unwrap();
+        let allowed: &[(&str, &str)] = &[
+            // providers/ftp.rs
+            (
+                r#""TLS upgrade failed: {error}. The server did not accept explicit TLS, so the \"#,
+                "callers pass ftp_error_text",
+            ),
+            (
+                r#".map_err(|e| ProviderError::ConnectionFailed(format!("TLS setup failed: {e}")))"#,
+                "a local rustls configuration error",
+            ),
+            (
+                "other => ProviderError::TransferFailed(other.to_string()),",
+                "transfer_verdict_error: not a reply (that arm is above)",
+            ),
+            (
+                "ProviderError::ConnectionFailed(e.to_string())",
+                "the ConnectionError arm: a transport error",
+            ),
+            (
+                ") && Self::reply_says_the_name_is_taken(&response.to_string())",
+                "decision only",
+            ),
+            (
+                r#"format!("{reply} (while {operation} {path})")"#,
+                "doing: its callers are checked here",
+            ),
+            (
+                "return ProviderError::ServerError(Self::doing(operation, target, err));",
+                "classify_cwd_failure: let-else, not a reply",
+            ),
+            ("let text = response.to_string();", "decision only"),
+            (
+                "ProviderError::TransferFailed(Self::doing(operation, path, err))",
+                "classify_data_failure: replies returned above",
+            ),
+            (
+                "ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))",
+                "reply is ftp_error_text",
+            ),
+            (
+                r#"aeroftp-cli mkdir -p '{parent}' (the server refused the upload with: {err})""#,
+                "a ProviderError already classified",
+            ),
+            (
+                "other => other.to_string(),",
+                "ftp_error_text: not a reply (that arm is above)",
+            ),
+            (
+                "other => ProviderError::ServerError(other.to_string()),",
+                "ftp_failure_during: not a reply (that arm is above)",
+            ),
+            (
+                "if reply_names_not_empty(&reply.to_string()));",
+                "decision only",
+            ),
+            ("pattern, e", "a glob pattern error"),
+            (
+                r#""reading a range of {path}: {err} after the range was read whole""#,
+                "a log line",
+            ),
+            (
+                r#"Err(ProviderError::TransferFailed(format!("{}: {}", what, e)))"#,
+                "an io::Error of a write",
+            ),
+            (
+                "Ok(Err(e)) => Err(ProviderError::TransferFailed(e.to_string())),",
+                "an io::Error of a read",
+            ),
+            (
+                "} else if super::types::is_session_closed_error_message(&e.to_string()) {",
+                "an io::Error, decision only",
+            ),
+            (
+                r#"ProviderError::ConnectionLost(format!("Range read error: {e}"))"#,
+                "an io::Error",
+            ),
+            (
+                r#"ProviderError::TransferFailed(format!("Range read error: {e}"))"#,
+                "an io::Error",
+            ),
+            // ftp.rs
+            (
+                ".map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;",
+                "an io::Error of a read",
+            ),
+            (
+                r#".map_err(|e| FtpManagerError::OperationFailed(format!("Write error: {}", e)))?;"#,
+                "an io::Error of a write",
+            ),
+        ];
+        let mut seen = std::collections::HashSet::new();
+        let mut unexplained = Vec::new();
+        for (file, source) in [
+            ("providers/ftp.rs", include_str!("ftp.rs")),
+            ("ftp.rs", include_str!("../ftp.rs")),
+        ] {
+            for line in production(source) {
+                let line = line.trim();
+                if line.starts_with("//") || !to_text.is_match(line) || log.is_match(line) {
+                    continue;
+                }
+                match allowed.iter().find(|(text, _)| *text == line) {
+                    Some((text, _)) => {
+                        seen.insert(*text);
+                    }
+                    None => unexplained.push(format!("{file}: {line}")),
+                }
+            }
+        }
+        assert!(unexplained.is_empty(), "{unexplained:#?}");
+        let stale: Vec<_> = allowed
+            .iter()
+            .filter(|(text, _)| !seen.contains(text))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "allowed lines no longer present: {stale:#?}"
+        );
     }
 
     use super::*;
@@ -10297,8 +10535,9 @@ mod transfer_verdict_tests {
             .filter(|line| line.starts_with("STOR"))
             .count();
         assert_eq!(stors, 1, "the refused file was sent again: {outcome:?}");
+        // U6: the verdict keeps its status typed, never the reply's text.
         assert!(
-            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("552")),
+            matches!(outcome, Err(ProviderError::FtpRefused { code: 552, .. })),
             "{outcome:?}"
         );
     }

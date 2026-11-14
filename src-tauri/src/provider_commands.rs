@@ -507,14 +507,20 @@ impl ProviderState {
         }
         // A WebDAV or S3 bridge: its endpoint and credentials do not prove
         // the account upstream, which can change behind them between two
-        // connections; no baseline of one may serve the next (T4).
+        // connections; no baseline of one may serve the next (T4). The
+        // endpoint the connection really uses: S3's `extra["endpoint"]`
+        // takes precedence over `host` (U5); WebDAV builds from `host`.
         if config.as_ref().is_some_and(|config| {
-            matches!(
-                config.provider_type,
-                ProviderType::WebDav | ProviderType::S3
-            ) && crate::providers::webdav::upstream_account_unverified(
+            let endpoint = match config.provider_type {
+                ProviderType::S3 => crate::providers::types::s3_endpoint_and_path_style(config)
+                    .0
+                    .unwrap_or_default(),
+                ProviderType::WebDav => config.host.clone(),
+                _ => return false,
+            };
+            crate::providers::webdav::upstream_account_unverified(
                 config.extra.get("provider_id").map(String::as_str),
-                &config.host,
+                &endpoint,
             )
         }) {
             return Ok(this_connection());
@@ -23917,6 +23923,12 @@ mod restored_transfer_owner_tests {
                 extra,
             }
         };
+        let with_endpoint = |mut config: crate::providers::ProviderConfig, endpoint: &str| {
+            config
+                .extra
+                .insert("endpoint".to_string(), endpoint.to_string());
+            config
+        };
         let state = ProviderState::new();
         let connect = |config: crate::providers::ProviderConfig| {
             let state = &state;
@@ -23942,6 +23954,12 @@ mod restored_transfer_owner_tests {
             config("http://localhost:8080/dav", ProviderType::WebDav, None),
             config("127.0.0.1:1700", ProviderType::S3, Some("filen-desktop-s3")),
             config("https://local.webdav.filen.io/", ProviderType::WebDav, None),
+            // U5: S3's explicit endpoint takes precedence over `host`; a
+            // remote-looking host with a loopback endpoint is a bridge.
+            with_endpoint(
+                config("s3.example.com", ProviderType::S3, None),
+                "http://127.0.0.1:9000",
+            ),
         ] {
             // The upstream account changes between the two connections.
             let first = connect(bridge.clone()).await;
@@ -23971,6 +23989,13 @@ mod restored_transfer_owner_tests {
         }
         let server = config("https://dav.example.com/", ProviderType::WebDav, None);
         assert_eq!(connect(server.clone()).await, connect(server).await);
+        // The other way round: a loopback `host` that the endpoint overrides
+        // is not what the connection reaches, so it keeps one identity.
+        let remote_s3 = with_endpoint(
+            config("127.0.0.1:9000", ProviderType::S3, None),
+            "https://s3.example.com",
+        );
+        assert_eq!(connect(remote_s3.clone()).await, connect(remote_s3).await);
     }
 
     #[tokio::test]

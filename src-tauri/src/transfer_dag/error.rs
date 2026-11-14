@@ -147,9 +147,13 @@ impl TransferError {
 
     /// Synthetic / structural failure with only a presentation string.
     ///
-    /// Classifies congestion and cancel keywords once at this boundary so the
-    /// controller can stay substring-free. Prefer [`Self::from_provider`] when
-    /// a [`ProviderError`] is available.
+    /// Classifies congestion keywords once at this boundary so the controller
+    /// can stay substring-free. Never a cancellation (U12): its callers pass
+    /// text that can hold a provider's words or a remote name (`Failed to
+    /// change directory to /cancelled: ...`), and a cancellation is the typed
+    /// one ([`Self::cancelled`], `ProviderError::Cancelled`) or the run's own
+    /// token, which every caller checks first. Prefer [`Self::from_provider`]
+    /// when a [`ProviderError`] is available.
     pub fn from_message(message: impl Into<String>) -> Self {
         let message = message.into();
         let retry_after = parse_embedded_retry_after(&message);
@@ -307,6 +311,10 @@ fn default_idempotent_for(kind: TransferErrorKind) -> bool {
 
 /// Does this message say the operation was cancelled?
 ///
+/// No production path asks it any more (U12): a message can hold a remote
+/// name or a provider's words, so a cancellation is the typed one or the
+/// run's token. The tests keep it to check what a stopped command prints.
+///
 /// Five readers asked this with THREE different needles, and the answer to the
 /// same message depended on which layer was asking. `transfer_multipart` used
 /// bare `cancel`; the FTP and provider executors used `cancelled`, except for
@@ -400,7 +408,8 @@ fn classify_raw_message(raw: &str) -> TransferErrorKind {
     if raw.trim_start().starts_with("CONNECTION_CHANGED: ") {
         return TransferErrorKind::TargetChanged;
     }
-    classify_text_without_owner_marker(raw)
+    // Text decides nothing about a cancellation (U12).
+    classify_text_body(raw)
 }
 
 /// Classify the text carried by a string-bearing [`ProviderError`]. Unlike
@@ -417,15 +426,7 @@ fn classify_provider_text(raw: &str) -> TransferErrorKind {
 }
 
 /// The taxonomy shared by both entry points, on text already cut at the
-/// unclassified-item marker.
-fn classify_text_without_owner_marker(raw: &str) -> TransferErrorKind {
-    if message_names_a_cancellation(&raw.to_lowercase()) {
-        return TransferErrorKind::Cancelled;
-    }
-    classify_text_body(raw)
-}
-
-/// Everything but a cancellation.
+/// unclassified-item marker: everything but a cancellation.
 fn classify_text_body(raw: &str) -> TransferErrorKind {
     let lower = raw.to_lowercase();
 
@@ -621,8 +622,40 @@ mod tests {
             TransferError::from_message("404 not found").kind,
             TransferErrorKind::NotFound
         );
+        // U12: a cancellation is never read from text, not even our own.
         assert_eq!(
             TransferError::from_message("Transfer cancelled by user").kind,
+            TransferErrorKind::Unknown
+        );
+    }
+
+    /// U12: every text entry point to the transfer taxonomy, not one of them
+    /// reading a cancellation: a remote name that says `cancelled` stays the
+    /// failure it is (here a 550, not found), retried or not as that failure.
+    #[test]
+    fn no_text_entry_point_reads_a_cancellation() {
+        let named = "Failed to change directory to /cancelled: FTP status 550: command rejected";
+        for kind in [
+            TransferError::from_message(named).kind,
+            TransferError::from_untrusted_text(named).kind,
+        ] {
+            assert_ne!(kind, TransferErrorKind::Cancelled, "{named}");
+        }
+        use crate::transfer_domain::{TransferFailure, TransferFailureKind};
+        for failure in [
+            TransferFailure::from_raw_message(named),
+            crate::transfer_multipart::transfer_failure_from_message(named, None),
+            TransferFailure::from_raw_message("Transfer cancelled by user"),
+        ] {
+            assert_ne!(failure.kind, TransferFailureKind::Cancelled, "{failure:?}");
+        }
+        // The typed cancellation is.
+        assert_eq!(
+            TransferError::cancelled().kind,
+            TransferErrorKind::Cancelled
+        );
+        assert_eq!(
+            TransferError::from_provider(&ProviderError::Cancelled).kind,
             TransferErrorKind::Cancelled
         );
     }
@@ -644,10 +677,6 @@ mod tests {
         assert_ne!(busy.retry, RetryDirective::Never);
         let only = TransferError::from_untrusted_text("Transfer cancelled by user");
         assert_eq!(only.kind, TransferErrorKind::Unknown);
-        assert_eq!(
-            TransferError::from_message("Transfer cancelled by user").kind,
-            TransferErrorKind::Cancelled
-        );
     }
 
     #[test]

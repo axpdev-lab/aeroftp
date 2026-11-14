@@ -109,6 +109,19 @@ pub(crate) struct OpenedCloudProvider {
     pub account: Option<crate::user_partitions::GuiAccountSnapshot>,
 }
 
+impl OpenedCloudProvider {
+    /// The account every read made for this connection answers for: the one
+    /// it began with, or the legacy owner only when none was active (T9, U9).
+    /// `None` before [`create_cloud_connection`] set the capture.
+    pub(crate) fn reads_account(&self) -> Option<i64> {
+        self.account.as_ref().map(|account| {
+            account
+                .user
+                .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+        })
+    }
+}
+
 /// Hash canonical structured identity without persisting credentials or depending on map order.
 fn identity_digest(value: serde_json::Value) -> String {
     use sha2::Digest;
@@ -1493,6 +1506,125 @@ mod tests {
         }
     }
 
+    /// U9: the overlay stack reads the profile and its overlay secrets of the
+    /// account the connection began with. Two accounts hold a profile under
+    /// one id; only the second binds an overlay (and holds its password).
+    /// Captured under the first, then switched to the second before the
+    /// stack is composed: the session is not wrapped in the second account's
+    /// overlay, and the inner remote sees no write (no marker restored with
+    /// the other account's config). The legacy-only capture reads the legacy
+    /// owner's list, not the active one, the same way.
+    #[test]
+    fn the_overlay_stack_reads_the_captured_accounts_profile_across_a_switch() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "cloud_provider_factory::tests::the_overlay_stack_reads_the_captured_accounts_profile_across_a_switch",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        std::env::remove_var("AEROFTP_CRYPT_OVERLAY_PASSWORD");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("overlay-owner-test-pass")
+            .expect("bootstrap vault");
+        CredentialStore::unlock_with_master("overlay-owner-test-pass", None).expect("unlock vault");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+        let plain = serde_json::json!({
+            "id": "shared-profile", "name": "Shared", "protocol": "ftp",
+            "server": "127.0.0.1", "port": 21, "username": "u",
+        });
+        let mut bound = plain.clone();
+        bound["aeroCryptOverlay"] =
+            serde_json::json!({"enabled": true, "kind": "rclone-crypt", "remoteScope": "/Vault"});
+        partitions::replace_server_profiles_for(&mut conn, &root_key, first.id, &[plain])
+            .expect("the first account's plain profile");
+        partitions::replace_server_profiles_for(&mut conn, &root_key, second.id, &[bound])
+            .expect("the second account's bound profile");
+        partitions::store_credential_for_user(
+            &store,
+            second.id,
+            "aerocrypt_overlay_pw_shared-profile",
+            "overlay",
+            "second-overlay-password",
+        )
+        .expect("the second account's overlay password");
+
+        // The legacy owner's own list (the shared vault's blob): the same
+        // plain profile, no overlay.
+        store
+            .store(
+                "config_server_profiles",
+                &serde_json::json!([{
+                    "id": "shared-profile", "name": "Shared", "protocol": "ftp",
+                    "server": "127.0.0.1", "port": 21, "username": "u",
+                }])
+                .to_string(),
+            )
+            .expect("the legacy owner's profiles");
+        let account = partitions::gui_account_snapshot().expect("capture account");
+        assert_eq!(account.user, Some(first.id));
+        partitions::set_active_user(&conn, second.id).expect("switch before the stack");
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let compose = |reads: i64| {
+            let writes = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            let mut inner = crate::providers::probe_fake::ProbeFake::new();
+            inner.shared_writes = Some(writes.clone());
+            let mut stack = runtime.block_on(
+                crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
+                    Box::new(inner),
+                    Some("shared-profile"),
+                    "Shared",
+                    &store,
+                    reads,
+                ),
+            );
+            let wrapped = stack.as_mut().ok().map(|stack| {
+                stack
+                    .as_any_mut()
+                    .is::<crate::crypt_overlay_provider::CryptOverlayProvider>()
+            });
+            let written = writes.lock().unwrap().clone();
+            (stack.as_ref().err().cloned(), wrapped, written)
+        };
+        for reads in [first.id, partitions::LEGACY_ONLY_ACCOUNT] {
+            let (error, wrapped, written) = compose(reads);
+            assert_eq!(
+                error, None,
+                "{reads}: the captured account's plain profile composes"
+            );
+            assert_eq!(
+                wrapped,
+                Some(false),
+                "{reads}: not the other account's overlay"
+            );
+            assert!(written.is_empty(), "{reads}: {written:?}");
+        }
+        // Control: the second account's own connection does take its overlay.
+        let (error, wrapped, _) = compose(second.id);
+        assert!(
+            error.is_some() || wrapped == Some(true),
+            "the binding is the second's"
+        );
+    }
+
     /// Two accounts hold a direct-auth profile under one id, each with its
     /// own host and its own `server_<id>` password. The connection captures
     /// the first; the second is activated between the profile read and the
@@ -2125,12 +2257,16 @@ mod tests {
                 ..CloudConfig::default()
             };
             let outcome = tokio::time::timeout(Duration::from_secs(90), async {
-                let provider = create_cloud_provider(&config).await?;
+                let opened = create_cloud_connection(&config).await?;
+                let account = opened
+                    .reads_account()
+                    .ok_or("the connection captured no account")?;
                 let mut provider = crate::crypt_overlay_provider::build_aerocloud_overlay_stack(
-                    provider,
+                    opened.provider,
                     config.server_profile_id.as_deref(),
                     name,
                     &store,
+                    account,
                 )
                 .await?;
                 let listed = provider

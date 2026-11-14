@@ -698,8 +698,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // A folder's or a batch's id names the whole transfer: a skipped child
         // (a symlink, an occupied name) is found only by its own path, never
         // as another child's entry or the folder's row, and leaves the row,
-        // the mapping and the toast to the rest of the transfer (T10).
-        const aggregate = data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-');
+        // the mapping and the toast to the rest of the transfer (T10). A
+        // batch child's own id (`ul-files-…-<index>`) holds `-files-` too, but
+        // registerFileBatchRows marked it a single file's: its row is found
+        // by that bare id, also before its file_start (U8).
+        const aggregate = (data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-'))
+          && !singleFileTransferIds.current.has(data.transfer_id);
         const findSkipped = <T,>(map: Map<string, T>) => {
           if (!aggregate) return findTrackedEntry(map, data.transfer_id, data.path, data.filename);
           const key = `${data.transfer_id}:${data.path || data.filename || ''}`;

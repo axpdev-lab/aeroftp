@@ -709,7 +709,9 @@ pub(crate) fn force_signout_enolck_for_test(on: bool) {
 }
 
 /// Seed the in-memory token cache for one account (tests only).
-#[cfg(test)]
+// Only the unix-gated block of `profile_auth_tests` uses it (Windows CI
+// denies an unused function).
+#[cfg(all(test, unix))]
 pub(crate) fn seed_memory_token_for_test(account: &str, json: &str) {
     MEMORY_TOKEN_CACHE
         .lock()
@@ -719,7 +721,9 @@ pub(crate) fn seed_memory_token_for_test(account: &str, json: &str) {
 }
 
 /// Whether the in-memory token cache still holds one account (tests only).
-#[cfg(test)]
+// Only the unix-gated block of `profile_auth_tests` uses it (Windows CI
+// denies an unused function).
+#[cfg(all(test, unix))]
 pub(crate) fn memory_token_cache_contains_for_test(account: &str) -> bool {
     MEMORY_TOKEN_CACHE
         .lock()
