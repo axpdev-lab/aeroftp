@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
+import APP from '../App.tsx?raw';
 import {
     readEmptyDirAnswer,
     runRemoteSync,
@@ -2139,5 +2141,165 @@ describe('runDeltaGate', () => {
         await runDeltaGate(adHoc.deps);
         expect(adHoc.deps.refuse).toHaveBeenCalledWith('PinnedKeyMismatch');
         expect(adHoc.deps.launch).not.toHaveBeenCalled();
+    });
+});
+
+/**
+ * E1: App's own sync actions, run from its source with their collaborators
+ * injected. The connection generation the gate compares is read by the
+ * action at its start, before the plan is built and before a canary trial
+ * and its approval; a run never reads a fresh one for itself.
+ */
+describe('the sync actions read the generation at the action (E1)', () => {
+    const block = (start: string, end: string) => {
+        const a = APP.indexOf(start);
+        const b = APP.indexOf(end, a + start.length);
+        if (a < 0 || b < 0) throw new Error(`Missing block: ${start}`);
+        return APP.slice(a, b);
+    };
+    const ACTIONS = ['executeSyncPresetPlan', 'handleCompareMirrorLeftToRight', 'handleCompareMirrorRightToLeft', 'handleResumeJournal'] as const;
+    type Action = (typeof ACTIONS)[number];
+    let compiled: string | undefined;
+    const compile = async () => {
+        compiled ??= (await transformWithOxc([
+            block('  const connectionGenerationAtAction = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.'),
+            block('  const handleCompareMirrorLeftToRight = useCallback(', '  const { dismissJournal: handleDismissJournal'),
+            block('  const executeSyncPresetPlan = useCallback(', '  const clipboardCut'),
+        ].join('\n'), 'sync-actions.ts')).code;
+        return compiled;
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const FILE = { relative_path: 'a.txt', action: 'upload' };
+
+    /** App's actions on one SFTP session whose generation the test moves. */
+    const station = async () => {
+        let generation = 1;
+        const order: string[] = [];
+        let finishCanary!: (result: unknown) => void;
+        let approve: (() => void) | undefined;
+        const plan = <T>(value: T) => { order.push('plan'); return value; };
+        const ctx: Record<string, unknown> = {
+            useLatestCallback: <F>(fn: F) => fn,
+            useCallback: <F>(fn: F) => fn,
+            activeUnifiedRemoteProfile: { protocol: 'sftp', savedProfileId: 'p1', name: 'S' },
+            invoke: vi.fn((command: string) => {
+                if (command === 'provider_connection_generation') {
+                    order.push('generation');
+                    return Promise.resolve(generation);
+                }
+                if (command === 'sftp_probe_delta_eligibility') {
+                    return Promise.resolve({ eligible: true, reason: null, hard_error: null, server_identity: null });
+                }
+                if (command === 'sync_canary_run') return new Promise((resolve) => { finishCanary = resolve; });
+                return Promise.reject(new Error(`unexpected ${command}`));
+            }),
+            notify: { info: vi.fn(), warning: vi.fn(), error: vi.fn() },
+            t: (key: string) => key,
+            usesProviderApi: () => true,
+            localStorage: { getItem: () => null },
+            currentLocalPath: '/local',
+            currentRemotePath: '/remote',
+            isCryptOverlayActive: () => false,
+            remoteSyncRunningRef: { current: false },
+            batchCancelledRef: { current: false },
+            cancelLevelRef: { current: 0 },
+            window: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+            TRANSFER_EVENT_BRIDGE: 'transfer-event',
+            runRemoteSync: vi.fn(async () => ({ uploaded: 0, downloaded: 0, deleted: 0 })),
+            syncRunQueueBridge: () => () => undefined,
+            transferQueue: {},
+            setRemoteSyncResult: vi.fn(),
+            loadRemoteFiles: vi.fn(async () => undefined),
+            loadLocalFiles: vi.fn(async () => undefined),
+            setSyncCancelling: vi.fn(),
+            runDeltaGate,
+            debugMode: false,
+            loadSavedServerProfiles: async () => [],
+            setDeltaEligibilityPrompt: vi.fn(),
+            aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'p1' } },
+            setAeroSync: vi.fn(),
+            buildMirrorSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
+            buildRemoteSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
+            filesFromJournal: () => plan([FILE]),
+            runLocalLocalSync: vi.fn(),
+            SPEED_PRESETS: { normal: { deltaSyncEnabled: false } },
+            canaryRunningRef: { current: false },
+            setCanaryResult: (shown: { onApprove: () => void } | null) => { approve = shown?.onApprove; },
+        };
+        const actions = new Function(...Object.keys(ctx), `${await compile()}; return { ${ACTIONS.join(', ')} };`)(
+            ...Object.values(ctx),
+        ) as Record<Action, (...args: unknown[]) => void>;
+        return {
+            actions,
+            ctx: ctx as { runRemoteSync: ReturnType<typeof vi.fn>; notify: { error: ReturnType<typeof vi.fn> } },
+            order,
+            switchConnection: () => { generation += 1; },
+            finishCanary: () => finishCanary({ sampled: 1 }),
+            approve: () => approve?.(),
+            approvalShown: () => approve !== undefined,
+        };
+    };
+    const runtime = (canary: boolean) => ({
+        speedMode: 'normal',
+        verifyPolicy: 'size_only',
+        retryPolicy: undefined,
+        transferBudget: 0,
+        versionedBackup: null,
+        errorCorrection: null,
+        canary: canary ? { percent: 10, selection: 'random' } : undefined,
+    });
+    const preset = { preset: 'mirror', direction: 'left-to-right' };
+
+    it('launches nothing when the connection switches while the canary approval waits', async () => {
+        const s = await station();
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        // The plan was built for generation 1; the user switches, then approves.
+        s.switchConnection();
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    it('launches the approved canary run on the same connection', async () => {
+        const s = await station();
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+        expect(s.ctx.notify.error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['the preset run', (s: Awaited<ReturnType<typeof station>>) => s.actions.executeSyncPresetPlan(preset, runtime(false))],
+        ['the left-to-right mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }])],
+        ['the right-to-left mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorRightToLeft([{ relativePath: 'a.txt' }])],
+        ['the journal resume', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined })],
+    ] as const)('%s reads the generation before it builds its plan, and stops after a switch', async (_name, act) => {
+        const s = await station();
+        act(s);
+        expect(s.order.slice(0, 2)).toEqual(['generation', 'plan']);
+        // No wait in this action before the gate: the switch lands while the
+        // gate probes, and the run is still the earlier connection's.
+        s.switchConnection();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        // The same action on an unchanged connection runs.
+        const same = await station();
+        act(same);
+        await vi.waitFor(() => expect(same.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+    });
+
+    it('every call of runConnectedRemoteSync is one of these actions, with its generation', () => {
+        const calls = APP.split('runConnectedRemoteSync(').length - 1;
+        expect(calls).toBe(4);
+        const run = block('  const runConnectedRemoteSync = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.');
+        // Its only read is the gate's "now"; the "requested" one is the caller's.
+        expect(run.split("'provider_connection_generation'").length - 1).toBe(1);
+        expect(run).toContain("generation: () => invoke<number>('provider_connection_generation'),");
+        expect(run).toContain('requested: opts.requestedGeneration,');
     });
 });

@@ -96,6 +96,14 @@ interface ConnectedRemoteRunOptions {
   maniac?: boolean;
   /** P3 EC: from PlanTabContent onExecute via AeroSyncRuntime. */
   errorCorrection?: { enabled: boolean; pct: number } | null;
+  /**
+   * E1: the connection generation read by the CALLER at the start of the
+   * user's action (`connectionGenerationAtAction`), before the run's plan is
+   * built and before anything the action waits on (a canary trial and its
+   * approval). The sync-start gate compares it with the current one; a run
+   * never reads a fresh one for itself. Required, so no caller can omit it.
+   */
+  requestedGeneration: Promise<number>;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -12686,19 +12694,27 @@ const App: React.FC = () => {
   // panels. Both the Plan tab preset executor and the Compare-tab mirror
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
+  //
+  // E1 (D2, Q5): the connection generation, asked for first by every user
+  // action that may start a connected sync, before the run's plan is built
+  // from the current panels and before any wait (a canary trial and its
+  // approval). The run carries it to the sync-start gate, which compares it
+  // with the current one before anything is launched. Read only for an SFTP
+  // session (the one the gate waits on).
+  const connectionGenerationAtAction = useLatestCallback((): Promise<number> => {
+    const generation = activeUnifiedRemoteProfile?.protocol === 'sftp'
+      ? invoke<number>('provider_connection_generation')
+      : Promise.resolve(0);
+    // An unread rejection would surface as unhandled when no gate awaits it.
+    generation.catch(() => undefined);
+    return generation;
+  });
+
   const runConnectedRemoteSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
     opts: ConnectedRemoteRunOptions,
   ): void => {
-    // D2 (Q5): the connection generation, asked for first, before the run's
-    // plan is built from the current panels; the gate compares it before
-    // anything is launched. Read only for an SFTP run (the one that waits).
-    const generationAtRequest = activeUnifiedRemoteProfile?.protocol === 'sftp'
-      ? invoke<number>('provider_connection_generation')
-      : Promise.resolve(0);
-    // An unread rejection would surface as unhandled when no gate awaits it.
-    generationAtRequest.catch(() => undefined);
     const nothingToRun =
       runFiles.length === 0
       && runDirs.remote.length === 0
@@ -12825,7 +12841,7 @@ const App: React.FC = () => {
       return;
     }
     void runDeltaGate({
-      requested: generationAtRequest,
+      requested: opts.requestedGeneration,
       generation: () => invoke<number>('provider_connection_generation'),
       skipPrompt: async () => !opts.profileId || (await loadSavedServerProfiles())
         .find((p) => p.id === opts.profileId)?.skipDeltaEligibilityPrompt === true,
@@ -12956,6 +12972,8 @@ const App: React.FC = () => {
   });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
+    // E1: first, before the plan is built from the entries.
+    const requestedGeneration = connectionGenerationAtAction();
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -12986,15 +13004,19 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        requestedGeneration,
       });
     }
   }, [
     aeroSync,
+    connectionGenerationAtAction,
     runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
+    // E1: first, before the plan is built from the entries.
+    const requestedGeneration = connectionGenerationAtAction();
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13021,10 +13043,12 @@ const App: React.FC = () => {
         deltaSyncEnabled: false,
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
+        requestedGeneration,
       });
     }
   }, [
     aeroSync,
+    connectionGenerationAtAction,
     runLocalLocalSync,
     runConnectedRemoteSync,
   ]);
@@ -13035,6 +13059,8 @@ const App: React.FC = () => {
   // local-local pair resumes through `runLocalLocalSync`, every other pair
   // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
+    // E1: first, before the plan is rebuilt from the journal.
+    const requestedGeneration = connectionGenerationAtAction();
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context) return;
@@ -13054,8 +13080,9 @@ const App: React.FC = () => {
       retryPolicy: journal.retry_policy,
       resumeJournal: journal,
       profileId: context.activeProfileId,
+      requestedGeneration,
     });
-  }, [aeroSync, runConnectedRemoteSync, runLocalLocalSync]);
+  }, [aeroSync, connectionGenerationAtAction, runConnectedRemoteSync, runLocalLocalSync]);
 
   const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
     useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
@@ -13072,6 +13099,10 @@ const App: React.FC = () => {
    * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
+    // E1: first, before the plan is built and before a canary trial and its
+    // approval wait: a run approved after a connection switch is the earlier
+    // connection's plan, and the gate must see that.
+    const requestedGeneration = connectionGenerationAtAction();
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13154,6 +13185,7 @@ const App: React.FC = () => {
           maniac: runtime.speedMode === 'maniac',
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
+          requestedGeneration,
         });
       };
 
@@ -13197,6 +13229,7 @@ const App: React.FC = () => {
     debugMode,
     currentLocalPath,
     currentRemotePath,
+    connectionGenerationAtAction,
     runConnectedRemoteSync,
     runLocalLocalSync,
   ]);

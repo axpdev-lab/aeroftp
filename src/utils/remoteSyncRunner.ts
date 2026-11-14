@@ -46,8 +46,9 @@ export const deltaGateDecision = (
 
 /** What the sync-start gate needs (D2). */
 export interface DeltaGateDeps {
-    /** `provider_connection_generation`, read at the very start of the
-     *  request, before the run's plan was built (Q5). */
+    /** `provider_connection_generation`, read by the caller at the start of
+     *  the user's action, before the run's plan was built and before any
+     *  wait such as a canary approval (Q5, E1). */
     requested: Promise<number>;
     /** The same read, now. It moves on every connect, disconnect and tab
      *  switch. */
