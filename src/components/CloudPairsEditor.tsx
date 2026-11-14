@@ -277,7 +277,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleImportLegacy = async () => {
-        if (!legacyConfig) return;
+        if (!legacyConfig || loading || loadError) return;
         const imported: CloudPathPair = {
             id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `legacy-${Date.now()}`,
             name: legacyConfig.cloud_name || 'Primary (imported)',
@@ -345,7 +345,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                 )}
 
                 {/* Legacy import banner */}
-                {legacyConfig && pairs.length === 0 && (
+                {/* An offer from an earlier load stays hidden until this one
+                    confirms the list is empty. */}
+                {legacyConfig && !loading && loadError === null && pairs.length === 0 && (
                     <div className="mx-5 mt-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded text-xs flex items-center justify-between">
                         <span>{t('cloud.importLegacyHint') || 'Import your existing single AeroCloud config as the first pair (keeps back-compat).'}</span>
                         <button

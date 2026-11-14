@@ -102,6 +102,10 @@ pub(crate) struct OpenedCloudProvider {
     pub provider: Box<dyn StorageProvider>,
     pub identity: Option<String>,
     pub overlay_binding: serde_json::Value,
+    /// The id of the saved profile this connection used, carried from the
+    /// one read that chose it: a later read of the profile list can name
+    /// another profile if the list changed meanwhile.
+    pub profile_id: Option<String>,
 }
 
 /// Hash canonical structured identity without persisting credentials or depending on map order.
@@ -344,7 +348,8 @@ fn profile_root(profile: &serde_json::Value) -> String {
             // connect path and `profile_protocol_class` apply.
             .unwrap_or("ftp"),
     );
-    if root.trim().is_empty() {
+    // Spaces alone are a folder name too: the connect opens them.
+    if root.is_empty() {
         "/".to_string()
     } else {
         crate::crypt_overlay_provider::login_relative_form(&root, under_login).into_owned()
@@ -367,7 +372,15 @@ async fn enter_profile_root(
     let Some(root) = root.filter(|root| *root != "/") else {
         return Ok(None);
     };
-    let (placed, placed_root) = if crate::crypt_overlay_provider::is_login_relative_scope(root) {
+    let login_relative = crate::crypt_overlay_provider::is_login_relative_scope(root);
+    if login_relative && root.split('/').any(|segment| segment == "..") {
+        // A profile may open `docs/../shared`, which the overlay scope rule
+        // refuses: the session resolves it from the login folder, as the
+        // connect does, and says where it landed.
+        let placed = enter_login_relative_root_through_session(provider, root).await?;
+        return Ok(Some(placed));
+    }
+    let (placed, placed_root) = if login_relative {
         let placed = crate::crypt_overlay_provider::resolve_home_scope(provider, root)
             .await?
             .ok_or_else(|| format!("Cannot resolve the profile folder '{}'", root))?;
@@ -380,6 +393,42 @@ async fn enter_profile_root(
         .await
         .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
     Ok(placed_root)
+}
+
+/// Enter a login-relative root the server resolves itself: the login folder
+/// first, then the rest of the root from there, then the folder the session
+/// reports. FTP has no portable `~`, so its login folder is the one recorded
+/// at connect, and an unknown one is refused rather than guessed.
+async fn enter_login_relative_root_through_session(
+    provider: &mut dyn StorageProvider,
+    root: &str,
+) -> Result<String, String> {
+    let failed = |e: crate::providers::ProviderError| {
+        format!("Cannot open the profile folder '{}': {}", root, e)
+    };
+    let home = match provider.login_folder_hint() {
+        Some(home) => home,
+        None if matches!(
+            provider.provider_type(),
+            ProviderType::Ftp | ProviderType::Ftps
+        ) =>
+        {
+            return Err(format!(
+                "Cannot open the profile folder '{}': the server did not report its login folder",
+                root
+            ))
+        }
+        None => {
+            provider.cd("~").await.map_err(failed)?;
+            provider.pwd().await.map_err(failed)?
+        }
+    };
+    provider.cd(&home).await.map_err(failed)?;
+    provider
+        .cd(root.strip_prefix("~/").unwrap_or(root))
+        .await
+        .map_err(failed)?;
+    provider.pwd().await.map_err(failed)
 }
 
 /// Connection credentials of a saved profile: host and username from the
@@ -611,6 +660,11 @@ async fn create_via_factory(
         provider,
         identity,
         overlay_binding: binding,
+        profile_id: profile
+            .as_ref()
+            .and_then(|p| p.get("id"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     })
 }
 
@@ -670,6 +724,7 @@ async fn open_yandex_oauth(
         provider: Box::new(provider),
         identity,
         overlay_binding: binding,
+        profile_id: Some(profile_id.to_string()).filter(|id| !id.trim().is_empty()),
     })
 }
 
@@ -765,6 +820,7 @@ fn opened_oauth(provider: Box<dyn StorageProvider>, app: &OAuthApp) -> OpenedClo
         provider,
         identity,
         overlay_binding: app.overlay_binding.clone(),
+        profile_id: Some(app.profile_id.clone()).filter(|id| !id.trim().is_empty()),
     }
 }
 
@@ -1145,9 +1201,11 @@ mod tests {
     #[test]
     fn profile_root_is_the_starting_folder_with_the_username_resolved() {
         assert_eq!(profile_root(&serde_json::json!({})), "/");
+        // Spaces alone name a folder the connect opens, under the login
+        // folder on FTP (the default protocol).
         assert_eq!(
             profile_root(&serde_json::json!({ "initialPath": "  " })),
-            "/"
+            "~/  "
         );
         assert_eq!(
             profile_root(&serde_json::json!({ "initialPath": "/var/www" })),
@@ -1266,6 +1324,118 @@ mod tests {
             .unwrap();
         assert_eq!(placed.as_deref(), Some("/home/u/docs"));
         assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+    }
+
+    /// A scripted FTP server logged in at `/home/u` that resolves `CWD`
+    /// arguments the way a server does, `..` included, and opens only the
+    /// listed folders.
+    async fn scripted_login_ftp(folders: &'static [&'static str]) -> u16 {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        use tokio::net::TcpListener;
+
+        fn resolve(cwd: &str, argument: &str) -> String {
+            let mut parts: Vec<&str> = if argument.starts_with('/') {
+                Vec::new()
+            } else {
+                cwd.split('/').filter(|p| !p.is_empty()).collect()
+            };
+            for part in argument.split('/') {
+                match part {
+                    "" | "." => {}
+                    ".." => {
+                        parts.pop();
+                    }
+                    part => parts.push(part),
+                }
+            }
+            format!("/{}", parts.join("/"))
+        }
+
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    let mut cwd = "/home/u".to_string();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                        let reply = match cmd.to_uppercase().as_str() {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                            "CWD" => {
+                                let target = resolve(&cwd, argument);
+                                if target == "/home/u" || folders.contains(&target.as_str()) {
+                                    cwd = target;
+                                    "250 Directory changed\r\n".to_string()
+                                } else {
+                                    "550 Failed to change directory.\r\n".to_string()
+                                }
+                            }
+                            "FEAT" => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
+                            "QUIT" => {
+                                let _ = write.write_all(b"221 bye\r\n").await;
+                                return;
+                            }
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        port
+    }
+
+    async fn connected_ftp(port: u16, root: &str) -> crate::providers::FtpProvider {
+        let mut provider = crate::providers::FtpProvider::new(crate::providers::FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: crate::providers::FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: Some(root.to_string()),
+            trust_pasv_address: false,
+        });
+        provider.connect().await.unwrap();
+        provider
+    }
+
+    /// A profile root opens the folder the connect opens: a root with `..`
+    /// (valid for a profile, refused only as an overlay scope) is resolved by
+    /// the server from the login folder, and a root of spaces alone is that
+    /// folder, not `/`. The placed path is what the target identity carries.
+    #[tokio::test]
+    async fn profile_roots_open_the_folder_the_connect_opens() {
+        let port = scripted_login_ftp(&["/home/u/docs", "/home/u/shared", "/home/u/  "]).await;
+
+        let root = profile_root(
+            &serde_json::json!({ "protocol": "ftp", "initialPath": "docs/../shared" }),
+        );
+        assert_eq!(root, "~/docs/../shared");
+        let mut provider = connected_ftp(port, &root).await;
+        let placed = enter_profile_root(&mut provider, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(placed.as_deref(), Some("/home/u/shared"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/shared");
+
+        let root = profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": "  " }));
+        assert_eq!(root, "~/  ");
+        let mut provider = connected_ftp(port, &root).await;
+        let placed = enter_profile_root(&mut provider, Some(&root))
+            .await
+            .unwrap();
+        assert_eq!(placed.as_deref(), Some("/home/u/  "));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/  ");
     }
 
     #[test]
@@ -1442,12 +1612,16 @@ mod tests {
                 ..CloudConfig::default()
             };
             let outcome = tokio::time::timeout(Duration::from_secs(90), async {
-                let mut provider = create_cloud_provider(&config).await?;
+                let opened = create_cloud_connection(&config).await?;
+                let mut provider = opened.provider;
                 // A `~/...` remote folder is placed under the login folder on
                 // this connect, as the sync cycles do, before the overlay
                 // wraps the provider and the listing reads it.
-                let resolution =
-                    crate::cloud_service::ProfileResolution::for_config(Some(&store), &config)?;
+                let resolution = crate::cloud_service::ProfileResolution::for_connection(
+                    Some(&store),
+                    &config,
+                    opened.profile_id,
+                )?;
                 let remote_folder = crate::cloud_service::anchor_login_relative_remote_folder(
                     &mut *provider,
                     &config,

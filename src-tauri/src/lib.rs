@@ -16583,12 +16583,14 @@ async fn list_remote_folders_tree(
     let max_d = max_depth.unwrap_or(3).min(5);
     // `create_cloud_provider` returns the provider connected and standing in
     // the profile root; connecting again would reset it to the account root.
-    let mut provider = cloud_provider_factory::create_cloud_provider(&config).await?;
+    let opened = cloud_provider_factory::create_cloud_connection(&config).await?;
+    let mut provider = opened.provider;
     // A `~/...` remote folder is placed under the login folder on this connect
     // and persisted, as the sync cycles do.
-    let resolution = cloud_service::ProfileResolution::for_config(
+    let resolution = cloud_service::ProfileResolution::for_connection(
         credential_store::CredentialStore::from_cache().as_ref(),
         &config,
+        opened.profile_id,
     )?;
     let remote_folder =
         cloud_service::anchor_login_relative_remote_folder(&mut *provider, &config, &resolution)

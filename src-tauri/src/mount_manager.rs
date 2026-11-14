@@ -1403,6 +1403,11 @@ mod tests {
         assert!(save_to_vault_with(&store, &registry, &sidecar).is_err());
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert!(!sidecar.exists());
+        // No entry existed before, so the rollback removes the one just written.
+        assert!(matches!(
+            store.get(VAULT_REGISTRY_KEY),
+            Err(CredentialError::NotFound(_))
+        ));
     }
 
     /// The happy path of the same seam: vault entry written, stub records

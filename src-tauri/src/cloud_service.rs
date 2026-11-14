@@ -3698,7 +3698,7 @@ pub async fn sync_one_config(
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
     let mut config = config;
-    let opened = open_aerocloud_connection(&mut config, store).await?;
+    let opened = open_aerocloud_connection(&mut config, store, !dry_run).await?;
     sync_opened_config(config, opened, app, dry_run).await
 }
 
@@ -3749,7 +3749,7 @@ pub(crate) async fn open_aerocloud_provider(
     store: Option<&credential_store::CredentialStore>,
 ) -> Result<Box<dyn StorageProvider>, String> {
     let mut config = config.clone();
-    Ok(open_aerocloud_connection(&mut config, store)
+    Ok(open_aerocloud_connection(&mut config, store, true)
         .await?
         .provider)
 }
@@ -3766,54 +3766,37 @@ fn pinned_profile_id(id: Option<&str>) -> Option<&str> {
 
 /// The saved profiles a connection's references reach, as
 /// `select_aerocloud_profile` resolves them: `connected` is the profile the
-/// running config selected (by id when pinned, by name otherwise), `by_name`
-/// the one a reference carrying only the config's profile name selects.
-/// Names are not unique, so the two differ when the config is pinned to a
-/// homonym that is not the first of its name.
+/// connection used, `by_name` the one a reference carrying only the config's
+/// profile name selects now. Names are not unique, so the two differ when the
+/// config is pinned to a homonym that is not the first of its name.
 pub(crate) struct ProfileResolution {
     pub(crate) connected: Option<String>,
     pub(crate) by_name: Option<String>,
 }
 
 impl ProfileResolution {
-    /// Resolve `config`'s references against the saved profiles. Without an
-    /// unlocked vault nothing can be proven, so nothing resolves and a
-    /// placement is used for the call but persisted nowhere.
-    pub(crate) fn for_config(
+    /// `connected` comes from the connection, which carries the id of the one
+    /// profile read that chose it: re-reading the list here could name
+    /// another profile if it changed while connecting. Without an unlocked
+    /// vault no name resolves, so only an entry pinned to the connected id
+    /// can be placed.
+    pub(crate) fn for_connection(
         store: Option<&credential_store::CredentialStore>,
         config: &CloudConfig,
+        connected: Option<String>,
     ) -> Result<Self, String> {
-        match store {
-            Some(store) => Ok(Self::of(
+        let by_name = match store {
+            Some(store) => crate::crypt_overlay_provider::select_aerocloud_profile(
                 &crate::user_partitions::mcp_list_active_server_profiles(store)?,
-                config,
-            )),
-            None => Ok(Self {
-                connected: None,
-                by_name: None,
-            }),
-        }
-    }
-
-    fn of(profiles: &[serde_json::Value], config: &CloudConfig) -> Self {
-        let id_of = |profile: Option<&serde_json::Value>| {
-            profile
-                .and_then(|p| p.get("id"))
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-        };
-        Self {
-            connected: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
-                profiles,
-                config.server_profile_id.as_deref(),
-                &config.server_profile,
-            )),
-            by_name: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
-                profiles,
                 None,
                 &config.server_profile,
-            )),
-        }
+            )
+            .and_then(|p| p.get("id"))
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
+            None => None,
+        };
+        Ok(Self { connected, by_name })
     }
 }
 
@@ -3839,16 +3822,14 @@ fn same_server_profile(
     }
 }
 
-/// Place a `~/...` remote folder under the login folder on the connected
-/// provider and persist the absolute value, so the index identity is born on
-/// the folder the session opens and never on the `~` form. A `/~/...` value
-/// already on disk names a literal `~` directory: it is refused with the
-/// correction, never synced. Returns the placed absolute path, `None` when
-/// the remote folder was already absolute.
-pub(crate) async fn anchor_login_relative_remote_folder(
+/// Where a `~/...` remote folder lands under the login folder on the
+/// connected provider, written nowhere: a preview syncs against it without
+/// changing the saved target. A `/~/...` value names a literal `~` directory:
+/// it is refused with the correction, never synced. `None` when the remote
+/// folder is already absolute.
+pub(crate) async fn place_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
-    resolution: &ProfileResolution,
 ) -> Result<Option<String>, String> {
     let remote = config.remote_folder.as_str();
     if remote == "/~" || remote.starts_with("/~/") {
@@ -3861,10 +3842,26 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     if !crate::crypt_overlay_provider::is_login_relative_scope(remote) {
         return Ok(None);
     }
-    let unresolved = remote.to_string();
-    let placed = crate::crypt_overlay_provider::resolve_home_scope(provider, remote)
+    crate::crypt_overlay_provider::resolve_home_scope(provider, remote)
         .await?
-        .ok_or_else(|| format!("the remote folder '{remote}' could not be placed"))?;
+        .ok_or_else(|| format!("the remote folder '{remote}' could not be placed"))
+        .map(Some)
+}
+
+/// Place a `~/...` remote folder under the login folder on the connected
+/// provider and persist the absolute value, so the index identity is born on
+/// the folder the session opens and never on the `~` form. Refusals as
+/// [`place_login_relative_remote_folder`]. Returns the placed absolute path,
+/// `None` when the remote folder was already absolute.
+pub(crate) async fn anchor_login_relative_remote_folder(
+    provider: &mut dyn StorageProvider,
+    config: &CloudConfig,
+    resolution: &ProfileResolution,
+) -> Result<Option<String>, String> {
+    let Some(placed) = place_login_relative_remote_folder(provider, config).await? else {
+        return Ok(None);
+    };
+    let unresolved = config.remote_folder.clone();
     // Persist on the raw provider's answer, before any overlay wraps it: the
     // `~` form only exists to be placed once. Each file is written only when
     // it holds an entry to place: a strict read decides, so a file that cannot
@@ -3925,6 +3922,7 @@ pub(crate) async fn anchor_login_relative_remote_folder(
 async fn open_aerocloud_connection(
     config: &mut CloudConfig,
     store: Option<&credential_store::CredentialStore>,
+    persist_placement: bool,
 ) -> Result<ConnectedCloudProvider, String> {
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
@@ -3959,9 +3957,15 @@ async fn open_aerocloud_connection(
     // raw provider (through the overlay `~` is a ciphertext name), and the
     // absolute value persisted: the cycle below, its index identity and every
     // later connect read the placed folder, never the `~` form.
-    let resolution = ProfileResolution::for_config(Some(store), config)?;
-    let remote_folder =
-        anchor_login_relative_remote_folder(&mut *provider, config, &resolution).await?;
+    // A preview places the folder for its own run only: the saved target
+    // changes when a cycle that executes places it.
+    let remote_folder = if persist_placement {
+        let resolution =
+            ProfileResolution::for_connection(Some(store), config, opened.profile_id.clone())?;
+        anchor_login_relative_remote_folder(&mut *provider, config, &resolution).await?
+    } else {
+        place_login_relative_remote_folder(&mut *provider, config).await?
+    };
     if let Some(placed) = remote_folder {
         config.remote_folder = placed;
     }
@@ -4138,7 +4142,7 @@ pub async fn run_pair_full_cycle(
     app: Option<AppHandle>,
 ) -> Result<PairCycleReport, PairCycleError> {
     let mut config = config;
-    let opened = match open_aerocloud_connection(&mut config, store).await {
+    let opened = match open_aerocloud_connection(&mut config, store, true).await {
         Ok(opened) => opened,
         Err(message) => {
             return Err(PairCycleError::before_connecting(
@@ -7694,6 +7698,74 @@ mod baseline_tests {
                 cloud_config::load_cloud_config().remote_folder,
                 "/home/u/docs"
             );
+        });
+    }
+
+    /// A preview places a `~/...` folder for its own run only: both saved
+    /// files keep their exact bytes, and the preview still reads the placed
+    /// folder, never a literal `~`.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_dry_run_places_the_folder_without_saving_it() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_dry", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            std::fs::write(local.path().join("note.txt"), b"hello").unwrap();
+            let config = aerocloud_config(local.path(), "~/docs", "srv_dry");
+            cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                pairs
+                    .pairs
+                    .push(crate::cloud_pairs::CloudPathPair::from_legacy(&config));
+                Ok(())
+            })
+            .unwrap();
+            cloud_config::with_cloud_config_mut(|stored| {
+                *stored = config.clone();
+                Ok(())
+            })
+            .unwrap();
+            let config_bytes = std::fs::read(cloud_config::get_config_path()).unwrap();
+            let pairs_bytes = std::fs::read(cloud_pairs::get_pairs_path()).unwrap();
+
+            sync_one_config(config, Some(&store), None, true)
+                .await
+                .unwrap();
+
+            assert_eq!(
+                std::fs::read(cloud_config::get_config_path()).unwrap(),
+                config_bytes
+            );
+            assert_eq!(
+                std::fs::read(cloud_pairs::get_pairs_path()).unwrap(),
+                pairs_bytes
+            );
+            let log = ftp.log.lock().unwrap().join("\n");
+            assert!(!log.contains('~'), "commands:\n{log}");
+        });
+    }
+
+    /// The connected profile is the one the connection carries, never a
+    /// re-read: if the list changed while connecting, the re-read would name
+    /// another profile. Only the name lookup reads the list as it is now.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_resolution_keeps_the_profile_the_connection_used() {
+        with_scratch_index(async {
+            let (_vault_dir, store, _guard) = open_test_vault();
+            // "nas" now selects srv_b; the connection was made with srv_a.
+            seed_ftp_profile(&store, "srv_b", 21, None);
+            let config = CloudConfig {
+                server_profile: "nas".to_string(),
+                server_profile_id: Some("srv_a".to_string()),
+                ..Default::default()
+            };
+            let resolution =
+                ProfileResolution::for_connection(Some(&store), &config, Some("srv_a".into()))
+                    .unwrap();
+            assert_eq!(resolution.connected.as_deref(), Some("srv_a"));
+            assert_eq!(resolution.by_name.as_deref(), Some("srv_b"));
         });
     }
 

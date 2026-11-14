@@ -1149,7 +1149,7 @@ pub async fn run_pair_incremental_cycle(
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
     let mut config = config;
-    let opened = match super::open_aerocloud_connection(&mut config, store).await {
+    let opened = match super::open_aerocloud_connection(&mut config, store, true).await {
         Ok(opened) => opened,
         Err(message) => {
             return Err(PairCycleError::before_connecting(
