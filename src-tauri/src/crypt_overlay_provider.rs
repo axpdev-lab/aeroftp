@@ -339,11 +339,17 @@ pub(crate) fn norm_anchor(scope: &str) -> String {
     format!("/{}", segs.join("/"))
 }
 
-/// Normalize an absolute path: leading slash, no trailing slash, no empty
-/// or `.` segment. A server resolves `/a/./b` and `/a//b` as `/a/b`, so
-/// every comparison against the anchor or its alias goes through here.
-/// `..` is kept: callers that map a path refuse it.
-pub(crate) fn norm_abs(p: &str) -> String {
+/// The COMPARISON form of an absolute path: leading slash, no trailing
+/// slash, no empty or `.` segment. A filesystem server resolves `/a/./b` and
+/// `/a//b` as `/a/b`, so every comparison against the anchor or its alias
+/// goes through here. `..` is kept: callers that map a path refuse it.
+///
+/// Never the path sent for a target outside the anchor: an object store
+/// keeps `/a//b` apart from `/a/b`, and such a target goes to the provider
+/// as the caller wrote it ([`outside_wire_path`]). Below the anchor every
+/// segment is named by the overlay, empty and `.` segments dropped, so the
+/// wire path there is the encryption of this form, as it always was.
+pub(crate) fn comparison_path(p: &str) -> String {
     let segs: Vec<&str> = p
         .split('/')
         .filter(|part| !part.is_empty() && *part != ".")
@@ -352,11 +358,21 @@ pub(crate) fn norm_abs(p: &str) -> String {
 }
 
 /// `p` in the form a case-insensitive or Windows-backed server may resolve
-/// it to: backslashes read as separators, ASCII case folded. Used only to
-/// refuse a plaintext write that such a server could place in the
-/// encrypted folder, as the raw-write guard in `provider_commands` does.
-fn folded(p: &str) -> String {
-    norm_abs(&p.replace('\\', "/")).to_ascii_lowercase()
+/// it to, for comparison only, in this order: backslashes read as
+/// separators, the path split into segments, empty and `.` segments
+/// dropped, then `None` when a segment is `..` (a parent step whose target
+/// is not known here), else the segments joined with ASCII case folded.
+/// The raw-write guard in `provider_commands` folds the same way.
+fn folded(p: &str) -> Option<String> {
+    let separated = p.replace('\\', "/");
+    let segments: Vec<&str> = separated
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    if segments.contains(&"..") {
+        return None;
+    }
+    Some(format!("/{}", segments.join("/")).to_ascii_lowercase())
 }
 
 /// Encrypt a plaintext relative (or absolute) path component-by-component.
@@ -429,7 +445,7 @@ fn encode_plain_target(
     if scope.is_empty() {
         return encode_rel_path(keys, target, is_dir_leaf);
     }
-    let t = norm_abs(target);
+    let t = comparison_path(target);
     if t == scope {
         // The cleartext anchor root itself, no sub-components below it.
         return Ok(scope.to_string());
@@ -439,13 +455,21 @@ fn encode_plain_target(
         return Ok(format!("{}/{}", scope, enc_below));
     }
     if kind == AccessKind::Read {
-        return Ok(norm_abs(target));
+        return Ok(outside_wire_path(target));
     }
     // EF-01 Mixed mode (design 10-crypt-nav-design.md §3, owner-signed): edits
     // outside the Overlays Path pass through as plaintext, same as reads. The
     // strip_prefix("{scope}/") gate above still encrypts everything strictly
     // below the anchor; only provably out-of-scope targets reach here.
-    Ok(norm_abs(target))
+    Ok(outside_wire_path(target))
+}
+
+/// The wire path of an absolute target outside the anchor. [`comparison_path`] is
+/// for comparing: an object store keeps `/a//b` and `/a/./b` as keys apart
+/// from `/a/b`, so a path the overlay passes through keeps its inner
+/// segments as the caller wrote them, only its outer slashes trimmed.
+fn outside_wire_path(target: &str) -> String {
+    format!("/{}", target.trim_end_matches('/').trim_start_matches('/'))
 }
 
 /// Decrypt an on-wire path, decoding each component as a directory (every
@@ -505,7 +529,7 @@ fn decode_scoped(keys: &OverlayKeys, scope: &str, wire_path: &str, leaf_is_dir: 
     if scope.is_empty() || !wire_path.starts_with('/') {
         return decode_entry_path(keys, wire_path, leaf_is_dir);
     }
-    let w = norm_abs(wire_path);
+    let w = comparison_path(wire_path);
     if w == scope {
         return w;
     }
@@ -563,7 +587,7 @@ impl CryptOverlayProvider {
     /// Children already carry plaintext names, so never decode those again.
     fn breadcrumb_labels(&self, current_path: &str) -> std::collections::BTreeMap<String, String> {
         let mut labels = std::collections::BTreeMap::new();
-        let current_path = norm_abs(current_path);
+        let current_path = comparison_path(current_path);
         if self.scope.is_empty()
             || (current_path != self.scope
                 && !current_path.starts_with(&format!("{}/", self.scope)))
@@ -656,7 +680,7 @@ impl CryptOverlayProvider {
         if !path.starts_with('/') {
             return std::borrow::Cow::Borrowed(path);
         }
-        let p = norm_abs(path);
+        let p = comparison_path(path);
         if p == alias {
             return std::borrow::Cow::Owned(self.scope.clone());
         }
@@ -721,7 +745,7 @@ impl CryptOverlayProvider {
         if self.scope.is_empty() || !wire.starts_with('/') {
             return None;
         }
-        let wire = norm_abs(wire);
+        let wire = comparison_path(wire);
         if wire == self.scope {
             return Some(String::new());
         }
@@ -737,13 +761,13 @@ impl CryptOverlayProvider {
         let Some(below) = self.below_scope(wire) else {
             return true;
         };
-        let wire = norm_abs(wire);
-        let reported = norm_abs(reported);
+        let wire = comparison_path(wire);
+        let reported = comparison_path(reported);
         if reported == wire {
             self.scope_alias = None;
             return true;
         }
-        let Some(alias) = reported.strip_suffix(below.as_str()).map(norm_abs) else {
+        let Some(alias) = reported.strip_suffix(below.as_str()).map(comparison_path) else {
             return false;
         };
         let related = |a: &str, b: &str| a == b || b.starts_with(&format!("{a}/"));
@@ -782,10 +806,14 @@ impl CryptOverlayProvider {
         if self.scope.is_empty() || !plain.starts_with('/') || self.below_scope(plain).is_some() {
             return false;
         }
-        let target = folded(plain);
+        // A parent step such as `\..\` is one only once backslashes are
+        // separators: where it lands is not known here, so it is refused.
+        let Some(target) = folded(plain) else {
+            return true;
+        };
         let at_or_below = |root: &str| {
-            let root = folded(root);
-            target == root || target.starts_with(&format!("{root}/"))
+            folded(root)
+                .is_some_and(|root| target == root || target.starts_with(&format!("{root}/")))
         };
         at_or_below(&self.scope) || self.scope_alias.as_deref().is_some_and(at_or_below)
     }
@@ -826,7 +854,7 @@ impl CryptOverlayProvider {
         if !plain_target.starts_with('/') {
             return Ok(None);
         }
-        let t = norm_abs(&self.unalias(plain_target));
+        let t = comparison_path(&self.unalias(plain_target));
         let parent = match t.rsplit_once('/') {
             Some((p, _)) if !p.is_empty() => p.to_string(),
             _ => return Ok(None), // leaf directly at the root: no below-anchor parent
@@ -894,7 +922,7 @@ impl CryptOverlayProvider {
     pub async fn cwd_in_encrypted_view(&mut self) -> Result<bool, ProviderError> {
         let reported = self.inner.pwd().await?;
         self.note_reported_cwd(&reported)?;
-        let enc_cwd = norm_abs(&self.unalias(&reported));
+        let enc_cwd = comparison_path(&self.unalias(&reported));
         let below = if self.scope.is_empty() {
             enc_cwd.trim_start_matches('/').to_string()
         } else if enc_cwd == self.scope {
@@ -920,7 +948,7 @@ impl CryptOverlayProvider {
         if self.scope.is_empty() {
             return true;
         }
-        norm_abs(&self.unalias(wire_path)).starts_with(&format!("{}/", self.scope))
+        comparison_path(&self.unalias(wire_path)).starts_with(&format!("{}/", self.scope))
     }
 
     /// True for a caller plaintext target that is STRICTLY BELOW the anchor:
@@ -942,7 +970,7 @@ impl CryptOverlayProvider {
         if self.scope.is_empty() {
             return true;
         }
-        let t = norm_abs(plain_target);
+        let t = comparison_path(plain_target);
         if t == self.scope {
             return false;
         }
@@ -1667,7 +1695,7 @@ impl StorageProvider for CryptOverlayProvider {
             entry.path
         } else if path.starts_with('/')
             || (wire.starts_with('/')
-                && (norm_abs(&wire) == self.scope || self.wire_path_is_encrypted(&wire)))
+                && (comparison_path(&wire) == self.scope || self.wire_path_is_encrypted(&wire)))
         {
             decode_scoped(&self.keys, &self.scope, &wire, entry.is_dir)
         } else {
@@ -5421,7 +5449,7 @@ pub(crate) mod tests {
     /// DROPPED from the encrypted view, and that decision must not depend on the
     /// caller's exact path form. All three surfaces route through this one
     /// `CryptOverlayProvider::list`; `wire_path_is_encrypted` normalizes
-    /// `entry.path` via `norm_abs`, so the CLI's absolute anchor path and any
+    /// `entry.path` via `comparison_path`, so the CLI's absolute anchor path and any
     /// trailing-slash / equivalent form classify identically. This locks the
     /// fail-closed parity so the CLI can never resurface the raw plaintext folder
     /// the GUI hides (issue #386 EF-04).
@@ -7412,16 +7440,39 @@ pub(crate) mod tests {
                 "/home/u\\docs\\s.txt",
                 "/SRV/docs/s.txt",
                 "/srv\\docs/s.txt",
+                // Parent steps that are steps only once `\` is a separator.
+                "/home/u/other\\..\\docs/secret.txt",
+                "/home/u/other/..\\docs/secret.txt",
+                "/home/u/other\\../docs/secret.txt",
+                "/..\\home/u/docs/secret.txt",
+                "/opt/x\\..\\y/plain.txt",
+                "/HOME/U/Other\\..\\DOCS/secret.txt",
+                "/Srv/Other\\..\\docs/secret.txt",
             ] {
                 assert!(
                     p.map(folded_in, false, AccessKind::Write).is_err(),
                     "{label}: {folded_in}"
                 );
-                // Reading it raw stores nothing.
-                assert!(
-                    p.map(folded_in, false, AccessKind::Read).is_ok(),
+                // A read stores nothing: it stays the raw passthrough it was,
+                // the path sent as written.
+                assert_eq!(
+                    p.map(folded_in, false, AccessKind::Read).unwrap(),
+                    folded_in,
                     "{label}: {folded_in}"
                 );
+            }
+            // `%5c` is no separator: the name is literal, outside, plaintext.
+            for literal in [
+                "/home/u/other%5c..%5cdocs/s.txt",
+                "/home/u/other%5C..%5Cdocs/s.txt",
+            ] {
+                for kind in [AccessKind::Read, AccessKind::Write] {
+                    assert_eq!(
+                        p.map(literal, false, kind).unwrap(),
+                        literal,
+                        "{label}: {literal} {kind:?}"
+                    );
+                }
             }
             for outside in [
                 "/home/u/docs2/s.txt",
@@ -7437,12 +7488,15 @@ pub(crate) mod tests {
                 );
                 assert!(!p.target_is_encrypted(outside), "{label}: {outside}");
             }
-            assert_eq!(
-                p.map("/home/u/./docs2//s.txt", false, AccessKind::Write)
-                    .unwrap(),
-                "/home/u/docs2/s.txt",
-                "{label}"
-            );
+            // Outside the anchor the path is sent as written: an object store
+            // keeps `a//b` and `a/./b` apart from `a/b`.
+            for kind in [AccessKind::Read, AccessKind::Write] {
+                assert_eq!(
+                    p.map("/home/u/./docs2//s.txt", false, kind).unwrap(),
+                    "/home/u/./docs2//s.txt",
+                    "{label}"
+                );
+            }
 
             let dir = std::env::temp_dir().join(format!("crypt_forms_{}", uuid::Uuid::new_v4()));
             tokio::fs::create_dir_all(&dir).await.unwrap();
@@ -7468,9 +7522,312 @@ pub(crate) mod tests {
         }
     }
 
+    /// A provider that records every path it is handed, as given, and
+    /// answers each call with an empty success.
+    #[derive(Default)]
+    struct WireLog {
+        seen: Mutex<Vec<String>>,
+    }
+
+    impl WireLog {
+        fn saw(&self, paths: &[&str]) {
+            self.seen
+                .lock()
+                .unwrap()
+                .extend(paths.iter().map(|p| p.to_string()));
+        }
+        fn entry(path: &str) -> RemoteEntry {
+            RemoteEntry {
+                name: path.rsplit('/').next().unwrap_or_default().to_string(),
+                path: path.to_string(),
+                is_dir: false,
+                size: 0,
+                modified: None,
+                permissions: None,
+                owner: None,
+                group: None,
+                is_symlink: false,
+                link_target: None,
+                mime_type: None,
+                metadata: HashMap::new(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl StorageProvider for WireLog {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::S3
+        }
+        fn display_name(&self) -> String {
+            "wire log".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.saw(&[path]);
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".into())
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[remote_path]);
+            tokio::fs::write(local_path, b"plain").await?;
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
+            self.saw(&[remote_path]);
+            Ok(b"plain".to_vec())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            remote_path: &str,
+            _on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[remote_path]);
+            Ok(())
+        }
+        async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            self.saw(&[path]);
+            Ok(Self::entry(path))
+        }
+        async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.saw(&[path]);
+            Ok(5)
+        }
+        async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(String::new())
+        }
+        async fn wait_until_readable(
+            &mut self,
+            path: &str,
+        ) -> Result<Option<std::time::Duration>, ProviderError> {
+            self.saw(&[path]);
+            Ok(None)
+        }
+        async fn prepare_file_move(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn capture_trash_identities(
+            &mut self,
+            paths: &[String],
+        ) -> Vec<Result<Option<String>, ProviderError>> {
+            self.saw(&paths.iter().map(String::as_str).collect::<Vec<_>>());
+            paths.iter().map(|_| Ok(None)).collect()
+        }
+        async fn delete_permanent_with_identity(
+            &mut self,
+            path: &str,
+            _identity: Option<&str>,
+        ) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn delete_permanent(&mut self, path: &str) -> Result<bool, ProviderError> {
+            self.saw(&[path]);
+            Ok(true)
+        }
+        async fn chmod(&mut self, path: &str, _mode: u32) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn server_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn server_side_copy(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
+            self.saw(&[from, to]);
+            Ok(())
+        }
+        async fn disk_usage(&mut self, path: &str) -> Result<u64, ProviderError> {
+            self.saw(&[path]);
+            Ok(0)
+        }
+        async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+            self.saw(&[path]);
+            Ok(Vec::new())
+        }
+        async fn download_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+            local_path: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            tokio::fs::write(local_path, b"plain").await?;
+            Ok(())
+        }
+        async fn restore_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn delete_version(
+            &mut self,
+            path: &str,
+            _version_id: &str,
+        ) -> Result<(), ProviderError> {
+            self.saw(&[path]);
+            Ok(())
+        }
+        async fn stored_checksum(
+            &mut self,
+            path: &str,
+        ) -> Result<HashMap<String, String>, ProviderError> {
+            self.saw(&[path]);
+            Ok(HashMap::new())
+        }
+        async fn stored_checksum_for(
+            &mut self,
+            path: &str,
+            _algorithm: &str,
+        ) -> Result<HashMap<String, String>, ProviderError> {
+            self.saw(&[path]);
+            Ok(HashMap::new())
+        }
+    }
+
+    /// A path outside the anchor reaches the provider byte for byte, through
+    /// every method that takes one: an object store keeps `/public/a//b.txt`
+    /// and `/public/./a` as keys apart from `/public/a/b.txt` and
+    /// `/public/a`, so the overlay's comparison form must never be the key
+    /// it sends.
+    #[tokio::test]
+    async fn an_outside_path_reaches_the_provider_as_written() {
+        const FILE: &str = "/public/a//b.txt";
+        const OTHER: &str = "/public/./a/c.txt";
+        const DIR: &str = "/public/./a";
+        for (label, keys) in both_kinds() {
+            let dir = std::env::temp_dir().join(format!("crypt_wire_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("in.txt");
+            tokio::fs::write(&local, b"plain").await.unwrap();
+            let local = local.to_str().unwrap().to_string();
+            let out = dir.join("out.bin").to_str().unwrap().to_string();
+            let mut p = CryptOverlayProvider::new(Box::new(WireLog::default()), keys, "/Vault");
+            macro_rules! sent {
+                ($call:expr, $want:expr) => {{
+                    $call
+                        .await
+                        .map(drop)
+                        .unwrap_or_else(|e| panic!("{label}: {}: {e}", stringify!($call)));
+                    let log = p.inner.as_any_mut().downcast_mut::<WireLog>().unwrap();
+                    let seen = std::mem::take(&mut *log.seen.lock().unwrap());
+                    let want: &[&str] = $want;
+                    assert!(
+                        !seen.is_empty(),
+                        "{label}: {} sent nothing",
+                        stringify!($call)
+                    );
+                    for path in &seen {
+                        assert!(
+                            want.contains(&path.as_str()),
+                            "{label}: {} sent {path:?}, not one of {want:?}",
+                            stringify!($call)
+                        );
+                    }
+                    for path in want {
+                        assert!(seen.iter().any(|s| s == path), "{label}: {path} never sent");
+                    }
+                }};
+            }
+            sent!(p.list(DIR), &[DIR]);
+            sent!(p.stat(FILE), &[FILE]);
+            sent!(p.download(FILE, &out, None), &[FILE]);
+            sent!(p.download_to_bytes(FILE), &[FILE]);
+            sent!(p.upload(&local, FILE, None), &[FILE]);
+            sent!(p.mkdir(DIR), &[DIR]);
+            sent!(p.delete(FILE), &[FILE]);
+            sent!(p.rmdir(DIR), &[DIR]);
+            sent!(p.rmdir_recursive(DIR), &[DIR]);
+            sent!(p.rename(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.replace(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.wait_until_readable(FILE), &[FILE]);
+            sent!(p.prepare_file_move(FILE), &[FILE]);
+            sent!(p.size(FILE), &[FILE]);
+            sent!(p.exists(FILE), &[FILE]);
+            sent!(p.delete_permanent_with_identity(FILE, None), &[FILE]);
+            sent!(p.delete_permanent(FILE), &[FILE]);
+            sent!(p.chmod(FILE, 0o600), &[FILE]);
+            sent!(p.server_copy(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.server_side_copy(FILE, OTHER), &[FILE, OTHER]);
+            sent!(p.disk_usage(DIR), &[DIR]);
+            sent!(p.list_versions(FILE), &[FILE]);
+            sent!(p.download_version(FILE, "v1", &out), &[FILE]);
+            sent!(p.restore_version(FILE, "v1"), &[FILE]);
+            sent!(p.delete_version(FILE, "v1"), &[FILE]);
+            sent!(p.stored_checksum(FILE), &[FILE]);
+            sent!(p.stored_checksum_for(FILE, "sha256"), &[FILE]);
+            let identities = p.capture_trash_identities(&[FILE.to_string()]).await;
+            assert!(identities[0].is_ok(), "{label}");
+            let log = p.inner.as_any_mut().downcast_mut::<WireLog>().unwrap();
+            assert_eq!(*log.seen.lock().unwrap(), vec![FILE.to_string()], "{label}");
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+        }
+    }
+
     /// Every production function that compares a path with the anchor or
     /// its alias normalizes it first, so a comparison added later cannot
-    /// skip [`norm_abs`] unnoticed. The property itself is pinned by
+    /// skip [`comparison_path`] unnoticed. The property itself is pinned by
     /// `every_form_of_an_encrypted_path_is_read_as_the_anchor`.
     #[test]
     fn every_anchor_comparison_normalizes_the_path_first() {
@@ -7485,7 +7842,7 @@ pub(crate) mod tests {
             "starts_with(&format!(",
             "strip_prefix(&self.scope",
         ];
-        const NORMALIZES: &[&str] = &["norm_abs(", "folded("];
+        const NORMALIZES: &[&str] = &["comparison_path(", "folded("];
         let mut compared = Vec::new();
         for chunk in production.split("fn ").skip(1) {
             let name: String = chunk
@@ -7497,7 +7854,7 @@ pub(crate) mod tests {
             let Some(first) = COMPARES.iter().filter_map(|c| body.find(c)).min() else {
                 continue;
             };
-            if name == "norm_abs" || name == "norm_anchor" {
+            if name == "comparison_path" || name == "norm_anchor" {
                 continue;
             }
             let normalized = NORMALIZES.iter().filter_map(|n| body.find(n)).min();

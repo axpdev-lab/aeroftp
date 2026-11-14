@@ -4158,7 +4158,7 @@ fn ensure_remote_folder_within_overlay(
     if scope.is_empty() || !remote_folder.starts_with('/') {
         return Ok(());
     }
-    let target = crypt_overlay_provider::norm_abs(remote_folder);
+    let target = crypt_overlay_provider::comparison_path(remote_folder);
     if target == scope || target.strip_prefix(&format!("{scope}/")).is_some() {
         return Ok(());
     }
