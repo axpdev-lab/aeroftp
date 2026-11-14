@@ -3769,9 +3769,19 @@ fn pinned_profile_id(id: Option<&str>) -> Option<&str> {
 /// connection used, `by_name` the one a reference carrying only the config's
 /// profile name selects now. Names are not unique, so the two differ when the
 /// config is pinned to a homonym that is not the first of its name.
+/// `connected` is `None` when no saved profile matched and the connection
+/// used the config's own credentials (a legacy config): `by_reference` then
+/// says whether the config's reference still selects no profile.
+#[derive(Clone)]
 pub(crate) struct ProfileResolution {
     pub(crate) connected: Option<String>,
     pub(crate) by_name: Option<String>,
+    /// The profile the running config's own reference (its id, else its
+    /// name) selects now.
+    pub(crate) by_reference: Option<String>,
+    /// False without an unlocked vault: no name was resolved, so `by_name`
+    /// and `by_reference` say nothing.
+    pub(crate) names_read: bool,
 }
 
 impl ProfileResolution {
@@ -3785,18 +3795,35 @@ impl ProfileResolution {
         config: &CloudConfig,
         connected: Option<String>,
     ) -> Result<Self, String> {
-        let by_name = match store {
-            Some(store) => crate::crypt_overlay_provider::select_aerocloud_profile(
-                &crate::user_partitions::mcp_list_active_server_profiles(store)?,
+        let Some(store) = store else {
+            return Ok(Self {
+                connected,
+                by_name: None,
+                by_reference: None,
+                names_read: false,
+            });
+        };
+        let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+        let id_of = |profile: Option<&serde_json::Value>| {
+            profile
+                .and_then(|p| p.get("id"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+        };
+        Ok(Self {
+            connected,
+            by_name: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
+                &profiles,
                 None,
                 &config.server_profile,
-            )
-            .and_then(|p| p.get("id"))
-            .and_then(|v| v.as_str())
-            .map(str::to_string),
-            None => None,
-        };
-        Ok(Self { connected, by_name })
+            )),
+            by_reference: id_of(crate::crypt_overlay_provider::select_aerocloud_profile(
+                &profiles,
+                config.server_profile_id.as_deref(),
+                &config.server_profile,
+            )),
+            names_read: true,
+        })
     }
 }
 
@@ -3805,6 +3832,12 @@ impl ProfileResolution {
 /// name when it is the running config's name and that name selects the
 /// connected profile. A homonymous profile's login folder never lands in an
 /// entry that resolves elsewhere; that entry's own connect places it.
+///
+/// A legacy connection, made with the config's own credentials because no
+/// saved profile matched, reaches the entries that carry the running config's
+/// own reference while that reference still selects no saved profile: they
+/// connect with the same credentials. Without the names read nothing is known
+/// of that, and nothing is placed.
 fn same_server_profile(
     stored_id: Option<&str>,
     stored_name: &str,
@@ -3812,7 +3845,11 @@ fn same_server_profile(
     resolution: &ProfileResolution,
 ) -> bool {
     let Some(connected) = resolution.connected.as_deref() else {
-        return false;
+        return resolution.names_read
+            && resolution.by_reference.is_none()
+            && pinned_profile_id(stored_id)
+                == pinned_profile_id(config.server_profile_id.as_deref())
+            && stored_name == config.server_profile;
     };
     match pinned_profile_id(stored_id) {
         Some(stored) => stored == connected,
@@ -3865,19 +3902,53 @@ pub(crate) async fn place_login_relative_remote_folder(
 static BETWEEN_PLACEMENT_READ_AND_WRITE: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>> =
     std::sync::Mutex::new(None);
 
+/// A test's edit after the caller resolved the profile names and before the
+/// placement locks the profile list, as a rename in another window would.
+#[cfg(test)]
+static BEFORE_PLACEMENT_LOCK: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>> =
+    std::sync::Mutex::new(None);
+
 /// Place a `~/...` remote folder under the login folder on the connected
 /// provider and persist the absolute value, so the index identity is born on
 /// the folder the session opens and never on the `~` form. Refusals as
 /// [`place_login_relative_remote_folder`]. Returns the placed absolute path,
 /// `None` when the remote folder was already absolute.
+///
+/// With `store`, the profile names are resolved again while the saved
+/// profile list is locked ([`crate::user_partitions::ProfileListLock`], which
+/// every writer of the list takes, a rename, a delete, an import or a save
+/// alike), and stay locked until the placement is written: a name that moves
+/// to another profile meanwhile never carries this login folder there.
+/// Without it (tests, a locked vault) `resolution` is used as given.
 pub(crate) async fn anchor_login_relative_remote_folder(
     provider: &mut dyn StorageProvider,
     config: &CloudConfig,
     resolution: &ProfileResolution,
+    store: Option<&credential_store::CredentialStore>,
 ) -> Result<Option<String>, String> {
     let Some(placed) = place_login_relative_remote_folder(provider, config).await? else {
         return Ok(None);
     };
+    #[cfg(test)]
+    if let Some(edit) = BEFORE_PLACEMENT_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+    {
+        edit();
+    }
+    // The lock before the config and pairs write locks, which no holder of
+    // those takes after them; nothing below awaits while it is held.
+    let (_profiles_locked, resolution) = match store {
+        Some(store) => (
+            Some(crate::user_partitions::ProfileListLock::acquire_for_path(
+                &crate::user_partitions::cli_db_path()?,
+            )?),
+            ProfileResolution::for_connection(Some(store), config, resolution.connected.clone())?,
+        ),
+        None => (None, resolution.clone()),
+    };
+    let resolution = &resolution;
     let unresolved = config.remote_folder.clone();
     // Persist on the raw provider's answer, before any overlay wraps it: the
     // `~` form only exists to be placed once. Each file is written only when
@@ -4000,7 +4071,8 @@ async fn compose_aerocloud_connection(
     let remote_folder = if persist_placement {
         let resolution =
             ProfileResolution::for_connection(Some(store), config, opened.profile_id.clone())?;
-        anchor_login_relative_remote_folder(&mut *provider, config, &resolution).await?
+        anchor_login_relative_remote_folder(&mut *provider, config, &resolution, Some(store))
+            .await?
     } else {
         place_login_relative_remote_folder(&mut *provider, config).await?
     };
@@ -7222,10 +7294,14 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let placed =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap();
+            let placed = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap();
             assert_eq!(placed.as_deref(), Some("/home/u/docs"));
 
             let pairs = cloud_pairs::load_cloud_pairs_config();
@@ -7239,10 +7315,14 @@ mod baseline_tests {
                 remote_folder: "/home/u/docs".to_string(),
                 ..config
             };
-            let placed =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap();
+            let placed = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap();
             assert_eq!(placed, None);
         });
     }
@@ -7252,6 +7332,8 @@ mod baseline_tests {
         ProfileResolution {
             connected: Some(id.to_string()),
             by_name: Some(id.to_string()),
+            by_reference: Some(id.to_string()),
+            names_read: true,
         }
     }
 
@@ -7296,9 +7378,14 @@ mod baseline_tests {
             // Connected by name to id-b, the first profile named "nas": the
             // pair (by name) is placed, the configuration pinned to id-a is not.
             reset();
-            anchor_login_relative_remote_folder(&mut provider, &by_name, &resolved_as("id-b"))
-                .await
-                .unwrap();
+            anchor_login_relative_remote_folder(
+                &mut provider,
+                &by_name,
+                &resolved_as("id-b"),
+                None,
+            )
+            .await
+            .unwrap();
             assert_eq!(
                 cloud_pairs::load_cloud_pairs_config().pairs[0].remote_path,
                 "/home/u/docs"
@@ -7315,8 +7402,10 @@ mod baseline_tests {
             let homonym = ProfileResolution {
                 connected: Some("id-a".to_string()),
                 by_name: Some("id-b".to_string()),
+                by_reference: Some("id-a".to_string()),
+                names_read: true,
             };
-            anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym)
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym, None)
                 .await
                 .unwrap();
             assert_eq!(
@@ -7330,7 +7419,7 @@ mod baseline_tests {
 
             // Pinned to id-a and "nas" selects id-a: both reach it, both placed.
             reset();
-            anchor_login_relative_remote_folder(&mut provider, &by_id, &resolved_as("id-a"))
+            anchor_login_relative_remote_folder(&mut provider, &by_id, &resolved_as("id-a"), None)
                 .await
                 .unwrap();
             assert_eq!(
@@ -7373,10 +7462,14 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let err =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap_err();
+            let err = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap_err();
             assert!(err.contains("parse"), "{err}");
             assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
             assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
@@ -7437,10 +7530,14 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let placed =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap();
+            let placed = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap();
             assert_eq!(placed.as_deref(), Some("/home/u/docs"));
             assert!(BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap().is_none());
             assert_eq!(std::fs::read(&pairs_path).unwrap(), edited);
@@ -7482,10 +7579,14 @@ mod baseline_tests {
                 login_folder: Some("/home/u".to_string()),
                 ..Default::default()
             };
-            let placed =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap();
+            let placed = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap();
             assert_eq!(placed.as_deref(), Some("/home/u/docs"));
             assert_eq!(std::fs::read(&pairs_path).unwrap(), bytes);
             assert!(!config_path.exists());
@@ -7503,10 +7604,14 @@ mod baseline_tests {
                 ..Default::default()
             };
             let mut provider = MemoryProvider::default();
-            let err =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap_err();
+            let err = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap_err();
             assert!(err.contains("literal '~' directory"), "{err}");
             assert!(err.contains("~/docs"), "{err}");
         });
@@ -7563,10 +7668,14 @@ mod baseline_tests {
                 login_folder: None,
                 ..Default::default()
             };
-            let err =
-                anchor_login_relative_remote_folder(&mut provider, &config, &resolved_as("p"))
-                    .await
-                    .unwrap_err();
+            let err = anchor_login_relative_remote_folder(
+                &mut provider,
+                &config,
+                &resolved_as("p"),
+                None,
+            )
+            .await
+            .unwrap_err();
             assert!(err.contains("did not report its login folder"), "{err}");
             assert_eq!(
                 cloud_config::load_cloud_config().remote_folder,
@@ -7877,6 +7986,196 @@ mod baseline_tests {
     /// The connected profile is the one the connection carries, never a
     /// re-read: if the list changed while connecting, the re-read would name
     /// another profile. Only the name lookup reads the list as it is now.
+    /// Replace the saved profiles with `(id, name)` FTP profiles, written
+    /// where `mcp_list_active_server_profiles` reads them (the active
+    /// account's list once the first read migrated the vault), by the same
+    /// writer the GUI uses, which takes the profile list lock.
+    fn set_saved_profiles(store: &credential_store::CredentialStore, profiles: &[(&str, &str)]) {
+        let list: Vec<serde_json::Value> = profiles
+            .iter()
+            .map(|(id, name)| {
+                serde_json::json!({
+                    "id": id, "name": name, "protocol": "ftp", "host": "127.0.0.1",
+                    "port": 21, "username": "u", "options": {"tlsMode": "none"},
+                })
+            })
+            .collect();
+        crate::user_partitions::init_or_migrate_cli(store).unwrap();
+        let mut conn = crate::user_partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        crate::user_partitions::replace_active_server_profiles(&mut conn, &root_key, &list)
+            .unwrap();
+        let read = crate::user_partitions::mcp_list_active_server_profiles(store).unwrap();
+        assert_eq!(read.len(), profiles.len());
+    }
+
+    /// A config and a pair, both by the name "nas", on `~/docs` from `/sync/a`.
+    fn seed_unplaced_entries() -> CloudConfig {
+        let config = CloudConfig {
+            enabled: true,
+            local_folder: "/sync/a".into(),
+            remote_folder: "~/docs".to_string(),
+            server_profile: "nas".to_string(),
+            protocol_type: "sftp".to_string(),
+            ..Default::default()
+        };
+        let pair = crate::cloud_pairs::CloudPathPair::from_legacy(&config);
+        cloud_pairs::with_cloud_pairs_mut(|pairs| {
+            pairs.pairs = vec![pair];
+            Ok(())
+        })
+        .unwrap();
+        let stored = config.clone();
+        cloud_config::with_cloud_config_mut(move |disk| {
+            *disk = stored;
+            Ok(())
+        })
+        .unwrap();
+        config
+    }
+
+    fn saved_forms() -> (String, String) {
+        (
+            cloud_config::load_cloud_config().remote_folder,
+            cloud_pairs::load_cloud_pairs_config().pairs[0]
+                .remote_path
+                .clone(),
+        )
+    }
+
+    /// The name check and the placement write happen while the saved profile
+    /// list is locked: a rename that moved the name to another profile after
+    /// the caller resolved it is read under the lock, and the entries by that
+    /// name keep their `~` form; while the placement writes, no profile
+    /// writer can take the list.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_profile_name_moved_before_the_placement_keeps_the_tilde_form() {
+        with_scratch_index(async {
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let login = || MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            for moved in [false, true] {
+                set_saved_profiles(&store, &[("srv_a", "nas"), ("srv_b", "other")]);
+                let config = seed_unplaced_entries();
+                let resolution =
+                    ProfileResolution::for_connection(Some(&store), &config, Some("srv_a".into()))
+                        .unwrap();
+                assert_eq!(resolution.by_name.as_deref(), Some("srv_a"));
+                if moved {
+                    // Another window renames srv_a and gives its name to srv_b.
+                    *BEFORE_PLACEMENT_LOCK.lock().unwrap() = Some(Box::new(|| {
+                        let store = credential_store::CredentialStore::from_cache().unwrap();
+                        set_saved_profiles(&store, &[("srv_a", "old"), ("srv_b", "nas")]);
+                    }));
+                }
+                *BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap() = Some(Box::new(|| {
+                    let busy = crate::user_partitions::ProfileListLock::acquire_within(
+                        &crate::user_partitions::cli_db_path().unwrap(),
+                        Duration::ZERO,
+                    );
+                    assert_eq!(
+                        busy.err().as_deref(),
+                        Some(crate::user_partitions::PROFILE_LIST_BUSY)
+                    );
+                }));
+                let placed = anchor_login_relative_remote_folder(
+                    &mut login(),
+                    &config,
+                    &resolution,
+                    Some(&store),
+                )
+                .await
+                .unwrap();
+                assert_eq!(placed.as_deref(), Some("/home/u/docs"), "moved {moved}");
+                assert!(BEFORE_PLACEMENT_LOCK.lock().unwrap().is_none());
+                assert!(BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap().is_none());
+                let expected = if moved { "~/docs" } else { "/home/u/docs" };
+                assert_eq!(
+                    saved_forms(),
+                    (expected.to_string(), expected.to_string()),
+                    "moved {moved}"
+                );
+            }
+            // The lock is released with the placement.
+            crate::user_partitions::ProfileListLock::acquire_within(
+                &crate::user_partitions::cli_db_path().unwrap(),
+                Duration::ZERO,
+            )
+            .unwrap();
+        });
+    }
+
+    /// A connection with no saved profile (the config's own credentials)
+    /// places the folder in the entries that carry its reference, so the
+    /// saved config and the next cycle read the folder this one synced. An
+    /// entry whose name now selects a saved profile connects there and keeps
+    /// its `~` form, and without the names read nothing is placed.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_connection_without_a_saved_profile_places_its_own_entries() {
+        with_scratch_index(async {
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let login = || MemoryProvider {
+                login_folder: Some("/home/u".to_string()),
+                ..Default::default()
+            };
+            set_saved_profiles(&store, &[("srv_x", "elsewhere")]);
+            let config = seed_unplaced_entries();
+            let resolution =
+                ProfileResolution::for_connection(Some(&store), &config, None).unwrap();
+            let placed = anchor_login_relative_remote_folder(
+                &mut login(),
+                &config,
+                &resolution,
+                Some(&store),
+            )
+            .await
+            .unwrap();
+            assert_eq!(placed.as_deref(), Some("/home/u/docs"));
+            assert_eq!(
+                saved_forms(),
+                ("/home/u/docs".to_string(), "/home/u/docs".to_string())
+            );
+            // The reloaded config is the folder the cycle synced: a second
+            // connect places nothing and keeps it.
+            let reloaded = cloud_config::load_cloud_config();
+            assert_eq!(reloaded.remote_folder, "/home/u/docs");
+            let again = ProfileResolution::for_connection(Some(&store), &reloaded, None).unwrap();
+            assert_eq!(
+                anchor_login_relative_remote_folder(&mut login(), &reloaded, &again, Some(&store))
+                    .await
+                    .unwrap(),
+                None
+            );
+
+            // A saved profile took the name meanwhile: those entries connect
+            // through it now.
+            let config = seed_unplaced_entries();
+            let resolution =
+                ProfileResolution::for_connection(Some(&store), &config, None).unwrap();
+            *BEFORE_PLACEMENT_LOCK.lock().unwrap() = Some(Box::new(|| {
+                let store = credential_store::CredentialStore::from_cache().unwrap();
+                set_saved_profiles(&store, &[("srv_x", "nas")]);
+            }));
+            anchor_login_relative_remote_folder(&mut login(), &config, &resolution, Some(&store))
+                .await
+                .unwrap();
+            assert_eq!(saved_forms(), ("~/docs".to_string(), "~/docs".to_string()));
+
+            // Locked vault: no name was read.
+            set_saved_profiles(&store, &[("srv_x", "elsewhere")]);
+            let config = seed_unplaced_entries();
+            let unread = ProfileResolution::for_connection(None, &config, None).unwrap();
+            anchor_login_relative_remote_folder(&mut login(), &config, &unread, None)
+                .await
+                .unwrap();
+            assert_eq!(saved_forms(), ("~/docs".to_string(), "~/docs".to_string()));
+        });
+    }
+
     #[test]
     #[cfg(target_os = "linux")]
     fn the_resolution_keeps_the_profile_the_connection_used() {

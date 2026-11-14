@@ -1736,6 +1736,7 @@ mod tests {
                     &mut *provider,
                     &config,
                     &resolution,
+                    Some(&store),
                 )
                 .await?
                 .unwrap_or_else(|| config.remote_folder.clone());
