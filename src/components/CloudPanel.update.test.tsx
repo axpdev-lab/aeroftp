@@ -316,19 +316,74 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         expect(mocks.invoke).toHaveBeenCalledWith('save_cloud_config_cmd', expect.objectContaining({ config: expect.objectContaining({ remote_folder: '/home/u/docs', update_only: false }) }));
     });
 
+    it.each([
+        ['the panel', true],
+        ['the tray, the watcher or the scheduler', false],
+    ])('keeps the folder a sync placed after a saved `~` edit, when the sync runs from %s', async (_from, fromPanel) => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const saved: { remote_folder?: string; update_only?: boolean }[] = [];
+        // The file as the backend keeps it: a save replaces it, a sync places
+        // a `~/...` folder under the login folder and saves the absolute path.
+        let disk: { remote_folder?: string } = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] } as { remote_folder?: string };
+        const place = () => { if (disk.remote_folder === '~/docs') disk = { ...disk, remote_folder: '/home/u/docs' }; };
+        mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
+            if (command === 'get_cloud_config') return disk;
+            if (command === 'trigger_cloud_sync') { place(); return 'done'; }
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config ?? {}); disk = args?.config ?? {}; return null; }
+            if (command === 'get_cloud_status') return { type: 'idle' };
+            if (command === 'get_cloud_pairs_config') return { pairs: [] };
+            if (command === 'get_sync_schedule_cmd') return null;
+            return [];
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPanel isOpen onClose={vi.fn()} />));
+        const openSettings = () => React.act(async () => host.querySelector<HTMLButtonElement>('button[title="common.settings"]')!.click());
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        const save = () => React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === 'common.save common.settings')!.click());
+        // The user changes /remote to ~/docs and saves: Settings closes.
+        await openSettings();
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(remoteFolder(), '~/docs');
+            remoteFolder()!.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await save();
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(remoteFolder()).toBeNull();
+        // A sync places the folder after Settings closed.
+        if (fromPanel) {
+            await React.act(async () => [...host.querySelectorAll('button')].find(b => b.textContent?.includes('cloud.syncNow'))!.click());
+            await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        } else {
+            place();
+        }
+        expect(disk.remote_folder).toBe('/home/u/docs');
+        // Settings opens on the placed folder, and an unrelated save keeps it.
+        await openSettings();
+        await React.act(async () => { await Promise.resolve(); await Promise.resolve(); });
+        expect(remoteFolder()?.value).toBe('/home/u/docs');
+        const update = Array.from(host.querySelectorAll('label')).find(label => label.textContent?.includes('aerosync.updateOnly'))!;
+        await React.act(async () => update.querySelector('input')!.click());
+        await save();
+        expect(saved.map(config => config.remote_folder)).toEqual(['~/docs', '/home/u/docs']);
+        expect(saved[1].update_only).toBe(false);
+        expect(disk.remote_folder).toBe('/home/u/docs');
+    });
+
     it('drops a post-sync refresh that read the file before a settings save', async () => {
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
         let releaseRefresh!: (config: unknown) => void;
         let reads = 0;
         const saved: { remote_folder?: string }[] = [];
+        // The file as the backend keeps it: a save replaces it.
+        let disk: unknown = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
         mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
             if (command === 'get_cloud_config') {
                 reads += 1;
                 if (reads === 2) return new Promise(resolve => { releaseRefresh = resolve; });
-                return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+                return disk;
             }
             if (command === 'trigger_cloud_sync') return 'done';
-            if (command === 'save_cloud_config_cmd') { saved.push(args?.config ?? {}); return null; }
+            if (command === 'save_cloud_config_cmd') { saved.push(args?.config ?? {}); disk = args?.config; return null; }
             if (command === 'get_cloud_status') return { type: 'idle' };
             if (command === 'get_cloud_pairs_config') return { pairs: [] };
             if (command === 'get_sync_schedule_cmd') return null;
@@ -398,10 +453,12 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         let resolveDisable!: () => void;
         const disablePromise = new Promise<void>(res => { resolveDisable = res; });
         await mount([]);
+        // The file as the backend keeps it: the setup and a save replace it.
+        let disk: unknown = { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
         mocks.invoke.mockImplementation(async (command: string, args?: { config?: { remote_folder?: string } }) => {
             if (command === 'disable_aerocloud') return disablePromise;
-            if (command === 'save_cloud_config_cmd') { savedConfigs.push(args?.config ?? {}); return null; }
-            if (command === 'get_cloud_config') return { enabled: true, sync_direction: 'local_to_remote', update_only: true, local_folder: '/local', remote_folder: '/remote', exclude_patterns: [], excluded_folders: [] };
+            if (command === 'save_cloud_config_cmd') { savedConfigs.push(args?.config ?? {}); disk = args?.config; return null; }
+            if (command === 'get_cloud_config') return disk;
             if (command === 'get_cloud_status') return { type: 'idle' };
             if (command === 'get_cloud_pairs_config') return { pairs: [] };
             if (command === 'get_sync_schedule_cmd') return null;
@@ -416,6 +473,7 @@ describe('AeroCloud Update settings and cycle reporting', () => {
         await React.act(async () => resolveDisable());
         await React.act(async () => { await Promise.resolve(); });
         // Setup wizard is up; completing it installs the NEW configuration.
+        disk = mocks.setupResult;
         await React.act(async () => host.querySelector<HTMLButtonElement>('[data-testid="setup-complete"]')!.click());
         expect(host.textContent).toContain('/new');
         // Cancel on the settings view must restore the NEW baseline, never the old one.

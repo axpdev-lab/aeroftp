@@ -392,6 +392,11 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setSettingsSaveError(null);
         setSettingsBaseline(config);
         setShowSettings(true);
+        // A sync run from the tray, the watcher or the scheduler may have
+        // placed a `~/...` folder since the panel last read the file: the
+        // refresh brings the saved folder into the draft and the baseline
+        // before a save could write the older form back.
+        void loadConfig(true);
     };
     // Edits live in `config` until Save persists them, so Cancel and X must
     // hand the draft back to the baseline; otherwise a reopen would adopt the
@@ -407,6 +412,8 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         if (savingSettings) return;
         setConfig(settingsBaseline);
         setShowSettings(false);
+        // The baseline belongs to the settings session that just ended.
+        setSettingsBaseline(null);
     };
     const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
     // A save cannot be stopped: while it runs the whole settings view is busy,
@@ -960,6 +967,10 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         } catch { /* scheduler may not be initialized yet */ }
                                         setSettingsSaveError(null);
                                         setShowSettings(false);
+                                        // What was saved is now the configuration: the
+                                        // old baseline would read the saved folder as a
+                                        // draft edit and keep it over a later placement.
+                                        setSettingsBaseline(null);
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);
