@@ -1563,18 +1563,25 @@ mod tests {
         )
         .expect("the second account's overlay password");
 
-        // The legacy owner's own list (the shared vault's blob): the same
-        // plain profile, no overlay.
+        // V1: the legacy owner's own list (the shared vault's blob) holds the
+        // profile crypt-bound, its password in the shared vault.
         store
             .store(
                 "config_server_profiles",
                 &serde_json::json!([{
                     "id": "shared-profile", "name": "Shared", "protocol": "ftp",
                     "server": "127.0.0.1", "port": 21, "username": "u",
+                    "aeroCryptOverlay": {"enabled": true, "kind": "rclone-crypt", "remoteScope": "/Vault"},
                 }])
                 .to_string(),
             )
             .expect("the legacy owner's profiles");
+        store
+            .store(
+                "aerocrypt_overlay_pw_shared-profile",
+                "legacy-overlay-password",
+            )
+            .expect("the legacy owner's overlay password");
         let account = partitions::gui_account_snapshot().expect("capture account");
         assert_eq!(account.user, Some(first.id));
         partitions::set_active_user(&conn, second.id).expect("switch before the stack");
@@ -1604,25 +1611,57 @@ mod tests {
             let written = writes.lock().unwrap().clone();
             (stack.as_ref().err().cloned(), wrapped, written)
         };
-        for reads in [first.id, partitions::LEGACY_ONLY_ACCOUNT] {
-            let (error, wrapped, written) = compose(reads);
-            assert_eq!(
-                error, None,
-                "{reads}: the captured account's plain profile composes"
-            );
-            assert_eq!(
-                wrapped,
-                Some(false),
-                "{reads}: not the other account's overlay"
-            );
-            assert!(written.is_empty(), "{reads}: {written:?}");
-        }
-        // Control: the second account's own connection does take its overlay.
-        let (error, wrapped, _) = compose(second.id);
-        assert!(
-            error.is_some() || wrapped == Some(true),
-            "the binding is the second's"
+        // The first account's plain profile: not wrapped, nothing written.
+        let (error, wrapped, written) = compose(first.id);
+        assert_eq!(error, None, "the captured account's plain profile composes");
+        assert_eq!(wrapped, Some(false), "not the other account's overlay");
+        assert!(written.is_empty(), "{written:?}");
+        // V1: the legacy-only capture reads the legacy owner's crypt-bound
+        // profile and its vault secret, with the second account active: the
+        // wrap succeeds (the reserved id is the legacy scope, not a user).
+        let (error, wrapped, written) = compose(partitions::LEGACY_ONLY_ACCOUNT);
+        assert_eq!(
+            error, None,
+            "the legacy owner's crypt-bound profile composes"
         );
+        assert_eq!(wrapped, Some(true), "its own overlay");
+        assert!(written.is_empty(), "{written:?}");
+        // Control: the second account's own capture takes its overlay.
+        let (error, wrapped, _) = compose(second.id);
+        assert_eq!(error, None, "the second account's profile composes");
+        assert_eq!(wrapped, Some(true), "the binding is the second's");
+        // V1: overlay metadata written through the legacy capture's scope
+        // lands in the legacy vault, never in a partition.
+        let scope =
+            crate::profile_auth::AuthScope::for_captured(&store, partitions::LEGACY_ONLY_ACCOUNT);
+        assert_eq!(scope.user_id, None);
+        crate::crypt_overlay_provider::persist_public_overlay_config_for_unlock(
+            Some(&scope),
+            "shared-profile",
+            "{\"v\":1}",
+            "c2FsdA==",
+        )
+        .expect("the legacy scope persists its metadata");
+        assert_eq!(
+            store
+                .get("aerocrypt_overlay_config_shared-profile")
+                .ok()
+                .as_deref(),
+            Some("{\"v\":1}")
+        );
+        for user in [first.id, second.id] {
+            assert!(
+                partitions::get_user_credential_for(
+                    &conn,
+                    &root_key,
+                    user,
+                    "aerocrypt_overlay_config_shared-profile"
+                )
+                .expect("partition read")
+                .is_none(),
+                "no partition receives the legacy metadata"
+            );
+        }
     }
 
     /// Two accounts hold a direct-auth profile under one id, each with its

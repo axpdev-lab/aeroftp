@@ -364,15 +364,29 @@ pub(crate) fn with_guard<T>(
     write()
 }
 
-/// The page-load self-test (U11): a real webview (WebView2 on Windows,
-/// WKWebView on macOS) is reloaded and navigated over itself, round after
-/// round. Every `PageLoadEvent` the engine reports goes through
-/// [`page_load_event`], the app's own handler. Each document binds and takes
-/// a lease from its own script, as the sync runner does at start (with its
-/// one retry). After every event and every binding the registry is checked:
-/// the window's live leases all belong to the document bound now (never two
-/// documents with admitted work); and at the end the document actually
-/// displayed is the bound one.
+/// The page-load self-test (U11, V2): a real webview (WebView2 on Windows,
+/// WKWebView on macOS, WebKitGTK on Linux) is reloaded and navigated over
+/// itself, round after round. Every `PageLoadEvent` the engine reports goes
+/// through [`page_load_event`], the app's own handler, and every orphan it
+/// makes goes to [`release_orphans_once_settled`] with
+/// [`native_work_settled`], as in the app. Each document binds and asks for
+/// the lease from its own script, as the sync runner does at start, and
+/// asks again after a refusal.
+///
+/// Each round:
+/// - before the navigations, the displayed document must hold a lease it
+///   was granted; a refusal is counted by its kind and never stands for one;
+/// - that lease admits native work ([`admit`]), held across the navigations;
+/// - after them, its token must be an orphan that keeps the pair locked (no
+///   live lease of the pair, and the lock file refuses another handle), and
+///   the new document must be refused the pair, until the work is dropped;
+/// - then the orphan must be released, and the next round starts by
+///   requiring the new document's granted lease.
+///
+/// After every event and every request, the window's live leases must all
+/// belong to the document bound now (never two documents with admitted
+/// work). At the end the displayed document must be the bound one and hold
+/// a granted lease.
 ///
 /// It proves the invariants on the orders the engine produced in that run.
 /// It cannot force the rare interleavings; the order-independent unit tests
@@ -382,7 +396,8 @@ pub(crate) fn with_guard<T>(
     feature = "page-load-selftest"
 ))]
 // Built on Linux too, so the shared code is checked where the suite runs;
-// it runs on Windows (a lib test) and macOS (the feature's binary).
+// it runs on Windows (a lib test) and macOS (the feature's binary), and on
+// a Linux desktop on demand (an ignored lib test).
 #[cfg_attr(not(any(windows, feature = "page-load-selftest")), allow(dead_code))]
 pub(crate) mod page_load_selftest {
     use super::*;
@@ -397,26 +412,69 @@ pub(crate) mod page_load_selftest {
         pub url: String,
     }
 
+    /// The numbers of a run.
+    #[derive(Debug, Clone, Default)]
+    pub(crate) struct Counts {
+        /// Leases granted to a document's request.
+        pub leases_granted: u32,
+        /// Expected transient refusals: a lease asked by a document that is
+        /// not, or no longer, the bound one (`SYNC_RUN_PAGE_REPLACED`).
+        pub refused_replaced: u32,
+        /// Expected transient refusals: a lease asked while an orphan still
+        /// keeps the pair locked for its work (`SYNC_RUN_BUSY`).
+        pub refused_busy: u32,
+        /// Orphans found holding the pair while their admitted work ran.
+        pub orphans_held: u32,
+        /// Those orphans released once the work had settled.
+        pub orphans_released: u32,
+    }
+
+    impl std::fmt::Display for Counts {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                f,
+                "leases granted {}, transient refusals {} (page replaced {}, pair busy {}), orphans held {}, orphans released {}",
+                self.leases_granted,
+                self.refused_replaced + self.refused_busy,
+                self.refused_replaced,
+                self.refused_busy,
+                self.orphans_held,
+                self.orphans_released
+            )
+        }
+    }
+
+    /// What a run saw.
+    #[derive(Debug)]
+    pub(crate) struct Report {
+        pub seen: Vec<Seen>,
+        pub counts: Counts,
+    }
+
     /// What the run saw and decided, shared with the engine's callbacks.
     #[derive(Default)]
     struct Run {
         seen: Vec<Seen>,
-        /// Lease token -> the document (nonce) that took it.
+        /// Lease token -> the document (nonce) that was granted it.
         holders: HashMap<String, String>,
+        counts: Counts,
         violation: Option<String>,
         alive: Option<String>,
         last_event: Option<Instant>,
     }
 
     /// The pages: each document binds itself from its script with a fresh
-    /// nonce, retries once on a refusal (as `beginRunLease` does), and keeps
-    /// its nonce for the final "which document is displayed" question.
+    /// nonce and asks for the lease; after a refusal it binds and asks
+    /// again, as `beginRunLease` does, until it is granted or gone. It keeps
+    /// its nonce for the "which document is displayed" question.
     const PAGE: &str = r#"<!doctype html><title>selftest</title><script>
 window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
 (async () => {
-  const bind = () => fetch(location.origin + '/bind/' + window.__doc);
-  const first = await bind();
-  if (first.status === 409) { await new Promise(r => setTimeout(r, 200)); await bind(); }
+  const call = step => fetch(location.origin + '/' + step + '/' + window.__doc).then(r => r.status);
+  for (;;) {
+    if (await call('bind') === 204 && await call('lease') === 204) return;
+    await new Promise(r => setTimeout(r, 100));
+  }
 })();
 </script>"#;
 
@@ -424,6 +482,10 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
     const ORIGIN: &str = "http://selftest.localhost";
     #[cfg(not(windows))]
     const ORIGIN: &str = "selftest://localhost";
+
+    fn violation(run: &mut Run, what: String) {
+        run.violation.get_or_insert(what);
+    }
 
     /// The invariant, read from the registry itself.
     fn check(run: &mut Run, when: &str) {
@@ -444,25 +506,68 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
             || documents
                 .iter()
                 .any(|holder| Some(*holder) != bound.as_ref());
-        if wrong && run.violation.is_none() {
-            run.violation = Some(format!(
-                "{when}: live leases of {documents:?} while {bound:?} is bound"
-            ));
+        if wrong {
+            let what = format!("{when}: live leases of {documents:?} while {bound:?} is bound");
+            drop(registry);
+            violation(run, what);
         }
+    }
+
+    /// The app's cleanup of a page's orphans: the pairs stay locked until no
+    /// native work of a run is in flight.
+    fn release_once_settled(orphans: Vec<String>) {
+        if !orphans.is_empty() {
+            tauri::async_runtime::spawn(release_orphans_once_settled(orphans, native_work_settled));
+        }
+    }
+
+    /// The live lease the document `nonce` was granted, if it holds one.
+    fn lease_of(state: &Mutex<Run>, nonce: &str) -> Option<String> {
+        let run = state.lock().unwrap();
+        let registry = REGISTRY.lock().ok()?;
+        registry
+            .leases
+            .iter()
+            .find(|(token, lease)| {
+                lease.window == WINDOW && run.holders.get(*token).map(String::as_str) == Some(nonce)
+            })
+            .map(|(token, _)| token.clone())
+    }
+
+    /// `token` is an orphan and the pair has no live lease.
+    fn held_by_orphan(token: &str, pair: &str) -> bool {
+        REGISTRY.lock().is_ok_and(|registry| {
+            registry.orphans.contains_key(token)
+                && !registry.leases.values().any(|lease| lease.pair == pair)
+        })
+    }
+
+    /// Another handle can lock the pair's lock file (it is then unlocked at
+    /// once).
+    fn lock_file_is_free(dir: &Path, pair: &str) -> bool {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(dir.join(pair).with_extension("run-lock"))
+            .is_ok_and(|file| file.try_lock().is_ok())
     }
 
     /// The self-test build's whole program: run on the main thread (macOS
     /// allows the event loop nowhere else) and exit 0, or 1 on a broken
-    /// invariant.
+    /// invariant. Both outcomes print the counts.
     #[cfg(feature = "page-load-selftest")]
     pub(crate) fn run_and_exit() -> ! {
         let code = match run(tauri::Builder::default(), 25, Duration::from_secs(300)) {
-            Ok(seen) => {
+            Ok(report) => {
                 println!(
-                    "page-load self-test passed: {} events, {} finished, last {}",
-                    seen.len(),
-                    seen.iter().filter(|event| event.finished).count(),
-                    seen.last().map(|event| event.url.as_str()).unwrap_or("")
+                    "page-load self-test passed: {} events, {} finished, last {}; {}",
+                    report.seen.len(),
+                    report.seen.iter().filter(|event| event.finished).count(),
+                    report
+                        .seen
+                        .last()
+                        .map(|event| event.url.as_str())
+                        .unwrap_or(""),
+                    report.counts
                 );
                 0
             }
@@ -476,19 +581,20 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
 
     /// Run `rounds` rounds of reload and overlapping navigations on a window
     /// of `builder`'s app, within `budget`. `Err` names the violated
-    /// invariant, or what had not happened by the deadline.
+    /// invariant, or what had not happened by the deadline, followed by the
+    /// counts.
     pub(crate) fn run(
         builder: tauri::Builder<tauri::Wry>,
         rounds: u32,
         budget: Duration,
-    ) -> Result<Vec<Seen>, String> {
+    ) -> Result<Report, String> {
         let dir =
             std::env::temp_dir().join(format!("aeroftp-page-load-selftest-{}", std::process::id()));
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let pair = crate::sync::index_filename("/selftest-local", "/selftest-remote");
         let state: Arc<Mutex<Run>> = Arc::default();
         let (on_load, on_request) = (state.clone(), state.clone());
-        let lease_dir = dir.clone();
+        let (lease_dir, lease_pair) = (dir.clone(), pair.clone());
         let app = builder
             .register_uri_scheme_protocol("selftest", move |_ctx, request| {
                 let path = request.uri().path().to_string();
@@ -497,15 +603,33 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
                 let mut run = on_request.lock().unwrap();
                 if let Some(nonce) = path.strip_prefix("/bind/") {
                     match bind_page(WINDOW, nonce) {
-                        Ok(orphans) => {
-                            release_orphans(&orphans);
-                            if let Ok(token) = acquire_at(&lease_dir, pair.clone(), WINDOW, nonce) {
-                                run.holders.insert(token, nonce.to_string());
-                            }
+                        Ok(orphans) => release_once_settled(orphans),
+                        Err(error) => {
+                            status = 500;
+                            violation(&mut run, format!("bind {nonce}: {error}"));
                         }
-                        Err(_) => status = 409,
                     }
                     check(&mut run, &format!("bind {nonce}"));
+                } else if let Some(nonce) = path.strip_prefix("/lease/") {
+                    match acquire_at(&lease_dir, lease_pair.clone(), WINDOW, nonce) {
+                        Ok(token) => {
+                            run.holders.insert(token, nonce.to_string());
+                            run.counts.leases_granted += 1;
+                        }
+                        Err(error) if error.starts_with("SYNC_RUN_PAGE_REPLACED") => {
+                            status = 409;
+                            run.counts.refused_replaced += 1;
+                        }
+                        Err(error) if error.starts_with("SYNC_RUN_BUSY") => {
+                            status = 409;
+                            run.counts.refused_busy += 1;
+                        }
+                        Err(error) => {
+                            status = 500;
+                            violation(&mut run, format!("lease {nonce}: {error}"));
+                        }
+                    }
+                    check(&mut run, &format!("lease {nonce}"));
                 } else if let Some(nonce) = path.strip_prefix("/alive/") {
                     run.alive = Some(nonce.to_string());
                 } else {
@@ -520,10 +644,9 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
             })
             .on_page_load(move |_webview, payload| {
                 let finished = payload.event() == tauri::webview::PageLoadEvent::Finished;
-                // The production handler, then the work it orphaned settles
-                // at once: this test runs none.
-                let orphans = page_load_event(WINDOW, finished);
-                release_orphans(&orphans);
+                // The production handler, and the app's cleanup of what it
+                // orphans.
+                release_once_settled(page_load_event(WINDOW, finished));
                 let mut run = on_load.lock().unwrap();
                 run.seen.push(Seen {
                     finished,
@@ -543,28 +666,66 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
         .build()
         .map_err(|e| format!("the window did not open: {e}"))?;
         let driver_state = state.clone();
+        let driver_dir = dir.clone();
         let handle = app.handle().clone();
         let deadline = Instant::now() + budget;
         let driver = std::thread::spawn(move || -> Result<(), String> {
-            // Quiet for 400 ms: the engine has nothing more to report.
-            let settle = |what: &str| -> Result<(), String> {
+            let state = &*driver_state;
+            // Until `done`, or the first violation, or the deadline.
+            let wait = |what: &str, done: &dyn Fn() -> bool| -> Result<(), String> {
                 loop {
+                    if let Some(violation) = state.lock().unwrap().violation.clone() {
+                        return Err(violation);
+                    }
+                    if done() {
+                        return Ok(());
+                    }
                     if Instant::now() > deadline {
                         return Err(format!("timed out waiting for {what}"));
                     }
-                    let quiet = driver_state
-                        .lock()
-                        .unwrap()
-                        .last_event
-                        .is_some_and(|at| at.elapsed() > Duration::from_millis(400));
-                    if quiet {
-                        return Ok(());
-                    }
-                    std::thread::sleep(Duration::from_millis(50));
+                    std::thread::sleep(Duration::from_millis(25));
                 }
             };
-            settle("the first page")?;
+            // A page finished loading after the first `since` events, then
+            // quiet for 400 ms: the engine has nothing more to report.
+            let settle = |what: &str, since: usize| {
+                wait(what, &|| {
+                    let run = state.lock().unwrap();
+                    run.seen.iter().skip(since).any(|event| event.finished)
+                        && run
+                            .last_event
+                            .is_some_and(|at| at.elapsed() > Duration::from_millis(400))
+                })
+            };
+            let events = || state.lock().unwrap().seen.len();
+            // Ask the displayed document which one it is.
+            let displayed = |what: &str| -> Result<String, String> {
+                state.lock().unwrap().alive = None;
+                window
+                    .eval("fetch(location.origin + '/alive/' + window.__doc)")
+                    .map_err(|e| e.to_string())?;
+                wait(what, &|| state.lock().unwrap().alive.is_some())?;
+                Ok(state.lock().unwrap().alive.clone().unwrap_or_default())
+            };
+            // The lease the displayed document was granted.
+            let granted = |what: &str| -> Result<String, String> {
+                let document = displayed(&format!("{what}: the displayed document"))?;
+                wait(&format!("{what}: a lease granted to {document}"), &|| {
+                    lease_of(state, &document).is_some()
+                })?;
+                lease_of(state, &document)
+                    .ok_or_else(|| format!("{what}: {document} lost its lease"))
+            };
+            settle("the first page", 0)?;
             for round in 0..rounds {
+                let at = format!("round {round}");
+                // (a) A granted lease, before the navigations.
+                let token = granted(&at)?;
+                // (c) Native work it admitted, held across the navigations.
+                let work = admit(Some(&token))
+                    .map_err(|e| format!("{at}: the granted lease admitted no work: {e}"))?;
+                let busy_before = state.lock().unwrap().counts.refused_busy;
+                let since = events();
                 // Two navigations back to back, then a reload over them.
                 window
                     .navigate(page(2 * round + 1))
@@ -573,18 +734,40 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
                     .navigate(page(2 * round + 2))
                     .map_err(|e| e.to_string())?;
                 window.reload().map_err(|e| e.to_string())?;
-                settle(&format!("round {round}"))?;
-            }
-            // Ask the displayed document which one it is.
-            window
-                .eval("fetch(location.origin + '/alive/' + window.__doc)")
-                .map_err(|e| e.to_string())?;
-            while driver_state.lock().unwrap().alive.is_none() {
-                if Instant::now() > deadline {
-                    return Err("timed out waiting for the displayed document".into());
+                settle(&at, since)?;
+                if !held_by_orphan(&token, &pair) {
+                    return Err(format!(
+                        "{at}: the old lease is not an orphan keeping the pair while its work runs"
+                    ));
                 }
-                std::thread::sleep(Duration::from_millis(50));
+                if lock_file_is_free(&driver_dir, &pair) {
+                    return Err(format!(
+                        "{at}: the pair's lock file was free while the work ran"
+                    ));
+                }
+                wait(
+                    &format!("{at}: the new document refused the busy pair"),
+                    &|| state.lock().unwrap().counts.refused_busy > busy_before,
+                )?;
+                if !held_by_orphan(&token, &pair) {
+                    return Err(format!(
+                        "{at}: the orphan let the pair go before its work settled"
+                    ));
+                }
+                state.lock().unwrap().counts.orphans_held += 1;
+                drop(work);
+                wait(
+                    &format!("{at}: the orphan released once its work settled"),
+                    &|| {
+                        REGISTRY
+                            .lock()
+                            .is_ok_and(|registry| !registry.orphans.contains_key(&token))
+                    },
+                )?;
+                state.lock().unwrap().counts.orphans_released += 1;
             }
+            // (a) The displayed replacement document is granted the pair.
+            granted("after the last round")?;
             Ok(())
         });
         let exit = handle.clone();
@@ -600,30 +783,56 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
             .join()
             .unwrap_or_else(|_| Err("the watcher panicked".into()));
         let run = std::mem::take(&mut *state.lock().unwrap());
-        // The document bound now, read before the registry is left as found.
-        let bound = REGISTRY.lock().ok().and_then(|registry| {
-            registry
-                .bindings
-                .get(WINDOW)
-                .map(|(_, nonce)| nonce.clone())
-        });
-        let leftovers = orphan_window(WINDOW);
-        release_orphans(&leftovers);
+        // The document bound now and the documents holding a live lease, read
+        // before the registry is left as found (this window's leases and
+        // orphans gone).
+        let (bound, lessees) = match REGISTRY.lock() {
+            Ok(mut registry) => {
+                let bound = registry
+                    .bindings
+                    .get(WINDOW)
+                    .map(|(_, nonce)| nonce.clone());
+                let lessees: Vec<String> = registry
+                    .leases
+                    .iter()
+                    .filter(|(_, lease)| lease.window == WINDOW)
+                    .filter_map(|(token, _)| run.holders.get(token).cloned())
+                    .collect();
+                orphan_leases_of(&mut registry, WINDOW);
+                registry.orphans.retain(|_, lease| lease.window != WINDOW);
+                registry.bindings.remove(WINDOW);
+                (bound, lessees)
+            }
+            Err(_) => (None, Vec::new()),
+        };
         let _ = std::fs::remove_dir_all(&dir);
-        driven?;
+        let counts = run.counts;
+        let failed =
+            |error: String| -> Result<Report, String> { Err(format!("{error}; {counts}")) };
+        if let Err(error) = driven {
+            return failed(error);
+        }
         if let Some(violation) = run.violation {
-            return Err(violation);
+            return failed(violation);
         }
         let Some(alive) = run.alive else {
-            return Err("the displayed document never answered".into());
+            return failed("the displayed document never answered".into());
         };
         if bound.as_deref() != Some(alive.as_str()) {
-            return Err(format!(
+            return failed(format!(
                 "the displayed document {alive} is not the bound one ({bound:?}) after {} events",
                 run.seen.len()
             ));
         }
-        Ok(run.seen)
+        if lessees != [alive.clone()] {
+            return failed(format!(
+                "the displayed document {alive} does not alone hold the pair: {lessees:?}"
+            ));
+        }
+        Ok(Report {
+            seen: run.seen,
+            counts,
+        })
     }
 }
 
@@ -848,15 +1057,42 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn webview2_page_loads_keep_one_document_with_work_and_bind_the_live_one() {
-        let seen = page_load_selftest::run(
-            tauri::Builder::default().any_thread(),
-            25,
-            std::time::Duration::from_secs(180),
-        )
-        .unwrap_or_else(|error| panic!("WebView2 page-load self-test: {error}"));
+        page_load_selftest_on(tauri::Builder::default().any_thread(), "WebView2");
+    }
+
+    /// The same on WebKitGTK, on demand: it opens a window, so it needs a
+    /// desktop session (`cargo test --lib -- --ignored webkitgtk_page_loads`).
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "opens a window: needs a desktop session"]
+    fn webkitgtk_page_loads_keep_one_document_with_work_and_bind_the_live_one() {
+        page_load_selftest_on(tauri::Builder::default().any_thread(), "WebKitGTK");
+    }
+
+    /// V2: every round must have granted the displayed document its lease,
+    /// held an orphan by admitted work across the navigations, and released
+    /// it after; the counts are printed for the record.
+    #[cfg(any(windows, target_os = "linux"))]
+    fn page_load_selftest_on(builder: tauri::Builder<tauri::Wry>, engine: &str) {
+        const ROUNDS: u32 = 25;
+        let report = page_load_selftest::run(builder, ROUNDS, std::time::Duration::from_secs(180))
+            .unwrap_or_else(|error| panic!("{engine} page-load self-test: {error}"));
+        let counts = &report.counts;
+        println!(
+            "{engine} page-load self-test: {} events; {counts}",
+            report.seen.len()
+        );
         assert!(
-            seen.iter().filter(|event| event.finished).count() >= 25,
-            "fewer page loads than rounds: {seen:?}"
+            report.seen.iter().filter(|event| event.finished).count() >= ROUNDS as usize,
+            "fewer page loads than rounds: {:?}",
+            report.seen
+        );
+        assert!(counts.leases_granted > ROUNDS, "{counts}");
+        assert!(counts.refused_busy >= ROUNDS, "{counts}");
+        assert_eq!(
+            (counts.orphans_held, counts.orphans_released),
+            (ROUNDS, ROUNDS),
+            "{counts}"
         );
     }
 

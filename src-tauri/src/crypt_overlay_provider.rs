@@ -2187,7 +2187,7 @@ pub fn validate_headerless_config_salt(
 
 /// Scoped unlocks write only the captured partition. A legacy scope writes only
 /// the legacy vault; neither case rediscovers the active user or its mirror.
-fn persist_public_overlay_config_for_unlock(
+pub(crate) fn persist_public_overlay_config_for_unlock(
     auth_scope: Option<&crate::profile_auth::AuthScope<'_>>,
     id: &str,
     config_json: &str,
@@ -2694,10 +2694,7 @@ pub async fn wrap_connected_provider_for_profile_named(
     wrap_connected_provider_for_profile_in_scope(
         inner,
         &profile,
-        &crate::profile_auth::AuthScope {
-            store,
-            user_id: Some(account),
-        },
+        &crate::profile_auth::AuthScope::for_captured(store, account),
     )
     .await
 }
