@@ -16015,6 +16015,8 @@ mod tests {
     /// earlier one's, and nothing it reported is left in the queue.
     #[tokio::test]
     async fn a_connect_answers_its_own_warnings_once() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let _ = crate::providers::take_warnings();
         crate::providers::report_warning("another connection's".to_string());
         let connected = super::connected_with_warnings(async {
@@ -18071,6 +18073,50 @@ mod tests {
                 plaintext.len()
             );
         }
+    }
+
+    /// #1572 R3 (CodeRabbit 4575254547) seen from #1561's GUI target: the
+    /// identity reads `sync_namespace_identity()` through the provider in
+    /// the slot, which is the overlay. A crypt-wrapped GitHub session on
+    /// `main` and one on its working branch are two GUI targets; the same
+    /// tree wrapped in another state is the same target, so the identity is
+    /// the namespace's, not one of this connection only.
+    #[tokio::test]
+    async fn a_crypt_wrapped_github_session_on_main_and_on_its_working_branch_are_two_gui_targets()
+    {
+        async fn wrapped_identity(provider: crate::providers::github::GitHubProvider) -> String {
+            let state = ProviderState::new();
+            let keys =
+                crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_compare_keys(true));
+            let overlay = crate::crypt_overlay_provider::CryptOverlayProvider::new(
+                Box::new(provider),
+                keys.clone(),
+                "/",
+            );
+            install_connected_provider(&state, Box::new(overlay), Some("gh".into()))
+                .await
+                .unwrap();
+            state.active_crypt_overlay.store(true, Ordering::SeqCst);
+            state.overlay_wrapped.store(true, Ordering::SeqCst);
+            state.store_overlay_key_cache(keys, "/".to_string(), "rclone-crypt".to_string());
+            state.gui_target_identity(true).await.unwrap()
+        }
+        let (on_main, on_branch) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        let main_identity = wrapped_identity(on_main).await;
+        let branch_identity = wrapped_identity(on_branch).await;
+        assert_ne!(main_identity, branch_identity, "two trees, two GUI targets");
+        let (again_on_main, _) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        assert_eq!(
+            wrapped_identity(again_on_main).await,
+            main_identity,
+            "the namespace's identity, not this connection's"
+        );
+        assert!(
+            !main_identity.starts_with("target-v1:connection:"),
+            "{main_identity}"
+        );
     }
 
     #[test]

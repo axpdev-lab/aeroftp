@@ -869,6 +869,8 @@ mod tests {
     /// an MCP client never saw it: it now comes back with the tool result.
     #[tokio::test]
     async fn a_warning_left_by_a_tool_call_comes_back_in_its_result() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-1".to_string());
         let reply = dispatch(
             json!({
@@ -894,6 +896,8 @@ mod tests {
     /// comes back with the timeout error.
     #[tokio::test]
     async fn a_timed_out_tool_call_answers_with_the_warnings_it_left() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let slow = async {
             crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-2".to_string());
             std::future::pending::<(serde_json::Value, bool)>().await
@@ -923,6 +927,8 @@ mod tests {
     /// hands it back, for the server's log.
     #[tokio::test]
     async fn a_cancelled_call_hands_back_the_warnings_it_left() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let token = tokio_util::sync::CancellationToken::new();
         let cancel = token.clone();
         let answer = async move {
@@ -944,6 +950,8 @@ mod tests {
     /// handed back with the answer, for the server's log.
     #[tokio::test]
     async fn an_answer_that_does_not_take_its_warnings_hands_them_back() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let token = tokio_util::sync::CancellationToken::new();
         let answer = async {
             crate::providers::report_warning("left /d/.a.txt.aeroftp-replaced-4".to_string());

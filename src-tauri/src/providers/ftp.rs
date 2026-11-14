@@ -8857,6 +8857,8 @@ mod rename_contract_tests {
 
     #[tokio::test]
     async fn a_refused_ftp_parallel_plan_reports_a_safe_terminal_notice() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let (mut provider, _) = provider_on_scripted_server().await;
         let dir = tempfile::tempdir().unwrap();
         let out = dir.path().join("private-target");
