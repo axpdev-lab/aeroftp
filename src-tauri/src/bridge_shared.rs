@@ -799,6 +799,13 @@ pub fn resolve_export_endpoint(
     crate::profile_loader::apply_profile_options(&mut extra, &profile);
 
     let mut host = host.trim().to_string();
+    if provider_type == ProviderType::WebDav && host.is_empty() {
+        if let Some(resolved) =
+            crate::profile_loader::apply_webdav_profile_defaults(provider_id, &host)
+        {
+            host = resolved;
+        }
+    }
     if provider_type == ProviderType::S3 {
         // As in the CLI and MCP connect paths: preset defaults (region,
         // path style, endpoint), and the resolved endpoint as host when the

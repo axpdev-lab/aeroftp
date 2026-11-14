@@ -2652,6 +2652,7 @@ pub struct RcloneExportServer {
     #[serde(default)]
     pub id: String,
     pub name: String,
+    #[serde(default)]
     pub host: String,
     pub port: u32,
     pub username: String,
@@ -2979,7 +2980,17 @@ fn rclone_required_field_missing(proto: &str, server: &RcloneExportServer) -> Op
         // These backends address the server through the host alone, so an empty
         // one used to be written as `url = https://` or `host = `: rclone accepts
         // the section and every call then fails with "no Host in request URL".
-        "ftp" | "ftps" | "sftp" | "webdav" if server.host.trim().is_empty() => {
+        "ftp" | "ftps" | "sftp" if server.host.trim().is_empty() => {
+            Some("the profile has no host, which rclone needs to reach the server".to_string())
+        }
+        "webdav"
+            if server.host.trim().is_empty()
+                && crate::profile_loader::apply_webdav_profile_defaults(
+                    server.provider_id.as_deref(),
+                    &server.host,
+                )
+                .is_none() =>
+        {
             Some("the profile has no host, which rclone needs to reach the server".to_string())
         }
         "swift" if swift_auth_url(server).is_none() => Some(
@@ -4106,9 +4117,18 @@ pub fn export_rclone(
                 // certain WebDAV presets. In that case we MUST NOT prepend
                 // another scheme or the URL becomes `https://https://...`
                 // and rclone refuses to dial.
-                let host = server.host.trim_end_matches('/');
+                let default_host = crate::profile_loader::apply_webdav_profile_defaults(
+                    server.provider_id.as_deref(),
+                    &server.host,
+                );
+                let raw_host = default_host.as_deref().unwrap_or(&server.host).trim();
+                let host = raw_host.trim_end_matches('/');
                 let url = if host.starts_with("http://") || host.starts_with("https://") {
-                    format!("{}{}", host, base_path)
+                    if base_path.is_empty() && raw_host.ends_with('/') {
+                        format!("{}/", host)
+                    } else {
+                        format!("{}{}", host, base_path)
+                    }
                 } else {
                     let scheme = webdav_export_scheme(host, server.port, options);
                     if webdav_is_local_bridge(host, server.port) {
@@ -11872,6 +11892,66 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         // The scope is under the bucket the alias opens, folder `media` included.
         assert!(
             conf.contains("remote = minio-media:/media/vault\n"),
+            "{conf}"
+        );
+    }
+
+    #[test]
+    fn lifetimecloud_rclone_export_resolves_username_for_omitted_blank_and_string_fields() {
+        let omitted_host_json: RcloneExportServer = serde_json::from_value(serde_json::json!({
+            "id": "lc-omitted",
+            "name": "lc omitted",
+            "port": 443,
+            "username": "alice",
+            "protocol": "webdav",
+            "providerId": "lifetimecloud",
+        }))
+        .expect("omitted host deserializes");
+        let blank_host = RcloneExportServer {
+            id: "lc-blank".into(),
+            name: "lc blank".into(),
+            host: "   ".into(),
+            port: 443,
+            username: "alice".into(),
+            protocol: Some("webdav".into()),
+            options: None,
+            provider_id: Some("lifetimecloud".into()),
+        };
+        let template_host = server_with(
+            "lc template",
+            "webdav",
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            Some("lifetimecloud"),
+            serde_json::json!({ "basePath": "", "verifyCert": "false" }),
+        );
+        let expanded_host = server_with(
+            "lc expanded",
+            "webdav",
+            "https://lifetimecloud.me/dav/alice/",
+            443,
+            Some("lifetimecloud"),
+            serde_json::json!({}),
+        );
+
+        let servers = [omitted_host_json, blank_host, template_host, expanded_host];
+        let (outcome, conf) = export_to_string(&servers, "lc-export");
+        assert_eq!(outcome.exported, 4, "{conf}");
+        assert!(
+            !conf.contains("{username}"),
+            "literal template leaked into rclone export:\n{conf}"
+        );
+        for remote in ["lc omitted", "lc blank", "lc template", "lc expanded"] {
+            let sec = section_of(&conf, remote);
+            assert!(
+                sec.contains("url = https://lifetimecloud.me/dav/alice/\n"),
+                "{remote}:\n{sec}"
+            );
+            assert!(sec.contains("vendor = other\n"), "{remote}:\n{sec}");
+            assert!(sec.contains("user = alice\n"), "{remote}:\n{sec}");
+        }
+        assert!(
+            section_of(&conf, "lc template").contains("override.no_check_certificate = true\n"),
             "{conf}"
         );
     }
