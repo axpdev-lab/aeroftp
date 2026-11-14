@@ -220,10 +220,33 @@ describe('every location site checks the path first', () => {
         const all = syncNavigationSource + overlayScopeSource + liveConnectionSource + wizardSource;
         for (const name of Object.keys(EXEMPT)) expect(all, name).toMatch(new RegExp(`(function|const) ${name}\\b`, 'u'));
         // The wizard refuses before it builds the folder it saves, and the
-        // AeroCloud tab before it lists the saved one.
-        const complete = wizardSource.slice(wizardSource.indexOf('const handleComplete = async'));
-        expect(complete.indexOf('aeroCloudFolderNotPlain(profile, subfolder)')).toBeLessThan(complete.indexOf('aeroCloudRemoteFolder('));
-        const open = liveConnectionSource.slice(liveConnectionSource.indexOf('export async function openAeroCloudFolder'));
-        expect(open.indexOf('savedLocationProblem(remoteFolder)')).toBeLessThan(open.indexOf('await place('));
+        // AeroCloud tab before it lists the saved one: both calls are there,
+        // the check first. A missing call is a failure, never an index of -1
+        // that reads as "first".
+        const complete = regionFrom(wizardSource, 'const handleComplete = async');
+        expect(checkedFirst(complete, 'aeroCloudFolderNotPlain(profile, subfolder)', 'aeroCloudRemoteFolder(')).toBe(true);
+        const open = regionFrom(liveConnectionSource, 'export async function openAeroCloudFolder');
+        expect(checkedFirst(open, 'savedLocationProblem(remoteFolder)', 'await place(')).toBe(true);
+        // The rule itself: without either call, or with the use first, it fails.
+        for (const [region, check, use] of [
+            [complete, 'aeroCloudFolderNotPlain(profile, subfolder)', 'aeroCloudRemoteFolder('],
+            [open, 'savedLocationProblem(remoteFolder)', 'await place('],
+        ]) {
+            expect(checkedFirst(region.split(check).join(''), check, use), `${check} removed`).toBe(false);
+            expect(checkedFirst(region.split(use).join(''), check, use), `${use} removed`).toBe(false);
+            expect(checkedFirst(`${use}\n${check}`, check, use), `${use} first`).toBe(false);
+        }
     });
+    /** `source` from the first `marker`; the marker must be there. */
+    const regionFrom = (source: string, marker: string) => {
+        const at = source.indexOf(marker);
+        expect(at, marker).toBeGreaterThanOrEqual(0);
+        return source.slice(at);
+    };
+    /** Whether `source` has both calls, `check` before `use`. */
+    const checkedFirst = (source: string, check: string, use: string) => {
+        const checkAt = source.indexOf(check);
+        const useAt = source.indexOf(use);
+        return checkAt >= 0 && useAt >= 0 && checkAt < useAt;
+    };
 });

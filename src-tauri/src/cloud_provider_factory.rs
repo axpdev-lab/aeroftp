@@ -431,6 +431,23 @@ pub(crate) fn aerocloud_profile_id(
         .map(str::to_string))
 }
 
+/// Record in `config.resolved_profile_id` the saved profile its reference
+/// selects in `store`, as the background worker reads a config to sync, so
+/// [`crate::cloud_scan_schedule::pair_key`] names the key the scheduler
+/// keeps it under. A config already resolved (by the connect, from the
+/// profile it used) keeps its id; without a store nothing is resolved.
+pub(crate) fn resolve_scheduler_profile(
+    store: Option<&credential_store::CredentialStore>,
+    config: &mut CloudConfig,
+) {
+    if config.resolved_profile_id.is_some() {
+        return;
+    }
+    if let Some(store) = store {
+        config.resolved_profile_id = aerocloud_profile_id(store, config).ok().flatten();
+    }
+}
+
 /// The folder a saved profile opens in, which is the root AeroCloud works in:
 /// the profile's starting folder with the `{username}` template some WebDAV
 /// presets keep in it resolved, `/` when it has none. AeroCloud connects

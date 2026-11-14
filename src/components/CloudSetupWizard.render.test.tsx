@@ -74,6 +74,33 @@ it('refuses a sub-folder that is not plain on a plain starting folder, and lets 
     }
 });
 
+it('refuses a sub-folder whose backslash joins an empty step into the folder it composes', async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    // Each part is plain alone: `/data`, and `\\cloud` (a `\\` ends a step, so
+    // its leading empty step is a leading separator). Joined, `/data/\\cloud/`
+    // has an empty step, which the backend refuses on save.
+    mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol: 'sftp', initialPath: '/data' }];
+    mocks.invoke.mockImplementation(async (command: string) => command === 'get_default_cloud_folder' ? '/home/u/AeroCloud' : null);
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    await React.act(async () => root!.render(<CloudSetupWizard onComplete={vi.fn()} onCancel={vi.fn()} />));
+    const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.includes(label));
+    await React.act(async () => button('common.next')!.click());
+    await React.act(async () => button('nas')!.click());
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="cloud.remoteFolder"]')!;
+    const type = (value: string) => React.act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    for (const sub of ['\\cloud', 'cloud\\', '/\\cloud']) {
+        await type(sub);
+        expect(host.querySelector('[role="alert"]')?.textContent, sub).toContain('cloud.remoteFolderNotPlain');
+        expect(button('common.next')!.disabled, sub).toBe(true);
+    }
+    await type('cloud');
+    expect(host.querySelector('[role="alert"]')).toBeNull();
+    expect(button('common.next')!.disabled).toBe(false);
+});
+
 it('lets a starting folder without `..` through', async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol: 'sftp', initialPath: 'docs' }];

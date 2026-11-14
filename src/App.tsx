@@ -2443,10 +2443,11 @@ const App: React.FC = () => {
     isCloudPaused,
     cloudServerName,
     cloudLastSync,
-    cloudLocalFolder, setCloudLocalFolder,
-    cloudRemoteFolder, setCloudRemoteFolder,
-    cloudProfileId, setCloudProfileId,
+    cloudLocalFolder,
+    cloudRemoteFolder,
+    cloudProfileId,
     cloudPublicUrlBase,
+    adoptOpenedCloudFolder,
   } = useCloudSync({
     activityLog, humanLog, t, checkForUpdate, isAppLocked,
     onSyncComplete: () => {
@@ -6131,6 +6132,17 @@ const App: React.FC = () => {
       display_current_path: response.display_current_path,
       boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
     });
+  };
+
+  // A listing of a folder the panel moved to (a navigation, the AeroCloud
+  // open): the listing, and nothing left of the folder before it. A search
+  // shown over the previous folder is dropped, so the rows and their actions
+  // are the new folder's; the query stays in the box and filters the new
+  // listing, as it does after any navigation. A refresh of the folder shown
+  // (`loadRemoteFiles`) applies the listing alone and keeps the search.
+  const applyRemoteNavigation = (response: FileListResponse & { display_current_path?: string }) => {
+    applyRemoteFileList(response);
+    setRemoteSearchResults(null);
   };
 
   // The session's overlay binding WITHOUT the scope gate: "this tab owns an
@@ -9822,8 +9834,13 @@ const App: React.FC = () => {
       // Helper: connect to cloud server using the correct protocol. It ends
       // the current connection itself, after the host-key check: a refused
       // key leaves that connection live for the callers to restore.
+      // Set once the open starts ending the connection it found: from then on
+      // that session is gone whatever the connect does, and a failure leaves
+      // its tab cached, never marked connected again.
+      let previousSessionEnded = false;
       const connectToCloudServer = async (): Promise<void> => {
         const endCurrentConnection = async () => {
+          previousSessionEnded = true;
           try { await invoke('provider_disconnect'); } catch { }
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           try { await invoke('disconnect_ftp'); } catch { }
@@ -9894,7 +9911,7 @@ const App: React.FC = () => {
       // foreground listing on a freshly connected server, so both raise the
       // spinner and name the folder they are waiting on. Returns the folder
       // as the session reports it. The listing is applied whole, as a
-      // navigation applies it (`applyRemoteFileList`): the folder, its
+      // navigation applies it (`applyRemoteNavigation`): the folder, its
       // displayed form and the breadcrumb are the ones the server returned,
       // so a kept session with an unlocked overlay shows the folder entered,
       // the one uploads go to, not the one the user was in.
@@ -9910,7 +9927,7 @@ const App: React.FC = () => {
             listingReason(folder),
           );
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
-          applyRemoteFileList(response);
+          applyRemoteNavigation(response);
           return response.current_path;
         } else {
           const response = await withRemoteListSpinner(
@@ -9918,7 +9935,7 @@ const App: React.FC = () => {
             listingReason(folder),
           );
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
-          applyRemoteFileList(response);
+          applyRemoteNavigation(response);
           return response.current_path;
         }
       };
@@ -10032,8 +10049,15 @@ const App: React.FC = () => {
               logger.error('Failed to connect to cloud server:', connError);
               notify.error(t('toast.connectionFailedTitle'), String(connError));
             }
-            // Restore previous session
-            if (capturedSessionId) {
+            if (previousSessionEnded) {
+              // The session was ended before the connect failed: its tab
+              // stays cached, as it was parked above, and the workspace is
+              // disconnected until the user opens a connection again.
+              setIsConnected(false);
+              setRemoteFiles([]);
+              setShowConnectionScreen(true);
+            } else if (capturedSessionId) {
+              // Nothing was ended: the previous session is still live.
               setActiveSessionId(capturedSessionId);
               setSessions(prev => prev.map(s =>
                 s.id === capturedSessionId ? { ...s, status: 'connected' } : s
@@ -10071,9 +10095,7 @@ const App: React.FC = () => {
           if (!owner.owns()) return;
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-          setCloudRemoteFolder(listedFolder);
-          setCloudProfileId(cloudServer.id);
-          setCloudLocalFolder(cloudConfig.local_folder);
+          adoptOpenedCloudFolder({ remoteFolder: listedFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
@@ -10123,9 +10145,7 @@ const App: React.FC = () => {
       if (!owner.owns()) return;
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
-      setCloudRemoteFolder(listedCloudFolder);
-      setCloudProfileId(cloudServer.id);
-      setCloudLocalFolder(cloudConfig.local_folder);
+      adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));
@@ -10266,8 +10286,7 @@ const App: React.FC = () => {
       }
       // Discard response if a newer navigation was initiated while we awaited
       if (navId !== remoteNavCounter.current) return null;
-      applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
-      setRemoteSearchResults(null);
+      applyRemoteNavigation(response as FileListResponse & { display_current_path?: string });
       humanLog.logNavigate(response.current_path, true);
 
       // Navigation Sync: mirror to local panel if enabled.

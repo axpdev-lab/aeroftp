@@ -10,7 +10,9 @@ import pairsEditorSource from './CloudPairsEditor.tsx?raw';
 import cloudSyncSource from '../hooks/useCloudSync.ts?raw';
 import appSource from '../App.tsx?raw';
 import liveConnectionSource from '../utils/liveConnection.ts?raw';
+import settingsTabSource from './settings/SettingsAeroCloudTab.tsx?raw';
 import { useCloudSync } from '../hooks/useCloudSync';
+import { SettingsAeroCloudTab } from './settings/SettingsAeroCloudTab';
 
 const mocks = vi.hoisted(() => ({
     invoke: vi.fn(),
@@ -1114,6 +1116,107 @@ describe('the AeroCloud identity the app offers the badges and the share link fo
     });
 });
 
+describe('the AeroCloud identity is set by one function per source', () => {
+    type Identity = ReturnType<typeof useCloudSync>;
+    let seen: Identity | null = null;
+    const Probe = () => {
+        seen = useCloudSync({
+            activityLog: { log: vi.fn(), updateEntry: vi.fn() } as never,
+            humanLog: { logRaw: vi.fn() } as never,
+            t: (key: string) => key,
+            checkForUpdate: vi.fn(),
+            isAppLocked: true,
+        });
+        return null;
+    };
+    const reads: ((config: unknown) => void)[] = [];
+    const mountProbe = async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        reads.length = 0;
+        mocks.invoke.mockImplementation((command: string) => command === 'get_cloud_config' ? new Promise(resolve => { reads.push(resolve); }) : Promise.resolve(null));
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<Probe />));
+    };
+    const answer = (index: number, config: unknown) => React.act(async () => { reads[index](config); await Promise.resolve(); await Promise.resolve(); });
+    const status = (value: string) => React.act(async () => mocks.listeners.get('cloud-sync-status')!({ payload: { status: value, message: '' } }));
+    const at = (folder: string, more: Record<string, unknown> = {}) => ({ enabled: true, server_profile_id: 'srv_a', local_folder: '/l', remote_folder: folder, ...more });
+
+    it('sets the derived fields only in its apply functions', () => {
+        const DERIVED = ['setIsCloudActive', 'setIsCloudPaused', 'setCloudServerName', 'setCloudLastSync', 'setCloudLocalFolder', 'setCloudRemoteFolder', 'setCloudProfileId', 'setCloudPublicUrlBase', 'setCloudProtocolType'];
+        let rest = cloudSyncSource.replace(/^\s*const \[\w+, set\w+\] = useState.*$/gmu, '');
+        for (const name of ['applyConfigRead', 'applyNoConfig', 'applyStatusEvent', 'adoptOpenedCloudFolder']) {
+            const start = rest.indexOf(`  const ${name} = (`);
+            expect(start, name).toBeGreaterThanOrEqual(0);
+            const end = rest.indexOf('\n  };\n', start);
+            const body = rest.slice(start, end);
+            if (name === 'applyConfigRead' || name === 'applyNoConfig') {
+                for (const setter of DERIVED) expect(body, `${name} sets ${setter}`).toContain(`${setter}(`);
+            }
+            rest = rest.slice(0, start) + rest.slice(end);
+        }
+        for (const setter of DERIVED) expect(rest, setter).not.toContain(`${setter}(`);
+        expect(cloudSyncSource).not.toMatch(/^\s*set(IsCloud|Cloud)\w+,$/mu);
+    });
+
+    it('drops a read that started before a pause', async () => {
+        await mountProbe();
+        await answer(0, at('/r'));
+        await status('active');
+        await status('paused');
+        expect(seen!.isCloudPaused).toBe(true);
+        await answer(1, at('/r', { paused: false }));
+        expect(seen!.isCloudPaused).toBe(true);
+        await answer(2, at('/r', { paused: true }));
+        expect(seen!.isCloudPaused).toBe(true);
+    });
+
+    it('applies a read by name with the profile it selects, never the previous id with the new folders', async () => {
+        let lookup!: (profiles: unknown[]) => void;
+        mocks.profiles = () => new Promise(resolve => { lookup = resolve; });
+        await mountProbe();
+        await answer(0, at('/old'));
+        await status('active');
+        await answer(1, { enabled: true, server_profile: 'nas', local_folder: '/l', remote_folder: '/new' });
+        expect([seen!.cloudProfileId, seen!.cloudRemoteFolder]).toEqual(['srv_a', '/old']);
+        await React.act(async () => { lookup([{ id: 'srv_b', name: 'nas' }]); await Promise.resolve(); await Promise.resolve(); });
+        expect([seen!.cloudProfileId, seen!.cloudRemoteFolder]).toEqual(['srv_b', '/new']);
+    });
+
+    it('clears a field the newer read does not carry', async () => {
+        await mountProbe();
+        await answer(0, at('/r', { public_url_base: 'https://share.example/', last_sync: '2026-11-14T00:00:00Z', cloud_name: 'Mine' }));
+        expect(seen!.cloudPublicUrlBase).toBe('https://share.example/');
+        await status('active');
+        await answer(1, at('/r', { public_url_base: null, server_profile: 'nas' }));
+        expect(seen!.cloudPublicUrlBase).toBe('');
+        expect(seen!.cloudServerName).toBe('nas');
+    });
+
+    it('reads the file again after a settings save, and drops a read from before it', async () => {
+        await mountProbe();
+        await answer(0, at('/r'));
+        await status('active');
+        mocks.invoke.mockImplementation((command: string) => command === 'get_cloud_config'
+            ? new Promise(resolve => { reads.push(resolve); })
+            : Promise.resolve(command === 'save_cloud_config_cmd' ? at('/saved') : null));
+        const { saveCloudSettings } = await import('../hooks/useCloudSync');
+        await React.act(async () => { await saveCloudSettings(at('/saved'), at('/r')); });
+        await answer(2, at('/saved'));
+        await answer(1, at('/r'));
+        expect(seen!.cloudRemoteFolder).toBe('/saved');
+    });
+
+    it('adopts the folder an AeroCloud open listed, then reads the file again', async () => {
+        await mountProbe();
+        await answer(0, at('~/docs'));
+        await React.act(async () => seen!.adoptOpenedCloudFolder({ remoteFolder: '/home/u/docs', localFolder: '/l', profileId: 'srv_a' }));
+        expect(seen!.cloudRemoteFolder).toBe('/home/u/docs');
+        expect(reads.length).toBe(2);
+        await answer(1, at('/home/u/docs'));
+        expect(seen!.cloudRemoteFolder).toBe('/home/u/docs');
+    });
+});
+
 describe('every reply applied belongs to the operation that asked', () => {
     // One rule for the AeroCloud panel, its pairs editor, the app's AeroCloud
     // identity and the AeroCloud tab's open: every await whose result is
@@ -1124,7 +1227,7 @@ describe('every reply applied belongs to the operation that asked', () => {
     // in source order with its check, or with the reason it needs none; a new
     // await fails here until it is listed.
     type Row = [call: string, check: string] | [call: string, check: null, reason: string];
-    const EFFECT = /\b(set[A-Z]\w*|replaceConfig|applyRemoteFileList|updatePairField|onClose|runConnect|endCurrentConnection|connectToCloudServer|navigate)\(|\b(notify|toast|humanLog)\.\w+\(|\binvoke\b(<[^(]*>)?\(\s*'(?!get_)/u;
+    const EFFECT = /\b(set[A-Z]\w*|replaceConfig|applyRemoteFileList|applyRemoteNavigation|updatePairField|onClose|runConnect|endCurrentConnection|connectToCloudServer|navigate)\(|\b(notify|toast|humanLog)\.\w+\(|\binvoke\b(<[^(]*>)?\(\s*'(?!get_)/u;
     const region = (source: string, from: string, to: string) => {
         const start = source.indexOf(from);
         const end = source.indexOf(to, start);
@@ -1156,6 +1259,7 @@ describe('every reply applied belongs to the operation that asked', () => {
     const ASKED = 'if (asked !== configIdentity.current) return;';
     const OPENING = 'if (asked !== opening.current) return;';
     const PHASE = 'if (!ownsPhase()) return;';
+    const TAB_ASKED = 'if (asked !== configOperation.current) return;';
     const PHASE_THROW = 'if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);';
 
     it('CloudPanel', () => expectEveryAwaitGuarded('CloudPanel', panelSource, [
@@ -1172,7 +1276,7 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["await invoke('disable_aerocloud');", ASKED],
         ["await invoke('open_in_file_manager', { path: config.local_folder });", null, 'nothing follows but a log'],
         ["await invoke('update_excluded_folders', { excludedFolders: folders });", ASKED],
-        ["await invoke('save_cloud_config_cmd', { config });", ASKED],
+        ['const saved = await saveCloudSettings(config, settingsBaseline);', ASKED],
         ["const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');", 'asked === configIdentity.current'],
         ["await invoke('save_sync_schedule_cmd', {", ASKED],
     ]));
@@ -1191,7 +1295,8 @@ describe('every reply applied belongs to the operation that asked', () => {
     ]));
 
     it('useCloudSync', () => expectEveryAwaitGuarded('useCloudSync', cloudSyncSource, [
-        ['const config = await invoke<{', 'if (!owns()) return;'],
+        ["const saved = await invoke<T | null>('save_cloud_config_cmd'", null, 'the shared save: it writes no state, and the reads it asks for take their own numbers'],
+        ["const config = await invoke<CloudConfigRead>('get_cloud_config');", 'if (!owns()) return;'],
         ['const profiles = await loadSavedServerProfiles()', 'if (!owns()) return;'],
         // The tray reads the config as the gate of the command it sends next,
         // and writes none of the hook's state.
@@ -1201,6 +1306,20 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["const config = await invoke<{ enabled: boolean; local_folder: string }>('get_cloud_config');", null, 'the gate read of the tray folder open'],
         ["await invoke('open_in_file_manager', { path: config.local_folder });", null, 'nothing follows'],
         ["await invoke('start_background_sync');", null, 'logs only'],
+    ]));
+
+    it('the AeroCloud settings tab', () => expectEveryAwaitGuarded('SettingsAeroCloudTab', settingsTabSource, [
+        ["const cfg = await invoke<CloudConfig | null>('get_cloud_config');", TAB_ASKED],
+        ["const st = await invoke<CloudSyncStatus>('get_cloud_status')", null, 'the status shown, which no configuration reply replaces'],
+        ['const updatedConfig = (await saveCloudSettings(', TAB_ASKED],
+        ["const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');", 'asked === configOperation.current'],
+        ["await invoke('save_sync_schedule_cmd', {", TAB_ASKED],
+        ["await invoke('trigger_cloud_sync');", null, 'the status read follows, nothing of the configuration'],
+        ["const st = await invoke<CloudSyncStatus>('get_cloud_status')", null, 'the status shown, which no configuration reply replaces'],
+        ['const result = await invoke<CloudConfig>(cmd);', TAB_ASKED],
+        ["const result = await invoke<string>('install_shell_extension_cmd');", null, 'the shell integration, not the AeroCloud configuration'],
+        ["const result = await invoke<string>('uninstall_shell_extension_cmd');", null, 'the shell integration, not the AeroCloud configuration'],
+        ["const result = await invoke<string>('restart_file_manager_cmd');", null, 'the shell integration, not the AeroCloud configuration'],
     ]));
 
     it('the AeroCloud folder open', () => expectEveryAwaitGuarded('openAeroCloudFolder', region(liveConnectionSource, 'export async function openAeroCloudFolder', 'export const AEROCLOUD_OPEN_SUPERSEDED'), [
@@ -1233,4 +1352,62 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files'", 'if (!owner.owns()) return;'],
         ["await invoke('trigger_cloud_sync');", null, 'the last step: its failure is logged only'],
     ]));
+});
+
+describe('every AeroCloud settings save carries the configuration it was edited from', () => {
+    const sources = import.meta.glob('../**/*.{ts,tsx}', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+
+    it('goes through saveCloudSettings, which sends readAs', () => {
+        const callers = Object.entries(sources)
+            .filter(([file, text]) => !/\.test\.tsx?$/u.test(file) && text.includes('\'save_cloud_config_cmd\''))
+            .map(([file]) => file);
+        expect(callers).toEqual(['../hooks/useCloudSync.ts']);
+        expect(cloudSyncSource).toContain("invoke<T | null>('save_cloud_config_cmd', { config, readAs })");
+        expect(panelSource).toContain('await saveCloudSettings(config, settingsBaseline)');
+        expect(settingsTabSource).toContain('await saveCloudSettings({ ...config, exclude_patterns: patterns }, readAs)');
+    });
+
+    it('in the settings tab: a folder placed since the read is kept, and a refused save is shown', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const disk = {
+            enabled: true, cloud_name: 'c', local_folder: '/local', remote_folder: 'docs', server_profile: 'nas',
+            sync_interval_secs: 300, sync_on_change: true, sync_on_startup: false, exclude_patterns: [] as string[],
+            conflict_strategy: 'ask_user', public_url_base: null, protocol_type: 'sftp', last_sync: null,
+        };
+        type Saved = typeof disk;
+        const saves: { config: Saved; readAs: Saved }[] = [];
+        let refusal: string | null = null;
+        mocks.invoke.mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+            if (command === 'get_cloud_config') return { ...disk };
+            if (command === 'get_cloud_status') return { state: 'idle' };
+            if (command === 'save_cloud_config_cmd') {
+                const asked = args as { config: Saved; readAs: Saved };
+                saves.push(asked);
+                if (refusal) throw new Error(refusal);
+                // As the backend merges it (`cloud_config::settings_save`): a
+                // folder not edited since the read is the one on disk.
+                return { ...asked.config, remote_folder: asked.config.remote_folder === asked.readAs.remote_folder ? disk.remote_folder : asked.config.remote_folder };
+            }
+            return null;
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<SettingsAeroCloudTab onClose={vi.fn()} />));
+        const remoteFolder = () => host.querySelector<HTMLInputElement>('input[placeholder="/cloud/"]');
+        const save = () => [...host.querySelectorAll('button')].find(b => ['common.save', 'common.saved'].includes(b.textContent?.trim() ?? ''))!;
+        expect(remoteFolder()?.value).toBe('docs');
+
+        // A sync places the folder while the tab is open.
+        disk.remote_folder = '/home/u/docs';
+        await React.act(async () => save().click());
+        expect(saves[0].readAs.remote_folder).toBe('docs');
+        expect(remoteFolder()?.value).toBe('/home/u/docs');
+        await React.act(async () => save().click());
+        expect(saves[1].readAs.remote_folder).toBe('/home/u/docs');
+        expect(saves[1].config.remote_folder).toBe('/home/u/docs');
+        expect(host.querySelector('[role="alert"]')).toBeNull();
+
+        refusal = 'The AeroCloud configuration changed since these settings were opened';
+        await React.act(async () => save().click());
+        expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.saveFailed');
+    });
 });

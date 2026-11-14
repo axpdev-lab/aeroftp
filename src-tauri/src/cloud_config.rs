@@ -346,6 +346,44 @@ where
     Ok(out)
 }
 
+/// The configuration a settings save writes over `stored`, the file as it is
+/// now, from `draft`, the settings the user edited after reading them as
+/// `read_as`. What the file gained since that read and the user did not
+/// edit stays as stored: the remote folder a sync placed under the login
+/// folder, the time of the last sync, the pause. When the setup itself moved
+/// (AeroCloud enabled or disabled, another profile, local folder, protocol
+/// or connection parameters), the draft belongs to a configuration that was
+/// replaced, and the save is refused.
+pub fn settings_save(
+    stored: &CloudConfig,
+    read_as: &CloudConfig,
+    mut draft: CloudConfig,
+) -> Result<CloudConfig, String> {
+    let setup = |config: &CloudConfig| {
+        (
+            config.enabled,
+            config.server_profile_id.clone(),
+            config.server_profile.clone(),
+            config.local_folder.clone(),
+            config.protocol_type.clone(),
+            config.connection_params.clone(),
+        )
+    };
+    if setup(stored) != setup(read_as) {
+        return Err(
+            "The AeroCloud configuration changed since these settings were opened: open them \
+             again to edit it as it is now"
+                .to_string(),
+        );
+    }
+    if draft.remote_folder == read_as.remote_folder {
+        draft.remote_folder = stored.remote_folder.clone();
+    }
+    draft.last_sync = stored.last_sync;
+    draft.paused = stored.paused;
+    Ok(draft)
+}
+
 pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudConfig) -> Result<T, String>,

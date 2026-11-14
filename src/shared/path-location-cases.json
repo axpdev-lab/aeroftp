@@ -1,5 +1,5 @@
 {
-  "_comment": "Whether a remote path a user wrote or saved may be used as a location (joined to a root, stripped of a prefix, compared with a folder boundary). Read by the backend (src-tauri/src/util/path_location.rs, location_problem) and by the frontend (src/utils/syncNavigationPath.test.ts, locationProblem), so both refuse the same paths for the same reason. `/` and `\\` both end a step; a `.` step, a `..` step, an empty step (a doubled slash, except before a leading separator, the second one of a leading `\\\\` of a Windows UNC path, and after a single trailing separator) and a NUL are refused, never collapsed. A null problem means the path may be used. `savedProblem` is the reason a location ALREADY saved is refused (saved_location_problem / savedLocationProblem): only a `..` step and a NUL, which change where it points; its `.` and empty steps are left as saved.",
+  "_comment": "Whether a remote path a user wrote or saved may be used as a location (joined to a root, stripped of a prefix, compared with a folder boundary). Read by the backend (src-tauri/src/util/path_location.rs, location_problem) and by the frontend (src/utils/syncNavigationPath.test.ts, locationProblem), so both refuse the same paths for the same reason. `/` and `\\` both end a step; a `.` step, a `..` step, an empty step (a doubled slash, except before a leading separator, the second one of a leading `\\\\` of a Windows UNC path, and after a single trailing separator) and a NUL are refused, never collapsed. A null problem means the path may be used. `savedProblem` is the reason a location ALREADY saved is refused (saved_location_problem / savedLocationProblem): only a `..` step and a NUL, which change where it points; its `.` and empty steps are left as saved. `secret` is a part of the path (a URL password, a token-like segment) that the backend's refusal message must not repeat: the message names the path as the debug redaction writes it.",
   "cases": [
     {
       "path": "",
@@ -220,6 +220,18 @@
       "path": "//docs//",
       "problem": "empty",
       "savedProblem": null
+    },
+    {
+      "path": "https://u:s3cr3t-Pa55@host/a/../b",
+      "problem": "empty",
+      "savedProblem": "parent",
+      "secret": "s3cr3t-Pa55"
+    },
+    {
+      "path": "/share/0123456789abcdef0123456789abcdef/../x",
+      "problem": "parent",
+      "savedProblem": "parent",
+      "secret": "0123456789abcdef0123456789abcdef"
     }
   ]
 }

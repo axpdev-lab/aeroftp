@@ -123,9 +123,13 @@ function baseAsWritten(profile: ServerProfile): string {
 export function aeroCloudFolderNotPlain(profile: ServerProfile, subfolder: string): boolean {
     // The sub-folder is read before its outer separators are stripped: one
     // leading or trailing `/` is no step, but `a//` or `//a` has an empty one,
-    // which stripping would hide and the saved folder would never show.
+    // which stripping would hide and the saved folder would never show. The
+    // folder they compose is read too, as the backend reads the one saved: a
+    // `\` the stripping keeps (`\cloud` on `/data`) joins into `/data/\cloud/`,
+    // whose empty step neither part shows alone.
     return !!locationProblem(subfolder.trim())
-        || !!locationProblem(aeroCloudBase(profile));
+        || !!locationProblem(aeroCloudBase(profile))
+        || !!locationProblem(aeroCloudRemoteFolder(profile, subfolder));
 }
 
 const STEPS = ['cloud.stepFolder', 'cloud.stepServer', 'cloud.stepSettings'] as const;

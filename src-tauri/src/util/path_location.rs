@@ -106,8 +106,8 @@ pub fn saved_location_problem(path: &str) -> Option<LocationProblem> {
         .then_some(LocationProblem::ParentStep)
 }
 
-/// `Err` naming a saved `path` as written, with `what` it is, when it has a
-/// `..` step or a NUL ([`saved_location_problem`]).
+/// `Err` naming a saved `path` as written, redacted, with `what` it is, when
+/// it has a `..` step or a NUL ([`saved_location_problem`]).
 pub fn refuse_a_saved_location(what: &str, path: &str) -> Result<(), String> {
     match saved_location_problem(path) {
         None => Ok(()),
@@ -115,17 +115,24 @@ pub fn refuse_a_saved_location(what: &str, path: &str) -> Result<(), String> {
     }
 }
 
+/// The refusal names the path as the debug redaction writes it: a refused
+/// value may be a URL with a password or carry a token, and the message is
+/// shown, logged and copied into reports.
 fn unusable(what: &str, path: &str, problem: LocationProblem) -> String {
     format!(
         "The {what} '{}' contains {}: write it as a plain path, without '.' or '..' steps \
          or doubled slashes",
-        path.replace('\0', "\\0"),
+        named(path),
         problem.reason()
     )
 }
 
-/// `Err` naming `path` as written, with `what` it is (`"remote folder"`),
-/// when it cannot be used as a location.
+fn named(path: &str) -> String {
+    crate::debug_tests::redact(&path.replace('\0', "\\0"))
+}
+
+/// `Err` naming `path` as written, redacted, with `what` it is
+/// (`"remote folder"`), when it cannot be used as a location.
 pub fn refuse_an_unusable_location(what: &str, path: &str) -> Result<(), String> {
     match location_problem(path) {
         None => Ok(()),
@@ -158,6 +165,15 @@ mod tests {
                 .unwrap();
         let cases = table["cases"].as_array().unwrap();
         assert!(cases.len() >= 20);
+        let with_a_secret = cases.iter().filter(|case| {
+            case["secret"].is_string()
+                && case["problem"].is_string()
+                && case["savedProblem"].is_string()
+        });
+        assert!(
+            with_a_secret.count() >= 2,
+            "no refusal is checked for a secret"
+        );
         for case in cases {
             let path = case["path"].as_str().unwrap();
             let saved = case["savedProblem"].as_str();
@@ -178,8 +194,13 @@ mod tests {
             );
             let refused = refuse_an_unusable_location("remote folder", path);
             assert_eq!(refused.is_err(), expected.is_some(), "{case}");
-            if let Err(message) = refused {
-                assert!(message.contains(&path.replace('\0', "\\0")), "{message}");
+            let secret = case["secret"].as_str();
+            let saved_refusal = refuse_a_saved_location("remote folder", path).err();
+            for message in refused.err().iter().chain(saved_refusal.iter()) {
+                assert!(message.contains(&named(path)), "{message}");
+                if let Some(secret) = secret {
+                    assert!(!message.contains(secret), "{message}");
+                }
             }
         }
     }

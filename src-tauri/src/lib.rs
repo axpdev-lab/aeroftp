@@ -253,6 +253,112 @@ mod remote_share_link_tests {
 mod parent_step_save_tests {
     use super::*;
 
+    /// The configuration as the settings view would read it now.
+    fn on_disk() -> cloud_config::CloudConfig {
+        cloud_config::load_cloud_config_strict().unwrap()
+    }
+
+    /// Settings read with the folder `docs`; a sync then places it as
+    /// `/home/a/docs` and records its time. Saving another setting from that
+    /// read keeps the placed folder and the sync time; a folder the user
+    /// edited is theirs; a save from a read of another setup (another
+    /// profile, protocol, local folder, AeroCloud disabled) is refused and
+    /// the file keeps its bytes.
+    #[test]
+    fn a_settings_save_keeps_what_the_file_gained_since_it_was_read() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let read_as = cloud_config::CloudConfig {
+                enabled: true,
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                local_folder: "/sync/a".into(),
+                remote_folder: "docs".to_string(),
+                ..Default::default()
+            };
+            let placed = cloud_config::CloudConfig {
+                remote_folder: "/home/a/docs".to_string(),
+                last_sync: Some(chrono::Utc::now()),
+                ..read_as.clone()
+            };
+            let place = || cloud_config::save_cloud_config(&placed).unwrap();
+            let draft = cloud_config::CloudConfig {
+                update_only: !read_as.update_only,
+                ..read_as.clone()
+            };
+
+            place();
+            let saved = save_cloud_config_cmd_blocking(draft.clone(), read_as.clone()).unwrap();
+            assert_eq!(
+                serde_json::to_value(&saved).unwrap(),
+                serde_json::to_value(on_disk()).unwrap(),
+                "the configuration returned is the one saved"
+            );
+            assert_eq!(saved.remote_folder, "/home/a/docs", "the placed folder");
+            assert_eq!(saved.last_sync, placed.last_sync, "the sync time");
+            assert_eq!(saved.update_only, draft.update_only, "the edited setting");
+
+            place();
+            let moved = cloud_config::CloudConfig {
+                remote_folder: "/srv/docs".to_string(),
+                ..draft.clone()
+            };
+            save_cloud_config_cmd_blocking(moved, read_as.clone()).unwrap();
+            assert_eq!(on_disk().remote_folder, "/srv/docs", "the user's folder");
+
+            for replaced in [
+                cloud_config::CloudConfig {
+                    server_profile: "other".to_string(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    server_profile_id: Some("srv_b".to_string()),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    protocol_type: "ftp".to_string(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    local_folder: "/sync/b".into(),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    connection_params: serde_json::json!({"port": 2222}),
+                    ..placed.clone()
+                },
+                cloud_config::CloudConfig {
+                    enabled: false,
+                    ..placed.clone()
+                },
+            ] {
+                cloud_config::save_cloud_config(&replaced).unwrap();
+                let bytes = std::fs::read(cloud_config::get_config_path()).unwrap();
+                let err =
+                    save_cloud_config_cmd_blocking(draft.clone(), read_as.clone()).unwrap_err();
+                assert!(
+                    err.contains("changed since these settings were opened"),
+                    "{err}"
+                );
+                assert_eq!(
+                    std::fs::read(cloud_config::get_config_path()).unwrap(),
+                    bytes,
+                    "{replaced:?}"
+                );
+            }
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     #[test]
     fn the_save_commands_refuse_a_parent_step_under_the_login_folder() {
         let _env = crate::test_env::lock();
@@ -266,7 +372,7 @@ mod parent_step_save_tests {
                 remote_folder: "~/docs/../shared".to_string(),
                 ..Default::default()
             };
-            let err = save_cloud_config_cmd_blocking(config.clone()).unwrap_err();
+            let err = save_cloud_config_cmd_blocking(config.clone(), on_disk()).unwrap_err();
             assert!(err.contains("'~/docs/../shared'"), "{err}");
             let pair = cloud_pairs::CloudPathPair::from_legacy(&config);
             assert!(add_cloud_pair_blocking(pair.clone()).is_err());
@@ -289,7 +395,7 @@ mod parent_step_save_tests {
                 remote_folder: "~/shared".to_string(),
                 ..config
             };
-            save_cloud_config_cmd_blocking(fine.clone()).unwrap();
+            save_cloud_config_cmd_blocking(fine.clone(), on_disk()).unwrap();
             add_cloud_pair_blocking(cloud_pairs::CloudPathPair::from_legacy(&fine)).unwrap();
 
             // A folder saved before the rule with a doubled slash keeps
@@ -304,7 +410,7 @@ mod parent_step_save_tests {
                 update_only: !old.update_only,
                 ..old.clone()
             };
-            save_cloud_config_cmd_blocking(edited.clone()).unwrap();
+            save_cloud_config_cmd_blocking(edited.clone(), on_disk()).unwrap();
             let stored = cloud_config::load_cloud_config_strict().unwrap();
             assert_eq!(stored.remote_folder, "/backup//docs");
             assert_eq!(stored.update_only, edited.update_only);
@@ -312,7 +418,7 @@ mod parent_step_save_tests {
                 remote_folder: "/backup//other".to_string(),
                 ..edited.clone()
             };
-            assert!(save_cloud_config_cmd_blocking(moved).is_err());
+            assert!(save_cloud_config_cmd_blocking(moved, on_disk()).is_err());
             let mut pair = cloud_pairs::CloudPathPair::from_legacy(&old);
             pair.id = "kept".to_string();
             cloud_pairs::save_cloud_pairs_config(&cloud_pairs::CloudPairsConfig {
@@ -344,10 +450,13 @@ mod parent_step_save_tests {
                 ..fine.clone()
             })
             .unwrap();
-            assert!(save_cloud_config_cmd_blocking(cloud_config::CloudConfig {
-                remote_folder: "/srv/../x".to_string(),
-                ..fine
-            })
+            assert!(save_cloud_config_cmd_blocking(
+                cloud_config::CloudConfig {
+                    remote_folder: "/srv/../x".to_string(),
+                    ..fine
+                },
+                on_disk()
+            )
             .is_err());
         });
         match prev_xdg {
@@ -16383,25 +16492,40 @@ fn get_cloud_config_blocking() -> Result<CloudConfig, String> {
     cloud_config::load_cloud_config_strict()
 }
 
+/// Saves the settings edited from `read_as`, the configuration the settings
+/// view read, and returns the configuration saved ([`cloud_config::settings_save`]).
 #[tauri::command]
-async fn save_cloud_config_cmd(app: AppHandle, config: CloudConfig) -> Result<(), String> {
-    let enabled = config.enabled;
-    tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config))
-        .await
-        .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
-    tray_badge::set_tray_cloud_actions_enabled(&app, enabled);
-    Ok(())
+async fn save_cloud_config_cmd(
+    app: AppHandle,
+    config: CloudConfig,
+    read_as: CloudConfig,
+) -> Result<CloudConfig, String> {
+    let saved =
+        tokio::task::spawn_blocking(move || save_cloud_config_cmd_blocking(config, read_as))
+            .await
+            .unwrap_or_else(|err| Err(format!("save_cloud_config_cmd task failed: {err}")))?;
+    tray_badge::set_tray_cloud_actions_enabled(&app, saved.enabled);
+    Ok(saved)
 }
 
-/// The body of `save_cloud_config_cmd`, kept synchronous and run on the blocking pool.
-fn save_cloud_config_cmd_blocking(config: CloudConfig) -> Result<(), String> {
-    // A folder kept as saved (another setting edited) follows the saved rule.
-    let saved = cloud_config::load_cloud_config_strict().ok();
-    cloud_config::refuse_an_unusable_remote_folder(
-        &config.remote_folder,
-        saved.as_ref().map(|saved| saved.remote_folder.as_str()),
-    )?;
-    cloud_config::save_cloud_config(&config)
+/// The body of `save_cloud_config_cmd`, kept synchronous and run on the
+/// blocking pool. The file is read, merged and written under the config
+/// write lock, so a placement written meanwhile is never lost; a file that
+/// cannot be read is an error and is not rewritten.
+fn save_cloud_config_cmd_blocking(
+    config: CloudConfig,
+    read_as: CloudConfig,
+) -> Result<CloudConfig, String> {
+    cloud_config::with_cloud_config_mut(|stored| {
+        let saved = cloud_config::settings_save(stored, &read_as, config)?;
+        // A folder kept as saved (another setting edited) follows the saved rule.
+        cloud_config::refuse_an_unusable_remote_folder(
+            &saved.remote_folder,
+            Some(stored.remote_folder.as_str()),
+        )?;
+        *stored = saved.clone();
+        Ok(saved)
+    })
 }
 
 // AeroCloud Pairs (Task 4 GUI): CRUD on the separate cloud_pairs.json store.
@@ -17477,10 +17601,7 @@ fn enabled_cloud_configs() -> Vec<cloud_config::CloudConfig> {
         for config in &mut configs {
             cloud_provider_factory::apply_saved_profile_protocol(&store, config);
             let unresolved = cloud_scan_schedule::pair_key(config);
-            config.resolved_profile_id =
-                cloud_provider_factory::aerocloud_profile_id(&store, config)
-                    .ok()
-                    .flatten();
+            cloud_provider_factory::resolve_scheduler_profile(Some(&store), config);
             // A config read while the vault was locked was keyed by how it
             // names its profile; resolved now, it takes what the ledger held
             // there (a full scan the watcher asked for, the provider's floor),

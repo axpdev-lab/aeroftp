@@ -7,7 +7,7 @@
  * plus new options (conflict strategy, exclude patterns, sync_on_startup).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Cloud, MonitorCheck, CheckCircle2, AlertCircle, X, FolderSync,
   Play, Pause, RotateCcw, Link2, Eye, EyeOff, Settings, Loader2,
@@ -17,6 +17,7 @@ import { Checkbox } from '../ui/Checkbox';
 import { useTranslation } from '../../i18n';
 import { SyncScheduler } from '../SyncScheduler';
 import { WatcherStatus } from '../WatcherStatus';
+import { saveCloudSettings } from '../../hooks/useCloudSync';
 
 interface CloudConfig {
   enabled: boolean;
@@ -53,6 +54,14 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 }) => {
   const t = useTranslation();
   const [config, setConfig] = useState<CloudConfig | null>(null);
+  // The configuration as the backend last returned it: a save is merged
+  // over the file against it, so a folder placed elsewhere since is kept.
+  const [readAs, setReadAs] = useState<CloudConfig | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Bumped by every operation that installs a configuration (the load, a
+  // save, Pause or Resume): a reply is applied only while its operation is
+  // still the latest, so a slower one never puts back an older file.
+  const configOperation = useRef(0);
   const [status, setStatus] = useState<CloudSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -64,9 +73,12 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   // Load config and status on mount
   useEffect(() => {
     const load = async () => {
+      const asked = ++configOperation.current;
       try {
         const cfg = await invoke<CloudConfig | null>('get_cloud_config');
+        if (asked !== configOperation.current) return;
         setConfig(cfg);
+        setReadAs(cfg);
         if (cfg) {
           setExcludeText((cfg.exclude_patterns || []).join('\n'));
         }
@@ -82,31 +94,38 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!config) return;
+    if (!config || !readAs) return;
+    const asked = ++configOperation.current;
     setSaving(true);
+    setSaveError(null);
     try {
       // Parse exclude patterns from textarea
       const patterns = excludeText.split('\n').map(l => l.trim()).filter(Boolean);
-      const updatedConfig = { ...config, exclude_patterns: patterns };
-      await invoke('save_cloud_config_cmd', { config: updatedConfig });
+      const updatedConfig = (await saveCloudSettings({ ...config, exclude_patterns: patterns }, readAs))
+        ?? { ...config, exclude_patterns: patterns };
+      if (asked !== configOperation.current) return;
       // Sync interval to SyncSchedule
       try {
         const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
-        if (schedule) {
+        if (schedule && asked === configOperation.current) {
           await invoke('save_sync_schedule_cmd', {
             schedule: { ...schedule, interval_secs: updatedConfig.sync_interval_secs }
           });
         }
       } catch { /* scheduler may not be initialized */ }
+      if (asked !== configOperation.current) return;
       setConfig(updatedConfig);
+      setReadAs(updatedConfig);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       console.error('Failed to save AeroCloud settings:', e);
+      if (asked !== configOperation.current) return;
+      setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config, excludeText]);
+  }, [config, readAs, excludeText]);
 
   const handleTriggerSync = useCallback(async () => {
     setSyncing(true);
@@ -124,10 +143,13 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   // Toggle acts as Pause/Resume: preserves config on OFF. Use CloudPanel's
   // Disable button to fully remove the configuration.
   const handleTogglePaused = useCallback(async (running: boolean) => {
+    const asked = ++configOperation.current;
     try {
       const cmd = running ? 'resume_aerocloud' : 'pause_aerocloud';
       const result = await invoke<CloudConfig>(cmd);
+      if (asked !== configOperation.current) return;
       setConfig(result);
+      setReadAs(result);
     } catch (e) {
       console.error('Failed to toggle AeroCloud pause:', e);
     }
@@ -449,7 +471,12 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
       </div>
 
       {/* Save Button */}
-      <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+      <div className="pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        {saveError && (
+          <div role="alert" className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-xs text-red-700 dark:text-red-300 break-words">
+            {t('common.saveFailed', { error: saveError })}
+          </div>
+        )}
         <button
           onClick={handleSave}
           disabled={saving}

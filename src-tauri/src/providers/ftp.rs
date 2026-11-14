@@ -1749,7 +1749,9 @@ impl FtpProvider {
     /// stands in a folder nobody recorded, and a listing of `.` or a relative
     /// name would run there. The session goes back to the recorded folder,
     /// which is absolute, so the server and `current_path` name the same
-    /// folder again; if it cannot, the error says the folder is unknown.
+    /// folder again. If it cannot, no folder of this session is known, so the
+    /// session is dropped: the next operation finds it not connected, and a
+    /// new one opens in a folder the server reports.
     async fn return_to_the_recorded_folder(&mut self, failure: ProviderError) -> ProviderError {
         let recorded = self.current_path.clone();
         let back = match self.stream_mut() {
@@ -1758,9 +1760,12 @@ impl FtpProvider {
         };
         match back {
             Ok(()) => failure,
-            Err(e) => ProviderError::ServerError(format!(
-                "{failure}; returning to {recorded} failed too ({e}): the session's folder is unknown"
-            )),
+            Err(e) => {
+                self.stream = None;
+                ProviderError::ServerError(format!(
+                    "{failure}; returning to {recorded} failed too ({e}): the session's folder is unknown, so it was closed"
+                ))
+            }
         }
     }
 }
@@ -6151,12 +6156,13 @@ mod tests {
 
     use super::*;
 
-    /// A POSIX PWD keeps its `\` as a name character; a Windows-style one
-    /// reads its backslashes as separators.
     /// A relative `CWD` the server honours, then a `PWD` it refuses: the
     /// session goes back to the folder it recorded, so the server's folder
     /// and the recorded one are the same, and a listing of `.` afterwards
-    /// lists the recorded folder. The same for a `CDUP`.
+    /// lists the recorded folder. The same for a `CDUP`. When the way back
+    /// is refused too, no folder is known and the session is closed: the
+    /// next operation finds it not connected, and the reconnect that follows
+    /// replays only a request that names its own folder.
     #[tokio::test]
     async fn a_change_the_server_did_not_report_returns_to_the_recorded_folder() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -6171,6 +6177,7 @@ mod tests {
             write.write_all(b"220 ready\r\n").await.unwrap();
             let mut cwd = "/home/u".to_string();
             let mut refuse_next_pwd = false;
+            let mut refuse_the_way_back = false;
             while let Ok(Some(line)) = lines.next_line().await {
                 let mut parts = line.splitn(2, ' ');
                 let cmd = parts.next().unwrap_or("").to_uppercase();
@@ -6179,11 +6186,15 @@ mod tests {
                 let reply = match cmd.as_str() {
                     "USER" => "331 password please\r\n".to_string(),
                     "PASS" => "230 logged in\r\n".to_string(),
+                    "CWD" if arg.starts_with('/') && std::mem::take(&mut refuse_the_way_back) => {
+                        "550 folder not available\r\n".to_string()
+                    }
                     "CWD" => {
                         cwd = if arg.starts_with('/') {
                             arg
                         } else {
                             refuse_next_pwd = true;
+                            refuse_the_way_back = arg == "gone";
                             format!("{cwd}/{arg}")
                         };
                         "250 directory changed\r\n".to_string()
@@ -6239,6 +6250,25 @@ mod tests {
             "/home/u",
             "the server's folder"
         );
+
+        let lost = provider.cd("gone").await.unwrap_err();
+        assert!(lost.to_string().contains("folder is unknown"), "{lost}");
+        assert!(!provider.is_connected(), "the session was kept");
+        let commands = log.lock().unwrap().len();
+        assert!(
+            matches!(provider.list(".").await, Err(ProviderError::NotConnected)),
+            "a listing ran on the session"
+        );
+        // `try_silent_reconnect` reads the folder to return to with `pwd`.
+        let restored = provider.pwd().await.is_ok();
+        assert!(!restored, "a folder was reported for the closed session");
+        assert!(crate::provider_commands::replay_after_reconnect(restored, "docs").is_err());
+        assert!(crate::provider_commands::replay_after_reconnect(restored, "/home/u/docs").is_ok());
+        assert_eq!(
+            log.lock().unwrap().len(),
+            commands,
+            "a command reached the server after the session was closed"
+        );
     }
 
     /// After a `CWD` or `CDUP` the session records the folder the server
@@ -6258,6 +6288,8 @@ mod tests {
         assert!(folder_entered(silent(), None).is_err());
     }
 
+    /// A POSIX PWD keeps its `\` as a name character; a Windows-style one
+    /// reads its backslashes as separators.
     #[test]
     fn a_pwd_reply_is_kept_as_the_server_spells_a_posix_path() {
         assert_eq!(server_path("/home/a\\b".into()), "/home/a\\b");

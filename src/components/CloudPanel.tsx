@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useTraySync } from '../hooks/useTraySync';
 import { useGuardedClose } from '../hooks/useGuardedClose';
+import { saveCloudSettings } from '../hooks/useCloudSync';
 import { SyncScheduler } from './SyncScheduler';
 import { WatcherStatus } from './WatcherStatus';
 import { SelectiveSyncTree } from './Sync/SelectiveSyncTree';
@@ -1063,13 +1064,14 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     <div className="flex gap-3 p-6 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <button
                             onClick={async () => {
-                                if (config && !savingSettings) {
+                                if (config && settingsBaseline && !savingSettings) {
                                     setSavingSettings(true);
                                     const asked = configIdentity.current;
                                     try {
-                                        await invoke('save_cloud_config_cmd', { config });
+                                        const saved = await saveCloudSettings(config, settingsBaseline);
                                         if (asked !== configIdentity.current) return;
                                         configGeneration.current += 1;
+                                        if (saved) setConfig(saved);
                                         // Sync interval to SyncSchedule so the background worker uses the correct value.
                                         // The schedule is one for all and its commands
                                         // take no configuration: it is written, and the

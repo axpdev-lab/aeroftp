@@ -1080,7 +1080,7 @@ async fn try_silent_reconnect(
 /// absolute path names its own target; a relative one (`.`, `docs`, `..`)
 /// is resolved against the current folder, which after a `false` is the
 /// one the new session opened in, not the one the request was meant for.
-fn replay_after_reconnect(restored: bool, request: &str) -> Result<(), String> {
+pub(crate) fn replay_after_reconnect(restored: bool, request: &str) -> Result<(), String> {
     if restored || request.starts_with('/') {
         Ok(())
     } else {

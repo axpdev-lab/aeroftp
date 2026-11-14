@@ -13701,14 +13701,35 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 /// from `AEROFTP_TOTP_CODE` when present. If the vault has 2FA, no code was
 /// supplied, and we are on an interactive terminal, prompt for the code once
 /// and retry instead of failing outright. The code is zeroized after use.
-fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
+/// Whether opening the vault may ask the user for a secret. A lookup the
+/// command can do without (the protocol `pair add` stores) opens it only with
+/// what it was given: a cached vault, auto mode, `--master-password` or
+/// `AEROFTP_MASTER_PASSWORD`, `AEROFTP_TOTP_CODE`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Asking {
+    Allowed,
+    Never,
+}
+
+impl Asking {
+    /// Whether a prompt may be shown now: allowed, and a terminal to read it.
+    fn at_terminal(self) -> bool {
+        self.may_prompt(std::io::stdin().is_terminal())
+    }
+
+    fn may_prompt(self, terminal: bool) -> bool {
+        self == Asking::Allowed && terminal
+    }
+}
+
+fn unlock_with_master_and_totp(password: &str, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_with_master(password, env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13725,14 +13746,14 @@ fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
     }
 }
 
-fn unlock_auto_keyring_with_totp() -> Result<(), String> {
+fn unlock_auto_keyring_with_totp(asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_auto_keyring_with_totp(env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13766,9 +13787,24 @@ fn vault_once<T>(
 }
 
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Allowed)
+}
+
+/// [`open_vault`] for a lookup the command can do without: it never asks for
+/// the master password or a second factor.
+fn open_vault_without_asking(
+    cli: &Cli,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Never)
+}
+
+fn open_vault_asking(
+    cli: &Cli,
+    asking: Asking,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
-    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli))?;
+    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli, asking))?;
 
     // MU-3: run partition migration eagerly so `cli.user` can be resolved
     // by the per-command unlock helper. Resolve+unlock is intentionally
@@ -13779,8 +13815,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
 }
 
 /// Opens the vault: `init` (auto mode unlocks by itself), else the master
-/// password and the second factor when the vault asks for them.
-fn unlock_vault(cli: &Cli) -> Result<(), String> {
+/// password and the second factor when the vault asks for them, prompting
+/// for either only when `asking` allows it.
+fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
     // Try to init vault (auto mode unlocks automatically)
@@ -13797,16 +13834,16 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
                 let mut mp_copy = mp.clone();
                 // 2FA code comes from AEROFTP_TOTP_CODE, or an interactive
                 // prompt on a TTY when the vault requires it but none was set.
-                let result = unlock_with_master_and_totp(&mp_copy);
+                let result = unlock_with_master_and_totp(&mp_copy, asking);
                 mp_copy.zeroize();
                 result?;
-            } else if std::io::stdin().is_terminal() {
+            } else if asking.at_terminal() {
                 // Interactive: prompt for master password (hidden input)
                 eprint!("Master password: ");
                 let _ = io::stderr().flush();
                 let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                let result = unlock_with_master_and_totp(mp.trim());
+                let result = unlock_with_master_and_totp(mp.trim(), asking);
                 mp.zeroize();
                 result?;
             } else {
@@ -13817,7 +13854,7 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
             }
         }
         Ok(status) if status == "2FA_REQUIRED" => {
-            unlock_auto_keyring_with_totp()?;
+            unlock_auto_keyring_with_totp(asking)?;
         }
         Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
@@ -13827,8 +13864,39 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
 
 #[cfg(test)]
 mod vault_once_tests {
-    use super::vault_once;
+    use super::{vault_once, Asking};
     use std::cell::Cell;
+
+    /// A lookup the command can do without opens the vault only with what it
+    /// was given: no prompt at a terminal, for the master password or the
+    /// second factor. Every prompt of the unlock goes through `Asking`, and
+    /// the protocol lookup of `pair add` opens the vault that way.
+    #[test]
+    fn a_lookup_the_command_can_do_without_never_asks() {
+        assert!(!Asking::Never.may_prompt(true));
+        assert!(Asking::Allowed.may_prompt(true));
+        assert!(!Asking::Allowed.may_prompt(false));
+        let source = include_str!("aeroftp_cli.rs");
+        let between = |from: &str, to: &str| {
+            let start = source.find(from).unwrap();
+            &source[start..start + source[start..].find(to).unwrap()]
+        };
+        let unlock = between(
+            concat!("fn unlock_with_", "master_and_totp("),
+            concat!("mod vault_", "once_tests"),
+        );
+        assert_eq!(unlock.matches(concat!("is_terminal", "()")).count(), 0);
+        assert_eq!(
+            unlock.matches(concat!("asking.", "at_terminal()")).count(),
+            3
+        );
+        let add = between(
+            concat!("PairCommands::", "Add {"),
+            concat!("PairCommands::", "Remove {"),
+        );
+        assert!(add.contains(concat!("open_vault_without_asking", "(cli)")));
+        assert!(!add.contains(concat!("open_vault", "(cli)")));
+    }
 
     /// The key is derived once per command: a vault this process already
     /// opened is used as it is, and only a closed one is unlocked.
@@ -16134,7 +16202,8 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
             // stored, and every reader corrects it through
             // `cloud_provider_factory::apply_saved_profile_protocol_to_pair`: the
             // connect, the worker, `pair sync` and the placement check alike.
-            if let Ok(store) = open_vault(cli) {
+            // So the lookup never asks for a secret.
+            if let Ok(store) = open_vault_without_asking(cli) {
                 ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
                     &store,
                     &mut new_pair,

@@ -703,17 +703,23 @@ mod tests {
             ..on_server("srv_a", "~/docs")
         };
         let b = on_server("srv_b", "/home/u/docs");
+        let floor = Duration::from_secs(600);
         let start = Instant::now();
         let mut ledger = ScanLedger::default();
+        ledger.learn(&pair_key(&b), traits(Some(floor)));
         ledger.record_full_scan(&pair_key(&b), start);
         ledger.request_full_scan(&pair_key(&b), "the watcher lost events");
-        ledger.record_full_scan(&pair_key(&placed_a), start);
         assert!(
-            ledger.pending_full_scan_due(&pair_key(&b), start),
+            !ledger.pending_full_scan_due(&pair_key(&b), start),
+            "the floor defers B's request"
+        );
+        ledger.record_full_scan(&pair_key(&placed_a), start + floor);
+        assert!(
+            ledger.pending_full_scan_due(&pair_key(&b), start + floor),
             "A's scan must not answer B's request"
         );
-        ledger.record_full_scan(&pair_key(&b), start);
-        assert!(!ledger.pending_full_scan_due(&pair_key(&b), start));
+        ledger.record_full_scan(&pair_key(&b), start + floor);
+        assert!(!ledger.pending_full_scan_due(&pair_key(&b), start + floor * 2));
     }
 
     /// The key is the profile a config selects, never how it names it: a
