@@ -17,7 +17,7 @@ import { useGuiController } from './hooks/useGuiController';
 import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
-import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
+import { connectTlsMode, loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS, webdavConnectBasePath } from './utils/profileSecurity';
 import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
@@ -7700,10 +7700,9 @@ const App: React.FC = () => {
       key_passphrase: effectiveParams.options?.key_passphrase || null,
       timeout: effectiveParams.options?.timeout || 30,
       ...scpFallbackConnectParam(protocol, effectiveParams.options),
-      tls_mode: protocol === 'webdav'
-        ? (loadedOption(effectiveParams.options, 'webdavScheme') as string | undefined)
-        : effectiveParams.options?.tlsMode || effectiveParams.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+      tls_mode: connectTlsMode(protocol, effectiveParams.options),
       verify_cert: loadedCertificateCheck(effectiveParams.options),
+      base_path: webdavConnectBasePath(protocol, effectiveParams.options),
       trust_pasv_address: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
       allow_cleartext_endpoint: loadedOptionOn(effectiveParams.options, 'allowCleartextEndpoint'),
       allow_cleartext_storage: loadedOptionOn(effectiveParams.options, 'allowCleartextStorage'),
@@ -9822,10 +9821,9 @@ const App: React.FC = () => {
             key_passphrase: cloudServer.options?.key_passphrase || null,
             timeout: cloudServer.options?.timeout || 30,
             ...scpFallbackConnectParam(protocol, cloudServer.options),
-            tls_mode: protocol === 'webdav'
-              ? (loadedOption(cloudServer.options, 'webdavScheme') as string | undefined)
-              : cloudServer.options?.tlsMode || cloudServer.options?.ftpsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined),
+            tls_mode: connectTlsMode(protocol, cloudServer.options),
             verify_cert: loadedCertificateCheck(cloudServer.options),
+            base_path: webdavConnectBasePath(protocol, cloudServer.options),
             trust_pasv_address: loadedOptionOn(cloudServer.options, 'trustPasvAddress'),
             allow_cleartext_endpoint: loadedOptionOn(cloudServer.options, 'allowCleartextEndpoint'),
             allow_cleartext_storage: loadedOptionOn(cloudServer.options, 'allowCleartextStorage'),

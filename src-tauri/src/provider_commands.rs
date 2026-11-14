@@ -1201,6 +1201,11 @@ pub struct ProviderConnectionParams {
     /// in `ProviderConfig.extra["default_privacy"]`.
     #[serde(default, alias = "opendriveDefaultPrivacy")]
     pub opendrive_default_privacy: Option<String>,
+    /// WebDAV base collection path (e.g. `/dav/<user>/`) persisted under
+    /// `options.basePath` by importers/presets and forwarded to
+    /// `ProviderConfig.extra["base_path"]`.
+    #[serde(default, alias = "basePath")]
+    pub base_path: Option<String>,
 }
 
 /// The host the backend uses for a cloud API whatever the tab's server field
@@ -1517,6 +1522,11 @@ impl ProviderConnectionParams {
             }
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
+            }
+            if let Some(ref base_path) = self.base_path {
+                if !base_path.trim().is_empty() {
+                    extra.insert("base_path".to_string(), base_path.clone());
+                }
             }
         }
 
@@ -16826,6 +16836,7 @@ mod tests {
             peer_role: None,
             connect_token: None,
             opendrive_default_privacy: None,
+            base_path: None,
         }
     }
 
@@ -22235,6 +22246,113 @@ mod restored_transfer_owner_tests {
             clear_crypt_overlay_with_wait(&state, true, Duration::from_millis(10))
                 .await
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn webdav_params_deserializes_base_path_and_forwards_to_webdav_url() {
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice/",
+        }))
+        .expect("ProviderConnectionParams should deserialize");
+        let cfg = params.to_provider_config().unwrap();
+        assert_eq!(
+            cfg.extra.get("base_path").map(String::as_str),
+            Some("/dav/alice/")
+        );
+        let dav = crate::providers::types::WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(dav.url, "https://lifetimecloud.me/dav/alice/");
+
+        let space_params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice ",
+        }))
+        .expect("ProviderConnectionParams with trailing space should deserialize");
+        let space_cfg = space_params.to_provider_config().unwrap();
+        assert_eq!(
+            space_cfg.extra.get("base_path").map(String::as_str),
+            Some("/dav/alice ")
+        );
+        let space_dav =
+            crate::providers::types::WebDavConfig::from_provider_config(&space_cfg).unwrap();
+        assert_eq!(space_dav.url, "https://lifetimecloud.me/dav/alice ");
+    }
+
+    #[test]
+    fn webdav_params_and_profile_loader_produce_identical_webdav_url() {
+        let mut options_map = serde_json::Map::new();
+        options_map.insert("webdavScheme".to_string(), serde_json::json!("https"));
+        options_map.insert("basePath".to_string(), serde_json::json!("/dav/alice/"));
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice/",
+        }))
+        .expect("ProviderConnectionParams should deserialize");
+        let gui_cfg = params.to_provider_config().unwrap();
+
+        let profile_json = serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "options": options_map.clone(),
+        });
+        let (loader_extra, loader_host) = crate::profile_loader::profile_connection_extra(
+            &profile_json,
+            ProviderType::WebDav,
+            "lifetimecloud.me",
+        );
+        let loader_cfg = ProviderConfig {
+            name: "cli-ltc".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: loader_host,
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: loader_extra,
+        };
+
+        let mut direct_extra = std::collections::HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut direct_extra, &profile_json);
+        let direct_cfg = ProviderConfig {
+            extra: direct_extra,
+            ..loader_cfg.clone()
+        };
+
+        let expected = "https://lifetimecloud.me/dav/alice/";
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&gui_cfg)
+                .unwrap()
+                .url,
+            expected
+        );
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&loader_cfg)
+                .unwrap()
+                .url,
+            expected
+        );
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&direct_cfg)
+                .unwrap()
+                .url,
+            expected
         );
     }
 }

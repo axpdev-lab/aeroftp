@@ -5,7 +5,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { expect, it, vi } from 'vitest';
 import { scpFallbackConnectParam } from './scpFallback';
-import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from './profileSecurity';
+import { connectTlsMode, loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe, webdavConnectBasePath } from './profileSecurity';
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 
@@ -38,6 +38,8 @@ it('forwards the saved S3 SSE policy through the real AeroCloud connection build
     cloudFilenApiKey: null,
     runConnect,
     scpFallbackConnectParam,
+    connectTlsMode,
+    webdavConnectBasePath,
     loadedCertificateCheck,
     loadedOption,
     loadedOptionOn,
@@ -68,6 +70,8 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      connectTlsMode,
+      webdavConnectBasePath,
       loadedCertificateCheck,
       loadedOption,
       loadedOptionOn,
@@ -101,6 +105,8 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
       cloudFilenApiKey: null,
       runConnect,
       scpFallbackConnectParam,
+      connectTlsMode,
+      webdavConnectBasePath,
       loadedCertificateCheck,
       loadedOption,
       loadedOptionOn,
@@ -138,7 +144,7 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
       cloudServer: { id: 'profile', providerId, host: 'dav.example.test', port: 80, username: 'user', options },
       resolveProfileS3Location: () => ({ endpoint: options.endpoint ?? null, signingRegion: 'us-east-1' }),
       cloudConfig: { remote_folder: '/' }, cloudPassword: 'secret', cloudFilenApiKey: null,
-      runConnect, scpFallbackConnectParam, loadedCertificateCheck, loadedOption, loadedOptionOn,
+      runConnect, scpFallbackConnectParam, connectTlsMode, webdavConnectBasePath, loadedCertificateCheck, loadedOption, loadedOptionOn,
       isSshProtocol, checkSftpHostKey: vi.fn(async () => true), CONNECT_CANCELLED_MARKER,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));

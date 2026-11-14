@@ -4,11 +4,15 @@
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import app from '../App.tsx?raw';
-import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from './profileSecurity';
+import speedTestRaw from './speedTest.ts?raw';
+import { connectTlsMode, loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe, webdavConnectBasePath } from './profileSecurity';
 import { scpFallbackConnectParam } from './scpFallback';
+import { buildSpeedTestConnection } from './speedTest';
 import { ConnectScope } from '../gui/connectScope';
 import { resolveProfileS3Location } from '../providers';
 import { keystoreImportModalResult } from './keystoreImportSummary';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async () => 'speed-pw') }));
 
 const buildStart = app.indexOf('const buildProviderParams =');
 const start = app.indexOf('const providerParams = {', buildStart);
@@ -27,6 +31,8 @@ const payload = (protocol: string, options: Record<string, unknown>) => {
         s3Location: { endpoint: options.endpoint ?? null, signingRegion: 'us-east-1' },
         filenApiKey: null,
         scpFallbackConnectParam,
+        connectTlsMode,
+        webdavConnectBasePath,
         loadedCertificateCheck,
         loadedOption,
         loadedOptionOn,
@@ -40,6 +46,72 @@ describe('security options in the normal GUI connection payload', () => {
             tls_mode: 'https', verify_cert: false,
         });
         expect(payload('webdav', { webdavScheme: 'https', verifyCert: 'false' }).verify_cert).toBe(false);
+    });
+
+    it('forwards WebDAV basePath to backend base_path across GUI connect paths', async () => {
+        expect(payload('webdav', { basePath: '/dav/alice/' }).base_path).toBe('/dav/alice/');
+        expect(payload('webdav', { basePath: '/dav/bob/ ' }).base_path).toBe('/dav/bob/ ');
+
+        const buildEnd = app.indexOf('\n  const refreshGitHubContext', buildStart);
+        if (buildEnd < 0) throw new Error('Missing full provider builder boundary');
+        const { code: builderCode } = await transformWithOxc(app.slice(buildStart, buildEnd), 'full-provider-builder-webdav.ts');
+        const context = {
+            useLatestCallback: (fn: unknown) => fn,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            ConnectScope,
+            invoke: vi.fn(),
+            resolveProfileS3Location,
+            connectTlsMode,
+            webdavConnectBasePath,
+            loadedCertificateCheck,
+            loadedOption,
+            loadedOptionOn,
+            scpFallbackConnectParam,
+        };
+        const { buildProviderParams } = new Function(...Object.keys(context), `${builderCode}\nreturn { buildProviderParams };`)(...Object.values(context)) as {
+            buildProviderParams: (params: Record<string, unknown>, initialPath: null) => Promise<{ providerParams: Record<string, unknown> }>;
+        };
+        const built = await buildProviderParams({
+            protocol: 'webdav',
+            providerId: 'webdav',
+            savedServerId: 'imported-ltc',
+            server: 'lifetimecloud.me',
+            port: 443,
+            username: 'alice',
+            password: 'secret',
+            options: { basePath: '/dav/alice/' },
+        }, null);
+        expect(built.providerParams.base_path).toBe('/dav/alice/');
+
+        const cloudStart = app.indexOf('const connectToCloudServer = async (): Promise<void> => {');
+        const cloudSliceStart = app.indexOf('const providerParams = {', cloudStart);
+        const cloudSliceEnd = app.indexOf('\n          };', cloudSliceStart);
+        if (cloudStart < 0 || cloudSliceStart < 0 || cloudSliceEnd < 0) throw new Error('Missing connectToCloudServer providerParams slice');
+        const { code: cloudCode } = await transformWithOxc(`${app.slice(cloudSliceStart, cloudSliceEnd + 13)}\nproviderParams;`, 'cloud-provider-payload.ts');
+        const cloudContext = {
+            protocol: 'webdav',
+            isSshProtocol: () => false,
+            cloudServer: {
+                id: 'imported-ltc',
+                providerId: 'webdav',
+                host: 'lifetimecloud.me',
+                port: 443,
+                username: 'alice',
+                options: { basePath: '/dav/alice/' },
+            },
+            cloudPassword: 'secret',
+            cloudConfig: { remote_folder: null },
+            cloudS3Location: { endpoint: null, signingRegion: undefined },
+            cloudFilenApiKey: null,
+            scpFallbackConnectParam,
+            connectTlsMode,
+            webdavConnectBasePath,
+            loadedCertificateCheck,
+            loadedOption,
+            loadedOptionOn,
+        };
+        const cloudParams = new Function(...Object.keys(cloudContext), `${cloudCode}\nreturn providerParams;`)(...Object.values(cloudContext)) as Record<string, unknown>;
+        expect(cloudParams.base_path).toBe('/dav/alice/');
     });
 
     it('forwards retained S3 cleartext consent from import through the full connection builder', async () => {
@@ -59,6 +131,8 @@ describe('security options in the normal GUI connection payload', () => {
             ConnectScope,
             invoke: vi.fn(),
             resolveProfileS3Location,
+            connectTlsMode,
+            webdavConnectBasePath,
             loadedCertificateCheck,
             loadedOption,
             loadedOptionOn,
@@ -142,5 +216,45 @@ describe('security options in the normal GUI connection payload', () => {
         importFile('/tmp/backup.aeroftp-keystore');
         await dialog.onConfirm('password');
         expect(setKeystoreImportResult).toHaveBeenCalledWith(expect.objectContaining({ securityReset: reset }));
+    });
+
+    it('forwards WebDAV basePath, webdavScheme, and provider_id through buildSpeedTestConnection and covers every provider_connect builder', async () => {
+        const conn = await buildSpeedTestConnection({
+            id: 'srv-ltc',
+            name: 'LifeTimeCloud',
+            host: 'lifetimecloud.me',
+            port: 443,
+            username: 'alice',
+            protocol: 'webdav',
+            providerId: 'custom-webdav',
+            options: {
+                basePath: '/dav/alice/',
+                webdavScheme: 'https',
+                verifyCert: false,
+            },
+        });
+        expect(conn).toMatchObject({
+            protocol: 'webdav',
+            provider_id: 'custom-webdav',
+            tls_mode: 'https',
+            base_path: '/dav/alice/',
+            verify_cert: false,
+        });
+
+        // Source-wiring invariant: every provider_connect invocation in App.tsx and SpeedTest builder
+        // must either go through buildProviderParams (using webdavConnectBasePath) or set
+        // base_path: webdavConnectBasePath(...) directly, with zero raw invoke('provider_connect') bypasses.
+        const rawInvokeConnect = [...app.matchAll(/invoke(?:<[^>]+>)?\(\s*'provider_connect'/g)];
+        expect(rawInvokeConnect).toHaveLength(0);
+        const providerConnectCalls = [...app.matchAll(/runConnect\('provider_connect',\s*([^,)]+)/g)];
+        expect(providerConnectCalls.length).toBeGreaterThanOrEqual(5);
+        for (const m of providerConnectCalls) {
+            expect(m[1].trim()).toBe('providerParams');
+        }
+        const providerParamsLiterals = [...app.matchAll(/const providerParams\s*=\s*\{/g)];
+        expect(providerParamsLiterals).toHaveLength(2);
+        const basePathMatches = [...app.matchAll(/base_path:\s*webdavConnectBasePath\(/g)];
+        expect(basePathMatches).toHaveLength(2);
+        expect(speedTestRaw).toMatch(/base_path:\s*webdavConnectBasePath\(/);
     });
 });
