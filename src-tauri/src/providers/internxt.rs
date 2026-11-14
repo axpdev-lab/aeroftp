@@ -3969,11 +3969,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// The move keeps the old name: with `/dst/a.txt` there Internxt refused
@@ -4109,11 +4108,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::ServerError(ref m)) if m.contains("2 items")),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// `cd /docs` beside only `Docs` resolved to `Docs` through the case
@@ -4229,11 +4227,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::NotFound(_))),
             "{outcome:?}"
         );
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
         assert_eq!(store.lock().unwrap().len(), 1);
     }
 
@@ -4252,11 +4249,10 @@ mod tests {
                 "{outcome:?}"
             );
         }
-        assert!(
-            changes.lock().unwrap().is_empty(),
-            "{:?}",
-            changes.lock().unwrap()
-        );
+        {
+            let seen_changes = changes.lock().unwrap().clone();
+            assert!(seen_changes.is_empty(), "{:?}", seen_changes);
+        }
     }
 
     /// An upload used to delete its target first and match ignoring case:

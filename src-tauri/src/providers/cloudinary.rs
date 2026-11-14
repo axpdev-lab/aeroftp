@@ -2552,11 +2552,10 @@ mod tests {
                 other => panic!("{other:?}"),
             }
         }
-        assert!(
-            renames.lock().unwrap().is_empty(),
-            "{:?}",
-            renames.lock().unwrap()
-        );
+        {
+            let seen_renames = renames.lock().unwrap().clone();
+            assert!(seen_renames.is_empty(), "{:?}", seen_renames);
+        }
     }
 
     /// A fixed-folder Cloudinary double holding `resources` (public id,
@@ -2876,11 +2875,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(
-            renames.lock().unwrap().is_empty(),
-            "{:?}",
-            renames.lock().unwrap()
-        );
+        {
+            let seen_renames = renames.lock().unwrap().clone();
+            assert!(seen_renames.is_empty(), "{:?}", seen_renames);
+        }
     }
 
     /// Public ids are kept per resource type. An image replaced onto the
@@ -2903,11 +2901,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(ref m)) if m.contains("video")),
             "{outcome:?}"
         );
-        assert!(
-            renames.lock().unwrap().is_empty(),
-            "{:?}",
-            renames.lock().unwrap()
-        );
+        {
+            let seen_renames = renames.lock().unwrap().clone();
+            assert!(seen_renames.is_empty(), "{:?}", seen_renames);
+        }
     }
 
     /// A folder replace onto an existing folder reached `PUT /folders`,
@@ -2921,11 +2918,10 @@ mod tests {
             matches!(outcome, Err(ProviderError::NotSupported(_))),
             "{outcome:?}"
         );
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
 
         provider
             .replace("/a", "/c")

@@ -2406,11 +2406,10 @@ mod tests {
     async fn a_rename_onto_its_own_path_sends_nothing() {
         let (mut provider, calls) = provider_on_refusing_koofr().await;
         provider.rename("/a.txt", "/a.txt").await.expect("no-op");
-        assert!(
-            calls.lock().unwrap().is_empty(),
-            "{:?}",
-            calls.lock().unwrap()
-        );
+        {
+            let seen_calls = calls.lock().unwrap().clone();
+            assert!(seen_calls.is_empty(), "{:?}", seen_calls);
+        }
     }
 
     /// A Koofr double that keeps `items` (path, content, is a folder) in

@@ -3032,11 +3032,10 @@ mod tests {
             );
             provider.nodes_loaded = true;
         }
-        assert!(
-            commands.lock().unwrap().is_empty(),
-            "{:?}",
-            commands.lock().unwrap()
-        );
+        {
+            let seen_commands = commands.lock().unwrap().clone();
+            assert!(seen_commands.is_empty(), "{:?}", seen_commands);
+        }
     }
 
     #[test]
