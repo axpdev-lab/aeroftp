@@ -19033,7 +19033,7 @@ const App: React.FC = () => {
               // switch that lands after the check above is refused there too.
               await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
             } catch (e) {
-              if (String(e).startsWith('CONNECTION_CHANGED')) sessionChanged();
+              if (String(e).includes('CONNECTION_CHANGED')) sessionChanged();
               else notify.error(t('common.failed'), String(e));
               return;
             } finally {

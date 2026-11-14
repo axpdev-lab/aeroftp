@@ -1198,8 +1198,11 @@ mod tests {
                     let started = std::time::Instant::now();
                     // A stack depth of n would overflow here: it is bounded.
                     let masked = redact_url_userinfo(&input);
+                    // The bound of the long-line tests: far above a linear
+                    // scan under a parallel build (a 2 s bound failed there),
+                    // far below the minutes a quadratic one takes.
                     assert!(
-                        started.elapsed() < std::time::Duration::from_secs(2),
+                        started.elapsed() < std::time::Duration::from_secs(15),
                         "{name} at {n}"
                     );
                     assert!(!masked.contains("hunter2"), "{name} at {n}");

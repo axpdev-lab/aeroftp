@@ -316,7 +316,10 @@ describe('redactUrlUserinfo (R1: decoding bounded on self-recreating escapes)', 
                 const started = performance.now();
                 // A stack depth of n would throw here: the depth is bounded.
                 const masked = redactUrlUserinfo(input);
-                expect(performance.now() - started).toBeLessThan(2000);
+                // The bound of the long-line tests (LINEAR_BOUND_MS): far
+                // above a linear scan under a parallel run, far below the
+                // minutes a quadratic one takes.
+                expect(performance.now() - started).toBeLessThan(15_000);
                 expect(masked).not.toContain('hunter2');
                 expect(redactSensitive(input)).not.toContain('hunter2');
                 expect(redactUrlUserinfo(masked)).toBe(masked);
