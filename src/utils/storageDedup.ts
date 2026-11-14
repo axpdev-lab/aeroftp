@@ -67,6 +67,7 @@ const WEBDAV_PRESET_IDS = new Set<string>([
     'filelu-webdav',
     'felicloud-webdav',
     'puter-webdav',
+    'lifetimecloud',
 ]);
 
 const S3_PRESET_IDS = new Set<string>([

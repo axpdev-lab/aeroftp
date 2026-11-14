@@ -586,4 +586,54 @@ describe('storageDedup', () => {
         expect(normalizeUser('')).toBeUndefined();
         expect(normalizeUser(undefined)).toBeUndefined();
     });
+
+    it('LifetimeCloud WebDAV dedup keys template and expanded URLs identically, separates users, and skips opaque tokens', () => {
+        const aliceTemplate = make({
+            id: 'lc-alice-tmpl',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'alice',
+        });
+        const aliceExpanded = make({
+            id: 'lc-alice-exp',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/alice/',
+            port: 443,
+            username: 'alice',
+        });
+        const bobTemplate = make({
+            id: 'lc-bob-tmpl',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'bob',
+        });
+        const opaqueA = make({
+            id: 'lc-tok-a',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'deadbeef'.repeat(8),
+        });
+        const opaqueB = make({
+            id: 'lc-tok-b',
+            protocol: 'webdav',
+            providerId: 'lifetimecloud',
+            host: 'https://lifetimecloud.me/dav/{username}/',
+            port: 443,
+            username: 'deadbeef'.repeat(8),
+        });
+
+        expect(getStorageDedupKey(aliceTemplate)).toBe('webdav:lifetimecloud:alice');
+        expect(getStorageDedupKey(aliceExpanded)).toBe('webdav:lifetimecloud:alice');
+        expect(getStorageDedupKey(bobTemplate)).toBe('webdav:lifetimecloud:bob');
+        expect(getStorageDedupKey(opaqueA)).toBe('webdav:lifetimecloud:id:lc-tok-a');
+        expect(getStorageDedupKey(opaqueB)).toBe('webdav:lifetimecloud:id:lc-tok-b');
+        expect(aggregateByDedupKey([aliceTemplate, aliceExpanded, bobTemplate]).uniqueCount).toBe(2);
+    });
 });

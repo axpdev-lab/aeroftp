@@ -216,6 +216,7 @@ pub fn is_webdav_preset(provider_id: Option<&str>) -> bool {
                 | "filelu-webdav"
                 | "felicloud-webdav"
                 | "puter-webdav"
+                | "lifetimecloud"
         )
     )
 }
@@ -626,6 +627,7 @@ mod tests {
             "filelu-webdav",
             "felicloud-webdav",
             "puter-webdav",
+            "lifetimecloud",
         ] {
             assert!(
                 is_webdav_preset(Some(preset)),
@@ -1465,5 +1467,72 @@ mod tests {
         assert_eq!(classify("aerocloud"), ProtocolClass::AeroCloud);
         assert_eq!(classify("koofr"), ProtocolClass::Api);
         assert_eq!(classify("github"), ProtocolClass::Api);
+    }
+
+    #[test]
+    fn lifetimecloud_webdav_dedup_keys_match_contract() {
+        assert!(is_webdav_preset(Some("lifetimecloud")));
+
+        let alice_tmpl = p(
+            "lc-alice-tmpl",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            "alice",
+            Some(100),
+            Some(1_000),
+        );
+        let alice_exp = p(
+            "lc-alice-exp",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/alice/",
+            443,
+            "alice",
+            Some(200),
+            Some(1_000),
+        );
+        let bob_tmpl = p(
+            "lc-bob-tmpl",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            "bob",
+            Some(50),
+            Some(1_000),
+        );
+        let tok_user = "deadbeef".repeat(8);
+        let tok_a = p(
+            "lc-tok-a",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            &tok_user,
+            None,
+            None,
+        );
+        let tok_b = p(
+            "lc-tok-b",
+            "webdav",
+            Some("lifetimecloud"),
+            "https://lifetimecloud.me/dav/{username}/",
+            443,
+            &tok_user,
+            None,
+            None,
+        );
+
+        assert_eq!(dedup_key(&alice_tmpl), "webdav:lifetimecloud:alice");
+        assert_eq!(dedup_key(&alice_exp), "webdav:lifetimecloud:alice");
+        assert_eq!(dedup_key(&bob_tmpl), "webdav:lifetimecloud:bob");
+        assert_eq!(dedup_key(&tok_a), "webdav:lifetimecloud:id:lc-tok-a");
+        assert_eq!(dedup_key(&tok_b), "webdav:lifetimecloud:id:lc-tok-b");
+        assert_eq!(
+            aggregate(&[alice_tmpl, alice_exp, bob_tmpl]).unique_count,
+            2
+        );
     }
 }
