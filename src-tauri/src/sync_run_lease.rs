@@ -825,7 +825,12 @@ mod tests {
             cancel: &cancel,
             reads: 0,
         };
-        let permissions = std::fs::metadata(dir.path()).unwrap().permissions();
+        // A FILE's permissions, as production passes the source's: on Windows
+        // a directory's carry FILE_ATTRIBUTE_DIRECTORY, which `set_permissions`
+        // on the temporary's handle refuses with ERROR_INVALID_PARAMETER (os
+        // error 87). Outside `dir`, which must end empty.
+        let probe = tempfile::NamedTempFile::new().unwrap();
+        let permissions = probe.as_file().metadata().unwrap().permissions();
         let started = std::time::Instant::now();
         let copied = crate::copy_into_place(&mut endless, permissions, &destination, &cancel);
         assert!(

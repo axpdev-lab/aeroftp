@@ -7824,7 +7824,12 @@ mod local_delete_cancel_tests {
                     handle,
                     served: false,
                 };
-                let permissions = std::fs::metadata(dir.path()).unwrap().permissions();
+                // A FILE's permissions, as production passes the source's: on Windows
+                // a directory's carry FILE_ATTRIBUTE_DIRECTORY, which
+                // `set_permissions` on the temporary's handle refuses with
+                // ERROR_INVALID_PARAMETER (os error 87).
+                let probe = tempfile::NamedTempFile::new().unwrap();
+                let permissions = probe.as_file().metadata().unwrap().permissions();
                 let copied = super::copy_into_place(&mut source, permissions, &to, &cancel);
                 (copied, to.exists(), dir)
             })
@@ -8863,8 +8868,14 @@ mod native_local_copy_tests {
             "{copied:?}"
         );
         std::fs::remove_file(&temp).unwrap();
+        // A new descriptor, as every production copy opens: `fcopyfile` reads
+        // from the descriptor's current offset, which the stopped call above
+        // may have moved to the end (the destination came out empty).
+        let source = std::fs::File::open(&from).unwrap();
         native_copy_macos(&source, permissions, &temp, &AtomicBool::new(false)).unwrap();
-        assert_eq!(std::fs::read(&temp).unwrap(), std::fs::read(&from).unwrap());
+        let (copied, original) = (std::fs::read(&temp).unwrap(), std::fs::read(&from).unwrap());
+        assert_eq!(copied.len(), original.len(), "bytes copied");
+        assert!(copied == original, "the copy differs from its source");
     }
 
     /// A file's extended attribute reaches the destination with its data, as
