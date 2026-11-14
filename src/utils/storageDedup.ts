@@ -203,6 +203,28 @@ const accessKeyHash = (accessKey: string): string => {
 const isWebDavPreset = (providerId: string | undefined): boolean =>
     !!providerId && WEBDAV_PRESET_IDS.has(providerId);
 
+/**
+ * First path segment of the server URL: for `https://dav.puter.com/alice`
+ * that is `alice`, the Puter account the WebDAV root belongs to. Token auth
+ * uses the literal username `-token` for every account, so without this the
+ * dedup key cannot tell two Puter drives apart. Mirrors the Rust
+ * `puter_account`.
+ */
+const puterAccount = (rawHost: string | undefined): string => {
+    if (!rawHost) return '';
+    let s = rawHost.trim().toLowerCase();
+    for (const scheme of ['https://', 'http://', 'webdavs://', 'webdav://']) {
+        if (s.startsWith(scheme)) {
+            s = s.slice(scheme.length);
+            break;
+        }
+    }
+    const slash = s.indexOf('/');
+    if (slash === -1) return '';
+    const segment = s.slice(slash + 1).split(/[/?#]/)[0];
+    return segment;
+};
+
 const isS3Preset = (providerId: string | undefined): boolean =>
     !!providerId && S3_PRESET_IDS.has(providerId);
 
@@ -238,6 +260,14 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
     }
 
     if (proto === 'webdav') {
+        if (providerId === 'puter-webdav') {
+            const account = puterAccount(server.host);
+            // Token auth shares the literal username `-token`; with no
+            // account path two Puter profiles cannot be told apart, so they
+            // must not collapse into one drive.
+            if (!account && userNorm === '-token') return `id:${server.id}`;
+            return `webdav:puter-webdav:${account}:${userOrId}`;
+        }
         if (isWebDavPreset(providerId)) {
             return `webdav:${providerId}:${userOrId}`;
         }

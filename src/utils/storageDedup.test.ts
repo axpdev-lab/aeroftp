@@ -196,6 +196,50 @@ describe('storageDedup', () => {
         expect(getStorageDedupKey(profile)).toBe('webdav:mailru-cloud:aeroftp@mail.ru');
     });
 
+    it('case 4c2: Puter token profiles of two accounts stay two drives', () => {
+        // Token auth uses the literal username `-token` for every account;
+        // the account lives in the server URL path, so the key must carry it
+        // or alice and bob collapse into one drive.
+        const alice = make({
+            id: 'p1', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com/alice', port: 443,
+            username: '-token',
+            used: 1_000_000, total: 25_000_000,
+        });
+        const bob = make({
+            id: 'p2', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com/bob', port: 443,
+            username: '-token',
+            used: 2_000_000, total: 25_000_000,
+        });
+        expect(getStorageDedupKey(alice)).toBe('webdav:puter-webdav:alice:-token');
+        expect(getStorageDedupKey(bob)).toBe('webdav:puter-webdav:bob:-token');
+        const summary = aggregateByDedupKey([alice, bob]);
+        expect(summary.uniqueCount).toBe(2);
+        expect(summary.totalUsed).toBe(3_000_000);
+    });
+
+    it('case 4c3: a Puter token profile with no account path never dedups', () => {
+        // Without the account in the URL two `-token` profiles are
+        // indistinguishable, so each falls back to its own id.
+        const a = make({
+            id: 'p3', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com', port: 443, username: '-token',
+        });
+        const b = make({
+            id: 'p4', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'https://dav.puter.com', port: 443, username: '-token',
+        });
+        expect(getStorageDedupKey(a)).toBe('id:p3');
+        expect(getStorageDedupKey(b)).toBe('id:p4');
+        // Password auth still keys by the real username even without a path.
+        const c = make({
+            id: 'p5', protocol: 'webdav', providerId: 'puter-webdav',
+            host: 'dav.puter.com', port: 443, username: 'carol',
+        });
+        expect(getStorageDedupKey(c)).toBe('webdav:puter-webdav::carol');
+    });
+
     it('case 4d: IBM COS same access key in two regions counts one drive', () => {
         // The frontend S3 mirror missed 'ibm-cos', so same-key profiles in
         // different regions keyed by host (two drives) while Rust keyed by

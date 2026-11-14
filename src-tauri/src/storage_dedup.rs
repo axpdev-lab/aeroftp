@@ -106,6 +106,28 @@ pub fn normalize_host(raw: &str) -> String {
     s
 }
 
+/// First path segment of the server URL: for `https://dav.puter.com/alice`
+/// that is `alice`, the Puter account the WebDAV root belongs to. Token auth
+/// uses the literal username `-token` for every account, so without this the
+/// dedup key cannot tell two Puter drives apart. Mirrors the TS `puterAccount`.
+pub fn puter_account(raw_host: &str) -> String {
+    let mut s = raw_host.trim().to_ascii_lowercase();
+    for scheme in ["https://", "http://", "webdavs://", "webdav://"] {
+        if let Some(rest) = s.strip_prefix(scheme) {
+            s = rest.to_string();
+            break;
+        }
+    }
+    let Some(idx) = s.find('/') else {
+        return String::new();
+    };
+    s[idx + 1..]
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
 /// Lowercase + trim. Returns `None` for opaque tokens (long random strings)
 /// where dedup would risk false positives. Mirrors `normalizeUser` (TS) and
 /// `looksLikeOpaqueToken` from `src/utils/serverSubtitle.ts`.
@@ -315,6 +337,16 @@ pub fn dedup_key(profile: &ProfileView<'_>) -> String {
     }
 
     if proto == "webdav" {
+        if profile.provider_id == Some("puter-webdav") {
+            let account = puter_account(profile.host);
+            // Token auth shares the literal username `-token`; with no
+            // account path two Puter profiles cannot be told apart, so they
+            // must not collapse into one drive.
+            if account.is_empty() && user_norm.as_deref() == Some("-token") {
+                return format!("id:{}", profile.id);
+            }
+            return format!("webdav:puter-webdav:{}:{}", account, user_or_id());
+        }
         if is_webdav_preset(profile.provider_id) {
             let pid = profile.provider_id.unwrap_or(proto);
             return format!("webdav:{}:{}", pid, user_or_id());
@@ -816,6 +848,80 @@ mod tests {
         let key = dedup_key(&profiles[0]);
         assert!(key.starts_with("oauth:googledrive:"));
         assert!(key.contains("user@gmail.com"));
+    }
+
+    #[test]
+    fn puter_token_profiles_of_two_accounts_stay_two_drives() {
+        // Token auth uses the literal username `-token` for every account;
+        // the account lives in the server URL path, so the key must carry it
+        // or alice and bob collapse into one drive.
+        let profiles = [
+            p(
+                "p1",
+                "webdav",
+                Some("puter-webdav"),
+                "https://dav.puter.com/alice",
+                443,
+                "-token",
+                Some(1_000_000),
+                Some(25_000_000),
+            ),
+            p(
+                "p2",
+                "webdav",
+                Some("puter-webdav"),
+                "dav.puter.com/bob",
+                443,
+                "-token",
+                Some(2_000_000),
+                Some(25_000_000),
+            ),
+        ];
+        assert_eq!(dedup_key(&profiles[0]), "webdav:puter-webdav:alice:-token");
+        assert_eq!(dedup_key(&profiles[1]), "webdav:puter-webdav:bob:-token");
+        let summary = aggregate(&profiles);
+        assert_eq!(summary.unique_count, 2);
+        assert_eq!(summary.total_used, 3_000_000);
+    }
+
+    #[test]
+    fn a_puter_token_profile_with_no_account_path_never_dedups() {
+        // Without the account in the URL two `-token` profiles are
+        // indistinguishable, so each falls back to its own id.
+        let a = p(
+            "p3",
+            "webdav",
+            Some("puter-webdav"),
+            "dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        let b = p(
+            "p4",
+            "webdav",
+            Some("puter-webdav"),
+            "https://dav.puter.com",
+            443,
+            "-token",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&a), "id:p3");
+        assert_eq!(dedup_key(&b), "id:p4");
+        // Password auth still keys by the real username even without a path.
+        let c = p(
+            "p5",
+            "webdav",
+            Some("puter-webdav"),
+            "dav.puter.com",
+            443,
+            "carol",
+            None,
+            None,
+        );
+        assert_eq!(dedup_key(&c), "webdav:puter-webdav::carol");
     }
 
     #[test]
