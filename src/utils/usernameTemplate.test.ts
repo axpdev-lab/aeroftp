@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expandUsernameInPath } from './usernameTemplate';
+import cases from '../shared/username-template-cases.json';
 import { resolveUsernameTemplate } from './cryptScope';
 import { profileRoot } from '../components/CloudSetupWizard';
 import type { ServerProfile } from '../types';
@@ -20,6 +21,15 @@ describe('expandUsernameInPath', () => {
     it('never yields a shorter path for a blank user name or one that could move the folder', () => {
         for (const user of ['', '   ', 'a/b', '/abs', '..', '.', 'a\\b', 'a\0b']) {
             expect(expandUsernameInPath('/files/{username}/', user)).toBe('/files/{username}/');
+        }
+    });
+
+    it('runs the shared case table: untrimmed, literal split/join, never String.replace', () => {
+        // The same table the backend runs (connection_manifest.rs): a refused
+        // case (null) keeps the template on this side.
+        for (const c of cases.cases) {
+            expect(expandUsernameInPath(cases.pathTemplate, c.user), JSON.stringify(c.user))
+                .toBe(c.path ?? cases.pathTemplate);
         }
     });
 

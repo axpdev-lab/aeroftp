@@ -92,14 +92,25 @@ const USERNAME_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROL
     .add(b'}');
 
 /// Fill the `{username}` placeholder of a server URL with the user name as
-/// one percent-encoded path segment. A template without the placeholder is
-/// returned unchanged; one that needs it with a blank user name is an error.
+/// one percent-encoded path segment, exactly as stored (never trimmed: the
+/// login sends it that way). A template without the placeholder is returned
+/// unchanged; one that needs it with a blank user name, or a name of `.` or
+/// `..`, is an error.
 pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, String> {
     if !template.contains(USERNAME_TEMPLATE) {
         return Ok(template.to_string());
     }
     if username.trim().is_empty() {
         return Err(USERNAME_TEMPLATE_MISSING.to_string());
+    }
+    // `.` and `..` are no segment a URL keeps: the parser resolves them and
+    // the address climbs out of the user's folder.
+    if matches!(username.trim(), "." | "..") {
+        return Err(
+            "This user name cannot be used in a server address: it is '.' or '..'; enter the \
+             address in full instead of the {username} placeholder"
+                .to_string(),
+        );
     }
     let segment = percent_encoding::utf8_percent_encode(username, USERNAME_SEGMENT).to_string();
     Ok(template.replace(USERNAME_TEMPLATE, &segment))
@@ -119,7 +130,8 @@ pub fn expand_username_in_path(template: &str, username: &str) -> Result<String,
     if username.contains(['/', '\\', '\0']) || matches!(username.trim(), "." | "..") {
         return Err(
             "This user name cannot be used in a folder path: it contains '/', '\\', a NUL \
-             character, or is '.' or '..'"
+             character, or is '.' or '..'; enter the folder path in full instead of the \
+             {username} placeholder"
                 .to_string(),
         );
     }
@@ -448,6 +460,32 @@ mod tests {
             expand_username_in_url("https://h/dav/", "").unwrap(),
             "https://h/dav/"
         );
+    }
+
+    /// The shared case table the frontend runs too: the user name goes in as
+    /// stored (never trimmed), `$&` and `$1` are no pattern, `{username}` as a
+    /// user name is filled once, and `.`/`..` never reach a URL.
+    #[test]
+    fn the_shared_username_template_cases_hold_untrimmed_and_literal() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let path_t = table["pathTemplate"].as_str().unwrap();
+        let url_t = table["urlTemplate"].as_str().unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_path(path_t, user).ok(),
+                case["path"].as_str().map(str::to_string),
+                "path {user:?}"
+            );
+            assert_eq!(
+                expand_username_in_url(url_t, user).ok(),
+                case["url"].as_str().map(str::to_string),
+                "url {user:?}"
+            );
+        }
     }
 
     #[test]

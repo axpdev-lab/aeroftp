@@ -693,6 +693,41 @@ mod webdav_config_tests {
         );
     }
 
+    /// A user name that cannot fill a folder template (a directory login such
+    /// as `DOMAIN\alice`) is refused with the way out in the message, and the
+    /// way out works: the same folder written in full, without the
+    /// placeholder, connects.
+    #[test]
+    fn a_folder_written_in_full_takes_a_user_name_the_template_refuses() {
+        let cfg = |initial_path: &str| ProviderConfig {
+            name: "nextcloud".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://cloud.example.test".to_string(),
+            port: Some(443),
+            username: Some("DOMAIN\\alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some(initial_path.to_string()),
+            extra: std::collections::HashMap::new(),
+        };
+        let refused = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/{username}/"))
+            .expect_err("a template the user name cannot fill is refused")
+            .to_string();
+        assert!(
+            refused.contains("cannot be used in a folder path"),
+            "{refused}"
+        );
+        assert!(
+            refused.contains("enter the folder path in full"),
+            "{refused}"
+        );
+        let full = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/DOMAIN\\alice/"))
+            .expect("a folder written in full connects");
+        assert_eq!(
+            full.initial_path.as_deref(),
+            Some("/remote.php/dav/files/DOMAIN\\alice/")
+        );
+    }
+
     #[test]
     fn username_placeholder_is_substituted_in_url_too() {
         let mut extra = std::collections::HashMap::new();

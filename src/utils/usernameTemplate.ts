@@ -19,7 +19,11 @@ export const USERNAME_TEMPLATE = '{username}';
  */
 export function expandUsernameInPath(template: string, username: string | null | undefined): string {
     if (!template.includes(USERNAME_TEMPLATE)) return template;
-    const u = (username || '').trim();
-    if (!u || /[/\\\0]/.test(u) || u === '.' || u === '..') return template;
+    // Inserted exactly as stored, never trimmed (the login sends it that
+    // way); blankness and `.`/`..` are judged on the trimmed value.
+    const u = username || '';
+    const t = u.trim();
+    if (!t || /[/\\\0]/.test(u) || t === '.' || t === '..') return template;
+    // split/join, never String.replace: a `$&` in a user name is no pattern.
     return template.split(USERNAME_TEMPLATE).join(u);
 }
