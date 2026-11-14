@@ -4374,7 +4374,13 @@ impl FtpProvider {
     ///
     /// A `CWD` that fails is reported rather than swallowed: the alternative is
     /// a session whose directory is not the one the caller believes, which is
-    /// the class this exists to close.
+    /// the class this exists to close. Reporting it is not enough on its own:
+    /// the fresh session would stay connected in the login directory, and the
+    /// next relative command (a second `upload("x")` finds it connected and
+    /// does not redial) would run there. So a restore that fails drops the
+    /// session and keeps `current_path` on the folder the caller left: every
+    /// later command either redials and restores that folder or fails, and
+    /// none runs in another one.
     ///
     /// It runs inside the recovery of any command, upload included, so a
     /// recovery dropped during its `CWD` or `PWD` marks the fresh session as
@@ -4388,18 +4394,22 @@ impl FtpProvider {
             guard.disarm();
             return Err(ProviderError::NotConnected);
         };
-        let changed = stream
-            .cwd(previous)
-            .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()));
-        if let Err(err) = changed {
-            guard.disarm();
-            return Err(err);
-        }
-        let entered = folder_entered(stream.pwd().await, Some(previous));
+        let entered = match stream.cwd(previous).await {
+            Ok(()) => folder_entered(stream.pwd().await, Some(previous)),
+            Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
+        };
         guard.disarm();
-        self.current_path = entered?;
-        Ok(())
+        match entered {
+            Ok(folder) => {
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(err) => {
+                self.stream = None;
+                self.current_path = previous.to_string();
+                Err(err)
+            }
+        }
     }
 
     /// A refused data open, classified, with the session given up.
@@ -9093,6 +9103,57 @@ mod rename_contract_tests {
             .map(|e| e.name)
             .collect();
         assert_eq!(names, ["b.txt"], "a relative listing reads /d");
+    }
+
+    /// When the redial cannot go back to the session's folder, the fresh
+    /// session stood connected in the login directory: the first relative
+    /// upload reported the failed restore, and the second found the session
+    /// connected and sent its `STOR` to the login directory. A failed restore
+    /// drops the session and keeps the folder the caller left, so every later
+    /// upload tries that folder again and none is stored anywhere else.
+    #[tokio::test]
+    async fn a_redial_that_cannot_restore_the_folder_stores_nothing_elsewhere() {
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log) = provider_on_server_with(&["/d/b.txt"], quirks).await;
+        provider.cd("/d").await.expect("cd");
+        // The folder goes away, so the redial's `CWD /d` is refused.
+        provider.delete("/d/b.txt").await.expect("delete");
+        provider.stream = None;
+        log.lock().unwrap().clear();
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        for attempt in 1..=2 {
+            let outcome = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                provider.upload(local, "x.txt", None),
+            )
+            .await
+            .expect("the upload answers");
+            assert!(outcome.is_err(), "upload {attempt}: {outcome:?}");
+            assert!(
+                !provider.is_connected(),
+                "upload {attempt}: the session was kept"
+            );
+            assert_eq!(provider.current_path, "/d", "upload {attempt}");
+        }
+        let sent = log.lock().unwrap().clone();
+        assert!(
+            !sent
+                .iter()
+                .any(|c| c.starts_with("STOR") || c.starts_with("APPE")),
+            "{sent:?}"
+        );
+        assert_eq!(
+            sent.iter().filter(|c| c.as_str() == "CWD /d").count(),
+            2,
+            "each upload tries the folder again: {sent:?}"
+        );
     }
 
     /// Where the listing is refused, the look answered "unknown" and the

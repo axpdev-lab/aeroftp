@@ -186,10 +186,10 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   // Both AeroCloud entries take that folder for the lock, the badges and the share link.
   const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
   expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*setSyncBasePaths\(\{ remote: listedFolder,/);
-  expect(lock).toContain('adoptOpenedCloudFolder({ remoteFolder: listedFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
+  expect(lock).toContain('adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
   const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
   expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);');
-  expect(fresh).toContain('adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
+  expect(fresh).toContain('adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
   expect(app).not.toMatch(/navigateToRemoteFolder\(cloudConfig\.remote_folder\)/);
 });
 
@@ -323,7 +323,7 @@ it('offers the sync badges and the share link only on the AeroCloud connection',
   expect(badge).toContain('if (!isLocal && !onAeroCloudConnection()) return null;');
   expect(app).toMatch(/cloudRemoteFolder && onAeroCloudConnection\(\) && isWithinSyncFolder\(file\.path, cloudRemoteFolder\)/);
   expect(app).toContain('const cloudServer = selectAeroCloudProfile(savedServers, cloudConfig.server_profile_id, cloudConfig.server_profile);');
-  expect(app.match(/adoptOpenedCloudFolder\(\{ remoteFolder: \w+, localFolder: cloudConfig\.local_folder, profileId: cloudServer\.id \}\);/g)?.length).toBe(2);
+  expect(app.match(/adoptOpenedCloudFolder\(\{ remoteFolder: \w+, savedFolder: cloudConfig\.remote_folder, localFolder: cloudConfig\.local_folder, profileId: cloudServer\.id \}\);/g)?.length).toBe(2);
 });
 
 // The AeroCloud tab's open as App.tsx has it, run against a stand-in app:
@@ -507,6 +507,44 @@ it('shows the folder the server returned when a kept session enters the AeroClou
   expect(spy('setSelectedRemoteFiles')).toHaveBeenLastCalledWith(new Set());
   const lastCall = (name: string) => Math.max(...spy(name).mock.invocationCallOrder);
   expect(lastCall('setRemoteSearchResults')).toBeGreaterThan(lastCall('setRemoteFiles'));
+});
+
+// The rows the remote panel shows, by App.tsx's own rule (`sortedRemoteFiles`,
+// in its file order): the rows and the paths their actions (download, delete,
+// preview) take are these.
+const rowsStart = app.indexOf('const sortedRemoteFiles = useMemo(() => {');
+const rowsEnd = app.indexOf('}, [remoteFiles, remoteSearchResults, remoteSearchQuery', rowsStart);
+if (rowsStart < 0 || rowsEnd < 0) throw new Error('Missing the remote rows rule');
+const { code: rowsCode } = await transformWithOxc(app.slice(app.indexOf('{', rowsStart) + 1, rowsEnd), 'remote-rows.ts');
+type Row = { name: string; path: string };
+const shownRemoteRows = new Function('remoteFiles', 'remoteSearchResults', 'remoteSearchQuery', 'sortFiles', 'remoteSortField', 'remoteSortOrder', rowsCode) as
+  (files: Row[], results: Row[] | null, query: string, sort: (rows: Row[]) => Row[], field: string, order: string) => Row[];
+
+it.each([
+  ['no query', '', ['/cloud/a.txt', '/cloud/b.txt']],
+  ['the query still typed', 'a.', ['/cloud/a.txt']],
+])('shows the AeroCloud folder, not a completed search over another folder, with %s', async (_label, query, paths) => {
+  expect(app).toMatch(/\{sortedRemoteFiles\.map\(\(file, i\) => \(/u);
+  const row = (path: string) => ({ name: path.split('/').pop()!, path, size: 1, is_dir: false, modified: null, permissions: null });
+  const searched = [row('/other/a.txt'), row('/other/deep/b.txt')];
+  const listing = { files: [row('/cloud/a.txt'), row('/cloud/b.txt')], current_path: '/cloud', display_current_path: '/cloud', breadcrumb_labels: { '/cloud': 'cloud' } };
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'get_cloud_config') return CLOUD_CONFIG;
+    if (command === 'provider_change_dir') return listing;
+    if (command === 'get_local_files') return [];
+    return '';
+  });
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, remoteSearchResults: searched, remoteSearchQuery: query, currentRemotePath: '/other' });
+  const state: { remoteFiles: Row[]; remoteSearchResults: Row[] | null } = { remoteFiles: [row('/other/z.txt')], remoteSearchResults: searched };
+  expect(shownRemoteRows(state.remoteFiles, state.remoteSearchResults, query, rows => rows, 'name', 'asc').map(r => r.path), 'the search shown before').toEqual(searched.map(r => r.path));
+  await handleCloudTabClick();
+  // The panel's state after the open: every write, in the order it was made.
+  const writes = (['setRemoteFiles', 'setRemoteSearchResults'] as const).flatMap(name => spy(name).mock.calls.map((args, index) => ({ name, value: args[0], order: spy(name).mock.invocationCallOrder[index] })));
+  for (const { name, value } of writes.sort((a, b) => a.order - b.order)) {
+    const key = name === 'setRemoteFiles' ? 'remoteFiles' : 'remoteSearchResults';
+    (state as Record<string, unknown>)[key] = typeof value === 'function' ? value(state[key]) : value;
+  }
+  expect(shownRemoteRows(state.remoteFiles, state.remoteSearchResults, query, rows => rows, 'name', 'asc').map(r => r.path)).toEqual(paths);
 });
 
 it.each([

@@ -10095,7 +10095,7 @@ const App: React.FC = () => {
           if (!owner.owns()) return;
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-          adoptOpenedCloudFolder({ remoteFolder: listedFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
+          adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
@@ -10145,7 +10145,7 @@ const App: React.FC = () => {
       if (!owner.owns()) return;
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
-      adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
+      adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));

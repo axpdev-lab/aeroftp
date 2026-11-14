@@ -695,7 +695,8 @@ mod tests {
     }
 
     /// The same two pairs in the ledger: B's recovery scan, deferred by its
-    /// provider's floor, still waits after A's scan, which records A only.
+    /// provider's floor, still waits after A scans inside that floor, and is
+    /// due once the floor has passed: A's scan records A only.
     #[test]
     fn a_scan_on_one_server_leaves_another_servers_recovery_request() {
         let placed_a = CloudConfig {
@@ -713,7 +714,12 @@ mod tests {
             !ledger.pending_full_scan_due(&pair_key(&b), start),
             "the floor defers B's request"
         );
-        ledger.record_full_scan(&pair_key(&placed_a), start + floor);
+        // A scans while B's floor still defers B's request.
+        ledger.record_full_scan(&pair_key(&placed_a), start + floor / 2);
+        assert!(
+            !ledger.pending_full_scan_due(&pair_key(&b), start + floor / 2),
+            "B's request is still deferred by B's floor"
+        );
         assert!(
             ledger.pending_full_scan_due(&pair_key(&b), start + floor),
             "A's scan must not answer B's request"

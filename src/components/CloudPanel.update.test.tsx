@@ -1209,11 +1209,42 @@ describe('the AeroCloud identity is set by one function per source', () => {
     it('adopts the folder an AeroCloud open listed, then reads the file again', async () => {
         await mountProbe();
         await answer(0, at('~/docs'));
-        await React.act(async () => seen!.adoptOpenedCloudFolder({ remoteFolder: '/home/u/docs', localFolder: '/l', profileId: 'srv_a' }));
+        await React.act(async () => seen!.adoptOpenedCloudFolder({ remoteFolder: '/home/u/docs', savedFolder: '~/docs', localFolder: '/l', profileId: 'srv_a' }));
         expect(seen!.cloudRemoteFolder).toBe('/home/u/docs');
         expect(reads.length).toBe(2);
         await answer(1, at('/home/u/docs'));
         expect(seen!.cloudRemoteFolder).toBe('/home/u/docs');
+    });
+
+    it('keeps the name the server listed while the file still names the folder that was opened', async () => {
+        await mountProbe();
+        await answer(0, at('/home/u/docs'));
+        const open = () => React.act(async () => seen!.adoptOpenedCloudFolder({ remoteFolder: '/usr/home/u/docs', savedFolder: '/home/u/docs', localFolder: '/l', profileId: 'srv_a' }));
+        // A status event reads the file again; two in a row of the same
+        // kind are one event to the listener, so they alternate.
+        let last = 'idle';
+        const reread = () => status(last = last === 'idle' ? 'active' : 'idle');
+        await open();
+        await answer(1, at('/home/u/docs'));
+        expect(seen!.cloudRemoteFolder, 'the same saved target').toBe('/usr/home/u/docs');
+        await reread();
+        await answer(2, at('/home/u/docs'));
+        expect(seen!.cloudRemoteFolder, 'a later read of it').toBe('/usr/home/u/docs');
+        // Anything else the file names drops the listed name.
+        const others: [string, Record<string, unknown>][] = [
+            ['another folder', at('/home/u/other')],
+            ['another local folder', at('/home/u/docs', { local_folder: '/m' })],
+            ['another profile', at('/home/u/docs', { server_profile_id: 'srv_b' })],
+            ['disabled', at('/home/u/docs', { enabled: false })],
+        ];
+        for (const [what, config] of others) {
+            await open();
+            await answer(reads.length - 1, config);
+            expect(seen!.cloudRemoteFolder, what).toBe('/home/u/' + (what === 'another folder' ? 'other' : 'docs'));
+            await reread();
+            await answer(reads.length - 1, at('/home/u/docs'));
+            expect(seen!.cloudRemoteFolder, `${what}, then the opened folder again`).toBe('/home/u/docs');
+        }
     });
 });
 

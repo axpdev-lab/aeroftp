@@ -90,18 +90,30 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   // newer one.
   const latestRead = useRef(0);
   const rereadConfig = useRef<() => void>(() => {});
+  // The folder an AeroCloud open listed, with the saved folder, local folder
+  // and profile it was opened for. The server can name the saved folder
+  // otherwise (a home reached through a symlink), and the rows, the badges
+  // and the share link use the name it lists: a read of the same saved
+  // target keeps that name, a read of anything else drops it.
+  const openedFolder = useRef<{ savedFolder: string; localFolder: string; profileId: string; listedFolder: string } | null>(null);
 
   // The identity is set in these functions only, each from one source, and
   // each sets every field it owns: a field the source does not provide is
   // cleared, never left from an earlier configuration.
   // An accepted config read, with the profile id it selects.
   const applyConfigRead = (config: CloudConfigRead, profileId: string | null) => {
+    const opened = openedFolder.current;
+    const sameTarget = opened !== null && config.enabled
+      && opened.savedFolder === (config.remote_folder || '')
+      && opened.localFolder === (config.local_folder || '')
+      && opened.profileId === profileId;
+    if (!sameTarget) openedFolder.current = null;
     setIsCloudActive(config.enabled);
     setIsCloudPaused(Boolean(config.paused));
     setCloudServerName(config.cloud_name || config.server_profile || '');
     setCloudLastSync(config.last_sync || null);
     setCloudLocalFolder(config.local_folder || '');
-    setCloudRemoteFolder(config.remote_folder || '');
+    setCloudRemoteFolder(sameTarget ? opened.listedFolder : config.remote_folder || '');
     setCloudProfileId(profileId);
     setCloudPublicUrlBase(config.public_url_base || '');
     setCloudProtocolType(config.protocol_type || 'ftp');
@@ -109,6 +121,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   // No configuration: AeroCloud disabled.
   const applyNoConfig = () => {
     latestRead.current += 1;
+    openedFolder.current = null;
     setIsCloudActive(false);
     setIsCloudPaused(false);
     setCloudServerName('');
@@ -126,9 +139,10 @@ export function useCloudSync(options: UseCloudSyncOptions) {
     if (status.lastSync !== undefined) setCloudLastSync(status.lastSync);
     rereadConfig.current();
   };
-  // The folder an AeroCloud open listed, on the profile it connected with,
-  // then the file read again.
-  const adoptOpenedCloudFolder = (opened: { remoteFolder: string; localFolder: string; profileId: string }) => {
+  // The folder an AeroCloud open listed for the saved folder it entered, on
+  // the profile it connected with, then the file read again.
+  const adoptOpenedCloudFolder = (opened: { remoteFolder: string; savedFolder: string; localFolder: string; profileId: string }) => {
+    openedFolder.current = { savedFolder: opened.savedFolder, localFolder: opened.localFolder, profileId: opened.profileId, listedFolder: opened.remoteFolder };
     setCloudRemoteFolder(opened.remoteFolder);
     setCloudLocalFolder(opened.localFolder);
     setCloudProfileId(opened.profileId);
