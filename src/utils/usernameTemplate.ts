@@ -44,3 +44,21 @@ export function expandUsernameInPath(template: string, username: string | null |
     // split/join, never String.replace: a `$&` in a user name is no pattern.
     return template.split(USERNAME_TEMPLATE).join(u);
 }
+
+/**
+ * The start folder a connect opens, with `{username}` filled, or null when
+ * the connect names none. When the user name cannot fill it, this throws
+ * USERNAME_TEMPLATE_UNRESOLVED: every connect branch calls it before it
+ * changes any session state or sends any request, so a refused folder never
+ * becomes a session path or a backend call. The backend refuses the same
+ * folder in `ProviderFactory::create` for every connect that carries it as a
+ * parameter; `connect_ftp` and `oauth2_connect` take none (the window opens
+ * the folder afterwards, as an ordinary change of folder), so for those this
+ * is the gate. A source check in usernameTemplate.test.ts pins the calls.
+ */
+export function connectStartFolder(path: string | null | undefined, username: string | null | undefined): string | null {
+    if (!path) return null;
+    const filled = expandUsernameInPath(path, username);
+    if (hasUnresolvedUsernameTemplate(filled)) throw new Error(USERNAME_TEMPLATE_UNRESOLVED);
+    return filled;
+}

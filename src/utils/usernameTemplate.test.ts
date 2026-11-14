@@ -4,7 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from './usernameTemplate';
+import { connectStartFolder, expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from './usernameTemplate';
+import appSource from '../App.tsx?raw';
 import cases from '../shared/username-template-cases.json';
 import { profileOverlayScope, resolveUsernameTemplate } from './cryptScope';
 import { aeroCloudBase, profileRoot } from '../components/CloudSetupWizard';
@@ -174,6 +175,62 @@ describe('the twin readers of one profile', () => {
             for (const input of c.overlayInputs ?? []) {
                 expect(resolveOverlayScope(input, c.initialPath, 'webdav'), `${c.case}: ${input}`).toBe(c.remoteScope);
             }
+        }
+    });
+});
+
+describe('the start folder of a connect', () => {
+    it('is filled, or refused before anything changes', () => {
+        expect(connectStartFolder(undefined, 'alice')).toBeNull();
+        expect(connectStartFolder('', 'alice')).toBeNull();
+        // A folder without the placeholder is used as written.
+        expect(connectStartFolder('/reports ', '')).toBe('/reports ');
+        for (const c of cases.cases) {
+            if (c.path === null) {
+                expect(() => connectStartFolder(cases.pathTemplate, c.user), JSON.stringify(c.user)).toThrow(USERNAME_TEMPLATE_UNRESOLVED);
+            } else {
+                expect(connectStartFolder(cases.pathTemplate, c.user), JSON.stringify(c.user)).toBe(c.path);
+            }
+        }
+    });
+
+    it('is resolved by every connect branch before its first state write or request', () => {
+        // App.tsx fills `{username}` through resolveUsernameTemplate only where
+        // nothing connects: the storage scan root, the overlay hint, and the
+        // error text of a missing folder. A connect branch that fills it any
+        // other way fails here.
+        const readers = [...appSource.matchAll(/resolveUsernameTemplate\(/g)].map(m => appSource.slice(Math.max(0, m.index! - 60), m.index! + 40));
+        const allowed = [/const resolved = resolveUsernameTemplate\(prof\.initialPath/, /const profileInitialPath = resolveUsernameTemplate\(/, /: resolveUsernameTemplate\(landingPath/, /const badPath = resolveUsernameTemplate\(/];
+        expect(readers).toHaveLength(allowed.length);
+        for (const reader of readers) expect(allowed.some(a => a.test(reader)), reader).toBe(true);
+
+        const calls = [...appSource.matchAll(/connectStartFolder\(/g)].map(m => m.index!).filter(i => !appSource.slice(i - 30, i).includes('import'));
+        expect(calls).toHaveLength(6);
+        const branchStart = /if \(isOAuth\) \{|const logId = [^;\n]*humanLog\.logStart\('CONNECT'/g;
+        const starts = [...appSource.matchAll(branchStart)].map(m => m.index!);
+        for (const call of calls) {
+            const line = appSource.slice(0, call).split('\n').length;
+            const start = Math.max(...starts.filter(s => s < call));
+            const before = appSource.slice(start, call);
+            for (const write of ['parkActiveSession(', 'setIsConnected(', 'invoke(', 'runConnect(', 'setShowConnectionScreen(']) {
+                expect(before.includes(write), `line ${line}: ${write} before the start folder`).toBe(false);
+            }
+            // The call is the first statement of a try, so its refusal reaches
+            // that try's catch: the branch's failure path, which returns.
+            const tryAt = appSource.lastIndexOf('try {', call);
+            const between = appSource.slice(tryAt + 5, call).replace(/\/\/[^\n]*/g, '').replace(/(const|let)\s+\w+\s*=\s*|\w+\s*=\s*/, '').trim();
+            expect(between, `line ${line}: not the first statement of its try`).toBe('');
+            // The catch of that very try, found by brace depth: an inner try
+            // further down has a catch of its own.
+            let depth = 0;
+            let close = -1;
+            for (let i = tryAt + 4; i < appSource.length; i++) {
+                if (appSource[i] === '{') depth++;
+                else if (appSource[i] === '}' && --depth === 0) { close = i; break; }
+            }
+            expect(appSource.slice(close, close + 9), `line ${line}: its try has no catch`).toBe('} catch (');
+            const failure = appSource.slice(close, close + 1600);
+            expect(/return|reportConnectFailure\(/.test(failure), `line ${line}: the catch neither returns nor reports`).toBe(true);
         }
     });
 });

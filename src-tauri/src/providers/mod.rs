@@ -3764,12 +3764,32 @@ fn native_proton_provider(
 pub const NATIVE_PROTON_UNAVAILABLE: &str =
     "This build does not include the native Proton Drive client. Switch the profile to the Proton Drive CLI, or use a build with the native client.";
 
+/// Refuse a start folder the user name cannot fill, before any provider is
+/// built and so before any request. Every connect that carries the folder as a
+/// parameter passes here (the window's `provider_connect`, AeroCloud, the CLI
+/// and MCP); a template the user name fills passes, as the WebDAV config fills
+/// it itself. `connect_ftp` and `oauth2_connect` take no start folder (the
+/// window opens it afterwards as an ordinary change of folder, which must stay
+/// able to reach a real folder of that name), so the window's
+/// `connectStartFolder` is their gate.
+fn refuse_unresolved_start_folder(config: &ProviderConfig) -> Result<(), ProviderError> {
+    let Some(folder) = config.initial_path.as_deref() else {
+        return Ok(());
+    };
+    let username = config.username.as_deref().unwrap_or("");
+    let filled = crate::connection_manifest::expand_username_in_path(folder, username)
+        .unwrap_or_else(|_| folder.to_string());
+    crate::connection_manifest::refuse_unresolved_username_template(&filled)
+        .map_err(ProviderError::InvalidConfig)
+}
+
 /// Provider factory for creating provider instances
 pub struct ProviderFactory;
 
 impl ProviderFactory {
     /// Create a new provider instance based on configuration
     pub fn create(config: &ProviderConfig) -> Result<Box<dyn StorageProvider>, ProviderError> {
+        refuse_unresolved_start_folder(config)?;
         match config.provider_type {
             ProviderType::Ftp | ProviderType::Ftps => {
                 let ftp_config = FtpConfig::from_provider_config(config)?;
@@ -4678,6 +4698,58 @@ mod http_resume_tests {
 
 #[cfg(test)]
 mod tests {
+    /// A start folder the user name cannot fill is refused by the factory for
+    /// every family, before a provider exists (so no request can be sent); a
+    /// folder the user name fills, or one with no template, still builds.
+    #[test]
+    fn the_factory_refuses_a_start_folder_the_user_name_cannot_fill() {
+        use super::{ProviderConfig, ProviderError, ProviderFactory, ProviderType};
+        let config = |provider_type: ProviderType, user: &str, folder: &str| ProviderConfig {
+            name: "template".into(),
+            provider_type,
+            host: "files.example.test".into(),
+            port: None,
+            username: Some(user.into()),
+            password: Some("pw".into()),
+            initial_path: Some(folder.into()),
+            extra: std::collections::HashMap::from([
+                ("bucket".to_string(), "b".to_string()),
+                ("region".to_string(), "us-east-1".to_string()),
+            ]),
+        };
+        let families = [
+            ProviderType::Ftp,
+            ProviderType::Sftp,
+            ProviderType::S3,
+            ProviderType::GoogleDrive,
+            ProviderType::WebDav,
+        ];
+        for family in families {
+            for user in ["", "   ", "{username}", "a/b", ".."] {
+                match ProviderFactory::create(&config(family, user, "/files/{username}/")) {
+                    Err(ProviderError::InvalidConfig(message)) => assert_eq!(
+                        message,
+                        crate::connection_manifest::USERNAME_TEMPLATE_UNRESOLVED,
+                        "{family:?} {user:?}"
+                    ),
+                    Err(other) => panic!("{family:?} {user:?}: refused as {other:?}"),
+                    Ok(_) => panic!("{family:?} {user:?}: built with an unresolved start folder"),
+                }
+            }
+        }
+        // The gate refuses only what cannot be filled.
+        for (family, folder) in [
+            (ProviderType::Ftp, "/files/{username}/"),
+            (ProviderType::Ftp, "/files/alice/"),
+            (ProviderType::WebDav, "/remote.php/dav/files/{username}/"),
+        ] {
+            assert!(
+                ProviderFactory::create(&config(family, "alice", folder)).is_ok(),
+                "{family:?} {folder}"
+            );
+        }
+    }
+
     #[test]
     fn a_local_date_reads_in_whole_seconds_in_rfc3339() {
         let dir = tempfile::tempdir().unwrap();
