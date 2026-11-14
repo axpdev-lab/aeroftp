@@ -2255,11 +2255,10 @@ mod tests {
             .download(&missing, target.to_str().unwrap(), Some(callback))
             .await;
         assert!(outcome.is_err(), "{outcome:?}");
-        assert!(
-            updates.lock().unwrap().is_empty(),
-            "{:?}",
-            updates.lock().unwrap()
-        );
+        {
+            let seen_updates = updates.lock().unwrap().clone();
+            assert!(seen_updates.is_empty(), "{:?}", seen_updates);
+        }
     }
 
     /// Upload a 1000-byte file through the stand-in `mega-put`.
