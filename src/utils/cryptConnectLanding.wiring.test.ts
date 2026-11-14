@@ -566,7 +566,7 @@ describe('scope-entry unlock result belongs to its navigation', () => {
             overlayRefusalRef: { current: null }, refusalFor, ...setters,
         }, "return 'completed';").catch(() => 'failed');
         await execute(app.slice(switchStart, switchEnd), {
-            remoteNavCounter, remoteNavInFlightRef, sessionId: 'new_tab',
+            remoteNavCounter, remoteNavInFlightRef, remoteTakeoverRef: { current: 0 }, sessionId: 'new_tab',
             setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(), setIsConnected: vi.fn(),
             setRemoteListLoading: vi.fn(), setRemoteListReason: vi.fn(), setOverlayDecrypting: vi.fn(),
         }, '');

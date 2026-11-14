@@ -180,6 +180,8 @@ describe('a connect lists the connection it opens', () => {
     it('decides whether AeroCloud can keep the live backend on the whole target', () => {
         const at = APP.indexOf('const isSameServer');
         expect(at, 'the AeroCloud reuse check exists').toBeGreaterThan(-1);
-        expect(APP.slice(at, APP.indexOf(';', at))).toMatch(/^const isSameServer = isSameConnection\(/);
+        // The whole target first; `mayReuseForAeroCloud` then also asks for the
+        // pinned profile and a folder that names its place.
+        expect(APP.slice(at, APP.indexOf(';', at))).toMatch(/^const isSameServer = mayReuseForAeroCloud\(\s*isSameConnection\(/);
     });
 });
