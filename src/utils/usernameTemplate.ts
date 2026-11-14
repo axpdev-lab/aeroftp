@@ -8,7 +8,19 @@
  * `connection_manifest::expand_username_in_path`; a source guard test fails
  * if another file does it.
  */
+import cases from '../shared/username-template-cases.json';
+
 export const USERNAME_TEMPLATE = '{username}';
+
+/** What the window shows instead of a location still holding the placeholder;
+ *  the same text as the backend's `USERNAME_TEMPLATE_UNRESOLVED`. */
+export const USERNAME_TEMPLATE_UNRESOLVED: string = cases.unresolvedMessage;
+
+/** True when a derived location still holds the placeholder: the user name
+ *  could not fill it, so nothing may be saved, enabled or synced there. */
+export function hasUnresolvedUsernameTemplate(location: string | null | undefined): boolean {
+    return !!location && location.includes(USERNAME_TEMPLATE);
+}
 
 /**
  * The folder path with `{username}` filled by the user name as written. A
@@ -23,7 +35,7 @@ export function expandUsernameInPath(template: string, username: string | null |
     // way); blankness and `.`/`..` are judged on the trimmed value.
     const u = username || '';
     const t = u.trim();
-    if (!t || /[/\\\0]/.test(u) || t === '.' || t === '..') return template;
+    if (!t || /[/\\\0]/.test(u) || t === '.' || t === '..' || u.includes(USERNAME_TEMPLATE)) return template;
     // split/join, never String.replace: a `$&` in a user name is no pattern.
     return template.split(USERNAME_TEMPLATE).join(u);
 }

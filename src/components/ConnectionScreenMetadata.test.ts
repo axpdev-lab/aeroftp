@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import React, { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -522,3 +523,42 @@ describe('LifetimeCloud WebDAV credential helpText and overlay defaults', () => 
         expect(container.querySelector('input[placeholder="connection.passwordPlaceholder"]')).not.toBeNull();
     });
 });
+
+describe('A crypt overlay folder the user name cannot fill', () => {
+    it('shows the refusal and blocks Save until the user name fills it', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                username: '',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/remote.php/dav/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        // Blank user name: the overlay would anchor at a folder named after the
+        // placeholder, so the form shows the refusal.
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        // A user name that fills the folder clears it.
+        const user = container.querySelector<HTMLInputElement>('input[placeholder="connection.usernamePlaceholder"]')
+            ?? [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].find(i => i.value === '')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+    });
+});
+

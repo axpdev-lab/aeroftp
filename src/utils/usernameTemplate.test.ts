@@ -4,10 +4,10 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { expandUsernameInPath } from './usernameTemplate';
+import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from './usernameTemplate';
 import cases from '../shared/username-template-cases.json';
 import { profileOverlayScope, resolveUsernameTemplate } from './cryptScope';
-import { profileRoot } from '../components/CloudSetupWizard';
+import { aeroCloudBase, profileRoot } from '../components/CloudSetupWizard';
 import type { ServerProfile } from '../types';
 
 describe('expandUsernameInPath', () => {
@@ -69,6 +69,25 @@ describe('expandUsernameInPath', () => {
         };
         walk(join(process.cwd(), 'src'));
         expect(offenders).toEqual([]);
+    });
+
+    it('marks every location the user name cannot fill as unresolved, for the wizard and the form', () => {
+        // The wizard (aeroCloudBase) and the connection form refuse to save or
+        // enable such a location; the backend refuses to unlock or sync it.
+        expect(USERNAME_TEMPLATE_UNRESOLVED).toBe(cases.unresolvedMessage);
+        for (const c of cases.cases) {
+            // A user literally named `{username}` fills the template with
+            // itself: still unresolved, refused like a blank name.
+            const unresolved = c.path === null || c.path.includes('{username}');
+            const filled = expandUsernameInPath(cases.pathTemplate, c.user);
+            expect(hasUnresolvedUsernameTemplate(filled), JSON.stringify(c.user)).toBe(unresolved);
+            const profile = {
+                username: c.user, protocol: 'webdav', initialPath: '',
+                aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: cases.pathTemplate },
+            } as unknown as ServerProfile;
+            const base = aeroCloudBase(profile);
+            expect(hasUnresolvedUsernameTemplate(base), `${JSON.stringify(c.user)} -> ${base}`).toBe(unresolved);
+        }
     });
 
     it('is what the crypt scope and the AeroCloud root use', () => {

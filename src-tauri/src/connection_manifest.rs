@@ -103,6 +103,10 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
     if username.trim().is_empty() {
         return Err(USERNAME_TEMPLATE_MISSING.to_string());
     }
+    // A user name holding the placeholder itself would leave it in place.
+    if username.contains(USERNAME_TEMPLATE) {
+        return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
+    }
     // `.` and `..` are no segment a URL keeps: the parser resolves them and
     // the address climbs out of the user's folder.
     if matches!(username.trim(), "." | "..") {
@@ -116,6 +120,28 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
     Ok(template.replace(USERNAME_TEMPLATE, &segment))
 }
 
+/// What a location derived from a profile still holding the `{username}`
+/// placeholder means: the user name could not fill it (blank, refused, or
+/// literally `{username}`). Every user of a derived location (the crypt
+/// overlay unlock, the AeroCloud root, the window) refuses it with this
+/// message instead of acting on a folder named after the placeholder.
+pub const USERNAME_TEMPLATE_UNRESOLVED: &str = "This location still holds the {username} \
+     placeholder because the profile's user name cannot fill it (it is blank, contains '/', \
+     '\\' or NUL, is '.' or '..', or is literally {username}): set the user name, or write the \
+     folder in full instead of the placeholder";
+
+/// Refuse a derived location that still holds the `{username}` placeholder.
+/// The readers keep the template when the user name cannot fill it, so that
+/// nothing climbs out of the user's folder; this is the check every user of
+/// such a location runs before any request or write.
+pub fn refuse_unresolved_username_template(location: &str) -> Result<(), String> {
+    if location.contains(USERNAME_TEMPLATE) {
+        Err(USERNAME_TEMPLATE_UNRESOLVED.to_string())
+    } else {
+        Ok(())
+    }
+}
+
 /// Fill the `{username}` placeholder of a folder path with the user name as
 /// it is (a path is a decoded string; the WebDAV client encodes it on the
 /// wire). A blank user name is an error, and so is one that could move the
@@ -126,6 +152,9 @@ pub fn expand_username_in_path(template: &str, username: &str) -> Result<String,
     }
     if username.trim().is_empty() {
         return Err(USERNAME_TEMPLATE_MISSING.to_string());
+    }
+    if username.contains(USERNAME_TEMPLATE) {
+        return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
     }
     if username.contains(['/', '\\', '\0']) || matches!(username.trim(), "." | "..") {
         return Err(
@@ -486,6 +515,28 @@ mod tests {
                 "url {user:?}"
             );
         }
+    }
+
+    /// The window shows the same refusal text as the backend: it reads it from
+    /// the shared table, and this pins the backend constant to it.
+    #[test]
+    fn the_unresolved_template_message_matches_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            table["unresolvedMessage"].as_str().unwrap(),
+            super::USERNAME_TEMPLATE_UNRESOLVED
+        );
+        assert_eq!(
+            super::refuse_unresolved_username_template("/users/{username}/vault"),
+            Err(super::USERNAME_TEMPLATE_UNRESOLVED.to_string())
+        );
+        assert_eq!(
+            super::refuse_unresolved_username_template("/users/alice/vault"),
+            Ok(())
+        );
     }
 
     #[test]

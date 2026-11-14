@@ -3109,6 +3109,11 @@ async fn unlock_overlay_keys_encrypting_in_scope(
     keyfile_digest: Option<&[u8; 32]>,
     context: OverlayUnlockContext<'_>,
 ) -> Result<OverlayUnlockOutcome, String> {
+    // An overlay folder still holding the `{username}` placeholder is not
+    // where the files go: anchored there, every upload to the real folder
+    // would fall outside the anchor and go up unencrypted. Refused before
+    // any request, on every activation path (window, CLI, MCP, AeroCloud).
+    crate::connection_manifest::refuse_unresolved_username_template(&params.remote_scope)?;
     let OverlayUnlockContext {
         allow_init,
         with_header,
@@ -6524,6 +6529,84 @@ pub(crate) mod tests {
         // back.
         let res = wrap_provider_with_overlay_if_bound(inner, Some(&binding), "pw", "", None).await;
         assert!(res.is_err(), "missing config must fail closed");
+    }
+
+    /// An overlay folder the user name cannot fill keeps the `{username}`
+    /// template, and every activation refuses it before any request: anchored
+    /// at the literal folder, uploads to the real one would go up unencrypted.
+    /// Runs the shared case table's refused names (and a user literally named
+    /// `{username}`), for both overlay kinds, through the unlock every path
+    /// uses and through the wrap the CLI, MCP and AeroCloud use.
+    #[tokio::test]
+    async fn an_overlay_folder_the_user_name_cannot_fill_is_never_unlocked() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let template = "/users/{username}/vault";
+        let mut users: Vec<&str> = table["cases"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["path"].is_null())
+            .map(|c| c["user"].as_str().unwrap())
+            .collect();
+        users.push("{username}");
+        for kind in ["aerocrypt", "rclone-crypt"] {
+            for user in &users {
+                let profile = serde_json::json!({
+                    "username": user,
+                    "aeroCryptOverlay": { "enabled": true, "kind": kind, "remoteScope": template }
+                });
+                let scope = profile_overlay_scope(&profile);
+                assert!(scope.contains("{username}"), "{kind} {user:?}: {scope}");
+                let binding = OverlayUnlockParams {
+                    kind: kind.to_string(),
+                    remote_scope: scope,
+                    filename_encryption: String::new(),
+                    directory_name_encryption: true,
+                    off_suffix: None,
+                    profile_id: None,
+                    local_config_json: None,
+                    local_config_salt: None,
+                    with_header: false,
+                    use_default_salt: false,
+                    password_form: None,
+                    salt_form: None,
+                };
+                let mem = MemProvider::new();
+                let mut probe = MemProvider::new();
+                let refused = match unlock_overlay_keys_encrypting(
+                    &mut probe, &binding, "pw", "", None, true, true,
+                )
+                .await
+                {
+                    Ok(_) => panic!("{kind} {user:?}: unlocked"),
+                    Err(e) => e,
+                };
+                assert_eq!(
+                    refused,
+                    crate::connection_manifest::USERNAME_TEMPLATE_UNRESOLVED,
+                    "{kind} {user:?}"
+                );
+                assert!(
+                    probe.files.lock().unwrap().is_empty(),
+                    "{kind} {user:?}: the refused unlock wrote to the remote"
+                );
+                let wrapped = wrap_provider_with_overlay_if_bound(
+                    Box::new(mem),
+                    Some(&binding),
+                    "pw",
+                    "",
+                    None,
+                )
+                .await;
+                assert!(
+                    wrapped.is_err(),
+                    "{kind} {user:?}: the wrap handed back a provider"
+                );
+            }
+        }
     }
 
     #[tokio::test]

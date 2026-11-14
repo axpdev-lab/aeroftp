@@ -3484,13 +3484,26 @@ fn webdav_username_template_problem(server: &RcloneExportServer) -> Option<Strin
         &server.host,
     )
     .unwrap_or_else(|| server.host.clone());
-    if let Err(reason) = crate::connection_manifest::expand_username_in_url(&host, &server.username)
+    // The URL the export writes is the host followed by `basePath`: a
+    // template in either part must fill.
+    let base_path = server
+        .options
+        .as_ref()
+        .and_then(|o| o.get("basePath"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let url = format!("{host}{base_path}");
+    if let Err(reason) = crate::connection_manifest::expand_username_in_url(&url, &server.username)
     {
         return Some(reason);
     }
     let options = server.options.as_ref()?;
+    // The crypt scope matters only when the overlay is exported: a disabled
+    // one with a stale template must not block the clear remote.
+    let crypt_enabled = options.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true);
     ["initial_path", "rcloneCryptOverlayScope"]
         .iter()
+        .filter(|key| **key != "rcloneCryptOverlayScope" || crypt_enabled)
         .filter_map(|key| options.get(*key).and_then(|v| v.as_str()))
         .find_map(|path| {
             crate::connection_manifest::expand_username_in_path(path, &server.username).err()
@@ -4180,12 +4193,24 @@ pub fn export_rclone(
                 // Resolve {username} template that Nextcloud-derived
                 // presets store verbatim in the URL or initial path
                 // (TAB.DIGITAL, FeliCloud).
-                // A blank user name was refused before this point
-                // (`webdav_username_template_problem`), so the template
-                // always fills here.
-                let url =
-                    crate::connection_manifest::expand_username_in_url(&url, &server.username)
-                        .unwrap_or(url);
+                // `webdav_username_template_problem` refused an unfillable
+                // template before this point; should one still fail here, the
+                // profile is skipped with the reason, never written unresolved
+                // and reported as exported.
+                let url = match crate::connection_manifest::expand_username_in_url(
+                    &url,
+                    &server.username,
+                ) {
+                    Ok(url) => url,
+                    Err(reason) => {
+                        output.push_str(&format!(
+                            "# skipped profile '{}': {}\n\n",
+                            sanitized, reason
+                        ));
+                        outcome.skip(&server.name, &reason);
+                        continue;
+                    }
+                };
                 // rclone's `nextcloud`/`owncloud` vendors do not auto-discover
                 // the DAV collection root the way AeroFTP does at connect time
                 // (PROPFIND probe -> `/remote.php/dav/files/<user>/`). They
@@ -10290,6 +10315,60 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 assert_eq!(duck_outcome.exported, 0, "cyberduck {id} blank user");
             }
         }
+    }
+
+    /// A `{username}` template only in `basePath` is part of the URL the export
+    /// writes: with a blank user name the profile is skipped with the reason,
+    /// never written unresolved and counted as exported.
+    #[test]
+    fn a_username_template_in_base_path_alone_is_checked_like_the_host() {
+        let mut server = server_with(
+            "base-template",
+            "webdav",
+            "https://dav.example.test",
+            443,
+            None,
+            serde_json::json!({ "basePath": "/dav/{username}/" }),
+        );
+        server.username = String::new();
+        let (outcome, conf) = export_to_string(&[server], "base-template");
+        assert_eq!(outcome.exported, 0, "{conf}");
+        assert!(!conf.contains("url = "), "{conf}");
+        assert!(
+            conf.contains(crate::connection_manifest::USERNAME_TEMPLATE_MISSING),
+            "{conf}"
+        );
+    }
+
+    /// A disabled rclone-crypt overlay with a stale `{username}` scope does not
+    /// block the clear remote: only an exported overlay's scope must fill.
+    #[test]
+    fn a_disabled_crypt_overlay_scope_does_not_block_the_clear_remote() {
+        let mut server = server_with(
+            "disabled-crypt",
+            "webdav",
+            "https://dav.example.test/dav/",
+            443,
+            None,
+            serde_json::json!({
+                "rcloneCryptEnabled": false,
+                "rcloneCryptOverlayScope": "/{username}/vault"
+            }),
+        );
+        server.username = String::new();
+        let (outcome, conf) = export_to_string(&[server.clone()], "disabled-crypt");
+        assert_eq!(outcome.exported, 1, "{conf}");
+        assert!(
+            conf.contains("url = https://dav.example.test/dav"),
+            "{conf}"
+        );
+        // The same scope on an enabled overlay is refused.
+        server.options = Some(serde_json::json!({
+            "rcloneCryptEnabled": true,
+            "rcloneCryptOverlayScope": "/{username}/vault"
+        }));
+        let (outcome, conf) = export_to_string(&[server], "enabled-crypt");
+        assert_eq!(outcome.exported, 0, "{conf}");
     }
 
     fn server_with(

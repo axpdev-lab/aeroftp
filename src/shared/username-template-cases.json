@@ -3,7 +3,9 @@
     "One case table for filling the {username} placeholder, run by the Rust tests (src-tauri/src/connection_manifest.rs) and the TS tests (src/utils/usernameTemplate.test.ts), so the two sides cannot drift.",
     "The user name goes in exactly as stored, never trimmed: the WebDAV connect sends the stored user name untrimmed in its login and URL. Blankness is decided on the trimmed value. The placeholder is filled in one literal pass (no pattern syntax: `$&` and `$1` stay as written).",
     "path: the folder template filled as written (null = refused, and the TS helper keeps the template). url: the server URL template filled as one percent-encoded path segment (Rust only; null = refused).",
-    "A user name of '.' or '..' is refused in both forms: in a URL the parser would resolve it and climb out of the user's folder."
+    "A user name of '.' or '..' is refused in both forms: in a URL the parser would resolve it and climb out of the user's folder.",
+    "unresolvedMessage: what every user of a derived location (the crypt overlay unlock, the AeroCloud root, the window) shows instead of acting on a location still holding the placeholder; the Rust constant USERNAME_TEMPLATE_UNRESOLVED must equal it.",
+    "A user name that contains {username} itself is refused by both helpers with unresolvedMessage: filled, it would leave the placeholder in place."
   ],
   "pathTemplate": "/remote.php/dav/files/{username}/",
   "urlTemplate": "https://dav.example.test/dav/{username}/",
@@ -40,8 +42,8 @@
     },
     {
       "user": "{username}",
-      "path": "/remote.php/dav/files/{username}/",
-      "url": "https://dav.example.test/dav/%7Busername%7D/"
+      "path": null,
+      "url": null
     },
     {
       "user": "alice@example.com",
@@ -73,5 +75,6 @@
       "path": null,
       "url": null
     }
-  ]
+  ],
+  "unresolvedMessage": "This location still holds the {username} placeholder because the profile's user name cannot fill it (it is blank, contains '/', '\\' or NUL, is '.' or '..', or is literally {username}): set the user name, or write the folder in full instead of the placeholder"
 }

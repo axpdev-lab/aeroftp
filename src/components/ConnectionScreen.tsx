@@ -17,6 +17,7 @@ import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Fol
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
 import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
+import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import { CryptSecretFormChoice } from './CryptSecretFormChoice';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { deviceFingerprintFromMtpInfo, matchLiveDevice } from '../utils/mtpFingerprint';
@@ -516,6 +517,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Re-validate overlays remote path whenever the baseline remoteDir changes
     // (user edits Remote Path after typing a scope, or on hydration).
     useEffect(() => {
+        // A crypt overlay folder still holding `{username}` once the user name
+        // is filled would anchor the overlay at a folder named after the
+        // placeholder, and uploads to the real one would go up unencrypted: the
+        // backend refuses to unlock it, and this error blocks every save path.
+        if (aeroCryptEnabled && providerSupportsCryptOverlay(protocol) && hasUnresolvedUsernameTemplate(
+            expandUsernameInPath(overlaysRemotePath || quickConnectDirs.remoteDir || '', connectionParams.username),
+        )) {
+            setOverlaysRemotePathError(USERNAME_TEMPLATE_UNRESOLVED);
+            return;
+        }
         if (!overlaysRemotePath && !overlaysRemotePathError) return;
         // Validate the RESOLVED scope: a bare subfolder name is nested under the
         // Remote Path (#369 relative UX), so it is always in scope and the error
@@ -523,7 +534,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
         setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t]);
+    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t, aeroCryptEnabled, connectionParams.username]);
 
     // The overlay section back to the fresh-form default. A profile made after
     // an edit session must not inherit that session's overlay: its locked
@@ -3187,6 +3198,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             {overlaysRemotePathError && (
                                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{overlaysRemotePathError}</p>
                             )}
+
                         </div>
                         <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
                         <Checkbox

@@ -323,7 +323,7 @@ fn saved_profile(
 /// is also in the target identity, so a config made when `docs` read from
 /// the root starts a fresh index instead of reading the old folder's state
 /// against another folder.
-fn profile_root(profile: &serde_json::Value) -> String {
+fn profile_root(profile: &serde_json::Value) -> Result<String, String> {
     let username = profile
         .get("username")
         .and_then(|v| v.as_str())
@@ -333,19 +333,21 @@ fn profile_root(profile: &serde_json::Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     // A user name that cannot fill the template keeps it as written, never a
-    // shorter path; the connect refuses such a profile before any request.
+    // shorter path, and a root still holding the placeholder is refused: synced
+    // as is, it would be a server folder literally named `{username}`.
     let root = crate::connection_manifest::expand_username_in_path(raw_root, username)
         .unwrap_or_else(|_| raw_root.to_string());
+    crate::connection_manifest::refuse_unresolved_username_template(&root)?;
     let root = root.trim();
     let ssh = matches!(
         profile.get("protocol").and_then(|v| v.as_str()),
         Some("sftp" | "scp")
     );
-    if root.is_empty() {
+    Ok(if root.is_empty() {
         "/".to_string()
     } else {
         crate::crypt_overlay_provider::login_relative_form(root, ssh).into_owned()
-    }
+    })
 }
 
 /// Open the profile root on a provider that connected at the account root
@@ -530,6 +532,7 @@ async fn create_via_factory(
             profile
                 .as_ref()
                 .map(profile_root)
+                .transpose()?
                 .unwrap_or_else(|| config.remote_folder.clone()),
         ),
         extra,
@@ -550,6 +553,9 @@ async fn create_via_factory(
         passphrase.zeroize();
     }
 
+    // The root is resolved before the connect: one that cannot be filled is
+    // refused before any request.
+    let root = profile.as_ref().map(profile_root).transpose()?;
     info!("AeroCloud: connecting via {:?} to {}", provider_type, host);
     provider
         .connect()
@@ -558,8 +564,8 @@ async fn create_via_factory(
     // Not every provider starts in `initial_path` (Filen opens at the account
     // root), so the root is entered explicitly, as the CLI does before it wraps
     // a crypt overlay: the overlay unlocks where the provider stands.
-    if let Some(profile) = &profile {
-        enter_profile_root(&mut *provider, Some(&profile_root(profile))).await?;
+    if let Some(root) = &root {
+        enter_profile_root(&mut *provider, Some(root)).await?;
     }
 
     // Config identity is immutable here; authenticated identity further isolates API accounts.
@@ -611,11 +617,12 @@ async fn open_yandex_oauth(
     profile_id: &str,
     profile: Option<&serde_json::Value>,
 ) -> Result<OpenedCloudProvider, String> {
+    let root = profile.map(profile_root).transpose()?;
     provider
         .connect()
         .await
         .map_err(|error| format!("Yandex Disk: {error}"))?;
-    enter_profile_root(&mut provider, profile.map(profile_root).as_deref()).await?;
+    enter_profile_root(&mut provider, root.as_deref()).await?;
     let binding = overlay_binding(profile);
     let identity = provider
         .sync_namespace_identity()
@@ -625,7 +632,9 @@ async fn open_yandex_oauth(
             identity_digest(serde_json::json!([
                 "yandexdisk",
                 profile_id,
-                profile.map(profile_root),
+                // The root resolved above: an Option<String>, serialized as
+                // before, so the identity of an existing config is unchanged.
+                root.as_deref(),
                 account,
                 overlay_identity(&binding)
             ]))
@@ -706,7 +715,7 @@ fn oauth_app(config: &CloudConfig, id_key: &str, secret_key: &str) -> Result<OAu
         client_secret,
         profile_id: options.remove("profile_id").unwrap_or_default(),
         region: options.remove("region").or(param_region),
-        root: Some(profile_root(&profile)),
+        root: Some(profile_root(&profile)?),
         overlay_binding: overlay_binding(Some(&profile)),
     })
 }
@@ -1106,19 +1115,20 @@ mod tests {
         assert_eq!(port, Some(8080));
     }
 
+    fn root_ok(profile: serde_json::Value) -> String {
+        profile_root(&profile).expect("a resolvable root")
+    }
+
     #[test]
     fn profile_root_is_the_starting_folder_with_the_username_resolved() {
-        assert_eq!(profile_root(&serde_json::json!({})), "/");
+        assert_eq!(root_ok(serde_json::json!({})), "/");
+        assert_eq!(root_ok(serde_json::json!({ "initialPath": "  " })), "/");
         assert_eq!(
-            profile_root(&serde_json::json!({ "initialPath": "  " })),
-            "/"
-        );
-        assert_eq!(
-            profile_root(&serde_json::json!({ "initialPath": "/var/www" })),
+            root_ok(serde_json::json!({ "initialPath": "/var/www" })),
             "/var/www"
         );
         assert_eq!(
-            profile_root(&serde_json::json!({
+            root_ok(serde_json::json!({
                 "initialPath": "/files/{username}/",
                 "username": "ale"
             })),
@@ -1127,20 +1137,20 @@ mod tests {
         // SFTP and SCP open a relative folder under the login folder.
         for protocol in ["sftp", "scp"] {
             assert_eq!(
-                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "docs" })),
+                root_ok(serde_json::json!({ "protocol": protocol, "initialPath": "docs" })),
                 "~/docs"
             );
             assert_eq!(
-                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "/srv" })),
+                root_ok(serde_json::json!({ "protocol": protocol, "initialPath": "/srv" })),
                 "/srv"
             );
             assert_eq!(
-                profile_root(&serde_json::json!({ "protocol": protocol, "initialPath": "~/v" })),
+                root_ok(serde_json::json!({ "protocol": protocol, "initialPath": "~/v" })),
                 "~/v"
             );
         }
         assert_eq!(
-            profile_root(&serde_json::json!({ "protocol": "ftp", "initialPath": "docs" })),
+            root_ok(serde_json::json!({ "protocol": "ftp", "initialPath": "docs" })),
             "docs"
         );
     }
@@ -1156,12 +1166,22 @@ mod tests {
         let template = table["pathTemplate"].as_str().unwrap();
         for case in table["cases"].as_array().unwrap() {
             let user = case["user"].as_str().unwrap();
-            let expected = case["path"].as_str().unwrap_or(template);
-            assert_eq!(
-                profile_root(&serde_json::json!({ "initialPath": template, "username": user })),
-                profile_root(&serde_json::json!({ "initialPath": expected })),
-                "{user:?}"
-            );
+            let got =
+                profile_root(&serde_json::json!({ "initialPath": template, "username": user }));
+            match case["path"].as_str() {
+                Some(expected) => assert_eq!(
+                    got,
+                    profile_root(&serde_json::json!({ "initialPath": expected })),
+                    "{user:?}"
+                ),
+                // A root that cannot be filled is refused, never synced as a
+                // folder named after the placeholder.
+                None => assert_eq!(
+                    got,
+                    Err(crate::connection_manifest::USERNAME_TEMPLATE_UNRESOLVED.to_string()),
+                    "{user:?}"
+                ),
+            }
         }
     }
 
@@ -1336,7 +1356,7 @@ mod tests {
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                     .map(str::to_string)
-                    .unwrap_or_else(|| profile_root(profile)),
+                    .unwrap_or_else(|| profile_root(profile).expect("a resolvable root")),
                 ..CloudConfig::default()
             };
             let outcome = tokio::time::timeout(Duration::from_secs(90), async {
