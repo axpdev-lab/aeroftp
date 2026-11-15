@@ -2,12 +2,39 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect } from 'vitest';
-import { aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
+import { aeroCloudBase, aeroCloudFolderNotPlain, aeroCloudRemoteFolder, profileRoot } from './CloudSetupWizard';
 import { profileMatchesQuery } from './common/ProfileRail';
+import { profileOverlayScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import type { ServerProfile } from '../types';
+import usernameCases from '../shared/username-template-cases.json';
 
 const profile = (fields: Partial<ServerProfile>): ServerProfile =>
     ({ id: 'srv_1', name: 'Profile', host: 'example.com', port: 21, username: '', ...fields }) as ServerProfile;
+
+describe('the {username} placeholder', () => {
+    // The same table the backend's `profile_root` and `profile_overlay_scope`
+    // pass: both sides insert the user name into the same folder name. A null
+    // path is a blank user name, which leaves the template as written.
+    const template = usernameCases.pathTemplate;
+    it.each(usernameCases.cases)('$user', ({ user, path }) => {
+        const expected = path ?? template;
+        const folder = expected.replace(/\/+$/, '');
+        expect(resolveUsernameTemplate(template, user)).toBe(expected);
+        const webdav = { protocol: 'webdav', username: user } as Partial<ServerProfile>;
+        expect(profileRoot(profile({ ...webdav, initialPath: template }))).toBe(folder);
+        expect(profileOverlayScope({ ...webdav, initialPath: template } as ServerProfile)).toBe(expected);
+        const bound = profile({
+            ...webdav,
+            initialPath: '/',
+            aeroCryptOverlay: { enabled: true, kind: 'aerocrypt', remoteScope: template },
+        } as Partial<ServerProfile>);
+        expect(profileOverlayScope(bound)).toBe(expected);
+        expect(aeroCloudBase(bound)).toBe(folder);
+        expect(aeroCloudRemoteFolder(bound, 'cloud')).toBe(`${folder}/cloud/`);
+        const sftp = profile({ protocol: 'sftp', username: user, initialPath: template.slice(1) });
+        expect(aeroCloudBase(sftp)).toBe(`~/${folder.slice(1)}`);
+    });
+});
 
 describe('profileRoot', () => {
     it('is the server root when the profile has no starting folder', () => {
@@ -24,6 +51,48 @@ describe('profileRoot', () => {
     it('resolves the {username} template some WebDAV presets keep in the start path', () => {
         expect(profileRoot(profile({ initialPath: '/files/{username}/', username: 'ale' }))).toBe('/files/ale');
         expect(profileRoot(profile({ initialPath: '/{username}/files/{username}', username: 'ale' }))).toBe('/ale/files/ale');
+    });
+
+    it('keeps the spaces of the starting folder, as the backend does', () => {
+        expect(profileRoot(profile({ initialPath: '/var/www ' }))).toBe('/var/www ');
+        expect(profileRoot(profile({ initialPath: '  /var/www' }))).toBe('/  /var/www');
+    });
+});
+
+describe('aeroCloudBase', () => {
+    it('keeps a login-relative profile base in ~/ form for the backend to place', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps'] as const) {
+            expect(aeroCloudBase(profile({ protocol, initialPath: 'docs' }))).toBe('~/docs');
+            expect(aeroCloudBase(profile({ protocol, initialPath: '/srv' }))).toBe('/srv');
+        }
+        expect(aeroCloudBase(profile({ protocol: 'webdav', initialPath: '/var/www' }))).toBe('/var/www');
+        expect(aeroCloudBase(profile({ initialPath: '/var/www' }))).toBe('/var/www');
+    });
+
+    it('prefers the overlay folder, in ~/ form when it is relative', () => {
+        const overlay = (remoteScope?: string) =>
+            ({ enabled: true, kind: 'aerocrypt', remoteScope }) as ServerProfile['aeroCryptOverlay'];
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('~/vault') })))
+            .toBe('~/vault');
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('vault') })))
+            .toBe('~/vault');
+        expect(aeroCloudBase(profile({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: overlay('/abs/vault') })))
+            .toBe('/abs/vault');
+        expect(aeroCloudRemoteFolder(profile({ protocol: 'ftp', initialPath: 'docs' }), 'cloud'))
+            .toBe('~/docs/cloud/');
+    });
+
+    it('reads an omitted protocol as FTP, the ServerProfile default', () => {
+        expect(aeroCloudBase(profile({ initialPath: 'docs' }))).toBe('~/docs');
+        expect(aeroCloudRemoteFolder(profile({ initialPath: 'docs' }), 'sub')).toBe('~/docs/sub/');
+    });
+
+    it('treats an all-blank starting folder as the server root on login-relative protocols', () => {
+        for (const protocol of ['sftp', 'ftp'] as const) {
+            expect(aeroCloudBase(profile({ protocol, initialPath: '  ' }))).toBe('');
+            expect(aeroCloudRemoteFolder(profile({ protocol, initialPath: '  ' }), 'sub'))
+                .toBe('/sub/');
+        }
     });
 });
 
@@ -47,8 +116,12 @@ describe('aeroCloudRemoteFolder', () => {
         expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('/data/enc/') }), 'cloud'))
             .toBe('/data/enc/cloud/');
         // A binding's folder is plaintext-absolute, as the app normalizes it.
-        expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
+        expect(aeroCloudRemoteFolder(profile({ protocol: 'webdav', initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
             .toBe('/enc/cloud/');
+        // On FTP (the omitted-protocol default) a relative scope opens under
+        // the login folder, the same rule `initialPath` follows.
+        expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: overlay('enc') }), 'cloud'))
+            .toBe('~/enc/cloud/');
         expect(aeroCloudRemoteFolder(profile({ aeroCryptOverlay: overlay() }), 'cloud')).toBe('/cloud/');
     });
 
@@ -56,6 +129,58 @@ describe('aeroCloudRemoteFolder', () => {
         const disabled = { enabled: false, kind: 'aerocrypt', remoteScope: '/enc' } as ServerProfile['aeroCryptOverlay'];
         expect(aeroCloudRemoteFolder(profile({ initialPath: '/data', aeroCryptOverlay: disabled }), 'cloud'))
             .toBe('/data/cloud/');
+    });
+});
+
+describe('aeroCloudFolderNotPlain', () => {
+    const overlay = (remoteScope?: string) =>
+        ({ enabled: true, kind: 'aerocrypt', remoteScope }) as ServerProfile['aeroCryptOverlay'];
+
+    it('refuses a starting folder that steps out of the login folder, as written', () => {
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps', undefined]) {
+            for (const initialPath of ['docs/../shared', '~/docs/../shared', '..', '~/..', 'a\\..\\b']) {
+                const p = profile({ protocol, initialPath } as Partial<ServerProfile>);
+                expect(aeroCloudFolderNotPlain(p, 'cloud'), `${protocol} ${initialPath}`).toBe(true);
+                // The base keeps the `..`: nothing reads it as another folder.
+                expect(aeroCloudBase(p)).toContain('..');
+            }
+            expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: 'docs' } as Partial<ServerProfile>), 'cloud')).toBe(false);
+            expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: 'docs..x' } as Partial<ServerProfile>), 'cloud')).toBe(false);
+        }
+    });
+
+    it('reads the folder the base comes from: the overlay folder when it names one', () => {
+        // A `..` in the overlay folder is refused; one in a starting folder the
+        // overlay folder replaces is not the base.
+        expect(aeroCloudFolderNotPlain(profile({ protocol: 'sftp', initialPath: 'docs', aeroCryptOverlay: overlay('docs/../x') }), 'cloud')).toBe(true);
+        expect(aeroCloudFolderNotPlain(profile({ protocol: 'sftp', initialPath: 'a/../b', aeroCryptOverlay: overlay('enc') }), 'cloud')).toBe(false);
+        expect(aeroCloudFolderNotPlain(profile({ protocol: 'sftp', initialPath: 'a/../b', aeroCryptOverlay: overlay() }), 'cloud')).toBe(true);
+    });
+
+    it('refuses a base or a sub-folder that is not plain on every protocol, absolute or not, as written', () => {
+        for (const protocol of ['sftp', 'ftp', 'webdav', 's3']) {
+            for (const initialPath of ['/srv/../data', 'a/../b', '/srv/./data', '/srv//data', '~//docs']) {
+                const p = profile({ protocol, initialPath } as Partial<ServerProfile>);
+                expect(aeroCloudFolderNotPlain(p, 'cloud'), `${protocol} ${initialPath}`).toBe(true);
+                // Named as written: `/srv/../data` is never read as `/data`.
+                expect(aeroCloudBase(p), `${protocol} ${initialPath}`).toContain(initialPath.replace(/^~/, ''));
+            }
+            expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/srv/data/' } as Partial<ServerProfile>), 'cloud')).toBe(false);
+        }
+        for (const protocol of ['sftp', 'webdav', 's3']) {
+            for (const sub of ['..', '../x', 'a/../../b', ' a\\..\\b ', './x', 'a//b', 'a/./b']) {
+                expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(true);
+            }
+            expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), 'a..b')).toBe(false);
+            // Read before the outer separators are stripped: repeated ones are
+            // an empty step, a single one is none.
+            for (const sub of ['a//', '//a', '/a//', '//']) {
+                expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(true);
+            }
+            for (const sub of ['/a', 'a/', '/a/', '/', '']) {
+                expect(aeroCloudFolderNotPlain(profile({ protocol, initialPath: '/data' } as Partial<ServerProfile>), sub), `${protocol} ${sub}`).toBe(false);
+            }
+        }
     });
 });
 

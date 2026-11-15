@@ -7,7 +7,7 @@
  * plus new options (conflict strategy, exclude patterns, sync_on_startup).
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Cloud, MonitorCheck, CheckCircle2, AlertCircle, X, FolderSync,
   Play, Pause, RotateCcw, Link2, Eye, EyeOff, Settings, Loader2,
@@ -17,6 +17,7 @@ import { Checkbox } from '../ui/Checkbox';
 import { useTranslation } from '../../i18n';
 import { SyncScheduler } from '../SyncScheduler';
 import { WatcherStatus } from '../WatcherStatus';
+import { saveCloudSettings } from '../../hooks/useCloudSync';
 
 interface CloudConfig {
   enabled: boolean;
@@ -53,6 +54,32 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 }) => {
   const t = useTranslation();
   const [config, setConfig] = useState<CloudConfig | null>(null);
+  // The configuration as the backend last returned it: a save is merged
+  // over the file against it, so a folder placed elsewhere since is kept.
+  const [readAs, setReadAs] = useState<CloudConfig | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Bumped by every operation that installs a configuration (the load, a
+  // save, Pause or Resume): a reply is applied only while its operation is
+  // still the latest, so a slower one never puts back an older file.
+  const configOperation = useRef(0);
+  // One of those at a time once the tab is loaded: a save, Pause or Resume
+  // started while another is pending is not run (its button is disabled),
+  // so no reply is dropped because a later operation took the token, and
+  // none installs an older file over a newer one. The load is never pending
+  // alongside them: the tab shows its spinner until the load is done.
+  const operationBusy = useRef(false);
+  const [operationPending, setOperationPending] = useState(false);
+  const runAlone = useCallback(async (work: () => Promise<void>) => {
+    if (operationBusy.current) return;
+    operationBusy.current = true;
+    setOperationPending(true);
+    try {
+      await work();
+    } finally {
+      operationBusy.current = false;
+      setOperationPending(false);
+    }
+  }, []);
   const [status, setStatus] = useState<CloudSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -61,52 +88,71 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   const [excludeText, setExcludeText] = useState('');
   const [syncing, setSyncing] = useState(false);
 
-  // Load config and status on mount
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const cfg = await invoke<CloudConfig | null>('get_cloud_config');
-        setConfig(cfg);
-        if (cfg) {
-          setExcludeText((cfg.exclude_patterns || []).join('\n'));
-        }
-        const st = await invoke<CloudSyncStatus>('get_cloud_status').catch(() => null);
-        setStatus(st);
-      } catch {
-        // AeroCloud not configured
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  // A configuration that exists but cannot be read (the strict load refuses
+  // a file that does not parse) is shown as a failure with a retry, never as
+  // the invitation to set AeroCloud up, which would start a new setup over it.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const handleSave = useCallback(async () => {
-    if (!config) return;
+  // Load config and status on mount, and again on Retry
+  const load = useCallback(async () => {
+    const asked = ++configOperation.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const cfg = await invoke<CloudConfig | null>('get_cloud_config');
+      if (asked !== configOperation.current) return;
+      setConfig(cfg);
+      setReadAs(cfg);
+      if (cfg) {
+        setExcludeText((cfg.exclude_patterns || []).join('\n'));
+      }
+      const st = await invoke<CloudSyncStatus>('get_cloud_status').catch(() => null);
+      setStatus(st);
+    } catch (e) {
+      if (asked !== configOperation.current) return;
+      console.error('Failed to load AeroCloud settings:', e);
+      setConfig(null);
+      setReadAs(null);
+      setLoadError(String(e));
+    } finally {
+      if (asked === configOperation.current) setLoading(false);
+    }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  const handleSave = useCallback(() => runAlone(async () => {
+    if (!config || !readAs) return;
+    const asked = ++configOperation.current;
     setSaving(true);
+    setSaveError(null);
     try {
       // Parse exclude patterns from textarea
       const patterns = excludeText.split('\n').map(l => l.trim()).filter(Boolean);
-      const updatedConfig = { ...config, exclude_patterns: patterns };
-      await invoke('save_cloud_config_cmd', { config: updatedConfig });
+      const updatedConfig = (await saveCloudSettings({ ...config, exclude_patterns: patterns }, readAs))
+        ?? { ...config, exclude_patterns: patterns };
+      if (asked !== configOperation.current) return;
       // Sync interval to SyncSchedule
       try {
         const schedule = await invoke<Record<string, unknown>>('get_sync_schedule_cmd');
-        if (schedule) {
+        if (schedule && asked === configOperation.current) {
           await invoke('save_sync_schedule_cmd', {
             schedule: { ...schedule, interval_secs: updatedConfig.sync_interval_secs }
           });
         }
       } catch { /* scheduler may not be initialized */ }
+      if (asked !== configOperation.current) return;
       setConfig(updatedConfig);
+      setReadAs(updatedConfig);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       console.error('Failed to save AeroCloud settings:', e);
+      if (asked !== configOperation.current) return;
+      setSaveError(String(e));
     } finally {
       setSaving(false);
     }
-  }, [config, excludeText]);
+  }), [config, readAs, excludeText, runAlone]);
 
   const handleTriggerSync = useCallback(async () => {
     setSyncing(true);
@@ -123,20 +169,36 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 
   // Toggle acts as Pause/Resume: preserves config on OFF. Use CloudPanel's
   // Disable button to fully remove the configuration.
-  const handleTogglePaused = useCallback(async (running: boolean) => {
+  const handleTogglePaused = useCallback((running: boolean) => runAlone(async () => {
+    const asked = ++configOperation.current;
     try {
       const cmd = running ? 'resume_aerocloud' : 'pause_aerocloud';
       const result = await invoke<CloudConfig>(cmd);
+      if (asked !== configOperation.current) return;
       setConfig(result);
+      setReadAs(result);
     } catch (e) {
       console.error('Failed to toggle AeroCloud pause:', e);
     }
-  }, []);
+  }), [runAlone]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 size={20} className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">AeroCloud</h3>
+        <div className="p-6 border border-red-200 dark:border-red-800 rounded-lg text-center space-y-4">
+          <AlertCircle size={28} className="text-red-500 mx-auto" />
+          <p role="alert" className="text-sm text-gray-600 dark:text-gray-300 break-words">{t('common.settingsLoadFailed', { error: loadError })}</p>
+          <button onClick={() => void load()} className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm">{t('common.retry')}</button>
+        </div>
       </div>
     );
   }
@@ -187,6 +249,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
           {/* Pause / Resume toggle. ON = running, OFF = paused (config retained). */}
           <button
             onClick={() => handleTogglePaused(isPaused)}
+            disabled={operationPending}
             title={isPaused ? (t('cloud.resume') || 'Resume') : (t('cloud.pause') || 'Pause')}
             className={`relative w-10 h-5 rounded-full transition-colors ${!isPaused ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'}`}
           >
@@ -449,10 +512,15 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
       </div>
 
       {/* Save Button */}
-      <div className="pt-3 border-t border-gray-200 dark:border-gray-700">
+      <div className="pt-3 border-t border-gray-200 dark:border-gray-700 space-y-2">
+        {saveError && (
+          <div role="alert" className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-xs text-red-700 dark:text-red-300 break-words">
+            {t('common.saveFailed', { error: saveError })}
+          </div>
+        )}
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || operationPending}
           className="w-full py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : null}
