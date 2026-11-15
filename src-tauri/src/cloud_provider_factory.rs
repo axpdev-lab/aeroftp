@@ -384,38 +384,62 @@ fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::
 /// `a_slash_remote_folder_follows_the_root_only_where_slash_is_the_starting_folder`.
 const SLASH_IS_THE_STARTING_FOLDER: &[&str] = &["s3"];
 
-/// Whether the profile root still has to be entered once the provider has
-/// connected, given where it stands (`pwd`). One owner per connect: a
-/// provider that honours `initial_path` (FTP, SFTP, WebDAV, S3, most native
-/// providers) already stands in the root, and entering a relative root again
-/// stepped into it twice (`/home/u/ /reports/ /reports`); a provider that
-/// ignores it (Filen opens at the account root) still stands at its top.
-fn root_still_to_enter(root: &str, here: &str) -> bool {
-    if root.trim().is_empty() || root == "/" {
-        return false;
-    }
-    let bare = |p: &str| -> String {
-        if p.len() > 1 {
-            p.trim_end_matches('/').to_string()
-        } else {
-            p.to_string()
-        }
-    };
-    if root.starts_with('/') {
-        return bare(here) != bare(root);
-    }
-    let here = bare(here);
-    here.is_empty() || here == "/"
+/// What is left to do with the profile root once the provider has connected,
+/// given where it stands (`pwd`).
+#[derive(Debug, PartialEq, Eq)]
+enum RootStep {
+    /// A blank root or `/`: nothing to enter.
+    Nothing,
+    /// Enter the root as written. An absolute root is always entered:
+    /// entering it again changes nothing, and it is the check that the folder
+    /// exists, which SFTP's connect does not make (it sets the folder it
+    /// reports without asking the server). A relative root is entered when the
+    /// provider has not placed it.
+    Enter,
+    /// A relative root the provider already entered (FTP, SFTP): the folder it
+    /// reports is confirmed by its absolute path, so a missing root still
+    /// fails the connect, and the root is not stepped into twice
+    /// (`/home/u/ /reports/ /reports`).
+    Confirm,
 }
 
-/// Enter the profile root after the connect, unless the provider already
-/// stands in it (`root_still_to_enter`).
+/// Decided from the path itself: a relative root counts as placed when the
+/// folder the provider reports ends with the root's own segments (after a
+/// leading `~/` or `./`). A provider that ignores `initial_path` stands in its
+/// top or login folder (Filen at `/`, a login folder such as `/home/u`), and
+/// the root is entered there.
+fn root_step(root: &str, here: &str) -> RootStep {
+    if root.trim().is_empty() || root == "/" {
+        return RootStep::Nothing;
+    }
+    if root.starts_with('/') {
+        return RootStep::Enter;
+    }
+    let segments = root
+        .strip_prefix("~/")
+        .or_else(|| root.strip_prefix("./"))
+        .unwrap_or(root)
+        .trim_end_matches('/');
+    let here = here.trim_end_matches('/');
+    let placed =
+        !segments.is_empty() && (here == segments || here.ends_with(&format!("/{segments}")));
+    if placed {
+        RootStep::Confirm
+    } else {
+        RootStep::Enter
+    }
+}
+
+/// Enter the profile root after the connect, once (`root_step`).
 async fn enter_root_once(provider: &mut dyn StorageProvider, root: &str) -> Result<(), String> {
     let here = provider.pwd().await.unwrap_or_default();
-    if root_still_to_enter(root, &here) {
-        enter_profile_root(provider, Some(root)).await
-    } else {
-        Ok(())
+    match root_step(root, &here) {
+        RootStep::Nothing => Ok(()),
+        RootStep::Enter => enter_profile_root(provider, Some(root)).await,
+        RootStep::Confirm => provider
+            .cd(&here)
+            .await
+            .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e)),
     }
 }
 
@@ -976,6 +1000,7 @@ async fn create_fourshared(config: &CloudConfig) -> Result<OpenedCloudProvider, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::providers::{ProviderError, RemoteEntry};
 
     #[test]
     fn receipt_identity_follows_resolved_target_even_when_profile_labels_do_not_change() {
@@ -1354,38 +1379,170 @@ mod tests {
 
     #[test]
     fn the_root_is_entered_once_whoever_opened_it() {
-        // (root, where the provider stands after connect, enter?)
+        use RootStep::{Confirm, Enter, Nothing};
         let cases = [
-            // An absolute root: entered unless the provider already stands in it.
-            ("/reports", "/reports", false),
-            ("/reports/", "/reports", false),
-            ("/reports ", "/reports ", false),
-            ("/reports", "/", true),
-            ("/reports", "/home/u", true),
-            // A relative root: the provider placed it at connect unless it
-            // ignores initial_path and still stands at its top.
-            (" /reports", "/home/u/ /reports", false),
-            ("~/docs", "/home/u/docs", false),
-            ("docs", "/", true),
-            ("docs", "", true),
-            // Nothing to enter.
-            ("/", "/home/u", false),
-            ("  ", "/", false),
+            // An absolute root is always entered: that checks it exists.
+            ("/reports", "/reports", Enter),
+            ("/reports/", "/reports", Enter),
+            ("/reports", "/", Enter),
+            ("/reports", "/home/u", Enter),
+            // A relative root the provider placed is confirmed by the folder
+            // it reports; one it did not place is entered.
+            (" /reports", "/home/u/ /reports", Confirm),
+            ("~/docs", "/home/u/docs", Confirm),
+            ("~/docs", "/home/u", Enter),
+            ("docs", "/home/u/docs", Confirm),
+            ("docs", "/home/u", Enter),
+            ("docs", "/", Enter),
+            ("docs", "", Enter),
+            ("a/b", "/x/a/b", Confirm),
+            ("b", "/x/ab", Enter),
+            ("/", "/home/u", Nothing),
+            ("  ", "/", Nothing),
         ];
-        for (root, here, enter) in cases {
-            assert_eq!(
-                root_still_to_enter(root, here),
-                enter,
-                "{root:?} at {here:?}"
-            );
+        for (root, here, step) in cases {
+            assert_eq!(root_step(root, here), step, "{root:?} at {here:?}");
         }
     }
 
-    /// An FTP profile whose root is relative (a leading space) is entered
-    /// with ONE CWD: the provider's connect places it, the factory path does
-    /// not enter it again.
+    /// A provider whose connect sets the folder it reports without asking
+    /// the server, as SFTP's does, and whose `cd` fails on a missing folder.
+    struct Stands {
+        here: String,
+        folders: Vec<&'static str>,
+        cds: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for Stands {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            "stands".into()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _p: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok(self.here.clone())
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.cds.push(path.to_string());
+            let target = if path.starts_with('/') {
+                path.to_string()
+            } else {
+                format!("{}/{path}", self.here.trim_end_matches('/'))
+            };
+            if !self.folders.contains(&target.as_str()) {
+                return Err(ProviderError::NotFound(target));
+            }
+            self.here = target;
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _r: &str,
+            _l: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download_to_bytes(&mut self, _r: &str) -> Result<Vec<u8>, ProviderError> {
+            Ok(vec![])
+        }
+        async fn upload(
+            &mut self,
+            _l: &str,
+            _r: &str,
+            _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _f: &str, _t: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".into()))
+        }
+        async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
+            Ok(true)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("stands".into())
+        }
+    }
+
+    /// The connect fails on a root that is not there, also where the provider
+    /// reports standing in it without having asked the server.
     #[tokio::test]
-    async fn an_ftp_relative_root_gets_one_cwd() {
+    async fn a_missing_root_fails_the_connect_where_the_provider_did_not_check() {
+        let stands = |here: &str, folders: Vec<&'static str>| Stands {
+            here: here.to_string(),
+            folders,
+            cds: Vec::new(),
+        };
+        // Absolute and relative, the provider standing "in" a deleted root.
+        for (root, here) in [("/data/gone", "/data/gone"), ("docs", "/home/u/docs")] {
+            let mut provider = stands(here, vec!["/home/u", "/data"]);
+            assert!(
+                enter_root_once(&mut provider, root).await.is_err(),
+                "{root}"
+            );
+        }
+        // Present: an absolute root is entered as written, a placed relative
+        // one is confirmed by its absolute path and never entered again.
+        let mut provider = stands("/data/set", vec!["/data/set"]);
+        enter_root_once(&mut provider, "/data/set").await.unwrap();
+        assert_eq!(provider.cds, ["/data/set"]);
+        let mut provider = stands("/home/u/docs", vec!["/home/u/docs"]);
+        enter_root_once(&mut provider, "docs").await.unwrap();
+        assert_eq!(provider.cds, ["/home/u/docs"]);
+        // A provider that ignored the root and stands in its login folder.
+        let mut provider = stands("/home/u", vec!["/home/u", "/home/u/docs"]);
+        enter_root_once(&mut provider, "docs").await.unwrap();
+        assert_eq!(provider.cds, ["docs"]);
+        assert_eq!(provider.here, "/home/u/docs");
+    }
+
+    /// An FTP profile whose root is relative (a leading space) is entered
+    /// once: the provider's connect places it, and the factory confirms the
+    /// folder by its absolute path instead of entering the root again.
+    #[tokio::test]
+    async fn an_ftp_relative_root_is_entered_once_then_confirmed() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
@@ -1446,12 +1603,17 @@ mod tests {
         })
         .await
         .expect("the FTP exchange finished");
-        assert_eq!(*cwds.lock().unwrap(), vec![" /reports".to_string()]);
+        // The connect enters the root; the factory confirms the folder the
+        // server reports, by its absolute path, and does not enter it again.
+        assert_eq!(
+            *cwds.lock().unwrap(),
+            vec![" /reports".to_string(), "/home/u/ /reports".to_string()]
+        );
         assert_eq!(here, "/home/u/ /reports");
     }
 
-    /// The factory connect enters the root through `enter_root_once`, the
-    /// check the FTP test above runs, and never unconditionally.
+    /// The factory connect enters the root through `enter_root_once`, which
+    /// the tests above run, and never directly.
     #[test]
     fn the_factory_connect_enters_the_root_once() {
         let source = include_str!("cloud_provider_factory.rs");
