@@ -10,6 +10,7 @@ import { presetConnectionOptions, connectionProfileDefaults } from '../providers
 import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
+import { latestBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -183,9 +184,9 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         setIsConnecting(true);
         setError(null);
         try {
-            const result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
+            const result = await swapBackend(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
                 params: { consumer_key: consumerKey, consumer_secret: consumerSecret },
-            });
+            }));
             await onConnected(result.display_name || '4shared');
         } catch (err) {
             setError(String(err));
@@ -1098,13 +1099,16 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const overlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded;
 
     // A sign-in component (OAuthConnect, FourSharedConnect) has already swapped
-    // the backend when its onConnected runs. Every exit that does not hand the
-    // connection to App (an overlay gate, a failed profile read or save, a
-    // throw) tells App to put the live tab aside, so it is never left live over
-    // another account's backend. App's connect parks first, synchronously, so
-    // once the hand-off is called the tab is already parked.
+    // the backend when its onConnected runs (`swapBackend`, which put the live
+    // tab aside first). Every exit that does not hand the connection to App (an
+    // overlay gate, a failed profile read or save, a throw) reports it with
+    // that swap's token, and App puts aside a tab opened while the swap ran,
+    // whose backend the swap replaced; a tab opened after it, or a report on
+    // an older sign-in, is left alone. App's connect parks first,
+    // synchronously, so once the hand-off is called the tab is already parked.
     const afterBackendSwap = <A extends unknown[]>(handler: (handOff: (params?: ConnectionParams) => void, ...args: A) => Promise<void>) =>
         async (...args: A) => {
+            const token = latestBackendSwapToken();
             let handedOff = false;
             const handOff = (params?: ConnectionParams) => {
                 handedOff = true;
@@ -1113,7 +1117,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
             try {
                 await handler(handOff, ...args);
             } finally {
-                if (!handedOff) window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned'));
+                if (!handedOff) window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }));
             }
         };
 

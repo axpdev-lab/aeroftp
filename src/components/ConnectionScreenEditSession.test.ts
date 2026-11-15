@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import source from './ConnectionScreen.tsx?raw';
 import introHubSource from './IntroHub/IntroHub.tsx?raw';
+import appSource from '../App.tsx?raw';
+import oauthHookSource from '../hooks/useOAuth2.ts?raw';
 
 // ConnectionScreen has no render harness here, so these read its source: the
 // properties below are about which code paths exist, not about rendering.
@@ -45,9 +47,30 @@ describe('ConnectionScreen edit sessions', () => {
         const wrapped = source.match(/onConnected=\{afterBackendSwap\(/g) ?? [];
         expect(handlers.length).toBeGreaterThanOrEqual(2);
         expect(wrapped).toHaveLength(handlers.length);
-        expect(bodyOf('afterBackendSwap')).toContain("window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned'))");
+        expect(bodyOf('afterBackendSwap')).toContain("window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }))");
+        // The report names the swap it is about, taken before the handler runs.
+        expect(bodyOf('afterBackendSwap')).toMatch(/const token = latestBackendSwapToken\(\);\s+let handedOff = false;/);
         // Neither sign-in can start while the form would refuse its connect.
         expect(source.match(/disabled=\{remotePathEscapesOverlay \|\| overlaySaveBlocked\}\n\s+(provider=|rightColumn=)/g) ?? []).toHaveLength(2);
+    });
+
+    it('puts the live tab aside before every sign-in swaps the backend', () => {
+        // The form's two swaps tell App first, in the same task (swapBackend),
+        // so the transfer queue cannot start on the live tab over the new
+        // account while the form decides.
+        const swaps = (text: string, command: string) => [...text.matchAll(new RegExp(`invoke(<[^(]*>)?\\('${command}'`, 'g'))]
+            .map(m => text.slice(text.lastIndexOf('\n', m.index!), m.index!));
+        expect(swaps(source, 'fourshared_connect')).toEqual([expect.stringMatching(/swapBackend\(\(\) => $/)]);
+        expect(swaps(oauthHookSource, 'oauth2_connect')).toEqual([expect.stringMatching(/swapBackend\(\(\) => $/)]);
+        expect(oauthHookSource).toMatch(/tell\('start'\);\n\s+let swap: Promise<T>;\n\s+try \{\n\s+swap = run\(\);/);
+        // The resume of a restored transfer connects a saved OAuth or 4shared
+        // profile itself: it parks first too.
+        const resume = appSource.slice(appSource.indexOf('  const connectSavedProfileForResume = async ('));
+        for (const [before, command] of [['let oauthResult:', "invoke('oauth2_connect'"], ["invoke<boolean>('fourshared_has_tokens'", "invoke('fourshared_connect'"]]) {
+            const from = resume.indexOf(before);
+            expect(from, before).toBeGreaterThan(-1);
+            expect(resume.slice(from, resume.indexOf(command, from)), command).toContain('takeOverActiveSession();');
+        }
     });
 
     it('gates every path that writes overlay fields on the one overlay predicate', () => {
@@ -61,7 +84,7 @@ describe('ConnectionScreen edit sessions', () => {
         // in a handler that returned on the predicate first: the nearest
         // handler start above the call must hold the check before the call.
         const definition = source.indexOf('const aeroCryptOverlayFields = ');
-        const starts = [...source.matchAll(/const handle\w+ = async|const saveToServers = async|onConnected=\{async/g)].map(m => m.index!);
+        const starts = [...source.matchAll(/const handle\w+ = async|const saveToServers = async|onConnected=\{(?:afterBackendSwap\()?async/g)].map(m => m.index!);
         const calls = [...source.matchAll(/aeroCryptOverlayFields\(/g)].map(m => m.index!).filter(i => i > definition + 40);
         expect(calls.length).toBeGreaterThanOrEqual(8);
         for (const call of calls) {

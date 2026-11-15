@@ -31,6 +31,41 @@ interface OAuthConnectionParams {
   profile_id?: string;
 }
 
+/** What a sign-in in the connection form tells App about the invoke that
+ *  replaces the backend's provider: `start` before it, `settled` when it ends,
+ *  either way. */
+export interface BackendSwapDetail {
+  token: number;
+  phase: 'start' | 'settled';
+}
+
+let lastBackendSwapToken = 0;
+
+/** The token of the latest sign-in swap, which the form's report on that
+ *  sign-in carries (`aeroftp-sign-in-abandoned`). */
+export const latestBackendSwapToken = (): number => lastBackendSwapToken;
+
+/** Runs a sign-in's invoke that replaces the backend's provider
+ *  (`oauth2_connect`, `fourshared_connect`). App is told first, in the same
+ *  task, so the live tab is put aside before the backend leaves it: the swap
+ *  used to happen first, and until the form handed the connect over the tab
+ *  stayed live, and the transfer queue could start on it, over the new
+ *  account. */
+export function swapBackend<T>(run: () => Promise<T>): Promise<T> {
+  const token = ++lastBackendSwapToken;
+  const tell = (phase: BackendSwapDetail['phase']) =>
+    window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
+  tell('start');
+  let swap: Promise<T>;
+  try {
+    swap = run();
+  } catch (e) {
+    tell('settled');
+    throw e;
+  }
+  return swap.finally(() => tell('settled'));
+}
+
 interface UseOAuth2Return {
   isAuthenticating: boolean;
   error: string | null;
@@ -71,7 +106,7 @@ export function useOAuth2(): UseOAuth2Return {
    */
   const connect = useCallback(async (params: OAuthConnectionParams): Promise<string> => {
     try {
-      const result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+      const result = await swapBackend(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
       setIsAuthenticating(false);
       return result.display_name;
     } catch (e) {

@@ -431,6 +431,8 @@ describe('saved profile write rejection in production handlers', () => {
     it.each(['4shared', 'OAuth new', 'OAuth edit'] as const)('%s does not connect as saved after a failed write', async mode => {
         const f = fixture();
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
+        // The token of the sign-in swap that afterBackendSwap reports on.
+        f.context.latestBackendSwapToken = () => 1;
         const marker = mode === '4shared'
             ? 'onConnected={afterBackendSwap(async (handOff, displayName: string) => {'
             : 'onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {';

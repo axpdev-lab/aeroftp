@@ -28,6 +28,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
+import type { BackendSwapDetail } from './hooks/useOAuth2';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -8220,13 +8221,37 @@ const App: React.FC = () => {
   }, []);
 
   // A sign-in in the connection form (OAuthConnect, FourSharedConnect) swaps
-  // the backend before the form decides; when the form then stops short of
-  // handing the connect over (a gate, a failed save, a throw), it says so here
-  // and the live tab is put aside, as the connect itself would have done.
+  // the backend before the form decides (`swapBackend`). The live tab is put
+  // aside before the swap, so the transfer queue cannot start on it over the
+  // new account. When the form then stops short of handing the connect over
+  // (a gate, a failed save, a throw), it reports that sign-in, and a tab
+  // opened while the swap ran, whose backend the swap replaced, is put aside
+  // too. A report on an older sign-in, or one that comes after another
+  // connect began, is left alone: that connect owns the backend now.
+  const backendSwapRef = useRef<{ token: number; settledAtPhase: number | null } | null>(null);
   useEffect(() => {
-    const abandoned = () => parkActiveSession();
+    const swap = (event: Event) => {
+      const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
+      if (phase === 'start') {
+        backendSwapRef.current = { token, settledAtPhase: null };
+        takeOverActiveSession();
+      } else if (backendSwapRef.current?.token === token) {
+        backendSwapRef.current = { token, settledAtPhase: remoteConnectPhaseVersionRef.current };
+      }
+    };
+    const abandoned = (event: Event) => {
+      const last = backendSwapRef.current;
+      const token = (event as CustomEvent<{ token?: number }>).detail?.token;
+      if (last && last.token === token && last.settledAtPhase === remoteConnectPhaseVersionRef.current) {
+        parkActiveSession();
+      }
+    };
+    window.addEventListener('aeroftp-backend-swap', swap);
     window.addEventListener('aeroftp-sign-in-abandoned', abandoned);
-    return () => window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
+    return () => {
+      window.removeEventListener('aeroftp-backend-swap', swap);
+      window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
+    };
   }, []);
 
   // FTP operations
@@ -11601,6 +11626,10 @@ const App: React.FC = () => {
         });
         if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
         let oauthResult: { display_name?: string; account_email?: string | null };
+        // The connect below replaces the backend's provider: the live tab is
+        // put aside first, as every other connect does, so it is never left
+        // live over this account while the resume waits.
+        takeOverActiveSession();
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
         } catch (connectErr) {
@@ -11657,6 +11686,8 @@ const App: React.FC = () => {
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
         if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
+        // As for OAuth above: the tab is put aside before the backend leaves it.
+        takeOverActiveSession();
         try {
           await invoke('fourshared_connect', { params });
         } catch {

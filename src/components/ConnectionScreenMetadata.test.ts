@@ -3,6 +3,8 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
+import { transformWithOxc } from 'vite';
+import APP from '../App.tsx?raw';
 import React, { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -38,6 +40,7 @@ vi.mock('./IntroHub/DiscoverPanel', () => ({
 vi.mock('./IntroHub/PortableIsolationBanner', () => ({ PortableIsolationBanner: () => null }));
 
 import { ConnectionScreen } from './ConnectionScreen';
+import { latestBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
 import { IntroHub } from './IntroHub/IntroHub';
 
 const icon = 'data:image/png;base64,dGVzdA==';
@@ -675,5 +678,163 @@ describe('A sign-in that swapped the backend', () => {
         expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_connect')).toBe(true);
         expect(onConnectSpy).not.toHaveBeenCalled();
         expect(abandoned).toBe(1);
+    });
+
+    it('tells App before the 4shared connect swaps the backend, and reports that swap', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? true : previous(command, args));
+        await openEditor('fourshared');
+        const withTokens = mocks.invoke.getMockImplementation()!;
+        const order: string[] = [];
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'fourshared_connect') order.push(command);
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return withTokens(command, args);
+        });
+        const { swaps, reports, stop } = listenToSwaps(order);
+        try {
+            await act(async () => button('connection.fourshared.connectTo4shared').click());
+        } finally { stop(); }
+        expect(order).toEqual(['swap:start', 'fourshared_connect', 'swap:settled']);
+        expect(swaps[0].token).toBe(swaps[1].token);
+        expect(reports).toEqual([swaps[0].token]);
+    });
+});
+
+/** Records the sign-in swap events and the form's abandoned reports. */
+function listenToSwaps(order: string[]) {
+    const swaps: BackendSwapDetail[] = [];
+    const reports: (number | undefined)[] = [];
+    const swap = (event: Event) => {
+        const detail = (event as CustomEvent<BackendSwapDetail>).detail;
+        swaps.push(detail);
+        order.push(`swap:${detail.phase}`);
+    };
+    const report = (event: Event) => { reports.push((event as CustomEvent<{ token?: number }>).detail?.token); };
+    window.addEventListener('aeroftp-backend-swap', swap);
+    window.addEventListener('aeroftp-sign-in-abandoned', report);
+    return {
+        swaps, reports,
+        stop: () => {
+            window.removeEventListener('aeroftp-backend-swap', swap);
+            window.removeEventListener('aeroftp-sign-in-abandoned', report);
+        },
+    };
+}
+
+describe('The OAuth sign-in swap (useOAuth2.connect)', () => {
+    async function connectOnce(result: () => Promise<unknown>) {
+        const order: string[] = [];
+        mocks.invoke.mockImplementation(async (command: string) => {
+            order.push(command);
+            return result();
+        });
+        let connect!: ReturnType<typeof useOAuth2>['connect'];
+        function Hook() { connect = useOAuth2().connect; return null; }
+        await act(async () => root.render(React.createElement(Hook)));
+        const { swaps, stop } = listenToSwaps(order);
+        try {
+            await act(async () => { await connect({ provider: 'google_drive', client_id: 'id', client_secret: 'secret' }).catch(() => undefined); });
+        } finally { stop(); }
+        return { order, swaps };
+    }
+
+    it('tells App before oauth2_connect swaps the backend, and when it ends', async () => {
+        const { order, swaps } = await connectOnce(async () => ({ display_name: 'Account', account_email: null }));
+        expect(order).toEqual(['swap:start', 'oauth2_connect', 'swap:settled']);
+        expect(swaps[0].token).toBe(swaps[1].token);
+        expect(swaps[0].token).toBe(latestBackendSwapToken());
+    });
+
+    it('says the swap ended when the connect fails', async () => {
+        const { order } = await connectOnce(async () => { throw new Error('refused'); });
+        expect(order).toEqual(['swap:start', 'oauth2_connect', 'swap:settled']);
+    });
+});
+
+/** Runs App's sign-in swap listener (the `backendSwapRef` effect) on stubs. */
+async function mountSwapListener() {
+    const start = APP.indexOf('  const backendSwapRef = useRef<');
+    const end = APP.indexOf('  // FTP operations', start);
+    expect(start, 'the swap listener in App.tsx').toBeGreaterThan(-1);
+    const { code } = await transformWithOxc(APP.slice(start, end), 'backend-swap.ts');
+    const ctx = {
+        useRef: <T,>(current: T) => ({ current }),
+        useEffect: (effect: () => () => void) => { cleanups.push(effect()); },
+        takeOverActiveSession: vi.fn(),
+        parkActiveSession: vi.fn(),
+        remoteConnectPhaseVersionRef: { current: 7 },
+    };
+    new Function(...Object.keys(ctx), code)(...Object.values(ctx));
+    return ctx;
+}
+const cleanups: (() => void)[] = [];
+const abandon = (token: number) => window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }));
+
+describe('App around a sign-in swap', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    it('puts the live tab aside before the backend is swapped', async () => {
+        const app = await mountSwapListener();
+        let parkedFirst = false;
+        await swapBackend(async () => { parkedFirst = app.takeOverActiveSession.mock.calls.length === 1; });
+        expect(parkedFirst).toBe(true);
+        expect(app.takeOverActiveSession).toHaveBeenCalledOnce();
+    });
+
+    it('puts aside a tab opened while the abandoned swap ran', async () => {
+        const app = await mountSwapListener();
+        // A tab switch or a connect began while oauth2_connect ran: the swap
+        // replaced the backend it had opened.
+        await swapBackend(async () => { app.remoteConnectPhaseVersionRef.current++; });
+        abandon(latestBackendSwapToken());
+        expect(app.parkActiveSession).toHaveBeenCalledOnce();
+    });
+
+    it('leaves alone a tab opened after the swap, when the report comes late', async () => {
+        const app = await mountSwapListener();
+        await swapBackend(async () => undefined);
+        app.remoteConnectPhaseVersionRef.current++;
+        abandon(latestBackendSwapToken());
+        expect(app.parkActiveSession).not.toHaveBeenCalled();
+    });
+
+    it('leaves the tab alone on a report about a superseded sign-in', async () => {
+        const app = await mountSwapListener();
+        await swapBackend(async () => undefined);
+        const older = latestBackendSwapToken();
+        await swapBackend(async () => undefined);
+        abandon(older);
+        expect(app.parkActiveSession).not.toHaveBeenCalled();
+        abandon(latestBackendSwapToken());
+        expect(app.parkActiveSession).toHaveBeenCalledOnce();
+    });
+});
+
+describe('The transfer queue after a sign-in put the tab aside', () => {
+    it('refuses a batch while no tab is connected', async () => {
+        const start = APP.indexOf('  const queuedTargetProblem = useLatestCallback(');
+        const end = APP.indexOf('\n  });\n', start);
+        expect(start, 'queuedTargetProblem in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end + '\n  });'.length), 'queued-target.ts');
+        const problem = (isConnected: boolean) => {
+            const ctx = {
+                useLatestCallback: <F,>(fn: F) => fn,
+                backendServesLiveTab: () => true,
+                isConnected,
+                isSameConnection: () => true,
+                liveConnectionParams: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' },
+                accountKeysDiffer: () => false,
+                liveProfileId: () => null,
+                isOAuthProvider: () => false,
+                isFourSharedProvider: () => false,
+                liveOverlay: () => null,
+            };
+            const fn = new Function(...Object.keys(ctx), `${code}; return queuedTargetProblem;`)(...Object.values(ctx));
+            return fn({ params: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' }, profileId: null, oauthLogins: 0, overlay: null });
+        };
+        // parkActiveSession sets isConnected(false).
+        expect(problem(false)).toBe('transfer.queuedForAnotherServer');
+        expect(problem(true)).toBeNull();
     });
 });
