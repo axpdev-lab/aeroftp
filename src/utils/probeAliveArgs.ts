@@ -12,16 +12,20 @@ import { webdavConnectBasePath } from './profileSecurity';
  *  endpoint and region, and finds the slot not alive unless it holds that
  *  profile on that endpoint (or, without one, that host and port). An unset port is sent unset: the backend
  *  resolves the default the connection used. */
-export const probeAliveArgs = (params: ConnectionParams | undefined, protocol?: string | null) => ({
-    protocol: protocol ?? params?.protocol ?? null,
-    username: params?.username || null,
-    profileId: params?.savedServerId || null,
-    host: params?.server || null,
-    port: params?.port || null,
-    bucket: params?.options?.bucket || null,
-    endpoint: params?.options?.endpoint || null,
-    region: params?.options?.region || null,
-});
+export const probeAliveArgs = (params: ConnectionParams | undefined, protocol?: string | null) => {
+    const resolvedProtocol = protocol ?? params?.protocol ?? null;
+    return {
+        protocol: resolvedProtocol,
+        username: params?.username || null,
+        profileId: params?.savedServerId || null,
+        host: params?.server || null,
+        port: params?.port || null,
+        bucket: params?.options?.bucket || null,
+        endpoint: params?.options?.endpoint || null,
+        region: params?.options?.region || null,
+        basePath: webdavConnectBasePath(resolvedProtocol ?? undefined, params?.options),
+    };
+};
 
 /** The port a connection without a saved profile reaches: its own, else the
  *  protocol's default. */

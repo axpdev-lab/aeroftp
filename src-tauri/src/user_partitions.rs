@@ -4323,6 +4323,7 @@ pub fn delete_imported_credential_for_user(
 pub struct CredentialSnapshot {
     vault: Option<Zeroizing<String>>,
     partition: Option<Zeroizing<String>>,
+    credential_type: Option<String>,
 }
 
 /// Read what `credential_id` holds now, in both places a dual write reaches. An
@@ -4334,9 +4335,18 @@ pub fn snapshot_credential_for_user(
 ) -> Result<CredentialSnapshot, String> {
     let conn = open_or_init_cli()?;
     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let credential_type = conn
+        .query_row(
+            "SELECT credential_type FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+            params![user_id, credential_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read credential type: {e}"))?;
     Ok(CredentialSnapshot {
         vault: get_optional_secret(store, credential_id)?,
         partition: get_user_credential_for(&conn, &root_key, user_id, credential_id)?,
+        credential_type,
     })
 }
 
@@ -4403,8 +4413,13 @@ pub fn restore_credential_op_for_user(
     ) {
         RollbackAction::Leave => {}
         RollbackAction::Restore(value) => {
-            let kind = partition_credential_type(&tx, user_id, credential_id, credential_type)?
-                .ok_or_else(|| format!("No credential type for {credential_id}"))?;
+            let kind = partition_credential_type(
+                &tx,
+                user_id,
+                credential_id,
+                before.credential_type.as_deref().or(credential_type),
+            )?
+            .ok_or_else(|| format!("No credential type for {credential_id}"))?;
             set_user_credential_for(&tx, &root_key, user_id, credential_id, &kind, value)?;
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,

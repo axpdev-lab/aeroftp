@@ -42711,12 +42711,42 @@ fn format_template_apply_text(
             sanitize_filename(&warning.reason)
         ));
     }
+    for issue in &res.parse_issues {
+        let blk = issue
+            .block_name
+            .as_deref()
+            .map(|b| format!(" [{}] ", sanitize_filename(b)))
+            .unwrap_or_else(|| " ".to_string());
+        stdout_buf.push_str(&format!(
+            "  ! Line {}{}: {}\n",
+            issue.line,
+            blk,
+            sanitize_filename(&issue.message)
+        ));
+    }
+    if !res.oauth_apps_kept.is_empty() {
+        let kept: Vec<String> = res
+            .oauth_apps_kept
+            .iter()
+            .map(|app| sanitize_filename(app))
+            .collect();
+        stdout_buf.push_str(&format!(
+            "  Note: kept existing OAuth app credential(s) for {}.\n",
+            kept.join(", ")
+        ));
+    }
     for skipped in &res.skipped_invalid {
         stderr_buf.push_str(&format!(
             "Skipped [line {}] {}: {}\n",
             skipped.start_line,
             sanitize_filename(&skipped.name),
             sanitize_filename(&skipped.reason)
+        ));
+    }
+    for failure in &res.shared_secrets_failed {
+        stderr_buf.push_str(&format!(
+            "Shared secret failed: {}\n",
+            sanitize_filename(failure)
         ));
     }
     (stdout_buf, stderr_buf)
@@ -87044,6 +87074,46 @@ mod tests {
         assert!(
             stdout_text.contains("* [line 12] warn-item: example warning"),
             "{stdout_text}"
+        );
+    }
+
+    #[test]
+    fn template_apply_text_reports_parse_issues_shared_secret_failures_and_kept_oauth_apps() {
+        let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
+            applied: Vec::new(),
+            skipped_existing: Vec::new(),
+            skipped_duplicate_in_template: Vec::new(),
+            skipped_unselected: Vec::new(),
+            skipped_invalid: Vec::new(),
+            warnings: Vec::new(),
+            parse_issues: vec![ftp_client_gui_lib::rclone_import::IniParseIssue {
+                line: 7,
+                block_name: Some("alpha".to_string()),
+                message: "Malformed key value line on line 7".to_string(),
+            }],
+            security: Vec::new(),
+            oauth_apps_kept: vec!["onedrive".to_string()],
+            shared_secrets_failed: vec!["oauth_google_client_id: vault write denied".to_string()],
+            stored: Vec::new(),
+            digest_sha256: "d".to_string(),
+        };
+        let (stdout_text, stderr_text) = format_template_apply_text(&fake_res);
+        let combined = format!("{stdout_text}\n{stderr_text}");
+        assert!(
+            combined.contains("Malformed key value line on line 7"),
+            "missing parse issue in text output:\n{combined}"
+        );
+        assert!(
+            combined.contains("onedrive"),
+            "missing oauth_apps_kept in text output:\n{combined}"
+        );
+        assert!(
+            combined.contains("oauth_google_client_id: vault write denied"),
+            "missing shared_secrets_failed in text output:\nstdout:\n{stdout_text}\nstderr:\n{stderr_text}"
+        );
+        assert!(
+            !combined.to_lowercase().contains("rclone"),
+            "public template text must not mention rclone:\n{combined}"
         );
     }
 

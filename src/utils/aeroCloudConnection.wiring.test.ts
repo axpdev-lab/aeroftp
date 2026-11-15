@@ -157,4 +157,9 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   const reset = makeSafe({ host: 'dav.example.test', protocol: 'webdav', options: { webdavScheme: 'http' } }).profile;
   expect(reset.options).toMatchObject({ webdavScheme: 'https' });
   expect(await connectWith('webdav', 'custom-webdav', reset.options)).toMatchObject({ tls_mode: 'https' });
+  expect(await connectWith('webdav', 'webdav', { webdavScheme: 'https', basePath: '/dav/alice/' })).toMatchObject({
+    protocol: 'webdav',
+    tls_mode: 'https',
+    base_path: '/dav/alice/',
+  });
 });

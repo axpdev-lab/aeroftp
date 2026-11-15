@@ -300,8 +300,8 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
         }
 
         // Section header: [name]
-        if line.starts_with('[') && line.ends_with(']') {
-            let name = line[1..line.len() - 1].trim().to_string();
+        if let Some(inner) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            let name = inner.trim().to_string();
             if name.is_empty() {
                 issues.push(IniParseIssue {
                     line: line_num,
@@ -1021,7 +1021,7 @@ fn map_remote(
             .unwrap_or(default)
     };
 
-    for key in ["host", "endpoint", "hostname", "auth"] {
+    for key in ["host", "endpoint", "hostname", "auth", "upload_prefix"] {
         if get_str(key).is_some_and(host_field_carries_userinfo) {
             return Err(format!(
                 "{rclone_type} {key} must not contain userinfo (@); set credentials in their dedicated fields instead"
@@ -1773,8 +1773,10 @@ fn map_remote(
                 .map(|p| p.trim().trim_end_matches('/'))
                 .filter(|p| !p.is_empty() && *p != "https://api.cloudinary.com")
             {
+                let safe_prefix = parse_webdav_url_parts(prefix).sanitized_url;
+                let safe_prefix = safe_prefix.split(['?', '#']).next().unwrap_or(&safe_prefix);
                 return Err(format!(
-                    "cloudinary remote uses the endpoint {prefix}; AeroFTP calls api.cloudinary.com only"
+                    "cloudinary remote uses the endpoint {safe_prefix}; AeroFTP calls api.cloudinary.com only"
                 ));
             }
             let api_secret = get_plain_secret("api_secret");
@@ -2170,18 +2172,9 @@ fn apply_rclone_start_folder(mapped: &mut MappedProfile, path: &str) {
             }
             rest.trim_matches('/').to_string()
         }
-        "webdav" => {
-            let base = options
-                .get("basePath")
-                .and_then(|b| b.as_str())
-                .unwrap_or("")
-                .trim_matches('/');
-            if base.is_empty() {
-                rel.to_string()
-            } else {
-                format!("{base}/{rel}")
-            }
-        }
+        // WebDAV profiles keep their collection path on `options.basePath`
+        // (applied once to `WebDavConfig.url`), so the alias start folder
+        // stays relative to that collection instead of duplicating `basePath`.
         _ => rel.to_string(),
     };
     if !start.is_empty() {
@@ -2369,38 +2362,43 @@ fn percent_decode_userinfo_lossless(raw: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' {
-            let mut decoded_bytes = Vec::new();
-            let mut j = i;
-            while j + 2 < bytes.len() && bytes[j] == b'%' {
-                let Some(hi) = (bytes[j + 1] as char).to_digit(16) else {
+            let run_start = i;
+            let mut run_bytes = Vec::new();
+            while i + 2 < bytes.len() && bytes[i] == b'%' {
+                let Some(hi) = (bytes[i + 1] as char).to_digit(16) else {
                     break;
                 };
-                let Some(lo) = (bytes[j + 2] as char).to_digit(16) else {
+                let Some(lo) = (bytes[i + 2] as char).to_digit(16) else {
                     break;
                 };
-                decoded_bytes.push(((hi << 4) | lo) as u8);
-                j += 3;
+                run_bytes.push(((hi << 4) | lo) as u8);
+                i += 3;
             }
-            if decoded_bytes.is_empty() {
+            if run_bytes.is_empty() {
                 out.push('%');
                 i += 1;
                 continue;
             }
-            match std::str::from_utf8(&decoded_bytes) {
-                Ok(text) => {
-                    out.push_str(text);
-                    i = j;
-                }
-                Err(err) => {
-                    let valid_up_to = err.valid_up_to();
-                    if valid_up_to > 0 {
-                        if let Ok(valid) = std::str::from_utf8(&decoded_bytes[..valid_up_to]) {
+            let mut pos = 0;
+            while pos < run_bytes.len() {
+                match std::str::from_utf8(&run_bytes[pos..]) {
+                    Ok(valid) => {
+                        out.push_str(valid);
+                        break;
+                    }
+                    Err(err) => {
+                        let valid_up_to = err.valid_up_to();
+                        if valid_up_to > 0 {
+                            let valid = std::str::from_utf8(&run_bytes[pos..pos + valid_up_to])
+                                .expect("valid_up_to prefix must be valid UTF-8");
                             out.push_str(valid);
+                            pos += valid_up_to;
                         }
-                        i += valid_up_to * 3;
-                    } else {
-                        out.push_str(&raw[i..i + 3]);
-                        i += 3;
+                        let bad_len = err.error_len().unwrap_or(run_bytes.len() - pos);
+                        let raw_start = run_start + pos * 3;
+                        let raw_end = run_start + (pos + bad_len) * 3;
+                        out.push_str(&raw[raw_start..raw_end]);
+                        pos += bad_len;
                     }
                 }
             }
@@ -2870,8 +2868,20 @@ pub struct TemplateEngineOutput {
     pub capped: bool,
 }
 
-const OBSCURED_SECRET_KEYS: [&str; 5] =
-    ["pass", "key_file_pass", "api_key", "password", "password2"];
+/// Secret keys read through obscured password decoding for each backend type.
+/// Non-obscured fields such as Cloudinary `api_key` (an account identifier)
+/// must never be listed here so plaintext identifiers are neither stripped nor
+/// flagged as obscured secrets.
+fn obscured_secret_keys_for_type(backend_type: &str) -> &'static [&'static str] {
+    match backend_type.trim().to_ascii_lowercase().as_str() {
+        "ftp" | "webdav" | "mega" | "internxt" => &["pass"],
+        "sftp" => &["pass", "key_file_pass"],
+        "filen" => &["password", "api_key"],
+        "koofr" | "opendrive" => &["password"],
+        "crypt" => &["password", "password2"],
+        _ => &[],
+    }
+}
 
 struct MappedSectionsOutcome {
     servers: Vec<ServerProfileExport>,
@@ -3163,6 +3173,8 @@ pub fn evaluate_template_text(
     let mut block_start_lines: HashMap<String, usize> =
         HashMap::with_capacity(parsed.sections.len());
     let mut sections: HashMap<String, RcloneRemote> = HashMap::with_capacity(parsed.sections.len());
+    let mut own_secret_blocks: HashMap<String, TemplateSecretBlockMeta> = HashMap::new();
+    let mut raw_section_secrets: HashMap<String, Vec<(&'static str, String)>> = HashMap::new();
     let mut secret_blocks: HashMap<String, TemplateSecretBlockMeta> = HashMap::new();
     let mut url_passwords: HashMap<String, String> = HashMap::new();
 
@@ -3202,9 +3214,14 @@ pub fn evaluate_template_text(
             }
         }
 
-        // Collect present secret fields and never guess plain vs obscured.
+        // Collect present obscured-capable secret fields for this backend type
+        // and never guess plain vs obscured; defer encoding/stripping until
+        // wrapper (`alias`/`crypt`) chains are inspected so an alias answer can
+        // satisfy a skipped/deselected base block.
+        let block_type = data.get("type").map(String::as_str).unwrap_or("");
+        let obscured_keys = obscured_secret_keys_for_type(block_type);
         let mut present_secrets: Vec<(&'static str, String)> = Vec::new();
-        for key in OBSCURED_SECRET_KEYS {
+        for &key in obscured_keys {
             if let Some(raw_val) = data.get(key) {
                 if !raw_val.is_empty() {
                     present_secrets.push((key, raw_val.clone()));
@@ -3217,30 +3234,154 @@ pub fn evaluate_template_text(
                 .iter()
                 .all(|(_, v)| matches!(reveal_canonical_rclone(v), Ok(ref dec) if !dec.is_empty()));
             let chosen_form = secret_policy.form_for(&section.name);
-            secret_blocks.insert(
+            own_secret_blocks.insert(
                 section.name.clone(),
                 TemplateSecretBlockMeta {
                     looks_obscured,
                     chosen_form,
                 },
             );
-            match chosen_form {
-                Some(TemplateSecretForm::Clear) => {
-                    for (key, raw_val) in present_secrets {
-                        let obscured = obscure_password(&raw_val)?;
-                        data.insert(key.to_string(), obscured);
-                    }
+            for &key in obscured_keys {
+                data.remove(key);
+            }
+            raw_section_secrets.insert(section.name.clone(), present_secrets);
+        }
+
+        sections.insert(section.name, data);
+    }
+
+    // Collect wrapper chains and allow an `alias` answer to satisfy an unchosen
+    // inherited base block when the base itself has no direct policy choice (e.g.
+    // because the base is skipped or deselected).
+    let wrapper_ancestors =
+        |sections: &HashMap<String, RcloneRemote>, start_name: &str| -> Vec<String> {
+            let mut chain = Vec::new();
+            let Some(mut cur) = sections.get(start_name) else {
+                return chain;
+            };
+            let mut visited: HashSet<&str> = HashSet::new();
+            visited.insert(start_name);
+            for _ in 0..8 {
+                let cur_type = cur
+                    .get("type")
+                    .map(|t| t.trim().to_ascii_lowercase())
+                    .unwrap_or_default();
+                if !matches!(cur_type.as_str(), "alias" | "crypt") {
+                    break;
                 }
-                Some(TemplateSecretForm::Obscured) => {}
-                None => {
-                    for key in OBSCURED_SECRET_KEYS {
-                        data.remove(key);
+                let Some(target) = cur.get("remote").map(|r| r.trim()) else {
+                    break;
+                };
+                let next_name = target.split_once(':').map_or(target, |(b, _)| b).trim();
+                if next_name.is_empty() || !visited.insert(next_name) {
+                    break;
+                }
+                chain.push(next_name.to_string());
+                let Some(next) = sections.get(next_name) else {
+                    break;
+                };
+                cur = next;
+            }
+            chain
+        };
+
+    let mut alias_derived_forms: HashMap<String, TemplateSecretForm> = HashMap::new();
+    for name in &ordered_names {
+        let Some(remote) = sections.get(name) else {
+            continue;
+        };
+        let rtype = remote
+            .get("type")
+            .map(|t| t.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        if rtype != "alias" {
+            continue;
+        }
+        let Some(alias_form) = secret_policy.form_for(name) else {
+            continue;
+        };
+        for ancestor in wrapper_ancestors(&sections, name) {
+            if own_secret_blocks
+                .get(&ancestor)
+                .is_some_and(|m| m.chosen_form.is_none())
+            {
+                if let Some(&prev) = alias_derived_forms.get(&ancestor) {
+                    if prev != alias_form {
+                        return Err(format!(
+                            "Conflicting secret forms selected across wrappers for block '{ancestor}'."
+                        ));
+                    }
+                } else {
+                    alias_derived_forms.insert(ancestor, alias_form);
+                }
+            }
+        }
+    }
+
+    for (name, present_secrets) in raw_section_secrets {
+        let effective_form = own_secret_blocks
+            .get(&name)
+            .and_then(|m| m.chosen_form)
+            .or_else(|| alias_derived_forms.get(&name).copied());
+        if let Some(form) = effective_form {
+            if let Some(data) = sections.get_mut(&name) {
+                match form {
+                    TemplateSecretForm::Clear => {
+                        for (key, raw_val) in present_secrets {
+                            let obscured = obscure_password(&raw_val)?;
+                            data.insert(key.to_string(), obscured);
+                        }
+                    }
+                    TemplateSecretForm::Obscured => {
+                        for (key, raw_val) in present_secrets {
+                            data.insert(key.to_string(), raw_val);
+                        }
                     }
                 }
             }
         }
+    }
 
-        sections.insert(section.name, data);
+    // Propagate wrapped base (and intermediate wrapper) secret-form metadata
+    // onto `alias` and `crypt` blocks so preview and apply enforce secret-form
+    // choices uniformly along wrapper chains.
+    for (name, remote) in &sections {
+        let mut chain_metas: Vec<TemplateSecretBlockMeta> = Vec::new();
+        if let Some(own) = own_secret_blocks.get(name) {
+            chain_metas.push(own.clone());
+        }
+        let rtype = remote
+            .get("type")
+            .map(|t| t.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        if matches!(rtype.as_str(), "alias" | "crypt") {
+            for ancestor in wrapper_ancestors(&sections, name) {
+                if let Some(meta) = own_secret_blocks.get(&ancestor) {
+                    chain_metas.push(meta.clone());
+                }
+            }
+        }
+        if !chain_metas.is_empty() {
+            let looks_obscured = chain_metas.iter().all(|m| m.looks_obscured);
+            let chosen_form = if rtype == "alias" && !own_secret_blocks.contains_key(name) {
+                if chain_metas.iter().all(|m| m.chosen_form.is_some()) {
+                    chain_metas[0].chosen_form
+                } else {
+                    secret_policy.form_for(name)
+                }
+            } else if chain_metas.iter().any(|m| m.chosen_form.is_none()) {
+                None
+            } else {
+                chain_metas[0].chosen_form
+            };
+            secret_blocks.insert(
+                name.clone(),
+                TemplateSecretBlockMeta {
+                    looks_obscured,
+                    chosen_form,
+                },
+            );
+        }
     }
 
     let aeroftp_export = aeroftp_export_header(trimmed_bom);
@@ -12136,6 +12277,78 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     #[test]
+    fn the_obscured_secret_keys_match_what_map_remote_reads() {
+        let body = source_fn_body("fn map_remote(");
+        let match_start = body
+            .find("match rclone_type.as_str()")
+            .expect("the type match");
+        let match_end = body[match_start..]
+            .find("        _ => Err(")
+            .map(|rel| match_start + rel)
+            .expect("wildcard arm");
+        let match_body = &body[match_start..match_end];
+
+        // Collect start line indices of each `        "..." =>` arm inside `map_remote`.
+        let lines: Vec<&str> = match_body.lines().collect();
+        let arm_starts: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter_map(|(i, l)| (l.starts_with("        \"") && l.contains("=>")).then_some(i))
+            .collect();
+        assert!(
+            arm_starts.len() >= 20,
+            "expected all backend arms in map_remote"
+        );
+
+        let mut checked_types = Vec::new();
+        for (idx, &start) in arm_starts.iter().enumerate() {
+            let end = arm_starts.get(idx + 1).copied().unwrap_or(lines.len());
+            let arm_text = lines[start..end].join("\n");
+
+            // Extract every string literal before `=>` on the arm header line.
+            let header_pat = lines[start].split("=>").next().unwrap();
+            let mut arm_names = Vec::new();
+            let mut rest = header_pat;
+            while let Some(q1) = rest.find('"') {
+                let after = &rest[q1 + 1..];
+                let Some(q2) = after.find('"') else { break };
+                arm_names.push(&after[..q2]);
+                rest = &after[q2 + 1..];
+            }
+            assert!(!arm_names.is_empty(), "empty arm header: {}", lines[start]);
+
+            // Extract every `get_password("...")` key inside this arm's body.
+            let mut read_keys: Vec<&str> = Vec::new();
+            let mut scan = arm_text.as_str();
+            while let Some(pos) = scan.find("get_password(\"") {
+                let after = &scan[pos + "get_password(\"".len()..];
+                let Some(q2) = after.find('"') else { break };
+                read_keys.push(&after[..q2]);
+                scan = &after[q2 + 1..];
+            }
+            read_keys.sort_unstable();
+            read_keys.dedup();
+
+            for arm_name in arm_names {
+                checked_types.push(arm_name);
+                let mut listed: Vec<&str> = obscured_secret_keys_for_type(arm_name).to_vec();
+                listed.sort_unstable();
+                listed.dedup();
+                assert_eq!(
+                    read_keys, listed,
+                    "map_remote arm `{arm_name}` get_password keys disagree with obscured_secret_keys_for_type"
+                );
+            }
+        }
+
+        // Verify `crypt` wrapper secret keys separately since `crypt` is unwrapped
+        // in `import_parsed_sections` / overlay expansion rather than `map_remote`.
+        let mut crypt_listed: Vec<&str> = obscured_secret_keys_for_type("crypt").to_vec();
+        crypt_listed.sort_unstable();
+        assert_eq!(crypt_listed, vec!["password", "password2"]);
+    }
+
+    #[test]
     fn the_readme_and_the_cli_guide_quote_the_code_count() {
         let count = rclone_published_backends().count();
         let readme = include_str!("../../README.md");
@@ -13211,5 +13424,233 @@ password = PlainCryptNotObscured
         .url;
         assert_eq!(orig_url, "https://lifetimecloud.me/dav/alice/");
         assert_eq!(re_url, orig_url);
+    }
+
+    #[test]
+    fn parse_ini_sections_handles_malformed_headers_and_slices_without_panicking() {
+        let big = format!("[{}]\ntype = ftp\n", "a".repeat(16 * 1024));
+        let fuzz_cases: Vec<String> = vec![
+            "[".to_string(),
+            "]".to_string(),
+            "[]".to_string(),
+            "[ ]".to_string(),
+            "[a".to_string(),
+            "a]".to_string(),
+            "[[a]]".to_string(),
+            "[a]b".to_string(),
+            "[\u{00e9}".to_string(),
+            "[\0a]".to_string(),
+            "\u{FEFF}[valid_bom]\ntype = ftp\nhost = h.example\n".to_string(),
+            "[crlf]\r\ntype = ftp\r\nhost = h.example\r\n".to_string(),
+            big,
+            "[\0\u{00e9}\nkey\0 = val\0\n".to_string(),
+        ];
+        for sample in &fuzz_cases {
+            let parsed = parse_ini_sections_with_spans(sample);
+            let _legacy = parse_rclone_conf(sample);
+            let _ = parsed.issues.len();
+        }
+        assert_eq!(parse_ini_sections_with_spans("[").issues.len(), 1);
+        assert_eq!(
+            parse_ini_sections_with_spans("\u{FEFF}[bom]\ntype = ftp\n").sections[0].name,
+            "bom"
+        );
+        let crlf = parse_ini_sections_with_spans("[crlf]\r\ntype = ftp\r\nhost = a\r\n");
+        assert_eq!(crlf.sections[0].name, "crlf");
+        assert_eq!(
+            crlf.sections[0].data.get("host").map(String::as_str),
+            Some("a")
+        );
+    }
+
+    #[test]
+    fn cloudinary_api_key_is_never_treated_as_obscured_secret_unlike_filen_api_key() {
+        // Cloudinary's `api_key` is a plain account username; even when it has
+        // canonical 22-char base64url length it must neither trigger
+        // secret-form prompting nor be stripped on default evaluation.
+        let canonical_22 = obscure_password("").unwrap();
+        let cfg = format!(
+            "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = {canonical_22}\napi_secret = plain-secret\n"
+        );
+        let out = evaluate_template_text(&cfg, None, "cl-test", &TemplateSecretPolicy::default())
+            .unwrap();
+        assert!(
+            !out.secret_blocks.contains_key("cl"),
+            "cloudinary must not enter secret_blocks: {:?}",
+            out.secret_blocks
+        );
+        assert_eq!(out.servers.len(), 1, "{:?}", out.skipped);
+        assert_eq!(out.servers[0].username, canonical_22);
+
+        // Contrast with Filen: `api_key` IS an obscured-capable secret field.
+        let filen_key = obscure_password("filen-cli-secret").unwrap();
+        let filen_cfg =
+            format!("[fil]\ntype = filen\nemail = user@example.test\napi_key = {filen_key}\n");
+        let filen_out = evaluate_template_text(
+            &filen_cfg,
+            None,
+            "fil-test",
+            &TemplateSecretPolicy::default(),
+        )
+        .unwrap();
+        assert!(
+            filen_out.secret_blocks.contains_key("fil"),
+            "filen api_key must still require secret form selection"
+        );
+        assert!(filen_out.secret_blocks["fil"].looks_obscured);
+    }
+
+    #[test]
+    fn url_userinfo_is_rejected_and_never_leaks_into_diagnostics_or_json() {
+        let cfg = "\
+[cl-info]
+type = cloudinary
+cloud_name = demo
+api_key = 123
+api_secret = sec
+upload_prefix = https://user:TopSecret99@api-eu.cloudinary.com
+
+[cl-query]
+type = cloudinary
+cloud_name = demo
+api_key = 123
+api_secret = sec
+upload_prefix = https://api-eu.cloudinary.com?token=TopSecret99#frag
+
+[s3-info]
+type = s3
+endpoint = https://u:TopSecret99@s3.example.test
+
+[ik-info]
+type = imagekit
+endpoint = https://u:TopSecret99@ik.imagekit.io/demo
+
+[kf-info]
+type = koofr
+endpoint = https://u:TopSecret99@app.koofr.net
+
+[pc-info]
+type = pcloud
+hostname = https://u:TopSecret99@api.pcloud.com
+
+[sw-info]
+type = swift
+auth = https://u:TopSecret99@swift.example.test/v3
+user = alice
+key = pw
+
+[ftp-info]
+type = ftp
+host = ftp://u:TopSecret99@ftp.example.test
+
+[sftp-info]
+type = sftp
+host = sftp://u:TopSecret99@sftp.example.test
+";
+        let out = evaluate_template_text(cfg, None, "leak-test", &TemplateSecretPolicy::default())
+            .unwrap();
+        let out_clear = evaluate_template_text(
+            cfg,
+            None,
+            "leak-test-clear",
+            &TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        for run in [&out, &out_clear] {
+            assert!(
+                run.servers.is_empty(),
+                "none of the blocks with tainted endpoints may import: {}",
+                run.servers.len()
+            );
+            assert_eq!(run.skipped.len(), 9);
+            let serialized = serde_json::json!({
+                "skipped": &run.skipped,
+                "warnings": &run.warnings,
+                "parseIssues": &run.parse_issues,
+            })
+            .to_string();
+            assert!(
+                !serialized.contains("TopSecret99"),
+                "secret leaked in diagnostics/JSON:\n{serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn percent_decode_userinfo_lossless_handles_large_invalid_pct_run_in_linear_time() {
+        assert_eq!(
+            percent_decode_userinfo_lossless("%C3%A9%FF%FF%E2%82%AC%80abc%ff"),
+            "é%FF%FF€%80abc%ff"
+        );
+        let huge = "%FF".repeat(120_000);
+        let started = std::time::Instant::now();
+        let decoded = percent_decode_userinfo_lossless(&huge);
+        let elapsed = started.elapsed();
+        assert_eq!(decoded.len(), huge.len());
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "quadratic slowdown on %FF run: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn webdav_alias_and_crypt_do_not_duplicate_base_path_on_build_url() {
+        let pass = obscure_password("ltc-secret").unwrap();
+        let crypt_pw = obscure_password("vault-pass").unwrap();
+        let cfg = format!(
+            "[ltc]\ntype = webdav\nurl = https://lifetimecloud.me/dav/alice/\nuser = alice\npass = {pass}\n\n\
+             [ltc-docs]\ntype = alias\nremote = ltc:docs\n\n\
+             [ltc-crypt]\ntype = crypt\nremote = ltc-docs:vault\npassword = {crypt_pw}\n"
+        );
+        let res = import_text(&cfg, "ltc-alias-crypt");
+        for (name, expected_initial, expected_path_suffix) in [
+            ("ltc-docs", Some("/docs"), "/dav/alice/docs"),
+            ("ltc-crypt", Some("/docs/vault"), "/dav/alice/docs/vault"),
+        ] {
+            let srv = res
+                .servers
+                .iter()
+                .find(|s| s.name == name)
+                .unwrap_or_else(|| panic!("missing server {name}"));
+            assert_eq!(
+                srv.initial_path.as_deref(),
+                expected_initial,
+                "{name} initial_path must not duplicate basePath: {:?}",
+                srv.initial_path
+            );
+            let val = serde_json::json!({ "host": srv.host, "options": srv.options });
+            let (extra, resolved_host) = crate::profile_loader::profile_connection_extra(
+                &val,
+                crate::providers::ProviderType::WebDav,
+                &srv.host,
+            );
+            let webdav_cfg = crate::providers::WebDavConfig::from_provider_config(
+                &crate::providers::ProviderConfig {
+                    name: srv.name.clone(),
+                    provider_type: crate::providers::ProviderType::WebDav,
+                    host: resolved_host,
+                    port: Some(srv.port as u16),
+                    username: Some(srv.username.clone()),
+                    password: srv.credential.clone(),
+                    initial_path: srv.initial_path.clone(),
+                    extra,
+                },
+            )
+            .unwrap();
+            let composed = format!(
+                "{}{}",
+                webdav_cfg.url.trim_end_matches('/'),
+                webdav_cfg.initial_path.as_deref().unwrap_or("")
+            );
+            assert_eq!(
+                composed,
+                format!("https://lifetimecloud.me{expected_path_suffix}"),
+                "composed URL for {name} doubled basePath: {composed}"
+            );
+        }
     }
 }

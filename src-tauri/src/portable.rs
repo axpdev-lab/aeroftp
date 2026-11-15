@@ -99,8 +99,33 @@ fn aeroftp_data_leaf() -> &'static str {
 /// cannot read or mutate an installed release vault, sync journal, settings, or
 /// SQLite history. Portable builds keep the same self-contained `<exe>/data`
 /// root and apply the same release/debug leaf underneath it.
+#[cfg(test)]
+static TEST_DATA_ROOT: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+#[cfg(test)]
+pub(crate) fn set_test_data_root(path: Option<PathBuf>) -> Option<PathBuf> {
+    let mut guard = TEST_DATA_ROOT
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    std::mem::replace(&mut *guard, path)
+}
+
+#[cfg(test)]
+fn test_data_root_override() -> Option<PathBuf> {
+    TEST_DATA_ROOT
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 pub fn aeroftp_data_root() -> Option<PathBuf> {
     let leaf = aeroftp_data_leaf();
+    #[cfg(test)]
+    if let Some(data_root) = test_data_root_override() {
+        let dir = data_root.join(leaf);
+        ensure_dir(&dir).ok()?;
+        return Some(dir);
+    }
     if let Some(data_root) = portable_data_root() {
         let dir = data_root.join(leaf);
         ensure_dir(&dir).ok()?;
@@ -530,7 +555,13 @@ pub fn credential_store_dir() -> Option<PathBuf> {
 /// that case rather than silently writing into the working directory.
 pub fn cli_app_config_dir() -> Option<PathBuf> {
     let dir = aeroftp_data_root()?;
-    migrate_legacy_app_config_dir(legacy_app_config_dir(), &dir);
+    #[cfg(test)]
+    let skip_migration = test_data_root_override().is_some();
+    #[cfg(not(test))]
+    let skip_migration = false;
+    if !skip_migration {
+        migrate_legacy_app_config_dir(legacy_app_config_dir(), &dir);
+    }
     Some(dir)
 }
 

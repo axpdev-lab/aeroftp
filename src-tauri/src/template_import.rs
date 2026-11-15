@@ -334,6 +334,7 @@ struct PlannedBlock {
     row: TemplatePreviewRow,
     security: Option<ImportedSecurity>,
     prepared_server: ServerProfileExport,
+    existing_target_digest: Option<String>,
     reset_target_secrets: bool,
     duplicate_in_template: bool,
 }
@@ -380,6 +381,7 @@ fn build_plan(
         let needs_secret_form_choice = has_secret_input && secret_form.is_none();
 
         let matched = find_existing_by_trimmed_name(current, &trimmed_name);
+        let existing_target_digest = matched.map(existing_target_digest_projection);
         let existing_match_id = matched
             .and_then(|p| p.get("id").and_then(Value::as_str))
             .map(str::to_string);
@@ -547,11 +549,84 @@ fn build_plan(
             row,
             security,
             prepared_server: server,
+            existing_target_digest,
             reset_target_secrets,
             duplicate_in_template,
         });
     }
     out
+}
+
+fn write_canonical_json(value: &Value, out: &mut Vec<u8>) {
+    match value {
+        Value::Null => out.extend_from_slice(b"null"),
+        Value::Bool(b) => out.extend_from_slice(if *b { b"true" } else { b"false" }),
+        Value::Number(n) => out.extend_from_slice(n.to_string().as_bytes()),
+        Value::String(s) => {
+            if let Ok(encoded) = serde_json::to_vec(s) {
+                out.extend_from_slice(&encoded);
+            }
+        }
+        Value::Array(items) => {
+            out.push(b'[');
+            for (idx, item) in items.iter().enumerate() {
+                if idx > 0 {
+                    out.push(b',');
+                }
+                write_canonical_json(item, out);
+            }
+            out.push(b']');
+        }
+        Value::Object(map) => {
+            out.push(b'{');
+            let mut entries: Vec<(&String, &Value)> = map.iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(b.0));
+            for (idx, (k, v)) in entries.iter().enumerate() {
+                if idx > 0 {
+                    out.push(b',');
+                }
+                if let Ok(encoded_key) = serde_json::to_vec(k) {
+                    out.extend_from_slice(&encoded_key);
+                }
+                out.push(b':');
+                write_canonical_json(v, out);
+            }
+            out.push(b'}');
+        }
+    }
+}
+
+fn canonical_json_sha256(value: &Value) -> String {
+    let mut buf = Vec::new();
+    write_canonical_json(value, &mut buf);
+    sha256_hex(&buf)
+}
+
+/// Digest ONLY the fields of an existing matched profile that template apply
+/// acts on (identity, target endpoint, initialPath, options, security relaxations,
+/// and stored-credential flag), ignoring volatile UI/telemetry metadata such as
+/// `lastConnected`, quota caches, favicons, and connection-failure markers.
+fn existing_target_digest_projection(matched: &Value) -> String {
+    let mut relaxations: Vec<String> = crate::profile_security::security_relaxations(matched)
+        .into_iter()
+        .map(|r| format!("{}={}", r.key, r.value))
+        .collect();
+    relaxations.sort();
+    relaxations.dedup();
+    let projected = serde_json::json!({
+        "id": matched.get("id").unwrap_or(&Value::Null),
+        "name": matched.get("name").unwrap_or(&Value::Null),
+        "protocol": matched.get("protocol").unwrap_or(&Value::Null),
+        "host": matched.get("host").unwrap_or(&Value::Null),
+        "port": matched.get("port").unwrap_or(&Value::Null),
+        "username": matched.get("username").unwrap_or(&Value::Null),
+        "providerId": matched.get("providerId").unwrap_or(&Value::Null),
+        "initialPath": matched.get("initialPath").unwrap_or(&Value::Null),
+        "hasStoredCredential": matched.get("hasStoredCredential").unwrap_or(&Value::Null),
+        "options": matched.get("options").unwrap_or(&Value::Null),
+        "securityRelaxations": relaxations,
+    });
+    canonical_json_sha256(&projected)
 }
 
 fn compute_plan_digest_sha256(
@@ -561,14 +636,27 @@ fn compute_plan_digest_sha256(
     let rows_summary: Vec<Value> = planned
         .iter()
         .map(|entry| {
-            let mut relaxation_keys: Vec<String> = entry
+            let mut relaxation_reset_keys: Vec<String> = entry
                 .security
                 .iter()
-                .flat_map(|s| s.reset.iter().chain(s.kept.iter()))
+                .flat_map(|s| s.reset.iter())
                 .map(|r| r.key.to_string())
                 .collect();
-            relaxation_keys.sort();
-            relaxation_keys.dedup();
+            relaxation_reset_keys.sort();
+            relaxation_reset_keys.dedup();
+            let mut relaxation_kept_keys: Vec<String> = entry
+                .security
+                .iter()
+                .flat_map(|s| s.kept.iter())
+                .map(|r| r.key.to_string())
+                .collect();
+            relaxation_kept_keys.sort();
+            relaxation_kept_keys.dedup();
+            let target_options_digest = entry
+                .prepared_server
+                .options
+                .as_ref()
+                .map(canonical_json_sha256);
             serde_json::json!({
                 "blockName": entry.row.block_name,
                 "targetName": entry.row.target_name,
@@ -580,11 +668,15 @@ fn compute_plan_digest_sha256(
                 "action": entry.row.action,
                 "existingMatchId": entry.row.existing_match_id,
                 "existingMatchName": entry.row.existing_match_name,
+                "existingTargetDigest": entry.existing_target_digest,
+                "targetInitialPath": entry.prepared_server.initial_path,
+                "targetOptionsDigest": target_options_digest,
                 "secretDisposition": entry.row.secret_disposition,
                 "secretForm": entry.row.secret_form,
                 "needsSecretFormChoice": entry.row.needs_secret_form_choice,
                 "resetTargetSecrets": entry.reset_target_secrets,
-                "relaxationKeys": relaxation_keys,
+                "relaxationResetKeys": relaxation_reset_keys,
+                "relaxationKeptKeys": relaxation_kept_keys,
             })
         })
         .collect();
@@ -592,8 +684,7 @@ fn compute_plan_digest_sha256(
         "existing": existing_mode,
         "rows": rows_summary,
     });
-    let canonical = serde_json::to_vec(&payload).unwrap_or_default();
-    sha256_hex(&canonical)
+    canonical_json_sha256(&payload)
 }
 
 /// Preview what a configuration template would import against `current` without
@@ -619,8 +710,15 @@ pub fn preview_template_with_current(
     );
     let plan_digest_sha256 = compute_plan_digest_sha256(options.existing, &planned);
 
-    let mut secret_choice_blocks: Vec<String> = eval.secret_blocks.keys().cloned().collect();
+    let mut secret_choice_blocks: Vec<String> = planned
+        .iter()
+        .filter(|entry| {
+            entry.row.action != TemplatePlannedAction::Skip && entry.row.needs_secret_form_choice
+        })
+        .map(|entry| entry.row.block_name.clone())
+        .collect();
     secret_choice_blocks.sort();
+    secret_choice_blocks.dedup();
 
     let mut security = Vec::new();
     let mut rows = Vec::with_capacity(planned.len());
@@ -740,9 +838,14 @@ fn apply_eval_with_slots<S: SecretSlots>(
                 }
             })?;
 
-        let planned = build_plan(&eval, &current, options.existing, relax_policy);
-        let live_plan_digest = compute_plan_digest_sha256(options.existing, &planned);
         if let Some(expected_plan) = options.expected_plan_digest_sha256.as_deref() {
+            let baseline_planned = build_plan(
+                &eval,
+                &current,
+                options.existing,
+                &RelaxationPolicy::ResetAll,
+            );
+            let live_plan_digest = compute_plan_digest_sha256(options.existing, &baseline_planned);
             if live_plan_digest != expected_plan {
                 return Err(
                     "Saved profiles changed after template preview; refresh the preview before importing."
@@ -750,6 +853,7 @@ fn apply_eval_with_slots<S: SecretSlots>(
                 );
             }
         }
+        let planned = build_plan(&eval, &current, options.existing, relax_policy);
 
         let mut skipped_existing = Vec::new();
         let mut skipped_duplicate_in_template = Vec::new();
@@ -1026,12 +1130,13 @@ mod tests {
     use tempfile::TempDir;
 
     struct TestVaultEnv {
-        _guard: std::sync::MutexGuard<'static, ()>,
         dir: TempDir,
+        prev_data_root: Option<std::path::PathBuf>,
         prev_xdg: Option<std::ffi::OsString>,
         prev_pp: Option<std::ffi::OsString>,
         store: CredentialStore,
         user_id: i64,
+        _guard: std::sync::MutexGuard<'static, ()>,
     }
 
     impl TestVaultEnv {
@@ -1039,6 +1144,8 @@ mod tests {
             let guard = crate::test_env::lock();
             CredentialStore::lock();
             let dir = TempDir::new().unwrap();
+            let prev_data_root =
+                crate::portable::set_test_data_root(Some(dir.path().to_path_buf()));
             let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
             let prev_pp = std::env::var_os("AEROFTP_USER_PASSPHRASE");
             std::env::set_var("XDG_CONFIG_HOME", dir.path());
@@ -1056,12 +1163,13 @@ mod tests {
             user_partitions::ensure_credential_user_unlocked(user.id).unwrap();
 
             Self {
-                _guard: guard,
                 dir,
+                prev_data_root,
                 prev_xdg,
                 prev_pp,
                 store,
                 user_id: user.id,
+                _guard: guard,
             }
         }
     }
@@ -1069,6 +1177,7 @@ mod tests {
     impl Drop for TestVaultEnv {
         fn drop(&mut self) {
             CredentialStore::lock();
+            crate::portable::set_test_data_root(self.prev_data_root.take());
             match &self.prev_xdg {
                 Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
                 None => std::env::remove_var("XDG_CONFIG_HOME"),
@@ -2333,5 +2442,871 @@ user = alice
         assert_eq!(res.applied[0].target_name, "fresh");
         assert_eq!(res.skipped_existing, vec!["saved"]);
         assert_eq!(res.skipped_duplicate_in_template, vec!["fresh"]);
+    }
+
+    #[test]
+    fn overwrite_target_reset_rollback_restores_partition_oauth_and_jotta_secrets() {
+        let _up_guard = user_partitions::test_lock();
+        let env = TestVaultEnv::new();
+        // Add a second (non-legacy) user so `"oauth"` and `"jottacloud_refresh"`
+        // are partition-private (`private_token_user` returns `Some(other_id)`).
+        let other_user =
+            user_partitions::cli_create_user(&env.store, "partner", None, None, None).unwrap();
+        let other_id = other_user.id;
+        user_partitions::cli_set_active_user(&env.store, other_id).unwrap();
+        user_partitions::ensure_credential_user_unlocked(other_id).unwrap();
+
+        let seed_json = vec![serde_json::json!({
+            "id": "srv_oauth_1",
+            "name": "acct",
+            "protocol": "googledrive",
+            "host": "www.googleapis.com",
+            "port": 443,
+            "username": "old",
+            "hasStoredCredential": true
+        })];
+        user_partitions::cli_replace_server_profiles_for_user(&env.store, other_id, &seed_json)
+            .unwrap();
+        let oauth_key = "oauth_google_srv_oauth_1";
+        user_partitions::store_imported_credential_for_user(
+            &env.store,
+            other_id,
+            oauth_key,
+            Some("oauth"),
+            "{\"access_token\":\"orig-tok\"}",
+        )
+        .unwrap();
+
+        struct FailAfterDeleteSlots<'a> {
+            inner: crate::VaultSecretSlots<'a>,
+            fail_key: String,
+        }
+        impl crate::profile_import_plan::SecretSlots for FailAfterDeleteSlots<'_> {
+            type Snapshot =
+                <crate::VaultSecretSlots<'static> as crate::profile_import_plan::SecretSlots>::Snapshot;
+            fn snapshot(
+                &self,
+                write: &crate::profile_import_plan::SecretWrite,
+            ) -> Result<Self::Snapshot, String> {
+                self.inner.snapshot(write)
+            }
+            fn write(&self, write: &crate::profile_import_plan::SecretWrite) -> Result<(), String> {
+                if write.key == self.fail_key {
+                    return Err("injected write failure".to_string());
+                }
+                self.inner.write(write)
+            }
+            fn restore(
+                &self,
+                write: &crate::profile_import_plan::SecretWrite,
+                before: Self::Snapshot,
+            ) -> Result<(), String> {
+                self.inner.restore(write, before)
+            }
+        }
+
+        let tpl = "\
+[acct]
+type = sftp
+host = new.example.test
+user = alice
+pass = FailOnThisWrite!
+";
+        let eval = evaluate_template_text(
+            tpl,
+            None,
+            "rollback-test",
+            &crate::rclone_import::TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let err = apply_eval_with_slots(
+            &env.store,
+            other_id,
+            &FailAfterDeleteSlots {
+                inner: crate::VaultSecretSlots {
+                    store: &env.store,
+                    user: other_id,
+                },
+                // Fail on the last reset key AFTER `oauth_google_srv_oauth_1`
+                // has already been deleted so rollback must restore it.
+                fail_key: "oauth_fourshared_srv_oauth_1".to_string(),
+            },
+            eval,
+            "rollback-digest".to_string(),
+            &RelaxationPolicy::ResetAll,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("oauth_fourshared_srv_oauth_1"), "{err}");
+
+        let restored =
+            user_partitions::resolve_credential_for_user(&env.store, other_id, oauth_key)
+                .expect("resolve credential after rollback");
+        assert_eq!(
+            restored.as_deref().map(|s| s.as_str()),
+            Some("{\"access_token\":\"orig-tok\"}"),
+            "partition OAuth token must be restored on reset rollback"
+        );
+    }
+
+    #[test]
+    fn plan_digest_detects_in_place_replacement_target_host_change_under_same_id_and_name() {
+        let env = TestVaultEnv::new();
+        let initial = vec![serde_json::json!({
+            "id": "srv_1",
+            "name": "nas",
+            "protocol": "sftp",
+            "host": "old-a.example.test",
+            "port": 22,
+            "username": "alice",
+            "hasStoredCredential": false
+        })];
+        user_partitions::cli_replace_server_profiles_for_user(&env.store, env.user_id, &initial)
+            .unwrap();
+
+        let tpl = "[nas]\ntype = sftp\nhost = new.example.test\nuser = alice\n";
+        let input = TemplateInput::Text {
+            content: tpl.to_string(),
+        };
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &initial,
+        )
+        .unwrap();
+
+        // Mutate the existing replacement target host under the SAME id and name.
+        let mutated = vec![serde_json::json!({
+            "id": "srv_1",
+            "name": "nas",
+            "protocol": "sftp",
+            "host": "old-b.example.test",
+            "port": 22,
+            "username": "alice",
+            "hasStoredCredential": false
+        })];
+        user_partitions::cli_replace_server_profiles_for_user(&env.store, env.user_id, &mutated)
+            .unwrap();
+
+        let err = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(
+            err.to_lowercase().contains("changed") || err.to_lowercase().contains("refresh"),
+            "unexpected error on mutated replacement target: {err}"
+        );
+    }
+
+    #[test]
+    fn apply_with_kept_relaxations_succeeds_without_false_stale_preview_error() {
+        let env = TestVaultEnv::new();
+        let tpl = "\
+[dav]
+type = webdav
+url = https://dav.example.test
+user = alice
+pass = dav-pass
+override.no_check_certificate = true
+";
+        let input = TemplateInput::Text {
+            content: tpl.to_string(),
+        };
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        let keep_relaxed: Vec<KeptRelaxation> = preview
+            .security
+            .iter()
+            .flat_map(|sec| {
+                sec.reset.iter().map(|r| KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                })
+            })
+            .collect();
+        assert!(!keep_relaxed.is_empty());
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                keep_relaxed,
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .expect("applying kept relaxations with unchanged saved profiles must succeed");
+        assert_eq!(applied.applied.len(), 1);
+        assert_eq!(
+            applied.stored[0]
+                .pointer("/options/verifyCert")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+
+        // Overwrite an existing safe HTTPS WebDAV profile (which has stored
+        // password) with `override.no_check_certificate = true` and NO password
+        // while keeping `verifyCert = false`. Under `ResetAll` in preview,
+        // `same_target` is true (`KeptExisting`); under `Keep` in apply,
+        // `verifyCert=false` flips `same_target` to false (`ClearedExisting` +
+        // `resetTargetSecrets = true`), which previously triggered a false
+        // stale-preview error.
+        let existing_dav = vec![serde_json::json!({
+            "id": "srv_dav_safe",
+            "name": "dav2",
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "host": "dav2.example.test",
+            "port": 443,
+            "username": "alice",
+            "options": { "webdavScheme": "https" },
+            "hasStoredCredential": true
+        })];
+        user_partitions::cli_replace_server_profiles_for_user(
+            &env.store,
+            env.user_id,
+            &existing_dav,
+        )
+        .unwrap();
+        let insecure_tpl = "\
+[dav2]
+type = webdav
+url = https://dav2.example.test
+user = alice
+override.no_check_certificate = true
+";
+        let insecure_input = TemplateInput::Text {
+            content: insecure_tpl.to_string(),
+        };
+        let insecure_preview = preview_template_with_current(
+            &insecure_input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &existing_dav,
+        )
+        .unwrap();
+        let insecure_keep: Vec<KeptRelaxation> = insecure_preview
+            .security
+            .iter()
+            .flat_map(|sec| {
+                sec.reset.iter().map(|r| KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                })
+            })
+            .collect();
+        assert!(!insecure_keep.is_empty());
+        let insecure_applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &insecure_input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                keep_relaxed: insecure_keep,
+                expected_digest_sha256: Some(insecure_preview.digest_sha256),
+                expected_plan_digest_sha256: Some(insecure_preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .expect("keeping verifyCert relaxation on overwrite must not fail stale preview check");
+        assert_eq!(insecure_applied.applied.len(), 1);
+        assert_eq!(
+            insecure_applied.stored[0]
+                .pointer("/options/verifyCert")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn alias_and_crypt_inherit_base_secret_form_requirement() {
+        let env = TestVaultEnv::new();
+        let crypt_pw = crate::rclone_import::obscure_password("vault-pass").unwrap();
+        let tpl = format!(
+            "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = PlainSecret!\n\n\
+             [work]\ntype = alias\nremote = base:docs\n\n\
+             [vault]\ntype = crypt\nremote = base:enc\npassword = {crypt_pw}\n"
+        );
+        let input = TemplateInput::Text {
+            content: tpl.clone(),
+        };
+        let mut vault_only_forms = std::collections::HashMap::new();
+        vault_only_forms.insert("vault".to_string(), TemplateSecretForm::Obscured);
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                secret_forms: vault_only_forms.clone(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        for name in ["base", "work", "vault"] {
+            let row = preview
+                .rows
+                .iter()
+                .find(|r| r.block_name == name)
+                .unwrap_or_else(|| panic!("missing row {name}"));
+            assert!(
+                row.has_secret_input,
+                "{name} must report has_secret_input=true: {row:?}"
+            );
+            assert!(
+                row.needs_secret_form_choice,
+                "{name} must require secret form when base secret form is unchosen: {row:?}"
+            );
+        }
+
+        // Now resolve `[base]` via per-block policy without repeating `--secret-form-for work`:
+        // `work` and `vault` must inherit `[base]`'s secret and `work` must reflect the form.
+        let mut with_base_forms = vault_only_forms;
+        with_base_forms.insert("base".to_string(), TemplateSecretForm::Clear);
+        let preview_ok = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                secret_forms: with_base_forms.clone(),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        let work_row = preview_ok
+            .rows
+            .iter()
+            .find(|r| r.block_name == "work")
+            .unwrap();
+        assert!(!work_row.needs_secret_form_choice);
+        assert!(work_row.has_credential);
+        assert_eq!(work_row.secret_form, Some(TemplateSecretForm::Clear));
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                secret_forms: with_base_forms,
+                expected_digest_sha256: Some(preview_ok.digest_sha256),
+                expected_plan_digest_sha256: Some(preview_ok.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 3);
+        for s in &applied.stored {
+            let id = s.get("id").and_then(Value::as_str).unwrap();
+            let pw = user_partitions::resolve_credential_for_user(
+                &env.store,
+                env.user_id,
+                &format!("server_{id}"),
+            )
+            .unwrap();
+            assert_eq!(
+                pw.as_deref().map(|z| z.as_str()),
+                Some("PlainSecret!"),
+                "stored secret missing for {:?}",
+                s.get("name")
+            );
+        }
+    }
+
+    #[test]
+    fn delete_rollback_restores_every_per_profile_reset_key_across_vault_and_partition() {
+        struct FailingLastDeleteSlots<'a> {
+            inner: crate::VaultSecretSlots<'a>,
+            remaining_until_fail: std::cell::Cell<usize>,
+        }
+
+        impl SecretSlots for FailingLastDeleteSlots<'_> {
+            type Snapshot = user_partitions::CredentialSnapshot;
+
+            fn snapshot(&self, write: &SecretWrite) -> Result<Self::Snapshot, String> {
+                self.inner.snapshot(write)
+            }
+
+            fn write(&self, write: &SecretWrite) -> Result<(), String> {
+                if write.delete {
+                    let rem = self.remaining_until_fail.get();
+                    if rem == 0 {
+                        return Err(format!("simulated last delete failure for {}", write.key));
+                    }
+                    self.remaining_until_fail.set(rem - 1);
+                }
+                self.inner.write(write)
+            }
+
+            fn restore(&self, write: &SecretWrite, before: Self::Snapshot) -> Result<(), String> {
+                self.inner.restore(write, before)
+            }
+        }
+
+        let env = TestVaultEnv::new();
+        let seed_tpl = "\
+[prod-sftp]
+type = sftp
+host = old.example.test
+port = 22
+user = alice
+pass = InitialSecret!
+";
+        let seed = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &TemplateInput::Text {
+                content: seed_tpl.to_string(),
+            },
+            &TemplateApplyOptions {
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let id = seed.applied[0].profile_id.clone();
+
+        // Populate EVERY key returned by `per_profile_vault_keys_for_target_reset`
+        // with its real writer `credential_type` across both vault and partition.
+        let reset_keys = crate::per_profile_vault_keys_for_target_reset(&id, &[]);
+        assert!(
+            reset_keys.len() >= 20,
+            "expected complete per-profile key surface"
+        );
+        let mut seeded: Vec<(String, &'static str, String)> = Vec::new();
+        for (idx, key) in reset_keys.iter().enumerate() {
+            let kind: &'static str = if key.starts_with("oauth_")
+                || crate::profile_auth::DURABLE_KEY_PREFIXES
+                    .iter()
+                    .any(|p| key.starts_with(p))
+                || crate::profile_auth::TRANSIENT_KEY_PREFIXES
+                    .iter()
+                    .any(|p| key.starts_with(p))
+            {
+                "oauth"
+            } else {
+                user_partitions::relocate_secret_kind(key)
+            };
+            let val = format!("secret-{idx}-{key}");
+            if key != &format!("server_{id}") {
+                user_partitions::store_credential_for_user_typed_dual(
+                    &env.store,
+                    env.user_id,
+                    key,
+                    kind,
+                    &val,
+                )
+                .unwrap();
+                seeded.push((key.clone(), kind, val));
+            } else {
+                seeded.push((key.clone(), "server", "InitialSecret!".to_string()));
+            }
+        }
+
+        let moved_tpl = "\
+[prod-sftp]
+type = sftp
+host = new.example.test
+port = 22
+user = alice
+";
+        // Fail on the LAST delete so EVERY preceding key actually runs its
+        // partition + vault delete and must be restored from CredentialSnapshot.
+        let failing_slots = FailingLastDeleteSlots {
+            inner: crate::VaultSecretSlots {
+                store: &env.store,
+                user: env.user_id,
+            },
+            remaining_until_fail: std::cell::Cell::new(reset_keys.len() - 1),
+        };
+        let err = apply_template_with_slots(
+            &env.store,
+            env.user_id,
+            &failing_slots,
+            &TemplateInput::Text {
+                content: moved_tpl.to_string(),
+            },
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(err.contains("could not be cleared"), "{err}");
+
+        let conn = user_partitions::open_or_init_cli().unwrap();
+        let types: HashMap<String, String> =
+            user_partitions::list_user_credential_ids_for(&conn, env.user_id)
+                .unwrap()
+                .into_iter()
+                .collect();
+        for (key, expected_kind, expected_val) in &seeded {
+            assert_eq!(
+                env.store.get(key).as_deref().ok(),
+                Some(expected_val.as_str()),
+                "vault secret not rolled back for {key}"
+            );
+            let resolved =
+                user_partitions::resolve_credential_for_user(&env.store, env.user_id, key).unwrap();
+            assert_eq!(
+                resolved.as_deref().map(|z| z.as_str()),
+                Some(expected_val.as_str()),
+                "partition secret not rolled back for {key}"
+            );
+            assert_eq!(
+                types.get(key).map(String::as_str),
+                Some(*expected_kind),
+                "partition credential_type not preserved across rollback for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn existing_target_digest_ignores_volatile_metadata_but_refuses_acted_fields() {
+        let env = TestVaultEnv::new();
+        let write_profiles = |new_list: Vec<Value>| {
+            let (_cur, rev) =
+                user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id)
+                    .unwrap();
+            user_partitions::cli_update_profiles_at_revision(
+                &env.store,
+                env.user_id,
+                &rev,
+                |list| {
+                    *list = new_list;
+                },
+            )
+            .unwrap();
+        };
+        let initial_profile = vec![serde_json::json!({
+            "id": "srv_digest_1",
+            "name": "prod-dav",
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "host": "dav.example.test",
+            "port": 443,
+            "username": "alice",
+            "initialPath": "/docs",
+            "hasStoredCredential": true,
+            "lastConnected": "2026-11-10T10:00:00Z",
+            "quota": { "used": 100, "total": 1000 },
+            "quotaCache": { "bytes": 100 },
+            "favicon": "data:image/png;base64,AAA",
+            "connectFailures": 0,
+            "options": {
+                "basePath": "/dav/alice",
+                "verifyCert": true
+            }
+        })];
+        write_profiles(initial_profile.clone());
+
+        let tpl = "\
+[prod-dav]
+type = webdav
+url = https://dav.example.test/dav/alice
+user = alice
+";
+        let input = TemplateInput::Text {
+            content: tpl.to_string(),
+        };
+        let (current, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+
+        // 1. Mutating volatile non-acted fields (lastConnected, quotaCache,
+        //    favicon, connectFailures) MUST NOT invalidate the preview digest.
+        let mut volatile_update = current.clone();
+        let obj = volatile_update[0].as_object_mut().unwrap();
+        obj.insert(
+            "lastConnected".to_string(),
+            Value::String("2026-11-15T12:34:56Z".to_string()),
+        );
+        obj.insert(
+            "quota".to_string(),
+            serde_json::json!({ "used": 555, "total": 1000 }),
+        );
+        obj.insert(
+            "quotaCache".to_string(),
+            serde_json::json!({ "bytes": 555 }),
+        );
+        obj.insert(
+            "favicon".to_string(),
+            Value::String("data:image/png;base64,BBB".to_string()),
+        );
+        obj.insert("connectFailures".to_string(), Value::from(3));
+        write_profiles(volatile_update);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                expected_digest_sha256: Some(preview.digest_sha256.clone()),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256.clone()),
+                ..Default::default()
+            },
+        )
+        .expect("mutating only lastConnected/quotaCache/favicon/connectFailures must not refuse");
+        assert_eq!(applied.applied.len(), 1);
+
+        // 2. Mutating EVERY acted-on field on the matched target MUST refuse.
+        type ProfileMutation = (&'static str, fn(&mut serde_json::Map<String, Value>));
+        let mutations: Vec<ProfileMutation> = vec![
+            ("host", |m| {
+                m.insert("host".into(), Value::String("other.example.test".into()));
+            }),
+            ("port", |m| {
+                m.insert("port".into(), Value::from(8443));
+            }),
+            ("username", |m| {
+                m.insert("username".into(), Value::String("bob".into()));
+            }),
+            ("protocol", |m| {
+                m.insert("protocol".into(), Value::String("sftp".into()));
+            }),
+            ("providerId", |m| {
+                m.insert("providerId".into(), Value::String("nextcloud".into()));
+            }),
+            ("initialPath", |m| {
+                m.insert("initialPath".into(), Value::String("/other".into()));
+            }),
+            ("options.verifyCert", |m| {
+                m.insert(
+                    "options".into(),
+                    serde_json::json!({ "basePath": "/dav/alice", "verifyCert": false }),
+                );
+            }),
+            ("id", |m| {
+                m.insert("id".into(), Value::String("srv_digest_other".into()));
+            }),
+        ];
+
+        for (label, mutate) in mutations {
+            write_profiles(initial_profile.clone());
+            let (base_current, _) =
+                user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id)
+                    .unwrap();
+            let fresh_preview = preview_template_with_current(
+                &input,
+                &TemplatePreviewOptions {
+                    existing: ExistingProfileMode::Overwrite,
+                    ..Default::default()
+                },
+                &base_current,
+            )
+            .unwrap();
+
+            let mut edited = base_current.clone();
+            mutate(edited[0].as_object_mut().unwrap());
+            write_profiles(edited);
+
+            let err = apply_template_for_user(
+                &env.store,
+                env.user_id,
+                &input,
+                &TemplateApplyOptions {
+                    existing: ExistingProfileMode::Overwrite,
+                    expected_digest_sha256: Some(fresh_preview.digest_sha256),
+                    expected_plan_digest_sha256: Some(fresh_preview.plan_digest_sha256),
+                    ..Default::default()
+                },
+            )
+            .expect_err(&format!(
+                "mutating acted-on `{label}` must refuse stale plan"
+            ));
+            assert!(
+                err.contains("Saved profiles changed"),
+                "unexpected error for `{label}`: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn base_exists_skip_alias_new_asks_once_and_decodes_from_alias_answer() {
+        let env = TestVaultEnv::new();
+        let seed_tpl = "\
+[base]
+type = sftp
+host = nas.example.test
+user = alice
+pass = ExistingBasePw!
+";
+        let seeded = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &TemplateInput::Text {
+                content: seed_tpl.to_string(),
+            },
+            &TemplateApplyOptions {
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let base_id = seeded.applied[0].profile_id.clone();
+
+        // Scenario A: `base` exists with `Skip` mode, `work` is an `alias` of `base`.
+        let tpl = "\
+[base]
+type = sftp
+host = nas.example.test
+user = alice
+pass = AliasClearSecret!
+
+[work]
+type = alias
+remote = base:docs
+";
+        let input = TemplateInput::Text {
+            content: tpl.to_string(),
+        };
+        let (current, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        let preview1 = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert_eq!(preview1.rows[0].block_name, "base");
+        assert_eq!(preview1.rows[0].action, TemplatePlannedAction::Skip);
+        assert_eq!(preview1.rows[1].block_name, "work");
+        assert_eq!(preview1.rows[1].action, TemplatePlannedAction::Add);
+        assert!(preview1.rows[1].needs_secret_form_choice);
+        assert_eq!(preview1.secret_choice_blocks, vec!["work"]);
+
+        // User answers ONLY for `work` (Clear); `base` was skipped so not answered.
+        let mut work_only = std::collections::HashMap::new();
+        work_only.insert("work".to_string(), TemplateSecretForm::Clear);
+        let preview2 = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                secret_forms: work_only.clone(),
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert!(preview2.secret_choice_blocks.is_empty());
+        assert!(!preview2.rows[1].needs_secret_form_choice);
+        assert_eq!(
+            preview2.rows[1].secret_form,
+            Some(TemplateSecretForm::Clear)
+        );
+        assert!(preview2.rows[1].has_credential);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Skip,
+                secret_forms: work_only.clone(),
+                expected_digest_sha256: Some(preview2.digest_sha256),
+                expected_plan_digest_sha256: Some(preview2.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.skipped_existing, vec!["base"]);
+        assert_eq!(applied.applied.len(), 1);
+        assert_eq!(applied.applied[0].target_name, "work");
+        let work_id = applied.applied[0].profile_id.clone();
+
+        let base_pw = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{base_id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            base_pw.as_deref().map(|z| z.as_str()),
+            Some("ExistingBasePw!")
+        );
+        let work_pw = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{work_id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            work_pw.as_deref().map(|z| z.as_str()),
+            Some("AliasClearSecret!")
+        );
+
+        // Scenario B: `base` deselected via `selected_blocks = ["work"]` while `base` has obscured password.
+        let obscured = crate::rclone_import::obscure_password("ObscuredAliasPw!").unwrap();
+        let obs_tpl = format!(
+            "[base2]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = {obscured}\n\n\
+             [work2]\ntype = alias\nremote = base2:sub\n"
+        );
+        let mut work2_only = std::collections::HashMap::new();
+        work2_only.insert("work2".to_string(), TemplateSecretForm::Obscured);
+        let applied_desel = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &TemplateInput::Text { content: obs_tpl },
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Skip,
+                selected_blocks: Some(vec!["work2".to_string()]),
+                secret_forms: work2_only,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied_desel.skipped_unselected, vec!["base2"]);
+        assert_eq!(applied_desel.applied.len(), 1);
+        let work2_id = applied_desel.applied[0].profile_id.clone();
+        let work2_pw = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{work2_id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            work2_pw.as_deref().map(|z| z.as_str()),
+            Some("ObscuredAliasPw!")
+        );
     }
 }
