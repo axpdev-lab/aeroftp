@@ -4639,33 +4639,57 @@ pub fn delete_credential_dual_as(
         store,
         credential_id,
         || user_id,
-        |user_id| unmirror_credential_for_user_best_effort_any(user_id, credential_id),
+        |user_id| unmirror_deleted_credential(user_id, credential_id),
     )
+}
+
+/// The partition half of a delete. A Jottacloud refresh chain left in the
+/// partition is read ahead of the vault, so its removal must succeed or the
+/// delete fails, and no deletion is recorded; any other key is best-effort,
+/// as during the dual-write rollout.
+fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), String> {
+    if crate::providers::jottacloud::is_refresh_chain(credential_id) {
+        #[cfg(test)]
+        if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
+            return Err("Delete credential from partition: refused".to_string());
+        }
+        return try_unmirror_active_credential(user_id, credential_id)
+            .map_err(|e| format!("Delete credential from partition: {e}"));
+    }
+    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The partition refuses the delete of a refresh chain.
+    pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
 /// passed in: `active_user` runs before the vault delete. The account it gives
-/// (`None`: the account active then, read once) owns the deletion whatever the
-/// key: its partition copy goes, and so does a Jottacloud rotation kept for
-/// it. Both copies go inside [`delete_refresh_chain`], so no connection begins
-/// between them and reads the one left.
+/// owns the deletion whatever the key, and `None` is no account: never one
+/// activated since the caller read it. That account's partition copy goes, and
+/// so does a Jottacloud rotation kept for it. Both copies go inside
+/// [`delete_refresh_chain`], so no connection begins between them and reads
+/// the one left.
 ///
 /// [`delete_refresh_chain`]: crate::providers::jottacloud::delete_refresh_chain
 pub(crate) fn delete_credential_dual_with(
     store: &CredentialStore,
     credential_id: &str,
     active_user: impl FnOnce() -> Option<i64>,
-    unmirror: impl FnOnce(i64),
+    unmirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
-    let user_id = active_user().or_else(active_user_id_quiet);
+    let user_id = active_user();
     crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
-        if let Some(user_id) = user_id {
-            unmirror(user_id);
+        match user_id {
+            Some(user_id) => unmirror(user_id),
+            None => Ok(()),
         }
-        Ok(())
     })
 }
 
@@ -4680,8 +4704,7 @@ pub fn delete_credential_for_user_dual(
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
-        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-        Ok(())
+        unmirror_deleted_credential(user_id, credential_id)
     })
 }
 
@@ -8059,7 +8082,10 @@ mod tests {
                 active.set(2);
                 Some(user)
             },
-            |user_id| unmirrored.set(Some(user_id)),
+            |user_id| {
+                unmirrored.set(Some(user_id));
+                Ok(())
+            },
         )
         .unwrap();
         assert!(store.get("server_switch").is_err());

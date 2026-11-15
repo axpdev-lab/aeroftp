@@ -10416,6 +10416,71 @@ mod rename_contract_tests {
         assert!(files.lock().unwrap().contains(&"/up.txt".to_string()));
     }
 
+    /// The same upload through the transfer executor the queue runs: the
+    /// typed error loses the phase there (`TransferError::from_provider`), so
+    /// the executor must not replay it either. It makes one attempt, and its
+    /// failure is never retried, whatever class the final reply gets.
+    #[tokio::test]
+    async fn an_upload_ended_by_an_unexpected_positive_reply_is_sent_once_by_the_executor() {
+        use crate::transfer_orchestrator::TransferExecutor;
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_200: true,
+            ..Quirks::default()
+        };
+        let (provider, log, _files) = provider_on_server_holding(&[], quirks, None).await;
+        let executor = crate::provider_transfer_executor::ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            crate::transfer_settings::ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 3,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            tokio_util::sync::CancellationToken::new(),
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::LockedSingle {
+                provider_type: Some(ProviderType::Ftp),
+            },
+            crate::transfer_dag::TransferCapabilities::default(),
+        );
+        let outcome = executor
+            .execute(crate::transfer_domain::TransferEntry {
+                id: "up".to_string(),
+                display_name: "up.txt".to_string(),
+                remote_path: "/up.txt".to_string(),
+                local_path: local.to_string_lossy().into_owned(),
+                size: 3,
+                modified: None,
+            })
+            .await;
+        let crate::transfer_domain::TransferOutcome::Failed(failure) = outcome else {
+            panic!("a final 200 after the data is not a success: {outcome:?}");
+        };
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(!failure.retryable, "{failure:?}");
+        assert_eq!(
+            failure.to_transfer_error().retry,
+            crate::transfer_dag::RetryDirective::Never
+        );
+        assert_eq!(executor.take_transfer_attempts("up"), Some(1));
+    }
+
     /// The way out of a lost folder, cancelled after its `connect` and
     /// before its `CWD` was answered, left a session in the login folder
     /// that no longer counted as lost: a relative upload stored there. The

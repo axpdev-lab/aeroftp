@@ -9452,16 +9452,24 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
     }
 }
 
-/// Rename `temp` to `to` when nothing is at `to` as it starts: the
-/// publication of a filesystem that refuses both atomic steps of
-/// [`rename_no_replace`].
+/// Give `temp` the name `to` when nothing is at `to`: the publication of a
+/// filesystem that refuses both atomic steps of [`rename_no_replace`]. The
+/// name is claimed first with an exclusive create (`O_EXCL`), which FAT, SMB
+/// and FUSE answer atomically too, and the rename then replaces only that
+/// empty placeholder: another copy finds the name taken and is refused.
 #[cfg(not(windows))]
 fn rename_if_absent(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::symlink_metadata(to) {
-        Ok(_) => Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists)),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => std::fs::rename(temp, to),
-        Err(e) => Err(e),
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(to)?;
+    #[cfg(test)]
+    if let Some(between) = BETWEEN_CLAIM_AND_RENAME.with(|hook| hook.borrow_mut().take()) {
+        between();
     }
+    std::fs::rename(temp, to).inspect_err(|_| {
+        let _ = std::fs::remove_file(to);
+    })
 }
 
 #[cfg(all(test, not(windows)))]
@@ -9469,6 +9477,9 @@ thread_local! {
     /// The filesystem under the test has neither a no-replace rename nor
     /// hard links.
     static NEITHER_NO_REPLACE_NOR_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    /// Run once by [`rename_if_absent`] between its claim and its rename.
+    static BETWEEN_CLAIM_AND_RENAME: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 /// [`rename_no_replace`] on Windows: `MoveFileExW` without
@@ -9882,6 +9893,59 @@ mod native_local_copy_tests {
         let (copied, names, contents) = raced;
         assert!(copied.contains(DEST_EXISTS_MARKER), "{copied}");
         assert_eq!(contents, b"theirs");
+        assert_eq!(names, ["copy.txt"]);
+    }
+
+    /// Where neither atomic step exists, two `overwrite=false` copies to one
+    /// name both found it free and both renamed: the second replaced the
+    /// first. The name is claimed with an exclusive create before the rename,
+    /// so the copy that runs between the other's claim and rename is refused,
+    /// and exactly one publishes.
+    #[cfg(not(windows))]
+    #[test]
+    fn two_copies_that_must_not_overwrite_never_both_publish_where_neither_atomic_step_exists() {
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("copy.txt");
+        let probe = tempfile::NamedTempFile::new().unwrap();
+        let permissions = probe.as_file().metadata().unwrap().permissions();
+        let second = std::rc::Rc::new(std::cell::RefCell::new(None));
+        BETWEEN_CLAIM_AND_RENAME.with(|hook| {
+            let (to, permissions, second) = (to.clone(), permissions.clone(), second.clone());
+            *hook.borrow_mut() = Some(Box::new(move || {
+                *second.borrow_mut() = Some(copy_into_place(
+                    &mut &b"second"[..],
+                    permissions,
+                    &to,
+                    &AtomicBool::new(false),
+                    LocalPublish::NoReplace,
+                ));
+            }));
+        });
+        let first = copy_into_place(
+            &mut &b"first"[..],
+            permissions,
+            &to,
+            &AtomicBool::new(false),
+            LocalPublish::NoReplace,
+        );
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
+        BETWEEN_CLAIM_AND_RENAME.with(|hook| hook.borrow_mut().take());
+        let second = second
+            .borrow_mut()
+            .take()
+            .expect("the second copy ran between the first's claim and rename");
+        let names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        let outcomes = format!("first {first:?}, second {second:?}");
+        assert!(first.is_ok(), "{outcomes}");
+        assert!(
+            format!("{second:?}").contains(DEST_EXISTS_MARKER),
+            "{outcomes}"
+        );
+        assert_eq!(std::fs::read(&to).unwrap(), b"first");
         assert_eq!(names, ["copy.txt"]);
     }
 
