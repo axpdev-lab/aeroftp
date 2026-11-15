@@ -347,22 +347,29 @@ impl std::error::Error for RsyncError {}
 /// The denylist wins: any deny marker returns false even when a
 /// transient kind is also mentioned.
 ///
-/// The caller passes the message lowercased, because the `Debug` output
-/// of the kind enum is mixed case while the substring match is not.
+/// The kind comes from the envelope's tag alone ([`native_error_kind`]),
+/// never from a search of the message (CodeRabbit 4577134047): the detail
+/// is any text, a user name, a host, a server's banner, and one that reads
+/// `alice(TransportFailure)` must not make a login refusal transient. The
+/// deny list still searches the whole message, but it can only veto a
+/// retry, never grant one. Any case.
 #[cfg(feature = "aerorsync")]
-pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
+pub(crate) fn is_transient_native_envelope(message: &str) -> bool {
     use crate::aerorsync::types::{TRANSIENT_DENY_DETAILS, TRANSIENT_KINDS};
 
+    let Some(kind) = native_error_kind(message) else {
+        return false;
+    };
+    let lower = message.to_ascii_lowercase();
     if TRANSIENT_DENY_DETAILS
         .iter()
         .any(|needle| lower.contains(needle))
     {
         return false;
     }
-    TRANSIENT_KINDS.iter().any(|kind| {
-        let needle = format!("({kind:?})").to_ascii_lowercase();
-        lower.contains(&needle)
-    })
+    TRANSIENT_KINDS
+        .iter()
+        .any(|transient| format!("{transient:?}").eq_ignore_ascii_case(kind))
 }
 
 /// Without the `aerorsync` feature no native envelope can exist: the only
@@ -370,8 +377,55 @@ pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
 /// refusal above, which carries no kind tag, so the answer is the same
 /// `false` the list-driven version would return.
 #[cfg(not(feature = "aerorsync"))]
-pub(crate) fn is_transient_native_envelope(_lower: &str) -> bool {
+pub(crate) fn is_transient_native_envelope(_message: &str) -> bool {
     false
+}
+
+/// The kinds a login must not go past, by name: the names of the kinds
+/// `AerorsyncErrorKind::refuses_the_login` answers true for (pinned by a
+/// test), spelled out so the reader below needs no feature.
+pub const LOGIN_REFUSAL_KINDS: [&str; 4] = [
+    "HostKeyRejected",
+    "PinnedKeyMismatch",
+    "PinnedPasswordMismatch",
+    "PinnedLoginRefused",
+];
+
+/// The kind a native delta error names, read only where its producers put
+/// it: the envelope's tag (`native hard rejection (Kind): detail`,
+/// `native fallback (Kind): detail`, the adapter's), or, for a login
+/// refusal only, a bare `Kind: detail` (the binary transport's). Nothing
+/// after the tag is read, so a detail holding `(PinnedLoginRefused)` or
+/// `): ` changes nothing. Any case.
+pub fn native_error_kind(message: &str) -> Option<&str> {
+    for envelope in ["native hard rejection (", "native fallback ("] {
+        let Some(rest) = message
+            .get(..envelope.len())
+            .filter(|head| head.eq_ignore_ascii_case(envelope))
+            .map(|_| &message[envelope.len()..])
+        else {
+            continue;
+        };
+        let end = rest.find(')')?;
+        let kind = &rest[..end];
+        let tag = !kind.is_empty() && kind.bytes().all(|b| b.is_ascii_alphabetic());
+        return (tag && rest[end..].starts_with("): ")).then_some(kind);
+    }
+    let (kind, _) = message.split_once(": ")?;
+    LOGIN_REFUSAL_KINDS
+        .iter()
+        .any(|refusal| refusal.eq_ignore_ascii_case(kind))
+        .then_some(kind)
+}
+
+/// Whether a native delta error is a login refusal, by its kind
+/// ([`native_error_kind`]).
+pub fn is_login_refusal(message: &str) -> bool {
+    native_error_kind(message).is_some_and(|kind| {
+        LOGIN_REFUSAL_KINDS
+            .iter()
+            .any(|refusal| refusal.eq_ignore_ascii_case(kind))
+    })
 }
 
 #[cfg(all(test, feature = "aerorsync"))]
@@ -426,6 +480,61 @@ mod native_envelope_tests {
                 "{kind:?} is not a transient kind and must not be retried"
             );
         }
+    }
+
+    /// CodeRabbit 4577134047: the kind is the envelope's tag, whatever the
+    /// detail says, in both directions. A login refusal whose detail holds a
+    /// transient kind (a user named `alice(TransportFailure)`) stays a
+    /// refusal; a transport drop whose detail names a refusal kind stays a
+    /// drop and is no login refusal (the deny list may still make it hard,
+    /// never a refusal). Only the tag at its fixed place counts.
+    #[test]
+    fn the_kind_is_the_envelopes_tag_whatever_the_detail_holds() {
+        let cases: [(&str, Option<&str>, bool, bool); 8] = [
+            (
+                "native hard rejection (PinnedLoginRefused): the server refused the key alice(TransportFailure) logged in with",
+                Some("PinnedLoginRefused"), false, true,
+            ),
+            (
+                "native hard rejection (PinnedLoginRefused): banner (NegotiationFailed): (UnsupportedVersion): x",
+                Some("PinnedLoginRefused"), false, true,
+            ),
+            (
+                "native fallback (TransportFailure): the banner says (PinnedLoginRefused): go away",
+                Some("TransportFailure"), true, false,
+            ),
+            (
+                "native hard rejection (TransportFailure): remote closed for user (HostKeyRejected)",
+                Some("TransportFailure"), false, false,
+            ),
+            (
+                "PinnedPasswordMismatch: the session logged in with a password (TransportFailure)",
+                Some("PinnedPasswordMismatch"), false, true,
+            ),
+            ("upload failed: PinnedLoginRefused: x", None, false, false),
+            ("native hard rejection (Pinned Login): x", None, false, false),
+            ("Native Fallback (TransportFailure): Channel Send Error", Some("TransportFailure"), true, false),
+        ];
+        for (message, kind, transient, refusal) in cases {
+            assert_eq!(native_error_kind(message), kind, "{message}");
+            assert_eq!(
+                is_transient_native_envelope(message),
+                transient,
+                "{message}"
+            );
+            assert_eq!(is_login_refusal(message), refusal, "{message}");
+        }
+    }
+
+    /// The four names are the kinds `refuses_the_login` answers true for.
+    #[test]
+    fn the_login_refusal_names_are_the_crates_refusal_kinds() {
+        let crate_list: Vec<String> = AerorsyncErrorKind::ALL
+            .iter()
+            .filter(|kind| kind.refuses_the_login())
+            .map(|kind| format!("{kind:?}"))
+            .collect();
+        assert_eq!(crate_list, LOGIN_REFUSAL_KINDS.map(str::to_owned).to_vec());
     }
 
     #[test]

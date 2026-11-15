@@ -18,12 +18,13 @@ import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
 import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
+import { isTargetChangedRefusal } from './utils/targetChanged';
 import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
 import { LatestListing } from './utils/latestListing';
 import * as React from 'react';
-import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
@@ -49,7 +50,7 @@ import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCry
 import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
-import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
 interface DownloadFolderParams {
@@ -89,12 +90,6 @@ interface ConnectedRemoteRunOptions {
   resumeJournal?: SyncJournal;
   /** Saved-server id, enables the CO-5 SFTP eligibility probe. */
   profileId?: string;
-  /** Execution target retained across a canary approval. */
-  target?: QueuedTarget;
-  preparedTarget?: Promise<{ readonly epoch: number } | { readonly error: unknown }>;
-  localRoot?: string;
-  remoteRoot?: string;
-  authenticatedRemoteContent?: boolean;
   /**
    * GAP-9a: Maniac mode. When true the run drops journal persistence and the
    * bandwidth caps for raw speed, then runs a mandatory post-sync
@@ -110,6 +105,47 @@ interface ConnectedRemoteRunOptions {
    * value when the launch is asked for.
    */
   planBatchGeneration?: number;
+  /**
+   * E1, E3, P1, and #1561's target binding: the connection the plan's
+   * comparison was taken on, captured by `openAeroSync`
+   * (`connectionAtAction`) before the compare and the journal load, and
+   * stored with that comparison; so before the plan is built and before
+   * anything the action waits on (a canary trial and its approval). The
+   * sync-start gate compares the generation with the current one before ANY
+   * launch, whatever the protocol; the delta probe is chosen from this
+   * protocol, never the latest one; and every command of the run carries
+   * this capture's GUI target epoch and owner binding. A run reads none of
+   * them for itself. Required, so no caller can omit it; null (none
+   * captured) fails closed.
+   */
+  requestedConnection: ConnectionAtAction | null;
+}
+
+/** The connection a comparison, and every sync action on it, was started on
+ *  (E3, P1), with #1561's target binding taken at the same moment. */
+interface ConnectionAtAction {
+  /** `provider_connection_generation`, asked for at the capture, for every
+   *  protocol: every remote session is a provider whose connect, disconnect
+   *  and tab switch move it. */
+  generation: Promise<number>;
+  /** The session's protocol at the capture. */
+  protocol: ProviderType | undefined;
+  /**
+   * The remote target (session, profile, connection, overlay, OAuth login)
+   * the comparison was taken on; the GUI target epoch prepared with it; and
+   * the owner binding read under that epoch. Taken with the comparison, not
+   * at the click: an overlay armed, unlocked or locked between the compare
+   * and the click moves the epoch but not the generation, so an epoch read
+   * at the click would be the new view's and pass. Failures are kept as
+   * values, so an abandoned comparison cannot reject unobserved.
+   */
+  target: QueuedTarget;
+  preparedTarget: Promise<{ readonly epoch: number } | { readonly error: unknown }>;
+  ownerBinding: Promise<{ readonly binding: string } | { readonly error: unknown }>;
+  /** The roots and the overlay content flag of the comparison. */
+  localRoot: string;
+  remoteRoot: string;
+  authenticatedRemoteContent: boolean;
 }
 
 // GAP-10: runtime options for the local-local sync launcher. A dual-local
@@ -260,7 +296,7 @@ import {
   type TransferSpeedPreset,
 } from './utils/ftpTransferSpeedPresets';
 import { AeroSyncDialog } from './components/AeroSync/AeroSyncDialog';
-import { useAeroSyncContextActions } from './components/AeroSync/useAeroSyncContextActions';
+import { useAeroSyncContextActions, type AeroSyncState } from './components/AeroSync/useAeroSyncContextActions';
 import { DeltaEligibilityDialog } from './components/AeroSync/DeltaEligibilityDialog';
 import type { AeroSyncTab, AeroSyncContext, AeroSyncRuntime } from './components/AeroSync/types';
 import { RemoteSyncResultDialog } from './components/AeroSync/RemoteSyncResultDialog';
@@ -476,7 +512,7 @@ import { createUnifiedTransferPlan, UnifiedTransferPlan } from './utils/unifiedT
 import { buildCrossProfileEntries, runCrossProfileTransfer } from './utils/crossProfileExecution';
 import { compareEntries, type CompareInputEntry, type CompareResult, type CompareResultEntry } from './utils/compareEndpoints';
 import type { PresetPlan } from './utils/syncPresets';
-import { runRemoteSync, filesFromJournal, normalizedSyncRoot, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
+import { runRemoteSync, filesFromJournal, normalizedSyncRoot, runDeltaGate, type RemoteSyncConfig, type SyncRunReport, type SyncRunFile, type SyncRunDirs } from './utils/remoteSyncRunner';
 import { syncRunQueueBridge } from './utils/syncRunQueueBridge';
 import { buildRemoteSyncInput, buildMirrorSyncInput } from './utils/presetToSyncRun';
 import { adaptFileComparisons } from './utils/recursiveCompare';
@@ -542,7 +578,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { AEROCLOUD_OPEN_SUPERSEDED, connectionNumberOf, connectionTargetKey, isAeroCloudConnection, isSameConnection, liveSavedServerId, mayReuseForAeroCloud, openAeroCloudFolder, resolveLiveConnectionParams, savedProfileIdOf, selectAeroCloudProfile } from './utils/liveConnection';
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
@@ -877,6 +913,8 @@ const App: React.FC = () => {
   // bumps quotaVersionRef, the debounced one after an upload included, so that
   // ref cannot tell whether a finished used-storage scan still describes the
   // connection it measured: this one decides persistence and the cancel label.
+  // The AeroCloud tab's open reads it too: a park (every takeover of the live
+  // tab) moves it on, so an open still awaiting stops (`handleCloudTabClick`).
   const quotaConnectionRef = useRef(0);
   const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
@@ -1140,6 +1178,13 @@ const App: React.FC = () => {
   const [aeroSync, setAeroSync] = useState<{
     initialTab: AeroSyncTab;
     context: AeroSyncContext;
+    /**
+     * P1: the connection the comparison in `context` was taken on, captured
+     * by the `openAeroSync` call that built this state (null for a pair with
+     * no remote). Every plan an action builds comes from this comparison or
+     * its journal, so the sync-start gate compares this generation.
+     */
+    connection: ConnectionAtAction | null;
   } | null>(null);
   // A sync or a restore runs inside the window, which owns their state.
   const [aeroSyncBusy, setAeroSyncBusy] = useState(false);
@@ -1545,7 +1590,7 @@ const App: React.FC = () => {
         targets.map(tg => invoke('opendrive_set_path_access', { path: tg.path, accessLevel: level, isDir: tg.isDir, expectedGuiTarget }))
       );
       checkTarget();
-      if (results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
+      if (results.some(result => result.status === 'rejected' && isTargetChangedRefusal(result.reason))) {
         throw new Error('CONNECTION_CHANGED: the properties target changed');
       }
       const ok = results.filter(r => r.status === 'fulfilled').length;
@@ -1954,15 +1999,23 @@ const App: React.FC = () => {
   }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
+  // Whether the connection on screen is the one AeroCloud syncs with (the
+  // saved profile, by id): the remote badges and the share link are its.
+  const onAeroCloudConnection = () =>
+    isAeroCloudConnection(liveSavedServerId(sessions, activeSessionId, liveConnectionParams), cloudProfileId);
+
   // Sync Badge Helper - returns badge element if file is in cloud folder
   const getSyncBadge = (fileModified: string | undefined, isLocal: boolean) => {
-    // Only show badges if cloud is active and we have cloud folder paths
+    // Only show badges if cloud is active and we have cloud folder paths. A
+    // remote badge only on the AeroCloud connection: another server can list
+    // the same path, and its files are not the ones AeroCloud synced.
     if (!isCloudActive || !cloudLastSync || !cloudLocalFolder || !cloudRemoteFolder) return null;
+    if (!isLocal && !onAeroCloudConnection()) return null;
 
     // Check if current path is within cloud folder (local or remote)
     const currentPath = isLocal ? currentLocalPath : currentRemotePath;
     const cloudFolder = isLocal ? cloudLocalFolder : cloudRemoteFolder;
-    const isInCloudFolder = currentPath.startsWith(cloudFolder) || currentPath === cloudFolder;
+    const isInCloudFolder = isWithinSyncFolder(currentPath, cloudFolder);
 
     if (!isInCloudFolder) return null;
 
@@ -2520,9 +2573,11 @@ const App: React.FC = () => {
     isCloudPaused,
     cloudServerName,
     cloudLastSync,
-    cloudLocalFolder, setCloudLocalFolder,
-    cloudRemoteFolder, setCloudRemoteFolder,
+    cloudLocalFolder,
+    cloudRemoteFolder,
+    cloudProfileId,
     cloudPublicUrlBase,
+    adoptOpenedCloudFolder,
   } = useCloudSync({
     activityLog, humanLog, t, checkForUpdate, isAppLocked,
     onSyncComplete: () => {
@@ -2695,8 +2750,28 @@ const App: React.FC = () => {
   // connect emits. Names the protocol in the UI only.
   const wentOnOverScpRef = useRef(false);
 
+  // What a provider reported while it connected (`provider_connect` answers
+  // `{ message, warnings }`, the connect's own warnings and no other's): each
+  // is shown once, titled with the existing warning key, its text the
+  // backend's, and kept in the activity log. Any other answer (an older
+  // backend's plain string) holds none (CodeRabbit 4573911765).
+  const showConnectWarnings = useCallback((answer: unknown) => {
+    const warnings = typeof answer === 'object' && answer !== null
+      ? (answer as { warnings?: unknown }).warnings
+      : undefined;
+    if (!Array.isArray(warnings)) return;
+    for (const warning of warnings) {
+      if (typeof warning !== 'string' || !warning) continue;
+      notify.warning(t('common.warning'), warning);
+      // A finished, informational line: 'pending' would count as a running
+      // operation and leave the activity badge active after the connect.
+      humanLog.log('CONNECT', `${t('common.warning')}: ${warning}`, 'success');
+    }
+  }, [humanLog, notify, t]);
+
   // Thin wrapper for the common single-invoke connect (`provider_connect` /
-  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`.
+  // `connect_ftp`): runs it under a cancel token via `cancellableConnect`,
+  // then shows what the provider reported while it connected.
   const runConnect = useCallback(<T,>(
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
@@ -2706,7 +2781,10 @@ const App: React.FC = () => {
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }), [cancellableConnect]);
+  }).then((answer) => {
+    if (command === 'provider_connect') showConnectWarnings(answer);
+    return answer;
+  }), [cancellableConnect, showConnectWarnings]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -6177,8 +6255,9 @@ const App: React.FC = () => {
 
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
-  // was recovered automatically. Backend emits four phases: lost,
-  // reconnecting, reconnected, reconnect-failed.
+  // was recovered automatically. Backend emits five phases: lost,
+  // reconnecting, reconnected, reconnect-failed, and closed when the
+  // reconnect could not open the session's folder again.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
     let cancelled = false;
@@ -6193,10 +6272,14 @@ const App: React.FC = () => {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.success(t('reconnect.toastTitle'), t('reconnect.reconnected'));
-          } else if (kind === 'reconnect-failed') {
+          } else if (kind === 'reconnect-failed' || kind === 'closed') {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
+            // 'closed': the reconnect could not open the folder again, so the
+            // backend closed the connection and holds no provider; the tab is
+            // disconnected, as after an FTP keep-alive whose reconnect fails.
+            if (kind === 'closed') setIsConnected(false);
           }
           // Properties and Copy URL follow the transport: a full connect
           // and a silent reconnect can each land on SCP or SFTP.
@@ -6233,6 +6316,17 @@ const App: React.FC = () => {
       display_current_path: response.display_current_path,
       boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
     });
+  };
+
+  // A listing of a folder the panel moved to (a navigation, the AeroCloud
+  // open): the listing, and nothing left of the folder before it. A search
+  // shown over the previous folder is dropped, so the rows and their actions
+  // are the new folder's; the query stays in the box and filters the new
+  // listing, as it does after any navigation. A refresh of the folder shown
+  // (`loadRemoteFiles`) applies the listing alone and keeps the search.
+  const applyRemoteNavigation = (response: FileListResponse & { display_current_path?: string }) => {
+    applyRemoteFileList(response);
+    setRemoteSearchResults(null);
   };
 
   // The session's overlay binding WITHOUT the scope gate: "this tab owns an
@@ -6395,7 +6489,7 @@ const App: React.FC = () => {
       const landing = normLandingPath(opts.initialLandingPath);
       if (landing === '') {
         // Remote Path is the on-wire root.
-        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
         await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
@@ -6408,7 +6502,7 @@ const App: React.FC = () => {
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope, ownership);
     if (normCryptScope(appliedScope) === '') {
-      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
       assertOverlayActivationCurrent(ownership);
     }
   };
@@ -6530,7 +6624,7 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // On SFTP, SCP, FTP and FTPS a relative Remote Path opens under the login folder,
       // as the scope below reads it.
       const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
@@ -7065,7 +7159,7 @@ const App: React.FC = () => {
       if (ownership) {
         try { ownership.check(); } catch { return null; }
       }
-      if (ownership && (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED'))) return null;
+      if (ownership && (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error))) return null;
       // A superseded listing must not surface its (now irrelevant) error toast.
       if (navId !== remoteNavCounter.current) return null;
       // Neither must a listing the user aborted from the spinner's Cancel.
@@ -9851,6 +9945,21 @@ const App: React.FC = () => {
     // on its listing has no usable session to fall back to either.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'connect';
+    // The open belongs to its phase: another connect, a tab switch or a newer
+    // AeroCloud open takes the next one, and from then on this open connects,
+    // lists and shows nothing. A takeover outside a connect phase (the "+" new
+    // tab, a portable device open, the OAuth or 4shared handshake of My
+    // Servers) takes no phase, but it parks the live tab, which moves the
+    // connection counter on (`quotaConnectionRef`, as a connect, a disconnect
+    // and a switch do): the open owns the panel only while both are its own.
+    // Every await below whose result is used is followed by this check (the
+    // folder open's owner reads it too).
+    const connectionAtEntry = quotaConnectionRef.current;
+    const ownsPhase = () => phaseVersion === remoteConnectPhaseVersionRef.current
+      && connectionAtEntry === quotaConnectionRef.current;
+    // The connection this open made when none was on screen (scenario 2):
+    // a failure after it leaves no row or folder of it actionable.
+    let connectedHere = false;
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -9858,8 +9967,10 @@ const App: React.FC = () => {
         local_folder: string;
         remote_folder: string;
         server_profile: string;
+        server_profile_id?: string | null;
         protocol_type?: string;
       }>('get_cloud_config');
+      if (!ownsPhase()) return;
 
       logger.debug('Cloud config:', cloudConfig);
 
@@ -9870,13 +9981,17 @@ const App: React.FC = () => {
 
       // Get saved servers from vault (with localStorage fallback)
       const savedServers = await loadSavedServerProfiles();
+      if (!ownsPhase()) return;
       if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
         return;
       }
 
-      const cloudServer = savedServers.find((s: { name: string }) => s.name === cloudConfig.server_profile);
+      // The profile the config is pinned to, by id; by name only for a config
+      // saved without one, as the backend selects it. A name two profiles
+      // share would otherwise open whichever is listed first.
+      const cloudServer = selectAeroCloudProfile(savedServers, cloudConfig.server_profile_id, cloudConfig.server_profile);
 
       if (!cloudServer) {
         notify.error(t('toast.serverNotFound'), t('toast.serverProfileNotFound', { name: cloudConfig.server_profile }));
@@ -9912,13 +10027,20 @@ const App: React.FC = () => {
           if (storedFilenKey) cloudFilenApiKey = storedFilenKey;
         } catch { /* no stored Filen API key for this profile */ }
       }
+      if (!ownsPhase()) return;
 
       // Helper: connect to cloud server using the correct protocol. It ends
       // the current connection itself, after the host-key check: a refused
       // key leaves that connection live for the callers to restore.
+      // Set once the open starts ending the connection it found: from then on
+      // that session is gone whatever the connect does, and a failure leaves
+      // its tab cached, never marked connected again.
+      let previousSessionEnded = false;
       const connectToCloudServer = async (): Promise<void> => {
         const endCurrentConnection = async () => {
+          previousSessionEnded = true;
           try { await invoke('provider_disconnect'); } catch { }
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           try { await invoke('disconnect_ftp'); } catch { }
         };
         if (isProvider) {
@@ -9964,8 +10086,10 @@ const App: React.FC = () => {
           if (isSshProtocol(protocol)) {
             const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
             if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
+            if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           }
           await endCurrentConnection();
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('provider_connect', providerParams);
         } else {
           // FTP/FTPS: use connect_ftp
@@ -9976,33 +10100,96 @@ const App: React.FC = () => {
             protocol,
           };
           await endCurrentConnection();
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('connect_ftp', ftpParams);
         }
       };
 
       // Helper: navigate to remote folder using correct API. Both arms are a
       // foreground listing on a freshly connected server, so both raise the
-      // spinner and name the folder they are waiting on.
-      const navigateToRemoteFolder = async (folder: string): Promise<void> => {
+      // spinner and name the folder they are waiting on. Returns the folder
+      // as the session reports it. The listing is applied whole, as a
+      // navigation applies it (`applyRemoteNavigation`): the folder, its
+      // displayed form and the breadcrumb are the ones the server returned,
+      // so a kept session with an unlocked overlay shows the folder entered,
+      // the one uploads go to, not the one the user was in.
+      // The listing generation the last folder entry below took: the owner
+      // adopts that one, never whatever generation is current when it resumes.
+      let listedGeneration = remoteNavCounter.current;
+      // Whether a folder entry below listed and was applied: the panel then
+      // shows the folder the session is in.
+      let remoteEntered = false;
+      // The listing generation the last folder entry below took, listed or
+      // not: a failed entry sends the session back only while no listing
+      // started after it.
+      let triedGeneration = remoteNavCounter.current;
+      const navigateToRemoteFolder = async (folder: string): Promise<string> => {
         if (isProvider) {
-          const response = await withRemoteListSpinner(
-            () => invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null }),
+          // A folder is entered, not only listed: a provider listing of a path
+          // reports the folder the session stands in, which on a kept session
+          // is wherever the user was. '' lists where the connect opened.
+          const listing = withRemoteListSpinner(
+            () => folder
+              ? invoke<FileListResponse & { display_current_path?: string }>('provider_change_dir', { path: folder })
+              : invoke<FileListResponse & { display_current_path?: string }>('provider_list_files', { path: null }),
             listingReason(folder),
           );
-          const files = response.files.map((f: any) => ({
-            name: f.name, path: f.path || f.name, size: f.size, is_dir: f.is_dir,
-            modified: f.modified, permissions: f.permissions || null,
-          }));
-          setRemoteFiles(files);
-          setCurrentRemotePath(response.current_path);
+          // withRemoteListSpinner takes its generation before its first await.
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
+          return response.current_path;
         } else {
-          const response = await withRemoteListSpinner(
+          const listing = withRemoteListSpinner(
             () => invoke<FileListResponse>('change_directory', { path: folder }),
             listingReason(folder),
           );
-          setRemoteFiles(response.files);
-          setCurrentRemotePath(response.current_path);
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
+          return response.current_path;
         }
+      };
+
+      // The AeroCloud remote folder, listed, as the session names it
+      // (`openAeroCloudFolder`): the saved form never matched the listing
+      // paths, so the lock read every folder as above the root.
+      // `connectOpenedIt`: this open's own connect took the saved folder as its
+      // starting folder (a provider connect); a kept session did not.
+      const openCloudRemoteFolder = (connectOpenedIt: boolean, owner: AeroCloudOpenOwner): Promise<string> =>
+        openAeroCloudFolder(
+          cloudConfig.remote_folder,
+          connectOpenedIt,
+          placeStartFolder,
+          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(listedGeneration); return listed; }),
+          owner.owns,
+        );
+      // The open owns the panel while the remote listing generation
+      // (`remoteNavCounter`) is its own. Every takeover moves it on as its
+      // first step (`releaseRemoteNavigation`: a connect phase, a tab
+      // switch), and so does any newer listing, which `withRemoteListSpinner`
+      // already treats as superseding. The open's own listing moves it too:
+      // that listing returned only while it was still the latest, so the
+      // owner adopts the generation that listing took, never the one current
+      // when the owner resumes, which a takeover may have moved. It adopts it only for its
+      // own phase (`ownsPhase`): an owner made after a switch or another
+      // connect took the phase never owns, so it cannot take that
+      // operation's generation for its own.
+      type AeroCloudOpenOwner = { owns: () => boolean; listed: (generation: number) => void };
+      const ownSessionFromNow = (): AeroCloudOpenOwner => {
+        let owned = remoteNavCounter.current;
+        return {
+          owns: () => ownsPhase() && owned === remoteNavCounter.current,
+          listed: (generation: number) => { owned = generation; },
+        };
       };
 
       // Connection params to set (for protocol detection in other parts of the app)
@@ -10033,6 +10220,10 @@ const App: React.FC = () => {
         const isSameServer = isSameConnection(
           normalizeProviderConnectionParams(liveConnectionParams),
           normalizeProviderConnectionParams(connParams),
+        ) && mayReuseForAeroCloud(
+          liveSavedServerId(sessions, activeSessionId, liveConnectionParams),
+          cloudServer.id,
+          cloudConfig.remote_folder,
         );
 
         logger.debug(`Current: ${liveConnectionParams.server} (${liveConnectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
@@ -10065,17 +10256,38 @@ const App: React.FC = () => {
           try {
             setLoading(true);
             await connectToCloudServer();
+            if (!ownsPhase()) return;
+            // The rows on screen are the previous server's (kept in its cached
+            // tab): none may stay actionable on this connection while the
+            // AeroCloud folder lists, nor after a listing that fails. The
+            // workspace waits for that listing, as every connect that parks
+            // the session it replaces does (parkActiveSession).
+            setRemoteFiles([]);
+            setSelectedRemoteFiles(new Set());
+            setRemoteSearchResults(null);
+            setRemoteSearchQuery('');
+            setIsConnected(false);
             setConnectionParams(connParams);
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
+            // A connect that lost its phase restores nothing: the session on
+            // screen now belongs to the operation that took it.
+            if (!ownsPhase()) return;
             // W3.1: a user cancel skips the error toast but still restores the
             // previous session (runConnect already toasted the cancellation).
             if (!isConnectCancelledError(connError)) {
               logger.error('Failed to connect to cloud server:', connError);
               notify.error(t('toast.connectionFailedTitle'), String(connError));
             }
-            // Restore previous session
-            if (capturedSessionId) {
+            if (previousSessionEnded) {
+              // The session was ended before the connect failed: its tab
+              // stays cached, as it was parked above, and the workspace is
+              // disconnected until the user opens a connection again.
+              setIsConnected(false);
+              setRemoteFiles([]);
+              setShowConnectionScreen(true);
+            } else if (capturedSessionId) {
+              // Nothing was ended: the previous session is still live.
               setActiveSessionId(capturedSessionId);
               setSessions(prev => prev.map(s =>
                 s.id === capturedSessionId ? { ...s, status: 'connected' } : s
@@ -10084,7 +10296,9 @@ const App: React.FC = () => {
             setLoading(false);
             return;
           } finally {
-            setLoading(false);
+            // The spinner belongs to the operation that owns the phase: an
+            // open another one took leaves it to that one.
+            if (ownsPhase()) setLoading(false);
           }
         } else {
           // Same backend kept. The AeroCloud tab has no session of its own, so
@@ -10098,27 +10312,66 @@ const App: React.FC = () => {
         setShowRemotePanel(true);
         setShowLocalPreview(false);
         setShowConnectionScreen(false);
-        // Lock navigation to cloud folders (prevent navigating above remote_folder)
+        // Lock navigation to cloud folders (prevent navigating above remote_folder).
+        // What the panel had before is kept: a folder change that fails puts it back.
+        const navigationBefore = { on: isSyncNavigation, base: syncBasePaths };
         setIsSyncNavigation(true);
         setSyncBasePaths({ remote: cloudConfig.remote_folder, local: cloudConfig.local_folder });
 
         // Navigate to cloud folders
         try {
-          await navigateToRemoteFolder(cloudConfig.remote_folder);
+          const owner = ownSessionFromNow();
+          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
+          if (!owner.owns()) return;
+          setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+          if (!owner.owns()) return;
+          if (!isSameServer) setIsConnected(true);
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-          setCloudRemoteFolder(cloudConfig.remote_folder);
-          setCloudLocalFolder(cloudConfig.local_folder);
+          adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
           // A cancelled listing already tore the session down: no error toast,
           // and no cloud sync to trigger on a connection that no longer exists.
-          if (isListingCancelled(navError)) return;
+          // Nor after another operation took the phase.
+          if (!ownsPhase() || isListingCancelled(navError)) return;
           logger.error('Cloud navigation error:', navError);
           notify.error('AeroCloud', t('toast.navigationFailed', { error: String(navError) }));
+          if (remoteEntered) {
+            // The remote folder was entered and is shown; only the local
+            // side failed. The base the panel had before belongs to another
+            // folder: Navigation Sync stays off rather than lock on it.
+            setIsSyncNavigation(false);
+            setSyncBasePaths(null);
+          } else {
+            // The folder was not listed: the panel shows the folder it showed
+            // before, so the provisional lock above goes and the Navigation
+            // Sync it had comes back, and no sync is started.
+            setIsSyncNavigation(navigationBefore.on);
+            setSyncBasePaths(navigationBefore.base);
+          }
+          // On a connection this open made, nothing was listed: the workspace
+          // stays disconnected, and the user opens a connection again.
+          if (!isSameServer) {
+            setShowConnectionScreen(true);
+          } else if (!remoteEntered && currentRemotePath && triedGeneration === remoteNavCounter.current) {
+            // A listing can fail after the server entered the folder: the
+            // session goes back to the folder the panel shows, so a relative
+            // command such as Up starts where the panel says. A way back that
+            // fails too leaves the session to the provider's lost-folder state
+            // (FTP closes it and refuses a relative target until a folder is
+            // entered by its full path). A listing started after this one
+            // decides where the session goes: no way back then.
+            try {
+              await invoke(isProvider ? 'provider_change_dir' : 'change_directory', { path: currentRemotePath });
+            } catch (backError) {
+              logger.error('Cloud navigation: returning to the folder shown failed:', backError);
+            }
+          }
+          return;
         }
 
         // Trigger sync
@@ -10133,9 +10386,18 @@ const App: React.FC = () => {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      // connectToCloudServer ends any stale connection first.
+      // connectToCloudServer ends any stale connection first. No row is
+      // shown for it until the AeroCloud folder lists.
+      setRemoteFiles([]);
+      setSelectedRemoteFiles(new Set());
+      setRemoteSearchResults(null);
+      setRemoteSearchQuery('');
       await connectToCloudServer();
-      setIsConnected(true);
+      if (!ownsPhase()) return;
+      connectedHere = true;
+      // The workspace is connected once the AeroCloud folder has listed, as
+      // a replacing open does: until then no remote action, upload or drop
+      // runs, so none takes the folder the panel showed before.
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       setConnectionParams(connParams);
@@ -10144,12 +10406,14 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
 
       // Navigate to cloud folders
-      await navigateToRemoteFolder(cloudConfig.remote_folder);
+      const owner = ownSessionFromNow();
+      const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+      if (!owner.owns()) return;
+      setIsConnected(true);
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
-      setCloudRemoteFolder(cloudConfig.remote_folder);
-      setCloudLocalFolder(cloudConfig.local_folder);
+      adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));
@@ -10165,6 +10429,16 @@ const App: React.FC = () => {
       }
 
     } catch (error) {
+      // An open that lost its phase reports nothing over the operation that
+      // took it: no cloud panel, no failure toast.
+      if (!ownsPhase()) return;
+      // The connection this open made listed nothing: no row and no folder
+      // of it is actionable, the workspace is disconnected.
+      if (connectedHere) {
+        setIsConnected(false);
+        setRemoteFiles([]);
+        setShowConnectionScreen(true);
+      }
       // W3.1: user-cancelled AeroCloud connect. Reopen the cloud panel so the
       // user can retry, but skip the error toast (runConnect already toasted).
       if (isConnectCancelledError(error)) {
@@ -10179,7 +10453,7 @@ const App: React.FC = () => {
       setShowCloudPanel(true);
     } finally {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
-      setLoading(false);
+      if (ownsPhase()) setLoading(false);
     }
   };
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string, plainPath?: boolean) => {
@@ -10282,13 +10556,17 @@ const App: React.FC = () => {
         response = await invoke('provider_change_dir', { path: providerNavPath, ...(reactivatedOverlayGeneration !== undefined ? { expectedGeneration: reactivatedOverlayGeneration } : {}) });
         if (reactivatedOverlayForNav && navId === remoteNavCounter.current) settleNavigationOverlayLog('success');
       } else {
-        // Use FTP API
-        response = await invoke('change_directory', { path });
+        // Use FTP API. The server resolves a relative path against its own
+        // folder, which after a reconnect inside a download is the login
+        // folder and not the one this tab shows: send the folder the tab
+        // means. A server reporting folders without a leading slash keeps
+        // the path as asked.
+        const legacyPath = currentRemotePath.startsWith('/') ? resolveTargetDisplayPath(currentRemotePath, path) : path;
+        response = await invoke('change_directory', { path: legacyPath });
       }
       // Discard response if a newer navigation was initiated while we awaited
       if (navId !== remoteNavCounter.current) return null;
-      applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
-      setRemoteSearchResults(null);
+      applyRemoteNavigation(response as FileListResponse & { display_current_path?: string });
       humanLog.logNavigate(response.current_path, true);
 
       // Navigation Sync: mirror to local panel if enabled.
@@ -11088,7 +11366,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      if (onError === 'throw') throw String(error).includes('CONNECTION_CHANGED') ? new QueuedTargetChangedError(String(error)) : error;
+      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
@@ -11331,7 +11609,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
-      if (onError === 'throw') throw String(error).includes('CONNECTION_CHANGED') ? new QueuedTargetChangedError(String(error)) : error;
+      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
@@ -11652,7 +11930,7 @@ const App: React.FC = () => {
         try {
           await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
         } catch (error) {
-          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          if (isTargetChangedRefusal(error)) refuse();
           throw error;
         }
         humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
@@ -12633,6 +12911,12 @@ const App: React.FC = () => {
     // Bump the compare token: any recursive scan still in flight from a
     // previous open is now stale and will discard its own result.
     const mySeq = ++aeroSyncCompareSeqRef.current;
+    // P1: the connection this comparison is taken on, read before the
+    // compare and the journal load start. It is stored in the state this call
+    // builds, beside the context, so entries, journal and connection are
+    // replaced together; a click acts on one state, never on a newer
+    // connection with older entries.
+    const connection = connectionAtAction();
     const scanProgressId = `aerosync-${Date.now()}-${mySeq}`;
     // Read before the scan starts: a batch running now still ends after it.
     const batchGeneration = batchGenerationRef.current;
@@ -12662,6 +12946,7 @@ const App: React.FC = () => {
 
       setAeroSync({
         initialTab,
+        connection: null,
         context: {
           batchGeneration,
           compareResult: canRecurse
@@ -12780,6 +13065,7 @@ const App: React.FC = () => {
       // responsive while the recursive scan runs.
       setAeroSync({
         initialTab,
+        connection,
         context: {
           batchGeneration,
           compareResult: null,
@@ -12899,6 +13185,7 @@ const App: React.FC = () => {
 
     setAeroSync({
       initialTab,
+      connection: null,
       context: {
         batchGeneration,
         compareResult: null,
@@ -12922,6 +13209,42 @@ const App: React.FC = () => {
   // panels. Both the Plan tab preset executor and the Compare-tab mirror
   // buttons go through this so deletes / overwrites / verify / retry /
   // resumable journal all execute on a full recursive tree.
+  //
+  // E1 (D2, Q5), E3, P1: the connection, asked for by `openAeroSync` before
+  // it starts the comparison every plan comes from, so before the plan is
+  // built and before any wait (a canary trial and its approval): its
+  // generation, for every protocol, and its protocol. It is stored with the
+  // comparison; a run carries it to the sync-start gate, which compares the
+  // generation with the current one before any launch, SFTP or not.
+  //
+  // #1561's target binding is taken in the same call: the remote target, its
+  // GUI target epoch and the owner binding under that epoch, and the roots.
+  // A run binds every command to that epoch and the index and journal to
+  // that binding, so an overlay change between the compare and the click
+  // (which moves the epoch, not the generation) is refused too.
+  const connectionAtAction = useLatestCallback((): ConnectionAtAction => {
+    const generation = invoke<number>('provider_connection_generation');
+    // An unread rejection would surface as unhandled when no gate awaits it.
+    generation.catch(() => undefined);
+    const target = snapshotQueuedTarget();
+    const preparedTarget = prepareGuiTarget(queuedTargetGuard(target));
+    const isProvider = usesProviderApi(target.params.protocol);
+    const ownerBinding = preparedTarget.then((prepared) => ('error' in prepared
+      ? prepared
+      : invoke<string>('provider_gui_target_binding', { expectedGuiTarget: prepared.epoch, isProvider })
+        .then((binding) => ({ binding } as const), (error) => ({ error } as const))));
+    return {
+      generation,
+      protocol: target.params.protocol,
+      target,
+      preparedTarget,
+      ownerBinding,
+      localRoot: currentLocalPath,
+      remoteRoot: currentRemotePath,
+      authenticatedRemoteContent: isCryptOverlayActive(),
+    };
+  });
+
   const runConnectedRemoteSync = useLatestCallback((
     runFiles: SyncRunFile[],
     runDirs: SyncRunDirs,
@@ -12942,8 +13265,15 @@ const App: React.FC = () => {
       return;
     }
 
-    // Keep the exact target of the Execute gesture through the delta prompt.
-    const target = opts.target ?? snapshotQueuedTarget();
+    // The connection and target of the comparison the plan comes from,
+    // captured by openAeroSync (P1, and #1561's target binding). None
+    // captured: there is nothing to bind the run to, so nothing launches.
+    const connection = opts.requestedConnection;
+    if (!connection) {
+      notify.error(t('aerosync.title'), t('toast.remoteTargetChanged'));
+      return;
+    }
+    const target = connection.target;
     const checkTarget = queuedTargetGuard(target);
     if ((target.profileId != null && opts.profileId != null && opts.profileId !== target.profileId)
       || (opts.resumeJournal && (opts.resumeJournal.profile_id ?? null) !== target.profileId)) {
@@ -12952,7 +13282,9 @@ const App: React.FC = () => {
     }
     let targetEpoch: number | undefined;
     let ownerBinding: string | undefined;
-    const protocol = target.params.protocol;
+    // E3: the protocol of the comparison's connection. A later one belongs
+    // to another connection, which the gate refuses.
+    const protocol = connection.protocol;
     // AeroSync runner routing must match how the connection was actually
     // dialled. A modern FTP/FTPS session lives in `state.provider` (the
     // StorageProvider impl), exactly like SFTP and the cloud providers, and
@@ -12974,8 +13306,8 @@ const App: React.FC = () => {
     };
 
     const runConfig: RemoteSyncConfig = {
-      localRoot: opts.localRoot ?? currentLocalPath,
-      remoteRoot: opts.remoteRoot ?? currentRemotePath,
+      localRoot: connection.localRoot,
+      remoteRoot: connection.remoteRoot,
       profileId: target.profileId,
       isProvider,
       isFtp: !isProvider,
@@ -12998,7 +13330,7 @@ const App: React.FC = () => {
       postSyncVerification: opts.maniac === true,
       // P3: EC control from Plan tab (Backup default) reaches runner unchanged.
       errorCorrection: opts.errorCorrection,
-      authenticatedRemoteContent: opts.authenticatedRemoteContent ?? isCryptOverlayActive(),
+      authenticatedRemoteContent: connection.authenticatedRemoteContent,
     };
 
     if (syncPreflightPendingRef.current || remoteSyncRunningRef.current) {
@@ -13129,79 +13461,97 @@ const App: React.FC = () => {
 
     // CO-5: probe SFTP delta eligibility before the run. Informational
     // only — the sync still runs against the classic path when delta is
-    // unavailable. A saved per-server opt-out skips the question about
-    // continuing without delta, never the probe: a hard refusal still stops
-    // the run before any write.
+    // unavailable. Every SFTP session is probed, an ad-hoc one (no saved
+    // profile) too: it reaches native delta and pins its login key like any
+    // other. A saved per-server opt-out, or having no saved profile, skips
+    // the question about continuing without delta, never the probe: a hard
+    // refusal stops the run before any write (C2, D2, `runDeltaGate`).
+    // E3: every run goes through the gate, which compares the comparison's
+    // generation with the current one before any launch; only a run whose
+    // comparison saw an SFTP session probes. The preflight is owned until
+    // the gate ends (a Stop takes it back, silently), the comparison's GUI
+    // target epoch and owner binding are resolved first, and the probe
+    // carries that epoch.
+    let launched = false;
     syncPreflightPendingRef.current = preflightOwner;
     setSyncPreflightPending(true);
+    const refused = (title: string, message: string) => {
+      if (ownsPreflight()) notify.error(title, message);
+      finishPreflight();
+    };
     void (async () => {
       try {
-        targetEpoch = opts.preparedTarget
-          ? await resolveGuiTarget(opts.preparedTarget, checkTarget)
-          : await captureGuiTarget(checkTarget);
+        targetEpoch = await resolveGuiTarget(connection.preparedTarget, checkTarget);
         if (!ownsPreflight()) return;
-        ownerBinding = await invoke<string>('provider_gui_target_binding', { expectedGuiTarget: targetEpoch, isProvider });
-        if (!ownsPreflight()) return;
-        checkTarget();
-        const shouldProbe = protocol === 'sftp' && !!opts.profileId;
-        if (!shouldProbe) {
-          await launchRun();
-          return;
-        }
-        // The saved profiles only tell whether to ask about continuing
-        // without delta. Unreadable, they leave the question on: the safety
-        // probe below runs either way.
-        const stored = await loadSavedServerProfiles().catch(() => [] as Awaited<ReturnType<typeof loadSavedServerProfiles>>);
+        const bound = await connection.ownerBinding;
+        if ('error' in bound) throw bound.error;
+        ownerBinding = bound.binding;
         if (!ownsPreflight()) return;
         checkTarget();
-        const profile = stored.find((p) => p.id === opts.profileId);
-        // Probed even when the prompt is turned off: the opt-out skips the
-        // question about continuing without delta, not a refusal.
-        const verdict = await invoke<DeltaEligibilityProbeResult>(
-          'sftp_probe_delta_eligibility',
-          { expectedGuiTarget: targetEpoch },
-        );
-        if (!ownsPreflight()) return;
-        checkTarget();
-        // A hard refusal stops the run here, before it creates a folder or
-        // archives a file: a transfer would only meet the same refusal later.
-        if (verdict.hard_error) {
-          notify.error(t('aerosync.title'), verdict.hard_error);
-          return;
-        }
-        if (verdict.eligible || profile?.skipDeltaEligibilityPrompt) {
-          await launchRun();
-          return;
-        }
-        const reason = verdict.reason
-          || t('aerosync.deltaEligibility.heading')
-          || 'Delta sync unavailable for this server.';
-        const serverLabel = activeUnifiedRemoteProfile?.name
-          || verdict.server_identity?.host
-          || t('browser.remote');
-        parked = true;
-        setDeltaEligibilityPrompt({
-          reason,
-          serverLabel,
-          profileId: opts.profileId!,
-          owner: preflightOwner,
-          onContinue: () => { parked = false; void launchRun().finally(finishPreflight); },
-          onCancel: finishPreflight,
+        await runDeltaGate({
+          requested: connection.generation,
+          probeDelta: protocol === 'sftp',
+          generation: () => invoke<number>('provider_connection_generation'),
+          // The question keeps its answer in a saved profile: a session with
+          // no saved profile (no id, or the fallback id of an ad-hoc session,
+          // which no saved profile has) skips it, as an unreadable profile
+          // list does (`runDeltaGate`). The probe and a hard refusal apply
+          // all the same.
+          skipPrompt: async () => {
+            if (!opts.profileId) return true;
+            const profile = (await loadSavedServerProfiles()).find((p) => p.id === opts.profileId);
+            return !profile || profile.skipDeltaEligibilityPrompt === true;
+          },
+          probe: async () => {
+            checkTarget();
+            return invoke<DeltaEligibilityProbeResult>('sftp_probe_delta_eligibility', { expectedGuiTarget: targetEpoch });
+          },
+          launch: () => {
+            if (!ownsPreflight()) return finishPreflight();
+            launched = true;
+            void launchRun().finally(finishPreflight);
+          },
+          refuse: (message) => refused(t('aerosync.title'), message),
+          failed: (err) => {
+            if (debugMode) {
+              // eslint-disable-next-line no-console
+              console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
+            }
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) {
+              refused(t('aerosync.title'), String(err));
+            } else {
+              refused(
+                t('aerosync.deltaEligibility.title'),
+                `${t('aerosync.deltaEligibility.heading')} ${t('common.retry')}`,
+              );
+            }
+          },
+          changed: () => refused(t('aerosync.title'), t('toast.remoteTargetChanged')),
+          ask: (verdict, onContinue) => {
+            if (!ownsPreflight()) return finishPreflight();
+            const reason = verdict.reason
+              || t('aerosync.deltaEligibility.heading')
+              || 'Delta sync unavailable for this server.';
+            const serverLabel = activeUnifiedRemoteProfile?.name
+              || verdict.server_identity?.host
+              || t('browser.remote');
+            parked = true;
+            setDeltaEligibilityPrompt({
+              reason,
+              serverLabel,
+              profileId: opts.profileId!,
+              owner: preflightOwner,
+              onContinue: () => { parked = false; onContinue(); },
+              onCancel: finishPreflight,
+            });
+          },
         });
       } catch (err) {
-        if (!ownsPreflight()) return;
-        if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED') || targetEpoch === undefined || ownerBinding === undefined) {
-          notify.error(t('aerosync.title'), String(err));
-          return;
-        }
-        // Probe failures should not block the run; log and proceed.
-        if (debugMode) {
-          // eslint-disable-next-line no-console
-          console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
-        }
-        await launchRun();
+        // The comparison's target could not be bound (changed, or its epoch
+        // or owner binding unreadable): nothing launches.
+        if (ownsPreflight()) notify.error(t('aerosync.title'), String(err));
       } finally {
-        if (!parked) finishPreflight();
+        if (!parked && !launched) finishPreflight();
       }
     })();
   });
@@ -13312,6 +13662,9 @@ const App: React.FC = () => {
   });
 
   const handleCompareMirrorLeftToRight = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13344,6 +13697,7 @@ const App: React.FC = () => {
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
         planBatchGeneration: context.batchGeneration,
+        requestedConnection,
       });
     }
   }, [
@@ -13353,6 +13707,9 @@ const App: React.FC = () => {
   ]);
 
   const handleCompareMirrorRightToLeft = useCallback((entries: CompareResultEntry[]) => {
+    // E1, P1: the connection of the comparison these entries come from,
+    // captured by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     setAeroSync(null);
     if (!context || entries.length === 0) return;
@@ -13381,6 +13738,7 @@ const App: React.FC = () => {
         verifyPolicy: 'size_only',
         profileId: context.activeProfileId,
         planBatchGeneration: context.batchGeneration,
+        requestedConnection,
       });
     }
   }, [
@@ -13395,6 +13753,9 @@ const App: React.FC = () => {
   // local-local pair resumes through `runLocalLocalSync`, every other pair
   // through `runConnectedRemoteSync`.
   const handleResumeJournal = useCallback((journal: SyncJournal) => {
+    // E1, P1: the connection the journal was loaded on, captured with the
+    // comparison by the openAeroSync call that built this state.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     if (!context) return;
     // Old journals lack the policy and per-file overwrite intent.
@@ -13427,11 +13788,22 @@ const App: React.FC = () => {
         ...(journal.ec_max_file_size != null ? { maxFileSize: journal.ec_max_file_size } : {}) } : null,
       resumeJournal: journal,
       profileId: context.activeProfileId,
+      requestedConnection,
     });
   }, [aeroSync, notify, t, runConnectedRemoteSync, runLocalLocalSync]);
 
+  // The context hook edits the comparison it was given; the connection that
+  // comparison was taken on travels with it unchanged (P1).
+  const setAeroSyncComparison = useCallback<Dispatch<SetStateAction<AeroSyncState | null>>>((action) => {
+    setAeroSync((prev) => {
+      const next = typeof action === 'function' ? action(prev) : action;
+      if (next === prev) return prev;
+      return next ? { ...next, connection: prev?.connection ?? null } : null;
+    });
+  }, []);
+
   const { dismissJournal: handleDismissJournal, invalidateComparison: invalidateAeroSyncComparison, narrowComparison: narrowAeroSyncComparison } =
-    useAeroSyncContextActions(aeroSync, setAeroSync, aeroSyncCompareSeqRef);
+    useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);
 
 
   /**
@@ -13445,6 +13817,11 @@ const App: React.FC = () => {
    * dance that left local-local deletes and renames unexecuted.
    */
   const executeSyncPresetPlan = useLatestCallback((plan: PresetPlan, runtime: AeroSyncRuntime) => {
+    // E1, P1: the connection of the comparison the plan comes from, captured
+    // by the openAeroSync call that built this state, before the compare: a
+    // run approved after a connection switch (a canary wait included) is the
+    // earlier connection's plan, and the gate must see that.
+    const requestedConnection = aeroSync?.connection ?? null;
     const context = aeroSync?.context;
     // Ehud #347 (18352684): closing AeroSync here tore down `context`, and with
     // it the Compare scan, BEFORE we knew whether this Execute was a real run or
@@ -13503,11 +13880,6 @@ const App: React.FC = () => {
     // carrying nested relative paths; runConnectedRemoteSync handles the
     // SFTP probe, config, resumable journal and rich report. ─────────────
     if (context.pairKind === 'local-remote' || context.pairKind === 'remote-local') {
-      const target = snapshotQueuedTarget();
-      const preparedTarget = prepareGuiTarget(queuedTargetGuard(target));
-      const localRoot = currentLocalPath;
-      const remoteRoot = currentRemotePath;
-      const authenticatedRemoteContent = isCryptOverlayActive();
       const leftIsLocal = context.pairKind === 'local-remote';
       const { files: runFiles, dirs: runDirs } = buildRemoteSyncInput(plan, leftIsLocal);
 
@@ -13530,15 +13902,11 @@ const App: React.FC = () => {
           transferBudget: runtime.transferBudget,
           versionedBackup: runtime.versionedBackup,
           profileId: context.activeProfileId,
-          target,
-          preparedTarget,
-          localRoot,
-          remoteRoot,
-          authenticatedRemoteContent,
           maniac: runtime.speedMode === 'maniac',
           // P3: thread EC (only populated for backup preset from Plan tab)
           errorCorrection: runtime.errorCorrection,
           planBatchGeneration: context.batchGeneration,
+          requestedConnection,
         });
       };
 
@@ -13697,7 +14065,7 @@ const App: React.FC = () => {
             : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'throw', undefined, onPasteDispatch, expectedGuiTarget);
           if (ok) landed.push(file);
         } catch (e) {
-          if (e instanceof QueuedTargetChangedError || String(e).includes('CONNECTION_CHANGED')) {
+          if (e instanceof QueuedTargetChangedError || isTargetChangedRefusal(e)) {
             retargetNotified = true;
             notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
             break;
@@ -13754,7 +14122,7 @@ const App: React.FC = () => {
             } catch (e) {
               if (isDeletionCancelled(e)) break;
               console.error(`Failed to delete source after cut: ${file.name}`, e);
-              if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+              if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
             }
           }
         }
@@ -13803,7 +14171,7 @@ const App: React.FC = () => {
             moveFinished.add(file.path);
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
-            if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+            if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
           }
         }
         if (targetIsRemote) {
@@ -13881,7 +14249,7 @@ const App: React.FC = () => {
             } catch (e) {
               notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               anyFailed = true;
-              if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+              if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
             }
           }
           if (!anyFailed && files.length > 0) {
@@ -14009,7 +14377,7 @@ const App: React.FC = () => {
     cancelLevelRef.current = 0;
     circuitBreaker.reset();
     try { await invoke('reset_cancel_flag', { expectedGuiTarget }); } catch (error) {
-      if (String(error).includes('CONNECTION_CHANGED')) {
+      if (isTargetChangedRefusal(error)) {
         result.failed = items.length;
         result.aborted = true;
         return result;
@@ -14160,7 +14528,7 @@ const App: React.FC = () => {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false, expectedGuiTarget: attempt.epoch });
           eligible.add(entry);
         } catch (error) {
-          if (String(error).includes('CONNECTION_CHANGED')) {
+          if (isTargetChangedRefusal(error)) {
             attempt.changed = true;
             result.aborted = true;
             const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
@@ -14252,7 +14620,7 @@ const App: React.FC = () => {
           await invoke<string>(fileBatchCommand(direction, false), { params });
         }
       } catch (error) {
-        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
+        if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) { attempt.changed = true; result.aborted = true; }
         // Rejected before any file started (not connected, a name the backend
         // forbids, a locked crypt store): no file event will ever settle these
         // queue rows, so settle them here instead of leaving them pending.
@@ -14326,7 +14694,7 @@ const App: React.FC = () => {
           result.succeededSources.push(sourceOf(entry));
           landedIds.add(queueIds[i]);
         } catch (error) {
-          if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
+          if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) { attempt.changed = true; result.aborted = true; }
           transferQueue.failTransfer(queueIds[i], String(error));
           result.failed++;
         } finally { releaseCompletion(); }
@@ -15430,7 +15798,7 @@ const App: React.FC = () => {
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
       try { await invoke('reset_cancel_flag', { expectedGuiTarget }); } catch (error) {
-        if (String(error).includes('CONNECTION_CHANGED')) { notify.error(t('toast.deleteFail'), String(error)); return; }
+        if (isTargetChangedRefusal(error)) { notify.error(t('toast.deleteFail'), String(error)); return; }
       }
 
       // GitHub atomic batch delete: single commit for all non-dir files
@@ -15480,7 +15848,7 @@ const App: React.FC = () => {
             deletedFiles.push(...filePaths);
           } catch (err) {
             notify.error(t('toast.deleteFail'), String(err));
-            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) return;
           }
         }
 
@@ -15494,7 +15862,7 @@ const App: React.FC = () => {
           } catch (err) {
             if (batchCancelledRef.current || isDeletionCancelled(err)) break;
             notify.error(t('toast.deleteFail'), `${dir.name}: ${String(err)}`);
-            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) return;
           }
         }
       } else {
@@ -15534,7 +15902,7 @@ const App: React.FC = () => {
             } catch (err) {
               if (batchCancelledRef.current || isDeletionCancelled(err)) break;
               notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
-              if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) {
+              if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) {
                 setScanningState(INITIAL_SCANNING_STATE);
                 return;
               }
@@ -16049,7 +16417,7 @@ const App: React.FC = () => {
       } catch (error) {
         console.error(`[BatchRename] Failed to rename ${oldPath}:`, error);
         errorCount++;
-        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) {
+        if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) {
           notify.error(t('toast.renameFail'), String(error));
           setBatchRenameDialog(null);
           return;
@@ -16555,14 +16923,14 @@ const App: React.FC = () => {
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
-    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && file.path.startsWith(cloudRemoteFolder)) {
+    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && onAeroCloudConnection() && isWithinSyncFolder(file.path, cloudRemoteFolder)) {
       items.push({
         label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
         disabled: cryptOverlayActive,
         action: async () => {
           try {
-            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path });
+            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path, remoteRoot: cloudRemoteFolder });
             await copyText(shareUrl);
             notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {
@@ -19603,7 +19971,7 @@ const App: React.FC = () => {
               // switch that lands after the check above is refused there too.
               await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
             } catch (e) {
-              if (String(e).startsWith('CONNECTION_CHANGED')) sessionChanged();
+              if (isTargetChangedRefusal(e)) sessionChanged();
               else notify.error(t('common.failed'), String(e));
               return;
             } finally {

@@ -96,6 +96,13 @@ pub enum IncrementalPrep {
 pub struct IncrementalPlan {
     config_identity: serde_json::Value,
     root_identity: Option<super::LocalRootIdentity>,
+    /// The saved profile the plan's baseline was read for
+    /// ([`CloudConfig::resolved_profile_id`], which the identity above
+    /// leaves out), and the endpoint the saved settings named then
+    /// ([`crate::cloud_provider_factory::current_endpoint_fingerprint`]):
+    /// the pass runs only on a connection to both.
+    profile_id: Option<String>,
+    endpoint: Option<String>,
     renames: Vec<PlannedRename>,
     /// Relative key -> the local copy, `None` when it is gone.
     work: BTreeMap<String, Option<FileInfo>>,
@@ -354,6 +361,36 @@ pub fn prepare_incremental(
     changes: &LocalChanges,
     hints: IncrementalHints,
 ) -> Result<IncrementalPrep, String> {
+    prepare_incremental_with_store(config, None, changes, hints)
+}
+
+/// [`prepare_incremental`], with the profile and the endpoint the saved
+/// settings in `store` name now bound to the plan: the background worker's
+/// form. The profile is resolved as the worker resolves it when `config`
+/// does not carry it yet. A plan prepared without a store binds the profile
+/// `config` carries and no endpoint, and runs only on a connection that
+/// reports the same: a profile unknown at prepare and known at the connect
+/// is a difference, and the pass is refused.
+pub fn prepare_incremental_with_store(
+    config: &CloudConfig,
+    store: Option<&credential_store::CredentialStore>,
+    changes: &LocalChanges,
+    hints: IncrementalHints,
+) -> Result<IncrementalPrep, String> {
+    let mut config = config.clone();
+    crate::cloud_provider_factory::resolve_scheduler_profile(store, &mut config);
+    let config = &config;
+    // The endpoint the saved settings name now, when they can be read (a
+    // direct-auth profile in an open vault); `None` otherwise. Read on the
+    // active account's list: the plan is prepared before any connection
+    // captures one. The connection's own endpoint, read for its captured
+    // account, must equal it or the pass is refused, and a switch after the
+    // capture is refused by the connection's own account check.
+    let endpoint = store.and_then(|store| {
+        crate::cloud_provider_factory::current_endpoint_fingerprint(store, config, None)
+            .ok()
+            .flatten()
+    });
     let local = config.local_folder.to_string_lossy().to_string();
     // An index that cannot be read is no baseline, as the full sync reads it.
     let index = crate::sync::load_sync_index_for_profile(
@@ -363,7 +400,11 @@ pub fn prepare_incremental(
     )
     .ok()
     .flatten();
-    plan(config, index, changes, hints)
+    let mut prep = plan(config, index, changes, hints)?;
+    if let IncrementalPrep::Work { plan, .. } = &mut prep {
+        plan.endpoint = endpoint;
+    }
+    Ok(prep)
 }
 
 fn plan(
@@ -525,6 +566,8 @@ fn plan(
         plan: Box::new(IncrementalPlan {
             config_identity: config_identity(config)?,
             root_identity,
+            profile_id: config.resolved_profile_id.clone(),
+            endpoint: None,
             renames,
             work,
             index,
@@ -735,6 +778,16 @@ impl CloudService {
         }
         if config_identity(&config)? != plan.config_identity {
             return Err("AeroCloud configuration changed after watcher preparation; discard plan and run a full scan".into());
+        }
+        // The baseline belongs to the profile and the endpoint the plan was
+        // read for: a connection to another profile (a homonym chosen since),
+        // or to the same profile edited to another host, user or starting
+        // folder, would read that account's files against it. Unknown on one
+        // side only is a difference too.
+        if plan.profile_id != config.resolved_profile_id
+            || plan.endpoint != self.connection_endpoint
+        {
+            return Err("AeroCloud connected to another profile or endpoint than the watcher plan was prepared for; discard plan and run a full scan".into());
         }
         // A watcher plan can outlive the mounted/renamed local root. Refuse
         // before any remote rename or write, rather than interpreting its
@@ -1151,13 +1204,22 @@ pub async fn run_pair_incremental_cycle(
     plan: Box<IncrementalPlan>,
     full_scan_allowed: bool,
 ) -> Result<PairCycleReport, PairCycleError> {
-    let opened = super::open_aerocloud_connection(&config, store)
-        .await
-        .map_err(PairCycleError::before_connecting)?;
+    let mut config = config;
+    let opened = match super::open_aerocloud_connection(&mut config, store, true).await {
+        Ok(opened) => opened,
+        Err(message) => {
+            return Err(PairCycleError::before_connecting(
+                message,
+                crate::cloud_scan_schedule::pair_key(&config),
+            ));
+        }
+    };
+    let placed_key = opened.scheduler_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
     svc.connection_identity = Some(opened.identity);
+    svc.connection_endpoint = opened.endpoint;
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }
@@ -1172,6 +1234,7 @@ pub async fn run_pair_incremental_cycle(
             ran_full_scan: false,
             traits: Some(traits),
             failed_paths,
+            placed_key: placed_key.clone(),
         }),
         Ok(IncrementalRun::TooLarge(partial)) => svc
             .perform_full_sync_with_provider(&mut *provider)
@@ -1184,15 +1247,26 @@ pub async fn run_pair_incremental_cycle(
                     ran_full_scan: true,
                     traits: Some(traits),
                     failed_paths: Vec::new(),
+                    placed_key: placed_key.clone(),
                 }
             }),
         Err(e) => Err(e),
     };
     let _ = provider.disconnect().await;
     report.map_err(|message| PairCycleError {
+        needs_full_scan: plan_discarded_for_rescan(&message),
         message,
         traits: Some(traits),
+        placed_key,
     })
+}
+
+/// True when an incremental pass refused a plan the pair outgrew (the config
+/// identity or the local root changed after the watcher prepared it): both
+/// refusals tell the caller to discard the plan and run a full scan, so the
+/// worker schedules one instead of settling the changes away.
+fn plan_discarded_for_rescan(message: &str) -> bool {
+    message.contains("discard plan")
 }
 
 #[cfg(test)]

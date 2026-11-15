@@ -808,7 +808,16 @@ impl FtpManager {
             Err(_) => {
                 let cwd = self.current_path.clone();
                 self.reconnect().await?;
-                self.change_dir(&cwd).await?;
+                // The new session stands in the login folder. If the folder
+                // the session was in cannot be entered again (removed or
+                // renamed meanwhile), the session is closed, not kept: a
+                // relative path sent after this download (an AeroAgent tool
+                // passes the path the model wrote) would otherwise name a
+                // file in the login folder.
+                if let Err(e) = self.change_dir(&cwd).await {
+                    let _ = self.disconnect().await;
+                    return Err(e);
+                }
                 let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
                 stream
                     .transfer_type(FileType::Binary)
@@ -2319,6 +2328,19 @@ pub(crate) mod exists_tests {
     /// A server that never answers SIZE on its first session and serves the file
     /// on its second.
     async fn stalls_on_size_once(body: &'static [u8]) -> (String, Arc<AtomicUsize>) {
+        let (addr, sessions, _) = stalls_on_size_once_with(body, false).await;
+        (addr, sessions)
+    }
+
+    /// [`stalls_on_size_once`]; with `folder_gone`, its second session refuses
+    /// every `CWD` (the folder the first session stood in is no longer
+    /// there). Also gives every command the sessions received, in order.
+    async fn stalls_on_size_once_with(
+        body: &'static [u8],
+        folder_gone: bool,
+    ) -> (String, Arc<AtomicUsize>, Arc<std::sync::Mutex<Vec<String>>>) {
+        let commands = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let log = Arc::clone(&commands);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap().to_string();
         let sessions = Arc::new(AtomicUsize::new(0));
@@ -2327,6 +2349,7 @@ pub(crate) mod exists_tests {
             loop {
                 let (socket, _) = listener.accept().await.unwrap();
                 let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+                let log = Arc::clone(&log);
                 tokio::spawn(async move {
                     let (read, mut write) = socket.into_split();
                     let mut lines = BufReader::new(read).lines();
@@ -2334,10 +2357,12 @@ pub(crate) mod exists_tests {
                     write.write_all(b"220 ready\r\n").await.unwrap();
                     while let Ok(Some(line)) = lines.next_line().await {
                         let cmd = line.split(' ').next().unwrap_or_default().to_string();
+                        log.lock().unwrap().push(line.clone());
                         let reply = match cmd.as_str() {
                             "USER" => "331 password\r\n".to_string(),
                             "PASS" => "230 in\r\n".to_string(),
                             "PWD" => "257 \"/\"\r\n".to_string(),
+                            "CWD" if folder_gone && !first => "550 no such folder\r\n".to_string(),
                             "TYPE" | "CWD" => "200 ok\r\n".to_string(),
                             "SIZE" if first => continue,
                             "SIZE" => format!("213 {}\r\n", body.len()),
@@ -2368,7 +2393,7 @@ pub(crate) mod exists_tests {
                 });
             }
         });
-        (addr, sessions)
+        (addr, sessions, commands)
     }
 
     /// The SIZE probe only guards against a short transfer: one that stalls does
@@ -2387,6 +2412,37 @@ pub(crate) mod exists_tests {
             .unwrap();
         assert_eq!(std::fs::read(&local).unwrap(), b"hello");
         assert_eq!(sessions.load(Ordering::SeqCst), 2);
+    }
+
+    /// When the reconnect after a silent SIZE cannot enter the session's
+    /// folder again, the session is closed and nothing more is sent: kept, it
+    /// stood in the login folder, and a relative path sent after this
+    /// download named a file there.
+    #[tokio::test]
+    async fn a_reconnect_that_cannot_enter_the_folder_again_closes_the_session() {
+        let (addr, sessions, commands) = stalls_on_size_once_with(b"hello", true).await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.command_timeout = std::time::Duration::from_millis(200);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.change_dir("/work").await.unwrap();
+        let outcome = ftp.download_file("a.txt", local.to_str().unwrap()).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(sessions.load(Ordering::SeqCst), 2);
+        assert!(!ftp.is_connected(), "the session was kept");
+        assert!(!local.exists());
+        let sent = commands.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("RETR")), "{sent:?}");
+        // A relative request after it finds no session, it does not reach the
+        // login folder.
+        assert!(ftp.change_dir("docs").await.is_err());
+        assert_eq!(
+            commands.lock().unwrap().len(),
+            sent.len(),
+            "nothing is sent after the close"
+        );
     }
 
     #[tokio::test]

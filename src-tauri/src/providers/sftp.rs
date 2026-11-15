@@ -1412,6 +1412,10 @@ pub struct SftpProvider {
     config: SftpConfig,
     /// SSH connection handle (shared so rsync-over-SSH can open exec channels on the same session).
     ssh_handle: Option<SharedSshHandle>,
+    /// This SSH session's key in the delta probe cache: made with
+    /// `ssh_handle`, dropped with it, which removes the session's verdict
+    /// (`delta_sync_rsync::DeltaSessionKey`).
+    delta_session: Option<crate::delta_sync_rsync::DeltaSessionKey>,
     /// SFTP session for file operations
     sftp: Option<SftpChannel>,
     /// Current working directory
@@ -1498,6 +1502,7 @@ impl SftpProvider {
         Self {
             config,
             ssh_handle: None,
+            delta_session: None,
             sftp: None,
             current_dir: "/".to_string(),
             home_dir: "/".to_string(),
@@ -1599,6 +1604,7 @@ impl SftpProvider {
                     .await?;
                 scp.set_multi_thread_download(self.multi_thread_streams, self.multi_thread_cutoff);
                 self.ssh_handle = Some(handle);
+                self.delta_session = Some(crate::delta_sync_rsync::DeltaSessionKey::new());
                 self.scp = Some(Box::new(scp));
                 Ok(())
             }
@@ -1667,6 +1673,9 @@ impl SftpProvider {
     /// replacing the handle alone would leave it open for the life of the
     /// process: the SFTP reader task keeps a clone of its sender.
     async fn retire_ssh_connection(&mut self) {
+        // The session goes, and its delta verdict with it: the next
+        // connection starts from none.
+        self.delta_session = None;
         if let Some(handle) = self.ssh_handle.take() {
             let _ = tokio::time::timeout(std::time::Duration::from_secs(2), async move {
                 let guard = handle.lock().await;
@@ -1967,6 +1976,13 @@ impl SftpProvider {
     /// SFTP operations go through the same inner mpsc sender.
     pub fn handle_shared(&self) -> Option<SharedSshHandle> {
         self.ssh_handle.clone()
+    }
+
+    /// This SSH session's key in the delta probe cache; `None` without one.
+    pub fn delta_session_key(&self) -> Option<&str> {
+        self.delta_session
+            .as_ref()
+            .map(crate::delta_sync_rsync::DeltaSessionKey::as_str)
     }
 
     /// Build a [`DeltaTransport`](crate::delta_transport::DeltaTransport) ready to
@@ -2632,11 +2648,16 @@ pub(crate) async fn ssh_login_pinned(
     };
     let method = select_auth_method(config, pinned, none_accepted)?;
     let mut via_keyboard_interactive = false;
+    // The key this login offers: the session's pinned one, or the file's,
+    // held here until the server accepts it (P1).
+    let mut offered_key = None;
     let authenticated = if method == SshAuthMethod::NoCredential {
         true
     } else if method == SshAuthMethod::PrivateKey {
         // Try key-based authentication
-        authenticate_with_key(config, &mut handle, &private_key).await?
+        let key = captured_key(config, &private_key)?;
+        offered_key = Some(key.clone());
+        authenticate_with_key(config, &mut handle, key).await?
     } else if let Some(password) = &config.password {
         // Try password authentication first, then keyboard-interactive as fallback
         use russh::client::KeyboardInteractiveAuthResponse;
@@ -2716,6 +2737,11 @@ pub(crate) async fn ssh_login_pinned(
         return Err(ProviderError::TargetChanged);
     }
     let _ = auth_method.set(succeeded);
+    // Pinned only now that it got in: a key the server refused is not the
+    // session's, and a retry reads the file again (P1).
+    if let Some(key) = offered_key {
+        let _ = private_key.set(key);
+    }
     Ok(handle)
 }
 
@@ -2727,8 +2753,11 @@ fn public_key_sha256(key: &keys::PrivateKey) -> String {
         .to_string()
 }
 
-/// Resolve the real key once. A file replacement after the connection was
-/// authorized cannot change any lazy pool worker's authentication.
+/// The key a login offers: the one the session already got in with, else
+/// the file's, parsed now. Read only: `ssh_login_pinned` pins it once the
+/// server accepts it, so a file replacement after the connection was
+/// authorized cannot change any lazy pool worker's authentication, and a key
+/// that was refused is never kept (P1).
 fn captured_key(
     config: &SftpConfig,
     captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
@@ -2753,19 +2782,15 @@ fn captured_key(
     let key_pair = keys::load_secret_key(&expanded_path, passphrase_str.as_deref())
         .map_err(|e| ProviderError::AuthenticationFailed(format!("Failed to load key: {}", e)))?;
 
-    let key_pair = Arc::new(key_pair);
-    let _ = captured.set(key_pair.clone());
-    Ok(captured.get().cloned().unwrap_or(key_pair))
+    Ok(Arc::new(key_pair))
 }
 
 /// Authenticate using SSH private key
 async fn authenticate_with_key(
     config: &SftpConfig,
     handle: &mut Handle<SshHandler>,
-    captured: &std::sync::OnceLock<Arc<keys::PrivateKey>>,
+    key_pair: Arc<keys::PrivateKey>,
 ) -> Result<bool, ProviderError> {
-    let key_pair = captured_key(config, captured)?;
-
     // A1 finding: RSA keys authenticated with `None` (= ssh-rsa /
     // SHA-1) are rejected by OpenSSH 8.8+ because RSA-SHA1 is
     // disabled by default. We have to negotiate rsa-sha2-512 or
@@ -3019,6 +3044,7 @@ impl StorageProvider for SftpProvider {
                     resolve_start_dir(&self.home_dir, self.config.initial_path.as_deref());
 
                 self.ssh_handle = Some(handle);
+                self.delta_session = Some(crate::delta_sync_rsync::DeltaSessionKey::new());
                 self.sftp = Some(sftp);
             }
             Err(SftpOpenError::NoSftp(no_sftp)) => {
@@ -3091,6 +3117,7 @@ impl StorageProvider for SftpProvider {
         // Close SSH handle. Arc<Mutex<_>> means other clones (e.g. rsync-over-SSH borrowers)
         // may still hold references; the disconnect message is sent through the shared sender,
         // which is exactly what we want: the session is tore down once for everyone.
+        self.delta_session = None;
         if let Some(handle) = self.ssh_handle.take() {
             let guard = handle.lock().await;
             let _ = guard
@@ -7456,6 +7483,95 @@ mod tests {
         assert!(worker.supports_transfer_worker_reuse());
     }
 
+    /// CodeRabbit 4575991598 (A2): the delta probe cache key is one SSH
+    /// connection's, made with its handle and dropped with it. No other
+    /// provider shares or copies a handle: a pool worker (clone_for_transfer,
+    /// and a scan worker, which is one) dials a connection of its own, so it
+    /// has no key until it connects and never reads or removes the session's
+    /// verdict, and a run that asks for delta uses no workers at all
+    /// (`transfer_dag_sync::prepare_normal_file_workers`). Retiring the
+    /// connection to reconnect in place, disconnecting and dropping the
+    /// provider each remove the session's verdict, so the next connection
+    /// starts from none under a key of its own.
+    #[tokio::test]
+    async fn the_delta_cache_key_lives_and_dies_with_its_ssh_connection() {
+        use crate::delta_sync_rsync::{
+            has_verdict_for_test, store_refusal_for_test, DeltaSessionKey, PROBE_CACHE_TEST_GUARD,
+        };
+        const REFUSED: &str = "native hard rejection (PinnedLoginRefused): refused";
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        let mut provider = SftpProvider::new(SftpConfig {
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            trust_unknown_hosts: false,
+        });
+        assert_eq!(provider.delta_session_key(), None, "no connection, no key");
+        provider.connection_spec = Some(SftpConnectionSpec {
+            pinned_private_key: None,
+            pinned_key_sha256: None,
+            pinned_auth_method: None,
+            host: "example.com".to_string(),
+            port: 22,
+            username: "testuser".to_string(),
+            password: Some(secrecy::SecretString::from("testpass".to_string())),
+            private_key_path: None,
+            key_passphrase: None,
+            initial_path: None,
+            timeout_secs: 30,
+            pinned_host_key_sha256: None,
+            scp_fallback: true,
+        });
+        // As connect leaves it: a key made with the handle, a refusal stored.
+        let connect = |provider: &mut SftpProvider| {
+            provider.delta_session = Some(DeltaSessionKey::new());
+            let key = provider.delta_session_key().unwrap().to_string();
+            store_refusal_for_test(&key, REFUSED);
+            key
+        };
+        let key = connect(&mut provider);
+
+        let mut worker = provider
+            .clone_for_transfer()
+            .expect("a worker from the spec");
+        let worker_sftp = worker
+            .as_any_mut()
+            .downcast_mut::<SftpProvider>()
+            .expect("an SFTP worker");
+        assert_eq!(
+            worker_sftp.delta_session_key(),
+            None,
+            "its own connection, not yet made"
+        );
+        drop(worker);
+        assert!(
+            has_verdict_for_test(&key),
+            "a worker leaves the session's verdict"
+        );
+
+        // Reconnect in place.
+        provider.retire_ssh_connection().await;
+        assert_eq!(provider.delta_session_key(), None);
+        assert!(!has_verdict_for_test(&key), "retired with its connection");
+        let again = connect(&mut provider);
+        assert_ne!(again, key, "the new connection's key is its own");
+
+        provider.disconnect().await.unwrap();
+        assert!(!has_verdict_for_test(&again), "disconnect removes it");
+
+        let last = connect(&mut provider);
+        drop(provider);
+        assert!(
+            !has_verdict_for_test(&last),
+            "dropping the provider removes it"
+        );
+    }
+
     #[test]
     fn sftp_pool_private_key_snapshot_survives_path_replacement() {
         let key = keys::PrivateKey::new(
@@ -7709,9 +7825,11 @@ mod tests {
             timeout_secs: 30,
             trust_unknown_hosts: false,
         };
-        // The production capture: the key is parsed once, at login.
+        // The production capture: the key is parsed at login and pinned once
+        // the server accepts it.
         let captured = std::sync::OnceLock::new();
         let login = captured_key(&config, &captured).unwrap();
+        captured.set(login.clone()).unwrap();
         let login_sha256 = public_key_sha256(&login_key);
 
         let mut provider = SftpProvider::new(config);
@@ -8808,6 +8926,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_refused_sftp_parallel_plan_reports_a_safe_terminal_notice() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let provider =
             provider_on_a_server_that_goes_away(GoAwayAt::Write(usize::MAX), vec![7u8; 3]).await;
         let dir = tempfile::tempdir().unwrap();

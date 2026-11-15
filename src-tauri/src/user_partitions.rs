@@ -626,6 +626,20 @@ pub(crate) fn with_gui_account_snapshot<T>(
     with_gui_account_snapshot_in(&mut conn, expected, publish)
 }
 
+/// [`with_gui_account_snapshot`] for a caller that already holds the
+/// [`ProfileListLock`] of this database (the lock is not re-entrant): the
+/// AeroCloud placement, which resolves the profile names under it and then
+/// writes. The session and the active-account row are held as there, so no
+/// switch, lock or unlock lands between the check and the write.
+pub(crate) fn with_gui_account_snapshot_holding_the_list_lock<T>(
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut conn = open_or_init_cli()?;
+    let _session = hold_session()?;
+    with_gui_account_snapshot_in(&mut conn, expected, publish)
+}
+
 fn with_gui_account_snapshot_in<T>(
     conn: &mut Connection,
     expected: &GuiAccountSnapshot,

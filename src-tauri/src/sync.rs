@@ -1550,10 +1550,27 @@ pub async fn sync_tree_core(
     // transport's begin_batch returns NoopBatch (no session-reuse
     // support), or when delta policy is off: in those cases the
     // perform_upload/download functions fall through to the existing
-    // single-shot try_delta_transfer / classic provider path.
+    // single-shot try_delta_transfer / classic provider path. A refused
+    // batch login stops the run (CodeRabbit 4575991598). This body runs
+    // only dry runs (`should_route_sync_to_dag`), so neither this open nor
+    // the remote root above runs here; a real run opens its batch in
+    // `execute_sync_dag`, before its first write.
     let mut delta_batch: Option<Box<dyn DeltaBatch>> =
         if !opts.dry_run && matches!(opts.delta_policy, DeltaPolicy::Delta) {
-            crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
+            match crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+                Ok(batch) => batch,
+                Err(refusal) => {
+                    report.errors.push(SyncError {
+                        rel_path: String::new(),
+                        operation: "policy",
+                        message: format!("sync refused, nothing was written: {refusal}"),
+                        decision_policy: opts.delta_policy,
+                    });
+                    report.elapsed_secs = start.elapsed().as_secs_f64();
+                    sink.on_phase(SyncPhase::Done);
+                    return report;
+                }
+            }
         } else {
             None
         };
@@ -2455,6 +2472,19 @@ async fn verify_repair_sync_ec_after_download(
     }
 }
 
+/// The text of a failed transfer or delete: the operation, then the error.
+/// A refusal for a changed target is kept as the provider worded it, with
+/// nothing in front, so every reader of the text finds its marker where it
+/// starts.
+fn operation_failure(operation: &str, error: &dyn std::fmt::Display) -> String {
+    let text = error.to_string();
+    if crate::providers::types::is_target_changed_text(&text) {
+        text
+    } else {
+        format!("{operation} failed: {text}")
+    }
+}
+
 macro_rules! authorize_sync_io {
     ($scope:expr, $root:expr, $rel:expr) => {
         if let Err(error) = crate::sync_core::access::authorize($scope, $root, $rel) {
@@ -2630,7 +2660,7 @@ pub(crate) async fn perform_upload(
                             }
                         }
                         Err(e) => FileOutcome::Failed {
-                            error: format!("upload failed: {}", e),
+                            error: operation_failure("upload", &e),
                         },
                     };
                 }
@@ -2659,7 +2689,7 @@ pub(crate) async fn perform_upload(
             }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("upload failed: {}", e),
+            error: operation_failure("upload", &e),
         },
     }
 }
@@ -2839,7 +2869,7 @@ pub(crate) async fn perform_download(
                             }
                         }
                         Err(e) => FileOutcome::Failed {
-                            error: format!("download failed: {}", e),
+                            error: operation_failure("download", &e),
                         },
                     };
                 }
@@ -2879,7 +2909,7 @@ pub(crate) async fn perform_download(
             }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("download failed: {}", e),
+            error: operation_failure("download", &e),
         },
     }
 }
@@ -2987,7 +3017,7 @@ pub(crate) async fn perform_remote_delete(
             FileOutcome::Deleted { ec_sidecar_status }
         }
         Err(e) => FileOutcome::Failed {
-            error: format!("delete failed: {}", e),
+            error: operation_failure("delete", &e),
         },
     }
 }
@@ -3014,7 +3044,7 @@ pub(crate) fn perform_local_delete(
             ec_sidecar_status: None,
         },
         Err(e) => FileOutcome::Failed {
-            error: format!("delete failed: {}", e),
+            error: operation_failure("delete", &e),
         },
     }
 }
@@ -5592,7 +5622,10 @@ fn ipc_error_parts(command: &str, error: &IpcError) -> (String, String) {
             (info, human, None, format!(" (FTP {code})"))
         }
         IpcError::Marker(marker) => {
-            let info = classify_sync_error(marker, None);
+            // Classified as the page reads it, with its colon: the bare word
+            // is no refusal (`is_target_changed_text`), and would be read as
+            // a generic, retryable failure.
+            let info = classify_sync_error(&format!("{marker}: "), None);
             let human = match *marker {
                 "CONNECTION_CHANGED" => "The connection changed; reconnect and compare again",
                 _ => kind_message(&info.kind),
@@ -5672,6 +5705,23 @@ pub fn classify_ipc_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
 }
 
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
+    // A changed target is decided by its marker, on the text as given and
+    // before anything is taken out of it: the caller's path is removed below
+    // as a substring, and a file named `a`, or one named after the refusal's
+    // own first words, used to strip the words that decide and leave a
+    // retryable kind. The marker counts where the text starts or behind
+    // wrappers only: the operation that failed, or the window, may have put
+    // its own words in front (`upload failed: ...`). A marker inside
+    // something the error names, a remote path for one, is not the refusal.
+    // The refusal is final for this session: the same write is refused again.
+    if crate::providers::types::is_target_changed_text(raw) {
+        return SyncErrorInfo {
+            kind: SyncErrorKind::Auth,
+            message: raw.to_string(),
+            retryable: false,
+            file_path: file_path.map(|s| s.to_string()),
+        };
+    }
     let lower = classification_text(raw, file_path);
 
     // An OS error is classified by its code before any text: the text is the
@@ -6750,18 +6800,65 @@ fn load_multi_path_config_unlocked() -> MultiPathConfig {
     }
 }
 
-/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`).
-pub fn with_multi_path_config_mut<F, T>(f: F) -> Result<T, String>
+/// Strict load for the write path at an explicit location: a missing file
+/// is the default, a file that exists but cannot be read or parsed is an
+/// error, so a mutator never treats it as empty and overwrites what it
+/// could not read. `exists()` is deliberately not used: it reports false on
+/// metadata errors too, which would pick the default and lose the file.
+fn load_multi_path_config_strict_at(path: &Path) -> Result<MultiPathConfig, String> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(content) => content,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(MultiPathConfig::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Failed to read multi-path config '{}': {e}",
+                path.display()
+            ));
+        }
+    };
+    serde_json::from_str(&content).map_err(|e| {
+        format!(
+            "Failed to parse multi-path config '{}': {}",
+            path.display(),
+            crate::util::describe_json_error(&e)
+        )
+    })
+}
+
+/// Strict load at the real path, for the editor: an unreadable file is an
+/// error, so the editor never holds an empty list it could save over it.
+pub fn load_multi_path_config_strict() -> Result<MultiPathConfig, String> {
+    load_multi_path_config_strict_at(&multi_path_config_path()?)
+}
+
+fn multi_path_config_path() -> Result<PathBuf, String> {
+    let dir = crate::portable::aeroftp_data_root()
+        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
+    Ok(dir.join("multi_path.json"))
+}
+
+/// Load → mutate → save under one write lock (see `cloud_config::with_cloud_config_mut`),
+/// at an explicit path.
+pub fn with_multi_path_config_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut MultiPathConfig) -> Result<T, String>,
 {
     let _lock = MULTI_PATH_WRITE_LOCK
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut config = load_multi_path_config_unlocked();
+    let mut config = load_multi_path_config_strict_at(path)?;
     let out = f(&mut config)?;
-    save_multi_path_config_unlocked(&config)?;
+    save_multi_path_config_unlocked_at(&config, path)?;
     Ok(out)
+}
+
+pub fn with_multi_path_config_mut<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce(&mut MultiPathConfig) -> Result<T, String>,
+{
+    with_multi_path_config_mut_at(&multi_path_config_path()?, f)
 }
 
 /// Save multi-path config to disk (atomic temp+rename)
@@ -6773,11 +6870,20 @@ pub fn save_multi_path_config(config: &MultiPathConfig) -> Result<(), String> {
 }
 
 fn save_multi_path_config_unlocked(config: &MultiPathConfig) -> Result<(), String> {
-    let dir = crate::portable::aeroftp_data_root()
-        .ok_or_else(|| "Cannot determine AeroFTP data root".to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    save_multi_path_config_unlocked_at(config, &multi_path_config_path()?)
+}
+
+fn save_multi_path_config_unlocked_at(config: &MultiPathConfig, path: &Path) -> Result<(), String> {
+    // A full-file save (the editor's Save) must never replace a file that
+    // exists but cannot be read or parsed: the editor shows an empty list for
+    // it, and saving that list would erase the stored pairs. NotFound is the
+    // only "absent" that may be written.
+    load_multi_path_config_strict_at(path)?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
     let data = serde_json::to_string_pretty(config).map_err(|e| e.to_string())?;
-    atomic_write(&dir.join("multi_path.json"), data.as_bytes())
+    atomic_write(path, data.as_bytes())
 }
 
 // =============================
@@ -7981,6 +8087,149 @@ mod tests {
         assert_eq!(serde_json::to_string(&phase).unwrap(), "\"transferred\"");
     }
 
+    /// A `multi_path.json` that exists but does not parse is an error on the
+    /// write path: the mutator reports it and the file bytes stay untouched,
+    /// never overwritten by an empty config.
+    #[test]
+    fn an_unparseable_multi_path_file_is_never_overwritten() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err = with_multi_path_config_mut_at(&path, |_| Ok(())).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// An absent `multi_path.json` still takes the default-plus-save path.
+    #[test]
+    fn an_absent_multi_path_file_still_saves() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        with_multi_path_config_mut_at(&path, |config| {
+            config.parallel_pairs = true;
+            Ok(())
+        })
+        .unwrap();
+        let saved: MultiPathConfig =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(saved.parallel_pairs);
+    }
+
+    /// A parse error names the kind and position, never the value: a
+    /// credential in a mistyped field must not reach the log or the webview.
+    #[test]
+    fn a_parse_error_does_not_quote_the_multi_path_values() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        std::fs::write(
+            &path,
+            r#"{"pairs": [], "parallel_pairs": "SENTINEL-SECRET"}"#,
+        )
+        .unwrap();
+        let err = load_multi_path_config_strict_at(&path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert!(!err.contains("SENTINEL-SECRET"), "{err}");
+    }
+
+    /// The full-file save behind the editor's Save refuses to replace a
+    /// file it cannot parse: the editor shows an empty list for it, and
+    /// saving that list would erase the stored pairs. A missing file is
+    /// still created.
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unparseable_multi_path_file() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        let bytes = b"{ not json".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let err =
+            save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path).unwrap_err();
+        assert!(err.contains("parse"), "{err}");
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let absent = data.path().join("absent").join("multi_path.json");
+        save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &absent).unwrap();
+        assert!(load_multi_path_config_strict_at(&absent).is_ok());
+    }
+
+    /// Same guard on a file that exists but cannot be read (write-only, so
+    /// a save that skipped the check would still succeed and replace it).
+    #[cfg(unix)]
+    #[test]
+    fn a_full_save_refuses_to_overwrite_an_unreadable_multi_path_file() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("multi_path.json");
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&MultiPathConfig {
+            pairs: Vec::new(),
+            parallel_pairs: true,
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<MultiPathConfig>(bytes).is_ok());
+        std::fs::write(&path, bytes).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let result = save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to read"),
+            "not refused for the read: {err}"
+        );
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// A metadata error on the multi-path config (unreadable parent
+    /// directory) is an error, not a missing file: the closure never runs.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_multi_path_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("multi_path.json");
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&MultiPathConfig {
+            pairs: Vec::new(),
+            parallel_pairs: true,
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<MultiPathConfig>(bytes).is_ok());
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let mut ran = false;
+        let err = with_multi_path_config_mut_at(&path, |_| {
+            ran = true;
+            Ok(())
+        })
+        .unwrap_err();
+        assert!(!ran, "closure must not run on an unreadable config: {err}");
+        assert!(
+            err.contains("Failed to read"),
+            "not refused for the read: {err}"
+        );
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
     /// #1506 row 164: an OS error is classified by its code, in any language.
     /// The text before "(os error N)" is the operating system's, translated
     /// (Windows always, glibc once GTK has set the locale), and the English
@@ -8395,9 +8644,23 @@ mod tests {
             assert!(!message.contains("(HTTP"), "{raw} -> {message}");
         }
         // The typed facts.
+        let changed = ipc_error_render("test_command", &IpcError::Marker("CONNECTION_CHANGED"));
+        assert!(changed.starts_with("CONNECTION_CHANGED: "), "{changed}");
+        // Its tag is the refusal's: final, never retried.
+        let read = classify_ipc_error(&changed, None);
+        assert_eq!(read.kind, SyncErrorKind::Auth, "{changed}");
+        assert!(!read.retryable, "{changed}");
+        // A row of the shared table, which both readers run.
+        let table: serde_json::Value =
+            serde_json::from_str(include_str!("../../src/shared/target-changed-cases.json"))
+                .expect("the shared table parses");
         assert!(
-            ipc_error_render("test_command", &IpcError::Marker("CONNECTION_CHANGED"))
-                .starts_with("CONNECTION_CHANGED: ")
+            table["cases"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|case| case["text"] == changed.as_str() && case["refusal"] == true),
+            "{changed}"
         );
         assert!(ipc_error_render("test_command", &IpcError::Cancelled)
             .starts_with("Transfer cancelled by user"));
@@ -9681,6 +9944,304 @@ mod tests {
         let status = compare_file_pair(Some(&local), None, &options);
 
         assert_eq!(status, SyncStatus::LocalOnly);
+    }
+
+    /// The refusal of a changed target is final for the session, whatever
+    /// the file is called: the caller's path is taken out of the text as a
+    /// substring, and a path such as `a` used to remove the words the
+    /// classifier looks for and leave `connection`, a retryable kind. The
+    /// text also claims no more than the code: it does not say that the
+    /// authorization changed, since a moved write target gives it too.
+    #[test]
+    fn a_changed_target_is_not_retried_whatever_the_file_is_called() {
+        let text = crate::providers::ProviderError::TargetChanged.to_string();
+        assert!(text.starts_with(crate::providers::types::TARGET_CHANGED_MARKER));
+        assert!(!text.contains("authorization"), "{text}");
+        assert!(text.contains("write target"), "{text}");
+        for path in [
+            None,
+            Some("a"),
+            Some("e"),
+            Some("o"),
+            Some("connection"),
+            Some("target"),
+        ] {
+            for raw in [text.clone(), format!("  {text}")] {
+                let info = classify_sync_error(&raw, path);
+                assert!(!info.retryable, "{path:?}: {raw}");
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path:?}: {raw}");
+                assert_eq!(info.message, raw);
+            }
+        }
+        // CodeRabbit 4575757882: the operation that failed, or the window,
+        // puts its own words in front of the refusal. It is the same refusal
+        // wherever its marker stands, for every refusal of the family.
+        let family =
+            "CONNECTION_CHANGED: the restored transfer connection changed; nothing was transferred";
+        for wrapped in [
+            format!("upload failed: {text}"),
+            format!("download failed: {text}"),
+            format!("delete failed: {text}"),
+            format!("Transfer failed: upload failed: {text}"),
+            format!("Error: {family}"),
+            family.to_string(),
+        ] {
+            for path in [None, Some("a"), Some("notes.txt"), Some("upload")] {
+                let info = classify_sync_error(&wrapped, path);
+                assert!(!info.retryable, "{path:?}: {wrapped}");
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path:?}: {wrapped}");
+            }
+        }
+        // A file named after the marker is not the refusal: its own path is
+        // taken out before the marker is looked for, and the error under it
+        // is classified as what it is.
+        let named = "CONNECTION_CHANGED: notes.txt";
+        let mentioned = classify_sync_error(
+            &format!("Connection reset while reading {named}"),
+            Some(named),
+        );
+        assert_eq!(mentioned.kind, SyncErrorKind::Network);
+        assert!(mentioned.retryable);
+        // And a refusal about that very file is still the refusal.
+        let both = classify_sync_error(&format!("upload failed: {text} ({named})"), Some(named));
+        assert!(!both.retryable);
+        // CodeRabbit 4575757882, second round: the marker inside a path the
+        // error names is not the refusal, whichever path the caller gives.
+        // The FTP upload executor gives the local path while the server's
+        // text names the remote one.
+        let reset = "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt";
+        for path in [
+            Some("/home/user/sync/file.txt"),
+            Some("/CONNECTION_CHANGED: archive/file.txt"),
+            Some("/home/user/CONNECTION_CHANGED: archive/file.txt"),
+            None,
+        ] {
+            for raw in [reset.to_string(), format!("upload failed: {reset}")] {
+                let info = classify_sync_error(&raw, path);
+                assert_eq!(info.kind, SyncErrorKind::Network, "{path:?}: {raw}");
+                assert!(info.retryable, "{path:?}: {raw}");
+            }
+        }
+        // CodeRabbit 4575991602: a file whose name is the marker and nothing
+        // else does not take the refusal's own first word out of the text.
+        let refused = crate::providers::ProviderError::TargetChanged.to_string();
+        for path in [
+            crate::providers::types::TARGET_CHANGED_MARKER,
+            "/srv/CONNECTION_CHANGED:",
+            "CONNECTION_CHANGED:/notes.txt",
+        ] {
+            for raw in [refused.clone(), format!("upload failed: {refused}")] {
+                let info = classify_sync_error(&raw, Some(path));
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
+                assert!(!info.retryable, "{path}: {raw}");
+            }
+        }
+        // CodeRabbit 4575757882 (third round) and 4576777955: a file named
+        // after the refusal's own first words takes nothing out of it. No
+        // path is removed from the text any more; the marker's position
+        // decides.
+        for path in [
+            "CONNECTION_CHANGED: the account",
+            "/srv/CONNECTION_CHANGED: the",
+            "CONNECTION_CHANGED: the account or the write target changed",
+        ] {
+            for raw in [refused.clone(), format!("upload failed: {refused}")] {
+                let info = classify_sync_error(&raw, Some(path));
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
+                assert!(!info.retryable, "{path}: {raw}");
+            }
+            // An error that names that file after other words is not the
+            // refusal.
+            let named = classify_sync_error(
+                &format!("Connection reset while uploading {path}"),
+                Some(path),
+            );
+            assert_eq!(named.kind, SyncErrorKind::Network, "{path}");
+            assert!(named.retryable, "{path}");
+        }
+        // The two spellings of the marker in the crate are one family.
+        assert_eq!(
+            crate::providers::types::TARGET_CHANGED_MARKER,
+            format!("{}:", crate::provider_commands::CONNECTION_CHANGED_MARKER)
+        );
+    }
+
+    /// CodeRabbit 4575757882, through the operations themselves: an upload,
+    /// a download and a remote delete the provider refuses for a changed
+    /// target report the refusal as the provider worded it, its marker
+    /// first, and the classifier answers that it is not retried. Any other
+    /// provider error keeps the operation's words in front.
+    #[tokio::test]
+    async fn a_changed_target_refused_by_an_operation_is_not_retried() {
+        use crate::providers::{ProviderError, ProviderType, RemoteEntry, StorageProvider};
+
+        struct Refusing(bool);
+        impl Refusing {
+            fn refusal(&self) -> ProviderError {
+                if self.0 {
+                    ProviderError::TargetChanged
+                } else {
+                    ProviderError::ServerError("HTTP 500".into())
+                }
+            }
+        }
+        #[async_trait::async_trait]
+        impl StorageProvider for Refusing {
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+                self
+            }
+            fn provider_type(&self) -> ProviderType {
+                ProviderType::Ftp
+            }
+            fn display_name(&self) -> String {
+                "refusing".into()
+            }
+            async fn connect(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn disconnect(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            fn is_connected(&self) -> bool {
+                true
+            }
+            async fn list(&mut self, _p: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+                Ok(vec![])
+            }
+            async fn pwd(&mut self) -> Result<String, ProviderError> {
+                Ok("/".into())
+            }
+            async fn cd(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn cd_up(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn download(
+                &mut self,
+                _remote: &str,
+                _local: &str,
+                _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+            ) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn download_to_bytes(&mut self, _remote: &str) -> Result<Vec<u8>, ProviderError> {
+                Err(self.refusal())
+            }
+            async fn upload(
+                &mut self,
+                _local: &str,
+                _remote: &str,
+                _cb: Option<Box<dyn Fn(u64, u64) + Send>>,
+            ) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn mkdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn delete(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rmdir(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rmdir_recursive(&mut self, _p: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn rename(&mut self, _f: &str, _t: &str) -> Result<(), ProviderError> {
+                Err(self.refusal())
+            }
+            async fn stat(&mut self, _p: &str) -> Result<RemoteEntry, ProviderError> {
+                Err(ProviderError::NotSupported("stat".into()))
+            }
+            async fn size(&mut self, _p: &str) -> Result<u64, ProviderError> {
+                Ok(0)
+            }
+            async fn exists(&mut self, _p: &str) -> Result<bool, ProviderError> {
+                Ok(true)
+            }
+            async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+                Ok(())
+            }
+            async fn server_info(&mut self) -> Result<String, ProviderError> {
+                Ok("refusing".into())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a"), b"x").unwrap();
+        let local_root = dir.path().to_str().unwrap();
+        let options = SyncErrorCorrectionOptions::default();
+        let spec = || SyncTransferSpec {
+            local_access: None,
+            rel: "a",
+            total: 1,
+            decision_policy: DeltaPolicy::Mtime,
+            requested_policy: DeltaPolicy::Mtime,
+        };
+        for changed in [true, false] {
+            let mut provider: Box<dyn StorageProvider> = Box::new(Refusing(changed));
+            let mut sink = NoopProgressSink;
+            let upload = perform_upload(
+                &mut provider,
+                local_root,
+                "/remote",
+                spec(),
+                false,
+                &mut sink,
+                &mut None,
+                &options,
+            )
+            .await;
+            let download = perform_download(
+                &mut provider,
+                local_root,
+                "/remote",
+                spec(),
+                1,
+                false,
+                &mut sink,
+                &mut None,
+                None,
+                &options,
+            )
+            .await;
+            let delete = perform_remote_delete(
+                &mut provider,
+                local_root,
+                None,
+                "/remote",
+                "a",
+                DeltaPolicy::Mtime,
+                false,
+                &mut sink,
+                &options,
+            )
+            .await;
+            for (operation, outcome) in [
+                ("upload", upload),
+                ("download", download),
+                ("delete", delete),
+            ] {
+                let FileOutcome::Failed { error } = outcome else {
+                    panic!("{operation} (changed={changed}) did not fail");
+                };
+                let info = classify_sync_error(&error, Some("a"));
+                if changed {
+                    assert!(
+                        error.starts_with(crate::providers::types::TARGET_CHANGED_MARKER),
+                        "{operation}: {error}"
+                    );
+                    assert!(!info.retryable, "{operation}: {error}");
+                    assert_eq!(info.kind, SyncErrorKind::Auth, "{operation}: {error}");
+                } else {
+                    assert!(
+                        error.starts_with(&format!("{operation} failed: ")),
+                        "{operation}: {error}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

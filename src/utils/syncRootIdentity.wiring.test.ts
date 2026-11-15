@@ -64,6 +64,9 @@ function openAeroSync(roots: { local: string; right: string; localLocal: boolean
         adaptFileComparisons: () => ({}), compareOutcome: () => ({}), compareEntries: () => ({}),
         isCompareCancelled: () => false, isScanIncompleteError: () => false, describeScanIncompleteError: String,
         invoke, normalizedSyncRoot, notify: { error: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        // The connection stored with the comparison (P1, E2): not what this
+        // test reads, which is the pair the comparison names.
+        connectionAtAction: () => null,
     };
     const open = new Function(...Object.keys(context), `${openCode}; return openAeroSync;`)(...Object.values(context));
     open('compare', [], '.versions', true);

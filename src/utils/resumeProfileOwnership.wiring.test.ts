@@ -249,8 +249,12 @@ it('asks the session for no login folder when the scope is absolute', async () =
     const restoredTransferLoginFolder = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',
         `${helper}; return restoredTransferLoginFolder;`)(invoke, isLoginRelativeScope, profileOverlayScope);
     expect(await restoredTransferLoginFolder({ protocol: 'sftp', initialPath: '/srv', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
-    expect(await restoredTransferLoginFolder({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
+    expect(await restoredTransferLoginFolder({ protocol: 'ftp', initialPath: '/srv', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBeNull();
     expect(invoke).not.toHaveBeenCalled();
+    // #202: FTP opens a relative Remote Path under the login folder too, so
+    // its `docs` is `~/docs` and the session is asked where that is.
+    expect(await restoredTransferLoginFolder({ protocol: 'ftp', initialPath: 'docs', aeroCryptOverlay: { enabled: true, remoteScope: '' } })).toBe('/home/u');
+    expect(invoke).toHaveBeenCalledWith('provider_login_folder');
     // A session that cannot report it leaves the scope unplaced (fail closed).
     const failing = vi.fn(async () => { throw new Error('no session'); });
     const unplaced = new Function('invoke', 'isLoginRelativeScope', 'profileOverlayScope',

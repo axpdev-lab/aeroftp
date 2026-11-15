@@ -1,0 +1,42 @@
+{
+  "_comment": "How a saved user name fills the {username} placeholder of a folder. Read by the frontend (src/components/CloudSetupWizard.test.ts: resolveUsernameTemplate, profileOverlayScope, the setup wizard's profileRoot and aeroCloudBase) and by the backend (cloud_provider_factory.rs profile_root, crypt_overlay_provider.rs profile_overlay_scope), so both insert the same folder name. The user name goes in exactly as saved, in one literal pass; a null path means a blank user name, which leaves the template as written.",
+  "pathTemplate": "/remote.php/dav/files/{username}/",
+  "cases": [
+    {
+      "user": "alice",
+      "path": "/remote.php/dav/files/alice/"
+    },
+    {
+      "user": " alice ",
+      "path": "/remote.php/dav/files/ alice /"
+    },
+    {
+      "user": "al ice",
+      "path": "/remote.php/dav/files/al ice/"
+    },
+    {
+      "user": "$&",
+      "path": "/remote.php/dav/files/$&/"
+    },
+    {
+      "user": "$1",
+      "path": "/remote.php/dav/files/$1/"
+    },
+    {
+      "user": "$$x$'",
+      "path": "/remote.php/dav/files/$$x$'/"
+    },
+    {
+      "user": "{username}",
+      "path": "/remote.php/dav/files/{username}/"
+    },
+    {
+      "user": "",
+      "path": null
+    },
+    {
+      "user": "   ",
+      "path": null
+    }
+  ]
+}

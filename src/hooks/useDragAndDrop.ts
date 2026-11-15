@@ -18,6 +18,7 @@ import type { HumanizedOperationType, HumanizedLogParams } from './useHumanizedL
 import { dropsIntoItself, localRowName, outermostLocalRows } from '../utils/localSelection';
 import { normalizeLocalPath } from '../utils/localPath';
 import { QueuedTargetChangedError } from '../utils/queuedTarget';
+import { isTargetChangedRefusal } from '../utils/targetChanged';
 
 export type PanelKey = 'remote' | 'local' | 'local2';
 export type RemoteDragTarget = { check: () => void; epoch: number };
@@ -404,7 +405,7 @@ export function useDragAndDrop({
             } catch (err) {
                 humanLog.logError('MOVE', { isRemote: sourceIsRemote, filename: fileName }, logId);
                 notify.error(`Failed to move ${fileName}`, String(err));
-                if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
+                if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) return;
             }
         }
 

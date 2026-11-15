@@ -2011,10 +2011,9 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_share_link_refused_as_existing_by_exit_status_is_made_again() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("mega-export");
-        std::fs::write(
+        crate::util::script_stub::install(
             &script,
             concat!(
                 "#!/bin/sh\n",
@@ -2025,9 +2024,7 @@ mod tests {
                 "touch \"$d/exported\"\n",
                 "echo \"Exported $2: https://mega.nz/file/AbC#key\"\n",
             ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         std::fs::write(dir.path().join("exported"), b"").unwrap();
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
@@ -2046,15 +2043,12 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn megacmd_exit_codes_classify_before_the_message() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("mega-exit");
-        std::fs::write(
+        crate::util::script_stub::install(
             &script,
             "#!/bin/sh\ncat \"$(dirname \"$0\")/stderr.txt\" >&2\nexit $(cat \"$(dirname \"$0\")/code.txt\")\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         let run = |code: &str, stderr: &str| {
@@ -2616,7 +2610,6 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_failed_wildcard_lookup_keeps_the_local_file() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         // The listing never holds the requested name, so the lookup fails.
         let ls = "#!/bin/sh\n\
@@ -2625,8 +2618,7 @@ mod tests {
         let get = "#!/bin/sh\necho \"mega-get $*\" >> \"$(dirname \"$0\")/argv.log\"\n";
         for (name, body) in [("mega-ls", ls), ("mega-get", get)] {
             let path = dir.path().join(name);
-            std::fs::write(&path, body).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            crate::util::script_stub::install(&path, body);
         }
         let local = dir.path().join("keep.txt");
         std::fs::write(&local, b"precious").unwrap();
@@ -2648,15 +2640,13 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_wildcard_path_in_the_bin_resolves_from_the_bin_root() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let ls = "#!/bin/sh\n\
                   echo \"mega-ls $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
                   echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
                   echo '----    1            5 06Nov2026 12:20:41 H:binstar1 a?.txt'\n";
         let path = dir.path().join("mega-ls");
-        std::fs::write(&path, ls).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::util::script_stub::install(&path, ls);
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         let address = provider
@@ -2676,7 +2666,6 @@ mod tests {
     /// `/` holds a folder `a?` and a file `f?`, the folder holds a file `b?`.
     #[cfg(unix)]
     fn two_level_standin(dir: &std::path::Path) {
-        use std::os::unix::fs::PermissionsExt;
         let ls = "#!/bin/sh\n\
                   echo \"mega-ls $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
                   echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'\n\
@@ -2686,8 +2675,7 @@ mod tests {
                      echo '----    1            5 06Nov2026 12:20:41 H:file0002 f?' ;;\n\
                   esac\n";
         let path = dir.join("mega-ls");
-        std::fs::write(&path, ls).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::util::script_stub::install(&path, ls);
     }
 
     /// CodeRabbit on #1524: resolution goes one level at a time through the
@@ -2749,7 +2737,6 @@ mod tests {
     /// is asked for is not there. The other commands record their arguments.
     #[cfg(unix)]
     fn wildcard_operations_standin(dir: &std::path::Path) {
-        use std::os::unix::fs::PermissionsExt;
         let script = "#!/bin/sh\n\
             echo \"$(basename \"$0\") $*\" >> \"$(dirname \"$0\")/argv.log\"\n\
             for last; do :; done\n\
@@ -2766,8 +2753,7 @@ mod tests {
             esac\n";
         for name in ["mega-ls", "mega-mv", "mega-cp", "mega-export", "mega-du"] {
             let path = dir.join(name);
-            std::fs::write(&path, script).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            crate::util::script_stub::install(&path, script);
         }
     }
 
@@ -2811,15 +2797,12 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn find_keeps_the_spaces_of_a_path() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("mega-find");
-        std::fs::write(
+        crate::util::script_stub::install(
             &path,
             "#!/bin/sh\nprintf '/dir/report \\n/dir/report\\r\\n'\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        );
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         let found = provider.find("/dir", "report*").await.unwrap();
@@ -2856,12 +2839,10 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn find_results_are_absolute() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let find = "#!/bin/sh\necho 'photos?/a.txt'\necho '/docs/b.txt'\n";
         let path = dir.path().join("mega-find");
-        std::fs::write(&path, find).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::util::script_stub::install(&path, find);
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         let found = provider.find("/", "*.txt").await.unwrap();
@@ -2875,7 +2856,6 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn a_find_by_handle_and_from_a_sub_path_returns_absolute_paths() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         two_level_standin(dir.path());
         let find = "#!/bin/sh\n\
@@ -2885,8 +2865,7 @@ mod tests {
                     *) echo 'docs/sub/x.txt' ;;\n\
                     esac\n";
         let path = dir.path().join("mega-find");
-        std::fs::write(&path, find).unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        crate::util::script_stub::install(&path, find);
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
         let by_handle = provider.find("/a?", "*").await.unwrap();
@@ -2904,7 +2883,6 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn purging_a_bin_item_named_star_uses_its_handle() {
-        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().expect("tempdir");
         let log = dir.path().join("argv.log");
         let ls = "#!/bin/sh\n\
@@ -2915,8 +2893,7 @@ mod tests {
         let rm = "#!/bin/sh\necho \"mega-rm $*\" >> \"$(dirname \"$0\")/argv.log\"\n";
         for (name, body) in [("mega-ls", ls), ("mega-rm", rm)] {
             let path = dir.path().join(name);
-            std::fs::write(&path, body).unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            crate::util::script_stub::install(&path, body);
         }
         let mut provider = test_provider();
         provider.cmd_dir = Some(dir.path().to_path_buf());
