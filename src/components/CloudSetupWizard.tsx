@@ -65,19 +65,22 @@ function shownFolderLabel(label: string): string {
     if (label.startsWith('~/')) return `~/${shownFolderLabel(label.slice(2))}`;
     const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(label)?.[0];
     if (!scheme) return label;
-    // The host as a URL parser reads it: a user part ends at its last `@`.
-    // A URL that does not parse, or with an `@` the parser kept out of a
-    // user part (a password with a `/`), may carry its secret where the host
-    // is read: it shows its scheme only.
+    // The host as a URL parser reads it, shown only when it is what the
+    // folder writes after its last `@` (after the scheme, without one): an
+    // `@` the parser kept out of a user part (a password with a `/`) may put
+    // a secret where the host is read. A URL that does not parse, or whose
+    // host is not there, shows its scheme only.
     let url: URL | undefined;
     try {
         url = new URL(label);
     } catch {
         url = undefined;
     }
-    const userPart = url && (url.username || url.password);
-    if (!url?.host || (!userPart && label.includes('@'))) return `${scheme}…`;
-    return `${scheme}${url.host}/…`;
+    const at = label.lastIndexOf('@');
+    const afterUser = (at < 0 ? label.slice(scheme.length) : label.slice(at + 1)).toLowerCase();
+    const host = url?.host ?? '';
+    if (!host || !afterUser.startsWith(host) || !/^(?:$|[/?#:])/.test(afterUser.slice(host.length))) return `${scheme}…`;
+    return `${scheme}${host}/…`;
 }
 
 /**

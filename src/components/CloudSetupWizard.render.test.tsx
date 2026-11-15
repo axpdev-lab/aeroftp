@@ -150,11 +150,15 @@ it('shows a URL folder of a login-relative profile by its host only, saved with 
     // Written as a URL, and saved already in `~/` form: a password with
     // `@` keeps its user part to the last `@`, and one with a `/`, which no
     // parser reads as a user part, shows the scheme only, whether the rest
-    // parses as a host and port or does not parse.
+    // parses as a host and port or does not parse, a user part parsed
+    // before it included, or a parsed host that only begins what follows
+    // the last `@`.
     const url = 'https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g';
     const atInPassword = 'https://alice:pa55@w0rd@example.com/T0KEN-opaque/data';
     const slashInPassword = 'https://alice:pa55/w0rd@example.com/T0KEN-opaque/data';
     const slashInDigitPassword = 'https://alice:5512/w0rd@example.com/T0KEN-opaque/data';
+    const atAndSlashInPassword = 'https://alice:fake@secretpart:5512/w0rd@example.com/T0KEN-opaque/data';
+    const hostBeginsTheRest = 'https://alice:pa55@w0rd/x@w0rdhost.example/T0KEN-opaque/data';
     const written: [string, string][] = [
         [url, '~/https://example.com/…/'],
         [`~/${url}`, '~/https://example.com/…/'],
@@ -164,6 +168,10 @@ it('shows a URL folder of a login-relative profile by its host only, saved with 
         [`~/${slashInPassword}`, '~/https://…/'],
         [slashInDigitPassword, '~/https://…/'],
         [`~/${slashInDigitPassword}`, '~/https://…/'],
+        [atAndSlashInPassword, '~/https://…/'],
+        [`~/${atAndSlashInPassword}`, '~/https://…/'],
+        [hostBeginsTheRest, '~/https://…/'],
+        [`~/${hostBeginsTheRest}`, '~/https://…/'],
     ];
     for (const [protocol, [initialPath, shown]] of (['sftp', 'ftp'] as const).flatMap(p => written.map(w => [p, w] as const))) {
         mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol, initialPath }];
@@ -179,7 +187,7 @@ it('shows a URL folder of a login-relative profile by its host only, saved with 
         expect(label?.getAttribute('title'), name).toBe(shown);
         expect(label?.textContent?.trim(), name).toBe(shown);
         // The profile list, the label and its title alike.
-        for (const secret of ['alice', 'pa55', '5512', 'w0rd', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, name).not.toContain(secret);
+        for (const secret of ['alice', 'pa55', 'fake', 'secretpart', '5512', 'w0rd', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, name).not.toContain(secret);
         await React.act(async () => root!.unmount()); host.remove(); root = undefined;
     }
 });
