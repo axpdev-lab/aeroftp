@@ -1141,16 +1141,20 @@ impl WebDavProvider {
         if self.single_file_mode.is_some() {
             return self.config.url.clone();
         }
-        let base = self.config.url.trim_end_matches('/');
+        // A configured `?query` or `#fragment` stays after the request path:
+        // the collection path goes into the URL's path component.
+        let url = self.config.url.as_str();
+        let (url_path, url_tail) = url.split_at(url.find(['?', '#']).unwrap_or(url.len()));
+        let base = url_path.trim_end_matches('/');
         let rooted = self.resolve_root(path);
         let path = rooted.trim_start_matches('/');
 
         if path.is_empty() || path == "/" {
             // For root/empty path, ensure trailing slash (required by some WebDAV servers
             // for Digest auth URI matching on directory endpoints)
-            format!("{}/", base)
+            format!("{}/{}", base, url_tail)
         } else {
-            format!("{}/{}", base, Self::encode_path(path))
+            format!("{}/{}{}", base, Self::encode_path(path), url_tail)
         }
     }
 
@@ -10359,6 +10363,53 @@ mod walk_scope_tests {
                 .collect();
             paths.sort();
             assert_eq!(paths, ["/x/a.txt", "/x/d/b.txt"], "{listings:?}");
+        }
+    }
+}
+
+#[cfg(test)]
+mod request_target_tests {
+    use super::*;
+
+    /// The URL a WebDAV request goes to for a profile whose URL carries a
+    /// query, for a file and for the root.
+    fn targets(host: &str) -> (String, String) {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("basePath".to_string(), "/dav/alice/".to_string());
+        let config = crate::providers::ProviderConfig {
+            name: "dav".into(),
+            provider_type: crate::providers::ProviderType::WebDav,
+            host: host.into(),
+            port: None,
+            username: Some("u".into()),
+            password: None,
+            initial_path: None,
+            extra,
+        };
+        let provider =
+            WebDavProvider::new(WebDavConfig::from_provider_config(&config).unwrap()).unwrap();
+        (provider.build_url("/docs/f.txt"), provider.build_url("/"))
+    }
+
+    /// The collection path is requested before the query, for both query
+    /// forms (a plain query and one holding a slash).
+    #[test]
+    fn a_request_targets_the_collection_before_the_query() {
+        for (host, query) in [
+            ("https://dav.example.test?view=1", "?view=1"),
+            ("https://dav.example.test?view=1/a", "?view=1/a"),
+        ] {
+            let (file, root) = targets(host);
+            assert_eq!(
+                file,
+                format!("https://dav.example.test/dav/alice/docs/f.txt{query}"),
+                "{host}"
+            );
+            assert_eq!(
+                root,
+                format!("https://dav.example.test/dav/alice/{query}"),
+                "{host}"
+            );
         }
     }
 }
