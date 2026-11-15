@@ -410,6 +410,10 @@ pub struct CloudService {
     /// ([`cloud_provider_factory::OpenedCloudProvider::endpoint`]), which a
     /// watcher plan is checked against before it runs.
     connection_endpoint: Option<String>,
+    /// The account the connection reads for
+    /// ([`cloud_provider_factory::OpenedCloudProvider::reads_account`]),
+    /// which a watcher plan is checked against before it runs.
+    connection_account: Option<i64>,
     revoked_receipts: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     receipt_root_cache:
         std::sync::Mutex<Option<(PathBuf, LocalRootIdentity, Option<serde_json::Value>)>>,
@@ -507,6 +511,7 @@ impl CloudService {
             cloud_receipts: Arc::default(),
             connection_identity: None,
             connection_endpoint: None,
+            connection_account: None,
             revoked_receipts: Arc::default(),
             receipt_root_cache: std::sync::Mutex::new(None),
             #[cfg(test)]
@@ -3788,6 +3793,8 @@ pub(crate) struct ConnectedCloudProvider {
     identity: Option<String>,
     /// [`cloud_provider_factory::OpenedCloudProvider::endpoint`].
     endpoint: Option<String>,
+    /// [`cloud_provider_factory::OpenedCloudProvider::reads_account`].
+    account: Option<i64>,
     /// The remote folder the saved settings still hold when this connect
     /// placed the folder for its run only (nothing saved): the scheduler
     /// reads the entry under that folder's key next time.
@@ -4386,6 +4393,7 @@ async fn compose_aerocloud_connection(
         provider,
         identity: opened.identity,
         endpoint: opened.endpoint,
+        account: Some(account),
         saved_folder,
     })
 }
@@ -7613,6 +7621,7 @@ mod baseline_tests {
                 }),
                 identity: None,
                 endpoint: None,
+                account: None,
                 saved_folder: None,
             };
             sync_opened_config(config, opened, None, true)

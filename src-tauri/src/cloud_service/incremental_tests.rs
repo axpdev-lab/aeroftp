@@ -1001,6 +1001,61 @@ async fn one_way_update_incremental_bulk_keeps_newer_files_and_propagates_delete
     }
 }
 
+/// Two accounts can hold a profile with the same id (an import), and an
+/// app-login profile has no endpoint: a plan prepared on one account is
+/// refused on a connection that reads for the other, before any rename or
+/// delete. The same account runs it.
+#[tokio::test]
+async fn a_plan_prepared_on_another_account_with_the_same_profile_id_is_refused() {
+    for (prepared_on, connected_for, runs) in [(Some(7), Some(9), false), (Some(7), Some(7), true)]
+    {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let config = CloudConfig {
+            resolved_profile_id: Some("imported-oauth".into()),
+            ..pair(root)
+        };
+        let mut remote = MemRemote::new();
+        let mut index = empty_index(&config);
+        synced(&mut index, &remote, root, "gone", b"original");
+        synced(&mut index, &remote, root, "keep", b"renamed later");
+        std::fs::remove_file(root.join("gone")).unwrap();
+        std::fs::rename(root.join("keep"), root.join("kept")).unwrap();
+        let mut prepared = work(
+            plan(
+                &config,
+                Some(index),
+                &changes(root, &["gone", "keep", "kept"], &[("keep", "kept")]),
+                EXACT,
+            )
+            .unwrap(),
+        );
+        assert!(prepared.endpoint.is_none(), "an app login has no endpoint");
+        assert_eq!(prepared.renames.len(), 1, "the plan holds a rename");
+        assert!(prepared.work.contains_key("gone"), "and a delete");
+        prepared.account = prepared_on;
+        let mut svc = CloudService::new();
+        svc.connection_account = connected_for;
+        svc.init(config).await;
+        let outcome = svc.execute_incremental(&mut remote, prepared, None).await;
+        let state = remote.state();
+        if runs {
+            assert!(outcome.is_ok(), "{:?}", outcome.err());
+            assert!(state.deletes.contains(&"/remote/gone".to_string()));
+        } else {
+            assert!(
+                matches!(outcome, Err(ref error) if error.contains("another profile or endpoint")),
+                "{:?}",
+                outcome.err()
+            );
+            assert!(state.deletes.is_empty());
+            assert!(state.renames.is_empty());
+            assert!(state.uploads.is_empty());
+            assert_eq!(state.files["/remote/gone"].0, b"original");
+        }
+    }
+}
+
 #[tokio::test]
 async fn one_way_update_watcher_refuses_a_root_removed_after_prepare() {
     for with_baseline in [false, true] {

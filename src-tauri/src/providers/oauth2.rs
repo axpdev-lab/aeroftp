@@ -49,6 +49,33 @@ fn invalidate_memory_tokens(
     }
 }
 
+/// The memory fallback of a token read: the profile's own record, else (for a
+/// profile read) the legacy singleton, which is moved to the profile key as the
+/// vault's lazy migration moves it, once `valid` accepts it. The profile's
+/// sign-out then removes the only copy, so no later read restores it.
+fn adopt_memory_record(
+    map: &mut HashMap<String, String>,
+    account: &str,
+    legacy: &str,
+    adopt_legacy: bool,
+    valid: impl FnOnce(&str) -> Result<(), ProviderError>,
+) -> Result<Option<Zeroizing<String>>, ProviderError> {
+    if let Some(json) = map.get(account) {
+        return Ok(Some(Zeroizing::new(json.clone())));
+    }
+    if !adopt_legacy || account == legacy {
+        return Ok(None);
+    }
+    let Some(json) = map.get(legacy) else {
+        return Ok(None);
+    };
+    valid(json)?;
+    let json = map.remove(legacy).expect("the singleton read above");
+    let adopted = Zeroizing::new(json.clone());
+    map.insert(account.to_owned(), json);
+    Ok(Some(adopted))
+}
+
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
 type ConfiguredClient =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
@@ -1813,24 +1840,21 @@ impl OAuth2Manager {
             }
         }
 
-        // Fallback: try in-memory cache (mirror of the vault layout above).
-        if let Ok(cache) = MEMORY_TOKEN_CACHE.lock() {
-            if let Some(map) = cache.as_ref() {
-                if let Some(json) = map.get(&account) {
+        // Fallback: try in-memory cache (mirror of the vault layout above,
+        // its lazy migration included).
+        if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
+            if let Some(map) = cache.as_mut() {
+                let adopted =
+                    adopt_memory_record(map, &account, &legacy, !profile_id.is_empty(), |json| {
+                        Self::decode_record(json, TokenSource::Unavailable, credential_user)
+                            .map(drop)
+                    })?;
+                if let Some(json) = adopted {
                     return Self::decode_record(
-                        json,
+                        &json,
                         TokenSource::Memory(account.clone()),
                         credential_user,
                     );
-                }
-                if !profile_id.is_empty() {
-                    if let Some(json) = map.get(&legacy) {
-                        return Self::decode_record(
-                            json,
-                            TokenSource::Memory(legacy.clone()),
-                            credential_user,
-                        );
-                    }
                 }
             }
         }
@@ -2766,6 +2790,45 @@ mod tests {
             assert!(lock.try_lock().is_ok());
             lock.unlock().unwrap();
         }
+    }
+
+    /// A profile read that adopts the in-memory singleton (a locked vault)
+    /// moves it to the profile key, so the profile's sign-out removes it and
+    /// no later read of that profile restores the authorization.
+    #[test]
+    fn a_singleton_adopted_from_memory_is_gone_after_the_profiles_signout() {
+        let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
+        let mut cache = Some(HashMap::from([(legacy.clone(), "singleton".to_string())]));
+        let read = |cache: &mut Option<HashMap<String, String>>| {
+            adopt_memory_record(cache.as_mut().unwrap(), &account, &legacy, true, |_| Ok(()))
+                .unwrap()
+                .map(|json| json.to_string())
+        };
+        assert_eq!(read(&mut cache).as_deref(), Some("singleton"));
+        let map = cache.as_ref().unwrap();
+        assert!(!map.contains_key(&legacy), "moved, not copied");
+        assert_eq!(map.get(&account).map(String::as_str), Some("singleton"));
+        // What `delete_shared_tokens` does to the memory cache for `p`.
+        invalidate_memory_tokens(
+            &mut cache,
+            legacy_revision(OAuthProvider::Dropbox),
+            &account,
+        );
+        assert_eq!(read(&mut cache), None, "signed out for good");
+
+        // A record the decoder refuses is not moved; an empty profile id
+        // reads the singleton in place.
+        let mut cache = Some(HashMap::from([(legacy.clone(), "corrupt".to_string())]));
+        let refused = adopt_memory_record(cache.as_mut().unwrap(), &account, &legacy, true, |_| {
+            Err(ProviderError::AuthenticationFailed("corrupt".into()))
+        });
+        assert!(refused.is_err());
+        assert!(cache.as_ref().unwrap().contains_key(&legacy));
+        let in_place =
+            adopt_memory_record(cache.as_mut().unwrap(), &legacy, &legacy, false, |_| Ok(()))
+                .unwrap();
+        assert_eq!(in_place.as_deref().map(String::as_str), Some("corrupt"));
     }
 
     #[test]

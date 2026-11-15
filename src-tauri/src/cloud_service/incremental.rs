@@ -103,6 +103,11 @@ pub struct IncrementalPlan {
     /// the pass runs only on a connection to both.
     profile_id: Option<String>,
     endpoint: Option<String>,
+    /// The account the plan was prepared on (the account a connection reads
+    /// for, [`crate::cloud_provider_factory::OpenedCloudProvider::reads_account`]):
+    /// two accounts can hold a profile with the same id (an import), and an
+    /// app-login profile has no endpoint to tell them apart.
+    account: Option<i64>,
     renames: Vec<PlannedRename>,
     /// Relative key -> the local copy, `None` when it is gone.
     work: BTreeMap<String, Option<FileInfo>>,
@@ -386,8 +391,19 @@ pub fn prepare_incremental_with_store(
     // captures one. The connection's own endpoint, read for its captured
     // account, must equal it or the pass is refused, and a switch after the
     // capture is refused by the connection's own account check.
+    // The account is captured first and the endpoint read for it, as a
+    // connection reads its endpoint for the account it captured.
+    let account = store.and_then(|_| {
+        crate::user_partitions::gui_account_snapshot()
+            .ok()
+            .map(|account| {
+                account
+                    .user
+                    .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+            })
+    });
     let endpoint = store.and_then(|store| {
-        crate::cloud_provider_factory::current_endpoint_fingerprint(store, config, None)
+        crate::cloud_provider_factory::current_endpoint_fingerprint(store, config, account)
             .ok()
             .flatten()
     });
@@ -403,6 +419,7 @@ pub fn prepare_incremental_with_store(
     let mut prep = plan(config, index, changes, hints)?;
     if let IncrementalPrep::Work { plan, .. } = &mut prep {
         plan.endpoint = endpoint;
+        plan.account = account;
     }
     Ok(prep)
 }
@@ -568,6 +585,7 @@ fn plan(
             root_identity,
             profile_id: config.resolved_profile_id.clone(),
             endpoint: None,
+            account: None,
             renames,
             work,
             index,
@@ -784,8 +802,11 @@ impl CloudService {
         // or to the same profile edited to another host, user or starting
         // folder, would read that account's files against it. Unknown on one
         // side only is a difference too.
+        // The same holds for the account: two accounts with a profile of the
+        // same id and no endpoint (an app login) would pass the checks above.
         if plan.profile_id != config.resolved_profile_id
             || plan.endpoint != self.connection_endpoint
+            || plan.account != self.connection_account
         {
             return Err("AeroCloud connected to another profile or endpoint than the watcher plan was prepared for; discard plan and run a full scan".into());
         }
@@ -1220,6 +1241,7 @@ pub async fn run_pair_incremental_cycle(
     let mut svc = CloudService::new();
     svc.connection_identity = Some(opened.identity);
     svc.connection_endpoint = opened.endpoint;
+    svc.connection_account = opened.account;
     if let Some(handle) = app {
         svc.set_app_handle(handle);
     }

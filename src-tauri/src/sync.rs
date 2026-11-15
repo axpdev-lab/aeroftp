@@ -3564,7 +3564,7 @@ fn load_index_with_intents_in(
     match journal() {
         Ok(Some(journal)) => import_archive_intents(&tx, &pair, &journal)?,
         Ok(None) => {}
-        Err(_) => insert_intent_fences(&tx, &pair, index.files.keys().cloned())?,
+        Err(_) => quarantine_every_baseline(&tx, &pair, index.files.keys().cloned())?,
     }
     let pending = pending_intents_in(&tx, &pair)?;
     // Pending new files have no baseline yet, but still need visible recovery.
@@ -3831,15 +3831,39 @@ pub fn load_sync_index_for_profile(
     remote_path: &str,
     profile_id: Option<&str>,
 ) -> Result<Option<SyncIndex>, String> {
-    Ok(load_sync_index(local_path, remote_path)?.filter(|index| {
-        let serves = history_serves(index.profile_id.as_deref(), profile_id);
-        if !serves {
-            tracing::info!(
-                "sync index of {local_path} | {remote_path} belongs to another profile: compared without history"
-            );
-        }
-        serves
-    }))
+    let Some(index) = load_sync_index(local_path, remote_path)? else {
+        return Ok(None);
+    };
+    if history_serves(index.profile_id.as_deref(), profile_id) {
+        return Ok(Some(index));
+    }
+    tracing::info!(
+        "sync index of {local_path} | {remote_path} belongs to another profile: compared without history"
+    );
+    // No baseline of this profile, but an interrupted intent the recovery
+    // loader attached is still pending on the pair (this profile's run that
+    // failed before it published): its keys stay, as for another target.
+    let Some(mut kept) = recovery_only_view(index) else {
+        return Ok(None);
+    };
+    kept.profile_id = profile_id.map(str::to_string);
+    kept.target_identity = None;
+    Ok(Some(kept))
+}
+
+/// What a baseline that serves no one keeps: only the recovery keys of the
+/// intents still pending on the pair, so an equal pair reads as an
+/// interrupted sync and not as identical. `None` when nothing is pending.
+fn recovery_only_view(mut index: SyncIndex) -> Option<SyncIndex> {
+    if index.pending_recovery_keys.is_empty() {
+        return None;
+    }
+    let recovery = std::mem::take(&mut index.pending_recovery_keys);
+    let mut kept = SyncIndex::new(index.local_path.clone(), index.remote_path.clone());
+    kept.profile_id = index.profile_id.clone();
+    kept.unverified_keys = recovery.clone();
+    kept.pending_recovery_keys = recovery;
+    Some(kept)
 }
 
 /// The index as a baseline for the target `current` (see
@@ -3852,7 +3876,7 @@ pub fn load_sync_index_for_profile(
 /// until a run re-establishes the entry (see `retire_unproven_baselines`).
 pub fn bind_index_to_target(index: Option<SyncIndex>, current: &str) -> Option<SyncIndex> {
     let mut index = index?;
-    match index.target_identity.as_deref() {
+    match index.target_identity.clone().as_deref() {
         Some(recorded) if recorded == current => {}
         Some(_) => {
             tracing::info!(
@@ -3864,15 +3888,8 @@ pub fn bind_index_to_target(index: Option<SyncIndex>, current: &str) -> Option<S
             // recovery loader attached is still pending on the pair (a run
             // of this target that failed before it published): its keys stay,
             // so an equal pair still reads as an interrupted sync.
-            if index.pending_recovery_keys.is_empty() {
-                return None;
-            }
-            let recovery = std::mem::take(&mut index.pending_recovery_keys);
-            let mut kept = SyncIndex::new(index.local_path.clone(), index.remote_path.clone());
-            kept.profile_id = index.profile_id.clone();
+            let mut kept = recovery_only_view(index)?;
             kept.target_identity = Some(current.to_string());
-            kept.unverified_keys = recovery.clone();
-            kept.pending_recovery_keys = recovery;
             return Some(kept);
         }
         None => {
@@ -3928,7 +3945,13 @@ fn intent_connection_in(path: &Path) -> Result<rusqlite::Connection, String> {
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
         CREATE TABLE IF NOT EXISTS intents(pair TEXT NOT NULL, path TEXT NOT NULL,
         token TEXT NOT NULL, active INTEGER NOT NULL, PRIMARY KEY(pair,path));
-        CREATE INDEX IF NOT EXISTS intent_token_lookup ON intents(pair,token);",
+        CREATE INDEX IF NOT EXISTS intent_token_lookup ON intents(pair,token);
+        CREATE TABLE IF NOT EXISTS intent_clock(id INTEGER PRIMARY KEY CHECK(id=0),
+        seq INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS intent_begun(token TEXT PRIMARY KEY, pair TEXT NOT NULL,
+        seq INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS intent_retired(pair TEXT NOT NULL, path TEXT NOT NULL,
+        seq INTEGER NOT NULL, PRIMARY KEY(pair,path));",
     )
     .map_err(|e| e.to_string())?;
     Ok(conn)
@@ -3986,6 +4009,110 @@ fn insert_intent_fences(
     Ok(())
 }
 
+/// The fences an unreadable journal puts on every baseline of the pair: like
+/// [`insert_intent_fences`], but a path whose intent already completed (an
+/// inactive row, which `INSERT OR IGNORE` leaves inactive) is fenced again,
+/// under a new token. Nothing the journal said can be trusted, a completed
+/// transfer included. A live intent keeps its generation: its writer still
+/// holds it, and the row is active, so the path is fenced already.
+fn quarantine_every_baseline(
+    conn: &rusqlite::Connection,
+    pair: &str,
+    paths: impl IntoIterator<Item = String>,
+) -> Result<(), String> {
+    let tx = if conn.is_autocommit() {
+        Some(conn.unchecked_transaction().map_err(|e| e.to_string())?)
+    } else {
+        None
+    };
+    let db = tx.as_ref().map_or(conn, |tx| &**tx);
+    for path in paths {
+        db.execute(
+            "INSERT INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)
+             ON CONFLICT(pair,path) DO UPDATE SET token=excluded.token, active=1
+             WHERE active=0",
+            rusqlite::params![pair, nfc_path(&path), uuid::Uuid::new_v4().to_string()],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    if let Some(tx) = tx {
+        tx.commit().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+/// The next tick of the pair-independent clock that orders a begin against a
+/// retirement (see [`refuse_a_stale_publication`]).
+fn next_intent_tick(db: &rusqlite::Connection) -> Result<i64, String> {
+    db.execute(
+        "INSERT INTO intent_clock(id,seq) VALUES(0,1) ON CONFLICT(id) DO UPDATE SET seq=seq+1",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
+    db.query_row("SELECT seq FROM intent_clock WHERE id=0", [], |row| {
+        row.get(0)
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// A publisher's tokens are begun before it reads the index it publishes (the
+/// run's transfers come first). An intent of another path retired after the
+/// earliest of them was published by another writer after that point: when
+/// the publisher's index still holds that path and the stored index no longer
+/// does, the publisher read the index before that publication, and its whole
+/// index would restore a baseline the other writer removed (a deleted file,
+/// whose remote-only replacement would then be deleted as previously synced).
+/// The save is refused; the run compares again. Tokens begun before this clock
+/// existed have no tick, and are not checked.
+fn refuse_a_stale_publication(
+    db: &rusqlite::Connection,
+    pair: &str,
+    index: &SyncIndex,
+    stored: Option<&SyncIndex>,
+    tokens: &[String],
+    completed: &std::collections::HashSet<String>,
+) -> Result<(), String> {
+    use rusqlite::OptionalExtension;
+    let mut earliest: Option<i64> = None;
+    for token in tokens {
+        let begun: Option<i64> = db
+            .query_row(
+                "SELECT seq FROM intent_begun WHERE pair=?1 AND token=?2",
+                rusqlite::params![pair, token],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if let Some(begun) = begun {
+            earliest = Some(earliest.map_or(begun, |e| e.min(begun)));
+        }
+    }
+    let Some(earliest) = earliest else {
+        return Ok(());
+    };
+    let stored_keys: std::collections::HashSet<String> = stored
+        .map(|stored| stored.files.keys().map(|key| nfc_path(key)).collect())
+        .unwrap_or_default();
+    for key in index.files.keys() {
+        let key = nfc_path(key);
+        if completed.contains(&key) || stored_keys.contains(&key) {
+            continue;
+        }
+        let retired: Option<i64> = db
+            .query_row(
+                "SELECT seq FROM intent_retired WHERE pair=?1 AND path=?2",
+                rusqlite::params![pair, key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        if retired.is_some_and(|retired| retired > earliest) {
+            return Err("Sync index changed since this run read it; compare again".into());
+        }
+    }
+    Ok(())
+}
+
 fn begin_intents_in(
     conn: &mut rusqlite::Connection,
     pair: &str,
@@ -3994,6 +4121,7 @@ fn begin_intents_in(
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| e.to_string())?;
+    let begun = next_intent_tick(&tx)?;
     let mut tokens = Vec::with_capacity(paths.len());
     for path in paths {
         let token = uuid::Uuid::new_v4().to_string();
@@ -4001,6 +4129,11 @@ fn begin_intents_in(
             "INSERT INTO intents(pair,path,token,active) VALUES(?1,?2,?3,1)
             ON CONFLICT(pair,path) DO UPDATE SET token=excluded.token,active=1",
             rusqlite::params![pair, nfc_path(path), token],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO intent_begun(token,pair,seq) VALUES(?1,?2,?3)",
+            rusqlite::params![token, pair, begun],
         )
         .map_err(|e| e.to_string())?;
         tokens.push(token);
@@ -4116,6 +4249,7 @@ fn save_index_with_trust_in(
     // otherwise republish it as a version-2 baseline (see
     // `retire_unproven_baselines`).
     let mut stored = read_sync_index_file(path)?;
+    refuse_a_stale_publication(&tx, &pair, index, stored.as_ref(), tokens, &completed)?;
     let mut index = index.clone();
     // Only a page save records the target; any other publisher's index says
     // nothing of which server it describes.
@@ -4138,10 +4272,28 @@ fn save_index_with_trust_in(
     let index = retire_unproven_baselines(&index, stored.as_ref(), &completed);
     let data = serde_json::to_vec(&index).map_err(|e| e.to_string())?;
     atomic_write(path, &data)?;
+    let retired = if tokens.is_empty() {
+        0
+    } else {
+        next_intent_tick(&tx)?
+    };
     for token in tokens {
         tx.execute(
             "UPDATE intents SET active=0 WHERE pair=?1 AND token=?2",
             rusqlite::params![pair, token],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.execute(
+            "DELETE FROM intent_begun WHERE token=?1",
+            rusqlite::params![token],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    for path in &completed {
+        tx.execute(
+            "INSERT INTO intent_retired(pair,path,seq) VALUES(?1,?2,?3)
+             ON CONFLICT(pair,path) DO UPDATE SET seq=excluded.seq",
+            rusqlite::params![pair, path, retired],
         )
         .map_err(|e| e.to_string())?;
     }
@@ -13914,6 +14066,54 @@ mod profile_history_tests {
     /// folders on different servers share one index file. An index another
     /// profile wrote is no baseline: read as one, bisync takes a file only
     /// this side holds for one deleted on the other, and deletes it here.
+    /// Two profiles share the roots and profile `p2` owns the saved index,
+    /// while `p1`'s interrupted transfer left an intent pending on the pair.
+    /// `p1` reads no baseline of `p2`, but keeps the recovery: its equal pair
+    /// is an interrupted sync to resolve, never `Identical`.
+    #[test]
+    fn another_profiles_index_keeps_the_pending_recovery_of_this_one() {
+        let local_root = format!("/aeroftp-test/{}", uuid::Uuid::new_v4());
+        let mut index = SyncIndex::new(local_root.clone(), "/docs".to_string());
+        index.profile_id = Some("p2".to_string());
+        index.files.insert(
+            "theirs.txt".to_string(),
+            SyncIndexEntry {
+                size: 5,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        save_sync_index(&index).unwrap();
+        let tokens = begin_sync_intents(&local_root, "/docs", &["same.txt".to_string()]).unwrap();
+        let ours = load_sync_index_for_profile(&local_root, "/docs", Some("p1")).unwrap();
+        // Retire the intent and remove the index before asserting.
+        save_sync_index_with_intents(&index, &tokens).unwrap();
+        remove_sync_index(&local_root, "/docs");
+
+        let ours = ours.expect("a recovery-only view");
+        assert!(ours.files.is_empty(), "no baseline of the other profile");
+        assert_eq!(ours.profile_id.as_deref(), Some("p1"));
+        assert!(ours.pending_recovery_keys.contains("same.txt"));
+        let info = FileInfo {
+            name: "same.txt".into(),
+            path: "same.txt".into(),
+            size: 4,
+            modified: Some(Utc::now()),
+            is_dir: false,
+            checksum: None,
+            checksum_alg: None,
+        };
+        let rows = build_comparison_results_with_index(
+            HashMap::from([("same.txt".into(), info.clone())]),
+            HashMap::from([("same.txt".into(), info)]),
+            &CompareOptions::default(),
+            Some(&ours),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].status, SyncStatus::Conflict);
+    }
+
     #[test]
     fn an_index_of_another_profile_is_no_baseline_and_deletes_nothing() {
         assert!(!history_serves(Some("p2"), Some("p1")));
@@ -14129,6 +14329,78 @@ mod sync_intent_tests {
         assert_eq!(index.unverified_keys.len(), 2);
     }
 
+    /// A completed intent leaves an inactive row. An unreadable journal must
+    /// still fence that path: otherwise a remote-only replacement keeps
+    /// `previously_synced` and a bidirectional sync deletes it.
+    #[test]
+    fn an_unreadable_journal_fences_a_path_whose_intent_completed() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let path = dir.path().join("index.json");
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        index.files.insert(
+            "one".into(),
+            SyncIndexEntry {
+                size: 4,
+                modified: None,
+                is_dir: false,
+                uploaded_at: None,
+            },
+        );
+        let pair = index_filename(&index.local_path, &index.remote_path);
+        // A previous sync of `one` completed: its intent is retired.
+        let tokens = begin_intents_in(&mut conn, &pair, &["one".into()]).unwrap();
+        save_index_with_intents_in(&mut conn, &path, &index, &tokens).unwrap();
+        assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+        // The live intent of another path keeps its token.
+        let live = begin_intents_in(&mut conn, &pair, &["two".into()]).unwrap();
+
+        let loaded = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || {
+            Err("journal unreadable".into())
+        })
+        .unwrap()
+        .expect("the saved index");
+        assert!(loaded.unverified_keys.contains("one"));
+        assert!(loaded.pending_recovery_keys.contains("one"));
+        let pending = pending_intents_in(&conn, &pair).unwrap();
+        assert_eq!(
+            pending.get("two"),
+            live.first(),
+            "a live generation is kept"
+        );
+
+        // The replacement that exists only on the remote is downloaded,
+        // never deleted.
+        let rows = build_comparison_results_with_index(
+            HashMap::new(),
+            HashMap::from([(
+                "one".into(),
+                FileInfo {
+                    name: "one".into(),
+                    path: "one".into(),
+                    size: 7,
+                    modified: None,
+                    is_dir: false,
+                    checksum: None,
+                    checksum_alg: None,
+                },
+            )]),
+            &CompareOptions::default(),
+            Some(&loaded),
+        );
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].previously_synced);
+        assert_eq!(
+            decide_sync_action(
+                &rows[0].status,
+                &CompareDirection::Bidirectional,
+                rows[0].previously_synced,
+                false
+            ),
+            SyncAction::Download
+        );
+    }
+
     #[test]
     fn failed_quarantine_write_blocks_snapshot_even_when_database_reads_succeed() {
         let dir = tempfile::tempdir().unwrap();
@@ -14243,6 +14515,58 @@ mod sync_intent_tests {
         save_index_with_intents_in(&mut conn, &dir.path().join("index.json"), &index, &tokens)
             .unwrap();
         assert!(pending_intents_in(&conn, &pair).unwrap().is_empty());
+    }
+
+    /// Publisher A holds a valid token for `x` and read an index that holds
+    /// `y`. Publisher B then completes the deletion of `y` and publishes an
+    /// index without it. A's save with its unchanged `x` token is refused, so
+    /// `y` is not restored as a baseline; a fresh save publishes.
+    #[test]
+    fn a_stale_index_with_a_token_for_another_path_restores_no_deleted_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let entry = SyncIndexEntry {
+            size: 4,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let mut with_y = SyncIndex::new("/local".into(), "/remote".into());
+        with_y.files.insert("y".into(), entry.clone());
+        let pair = index_filename("/local", "/remote");
+        save_index_with_intents_in(&mut conn, &path, &with_y, &[]).unwrap();
+
+        // A's run: its transfer of `x` begins, then it reads the index.
+        let a_tokens = begin_intents_in(&mut conn, &pair, &["x".into()]).unwrap();
+        let mut a_index = with_y.clone();
+        a_index.files.insert("x".into(), entry.clone());
+        // B deletes `y` and publishes.
+        let b_tokens = begin_intents_in(&mut conn, &pair, &["y".into()]).unwrap();
+        let without_y = SyncIndex::new("/local".into(), "/remote".into());
+        save_index_with_intents_in(&mut conn, &path, &without_y, &b_tokens).unwrap();
+
+        let stale = save_index_with_intents_in(&mut conn, &path, &a_index, &a_tokens);
+        assert!(
+            matches!(&stale, Err(message) if message.contains("compare again")),
+            "{stale:?}"
+        );
+        let stored = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(
+            !stored.files.contains_key("y"),
+            "the deleted baseline stays gone"
+        );
+        assert!(
+            pending_intents_in(&conn, &pair).unwrap().contains_key("x"),
+            "A's intent stays pending for its next run"
+        );
+
+        // A compares again: its index read after B's publication saves.
+        a_index.files.remove("y");
+        save_index_with_intents_in(&mut conn, &path, &a_index, &a_tokens).unwrap();
+        let stored = read_sync_index_file(&path).unwrap().unwrap();
+        assert!(stored.files.contains_key("x"));
+        assert!(!stored.files.contains_key("y"));
     }
 
     #[test]

@@ -337,7 +337,17 @@ pub enum SegmentedDownloadError {
         message: String,
         reason: &'static str,
     },
+    /// A range connection the provider refused to create, with its typed
+    /// error: an owner change stays the typed `TargetChanged`.
+    #[error("{message}")]
+    CloneRefused {
+        message: String,
+        error: crate::providers::ProviderError,
+    },
 }
+
+/// Why a run stopped before its windows: a range connection was refused.
+const CLONE_REFUSED: &str = "an independent range connection could not be created";
 
 /// Why a run stopped before its windows: the object no longer has the planned size.
 const SOURCE_SIZE_CHANGED: &str = "the source size no longer matches the segmented plan";
@@ -361,6 +371,7 @@ impl SegmentedDownloadError {
             Self::Cancelled => None,
             Self::Unavailable { reason, .. } => Some(reason),
             Self::Failed(_) => Some("the segmented download failed"),
+            Self::CloneRefused { .. } => Some(CLONE_REFUSED),
         }
     }
 
@@ -598,15 +609,15 @@ async fn run_provider_segmented_windows(
                 for mut w in workers {
                     let _ = w.disconnect().await;
                 }
-                return Err(SegmentedDownloadError::unavailable(
-                    format!(
+                return Err(SegmentedDownloadError::CloneRefused {
+                    message: format!(
                         "segmented download: clone {} of {} failed: {}",
                         i + 1,
                         segments,
                         e
                     ),
-                    "an independent range connection could not be created",
-                ));
+                    error: e,
+                });
             }
         }
     }
@@ -1646,10 +1657,14 @@ impl ProviderDownloadExecutor {
                         ));
                     }
                 }
-                SegmentedAttempt::Finished(Err(if e.is_cancelled() {
-                    DownloadAttemptFailure::Cancelled
-                } else {
-                    DownloadAttemptFailure::Text(e.to_string())
+                // A refused clone keeps its typed error, as the direct clone
+                // path does: an owner change stops the job's queued items.
+                SegmentedAttempt::Finished(Err(match e {
+                    e if e.is_cancelled() => DownloadAttemptFailure::Cancelled,
+                    SegmentedDownloadError::CloneRefused { error, .. } => {
+                        DownloadAttemptFailure::Provider(error)
+                    }
+                    e => DownloadAttemptFailure::Text(e.to_string()),
                 }))
             }
         }
@@ -3704,6 +3719,9 @@ mod tests {
         failure: Option<fn() -> crate::providers::ProviderError>,
         /// The error `clone_for_transfer` refuses with, when set.
         clone_refusal: Option<fn() -> crate::providers::ProviderError>,
+        /// How many clones succeed before `clone_refusal` applies.
+        clones_before_refusal: usize,
+        clone_calls: std::sync::atomic::AtomicUsize,
     }
 
     /// A writer that prepares its own lazy session before committing. Its
@@ -3746,6 +3764,8 @@ mod tests {
                 upload_script: None,
                 failure: None,
                 clone_refusal: None,
+                clones_before_refusal: 0,
+                clone_calls: std::sync::atomic::AtomicUsize::new(0),
             }
         }
 
@@ -3766,7 +3786,13 @@ mod tests {
         fn clone_for_transfer(
             &self,
         ) -> Result<Box<dyn StorageProvider>, crate::providers::ProviderError> {
-            if let Some(refusal) = self.clone_refusal {
+            let call = self
+                .clone_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(refusal) = self
+                .clone_refusal
+                .filter(|_| call >= self.clones_before_refusal)
+            {
                 return Err(refusal());
             }
             if self.ranges.is_none() {
@@ -4667,6 +4693,80 @@ mod tests {
                 .unwrap();
             assert_eq!(entry.modified.as_deref(), Some(modified), "{refused}");
         }
+    }
+
+    /// A range connection refused for an owner change after the eligibility
+    /// probe keeps its type on the segmented path: the attempt fails as an
+    /// owner change (which stops the remaining queued items), as the direct
+    /// clone path's does, never as an ordinary text failure.
+    #[tokio::test]
+    async fn a_typed_clone_refusal_keeps_its_kind_on_the_segmented_path() {
+        use crate::providers::ProviderError;
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
+        });
+        // The reading before the windows finds the planned size.
+        provider.stat_reading = StatReading::Answers(64 * 1024 * 1024, None);
+        // The eligibility probe clones; the windows' clones are refused.
+        provider.clone_refusal = Some(|| ProviderError::TargetChanged);
+        provider.clones_before_refusal = 1;
+        let executor = ProviderDownloadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(None)),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(2),
+                sftp_download_preset: None,
+            },
+            CancellationToken::new(),
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type: ProviderType::S3,
+                max_leases: 4,
+            },
+            TransferCapabilities::default(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let mut entry = retry_entry(dir.path());
+        entry.size = 64 * 1024 * 1024;
+        match executor
+            .try_segmented_download_attempt(&mut provider, &entry, None)
+            .await
+        {
+            SegmentedAttempt::Finished(Err(failure)) => {
+                assert!(
+                    matches!(
+                        failure,
+                        DownloadAttemptFailure::Provider(ProviderError::TargetChanged)
+                    ),
+                    "{}",
+                    failure.text()
+                );
+                assert_eq!(
+                    failure.into_failure().kind,
+                    crate::transfer_domain::TransferFailureKind::TargetChanged
+                );
+            }
+            SegmentedAttempt::NotTaken => panic!("the segmented path was not taken"),
+            SegmentedAttempt::Refused => panic!("refused by the source"),
+            SegmentedAttempt::Finished(Ok(())) => panic!("finished"),
+        }
+        assert!(
+            provider
+                .clone_calls
+                .load(std::sync::atomic::Ordering::SeqCst)
+                >= 2
+        );
     }
 
     /// Windows the source refuses do not end the attempt: the same call goes on

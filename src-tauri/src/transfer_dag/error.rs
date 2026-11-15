@@ -194,7 +194,10 @@ impl TransferError {
 
         let kind = match err {
             ProviderError::TargetChanged => TransferErrorKind::TargetChanged,
-            // The status alone is classified (`during` names our path).
+            // The status alone is classified (`during` names our path). A 421
+            // is the FTP connection limit: the envelope's `421:` is not the
+            // `421 ` the text classifier looks for, so it is mapped here.
+            ProviderError::FtpRefused { code: 421, .. } => TransferErrorKind::MaxConnections,
             ProviderError::FtpRefused { code, .. } => {
                 classify_text_body(&format!("FTP status {code}: command rejected"))
             }
@@ -579,6 +582,29 @@ mod tests {
         assert_eq!(
             TransferError::from_provider(&ProviderError::NotConnected).kind,
             TransferErrorKind::NotConnected
+        );
+    }
+
+    #[test]
+    fn a_typed_ftp_421_is_the_connection_limit_whatever_it_was_doing() {
+        // `during` is our own words and here it names other classes: the
+        // status alone decides.
+        let pe = ProviderError::FtpRefused {
+            code: 421,
+            during: " (while uploading /503 service unavailable/429/timed out)".into(),
+        };
+        assert_eq!(
+            TransferError::from_provider(&pe).kind,
+            TransferErrorKind::MaxConnections
+        );
+        // Every other status keeps the text classification.
+        let pe = ProviderError::FtpRefused {
+            code: 530,
+            during: " (while uploading /421 too many connections)".into(),
+        };
+        assert_eq!(
+            TransferError::from_provider(&pe).kind,
+            TransferErrorKind::Auth
         );
     }
 
