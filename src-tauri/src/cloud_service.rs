@@ -9564,6 +9564,10 @@ mod baseline_tests {
             });
             seed_ftp_profile(&store, "srv_a", ftp.port, Some(binding));
             seed_aerocrypt_overlay(&store, "srv_a");
+            // As at startup, the legacy list is migrated into the active
+            // account before any connection: the connect captures that
+            // account, and the rename below writes where it read.
+            crate::user_partitions::init_or_migrate_cli(&store).unwrap();
             let local = tempfile::tempdir().unwrap();
             let mut config = aerocloud_config(local.path(), "/docs/sync", "srv_a");
             config.server_profile_id = None;
@@ -9768,6 +9772,10 @@ mod baseline_tests {
             let ftp = scripted_ftp_server("/home/u").await;
             let (_vault_dir, store, _guard) = open_test_vault();
             seed_ftp_profile(&store, "srv_l", ftp.port, None);
+            // As at startup, the legacy list is migrated into the active
+            // account before any connection, so no read during the run
+            // activates an account the connection did not capture.
+            crate::user_partitions::init_or_migrate_cli(&store).unwrap();
             let local = tempfile::tempdir().unwrap();
             for locks in [false, true] {
                 let mut config = aerocloud_config(local.path(), "~/docs", "srv_l");
