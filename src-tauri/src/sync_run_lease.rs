@@ -1513,7 +1513,13 @@ mod tests {
         let probe = tempfile::NamedTempFile::new().unwrap();
         let permissions = probe.as_file().metadata().unwrap().permissions();
         let started = std::time::Instant::now();
-        let copied = crate::copy_into_place(&mut endless, permissions, &destination, &cancel);
+        let copied = crate::copy_into_place(
+            &mut endless,
+            permissions,
+            &destination,
+            &cancel,
+            crate::LocalPublish::Replace,
+        );
         assert!(
             matches!(copied, Err(crate::sync::IpcError::Cancelled)),
             "{copied:?}"
@@ -1601,6 +1607,7 @@ mod tests {
             std::fs::metadata(&destination).unwrap().permissions(),
             &destination,
             &cancel,
+            crate::LocalPublish::Replace,
         );
         assert!(
             matches!(copied, Err(crate::sync::IpcError::Cancelled)),
@@ -1662,6 +1669,7 @@ mod tests {
             std::fs::Permissions::from_mode(0o600),
             &destination,
             &AtomicBool::new(false),
+            crate::LocalPublish::Replace,
         )
         .unwrap();
         assert!(

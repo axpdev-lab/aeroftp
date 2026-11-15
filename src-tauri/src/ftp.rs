@@ -525,6 +525,23 @@ impl FtpManager {
         Ok(())
     }
 
+    /// Go back to `folder`, the one the session was in before work that moved
+    /// it elsewhere. A refused CWD keeps the session where the work left it,
+    /// and every later relative command would run there while the panel still
+    /// shows `folder`: when the folder cannot be opened again the session is
+    /// closed, as `reconnect_ftp_in_folder` does after a reconnect.
+    pub async fn return_to_folder(&mut self, folder: &str) -> Result<()> {
+        if self.change_dir(folder).await.is_err() {
+            warn!("FTP session could not return to the folder it was in; closing it");
+            let _ = self.disconnect().await;
+            return Err(FtpManagerError::OperationFailed(
+                "the folder the session was in could not be opened again; the connection was closed, reconnect to continue".into(),
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     /// Go to parent directory
     pub async fn go_up(&mut self) -> Result<()> {
         if self.current_path != "/" {

@@ -726,7 +726,7 @@ impl FtpProvider {
         match err {
             FtpError::UnexpectedResponse(response) => ProviderError::FtpRefused {
                 code: response.status.code() as u16,
-                during: " (at the end of the transfer)".to_string(),
+                during: AT_THE_END_OF_THE_TRANSFER.to_string(),
             },
             other => ProviderError::TransferFailed(other.to_string()),
         }
@@ -797,10 +797,13 @@ impl FtpProvider {
     /// still open from an earlier operation (425 / "already open") or a
     /// control stream suppaftp could not parse. Safe to redial and send
     /// again. A dropped connection is not in it: it may come after the
-    /// transfer landed.
+    /// transfer landed. Neither is a reply that ends the transfer
+    /// ([`Self::transfer_verdict_error`]), a positive one included: it comes
+    /// after the bytes, which the server may have stored.
     fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
-        if let ProviderError::FtpRefused { code, .. } = err {
-            return matches!(code, 125 | 425) || *code < 400;
+        if let ProviderError::FtpRefused { code, during } = err {
+            return during != AT_THE_END_OF_THE_TRANSFER
+                && (matches!(code, 125 | 425) || *code < 400);
         }
         let message = match err {
             ProviderError::ServerError(msg)
@@ -1229,10 +1232,26 @@ impl FtpProvider {
     /// field is our mirror of the server's state, and restoring to what we
     /// believe rather than to where we actually were is how a listing leaves
     /// the connection pointing somewhere else.
+    ///
+    /// The folder it leaves stays owed ([`Self::owed_folder`]) until
+    /// [`Self::restore_cwd`] stands in it again: a command cancelled in
+    /// between, or a restore refused, has the next command redial to that
+    /// folder instead of to `target`, which a relative path would then name.
     async fn cwd_into(&mut self, target: &str) -> Result<String, ProviderError> {
-        let stream = self.stream_mut()?;
-        let saved = stream.pwd().await.map_err(|e| ftp_failure(&e))?;
-        if let Err(e) = stream.cwd(target).await {
+        let saved = self
+            .stream_mut()?
+            .pwd()
+            .await
+            .map_err(|e| ftp_failure(&e))?;
+        // A folder a cancelled redial owes already is the caller's: it stays.
+        let owes = self.owed_folder.is_none();
+        if owes {
+            self.owed_folder = Some(saved.clone());
+        }
+        if let Err(e) = self.stream_mut()?.cwd(target).await {
+            if owes {
+                self.owed_folder = None;
+            }
             return Err(Self::classify_cwd_failure("entering", target, &e));
         }
         // The mirror follows the server immediately, so it is never a lie even
@@ -1352,11 +1371,23 @@ impl FtpProvider {
     /// the worst shape this can take: the listing succeeds, the connection is
     /// left in another directory, and the damage appears later in an unrelated
     /// operation with nothing to connect it back to here.
+    ///
+    /// When it fails, the session still stands in the folder
+    /// [`Self::cwd_into`] entered: it is marked
+    /// [`Self::abandoned_command`], so the next command redials to the folder
+    /// still owed instead of running a relative path there.
     async fn restore_cwd(&mut self, saved: &str) -> Result<(), ProviderError> {
         let stream = self.stream_mut()?;
-        match stream.cwd(saved).await {
+        let back = stream.cwd(saved).await;
+        if back.is_err() {
+            self.abandoned_command.store(true, Ordering::Relaxed);
+        }
+        match back {
             Ok(()) => {
                 self.current_path = saved.to_string();
+                if self.owed_folder.as_deref() == Some(saved) {
+                    self.owed_folder = None;
+                }
                 Ok(())
             }
             // The same command as `cwd_into`, so the same classification. It
@@ -1735,6 +1766,10 @@ fn ftp_error_text(err: &FtpError) -> String {
 fn ftp_failure(err: &FtpError) -> ProviderError {
     ftp_failure_during(err, String::new())
 }
+
+/// The phase of a reply read after a transfer's data
+/// ([`FtpProvider::transfer_verdict_error`]).
+const AT_THE_END_OF_THE_TRANSFER: &str = " (at the end of the transfer)";
 
 /// [`ftp_failure`] saying what we were doing (`" (while deleting /a)"`).
 fn ftp_failure_during(err: &FtpError, during: String) -> ProviderError {
@@ -6711,13 +6746,15 @@ mod tests {
             FtpProvider::transfer_verdict_error(reply(Status::FileUnavailable, "550 HTTP 403"));
         assert!(!FtpProvider::is_stale_data_connection_error(&refused));
         assert!(!FtpProvider::is_desync_before_transfer_error(&refused));
-        // A 226 read where a refusal was raised: out of step, redialed.
+        // A 226 read where a refusal was raised: out of step, so a read is
+        // redialed; but it came after the bytes, so an upload is not sent
+        // again.
         let out_of_step = FtpProvider::transfer_verdict_error(reply(
             Status::ClosingDataConnection,
             "226 Transfer complete",
         ));
         assert!(FtpProvider::is_stale_data_connection_error(&out_of_step));
-        assert!(FtpProvider::is_desync_before_transfer_error(&out_of_step));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&out_of_step));
     }
 
     /// U6, both FTP implementations: no reply text is formatted into an
@@ -6766,7 +6803,7 @@ mod tests {
                 "return_to_the_recorded_folder: stream_mut's own ProviderError",
             ),
             (
-                r#""{failure}; returning to {recorded} failed too ({e}): the session's folder is unknown, so it was closed""#,
+                r#""{failure}; returning to the recorded folder failed too ({e}): the session's folder is unknown, so it was closed""#,
                 "return_to_the_recorded_folder: e is ftp_error_text or our own words",
             ),
             (
@@ -9063,6 +9100,9 @@ mod rename_contract_tests {
         /// `PWD` answers the folder without its leading `/` (`home/u`), as a
         /// server that reports relative paths does.
         relative_pwd: bool,
+        /// STOR stores the bytes and ends with `200`, a positive reply that
+        /// is not the `226` the transfer waits for.
+        stor_ends_with_200: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -9159,6 +9199,17 @@ mod rename_contract_tests {
                     if stalled {
                         continue;
                     }
+                    // `!refuse CWD <folder>`: that CWD refused, once.
+                    let refuse = format!("!refuse CWD {target}");
+                    let refused = {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != &refuse);
+                        held.len() != before
+                    };
+                    if refused {
+                        "550 Failed to change directory.\r\n".to_string()
+                    } else {
                     let is_dir = target == "/"
                         || files
                             .lock()
@@ -9170,6 +9221,7 @@ mod rename_contract_tests {
                         "250 Directory changed\r\n".to_string()
                     } else {
                         "550 Failed to change directory.\r\n".to_string()
+                    }
                     }
                 }
                 "RMD" => {
@@ -9184,7 +9236,14 @@ mod rename_contract_tests {
                 }
                 "DELE" => {
                     log.lock().unwrap().push(format!("DELE {argument}"));
-                    files.lock().unwrap().retain(|f| f != &argument);
+                    // A relative name is deleted in the folder the session
+                    // stands in, as a server resolves it.
+                    let target = if argument.starts_with('/') {
+                        argument.clone()
+                    } else {
+                        format!("{}/{argument}", cwd.trim_end_matches('/'))
+                    };
+                    files.lock().unwrap().retain(|f| f != &target);
                     "250 Deleted\r\n".to_string()
                 }
                 "STOR" => {
@@ -9204,13 +9263,28 @@ mod rename_contract_tests {
                         }
                     }
                     files.lock().unwrap().push(target);
-                    "226 Transfer complete\r\n".to_string()
+                    if quirks.stor_ends_with_200 {
+                        "200 Command okay\r\n".to_string()
+                    } else {
+                        "226 Transfer complete\r\n".to_string()
+                    }
                 }
                 "LIST" if quirks.list_only && argument == "/missing" => {
                     "550 No such file or directory\r\n".to_string()
                 }
                 "LIST" if quirks.list_all_refused && argument.starts_with("-a") => {
                     "550 Permission denied\r\n".to_string()
+                }
+                // `!stall LIST -a` in the files: that listing unanswered, once.
+                "LIST"
+                    if argument.starts_with("-a") && {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != "!stall LIST -a");
+                        held.len() != before
+                    } =>
+                {
+                    continue;
                 }
                 "LIST" => {
                     let (all, target) = match argument.strip_prefix("-a") {
@@ -10259,6 +10333,87 @@ mod rename_contract_tests {
         let held = files.lock().unwrap().clone();
         assert!(held.contains(&"/e/x3.txt".to_string()), "{held:?}");
         assert!(!held.contains(&"/d/x3.txt".to_string()), "{held:?}");
+    }
+
+    /// A stat of a dotfile enters its folder for a hidden listing. Cancelled
+    /// during that `LIST -a`, or with both the listing and the way back
+    /// refused, it used to leave the next redial returning to that folder (or
+    /// no redial at all), so a relative delete from `/home/u` removed
+    /// `/d/x.txt`. The folder it left stays owed until the session stands in
+    /// it again: the delete removes `/home/u/x.txt`.
+    #[tokio::test]
+    async fn a_hidden_listing_cancelled_or_unrestored_never_leaves_the_session_in_its_folder() {
+        // Every case runs, so a failure names each one that went wrong.
+        let mut wrong = Vec::new();
+        for refused in [false, true] {
+            let quirks = Quirks {
+                list_only: true,
+                hides_dotfiles: true,
+                list_all_refused: refused,
+                login_dir: Some("/home/u"),
+                ..Quirks::default()
+            };
+            let (mut provider, _log, files) =
+                provider_on_server_holding(&["/home/u/x.txt", "/d/x.txt", "/d/.env"], quirks, None)
+                    .await;
+            assert_eq!(provider.current_path, "/home/u");
+            if refused {
+                files
+                    .lock()
+                    .unwrap()
+                    .push("!refuse CWD /home/u".to_string());
+                assert!(provider.stat("/d/.env").await.is_err(), "both refused");
+            } else {
+                files.lock().unwrap().push("!stall LIST -a".to_string());
+                let cancelled = tokio::time::timeout(
+                    std::time::Duration::from_millis(500),
+                    provider.stat("/d/.env"),
+                )
+                .await;
+                assert!(cancelled.is_err(), "the hidden listing was answered");
+            }
+            provider
+                .delete("x.txt")
+                .await
+                .expect("a relative delete after the stat");
+            let held = files.lock().unwrap().clone();
+            if !held.contains(&"/d/x.txt".to_string())
+                || held.contains(&"/home/u/x.txt".to_string())
+            {
+                let case = if refused { "unrestored" } else { "cancelled" };
+                wrong.push(format!("{case}: {held:?}"));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A server that stores the upload and ends it with an unexpected `200`
+    /// has the bytes already: the upload is not sent a second time, which
+    /// could replace a change made after the first one landed.
+    #[tokio::test]
+    async fn an_upload_ended_by_an_unexpected_positive_reply_is_sent_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_200: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(&[], quirks, None).await;
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/up.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(files.lock().unwrap().contains(&"/up.txt".to_string()));
     }
 
     /// The way out of a lost folder, cancelled after its `connect` and
@@ -11825,6 +11980,8 @@ pub(crate) mod walk_scope_tests {
         Reply421,
         StallRestore,
         CloseAfter421,
+        /// `/shown` opens once; every later CWD into it is refused with 550.
+        RefuseReturnToShown,
     }
 
     /// One control connection of a server without MLSD that holds
@@ -11846,6 +12003,7 @@ pub(crate) mod walk_scope_tests {
         let mut data: Option<TcpListener> = None;
         let mut cwd = "/".to_string();
         let mut find_failed = false;
+        let mut shown_opened = false;
         let held = |path: &str| listings.iter().any(|(folder, _)| *folder == path);
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
@@ -11872,7 +12030,12 @@ pub(crate) mod walk_scope_tests {
                         while let Ok(Some(_)) = lines.next_line().await {}
                         return;
                     }
-                    if target.ends_with("/down") {
+                    if matches!(mode, FindFailureMode::RefuseReturnToShown)
+                        && target == "/shown"
+                        && std::mem::replace(&mut shown_opened, true)
+                    {
+                        "550 Failed to change directory.\r\n".to_string()
+                    } else if target.ends_with("/down") {
                         find_failed = true;
                         if matches!(mode, FindFailureMode::CloseAfter421) {
                             let _ = write.write_all(b"421 Service not available.\r\n").await;
@@ -11953,6 +12116,14 @@ pub(crate) mod walk_scope_tests {
     /// too.
     pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
         tree_server_with_restore_mode(listings, FindFailureMode::Reply421).await
+    }
+
+    /// A [`tree_server`] that lets a session into `/shown` once and refuses
+    /// every later CWD into it: a session that leaves `/shown` cannot go back.
+    pub(crate) async fn tree_server_refusing_return_to_shown(
+        listings: Listings,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, FindFailureMode::RefuseReturnToShown).await
     }
 
     async fn tree_server_with_restore_mode(

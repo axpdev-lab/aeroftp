@@ -4386,6 +4386,21 @@ async fn reconnect_ftp_in_folder(ftp_manager: &mut FtpManager) -> Result<(), Str
     Ok(())
 }
 
+/// The answer of a walk that moved the legacy session through the folders it
+/// listed, once [`ftp::FtpManager::return_to_folder`] has taken it back: a
+/// failed return closed the session, and the walk reports it even when its
+/// own result was complete.
+fn walked_then_returned<T>(
+    walked: Result<T, String>,
+    returned: anyhow::Result<()>,
+) -> Result<T, String> {
+    match (walked, returned) {
+        (walked, Ok(())) => walked,
+        (Ok(_), Err(e)) => Err(e.to_string()),
+        (Err(walk), Err(e)) => Err(format!("{walk}; {e}")),
+    }
+}
+
 #[tauri::command]
 async fn list_files(
     state: State<'_, AppState>,
@@ -5827,8 +5842,8 @@ async fn scan_ftp_download_entries(
         Ok(result)
     }
     .await;
-    let _ = ftp_manager.change_dir(&original_path).await;
-    scanned
+    let returned = ftp_manager.return_to_folder(&original_path).await;
+    walked_then_returned(scanned, returned)
 }
 
 #[tauri::command]
@@ -6098,8 +6113,8 @@ struct FtpUploadPreparationResult {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn prepare_ftp_upload_entries(
-    app: &AppHandle,
+async fn prepare_ftp_upload_entries<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
     cancel_flag: &Arc<AtomicBool>,
     ftp_manager: &mut ftp::FtpManager,
     local_base_path: &Path,
@@ -6312,7 +6327,10 @@ async fn prepare_ftp_upload_entries(
                 }
             }
         }
-        let _ = ftp_manager.change_dir(&saved_path).await;
+        ftp_manager
+            .return_to_folder(&saved_path)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
     if result.cancelled {
@@ -7440,8 +7458,8 @@ async fn collect_ftp_delete_tree(
         Ok(tree)
     }
     .await;
-    let _ = ftp_manager.change_dir(&original_path).await;
-    walked
+    let returned = ftp_manager.return_to_folder(&original_path).await;
+    walked_then_returned(walked, returned)
 }
 
 #[tauri::command]
@@ -8468,7 +8486,13 @@ mod local_delete_cancel_tests {
                 // ERROR_INVALID_PARAMETER (os error 87).
                 let probe = tempfile::NamedTempFile::new().unwrap();
                 let permissions = probe.as_file().metadata().unwrap().permissions();
-                let copied = super::copy_into_place(&mut source, permissions, &to, &cancel);
+                let copied = super::copy_into_place(
+                    &mut source,
+                    permissions,
+                    &to,
+                    &cancel,
+                    super::LocalPublish::Replace,
+                );
                 (copied, to.exists(), dir)
             })
             .await
@@ -9088,6 +9112,9 @@ async fn copy_local_file_with(
         return Err(format!("{DEST_EXISTS_MARKER}: {to}"));
     }
     refuse_link_destination(std::path::Path::new(&to))?;
+    // The check above is answered before the data moves: a destination that
+    // appears during the copy is kept by the publication itself.
+    let publish = LocalPublish::for_overwrite(overwrite);
     // The mutation runs on the blocking pool and owns the admission: it
     // counts until the copy ends, even if the command awaiting it is gone.
     // A Stop (`cancel_transfer`) raises this flag: the copy observes it
@@ -9106,10 +9133,11 @@ async fn copy_local_file_with(
                     0,
                     NestedLinks::Skip,
                     Some(&cancel),
+                    publish,
                 ))
                 .map_err(crate::sync::IpcError::from)
         } else {
-            copy_file_cancellable(from_path, std::path::Path::new(&to), &cancel)
+            copy_file_cancellable(from_path, std::path::Path::new(&to), &cancel, publish)
         };
         copied.map_err(|error| {
             if cancel.load(Ordering::Relaxed) {
@@ -9147,6 +9175,7 @@ fn copy_file_cancellable(
     from: &std::path::Path,
     to: &std::path::Path,
     cancel: &AtomicBool,
+    publish: LocalPublish,
 ) -> Result<(), crate::sync::IpcError> {
     // Opened first, then checked through the handle, in the order
     // `std::fs::copy` follows: the check is on the file read, not on a path
@@ -9163,18 +9192,18 @@ fn copy_file_cancellable(
         let temp = local_copy_temp(to);
         let written = native_copy_windows(from, &temp, cancel);
         drop(source);
-        publish_local_copy(&temp, to, written, cancel)
+        publish_local_copy(&temp, to, written, cancel, publish)
     }
     #[cfg(target_os = "macos")]
     {
         let temp = local_copy_temp(to);
         let written = native_copy_macos(&source, metadata.permissions(), &temp, cancel);
-        publish_local_copy(&temp, to, written, cancel)
+        publish_local_copy(&temp, to, written, cancel, publish)
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
         let mut source = source;
-        copy_into_place(&mut source, metadata.permissions(), to, cancel)
+        copy_into_place(&mut source, metadata.permissions(), to, cancel, publish)
     }
 }
 
@@ -9199,16 +9228,41 @@ fn open_local_copy_temp(temp: &std::path::Path) -> Result<std::fs::File, crate::
     options.open(temp).map_err(local_copy_failed)
 }
 
+/// How a finished copy takes its destination's name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum LocalPublish {
+    /// Whatever is at the destination is replaced.
+    Replace,
+    /// Nothing at the destination is ever replaced (`overwrite=false`): the
+    /// absence check runs before the data moves, and an entry created at
+    /// the destination meanwhile must stay as it is.
+    NoReplace,
+}
+
+impl LocalPublish {
+    /// The policy of a copy command's `overwrite` flag: only an explicit
+    /// `false` keeps an existing destination.
+    fn for_overwrite(overwrite: Option<bool>) -> Self {
+        if overwrite == Some(false) {
+            Self::NoReplace
+        } else {
+            Self::Replace
+        }
+    }
+}
+
 /// Publish a written temporary at `to`. A Stop raised during the last chunk
 /// is checked again right before the destination is replaced, so a stopped
 /// copy never publishes; a Stop or an error removes the temporary, so no
 /// partial file is ever left under the final name, and an existing `to`
-/// stays as it was.
+/// stays as it was. With [`LocalPublish::NoReplace`] the move refuses an
+/// existing `to` in the same step that takes the name.
 fn publish_local_copy(
     temp: &std::path::Path,
     to: &std::path::Path,
     written: Result<(), crate::sync::IpcError>,
     cancel: &AtomicBool,
+    publish: LocalPublish,
 ) -> Result<(), crate::sync::IpcError> {
     let written = written.and_then(|()| {
         if cancel.load(Ordering::Relaxed) {
@@ -9217,7 +9271,16 @@ fn publish_local_copy(
             Ok(())
         }
     });
-    let published = written.and_then(|()| std::fs::rename(temp, to).map_err(local_copy_failed));
+    let published = written.and_then(|()| match publish {
+        LocalPublish::Replace => std::fs::rename(temp, to).map_err(local_copy_failed),
+        LocalPublish::NoReplace => rename_no_replace(temp, to).map_err(|e| {
+            if e.kind() == std::io::ErrorKind::AlreadyExists {
+                crate::sync::IpcError::from(format!("{DEST_EXISTS_MARKER}: {}", to.display()))
+            } else {
+                local_copy_failed(e)
+            }
+        }),
+    });
     if published.is_err() {
         remove_local_copy_temp(temp);
     }
@@ -9253,6 +9316,7 @@ pub(crate) fn copy_into_place(
     permissions: std::fs::Permissions,
     to: &std::path::Path,
     cancel: &AtomicBool,
+    publish: LocalPublish,
 ) -> Result<(), crate::sync::IpcError> {
     use std::io::Write;
     let temp = local_copy_temp(to);
@@ -9280,7 +9344,86 @@ pub(crate) fn copy_into_place(
         target.flush().map_err(local_copy_failed)
     })();
     drop(target);
-    publish_local_copy(&temp, to, written, cancel)
+    publish_local_copy(&temp, to, written, cancel, publish)
+}
+
+/// Move `temp` to `to` only when nothing is at `to`, in one step: an entry
+/// created at `to` after an absence check is refused with `AlreadyExists`,
+/// never replaced. A filesystem without the native no-replace rename gets a
+/// hard link, which refuses an existing name the same way, and then the
+/// temporary is removed.
+#[cfg(not(windows))]
+fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(temp.as_os_str().as_bytes())?;
+        let target = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+        // SAFETY: both NUL-terminated paths live for the syscall.
+        let result = unsafe {
+            libc::renameat2(
+                libc::AT_FDCWD,
+                source.as_ptr(),
+                libc::AT_FDCWD,
+                target.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if result == 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if !matches!(error.raw_os_error(), Some(libc::EINVAL | libc::ENOSYS)) {
+            return Err(error);
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        let source = std::ffi::CString::new(temp.as_os_str().as_bytes())?;
+        let target = std::ffi::CString::new(to.as_os_str().as_bytes())?;
+        // SAFETY: both NUL-terminated paths live for the call.
+        let result =
+            unsafe { libc::renamex_np(source.as_ptr(), target.as_ptr(), libc::RENAME_EXCL) };
+        if result == 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        if !matches!(error.raw_os_error(), Some(libc::EINVAL | libc::ENOTSUP)) {
+            return Err(error);
+        }
+    }
+    std::fs::hard_link(temp, to)?;
+    if std::fs::remove_file(temp).is_err() {
+        warn!("Copy published, but its temporary name could not be removed");
+    }
+    Ok(())
+}
+
+/// [`rename_no_replace`] on Windows: `MoveFileExW` without
+/// `MOVEFILE_REPLACE_EXISTING` fails on an existing name with
+/// `ERROR_ALREADY_EXISTS`, which std reads as `AlreadyExists`.
+#[cfg(windows)]
+fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS};
+    let wide = |path: &std::path::Path| -> Vec<u16> {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect()
+    };
+    let (source, target) = (wide(temp), wide(to));
+    // SAFETY: both NUL-terminated buffers live for the call.
+    unsafe {
+        MoveFileExW(
+            PCWSTR::from_raw(source.as_ptr()),
+            PCWSTR::from_raw(target.as_ptr()),
+            MOVE_FILE_FLAGS(0),
+        )
+    }
+    .map_err(std::io::Error::from)
 }
 
 /// `CopyFileExW`'s progress routine: called at each stream's start and after
@@ -9438,7 +9581,8 @@ mod native_local_copy_tests {
         let from = dir.path().join("source.bin");
         std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
         let to = dir.path().join("copy.bin");
-        let copied = copy_file_cancellable(&from, &to, &AtomicBool::new(true));
+        let copied =
+            copy_file_cancellable(&from, &to, &AtomicBool::new(true), LocalPublish::Replace);
         assert!(
             matches!(copied, Err(crate::sync::IpcError::Cancelled)),
             "{copied:?}"
@@ -9480,7 +9624,7 @@ mod native_local_copy_tests {
         std::fs::write(&from, b"unnamed stream").unwrap();
         std::fs::write(dir.path().join("file.txt:metadata"), b"named stream").unwrap();
         let to = dir.path().join("copy.txt");
-        copy_file_cancellable(&from, &to, &AtomicBool::new(false)).unwrap();
+        copy_file_cancellable(&from, &to, &AtomicBool::new(false), LocalPublish::Replace).unwrap();
         assert_eq!(std::fs::read(&to).unwrap(), b"unnamed stream");
         assert_eq!(
             std::fs::read(dir.path().join("copy.txt:metadata")).unwrap(),
@@ -9542,7 +9686,7 @@ mod native_local_copy_tests {
         };
         assert_eq!(set, 0, "{}", std::io::Error::last_os_error());
         let to = dir.path().join("copy.txt");
-        copy_file_cancellable(&from, &to, &AtomicBool::new(false)).unwrap();
+        copy_file_cancellable(&from, &to, &AtomicBool::new(false), LocalPublish::Replace).unwrap();
         assert_eq!(std::fs::read(&to).unwrap(), b"data");
         let mut buffer = [0u8; 32];
         // SAFETY: as above, with a writable buffer of the length given.
@@ -9563,6 +9707,104 @@ mod native_local_copy_tests {
             std::io::Error::last_os_error()
         );
         assert_eq!(&buffer[..value.len()], value);
+    }
+
+    /// A source that, at its first read, has another operation create the
+    /// destination with its own bytes: the copy is past its absence check.
+    struct DestinationAppearsMidCopy {
+        to: std::path::PathBuf,
+        served: bool,
+    }
+
+    impl std::io::Read for DestinationAppearsMidCopy {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            if self.served {
+                return Ok(0);
+            }
+            self.served = true;
+            std::fs::write(&self.to, b"theirs")?;
+            buf[..4].copy_from_slice(b"ours");
+            Ok(4)
+        }
+    }
+
+    fn copy_while_the_destination_appears(publish: LocalPublish) -> (String, Vec<String>, Vec<u8>) {
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("copy.txt");
+        let probe = tempfile::NamedTempFile::new().unwrap();
+        let permissions = probe.as_file().metadata().unwrap().permissions();
+        let mut source = DestinationAppearsMidCopy {
+            to: to.clone(),
+            served: false,
+        };
+        let copied = copy_into_place(
+            &mut source,
+            permissions,
+            &to,
+            &AtomicBool::new(false),
+            publish,
+        );
+        let names = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        (format!("{copied:?}"), names, std::fs::read(&to).unwrap())
+    }
+
+    /// `copy_local_file` with `overwrite=false` checks that the destination
+    /// is absent before the data moves. A file created there during the copy
+    /// was then replaced by the publication's rename. It is kept, the copy
+    /// answers with the destination-exists marker, and no temporary is left.
+    /// The same race with `Replace` publishes the copy, so the race is real.
+    #[test]
+    fn a_copy_that_must_not_overwrite_keeps_a_file_created_while_it_ran() {
+        assert_eq!(
+            LocalPublish::for_overwrite(Some(false)),
+            LocalPublish::NoReplace
+        );
+        assert_eq!(
+            LocalPublish::for_overwrite(Some(true)),
+            LocalPublish::Replace
+        );
+        assert_eq!(LocalPublish::for_overwrite(None), LocalPublish::Replace);
+
+        let (copied, names, contents) = copy_while_the_destination_appears(LocalPublish::NoReplace);
+        assert!(copied.contains(DEST_EXISTS_MARKER), "{copied}");
+        assert_eq!(contents, b"theirs");
+        assert_eq!(names, ["copy.txt"]);
+
+        let (copied, names, contents) = copy_while_the_destination_appears(LocalPublish::Replace);
+        assert_eq!(copied, "Ok(())");
+        assert_eq!(contents, b"ours");
+        assert_eq!(names, ["copy.txt"]);
+    }
+
+    /// A folder copy with `overwrite=false` never merges into a folder that
+    /// is at the destination when it starts (one created after the absence
+    /// check): nothing in it is replaced and nothing is added to it.
+    #[tokio::test]
+    async fn a_folder_copy_that_must_not_overwrite_never_merges_into_an_existing_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir(&from).unwrap();
+        std::fs::write(from.join("kept.txt"), b"ours").unwrap();
+        std::fs::write(from.join("new.txt"), b"new").unwrap();
+        let to = dir.path().join("to");
+        std::fs::create_dir(&to).unwrap();
+        std::fs::write(to.join("kept.txt"), b"theirs").unwrap();
+        let copied = copy_dir_recursive_cancellable(
+            &from,
+            &to,
+            0,
+            NestedLinks::Skip,
+            Some(&AtomicBool::new(false)),
+            LocalPublish::NoReplace,
+        )
+        .await;
+        let error = copied.expect_err("the folder is there");
+        assert!(error.starts_with(DEST_EXISTS_MARKER), "{error}");
+        assert_eq!(std::fs::read(to.join("kept.txt")).unwrap(), b"theirs");
+        assert!(!to.join("new.txt").exists());
     }
 }
 
@@ -9624,7 +9866,7 @@ async fn copy_dir_recursive(
     depth: u32,
     links: NestedLinks,
 ) -> Result<(), String> {
-    copy_dir_recursive_cancellable(src, dst, depth, links, None).await
+    copy_dir_recursive_cancellable(src, dst, depth, links, None, LocalPublish::Replace).await
 }
 
 /// [`copy_dir_recursive`] that observes `cancel` between entries and copies
@@ -9636,14 +9878,36 @@ async fn copy_dir_recursive_cancellable(
     depth: u32,
     links: NestedLinks,
     cancel: Option<&AtomicBool>,
+    publish: LocalPublish,
 ) -> Result<(), String> {
     if depth > 50 {
         return Err("Directory nesting too deep (max 50 levels)".to_string());
     }
     refuse_link_destination(dst)?;
-    tokio::fs::create_dir_all(dst)
-        .await
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    match publish {
+        LocalPublish::Replace => tokio::fs::create_dir_all(dst)
+            .await
+            .map_err(|e| format!("Failed to create directory: {}", e))?,
+        // A folder that appeared at `dst` is not merged into: each level is
+        // created new, so every file below is published into a folder this
+        // copy made.
+        LocalPublish::NoReplace => {
+            if depth == 0 {
+                if let Some(parent) = dst.parent() {
+                    tokio::fs::create_dir_all(parent)
+                        .await
+                        .map_err(|e| format!("Failed to create directory: {}", e))?;
+                }
+            }
+            tokio::fs::create_dir(dst).await.map_err(|e| {
+                if e.kind() == std::io::ErrorKind::AlreadyExists {
+                    format!("{DEST_EXISTS_MARKER}: {}", dst.display())
+                } else {
+                    format!("Failed to create directory: {}", e)
+                }
+            })?
+        }
+    }
     let mut entries = tokio::fs::read_dir(src)
         .await
         .map_err(|e| format!("Failed to read directory: {}", e))?;
@@ -9680,12 +9944,15 @@ async fn copy_dir_recursive_cancellable(
                 depth + 1,
                 links,
                 cancel,
+                publish,
             ))
             .await?;
         } else if let Some(cancel) = cancel {
             refuse_link_destination(&dst_path)?;
-            copy_file_cancellable(&src_path, &dst_path, cancel)
-                .map_err(|_| format!("Failed to copy file: {}", src_path.display()))?;
+            copy_file_cancellable(&src_path, &dst_path, cancel, publish).map_err(|e| match e {
+                crate::sync::IpcError::Other(text) if text.starts_with(DEST_EXISTS_MARKER) => text,
+                _ => format!("Failed to copy file: {}", src_path.display()),
+            })?;
         } else {
             refuse_link_destination(&dst_path)?;
             tokio::fs::copy(&src_path, &dst_path)
@@ -16607,8 +16874,8 @@ async fn get_remote_files_recursive_with_progress(
         Ok((files, completeness))
     }
     .await;
-    let _ = ftp_manager.change_dir(&original_path).await;
-    scanned
+    let returned = ftp_manager.return_to_folder(&original_path).await;
+    walked_then_returned(scanned, returned)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -21841,7 +22108,8 @@ async fn purge_profile_secrets(
         |key| {
             match user_id {
                 Some(user) => user_partitions::delete_credential_for_user_dual(&store, user, key),
-                None => store.delete(key).map_err(|error| error.to_string()),
+                // No account: the vault delete alone, as `delete_credential`.
+                None => user_partitions::delete_credential_dual_as(&store, None, key),
             }
             .is_ok()
         },
@@ -31177,7 +31445,8 @@ mod legacy_ftp_walk_tests {
                 walk_remote_ftp(&mut session, &cancel, "/x", HARD_DEPTH_CAP, 100),
             )
             .await
-            .unwrap_or_else(|_| panic!("{case}: the scan does not end"));
+            .unwrap_or_else(|_| panic!("{case}: the scan does not end"))
+            .expect("the scan returns to the folder it started in");
             let paths: Vec<String> = result.nodes.iter().map(|n| n.path.clone()).collect();
             assert_eq!(keys(&paths), ["/x/a.txt", "/x/d", "/x/d/b.txt"], "{case}");
             let omitted: u32 = result.truncated_parents.iter().map(|t| t.omitted).sum();
@@ -31307,6 +31576,128 @@ mod legacy_ftp_walk_tests {
         let planned = outcome.expect("case-distinct names on a case-sensitive destination");
         assert_eq!(planned.entries.len(), 2);
         assert_eq!(std::fs::read_dir(local.path()).unwrap().count(), 0);
+    }
+
+    /// A legacy session in `/shown` on a server that refuses every return
+    /// into it, and the server's DELE/RMD log.
+    pub(crate) async fn session_that_cannot_return(
+    ) -> (ftp::FtpManager, Arc<std::sync::Mutex<Vec<String>>>) {
+        static TREE: Listings = &[
+            ("/", &["shown/", "x/"]),
+            ("/shown", &["s.txt"]),
+            ("/x", &["a.txt"]),
+        ];
+        let (port, log) =
+            crate::providers::ftp::walk_scope_tests::tree_server_refusing_return_to_shown(TREE)
+                .await;
+        let mut session = ftp::FtpManager::new();
+        session
+            .connect(&format!("127.0.0.1:{port}"))
+            .await
+            .expect("connect to the tree server");
+        session.login("u", "p").await.expect("log in");
+        session.change_dir("/shown").await.expect("open /shown");
+        (session, log)
+    }
+
+    /// Every walk and probe that moves the legacy session out of the folder
+    /// the panel shows goes back to it (the agent's listing has its own test
+    /// in `ai_core::ftp_manager_provider`). When the server refuses that return,
+    /// the session stayed in `/x` and a later relative delete reached
+    /// `/x/a.txt` while the panel showed `/shown`. Each now fails with the
+    /// closed connection, and the later relative DELE never reaches the
+    /// server.
+    #[tokio::test]
+    async fn a_refused_return_to_the_shown_folder_closes_the_legacy_session() {
+        use crate::sync_empty_dir::EmptyDirRemote;
+        let local = tempfile::tempdir().expect("temp dir");
+        std::fs::write(local.path().join("a.txt"), b"a").expect("local file");
+        let app = tauri::test::mock_app();
+        let cancel = Arc::new(AtomicBool::new(false));
+        // Every walk runs, so a failure names each one that went wrong.
+        let mut wrong = Vec::new();
+        for walk in [
+            "download scan",
+            "upload index",
+            "delete tree",
+            "sync scan",
+            "queue scan",
+            "empty-folder count",
+        ] {
+            let (mut session, log) = session_that_cannot_return().await;
+            let outcome: Result<(), String> = tokio::time::timeout(LIMIT, async {
+                match walk {
+                    "download scan" => scan_ftp_download_entries(
+                        &|_| {},
+                        &cancel,
+                        &mut session,
+                        "/x",
+                        local.path(),
+                        "",
+                        "t",
+                        "x",
+                    )
+                    .await
+                    .map(drop),
+                    "upload index" => prepare_ftp_upload_entries(
+                        app.handle(),
+                        &cancel,
+                        &mut session,
+                        local.path(),
+                        "/x",
+                        "skip",
+                        "t",
+                        "x",
+                    )
+                    .await
+                    .map(drop),
+                    "delete tree" => collect_ftp_delete_tree(&mut session, "/x", &mut |_, _, _| {})
+                        .await
+                        .map(drop),
+                    "sync scan" => get_remote_files_recursive_with_progress(
+                        &mut session,
+                        "/x",
+                        &[],
+                        None,
+                        &|_, _, _| {},
+                    )
+                    .await
+                    .map(drop),
+                    "queue scan" => crate::transfer_queue_scan::walk_remote_ftp(
+                        &mut session,
+                        &cancel,
+                        "/x",
+                        1,
+                        100,
+                    )
+                    .await
+                    .map(drop),
+                    _ => session
+                        .entry_count("/x")
+                        .await
+                        .map(drop)
+                        .map_err(|e| e.to_string()),
+                }
+            })
+            .await
+            .unwrap_or_else(|_| panic!("{walk}: does not end"));
+            let closed = outcome
+                .as_ref()
+                .is_err_and(|error| error.contains("connection was closed"));
+            let connected = session.is_connected();
+            let deleted = session.remove("a.txt").await.is_ok()
+                || log
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|line| line.starts_with("DELE"));
+            if !closed || connected || deleted {
+                wrong.push(format!(
+                    "{walk}: {outcome:?}, still connected {connected}, delete reached the server {deleted}"
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 }
 

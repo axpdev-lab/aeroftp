@@ -159,6 +159,21 @@ fn pending_owner(user: Option<i64>) -> Option<i64> {
     user.or_else(crate::user_partitions::active_user_id_quiet)
 }
 
+/// Drop the rotation this process kept for `account` under `user` (as
+/// [`pending_owner`] reads it), once the stored chain of that account was
+/// deleted: a sign-out or a deleted profile. The pending chain is read ahead
+/// of the stored one, so a reconnect would refresh with it and store it
+/// again, restoring the authorization that was removed. Any other account is
+/// not a refresh chain and is left alone.
+pub(crate) fn forget_pending_rotation(user: Option<i64>, account: &str) {
+    if account == "jottacloud_refresh" || account.starts_with("jottacloud_refresh_") {
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&(pending_owner(user), account.to_string()));
+    }
+}
+
 pub struct JottacloudProvider {
     config: JottacloudConfig,
     client: reqwest::Client,
@@ -4061,6 +4076,130 @@ mod tests {
             sent.last().unwrap().contains("refresh_token=replacement"),
             "{sent:?}"
         );
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+    }
+
+    /// A rotation this process could not persist is read ahead of the stored
+    /// chain. Deleting the stored chain (a deleted profile, the vault's
+    /// delete) left it in place, and the next connection refreshed with it
+    /// and stored the authorization the user had removed. Both delete paths
+    /// drop it: the next connection finds no chain and sends no refresh.
+    #[test]
+    fn deleting_a_stored_chain_drops_its_pending_rotation() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::deleting_a_stored_chain_drops_its_pending_rotation",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-signout-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-signout-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    async move {
+                        sent.lock().unwrap().push(body);
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": "rotated",
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        let bound = |profile: &str| {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id(profile);
+            provider.set_credential_user(Some(first));
+            provider
+        };
+        // A deleted profile (`purge_profile_secrets` with an active account)
+        // and the vault's own delete (`delete_credential`).
+        // `purged`: a deleted profile (`purge_profile_secrets` with an active
+        // account); otherwise the vault's own delete (`delete_credential`).
+        // Both paths run, so a failure names each one that went wrong.
+        let mut wrong = Vec::new();
+        for (profile, purged) in [("purged", true), ("deleted", false)] {
+            let key = format!("jottacloud_refresh_{profile}");
+            partitions::store_credential_for_user(
+                &store,
+                first,
+                &key,
+                "jottacloud_refresh",
+                &chain("stored"),
+            )
+            .expect("store the chain");
+            store
+                .store(&key, &chain("stored"))
+                .expect("store the vault copy");
+            PENDING_ROTATIONS.lock().unwrap().insert(
+                (Some(first), key.clone()),
+                zeroize::Zeroizing::new(chain("pending-rotation")),
+            );
+            if purged {
+                partitions::delete_credential_for_user_dual(&store, first, &key).unwrap();
+            } else {
+                partitions::delete_credential_dual_as(&store, None, &key).unwrap();
+            }
+            // The vault's delete leaves the partition copy: removed without
+            // a delete path, so only the delete above can have dropped the
+            // rotation.
+            partitions::unmirror_credential_for_user_best_effort_any(first, &key);
+            let kept = PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(Some(first), key.clone()));
+            let mut provider = bound(profile);
+            let connected = runtime.block_on(provider.try_connect_with_refresh());
+            let refreshed = std::mem::take(&mut *sent.lock().unwrap());
+            if kept || matches!(connected, Ok(true)) || !refreshed.is_empty() {
+                wrong.push(format!(
+                    "{profile}: rotation kept {kept}, connected {connected:?}, sent {refreshed:?}"
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
         server.abort();
         drop(runtime);
         CredentialStore::clear_cache();

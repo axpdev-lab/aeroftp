@@ -64,7 +64,7 @@ impl FtpManagerProvider {
             .list_files_for_probe(include_hidden)
             .await
             .map_err(failed);
-        self.0.change_dir(&previous).await.map_err(failed)?;
+        self.0.return_to_folder(&previous).await.map_err(failed)?;
         Ok(listed?
             .into_iter()
             .map(|file| {
@@ -229,7 +229,7 @@ impl StorageProvider for FtpManagerProvider {
         if path == "/" || path == "." {
             let previous = self.0.current_path();
             self.0.change_dir(path).await.map_err(failed)?;
-            self.0.change_dir(&previous).await.map_err(failed)?;
+            self.0.return_to_folder(&previous).await.map_err(failed)?;
             return Ok(RemoteEntry::directory(path.to_string(), path.to_string()));
         }
         let (parent, name) = parent_and_name(path);
@@ -319,6 +319,29 @@ mod tests {
 #[cfg(test)]
 mod probe_contract_tests {
     use super::*;
+
+    /// The agent lists `/x` on the GUI's session, which shows `/shown`; the
+    /// server refuses the return. The lease used to hand the session back in
+    /// `/x`, where the panel's next relative delete reached `/x/a.txt`. The
+    /// listing fails with the closed connection and no DELE reaches the
+    /// server.
+    #[tokio::test]
+    async fn a_refused_return_closes_the_borrowed_gui_session() {
+        let (mut session, log) = crate::legacy_ftp_walk_tests::session_that_cannot_return().await;
+        let listed = {
+            let mut lease = FtpManagerProvider::borrow(&mut session);
+            lease.provider.list("/x").await
+        };
+        let error = listed.expect_err("the return was refused").to_string();
+        assert!(error.contains("connection was closed"), "{error}");
+        assert!(!session.is_connected());
+        assert!(session.remove("a.txt").await.is_err());
+        assert!(!log
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|line| line.starts_with("DELE")));
+    }
 
     /// The agent's `stat` over the GUI's FTP session: with a folder named
     /// `-a` in the bare listing, a dot name it does not show is neither found

@@ -97,6 +97,13 @@ pub(crate) fn compare_target_refusal() -> String {
 /// of the pair are local folders.
 pub(crate) const LOCAL_PAIR_TARGET_IDENTITY: &str = "target-v1:local-pair";
 
+/// Which GUI transport published the GUI owner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GuiOwnerSource {
+    Provider,
+    LegacyFtp,
+}
+
 pub struct ProviderState {
     /// Currently active provider (if connected)
     pub provider: Arc<Mutex<Option<Box<dyn StorageProvider>>>>,
@@ -117,7 +124,10 @@ pub struct ProviderState {
     /// Unlike `connection_generation`, this also covers view-only overlay changes
     /// and the legacy FTP manager without invalidating cached overlay keys.
     gui_target_epoch: AtomicU64,
-    gui_owner_context: std::sync::Mutex<Option<crate::sync_owner::GuiOwnerContext>>,
+    /// The account the GUI's connection belongs to, with the transport that
+    /// published it: each transport's disconnect retires its own owner only.
+    gui_owner_context:
+        std::sync::Mutex<Option<(GuiOwnerSource, crate::sync_owner::GuiOwnerContext)>>,
     gui_process_nonce: String,
     legacy_owner_binding: std::sync::Mutex<Option<String>>,
     /// Target identity of the legacy FTP session (`connect_ftp`), set with
@@ -416,7 +426,7 @@ impl ProviderState {
             .lock()
             .map_err(|_| ProviderError::TargetChanged.to_string())?
             .clone();
-        if let Some(owner) = owner {
+        if let Some((_, owner)) = owner {
             crate::credential_store::off_async_worker(|| owner.validate())?;
         }
         Ok(())
@@ -433,7 +443,7 @@ impl ProviderState {
                 *self
                     .gui_owner_context
                     .lock()
-                    .unwrap_or_else(|e| e.into_inner()) = Some(owner);
+                    .unwrap_or_else(|e| e.into_inner()) = Some((GuiOwnerSource::LegacyFtp, owner));
                 *self
                     .legacy_owner_binding
                     .lock()
@@ -444,6 +454,7 @@ impl ProviderState {
     }
 
     pub(crate) fn clear_legacy_gui_owner(&self) {
+        self.retire_gui_owner(GuiOwnerSource::LegacyFtp);
         *self
             .legacy_owner_binding
             .lock()
@@ -452,6 +463,21 @@ impl ProviderState {
             .legacy_target_identity
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
+    }
+
+    /// Drop the GUI owner when `source` published it; another transport's
+    /// owner stays.
+    fn retire_gui_owner(&self, source: GuiOwnerSource) {
+        let mut owner = self
+            .gui_owner_context
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if owner
+            .as_ref()
+            .is_some_and(|(published_by, _)| *published_by == source)
+        {
+            *owner = None;
+        }
     }
 
     /// Record the target of the legacy FTP session just logged in.
@@ -501,6 +527,13 @@ impl ProviderState {
             )
         };
         let overlay = if self.active_crypt_overlay.load(Ordering::SeqCst) {
+            // The view-only lock keeps the overlay armed and its keys cached
+            // while the session lists the raw ciphertext names: that tree is
+            // not the plaintext one the naming identifies, and a baseline of
+            // the plaintext tree must not serve it.
+            if !self.overlay_wrapped.load(Ordering::SeqCst) {
+                return Ok(this_connection());
+            }
             match self.cached_overlay_naming() {
                 Some(naming) => naming,
                 None => return Ok(this_connection()),
@@ -597,7 +630,8 @@ impl ProviderState {
             .gui_owner_context
             .lock()
             .map_err(|_| ProviderError::TargetChanged.to_string())?
-            .clone();
+            .clone()
+            .map(|(_, owner)| owner);
         let provider = self.provider.lock().await;
         let provider = provider
             .as_ref()
@@ -939,6 +973,10 @@ impl ProviderState {
     /// slot empty, no request uses them, and a connect replaces them.
     fn clear_slot_now(&self, slot: &mut Option<Box<dyn StorageProvider>>) {
         *slot = None;
+        // The account the retired provider belonged to owns nothing now: a
+        // later pin validated against it would refuse a local-folder
+        // operation once the account changes, with no connection left.
+        self.retire_gui_owner(GuiOwnerSource::Provider);
         *self
             .connected_profile_id
             .lock()
@@ -2677,7 +2715,8 @@ async fn install_connected_provider_with_owner(
         *state
             .gui_owner_context
             .lock()
-            .unwrap_or_else(|e| e.into_inner()) = owner;
+            .unwrap_or_else(|e| e.into_inner()) =
+            owner.map(|owner| (GuiOwnerSource::Provider, owner));
         state.clear_legacy_gui_owner();
         *prov_lock = candidate.take();
         *state
@@ -3702,14 +3741,28 @@ pub async fn provider_list_files(
     path: Option<String>,
     expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
-    let _target = state.pin_gui_target(expected_gui_target).await?;
     crate::panic_safe::catch(
         "provider_list_files",
-        run_cancellable_listing(
-            &listing_cancel,
-            provider_list_files_inner(&app, &state, path),
-        ),
+        provider_list_files_cancellable(&app, &state, &listing_cancel, path, expected_gui_target),
     )
+    .await
+}
+
+/// The body of [`provider_list_files`]. The wait for the target pin is part
+/// of what Cancel aborts: a listing queued behind a connection writer looks
+/// like any other frozen panel, and a Cancel during that wait must leave it
+/// without a listing.
+async fn provider_list_files_cancellable(
+    events: &impl SessionEvents,
+    state: &ProviderState,
+    listing_cancel: &ListingCancelState,
+    path: Option<String>,
+    expected_gui_target: Option<u64>,
+) -> Result<ProviderListResponse, String> {
+    run_cancellable_listing(listing_cancel, async {
+        let _target = state.pin_gui_target(expected_gui_target).await?;
+        provider_list_files_inner(events, state, path).await
+    })
     .await
 }
 
@@ -3777,11 +3830,32 @@ pub async fn provider_change_dir(
     expected_generation: Option<u64>,
     expected_gui_target: Option<u64>,
 ) -> Result<ProviderListResponse, String> {
-    let _target = state.pin_gui_target(expected_gui_target).await?;
-    run_cancellable_listing(
+    provider_change_dir_cancellable(
+        &app,
+        &state,
         &listing_cancel,
-        provider_change_dir_inner(&app, &state, path, expected_generation),
+        path,
+        expected_generation,
+        expected_gui_target,
     )
+    .await
+}
+
+/// The body of [`provider_change_dir`], with the target pin's wait inside
+/// what Cancel aborts, as [`provider_list_files_cancellable`]: a Cancel
+/// during that wait enters no folder.
+async fn provider_change_dir_cancellable(
+    events: &impl SessionEvents,
+    state: &ProviderState,
+    listing_cancel: &ListingCancelState,
+    path: String,
+    expected_generation: Option<u64>,
+    expected_gui_target: Option<u64>,
+) -> Result<ProviderListResponse, String> {
+    run_cancellable_listing(listing_cancel, async {
+        let _target = state.pin_gui_target(expected_gui_target).await?;
+        provider_change_dir_inner(events, state, path, expected_generation).await
+    })
     .await
 }
 
@@ -8173,8 +8247,14 @@ pub(crate) async fn provider_delete_dir_with<R: tauri::Runtime>(
     // The whole command runs against the cancel, the waits for the target
     // pin and for the provider included: a cancel raised while it waits
     // ends it there and releases the pin (M1).
+    // Typed to the end, as `delete_file_for_ipc`: the page receives the
+    // error's kind, never a provider's or server's text, which can hold an
+    // opaque token no pattern recognizes.
     let deleting = async {
-        let _target = state.pin_gui_target(expected_gui_target).await?;
+        let _target = state
+            .pin_gui_target(expected_gui_target)
+            .await
+            .map_err(crate::sync::IpcError::from_native_pin)?;
         // As for file deletion, use the path selected in the current raw/wrapped
         // view. The plaintext-injection guard applies to writes, not removals.
 
@@ -8217,23 +8297,24 @@ pub(crate) async fn provider_delete_dir_with<R: tauri::Runtime>(
             github
                 .delete_directory_recursive(&path, commit_message.as_deref())
                 .await
-                .map_err(|e| format!("Failed to delete directory: {}", e))
+                .map_err(crate::sync::IpcError::from)
         } else if recursive {
             provider
                 .rmdir_recursive(&path)
                 .await
-                .map_err(|e| format!("Failed to delete directory: {}", e))
+                .map_err(crate::sync::IpcError::from)
         } else {
             // Not recursive: only an empty directory, since `rmdir` itself takes
             // the content along on several backends.
             crate::providers::remove_empty_directory(provider.as_mut(), &path)
                 .await
-                .map_err(|e| format!("Failed to delete directory: {}", e))
+                .map_err(crate::sync::IpcError::from)
         }
     };
-    unless_cancelled(&cancel, deleting)
-        .await
-        .unwrap_or_else(|| Err(DELETION_CANCELLED.to_string()))?;
+    match unless_cancelled(&cancel, deleting).await {
+        Some(deleted) => ipc_result("provider_delete_dir", deleted)?,
+        None => return Err(DELETION_CANCELLED.to_string()),
+    }
 
     // Emit delete_complete so ScanningToast dismisses
     if recursive {
@@ -16531,6 +16612,70 @@ mod tests {
         }
     }
 
+    /// A listing and a change of folder queued behind a connection writer
+    /// waited for the target pin before the panel's Cancel was armed: the
+    /// Cancel found nothing to signal, and once the writer left the request
+    /// listed and entered the folder the user had abandoned. The wait is
+    /// cancellable now, and nothing reaches the provider.
+    #[tokio::test]
+    async fn a_cancel_while_a_listing_waits_for_its_target_lists_and_enters_nothing() {
+        let (wanderer, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        let events = RecordedEvents::default();
+        let listing_cancel = ListingCancelState::new();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let writer = state
+            .transfer_owner_write(Duration::from_secs(5))
+            .await
+            .unwrap();
+        for change_dir in [false, true] {
+            let request = async {
+                if change_dir {
+                    provider_change_dir_cancellable(
+                        &events,
+                        &state,
+                        &listing_cancel,
+                        "docs".to_string(),
+                        None,
+                        Some(epoch),
+                    )
+                    .await
+                    .map(drop)
+                } else {
+                    provider_list_files_cancellable(
+                        &events,
+                        &state,
+                        &listing_cancel,
+                        Some("docs".to_string()),
+                        Some(epoch),
+                    )
+                    .await
+                    .map(drop)
+                }
+            };
+            let cancelling = async {
+                let deadline = std::time::Instant::now() + Duration::from_secs(2);
+                while !listing_cancel.cancel() {
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "change_dir {change_dir}: the waiting request armed no Cancel"
+                    );
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            };
+            let (outcome, ()) = tokio::join!(request, cancelling);
+            assert_eq!(
+                outcome.unwrap_err(),
+                LISTING_CANCELLED,
+                "change_dir {change_dir}"
+            );
+        }
+        drop(writer);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(log.requests().is_empty(), "{:?}", log.requests());
+    }
+
     /// Every request a tab can send after the connection was closed, relative
     /// and absolute, through the listing and the change of folder.
     async fn every_request_is_refused(state: &ProviderState, events: &RecordedEvents) {
@@ -18793,6 +18938,50 @@ mod tests {
         );
     }
 
+    /// The view-only lock unwraps the session to the raw ciphertext names
+    /// but keeps the overlay armed and its keys cached. The raw view had the
+    /// plaintext tree's identity, so Compare without a vault id loaded the
+    /// plaintext baseline against ciphertext rows, and every plaintext entry
+    /// read as deleted on the remote. The raw view has an identity of this
+    /// connection only.
+    #[tokio::test]
+    async fn the_raw_view_of_a_view_only_lock_never_takes_the_plaintext_identity() {
+        let state = ProviderState::new();
+        let keys = crate::crypt_overlay_provider::OverlayKeys::Rclone(rclone_compare_keys(true));
+        let (on_main, _) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        let overlay = crate::crypt_overlay_provider::CryptOverlayProvider::new(
+            Box::new(on_main),
+            keys.clone(),
+            "/",
+        );
+        install_connected_provider(&state, Box::new(overlay), Some("gh".into()))
+            .await
+            .unwrap();
+        state.active_crypt_overlay.store(true, Ordering::SeqCst);
+        state.overlay_wrapped.store(true, Ordering::SeqCst);
+        state.store_overlay_key_cache(keys, "/".to_string(), "rclone-crypt".to_string());
+        let plaintext = state.gui_target_identity(true).await.unwrap();
+        assert!(
+            !plaintext.starts_with("target-v1:connection:"),
+            "{plaintext}"
+        );
+        // What `provider_lock_crypt_overlay` leaves behind.
+        {
+            let mut guard = state.provider.lock().await;
+            state.advance_gui_target();
+            assert!(crate::crypt_overlay_provider::clear_overlay_in_place(
+                &mut guard
+            ));
+            state.overlay_wrapped.store(false, Ordering::SeqCst);
+        }
+        assert!(state.active_crypt_overlay.load(Ordering::SeqCst));
+        assert!(state.cached_overlay_for_rearm().is_some());
+        let raw = state.gui_target_identity(true).await.unwrap();
+        assert_ne!(raw, plaintext);
+        assert!(raw.starts_with("target-v1:connection:"), "{raw}");
+    }
+
     #[test]
     fn guard_no_raw_crypt_write_refuses_only_when_crypt_capable_and_unwrapped() {
         let state = ProviderState::new();
@@ -19772,6 +19961,53 @@ mod tests {
         /// of its leaky text.
         static DELETE_ERROR: std::cell::Cell<Option<fn() -> ProviderError>> =
             const { std::cell::Cell::new(None) };
+        /// Whether [`LeakyServer`]'s folder removals fail with its leaky text
+        /// on this thread; otherwise they succeed.
+        static DIR_REMOVAL_LEAKS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+
+    impl LeakyServer {
+        fn dir_removal() -> Result<(), ProviderError> {
+            if DIR_REMOVAL_LEAKS.with(std::cell::Cell::get) {
+                Err(ProviderError::Other(LEAKED.to_string()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    /// `provider_delete_dir` returned `Failed to delete directory: {e}`, the
+    /// server's whole text with its bearer token, from the recursive and the
+    /// empty-folder removal alike (the GitHub branch had the same format).
+    /// It answers as `provider_delete_file` does: the error's kind, none of
+    /// the server's text.
+    #[tokio::test]
+    async fn a_directory_delete_error_reaches_the_webview_without_the_server_text() {
+        use tauri::Manager;
+        let app = tauri::test::mock_app();
+        app.manage(crate::AppState::new());
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(LeakyServer));
+        DIR_REMOVAL_LEAKS.with(|leaks| leaks.set(true));
+        for recursive in [true, false] {
+            let returned = provider_delete_dir_with(
+                app.handle(),
+                &state,
+                "/d".into(),
+                recursive,
+                None,
+                None,
+                None,
+            )
+            .await
+            .expect_err("the server refused the removal");
+            assert_no_server_text(&returned);
+            assert!(
+                !returned.contains("CONNECTION_CHANGED"),
+                "{recursive}: {returned}"
+            );
+        }
+        DIR_REMOVAL_LEAKS.with(|leaks| leaks.set(false));
     }
 
     /// The error `delete_file_for_ipc` returns, through the boundary, when the
@@ -19964,10 +20200,10 @@ mod tests {
                 .map_or_else(|| ProviderError::Other(LEAKED.to_string()), |make| make()))
         }
         async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
-            Ok(())
+            Self::dir_removal()
         }
         async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
-            Ok(())
+            Self::dir_removal()
         }
         async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
             Ok(())
@@ -26719,6 +26955,70 @@ mod installer_account_switch_tests {
             );
             assert_eq!(state.gui_target_epoch.load(Ordering::SeqCst), before.epoch);
             assert!(state.pin_gui_target(Some(before.epoch)).await.is_ok());
+        });
+    }
+
+    /// A disconnect left the retired provider's owner in place. After an
+    /// account switch every pin at the current epoch, a local pair's
+    /// included, failed as a target change with no connection left, until a
+    /// new connect replaced the owner. The legacy FTP disconnect left its
+    /// owner the same way. Each disconnect retires its own transport's
+    /// owner, and only that one.
+    #[test]
+    fn a_disconnect_leaves_no_owner_of_its_connection_behind() {
+        if !in_isolated_child(
+            "provider_commands::installer_account_switch_tests::\
+             a_disconnect_leaves_no_owner_of_its_connection_behind",
+        ) {
+            return;
+        }
+        let _session = crate::user_partitions::test_lock();
+        run(async {
+            let (conn, first, second) = two_accounts();
+            let state = Arc::new(ProviderState::new());
+            let owner = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+            let (installer, _) = install_candidate(&state, owner);
+            installer.await.unwrap().unwrap();
+            assert!(state.gui_owner_context.lock().unwrap().is_some());
+            // Both halves run, so a failure names each one that went wrong.
+            let mut wrong = Vec::new();
+            provider_disconnect_inner(&state, |_| async {})
+                .await
+                .unwrap();
+            if state.gui_owner_context.lock().unwrap().is_some() {
+                wrong.push("the provider's owner outlived its disconnect");
+            }
+            crate::user_partitions::set_active_user(&conn, second).unwrap();
+            let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+            if state.pin_gui_target(Some(epoch)).await.is_err() {
+                wrong.push("a pin after the provider disconnect and the switch was refused");
+            }
+
+            // A legacy FTP owner survives a provider disconnect, and goes
+            // with the legacy session's own disconnect.
+            let legacy = crate::sync_owner::GuiOwnerContext::capture().unwrap();
+            state.set_legacy_gui_owner(legacy, None).unwrap();
+            provider_disconnect_inner(&state, |_| async {})
+                .await
+                .unwrap();
+            if state.gui_owner_context.lock().unwrap().is_none() {
+                wrong.push("a provider disconnect retired the legacy FTP owner");
+            }
+            drop(
+                state
+                    .begin_legacy_ftp_target_change(Duration::from_secs(1))
+                    .await
+                    .unwrap(),
+            );
+            if state.gui_owner_context.lock().unwrap().is_some() {
+                wrong.push("the legacy FTP owner outlived its disconnect");
+            }
+            crate::user_partitions::set_active_user(&conn, first).unwrap();
+            let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+            if state.pin_gui_target(Some(epoch)).await.is_err() {
+                wrong.push("a pin after the legacy disconnect and the switch was refused");
+            }
+            assert!(wrong.is_empty(), "{wrong:#?}");
         });
     }
 }

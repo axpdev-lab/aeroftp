@@ -4676,6 +4676,7 @@ fn delete_credential_dual_with(
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    crate::providers::jottacloud::forget_pending_rotation(user_id, credential_id);
     if let Some(user_id) = user_id {
         unmirror(user_id);
     }
@@ -4692,6 +4693,7 @@ pub fn delete_credential_for_user_dual(
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
+    crate::providers::jottacloud::forget_pending_rotation(Some(user_id), credential_id);
     unmirror_credential_for_user_best_effort_any(user_id, credential_id);
     Ok(())
 }
