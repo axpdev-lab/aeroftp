@@ -150,8 +150,10 @@ fn strip_duplicate_bucket_prefix(endpoint_host: &str, bucket: &str, path_style: 
 fn map_duck(xml: &str) -> DuckOutcome {
     let field = |k: &str| crate::bridge_shared::plist_field(xml, k);
 
-    let protocol_raw = match field("Protocol") {
-        Some(p) if !p.is_empty() => p.to_lowercase(),
+    // The protocol is a name from a fixed set, so it is read without the
+    // spaces at its ends; every other field is read as written (`plist_field`).
+    let protocol_raw = match field("Protocol").map(|p| p.trim().to_lowercase()) {
+        Some(p) if !p.is_empty() => p,
         _ => return DuckOutcome::NotABookmark,
     };
 
@@ -159,7 +161,8 @@ fn map_duck(xml: &str) -> DuckOutcome {
     let username = field("Username").unwrap_or_default();
     let region = field("Region");
     let path = field("Path").filter(|s| !s.is_empty());
-    let port_field = field("Port").and_then(|p| p.parse::<u32>().ok());
+    // A number, read without the spaces at its ends, as the protocol is.
+    let port_field = field("Port").and_then(|p| p.trim().parse::<u32>().ok());
 
     match protocol_raw.as_str() {
         "sftp" => DuckOutcome::Profile(MappedProfile {
@@ -631,10 +634,21 @@ pub fn export_cyberduck(
         // Cyberduck S3 Path is bucket[/prefix]; prefer the options.bucket
         // when present, else the stored initial_path. WebDAV Path is the
         // server path: the URL's own path, then the profile's start folder.
-        let initial_path = server
+        // The start folder as the profile opens it: `{username}` filled, or
+        // the profile skipped with the reason (`export_start_folder`).
+        let initial_path = match server
             .initial_path
-            .clone()
-            .filter(|s| !s.is_empty() && s != "/");
+            .as_deref()
+            .filter(|s| !s.is_empty() && *s != "/")
+            .map(|p| crate::bridge_shared::export_start_folder(p, &server.username))
+            .transpose()
+        {
+            Ok(path) => path,
+            Err(reason) => {
+                outcome.skip(&server.name, reason);
+                continue;
+            }
+        };
         let path_value = if duck_proto == "s3" || duck_proto == "b2" {
             let bucket = server
                 .options
@@ -1282,5 +1296,77 @@ mod tests {
                 "{name}:\n{duck}"
             );
         }
+    }
+
+    /// The bookmark's Path is the start folder as the profile opens it, for
+    /// every protocol: `{username}` filled, or the profile skipped with the
+    /// reason when the user name cannot fill it (`export_start_folder`).
+    /// Cyberduck's plist keeps a value's edge spaces, so a user name with one
+    /// is exported and read back as it is.
+    #[test]
+    fn a_bookmark_path_is_the_start_folder_the_profile_opens() {
+        let server = |name: &str, protocol: &str, user: &str| -> CyberduckExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": name, "name": name, "host": "nas.example.test", "port": 22,
+                "username": user, "protocol": protocol,
+                "initialPath": "/home/{username}/backup"
+            }))
+            .unwrap()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let servers = [
+            server("nas", "sftp", "alice"),
+            server("pub", "ftp", "alice"),
+            server("edge", "sftp", "alice "),
+            server("none", "sftp", ""),
+        ];
+        let outcome = export_cyberduck(&servers, &HashMap::new(), dir.path()).unwrap();
+        assert_eq!(outcome.exported, 3, "{:?}", outcome.skipped);
+        assert_eq!(outcome.skipped.len(), 1, "{:?}", outcome.skipped);
+        assert_eq!(outcome.skipped[0].name, "none");
+        assert_eq!(
+            outcome.skipped[0].reason,
+            crate::connection_manifest::USERNAME_TEMPLATE_MISSING
+        );
+        for (name, path) in [
+            ("nas", "/home/alice/backup"),
+            ("pub", "/home/alice/backup"),
+            ("edge", "/home/alice /backup"),
+        ] {
+            let duck = std::fs::read_to_string(dir.path().join(format!("{name}.duck"))).unwrap();
+            assert!(!duck.contains("{username}"), "{name}:\n{duck}");
+            assert!(
+                duck.contains(&format!("<key>Path</key>\n\t<string>{path}</string>")),
+                "{name}:\n{duck}"
+            );
+        }
+        let back = import_cyberduck(dir.path()).unwrap();
+        let edge = back.servers.iter().find(|s| s.name == "edge").unwrap();
+        assert_eq!(edge.username, "alice ");
+        assert_eq!(edge.initial_path.as_deref(), Some("/home/alice /backup"));
+    }
+
+    /// A hand-edited bookmark is read as written, as a profile typed in the
+    /// form is saved: a Hostname with an edge space keeps it (the connect then
+    /// dials it as written, and the rclone export refuses it by its host),
+    /// while the Protocol, a name from a fixed set, is read without spaces.
+    #[test]
+    fn a_hand_edited_bookmark_is_read_as_written() {
+        let dir = tempfile::tempdir().unwrap();
+        let duck = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\">\n<dict>\n\
+            \t<key>Protocol</key>\n\t<string> sftp </string>\n\
+            \t<key>Nickname</key>\n\t<string>edited</string>\n\
+            \t<key>Hostname</key>\n\t<string> nas.example.test</string>\n\
+            \t<key>Port</key>\n\t<string> 2222 </string>\n\
+            \t<key>Username</key>\n\t<string>alice </string>\n\
+            </dict>\n</plist>\n";
+        std::fs::write(dir.path().join("edited.duck"), duck).unwrap();
+        let back = import_cyberduck(dir.path()).unwrap();
+        assert_eq!(back.servers.len(), 1, "{} skipped", back.skipped.len());
+        let server = &back.servers[0];
+        assert_eq!(server.protocol.as_deref(), Some("sftp"));
+        assert_eq!(server.host, " nas.example.test");
+        assert_eq!(server.username, "alice ");
+        assert_eq!(server.port, 2222);
     }
 }

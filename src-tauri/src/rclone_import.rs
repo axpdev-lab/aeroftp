@@ -3473,9 +3473,10 @@ fn push_rclone_ftp_tls(body: &mut String, protocol: &str, options: Option<&serde
 
 /// Why a WebDAV profile cannot be exported because of its `{username}`
 /// template: the server URL (saved, or the preset default an empty host
-/// takes) or a start folder needs a user name the profile does not have, or
-/// one that cannot sit in a folder path. Written as `url = .../dav//` or with
-/// the literal placeholder, the remote would dial the wrong address.
+/// takes) needs a user name the profile does not have. Written as
+/// `url = .../dav//` or with the literal placeholder, the remote would dial
+/// the wrong address. The start folder and the crypt scope are filled for
+/// every protocol by `options_with_filled_folders`.
 fn webdav_username_template_problem(server: &RcloneExportServer) -> Option<String> {
     let host = crate::profile_loader::apply_webdav_profile_defaults(
         server.provider_id.as_deref(),
@@ -3491,21 +3492,133 @@ fn webdav_username_template_problem(server: &RcloneExportServer) -> Option<Strin
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let url = format!("{host}{base_path}");
-    if let Err(reason) = crate::connection_manifest::expand_username_in_url(&url, &server.username)
-    {
-        return Some(reason);
+    crate::connection_manifest::expand_username_in_url(&url, &server.username).err()
+}
+
+/// The backends that write the profile's secret into the config in clear
+/// (`secret_access_key`, `key`, `private_key`, `api_secret`,
+/// `access_token`). Every other backend writes it through `obscure_password`,
+/// whose output carries the secret's bytes, edge spaces included, and never
+/// starts or ends in a space itself.
+const CLEAR_SECRET_BACKENDS: &[&str] = &[
+    "s3",
+    "azure",
+    "swift",
+    "backblaze",
+    "imagekit",
+    "cloudinary",
+    "drime",
+];
+
+/// The backends whose section carries the profile's user name (`user`,
+/// `account`, `email`, `access_key_id`, `api_key`...) and the ones whose
+/// section carries its host. A backend that writes neither (an OAuth one,
+/// whose user name is only a label here) is not refused for them.
+const USER_NAME_BACKENDS: &[&str] = &[
+    "azure",
+    "backblaze",
+    "cloudinary",
+    "filen",
+    "ftp",
+    "ftps",
+    "imagekit",
+    "internxt",
+    "koofr",
+    "mega",
+    "opendrive",
+    "proton",
+    "s3",
+    "sftp",
+    "swift",
+    "webdav",
+];
+const HOST_BACKENDS: &[&str] = &["ftp", "ftps", "koofr", "pcloud", "s3", "sftp", "webdav"];
+
+/// Option values the export copies into the config as written. The bucket is
+/// not here: it is written after the colon of an alias (`lead: media`, which
+/// rclone keeps), and one that ends in a space leaves the alias out, as the
+/// start folder does.
+const EXPORTED_OPTION_VALUES: &[(&str, &str)] = &[
+    ("region", "region"),
+    ("endpoint", "endpoint"),
+    ("tenant", "tenant"),
+    ("drive_id", "drive id"),
+    ("drive_type", "drive type"),
+    ("root_folder_id", "root folder id"),
+    ("token_endpoint", "token endpoint"),
+    ("username", "user name"),
+    ("private_key_path", "key file path"),
+    ("basePath", "base path"),
+    ("filen_api_key", "API key"),
+];
+
+/// Why a profile cannot be exported because a value that names its account,
+/// its server or its credential starts or ends in a space. rclone reads a
+/// config value without the spaces at its ends, so `user = alice ` came back
+/// as `alice`: the same URL, another login. The start folder and the crypt
+/// scope are handled where they are written (an alias left out, an overlay
+/// refused).
+fn edge_space_problem(
+    proto: &str,
+    server: &RcloneExportServer,
+    options: Option<&serde_json::Value>,
+    password: Option<&str>,
+) -> Option<String> {
+    let mut values: Vec<(&str, &str)> = Vec::new();
+    if USER_NAME_BACKENDS.contains(&proto) {
+        values.push(("user name", server.username.as_str()));
     }
-    let options = server.options.as_ref()?;
-    // The crypt scope matters only when the overlay is exported: a disabled
-    // one with a stale template must not block the clear remote.
-    let crypt_enabled = options.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true);
-    ["initial_path", "rcloneCryptOverlayScope"]
-        .iter()
-        .filter(|key| **key != "rcloneCryptOverlayScope" || crypt_enabled)
-        .filter_map(|key| options.get(*key).and_then(|v| v.as_str()))
-        .find_map(|path| {
-            crate::connection_manifest::expand_username_in_path(path, &server.username).err()
+    if HOST_BACKENDS.contains(&proto) {
+        values.push(("host", server.host.as_str()));
+    }
+    if let Some(options) = options {
+        for (key, what) in EXPORTED_OPTION_VALUES {
+            if let Some(value) = options.get(*key).and_then(|v| v.as_str()) {
+                values.push((what, value));
+            }
+        }
+    }
+    if CLEAR_SECRET_BACKENDS.contains(&proto) {
+        if let Some(secret) = password {
+            values.push(("secret", secret));
+        }
+    }
+    values
+        .into_iter()
+        // A blank value is not written as is: the export treats it as absent
+        // (a default region, the preset's server).
+        .find(|(_, value)| !value.trim().is_empty() && value.trim() != *value)
+        .map(|(what, _)| {
+            format!(
+                "its {what} starts or ends in a space, which rclone's config cannot hold: \
+                 rclone would read it back without the space"
+            )
         })
+}
+
+/// The profile's options with its start folder and, when the overlay is
+/// exported, its crypt scope filled for every protocol
+/// (`bridge_shared::export_start_folder`), as the connect opens them. The
+/// WebDAV URL is checked apart (`webdav_username_template_problem`). An
+/// `Err` is the reason the profile is skipped. A disabled overlay with a
+/// stale template does not block the clear remote: its scope is not written.
+fn options_with_filled_folders(
+    server: &RcloneExportServer,
+) -> Result<Option<serde_json::Value>, String> {
+    let Some(mut options) = server.options.clone() else {
+        return Ok(None);
+    };
+    let crypt_enabled = options.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true);
+    for key in ["initial_path", "rcloneCryptOverlayScope"] {
+        if key == "rcloneCryptOverlayScope" && !crypt_enabled {
+            continue;
+        }
+        if let Some(path) = options.get(key).and_then(|v| v.as_str()) {
+            let filled = crate::bridge_shared::export_start_folder(path, &server.username)?;
+            options[key] = serde_json::Value::String(filled);
+        }
+    }
+    Ok(Some(options))
 }
 
 /// The start folder of a WebDAV profile as a path under the URL its remote
@@ -3768,6 +3881,29 @@ pub fn export_rclone(
         }
 
         if let Some(reason) = rclone_required_field_missing(proto, server) {
+            output.push_str(&format!(
+                "# skipped profile '{}': {}\n\n",
+                sanitized, reason
+            ));
+            outcome.skip(&server.name, &reason);
+            continue;
+        }
+        // The start folder and the crypt scope as the profile opens them, for
+        // every protocol: an sftp or ftp alias written from the stored path
+        // reached rclone as `nas:/home/{username}/backup`.
+        let filled_options = match options_with_filled_folders(server) {
+            Ok(filled) => filled,
+            Err(reason) => {
+                output.push_str(&format!(
+                    "# skipped profile '{}': {}\n\n",
+                    sanitized, reason
+                ));
+                outcome.skip(&server.name, &reason);
+                continue;
+            }
+        };
+        let options = filled_options.as_ref();
+        if let Some(reason) = edge_space_problem(proto, server, options, password) {
             output.push_str(&format!(
                 "# skipped profile '{}': {}\n\n",
                 sanitized, reason
@@ -10249,12 +10385,26 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                     server_with(id, "webdav", "", *port, Some(id), serde_json::json!({}));
                 rserver.username = user.to_string();
                 let (outcome, conf) = export_to_string(&[rserver], "matrix");
-                assert_eq!(outcome.exported, 1, "rclone {id} {user}: {conf}");
-                let url = section_of(&conf, id)
-                    .lines()
-                    .find_map(|l| l.strip_prefix("url = "))
-                    .unwrap_or_else(|| panic!("no url for {id}:\n{conf}"));
-                assert_eq!(norm(url), norm(&connect), "rclone {id} {user}");
+                if user.trim() != user {
+                    // rclone would read `user = alice ` back as `alice`: the
+                    // profile is refused (`edge_space_problem`); Cyberduck's
+                    // plist keeps the spaces and exports it below.
+                    assert_eq!(outcome.exported, 0, "rclone {id} {user:?}: {conf}");
+                    assert!(
+                        outcome.skipped[0]
+                            .reason
+                            .starts_with("its user name starts or ends in a space"),
+                        "rclone {id} {user:?}: {:?}",
+                        outcome.skipped
+                    );
+                } else {
+                    assert_eq!(outcome.exported, 1, "rclone {id} {user}: {conf}");
+                    let url = section_of(&conf, id)
+                        .lines()
+                        .find_map(|l| l.strip_prefix("url = "))
+                        .unwrap_or_else(|| panic!("no url for {id}:\n{conf}"));
+                    assert_eq!(norm(url), norm(&connect), "rclone {id} {user}");
+                }
 
                 let duck_server: crate::cyberduck_import::CyberduckExportServer =
                     serde_json::from_value(serde_json::json!({
@@ -12272,6 +12422,10 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         );
     }
 
+    /// The start folder is checked for an edge space as filled: the alias is
+    /// left out where the filled folder ends in one, and kept where only a
+    /// middle segment holds the template. A user name with an edge space no
+    /// longer gets this far (`a_value_rclone_would_trim_refuses_the_profile`).
     #[test]
     fn a_start_folder_alias_is_checked_for_an_edge_space_after_the_fill() {
         let lc = |name: &str, folder: &str| RcloneExportServer {
@@ -12279,26 +12433,26 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             name: name.into(),
             host: "".into(),
             port: 443,
-            username: "alice ".into(),
+            username: "alice".into(),
             protocol: Some("webdav".into()),
             options: Some(serde_json::json!({ "initial_path": folder })),
             provider_id: Some("lifetimecloud".into()),
         };
         let servers = [
-            // The template ends in `}`, the filled folder in a space: rclone
-            // would read the alias as another folder.
-            lc("lc space", "/dav/{username}/Photos/{username}"),
+            // Filled, the folder ends in a space: rclone would read the alias
+            // as another folder.
+            lc("lc space", "/dav/{username}/Photos "),
             // The template only in the middle segment: the alias holds.
             lc("lc mid", "/dav/{username}/Photos"),
         ];
         let (_, conf) = export_to_string(&servers, "lc-space-export");
         assert!(
             conf.contains(
-                "# start-folder alias for 'lc space' omitted: rclone's config cannot hold '/dav/alice /Photos/alice ', whose name ends in a space"
+                "# start-folder alias for 'lc space' omitted: rclone's config cannot hold '/dav/alice/Photos ', whose name ends in a space"
             ),
             "{conf}"
         );
-        assert!(!conf.contains("Photos/alice \n"), "{conf}");
+        assert!(!conf.contains("Photos \n"), "{conf}");
         assert!(!conf.contains("alias for 'lc mid' omitted"), "{conf}");
         assert!(
             conf.lines()
@@ -12308,26 +12462,28 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
     }
 
     /// A crypt scope is checked for an edge space as filled, like the start
-    /// folder above: `/dav/{username}/vault/{username}` ends in `}`, and filled
-    /// with `alice ` it ends in a space. Trimmed, the crypt wrapped
-    /// `/vault/alice`, another folder, where none of the encrypted files are.
+    /// folder above. Trimmed, `/dav/{username}/vault ` wrapped `/vault/alice`,
+    /// another folder, where none of the encrypted files are.
     #[test]
     fn a_crypt_scope_is_checked_for_an_edge_space_after_the_fill() {
-        let lc = |name: &str, username: &str| RcloneExportServer {
+        let lc = |name: &str, scope: &str| RcloneExportServer {
             id: format!("lc-{name}"),
             name: name.into(),
             host: "".into(),
             port: 443,
-            username: username.into(),
+            username: "alice".into(),
             protocol: Some("webdav".into()),
             options: Some(serde_json::json!({
                 "rcloneCryptEnabled": true,
                 "rcloneCryptPassword": "pw",
-                "rcloneCryptOverlayScope": "/dav/{username}/vault/{username}",
+                "rcloneCryptOverlayScope": scope,
             })),
             provider_id: Some("lifetimecloud".into()),
         };
-        let servers = [lc("lc space", "alice "), lc("lc plain", "alice")];
+        let servers = [
+            lc("lc space", "/dav/{username}/vault "),
+            lc("lc plain", "/dav/{username}/vault"),
+        ];
         let (outcome, conf) = export_to_string(&servers, "lc-crypt-space-export");
         let refused: Vec<(&str, &str)> = outcome
             .skipped
@@ -12338,11 +12494,11 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(refused[0].0, "lc space", "{conf}");
         assert!(
             refused[0].1.ends_with(
-                ":/vault/alice ', whose name ends in a space, which rclone's config cannot hold"
+                ":/vault ', whose name ends in a space, which rclone's config cannot hold"
             ),
             "{refused:?}"
         );
-        assert!(!conf.contains("lc space:/vault/alice\n"), "{conf}");
+        assert!(!conf.contains("lc space:/vault\n"), "{conf}");
         let (notes, _) = notes_and_body(&conf, "lc space");
         assert!(
             notes
@@ -12350,7 +12506,221 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 .contains("# crypt overlay for 'lc space' not written"),
             "{conf}"
         );
-        // The same template filled without a space wraps its folder.
-        assert_eq!(crypt_remotes(&conf), ["lc plain:/vault/alice"], "{conf}");
+        // The same template without the space wraps its folder.
+        assert_eq!(crypt_remotes(&conf), ["lc plain:/vault"], "{conf}");
+    }
+
+    /// The start folder and the crypt scope are written as the profile opens
+    /// them for every protocol, not only WebDAV: an sftp or ftp alias written
+    /// from the stored path reached rclone as `nas:/home/{username}/backup`,
+    /// and the transfer created that literal folder. A template the user name
+    /// cannot fill refuses the profile with the reason, whatever the protocol.
+    #[test]
+    fn every_protocol_exports_the_start_folder_and_crypt_scope_as_the_profile_opens_them() {
+        let profile = |name: &str, proto: &str, user: &str, options: serde_json::Value| {
+            let mut server = export_server(name, proto, Some(options));
+            server.username = user.into();
+            server
+        };
+        let folder = serde_json::json!({ "initial_path": "/home/{username}/backup" });
+        let servers = [
+            profile("nas", "sftp", "alice", folder.clone()),
+            profile("pub", "ftp", "alice", folder.clone()),
+            profile("sec", "ftps", "alice", folder.clone()),
+            profile(
+                "box",
+                "sftp",
+                "alice",
+                serde_json::json!({
+                    "rcloneCryptEnabled": true,
+                    "rcloneCryptPassword": "pw",
+                    "rcloneCryptOverlayScope": "/srv/{username}/vault",
+                }),
+            ),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "folders-filled");
+        assert!(outcome.skipped.is_empty(), "{:?}", outcome.skipped);
+        assert!(!conf.contains("{username}"), "{conf}");
+        let aliases: Vec<&str> = conf
+            .lines()
+            .collect::<Vec<_>>()
+            .windows(2)
+            .filter(|pair| pair[0] == "type = alias")
+            .filter_map(|pair| pair[1].strip_prefix("remote = "))
+            .collect();
+        assert_eq!(
+            aliases,
+            [
+                "nas:/home/alice/backup",
+                "pub:home/alice/backup",
+                "sec:home/alice/backup"
+            ],
+            "{conf}"
+        );
+        assert_eq!(crypt_remotes(&conf), ["box:/srv/alice/vault"], "{conf}");
+
+        // Unfillable, the profile is refused with the reason: no user name,
+        // or one that cannot sit in a folder path.
+        let servers = [
+            profile("none", "sftp", "", folder.clone()),
+            profile("slash", "ftp", "a/b", folder.clone()),
+        ];
+        let (outcome, conf) = export_to_string(&servers, "folders-unfillable");
+        assert_eq!(outcome.exported, 0, "{conf}");
+        let reasons: Vec<(&str, &str)> = outcome
+            .skipped
+            .iter()
+            .map(|skip| (skip.name.as_str(), skip.reason.as_str()))
+            .collect();
+        assert_eq!(
+            reasons[0],
+            (
+                "none",
+                crate::connection_manifest::USERNAME_TEMPLATE_MISSING
+            )
+        );
+        assert_eq!(reasons[1].0, "slash");
+        assert!(
+            reasons[1].1.contains("cannot be used in a folder path"),
+            "{reasons:?}"
+        );
+        // Only the reasons name the placeholder: no written value holds it.
+        assert!(
+            conf.lines()
+                .all(|l| l.starts_with('#') || !l.contains("{username}")),
+            "{conf}"
+        );
+    }
+
+    /// rclone reads a config value without the spaces at its ends, so a
+    /// value that names the account, the server or the credential and starts
+    /// or ends in one would come back as another: `user = alice ` was read as
+    /// `alice`, the same URL with another login. The profile is refused with
+    /// the field. A password written in obscured form keeps its spaces.
+    #[test]
+    fn a_value_rclone_would_trim_refuses_the_profile() {
+        let refusal = |servers: &[RcloneExportServer], passwords: &[(&str, &str)]| {
+            let (outcome, conf) = export_with_passwords(servers, passwords, "edge-space");
+            assert_eq!(outcome.exported, 0, "{conf}");
+            outcome
+                .skipped
+                .iter()
+                .map(|skip| skip.reason.clone())
+                .collect::<Vec<_>>()
+        };
+        for proto in ["webdav", "sftp"] {
+            for user in [" alice", "alice "] {
+                let mut server = server_with(
+                    "edge",
+                    proto,
+                    "https://dav.example.test/dav/",
+                    443,
+                    None,
+                    serde_json::json!({}),
+                );
+                if proto == "sftp" {
+                    server.host = "nas.example".into();
+                }
+                server.username = user.into();
+                assert_eq!(
+                    refusal(&[server], &[]),
+                    ["its user name starts or ends in a space, which rclone's config cannot hold: rclone would read it back without the space"],
+                    "{proto} {user:?}"
+                );
+            }
+        }
+        let s3 = |options: serde_json::Value| server_with("edge", "s3", "", 443, None, options);
+        // A profile, the passwords of its export, and the field it is refused for.
+        type Row<'a> = (RcloneExportServer, &'a [(&'a str, &'a str)], &'a str);
+        let rows: [Row; 5] = [
+            (
+                server_with(
+                    "edge",
+                    "swift",
+                    "https://auth.example.test/v3",
+                    443,
+                    None,
+                    serde_json::json!({ "tenant": "team " }),
+                ),
+                &[],
+                "tenant",
+            ),
+            (
+                s3(serde_json::json!({ "bucket": "media", "region": " eu-1" })),
+                &[],
+                "region",
+            ),
+            (
+                s3(
+                    serde_json::json!({ "bucket": "media", "endpoint": "https://s3.example.test " }),
+                ),
+                &[],
+                "endpoint",
+            ),
+            (
+                s3(serde_json::json!({ "bucket": "media" })),
+                &[("edge", "secret ")],
+                "secret",
+            ),
+            (
+                server_with(
+                    "edge",
+                    "sftp",
+                    "nas.example ",
+                    22,
+                    None,
+                    serde_json::json!({}),
+                ),
+                &[],
+                "host",
+            ),
+        ];
+        for (server, passwords, what) in rows {
+            let reasons = refusal(&[server], passwords);
+            assert_eq!(reasons.len(), 1, "{what}: {reasons:?}");
+            assert!(
+                reasons[0].starts_with(&format!("its {what} starts or ends")),
+                "{what}: {reasons:?}"
+            );
+        }
+
+        // A backend that does not write the user name is not refused for it.
+        let mut label = server_with(
+            "label",
+            "pcloud",
+            "api.pcloud.com",
+            443,
+            None,
+            serde_json::json!({}),
+        );
+        label.username = "alice@example.test ".into();
+        let (outcome, conf) = export_to_string(&[label], "edge-space-label");
+        assert!(
+            outcome
+                .skipped
+                .iter()
+                .all(|skip| !skip.reason.contains("user name")),
+            "{:?}\n{conf}",
+            outcome.skipped
+        );
+
+        // Exported and read back: the same user, and an obscured password
+        // with its spaces.
+        let server = server_with(
+            "plain",
+            "sftp",
+            "nas.example",
+            22,
+            None,
+            serde_json::json!({}),
+        );
+        let (outcome, conf) =
+            export_with_passwords(&[server], &[("plain", " pw ")], "edge-space-plain");
+        assert_eq!(outcome.exported, 1, "{conf}");
+        let sections = parse_rclone_conf(&conf);
+        let remote = &sections["plain"];
+        assert_eq!(remote.get("user").map(String::as_str), Some("alice"));
+        let pass = remote.get("pass").expect("pass written");
+        assert_eq!(reveal_canonical_rclone(pass).unwrap(), " pw ");
     }
 }

@@ -415,7 +415,16 @@ pub(crate) fn plist_field(xml: &str, key: &str) -> Option<String> {
         let close = format!("</{tag}>");
         if let Some(s) = rest.strip_prefix(&open) {
             let e = s.find(&close)?;
-            return Some(html_unescape(s[..e].trim()));
+            // A string is read as written: a plist keeps the spaces at its
+            // ends, and a user name or a folder that has one is another
+            // account or another folder (trimmed, `alice ` came back as
+            // `alice`). A number has none to keep.
+            let value = if tag == "string" {
+                &s[..e]
+            } else {
+                s[..e].trim()
+            };
+            return Some(html_unescape(value));
         }
     }
     None
@@ -847,6 +856,17 @@ pub fn resolve_export_endpoint(
             }
         }
     }
+}
+
+/// The start folder (or an rclone-crypt scope) a bridge export writes, with
+/// the `{username}` placeholder filled the way the connect fills it
+/// ([`crate::connection_manifest::expand_username_in_path`]): the exported
+/// remote opens the folder AeroFTP opens. Written as stored, a template
+/// reached the file literally (`nas:/home/{username}/backup`) and the tool
+/// created that folder. An `Err` is the reason the profile is skipped: a user
+/// name that cannot fill it, or none at all.
+pub fn export_start_folder(path: &str, username: &str) -> Result<String, String> {
+    crate::connection_manifest::expand_username_in_path(path, username)
 }
 
 /// The FTP TLS mode a profile connects with, for an exporter:
