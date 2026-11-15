@@ -44,6 +44,11 @@ import { ConnectionScreen } from './ConnectionScreen';
 import { BACKEND_SWAP_WAIT_MS, latestSettledBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
 import { connectStartFolder } from '../utils/usernameTemplate';
 import { IntroHub } from './IntroHub/IntroHub';
+import { fixture, local, LOCAL } from './appTransfers.testkit';
+import PROVIDER_COMMANDS_RS from '../../src-tauri/src/provider_commands.rs?raw';
+import MY_SERVERS from './IntroHub/MyServersPanel.tsx?raw';
+import CONNECTION_SCREEN from './ConnectionScreen.tsx?raw';
+import USE_OAUTH2 from '../hooks/useOAuth2.ts?raw';
 
 const icon = 'data:image/png;base64,dGVzdA==';
 let profiles: ServerProfile[];
@@ -655,6 +660,63 @@ describe('A sign-in that swapped the backend', () => {
         expect(abandoned).toBe(0);
     });
 
+    it("refuses App's own upload while the sign-in still reads the profile to save", async () => {
+        // App's transfers on the live tab, and App's swap listener on the same
+        // backend accounting.
+        const app = fixture({ folders: { [LOCAL]: [local('a.txt')] } });
+        const start = APP.indexOf('  const confirmBackendConnection = () => {');
+        const listener = APP.indexOf('  const backendSwapRef = useRef<');
+        const { code } = await transformWithOxc([
+            APP.slice(start, APP.indexOf('  const remoteConnectPhaseVersionRef = useRef(0);', start)),
+            APP.slice(listener, APP.indexOf('  // FTP operations', listener)),
+        ].join('\n'), 'swap-listener.ts');
+        const ctx = {
+            useRef: <T,>(current: T) => ({ current }),
+            useEffect: (effect: () => () => void) => { cleanups.push(effect()); },
+            useLatestCallback: <F,>(fn: F) => fn,
+            notify: { error: vi.fn() }, t: (key: string) => key,
+            // The takeover only schedules the park: the tab still reads connected.
+            takeOverActiveSession: vi.fn(), parkActiveSession: vi.fn(),
+            remoteConnectPhaseVersionRef: { current: 7 },
+            backendUncertainRef: app.uncertain, backendConfirmationsRef: app.confirmations,
+            backendTeardownsRef: app.teardowns, backendReplacementSeqRef: { current: 0 },
+        };
+        const { confirmBackendConnection } = new Function(...Object.keys(ctx), `${code}; return { confirmBackendConnection };`)(...Object.values(ctx));
+        try {
+            await openEditor('googledrive');
+            // The form's read of the profile to save is held after the swap.
+            let release!: () => void;
+            let reading!: () => void;
+            const readStarted = new Promise<void>(resolve => { reading = resolve; });
+            const previous = mocks.invoke.getMockImplementation()!;
+            mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') {
+                    reading();
+                    await new Promise<void>(resolve => { release = resolve; });
+                }
+                return previous(command, args);
+            });
+            // OAuthConnect swaps the backend through `swapBackend`, then hands
+            // the sign-in to the form (`onConnected`), which reads the profile.
+            await swapBackend(async () => undefined);
+            let signIn!: Promise<void>;
+            act(() => { signIn = Promise.resolve(button('Test OAuth sign-in').click()); });
+            await readStarted;
+            expect(ctx.takeOverActiveSession).toHaveBeenCalled();
+            // A write through App's upload now: refused, nothing written.
+            await app.uploadFile(`${LOCAL}/a.txt`, 'a.txt', false, 40);
+            expect(app.written()).toEqual([]);
+            await act(async () => { release(); await signIn; });
+            expect(onConnectSpy).toHaveBeenCalledOnce();
+            // Once a connect confirms the tab, the same upload lands.
+            confirmBackendConnection();
+            await app.uploadFile(`${LOCAL}/a.txt`, 'a.txt', false, 40);
+            expect(app.written()).toEqual(['/remote/a.txt']);
+        } finally {
+            cleanups.splice(0).forEach(cleanup => cleanup());
+        }
+    });
+
     it('reports an OAuth sign-in whose profile read fails', async () => {
         await openEditor('googledrive');
         const previous = mocks.invoke.getMockImplementation()!;
@@ -1129,16 +1191,20 @@ describe('One sign-in swap at a time', () => {
 describe('A connect whose backend another invoke replaced meanwhile', () => {
     /** App's createSession, run on stubs; `replaceDuringRead` ends another
      *  replacement while it reads the saved profiles. */
-    async function createSessionRun(replaceDuringRead: boolean) {
+    async function createSessionRun(replaceDuringRead: boolean, confirmDuringRead = false) {
         const start = APP.indexOf('  const createSession = async (');
         const end = APP.indexOf('\n  };\n', start);
         expect(start, 'createSession in App.tsx').toBeGreaterThan(-1);
         const { code } = await transformWithOxc(APP.slice(start, end + '\n  };'.length), 'create-session.ts');
         const seq = { current: 4 };
+        const confirmations = { current: 2 };
         const ctx: Record<string, unknown> = {
             backendReplacementSeqRef: seq,
+            backendConfirmationsRef: confirmations,
             loadSavedServerProfiles: async () => {
                 if (replaceDuringRead) seq.current += 1;
+                // Another connect finished meanwhile and confirmed its tab.
+                if (confirmDuringRead) confirmations.current += 1;
                 return [];
             },
             confirmBackendConnection: vi.fn(),
@@ -1149,14 +1215,15 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         };
         for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
         const createSession = new Function(...Object.keys(ctx), `${code}; return createSession;`)(...Object.values(ctx));
-        // The caller read the sequence as its own connect returned.
-        await createSession('Server', { protocol: 'sftp', server: 'h', username: 'u', password: '' }, '/', '/home', [], [], undefined, 4);
+        // The caller read the mark as its own connect returned.
+        const outcome = await createSession('Server', { protocol: 'sftp', server: 'h', username: 'u', password: '' }, '/', '/home', [], [], undefined, { replacements: 4, confirmations: 2 });
         const added = (ctx.setSessions as ReturnType<typeof vi.fn>).mock.calls[0][0]([]) as { status: string }[];
-        return { ctx, added };
+        return { ctx, added, outcome };
     }
 
     it('keeps the tab cached and confirms nothing when a replacement ended during the profile read', async () => {
-        const { ctx, added } = await createSessionRun(true);
+        const { ctx, added, outcome } = await createSessionRun(true);
+        expect(outcome).toBe('stale');
         expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
         expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
         expect(ctx.setIsConnected).toHaveBeenCalledWith(false);
@@ -1164,8 +1231,17 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         expect((ctx.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
     });
 
+    it("leaves a newer connect's workspace connected when that one confirmed during the profile read", async () => {
+        const { ctx, added } = await createSessionRun(true, true);
+        expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.setIsConnected).not.toHaveBeenCalled();
+        expect(added[0].status).toBe('cached');
+    });
+
     it('confirms and makes the tab live when nothing replaced the backend', async () => {
-        const { ctx, added } = await createSessionRun(false);
+        const { ctx, added, outcome } = await createSessionRun(false);
+        expect(outcome).toBe('live');
         expect(ctx.confirmBackendConnection).toHaveBeenCalledOnce();
         expect(ctx.setActiveSessionId).toHaveBeenCalled();
         expect(added[0].status).toBe('connected');
@@ -1188,24 +1264,85 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
             }
             const args = APP.slice(open, close + 1);
             expect(args, APP.slice(call, call + 80)).toMatch(/\w+ReplacedAt,?\s*\)$/);
+            // A stale outcome stops the flow right there: nothing after it
+            // (the quota, the overlay, the success return) describes the
+            // backend that replaced this tab's.
+            const head = APP.slice(APP.lastIndexOf('\n', call) + 1, call);
+            expect(head, APP.slice(call, call + 80)).toMatch(/^\s+if \(await (connectScope\.step\(\(\) => )?$/);
+            const tail = APP.slice(close + 1, APP.indexOf('\n', close));
+            expect(tail, APP.slice(call, call + 80)).toMatch(/^\)? === 'stale'\) return( 'failed' as const)?;$/);
         }
         for (const read of ['providerReplacedAt', 'ftpReplacedAt', 'savedProviderReplacedAt', 'savedFtpReplacedAt']) {
             // Read on the statement right after the flow's own connect.
-            const at = APP.indexOf(`const ${read} = backendReplacementSeqRef.current;`);
+            const at = APP.indexOf(`const ${read} = backendMark();`);
             expect(at, read).toBeGreaterThan(-1);
             const before = APP.slice(APP.lastIndexOf('await ', at), at);
             expect(before, read).toMatch(/^await connectUnderRow\([^]*runConnect\('(provider_connect|connect_ftp)'[^]*\);\n\s+$/);
         }
-        // A tab switch reads it after its own probe or connect and refuses
-        // before confirming.
-        const sw = APP.slice(APP.indexOf('  const switchSession = '));
-        expect(sw.match(/switchReplacedAt = backendReplacementSeqRef\.current;/g)!.length).toBeGreaterThanOrEqual(5);
+        for (const read of ['oauthReplacedAt', 'savedOAuthReplacedAt']) {
+            expect(APP, read).toContain(`const ${read} = backendMark();`);
+        }
+        // A tab switch reads it after each of its own connects, before any
+        // other statement, and refuses before confirming.
+        const swStart = APP.indexOf('  const switchSession = ');
+        const sw = APP.slice(swStart, APP.indexOf('\n  };\n', swStart));
+        const connects = [...sw.matchAll(/await connectScope\.step\(\(\) => (runConnect|cancellableConnect|swapBackend)\(/g)];
+        expect(connects.length).toBeGreaterThanOrEqual(6);
+        for (const connect of connects) {
+            // The statement's end, by parenthesis depth.
+            let depth = 0;
+            let close = connect.index!;
+            for (let i = sw.indexOf('(', connect.index!); i < sw.length; i++) {
+                if (sw[i] === '(') depth++;
+                else if (sw[i] === ')' && --depth === 0) { close = i; break; }
+            }
+            // Only more connects of the same step (a sign-in, then its
+            // connect) may come before the read.
+            const after = sw.slice(sw.indexOf(';', close) + 1);
+            expect(after, sw.slice(connect.index!, connect.index! + 120)).toMatch(/^(\s*await connectScope\.step\(\(\) => (runConnect|cancellableConnect)\([^;]*;)*\s*switchReplacedAt = backendReplacementSeqRef\.current;/);
+        }
         expect(sw).toMatch(/if \(backendReplacementSeqRef\.current !== switchReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n\s+setSessions\(prev => prev\.map\(s => s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \}[^\n]+\n[^\n]+\n\s+confirmBackendConnection\(\);/);
-        // The device open, after its listing.
+        // The device open counts its own replacement, reads the sequence once
+        // it ended, and checks it after its listing.
+        expect(APP).toMatch(/const endDeviceReplacement = replacingBackend\(\);\n\s+try \{[^]*?mtp_open_gvfs_mount[^]*?mtp_open_device[^]*?\} finally \{\n\s+endDeviceReplacement\(\);\n\s+\}\n\s+setActivePortableDeviceId\(session\.deviceId\);\n(\s+\/\/[^\n]*\n)*\s+const deviceReplacedAt = backendReplacementSeqRef\.current;/);
         expect(APP).toMatch(/if \(backendReplacementSeqRef\.current !== deviceReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n[^\n]+\n\s+confirmBackendConnection\(\);/);
         // The AeroCloud open (both of its connects) and a GitHub branch switch
         // confirm with no await after their connect: nothing else would.
         expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+confirmBackendConnection\(\);/g)?.length).toBe(3);
+    });
+});
+
+describe('Every invoke that installs a provider in the backend slot', () => {
+    it('is counted as a replacement, for every command the backend lists', () => {
+        // The backend's own list of the commands that install into the slot
+        // (`PROVIDER_SLOT_INSTALLERS`, pinned there against its installers).
+        const list = PROVIDER_COMMANDS_RS.match(/const PROVIDER_SLOT_INSTALLERS: &\[&str\] = &\[([^\]]*)\]/);
+        expect(list, 'PROVIDER_SLOT_INSTALLERS in provider_commands.rs').not.toBeNull();
+        const commands = [...list![1].matchAll(/"([a-z0-9_]+)"/g)].map(m => m[1]);
+        expect(commands).toContain('mtp_open_device');
+        const sources = { 'App.tsx': APP, 'MyServersPanel.tsx': MY_SERVERS, 'ConnectionScreen.tsx': CONNECTION_SCREEN, 'useOAuth2.ts': USE_OAUTH2 };
+        let sites = 0;
+        for (const command of commands) {
+            for (const [file, source] of Object.entries(sources)) {
+                for (const site of source.matchAll(new RegExp(`(invoke(<[^()]*?>)?\\(|runConnect\\()'${command}'`, 'g'))) {
+                    sites += 1;
+                    const at = site.index!;
+                    const line = source.slice(source.lastIndexOf('\n', at) + 1, source.indexOf('\n', at));
+                    const before = source.slice(Math.max(0, at - 1500), at);
+                    const where = `${command} in ${file}: ${line.trim()}`;
+                    if (site[0].startsWith('runConnect(') || /swapBackend\(\(\) => invoke/.test(line)) continue;
+                    if (file === 'MyServersPanel.tsx') {
+                        // Its connect closures run through App's cancellableConnect.
+                        const fn = before.match(/const (do\w+Connect) = async[^]*$/);
+                        expect(fn, where).not.toBeNull();
+                        expect(source, where).toContain(`scopedCancellable(${fn![1]})`);
+                        continue;
+                    }
+                    expect(/cancellableConnect\(|= replacingBackend\(\);/.test(before), where).toBe(true);
+                }
+            }
+        }
+        expect(sites).toBeGreaterThanOrEqual(commands.length);
     });
 });
 
