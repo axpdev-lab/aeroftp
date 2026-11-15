@@ -278,19 +278,21 @@ impl ProviderState {
             .map_err(|_| "Transfer still in progress; connection or overlay was not changed. Stop the transfer and try again".to_string())
     }
 
+    /// `cancel` is the device open's connect token, checked under the provider
+    /// lock as every connect's is.
     pub(crate) async fn install_mtp_provider(
         &self,
         provider: Box<dyn StorageProvider>,
         config: ProviderConfig,
+        cancel: Option<&CancellationToken>,
     ) -> Result<(), String> {
-        // A device open has no connect token: nothing cancels it.
         install_connected_provider_with_config(
             self,
             provider,
             None,
             Some(config),
             Duration::from_secs(30),
-            None,
+            cancel,
         )
         .await
     }
@@ -732,9 +734,12 @@ impl<'a> ConnectRegistration<'a> {
         F: std::future::Future<Output = Result<T, String>>,
     {
         match self.token.as_ref() {
+            // A connect cancelled before it runs (a newer connect began) does
+            // not start: the cancel is polled first.
             Some(token) => tokio::select! {
-                res = fut => res,
+                biased;
                 _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+                res = fut => res,
             },
             None => fut.await,
         }
@@ -1952,35 +1957,65 @@ pub async fn provider_connect(
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
 ) -> Result<String, String> {
+    let scp_app = app.clone();
     crate::panic_safe::catch(
         "provider_connect",
-        provider_connect_inner(app, state, cancel_registry, peer_runtime, params),
+        provider_connect_inner(
+            &state,
+            &cancel_registry,
+            params,
+            |config: ProviderConfig| async move {
+                // AeroShare: a peer drive browses a LOCAL replica that the
+                // PeerRuntime keeps converging in the background. Ensure its
+                // sync task is up BEFORE the provider connects, so a first
+                // connect creates the replica folder and starts pulling (the
+                // panel can browse the last-synced state even while the friend
+                // is offline).
+                if config.provider_type == ProviderType::Peer {
+                    peer_runtime.ensure_sub_for_config(&app, &config).await?;
+                }
+                Ok(())
+            },
+            move |server| emit_session_event(&scp_app, SessionEventKind::ScpMode, server),
+        ),
     )
     .await
 }
 
-async fn provider_connect_inner(
-    app: tauri::AppHandle,
-    state: State<'_, ProviderState>,
-    cancel_registry: State<'_, ConnectionCancelRegistry>,
-    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+/// Body of [`provider_connect`]. `prepare` runs the work the connect needs
+/// before its provider is built (the AeroShare replica), `went_on_over_scp`
+/// reports an SFTP profile that went on over SCP.
+async fn provider_connect_inner<P, PFut, E>(
+    state: &ProviderState,
+    cancel_registry: &ConnectionCancelRegistry,
     params: ProviderConnectionParams,
-) -> Result<String, String> {
+    prepare: P,
+    went_on_over_scp: E,
+) -> Result<String, String>
+where
+    P: FnOnce(ProviderConfig) -> PFut,
+    PFut: std::future::Future<Output = Result<(), String>>,
+    E: FnOnce(String),
+{
     info!(
         "Connecting to {} provider: {}",
         params.protocol, params.server
     );
 
-    let mut config = params.to_provider_config()?;
+    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
+    // connect token before any await, so an Esc / "still connecting" Cancel,
+    // or a newer connect, reaches this connect wherever it waits; the guard
+    // de-registers it on every exit path. Registered after an await, a cancel
+    // that came during it found no entry and was lost.
+    let connect_token = params.connect_token.clone();
+    let registration = ConnectRegistration::new(cancel_registry, connect_token.as_deref());
 
-    // AeroShare: a peer drive browses a LOCAL replica that the PeerRuntime
-    // keeps converging in the background. Ensure its sync task is up BEFORE
-    // the provider connects, so a first connect creates the replica folder
-    // and starts pulling (the panel can browse the last-synced state even
-    // while the friend is offline).
-    if config.provider_type == ProviderType::Peer {
-        peer_runtime.ensure_sub_for_config(&app, &config).await?;
-    }
+    let mut config = params.to_provider_config()?;
+    // The preparation reads the config's extras, never its secret: it gets a
+    // copy with the password zeroized (A3-05).
+    let mut prepare_config = config.clone();
+    prepare_config.zeroize_password();
+    prepare(prepare_config).await?;
 
     // SEC-GH-001: For GitHub App mode, inject the held installation token
     // so the token never crosses the IPC boundary.
@@ -2003,11 +2038,6 @@ async fn provider_connect_inner(
     // A3-05: Zeroize password after it has been consumed by the provider
     config.zeroize_password();
 
-    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
-    // connect token so an Esc / "still connecting" Cancel can abort this
-    // connect. The guard de-registers it on every exit path.
-    let registration = ConnectRegistration::new(&cancel_registry, params.connect_token.as_deref());
-
     // Connect, cancellable via the registered token. Dropping the
     // `provider.connect()` future on cancel tears down the in-flight
     // TCP/TLS/HTTP connect cleanly for async transports (reqwest, russh,
@@ -2027,7 +2057,7 @@ async fn provider_connect_inner(
     let mut protocol = format!("{:?}", provider.provider_type());
     if crate::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut()) {
         protocol = "Scp (the server has no SFTP)".to_string();
-        emit_session_event(&app, SessionEventKind::ScpMode, params.server.clone());
+        went_on_over_scp(params.server.clone());
     }
 
     // Store provider and config. If a previous provider is still held here
@@ -2039,7 +2069,7 @@ async fn provider_connect_inner(
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
     install_connected_provider(
-        &state,
+        state,
         provider,
         config.extra.get("profile_id").cloned(),
         registration.token(),
@@ -22106,7 +22136,7 @@ mod restored_transfer_owner_tests {
         let other = state.clone();
         let mut install = tokio::spawn(async move {
             other
-                .install_mtp_provider(Box::new(mtp), mtp_config())
+                .install_mtp_provider(Box::new(mtp), mtp_config(), None)
                 .await
         });
         assert!(
@@ -22627,6 +22657,51 @@ mod connect_install_cancel_tests {
         assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
     }
 
+    /// A connect cancelled while it waits in its preparation (the AeroShare
+    /// replica a Peer connect ensures first) is registered already, so the
+    /// cancel reaches it: it never connects, and a provider another connect
+    /// installed meanwhile keeps the slot.
+    #[tokio::test]
+    async fn a_connect_cancelled_while_it_prepares_never_takes_the_slot() {
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-a",
+        }))
+        .unwrap();
+        let (reached_tx, reached_rx) = tokio::sync::oneshot::channel::<()>();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let connecting = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            move |_config: ProviderConfig| async move {
+                let _ = reached_tx.send(());
+                let _ = release_rx.await;
+                Ok(())
+            },
+            |_| {},
+        );
+        let elsewhere = async {
+            reached_rx.await.unwrap();
+            assert!(
+                registry.cancel("connect-a"),
+                "the cancel finds the connect's registration"
+            );
+            let (b, b_gone) = tagged("B");
+            install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+                .await
+                .unwrap();
+            release_tx.send(()).unwrap();
+            b_gone
+        };
+        let (connected, b_gone) = tokio::join!(connecting, elsewhere);
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+    }
+
     /// A cancel that lands after the store is too late: the installed
     /// connection stays whole.
     #[tokio::test]
@@ -22803,9 +22878,11 @@ mod connect_install_cancel_tests {
     #[test]
     fn every_connect_install_checks_its_own_token() {
         let code = &production(include_str!("provider_commands.rs"));
+        // `async fn name(` or, generic, `async fn name<`.
         let body_of = |name: &str| {
             let start = code
                 .find(&format!("async fn {name}("))
+                .or_else(|| code.find(&format!("async fn {name}<")))
                 .unwrap_or_else(|| panic!("{name}"));
             &code[start..start + code[start..].find("\n}\n").unwrap()]
         };
@@ -22828,7 +22905,7 @@ mod connect_install_cancel_tests {
                     .max(code[..at].rfind("\npub async fn "))
                     .unwrap();
                 let name = code[open..].split("fn ").nth(1).unwrap();
-                &name[..name.find('(').unwrap()]
+                &name[..name.find(['(', '<']).unwrap()]
             })
             .collect();
         assert_eq!(
@@ -22839,13 +22916,18 @@ mod connect_install_cancel_tests {
                 "fourshared_connect"
             ]
         );
+        // The device opens register their token too and hand it to the
+        // install (`install_mtp_provider`'s `cancel`).
         let mtp = &production(include_str!("providers/mtp/commands.rs"));
         for command in ["mtp_open_device", "mtp_open_gvfs_mount"] {
-            assert!(
-                mtp.contains(&format!("pub async fn {command}(")),
-                "{command}"
-            );
+            let start = mtp
+                .find(&format!("pub async fn {command}("))
+                .unwrap_or_else(|| panic!("{command}"));
+            let body = &mtp[start..start + mtp[start..].find("\n}\n").unwrap()];
+            assert!(body.contains("ConnectRegistration::new("), "{command}");
+            assert!(body.contains("registration.token()"), "{command}");
         }
+        assert!(mtp.contains("state.install_mtp_provider(provider, config, cancel)"));
         assert_eq!(PROVIDER_SLOT_INSTALLERS.len(), 5);
     }
 }

@@ -2590,6 +2590,48 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Every connect in flight, by its connect token, with the connect phase that
+  // was current when it began. The backend keeps one provider slot: a connect
+  // a newer phase overtook must not install over the newer one's, so a new
+  // phase cancels the connects that began before it (`supersedeOlderConnects`)
+  // and the backend refuses a cancelled connect's install under the provider
+  // lock. A superseded connect ends as a cancel without the cancel toast.
+  const inFlightConnectsRef = useRef(new Map<string, number>());
+  const supersededConnectsRef = useRef(new Set<string>());
+  const supersedeOlderConnects = (phaseVersion: number) => {
+    for (const [token, beganAt] of inFlightConnectsRef.current) {
+      if (beganAt >= phaseVersion || supersededConnectsRef.current.has(token)) continue;
+      supersededConnectsRef.current.add(token);
+      invoke('cancel_connection', { token }).catch((e) => {
+        logger.debug('[supersedeOlderConnects] cancel_connection failed (likely already resolved):', e);
+      });
+    }
+  };
+  /** Runs a connect under `token`, tracked for `supersedeOlderConnects`; one
+   *  a newer phase cancelled rejects with CONNECT_SUPERSEDED. */
+  const trackedConnect = async <T,>(run: (connectToken: string) => Promise<T>, token: string): Promise<T> => {
+    inFlightConnectsRef.current.set(token, remoteConnectPhaseVersionRef.current);
+    try {
+      return await run(token);
+    } catch (error) {
+      if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
+      throw error;
+    } finally {
+      inFlightConnectsRef.current.delete(token);
+      supersededConnectsRef.current.delete(token);
+    }
+  };
+  /** A connect outside `cancellableConnect` (a device open, a resume's sign-in
+   *  connect) under its own tracked token; superseded, it ends as a cancel. */
+  const phaseCancellable = async <T,>(run: (connectToken: string) => Promise<T>): Promise<T> => {
+    try {
+      return await trackedConnect(run, makeConnectToken());
+    } catch (error) {
+      if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
+      throw error;
+    }
+  };
+
   // Central cancellable connect wrapper. Every connect phase funnels through
   // here so the token plumbing, Esc handling, still-connecting modal, and the
   // cancelled-vs-failed toast distinction live in ONE place instead of ad-hoc
@@ -2618,9 +2660,12 @@ const App: React.FC = () => {
         };
         extendHardTimeoutRef.current = armHardTimeout;
         armHardTimeout();
-        run(token).then(resolve, reject);
+        trackedConnect(run, token).then(resolve, reject);
       });
     } catch (error) {
+      // Overtaken by a newer connect phase: a cancel, without the cancel toast
+      // (the user did not cancel; the newer connect owns the workspace).
+      if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
       // Hard-timeout backstop: the connect never answered. This is a real
       // failure, not a user cancel, so signal a best-effort backend cancel and
       // re-throw a clean error string that the per-flow catch surfaces via its
@@ -5070,14 +5115,25 @@ const App: React.FC = () => {
     connectScope = new ConnectScope(),
   ) => {
     connectScope.assert();
+    // The open replaces the backend: it begins a connect phase, so an older
+    // connect still in flight is cancelled, and a newer one stops it after
+    // any await, before it ends a connection or installs.
+    const openedAtPhase = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(openedAtPhase);
+    const stillCurrent = () => {
+      if (openedAtPhase !== remoteConnectPhaseVersionRef.current) throw new Error(CONNECT_SUPERSEDED_MARKER);
+    };
     try {
       // The live tab is put aside before its backend goes, and a listing it
       // still has running can no longer land on the device session.
       takeOverActiveSession();
       // Drop any live remote/FTP slot first; open also drains ProviderState.
       try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); /* not connected */ }
+      stillCurrent();
       try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); /* not connected */ }
+      stillCurrent();
       try { await connectScope.step(() => invoke('mtp_close_device', { deviceId: null })); } catch { connectScope.assert(); /* none */ }
+      stillCurrent();
 
       // Ride gvfs when the desktop already holds the single MTP session.
       // Exclusive libmtp after automount always loses (PTP_ERROR_IO) and can wedge
@@ -5089,6 +5145,7 @@ const App: React.FC = () => {
       } catch { connectScope.assert();
         gvfsMount = null;
       }
+      stillCurrent();
 
       const displayHint =
         profile?.name || device.displayName || undefined;
@@ -5097,17 +5154,23 @@ const App: React.FC = () => {
       // counted as every connect's is (`replacingBackend`).
       const endDeviceReplacement = replacingBackend();
       try {
+        // Under its own connect token: a newer phase cancels it, and the
+        // backend then refuses its install.
         if (gvfsMount) {
-          session = await connectScope.step(() => invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
+          session = await connectScope.step(() => phaseCancellable(connectToken => invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
             mountPath: gvfsMount,
             deviceId: device.deviceId,
             displayName: displayHint ?? null,
-          }));
+            connectToken,
+          })));
+          stillCurrent();
           mtpGvfsMountPathRef.current = gvfsMount;
         } else {
-          session = await connectScope.step(() => invoke<MtpSessionInfo>('mtp_open_device', {
+          session = await connectScope.step(() => phaseCancellable(connectToken => invoke<MtpSessionInfo>('mtp_open_device', {
             deviceId: device.deviceId,
-          }));
+            connectToken,
+          })));
+          stillCurrent();
           mtpGvfsMountPathRef.current = null;
         }
       } finally {
@@ -5283,6 +5346,11 @@ const App: React.FC = () => {
         }
       }
     } catch (err) { connectScope.assert();
+      // Overtaken by a newer connect: that one owns the device ids, the
+      // panels and the toast. Reported as a cancel to the caller.
+      if (isConnectSupersededError(err) || openedAtPhase !== remoteConnectPhaseVersionRef.current) {
+        throw new Error(CONNECT_CANCELLED_MARKER);
+      }
       setActivePortableDeviceId(null);
       mtpGvfsMountPathRef.current = null;
       const errorMessage = typeof err === 'string' ? err : String(err);
@@ -6901,6 +6969,7 @@ const App: React.FC = () => {
       // Invalidate old scope-entry work and release its latch and spinner.
       releaseRemoteNavigation();
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+      supersedeOlderConnects(phaseVersion);
       remoteConnectPhaseRef.current = 'connect';
       connectStartSessionsRef.current = { phaseVersion, ids: new Set(sessions.map(s => s.id)) };
       try {
@@ -7903,6 +7972,7 @@ const App: React.FC = () => {
     // A branch switch disconnects and logs in again, so it is a connect: a
     // Cancel on its listing leaves no session to fall back to.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'connect';
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
@@ -9339,6 +9409,7 @@ const App: React.FC = () => {
     // listing here now raises the spinner, and a Cancel tears the half-switched
     // session down rather than leaving the user staring at stale files.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'switch';
     const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
       withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
@@ -9948,6 +10019,7 @@ const App: React.FC = () => {
     // AeroCloud opens (or re-points) a connection before it lists, so a Cancel
     // on its listing has no usable session to fall back to either.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'connect';
     // A connect that started after this click owns the workspace: past every
     // await this open stops, before it touches a tab, a panel or the backend.
@@ -11853,8 +11925,11 @@ const App: React.FC = () => {
         takeOverActiveSession();
         const endOAuthReplacement = replacingBackend();
         try {
-          oauthResult = await invoke('oauth2_connect', { params: baseParams });
+          // Under its own token: a newer connect phase cancels it, and the
+          // backend refuses its install over the newer connection.
+          oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }));
         } catch (connectErr) {
+          if (isConnectCancelledError(connectErr)) throw connectErr;
           const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
           const lower = errMsg.toLowerCase();
           if (
@@ -11864,7 +11939,7 @@ const App: React.FC = () => {
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
             await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
-            oauthResult = await invoke('oauth2_connect', { params: baseParams });
+            oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }));
           } else {
             throw connectErr;
           }
@@ -11915,10 +11990,12 @@ const App: React.FC = () => {
         takeOverActiveSession();
         const endFourSharedReplacement = replacingBackend();
         try {
-          await invoke('fourshared_connect', { params });
-        } catch {
+          // Under its own token, as the OAuth connect above.
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
+        } catch (connectErr) {
+          if (isConnectCancelledError(connectErr)) throw connectErr;
           await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
-          await invoke('fourshared_connect', { params });
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
         } finally {
           endFourSharedReplacement();
         }

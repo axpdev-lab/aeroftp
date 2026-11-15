@@ -75,7 +75,7 @@ describe('ConnectionScreen edit sessions', () => {
             const untilCommand = resume.slice(from, resume.indexOf(command, from));
             expect(untilCommand, command).toContain('backendUncertainRef.current = true;\n        takeOverActiveSession();');
             // Counted as a replacement in flight until it returns, in a finally.
-            expect(untilCommand, command).toMatch(/const end\w+Replacement = replacingBackend\(\);\n\s+try \{\n\s+[^\n]*$/);
+            expect(untilCommand, command).toMatch(/const end\w+Replacement = replacingBackend\(\);\n\s+try \{\n(\s+\/\/[^\n]*\n)*\s+[^\n]*$/);
         }
         // Every connect, switch and swap invoke goes through cancellableConnect,
         // which counts it the same way.

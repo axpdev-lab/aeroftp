@@ -1436,7 +1436,8 @@ describe('Bot-named runs of the backend replacement checks', () => {
             `const openDevice = ${appBetween('  const openMtpSessionFromLiveDevice = useCallback(', '\n  }, [').replace('  const openMtpSessionFromLiveDevice = useCallback(', '').replace(/\n  \}, \[$/, '\n  }')};`,
             'device-open.ts');
         const deviceScope = { ...refs, ...accounting, invoke: deviceInvoke, t: (key: string) => key, findGvfsMtpMount: () => null,
-            localFiles: [], remoteFiles: [], currentLocalPath: '/home/me', notify: { info: vi.fn(), error: vi.fn() } };
+            localFiles: [], remoteFiles: [], currentLocalPath: '/home/me', notify: { info: vi.fn(), error: vi.fn() },
+            supersedeOlderConnects: vi.fn(), phaseCancellable: (run: (token: string) => unknown) => run('device-token') };
         const open = await runAppSlice(deviceCode, deviceScope, 'openDevice');
         expect(deviceInvoke).not.toHaveBeenCalled();
 
@@ -1591,7 +1592,7 @@ describe('Reviewed ownership of a connect', () => {
         const accounting = await accountingOn(refs);
         const fake = fakeBackend(hold);
         const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
-        const source = appBetween('    const stillCurrent = () => {', '    };\n') + appBetween('const connectToCloudServer = async', '\n      };\n');
+        const source = appBetween('    // A connect that started after this click owns the workspace', '    };\n') + appBetween('const connectToCloudServer = async', '\n      };\n');
         const connect = await runAppSlice(source, {
             ...refs, ...accounting, runConnect, invoke: fake.invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp', phaseVersion: 0,
             CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
@@ -1604,6 +1605,58 @@ describe('Reviewed ownership of a connect', () => {
         const ui = { activeSessionId: 'old-tab' as string | null };
         return { refs, fake, runConnect, connect, ui, connectB: (kind: 'provider' | 'ftp') => connectB(refs, accounting, fake, ui, kind) };
     }
+
+    it("leaves B installed when B's connect phase begins while A waits inside provider_connect", async () => {
+        // App's own connect wrappers, from the live-token refs to runConnect.
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A backend with one slot that honours cancel_connection: a connect
+        // cancelled while it waited is refused at its install.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }, receipt), [cancellableConnect]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        // A's connect, begun in phase 0, waits inside provider_connect.
+        const a = wrappers.runConnect('provider_connect', { server: 'A' });
+        await aReached;
+        // B's connect phase begins (as every phase start does) and B connects.
+        const bPhase = ++refs.remoteConnectPhaseVersionRef.current;
+        wrappers.supersedeOlderConnects(bPhase);
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        expect(backend.slot).toBe('B');
+        releaseA();
+        // A was cancelled, so the backend refused its install: B stays.
+        await expect(a).rejects.toThrow('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+        expect(invoke).toHaveBeenCalledWith('cancel_connection', { token: 'token-1' });
+        // Superseded is not a user cancel: no cancel toast.
+        expect(notify.info).not.toHaveBeenCalled();
+    });
 
     it("stops A's AeroCloud open before its teardown when B connects during an earlier await", async () => {
         const race = await aeroCloudRace(true, ['hostKey']);
