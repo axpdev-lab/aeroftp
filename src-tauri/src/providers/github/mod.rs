@@ -134,7 +134,9 @@ impl GitHubConfig {
 /// the bound: writes inside this window can land on a branch whose pull
 /// request was merged inside it. Those commits stay on the working branch
 /// (they are in no pull request yet), and the first write after the window
-/// is refused.
+/// is refused: the merged pull request's head descends from the session's
+/// anchor (`GitHubProvider::branch_anchor`), even though those writes moved
+/// the tip past it (CodeRabbit review 5907590915).
 const BRANCH_CHECK_WINDOW: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// How many working-branch names a walk tries (`name`, `name-2` ...).
@@ -260,6 +262,26 @@ pub struct GitHubProvider {
     /// When the working branch was last classified as still writable
     /// (`refuse_stale_write`).
     last_branch_check: Option<std::time::Instant>,
+    /// The working branch this session writes, anchored at its first check
+    /// ([`WorkingBranchAnchor`]). Taken again for another branch; dropped
+    /// when the session is poisoned.
+    branch_anchor: Option<WorkingBranchAnchor>,
+}
+
+/// The working branch a session writes and its tip as the session's first
+/// check of it read it, before the session's first write there
+/// (`refuse_stale_write`). A pull request merged with a head that descends
+/// from that tip was merged while the session was open
+/// (`GitHubProvider::classify_working_branch`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkingBranchAnchor {
+    branch: String,
+    tip: String,
+    /// Merged heads already compared with `tip` and found not to descend
+    /// from it: merged before the session, or with no history in common
+    /// with it (the comparison answered 404). That holds while the anchor
+    /// stands, so each is compared once per session, not once per window.
+    settled: std::collections::HashSet<String>,
 }
 
 impl std::fmt::Debug for GitHubProvider {
@@ -302,6 +324,7 @@ impl GitHubProvider {
             default_branch: String::from("main"),
             poison,
             last_branch_check: None,
+            branch_anchor: None,
         })
     }
 
@@ -731,7 +754,8 @@ impl GitHubProvider {
     /// is only ahead (the comparison), and for one that diverged the
     /// comparison, its tip and one request per 100 pull requests. A write
     /// skips it when the classification is younger than
-    /// [`BRANCH_CHECK_WINDOW`] AND the session's last tree-write request got
+    /// [`BRANCH_CHECK_WINDOW`], was of the branch this write goes to (the
+    /// anchored one), AND the session's last tree-write request got
     /// a success answer (`last_tree_write_ok`: a failed or unanswered write
     /// forces the next check). So while writes succeed, a run of any length
     /// adds at most one classification per window, whatever its number of
@@ -742,25 +766,55 @@ impl GitHubProvider {
     /// then land on the merged branch, not only one in the instant between a
     /// check and its write: those commits stay on the working branch, outside
     /// the merged pull request, and the first write after the window is
-    /// refused and poisons the session. A deleted branch fails those writes
-    /// instead, which ends the window at once. Without the window, the
-    /// instant between a check and its write would remain all the same: the
-    /// contents API takes no expected branch head.
+    /// refused and poisons the session. That refusal holds although those
+    /// writes moved the tip past the merged head: the merged head descends
+    /// from the session's anchor ([`Self::branch_anchor`]), the tip this
+    /// method read at the session's first check of the branch, before the
+    /// session wrote there (`&mut self`: no write of the session runs
+    /// between the read and the check's end). A deleted branch fails those
+    /// writes instead, which ends the window at once. Without the window,
+    /// the instant between a check and its write would remain all the same:
+    /// the contents API takes no expected branch head.
+    ///
+    /// A lookup that fails without a definite answer (the network, a 5xx, a
+    /// timeout) fails this write with that error and poisons nothing; the
+    /// next write checks again, since no check was recorded.
     async fn refuse_stale_write(&mut self) -> Result<(), ProviderError> {
         Self::refuse_when_poisoned(self)?;
         let GitHubWriteMode::BranchWorkflow { branch } = &self.write_mode else {
             return Ok(());
         };
+        // The window answers for the branch it checked: a write to another
+        // branch is checked (and anchored) on its own.
         let recent = self.client.last_tree_write_ok
             && self
                 .last_branch_check
-                .is_some_and(|at| at.elapsed() < BRANCH_CHECK_WINDOW);
+                .is_some_and(|at| at.elapsed() < BRANCH_CHECK_WINDOW)
+            && self
+                .branch_anchor
+                .as_ref()
+                .is_some_and(|anchor| anchor.branch == *branch);
         if recent {
             return Ok(());
         }
         let branch = branch.clone();
         let base = self.active_branch().to_string();
-        match self.classify_working_branch(&base, &branch).await? {
+        let mut anchor = match self.branch_anchor.take() {
+            Some(anchor) if anchor.branch == branch => Some(anchor),
+            _ => self
+                .branch_tip(&branch)
+                .await?
+                .map(|tip| WorkingBranchAnchor {
+                    branch: branch.clone(),
+                    tip,
+                    settled: Default::default(),
+                }),
+        };
+        let state = self
+            .classify_working_branch(&base, &branch, anchor.as_mut())
+            .await;
+        self.branch_anchor = anchor;
+        match state? {
             WorkingBranchState::Pending | WorkingBranchState::NotAhead => {
                 self.last_branch_check = Some(std::time::Instant::now());
                 Ok(())
@@ -769,9 +823,28 @@ impl GitHubProvider {
             | WorkingBranchState::Merged
             | WorkingBranchState::Missing => {
                 self.last_branch_check = None;
+                self.branch_anchor = None;
                 self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
                 Err(ProviderError::TargetChanged)
             }
+        }
+    }
+
+    /// The tip of `branch`; `None` when the API answers 404.
+    async fn branch_tip(&mut self, branch: &str) -> Result<Option<String>, ProviderError> {
+        match self
+            .client
+            .get_json::<GitHubBranch>(&self.branch_api_url(branch))
+            .await
+        {
+            Ok(found) => Ok(Some(found.commit.sha)),
+            Err(
+                GitHubError::PathNotFound(_)
+                | GitHubError::RepoNotFound
+                | GitHubError::BranchNotFound(_)
+                | GitHubError::NotFound(_),
+            ) => Ok(None),
+            Err(e) => Err(ProviderError::from(e)),
         }
     }
 
@@ -834,10 +907,30 @@ impl GitHubProvider {
     /// open one, none, a closed unmerged one, new commits after the merge) is
     /// pending. Only a 404 says the branch is not there; any other answer of
     /// any lookup is an error, never a guess.
+    ///
+    /// With the writing session's `anchor` ([`WorkingBranchAnchor`]), new
+    /// commits after the merge are pending only when the merge came before
+    /// the session: a merged pull request whose head descends from the
+    /// anchor's tip (or is it) was merged while the session was open, and
+    /// the commits after it are the session's own writes in its window, so
+    /// the branch is MERGED (CodeRabbit review 5907590915). Only that answer
+    /// (`behind_by == 0`) refuses. A head that does not descend from it, and
+    /// one whose comparison answers 404 (no history in common with it, or no
+    /// longer in the repository), says nothing about a merge in this session:
+    /// it is settled in the anchor and not compared again while the anchor
+    /// stands. A branch rewritten under the session (its anchor gone) is not
+    /// refused for that: it is classified as before this rule. Any other
+    /// failure of the comparison is an error. Every page of pull requests is
+    /// read, so a merge in the session found on a later page refuses as one
+    /// on the first does; settled heads keep that at one comparison per head
+    /// per session. Without an anchor (the walk that picks a branch at
+    /// connect, the legacy report) the rule is the one above, so a branch
+    /// merged before and written since is reused.
     async fn classify_working_branch(
         &mut self,
         base: &str,
         branch: &str,
+        mut anchor: Option<&mut WorkingBranchAnchor>,
     ) -> Result<WorkingBranchState, ProviderError> {
         // `base` is a branch name or a tip SHA (S3b); the pull requests are
         // always looked up against the base's name.
@@ -876,11 +969,24 @@ impl GitHubProvider {
                 .get_json(&url)
                 .await
                 .map_err(ProviderError::from)?;
-            if pulls
-                .iter()
-                .any(|pr| pr.merged_at.is_some() && pr.head.sha == tip)
-            {
-                return Ok(WorkingBranchState::Merged);
+            for pr in pulls.iter().filter(|pr| pr.merged_at.is_some()) {
+                if pr.head.sha == tip {
+                    return Ok(WorkingBranchState::Merged);
+                }
+                let Some(anchor) = anchor.as_deref_mut() else {
+                    continue;
+                };
+                if anchor.settled.contains(&pr.head.sha) {
+                    continue;
+                }
+                match self.compare_with(&anchor.tip, &pr.head.sha).await? {
+                    Some(compare) if compare.behind_by == 0 => {
+                        return Ok(WorkingBranchState::Merged);
+                    }
+                    _ => {
+                        anchor.settled.insert(pr.head.sha.clone());
+                    }
+                }
             }
             if pulls.len() < PER_PAGE {
                 break;
@@ -945,7 +1051,7 @@ impl GitHubProvider {
                 format!("{own}-{n}")
             };
             let state = if existing.contains(&name) {
-                self.classify_working_branch(base, &name).await?
+                self.classify_working_branch(base, &name, None).await?
             } else {
                 WorkingBranchState::Missing
             };
@@ -1082,7 +1188,7 @@ impl GitHubProvider {
             ) => return Ok(()),
             Err(e) => return Err(ProviderError::from(e)),
         }
-        if self.classify_working_branch(base, &legacy).await? != WorkingBranchState::Pending {
+        if self.classify_working_branch(base, &legacy, None).await? != WorkingBranchState::Pending {
             return Ok(());
         }
         let message = format!(
@@ -2105,6 +2211,7 @@ impl StorageProvider for GitHubProvider {
                     self.write_mode = GitHubWriteMode::BranchWorkflow {
                         branch: workflow_branch,
                     };
+                    self.branch_anchor = None;
                     self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
                     drop(pending);
                     written
@@ -3779,6 +3886,302 @@ mod tests {
             server.abort();
         }
 
+        /// CodeRabbit review 5907590915 (additional comment on 764-765): the
+        /// writes inside the window MOVE the tip past the merged head, as
+        /// GitHub does (here every PUT appends a commit to its branch).
+        ///
+        /// The steady state first: a reused branch whose earlier pull
+        /// requests were squash-merged (it is ahead and behind), one of them
+        /// with a head no longer in the repository (its comparison answers
+        /// 404). Writes across three windows are not refused, nothing is
+        /// poisoned, and each of those heads is compared with the anchor once
+        /// for the session, not once per window. The same after a reconnect.
+        ///
+        /// Then the merge: merged at the tip of one in-window write, one more
+        /// in-window write lands, and the first write after the window is
+        /// refused with nothing sent, because the merged head descends from
+        /// the anchor, taken before the session's first write (the tip that
+        /// write was made on, not the one it made). The reconnect: the walk
+        /// at connect picks the same branch as pending (a merge before this
+        /// new session, writes since), and its writes are not refused, across
+        /// the window too, so the refusal cannot loop. Another branch of the
+        /// session takes its own anchor. A comparison to the anchor that fails
+        /// without an answer fails that write and poisons nothing, and the
+        /// next write decides.
+        #[tokio::test]
+        async fn a_merge_inside_the_window_is_refused_after_it_though_the_writes_moved_the_tip() {
+            use std::collections::HashMap;
+            use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+            use std::sync::Mutex;
+
+            #[derive(Default)]
+            struct Repo {
+                /// Each branch's commits, oldest first: its tip is the last.
+                chains: HashMap<String, Vec<String>>,
+                /// The heads of the merged pull requests from the own branch.
+                merged_heads: Vec<String>,
+            }
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let other = format!("{own}-2");
+            let repo = Arc::new(Mutex::new(Repo::default()));
+            {
+                let mut r = repo.lock().unwrap();
+                r.chains
+                    .insert(own.clone(), vec!["p0".into(), "p1".into(), "c2".into()]);
+                r.chains.insert(other.clone(), vec!["x0".into()]);
+                // Merged before any session: two squash merges, and one whose
+                // head is no longer in the repository.
+                r.merged_heads = vec!["p0".into(), "p1".into(), "gone".into()];
+            }
+            let fail_anchor_compare = Arc::new(AtomicBool::new(false));
+            let (puts, anchor_compares) =
+                (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+            let state = (
+                repo.clone(),
+                fail_anchor_compare.clone(),
+                puts.clone(),
+                anchor_compares.clone(),
+                own.clone(),
+            );
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri, body: axum::body::Bytes| {
+                    let (repo, fail_anchor_compare, puts, anchor_compares, own) = state.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        let mut r = repo.lock().unwrap();
+                        if let Some((_, range)) = path.split_once("/compare/") {
+                            let (from, to) = range.split_once("...").unwrap();
+                            if from == "main" {
+                                // Merged: the base holds squash commits the
+                                // branch lacks.
+                                let behind = u64::from(to == own && !r.merged_heads.is_empty());
+                                return reply(
+                                    200,
+                                    serde_json::json!({"ahead_by": 1, "behind_by": behind}),
+                                );
+                            }
+                            // Anchor to a merged head, both on the own chain.
+                            anchor_compares.fetch_add(1, SeqCst);
+                            if fail_anchor_compare.load(SeqCst) {
+                                return reply(500, serde_json::json!({"message": "boom"}));
+                            }
+                            let chain = &r.chains[&own];
+                            let at = |sha: &str| chain.iter().position(|c| c == sha);
+                            return match (at(from), at(to)) {
+                                (Some(a), Some(h)) => reply(
+                                    200,
+                                    serde_json::json!({
+                                        "ahead_by": h.saturating_sub(a),
+                                        "behind_by": a.saturating_sub(h)
+                                    }),
+                                ),
+                                _ => reply(404, serde_json::json!({"message": "Not Found"})),
+                            };
+                        }
+                        if let Some((_, name)) = path.split_once("/branches/") {
+                            if let Some(chain) = r.chains.get(name) {
+                                return reply(
+                                    200,
+                                    serde_json::json!({
+                                        "name": name, "protected": false,
+                                        "commit": {"sha": chain.last().unwrap()}
+                                    }),
+                                );
+                            }
+                        }
+                        if let Some((_, prefix)) = path.split_once("/git/matching-refs/heads/") {
+                            let refs: Vec<_> = r
+                                .chains
+                                .keys()
+                                .filter(|name| name.starts_with(prefix))
+                                .map(|name| serde_json::json!({"ref": format!("refs/heads/{name}")}))
+                                .collect();
+                            return reply(200, serde_json::json!(refs));
+                        }
+                        if method == axum::http::Method::GET && path.ends_with("/pulls") {
+                            let from_own = uri.query().is_some_and(|q| {
+                                q.contains(&format!("head=o%3A{}&", urlencoding::encode(&own)))
+                            });
+                            let pulls: Vec<_> = r
+                                .merged_heads
+                                .iter()
+                                .filter(|_| from_own)
+                                .enumerate()
+                                .map(|(n, head)| {
+                                    serde_json::json!({
+                                        "number": n + 1, "title": "t", "state": "closed",
+                                        "html_url": "u", "created_at": "c", "mergeable": null,
+                                        "merged_at": "2026-11-01T00:00:00Z",
+                                        "head": {"ref": own, "sha": head},
+                                        "base": {"ref": "main", "sha": "b"},
+                                        "user": {"login": "alice", "email": null, "name": null},
+                                    })
+                                })
+                                .collect();
+                            return reply(200, serde_json::json!(pulls));
+                        }
+                        if method == axum::http::Method::PUT {
+                            let sent: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                            let branch = sent["branch"].as_str().unwrap().to_string();
+                            let mark = if branch == own { "c" } else { "x" };
+                            let chain = r.chains.get_mut(&branch).unwrap();
+                            let next = format!("{mark}{}", chain.len());
+                            chain.push(next.clone());
+                            puts.fetch_add(1, SeqCst);
+                            return reply(
+                                200,
+                                serde_json::json!({"content": {"sha": "abc"}, "commit": {"sha": next}}),
+                            );
+                        }
+                        reply(404, serde_json::json!({"message": "Not Found"}))
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let on_own = |write_mode_branch: &str| {
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                    branch: write_mode_branch.to_string(),
+                };
+                provider
+            };
+            let age = |provider: &mut GitHubProvider| {
+                provider.last_branch_check = provider.last_branch_check.map(|at| {
+                    at.checked_sub(BRANCH_CHECK_WINDOW + std::time::Duration::from_secs(1))
+                        .unwrap()
+                });
+            };
+            let tip = |repo: &Arc<Mutex<Repo>>| repo.lock().unwrap().chains[&own].last().cloned();
+            let anchored = |provider: &GitHubProvider| {
+                provider
+                    .branch_anchor
+                    .as_ref()
+                    .map(|anchor| (anchor.branch.clone(), anchor.tip.clone()))
+            };
+            let pre_session = 3;
+            let (_dir, file) = a_file();
+
+            // The steady state, across three windows: no refusal, and each
+            // earlier head compared once for the session.
+            let mut steady = on_own(&own);
+            for window in 0..3 {
+                steady
+                    .upload(&file, &format!("/s{window}a.txt"), None)
+                    .await
+                    .unwrap();
+                steady
+                    .upload(&file, &format!("/s{window}b.txt"), None)
+                    .await
+                    .unwrap();
+                age(&mut steady);
+            }
+            assert!(!steady.poison.load(SeqCst));
+            assert_eq!(anchor_compares.load(SeqCst), pre_session);
+            // The reconnect: the walk at connect picks the branch, and the new
+            // session settles those heads once again, for itself.
+            let mut reconnected = GitHubProvider::protected_for_test(format!("http://{addr}"));
+            let picked = reconnected.current_working_branch("main").await.unwrap();
+            assert_eq!(picked, Some((own.clone(), WorkingBranchState::Pending)));
+            reconnected.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: own.clone(),
+            };
+            for window in 0..2 {
+                reconnected
+                    .upload(&file, &format!("/t{window}.txt"), None)
+                    .await
+                    .unwrap();
+                age(&mut reconnected);
+            }
+            assert!(!reconnected.poison.load(SeqCst));
+            assert_eq!(anchor_compares.load(SeqCst), 2 * pre_session);
+
+            // The session's first write: the anchor is the tip it wrote on.
+            let mut first = on_own(&own);
+            let start = tip(&repo);
+            first.upload(&file, "/f1.txt", None).await.unwrap();
+            assert_eq!(
+                anchored(&first),
+                Some((own.clone(), start.clone().unwrap()))
+            );
+            // Merged at that write's tip; one more write inside the window.
+            let merged_at = tip(&repo).unwrap();
+            repo.lock().unwrap().merged_heads.push(merged_at.clone());
+            first.upload(&file, "/f2.txt", None).await.unwrap();
+            assert_ne!(tip(&repo), Some(merged_at), "the tip moved past the merge");
+            // After the window: refused, nothing sent.
+            age(&mut first);
+            let landed = puts.load(SeqCst);
+            assert!(matches!(
+                first.upload(&file, "/f3.txt", None).await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(
+                puts.load(SeqCst),
+                landed,
+                "nothing written after the window"
+            );
+            assert!(first.poison.load(SeqCst));
+            assert_eq!(first.branch_anchor, None);
+
+            // The reconnect: the walk at connect picks the branch as pending
+            // (merged before this session, written since), and its writes go
+            // on, across the window.
+            let mut again = GitHubProvider::protected_for_test(format!("http://{addr}"));
+            let picked = again.current_working_branch("main").await.unwrap();
+            assert_eq!(picked, Some((own.clone(), WorkingBranchState::Pending)));
+            again.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: own.clone(),
+            };
+            let start = tip(&repo);
+            again.upload(&file, "/g1.txt", None).await.unwrap();
+            assert_eq!(anchored(&again), Some((own.clone(), start.unwrap())));
+            age(&mut again);
+            again.upload(&file, "/g2.txt", None).await.unwrap();
+            assert!(!again.poison.load(SeqCst));
+
+            // Another branch of the session: an anchor of its own.
+            again.write_mode = GitHubWriteMode::BranchWorkflow {
+                branch: other.clone(),
+            };
+            again.upload(&file, "/x.txt", None).await.unwrap();
+            assert_eq!(anchored(&again), Some((other.clone(), "x0".to_string())));
+
+            // A comparison to the anchor with no answer: that write fails,
+            // nothing is poisoned or sent, and the next write decides.
+            let mut late = on_own(&own);
+            late.upload(&file, "/l1.txt", None).await.unwrap();
+            let merged_at = tip(&repo).unwrap();
+            repo.lock().unwrap().merged_heads.push(merged_at);
+            late.upload(&file, "/l2.txt", None).await.unwrap();
+            age(&mut late);
+            fail_anchor_compare.store(true, SeqCst);
+            let before = puts.load(SeqCst);
+            let failed = late.upload(&file, "/l3.txt", None).await;
+            assert!(
+                failed.is_err() && !matches!(failed, Err(ProviderError::TargetChanged)),
+                "{failed:?}"
+            );
+            assert!(!late.poison.load(SeqCst));
+            assert_eq!(puts.load(SeqCst), before);
+            fail_anchor_compare.store(false, SeqCst);
+            assert!(matches!(
+                late.upload(&file, "/l4.txt", None).await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(puts.load(SeqCst), before);
+            server.abort();
+        }
+
         /// CodeRabbit 4574777431 (X3): a write answered 200 whose body is not
         /// JSON, or stalls past the read timeout, is not a write that
         /// succeeded. With a classification still inside the window, the next
@@ -3855,9 +4258,14 @@ mod tests {
                     branch: own.clone(),
                 };
                 // A write that succeeded, its classification just made: the
-                // window is open.
+                // window is open, on this branch.
                 provider.client.last_tree_write_ok = true;
                 provider.last_branch_check = Some(std::time::Instant::now());
+                provider.branch_anchor = Some(WorkingBranchAnchor {
+                    branch: own.clone(),
+                    tip: TIP.to_string(),
+                    settled: Default::default(),
+                });
                 let (_dir, file) = a_file();
                 let first = provider.upload(&file, "/a.txt", None).await;
                 assert_eq!(compares.load(SeqCst), 0, "{case}: inside the window");
