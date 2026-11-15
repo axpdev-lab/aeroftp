@@ -69,7 +69,7 @@ const { code } = await transformWithOxc(
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
   + closure('formatClipboardFileCount', '\n  /**')
   + closure('clipboardCut', '\n  // openDevToolsPreview, openUniversalPreview')
-  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch } };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, prepareGuiTarget, resolveGuiTarget, rearmNativeCancelForRow, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch } };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -125,6 +125,8 @@ export type Options = {
   breaker?: Breaker;
   /** An AeroVault overlay session open on the remote panel. */
   vaultOverlay?: boolean;
+  /** The Auto-start setting; off stages the rows for an explicit Start. */
+  autoStart?: boolean;
 };
 
 export function fixture(options: Options = {}) {
@@ -139,10 +141,17 @@ export function fixture(options: Options = {}) {
     return folders[path] ?? [];
   };
   const calls: Record<string, number> = {};
+  // The backend's cancel state: a hard Stop raises it (cancel_transfer), a
+  // reset or a batch command clears it, and a single or folder transfer
+  // refuses while it is raised, as the legacy flag and the provider token do.
+  const nativeCancel = { current: false };
+  const refusedWhileCancelled = ['provider_upload_file', 'provider_download_file', 'upload_file', 'download_file', 'provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
+    if (nativeCancel.current && refusedWhileCancelled.includes(command)) throw 'Transfer cancelled by user';
     if (command === 'get_local_files') return listingOf(args!.path);
     if (command === 'provider_list_files') return { files: listingOf(args!.path), current_path: args!.path };
     if (command === 'provider_download_files_batch' || command === 'provider_upload_files_batch') {
+      nativeCancel.current = false;
       const entries = args!.params.entries;
       return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
     }
@@ -153,7 +162,7 @@ export function fixture(options: Options = {}) {
       if (error !== undefined) throw error;
       return undefined;
     }
-    if (command === 'reset_cancel_flag') return undefined;
+    if (command === 'reset_cancel_flag') { nativeCancel.current = false; return undefined; }
     if (['provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'].includes(command)) {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
@@ -175,6 +184,7 @@ export function fixture(options: Options = {}) {
     if (['provider_delete_file', 'delete_remote_file', 'delete_local_file', 'provider_rename', 'rename_remote_file', 'provider_server_copy'].includes(command)) return undefined;
     if (command === 'aerovault_overlay_delete_entries') return args!.entryPaths.length;
     if (command === 'aerovault_overlay_extract_entry') return undefined;
+    if (command === 'aerovault_overlay_add_file') return `${args!.remoteDir ?? ''}/${args!.remotePlainName}`;
     throw new Error(`Unexpected IPC: ${command}`);
   });
 
@@ -200,11 +210,14 @@ export function fixture(options: Options = {}) {
     queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined, cancelled: undefined } : item));
   };
   const transferQueue = {
-    addItem: vi.fn(() => {
+    addItem: vi.fn((..._args: unknown[]) => {
       const id = `q${queueItemsRef.current.length}`;
-      queueItemsRef.current.push({ id, status: 'pending' } as TransferItem);
+      const options = _args[4] as { staged?: boolean } | undefined;
+      queueItemsRef.current.push({ id, status: options?.staged ? 'staged' : 'pending' } as TransferItem);
       return id;
     }),
+    // A row's Start: staged to pending, as the queue's `startStaged`.
+    startStaged: vi.fn(reopen),
     startTransfer: vi.fn((id: string) => settle(id, 'transferring')),
     completeTransfer: vi.fn((id: string) => settle(id, 'completed')),
     failTransfer: vi.fn((id: string, error: string) => settle(id, 'error', error)),
@@ -277,7 +290,7 @@ export function fixture(options: Options = {}) {
     fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
     isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,
-    settings: { autoStartTransfers: true }, fileExistsAction: options.policy ?? 'skip',
+    settings: { autoStartTransfers: options.autoStart ?? true }, fileExistsAction: options.policy ?? 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
@@ -313,8 +326,14 @@ export function fixture(options: Options = {}) {
   const commits = () => invoke.mock.calls.filter(([command]) => command === 'github_batch_upload').map(([, args]) => args!.files.map((f: any) => f.remotePath));
   /** The user switches to another tab: by default another server, else the
    *  same one with what `change` sets (a port, a bucket, an API key, a profile). */
+  /** The user's hard Stop: counted, the batch flag set, the backend's cancel raised. */
+  const hardStop = () => {
+    stopCountRef.current += 1;
+    batchCancelledRef.current = true;
+    nativeCancel.current = true;
+  };
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { hardStop, nativeCancel, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

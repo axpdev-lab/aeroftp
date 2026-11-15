@@ -1640,6 +1640,7 @@ async fn aerovault_overlay_add_file(
     session_id: String,
     local_plaintext_path: String,
     remote_plain_name: Option<String>,
+    remote_dir: Option<String>,
 ) -> Result<String, String> {
     validate_path(&local_plaintext_path)?;
     let local_meta = std::fs::symlink_metadata(std::path::Path::new(&local_plaintext_path))
@@ -1680,6 +1681,40 @@ async fn aerovault_overlay_add_file(
         )
     };
 
+    overlay_add_file_into(
+        &vault_path,
+        &password,
+        version,
+        &overlay_upload_dir(&current_dir, remote_dir.as_deref())?,
+        &local_plaintext_path,
+        remote_plain_name,
+    )
+    .await
+}
+
+/// The vault folder an overlay upload writes into: the folder the gesture
+/// named, captured when it started, or the session's current folder when it
+/// named none. A named folder must be absolute, so it never depends on where
+/// the session has moved since.
+fn overlay_upload_dir(current_dir: &str, remote_dir: Option<&str>) -> Result<String, String> {
+    match remote_dir {
+        None => Ok(current_dir.to_string()),
+        Some(dir) if dir.trim().starts_with('/') => normalize_overlay_relative_path(dir),
+        Some(_) => Err("Invalid overlay path".to_string()),
+    }
+}
+
+async fn overlay_add_file_into(
+    vault_path: &str,
+    password: &str,
+    version: u8,
+    current_dir: &str,
+    local_plaintext_path: &str,
+    remote_plain_name: Option<String>,
+) -> Result<String, String> {
+    let vault_path = vault_path.to_string();
+    let password = password.to_string();
+    let current_dir = current_dir.to_string();
     let file_name = remote_plain_name
         .and_then(|s| {
             let trimmed = s.trim().to_string();
@@ -1715,7 +1750,7 @@ async fn aerovault_overlay_add_file(
             uuid::Uuid::new_v4()
         ));
         let target_path = temp_path.with_file_name(file_name.clone());
-        std::fs::copy(&local_plaintext_path, &target_path)
+        std::fs::copy(local_plaintext_path, &target_path)
             .map_err(|e| format!("Failed to prepare renamed upload file: {}", e))?;
         temp_copy = Some(target_path.clone());
         target_path
@@ -27585,6 +27620,82 @@ mod overlay_helpers_tests {
     #[test]
     fn resolve_target_rejects_relative_traversal() {
         assert!(resolve_overlay_target("a", "../b").is_err());
+    }
+
+    // --- overlay_upload_dir / overlay_add_file_into ---
+
+    #[test]
+    fn an_upload_without_a_folder_keeps_the_current_one_and_a_named_folder_must_be_absolute() {
+        assert_eq!(overlay_upload_dir("a/b", None).unwrap(), "a/b");
+        assert_eq!(overlay_upload_dir("a/b", Some("/x/y")).unwrap(), "x/y");
+        assert_eq!(overlay_upload_dir("a/b", Some("/")).unwrap(), "");
+        assert!(overlay_upload_dir("a/b", Some("x")).is_err());
+        assert!(overlay_upload_dir("a/b", Some("/x/../y")).is_err());
+    }
+
+    #[test]
+    fn the_overlay_upload_command_writes_into_the_folder_its_gesture_named() {
+        let source = include_str!("lib.rs");
+        let start = source
+            .find("async fn aerovault_overlay_add_file(")
+            .expect("command");
+        let end = start
+            + source[start..]
+                .find("\nfn overlay_upload_dir")
+                .expect("end");
+        let command = &source[start..end];
+        assert!(command.contains("remote_dir: Option<String>,"));
+        assert!(command.contains("&overlay_upload_dir(&current_dir, remote_dir.as_deref())?,"));
+        assert_eq!(command.matches("overlay_add_file_into(").count(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_paste_into_another_vault_folder_lands_there_not_in_the_current_one() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let vault = dir
+            .path()
+            .join("paste.aerovault")
+            .to_string_lossy()
+            .to_string();
+        let password = "artificial-overlay-test-password";
+        crate::aerovault_v3::vault_v3_create(vault.clone(), password.to_string(), None)
+            .await
+            .expect("create");
+        for folder in ["current", "pasted"] {
+            crate::aerovault_v3::vault_v3_create_directory(
+                vault.clone(),
+                password.to_string(),
+                folder.to_string(),
+            )
+            .await
+            .expect("mkdir");
+        }
+        let source = dir.path().join("note.txt");
+        std::fs::write(&source, b"pasted").expect("source");
+
+        // The session sits in "current"; the Paste named "/pasted".
+        let target = overlay_upload_dir("current", Some("/pasted")).expect("target");
+        let landed = overlay_add_file_into(
+            &vault,
+            password,
+            3,
+            &target,
+            &source.to_string_lossy(),
+            None,
+        )
+        .await
+        .expect("add");
+
+        assert_eq!(landed, "/pasted/note.txt");
+        let names: Vec<String> = crate::aerovault_v3::vault_v3_open(vault, password.to_string())
+            .await
+            .expect("open")
+            .files
+            .into_iter()
+            .map(|f| f.name)
+            .collect();
+        assert!(names.iter().any(|n| n == "pasted/note.txt"), "{names:?}");
+        assert!(!names.iter().any(|n| n == "current/note.txt"), "{names:?}");
     }
 
     // --- normalize_overlay_idle_timeout_secs ---

@@ -1505,10 +1505,16 @@ mod tests {
             let body = &source[source.find(signature).unwrap()..];
             &body[..body.find("\n}\n").unwrap()]
         };
-        // Both reads are the builder's settings, read for `account`.
+        // Both reads are the builder's settings, read for `account`: the
+        // saved profile first, then the credentials of that profile.
         let settings = body_of("fn direct_provider_config(");
-        assert!(settings.contains("saved_profile(store, config, account)?"));
-        assert!(settings.contains("profile_creds(store, profile, account)?"));
+        let profile_read = settings
+            .find("saved_profile(store, config, account)?")
+            .unwrap();
+        let credential_read = settings
+            .find("profile_creds(store, profile, account)?")
+            .unwrap();
+        assert!(profile_read < credential_read);
         let body = body_of("async fn create_via_factory(");
         let read = body
             .find("direct_provider_config(&store, config, provider_type, account)")

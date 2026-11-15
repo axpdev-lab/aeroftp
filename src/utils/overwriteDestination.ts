@@ -30,9 +30,9 @@ export async function loadOverwriteDestination(
 
   let response: FileListResponse;
   if (target.aeroVaultSessionId) {
-    // aerovault_overlay_list(path) changes the overlay's current directory.
-    // Its upload command also writes there, so another directory cannot be
-    // inspected or targeted safely through this surface.
+    // aerovault_overlay_list(path) changes the overlay's current directory,
+    // so another directory cannot be inspected through this surface without
+    // moving the session: its conflicts stay unknown, and the upload refused.
     if (target.path !== target.visibleRemotePath) {
       throw new Error('Cannot inspect another AeroVault overlay directory without navigation');
     }

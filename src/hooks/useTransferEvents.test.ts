@@ -228,6 +228,46 @@ it('keeps an evicted skipped child terminal while its folder runs', async () => 
     const lane = withLanes[withLanes.length - 1]?.lanes?.find((entry: { id: string }) => entry.id === `${folder}-0`);
     expect(lane?.state ?? 'gone').not.toBe('active');
     expect(queue.setProgress).not.toHaveBeenCalled();
+    // CodeRabbit CLI on the combined range: the folder's complete retired its
+    // started id, and the evicted child's late progress then made an active
+    // toast again. Complete, let the toast clear, then that progress.
+    vi.useFakeTimers();
+    try {
+        await emit({ event_type: 'complete', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload' });
+        await act(async () => { vi.advanceTimersByTime(600); });
+        expect(toastStates[toastStates.length - 1]).toBeNull();
+        const before = toastStates.length;
+        await emit({ event_type: 'progress', transfer_id: `${folder}-0`, filename: 'f0', path: '/docs/f0', direction: 'upload', progress: { transfer_id: `${folder}-0`, filename: 'f0', total: 1, transferred: 1, percentage: 100, speed_bps: 1, eta_seconds: 0 } });
+        await act(async () => { vi.advanceTimersByTime(600); });
+        const active = toastStates.slice(before).flatMap(state => state?.lanes ?? []).filter(entry => entry.state === 'active');
+        expect(active).toEqual([]);
+        expect(toastStates[toastStates.length - 1]).toBeNull();
+        expect(queue.setProgress).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
+});
+
+// CodeRabbit CLI on the combined range of #1561: a late progress of an ended
+// child cancelled the timer that clears the completed toast before the
+// terminal check refused it, so the toast stayed on screen.
+it('clears the completed toast when a skipped child\'s progress comes after its folder completed', async () => {
+    let rows = 0;
+    const queue = Object.assign(queueWith({ id: 'q', filename: 'x', status: 'pending' }), {
+        setProgress: vi.fn(), completeTransfer: vi.fn(), addItem: vi.fn(() => `row-${++rows}`),
+    });
+    await mount(queue);
+    vi.useFakeTimers();
+    try {
+        const folder = 'ul-folder-late';
+        const child = { transfer_id: `${folder}-0`, filename: 'a.txt', path: '/docs/a.txt', direction: 'upload' };
+        await emit({ event_type: 'start', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload', progress: { transfer_id: folder, filename: 'docs', total: 1, transferred: 0, percentage: 0, speed_bps: 0, eta_seconds: 0, total_files: 1 } });
+        await emit({ ...child, event_type: 'file_start' });
+        await emit({ ...child, event_type: 'file_skip', message: 'Destination already exists' });
+        await emit({ event_type: 'complete', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload' });
+        await emit({ ...child, event_type: 'progress', progress: { ...child, total: 1, transferred: 1, percentage: 100, speed_bps: 1, eta_seconds: 0 } });
+        await act(async () => { vi.advanceTimersByTime(600); });
+        expect(toastStates[toastStates.length - 1]).toBeNull();
+        expect(queue.setProgress).not.toHaveBeenCalled();
+    } finally { vi.useRealTimers(); }
 });
 
 // CodeRabbit on #1561: every registered batch child stayed classified as a

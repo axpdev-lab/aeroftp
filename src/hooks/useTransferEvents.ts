@@ -113,6 +113,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // The folder commands and file batches that sent their `start`: an id
   // `<one of them>-<n>` is then one child file's own transfer.
   const startedAggregateIds = useRef<Set<string>>(new Set());
+  // Those that ended, the latest 250 past 500: a late progress of one of their
+  // children is still refused once the bounded terminal set evicted it.
+  const endedAggregateIds = useRef<Set<string>>(new Set());
   const completionHolds = useRef(new Set<string>());
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
@@ -221,7 +224,12 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       // that of the children a batch registered (`<id>-<n>`), started or not:
       // otherwise every batch child stays classified for the App's lifetime.
       singleFileTransferIds.current.delete(transferId);
-      startedAggregateIds.current.delete(transferId);
+      if (startedAggregateIds.current.delete(transferId)) {
+        endedAggregateIds.current.add(transferId);
+        if (endedAggregateIds.current.size > 500) {
+          endedAggregateIds.current = new Set([...endedAggregateIds.current].slice(-250));
+        }
+      }
       for (const id of singleFileTransferIds.current) {
         if (id.startsWith(`${transferId}-`)) singleFileTransferIds.current.delete(id);
       }
@@ -546,6 +554,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         if (data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-')) {
           singleFileTransferIds.current.delete(data.transfer_id);
           startedAggregateIds.current.add(data.transfer_id);
+          endedAggregateIds.current.delete(data.transfer_id);
         } else {
           singleFileTransferIds.current.add(data.transfer_id);
         }
@@ -773,18 +782,20 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         }
         emitToastState();
       } else if (data.event_type === 'progress' && data.progress) {
-        // Cancel any pending toast-clear timer (prevents flicker between consecutive files)
-        if (clearToastTimer.current) {
-          clearTimeout(clearToastTimer.current);
-          clearToastTimer.current = null;
-        }
         // Ignore late progress events for already-completed transfers (race condition fix).
         // A child of a started folder or batch whose own mapping is gone (it
         // ended or was skipped) is retired as well, whether or not the bounded
         // terminal set still holds its id: its file_start maps it again.
         const retiredChild = !transferIdToQueueId.current.has(data.transfer_id)
-          && [...startedAggregateIds.current].some(id => data.transfer_id.startsWith(`${id}-`));
+          && [...startedAggregateIds.current, ...endedAggregateIds.current].some(id => data.transfer_id.startsWith(`${id}-`));
           if (!completedTransferIds.current.has(data.transfer_id) && !retiredChild) {
+            // Cancel any pending toast-clear timer (prevents flicker between
+            // consecutive files): a live transfer's progress only. A late one
+            // of an ended transfer left the completed toast on screen.
+            if (clearToastTimer.current) {
+              clearTimeout(clearToastTimer.current);
+              clearToastTimer.current = null;
+            }
             // Track file-level speed regardless of throttle
             if (!data.progress.total_files && data.progress.speed_bps > 0) {
               lastFileSpeedRef.current = data.progress.speed_bps;

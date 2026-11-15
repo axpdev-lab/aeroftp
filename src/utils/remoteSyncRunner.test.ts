@@ -1327,12 +1327,33 @@ describe('remoteSyncRunner: journal kept on failures', () => {
         await expect(begin('replacing-page', '/local/e')).resolves.toMatch(/^run-lease-/);
     });
 
-    // CodeRabbit on #1561: a failure the classifier cannot read (its command
-    // rejected) says nothing of the write either. The journal then requires a
-    // comparison before Resume, as after a timeout, never `resume_safe`.
+    // CodeRabbit on #1561 (and the CLI twice): the test above leaves the
+    // window bound to another document's nonce, and the binding is shared by
+    // the file, as the window is natively. The runner's document, bound by an
+    // earlier run, is then refused as replaced: it binds again and runs. So no
+    // later test depends on what the one before it bound.
+    it('a run in a window another document bound since binds again and runs', async () => {
+        const { invoke, calls } = makeInvoke();
+        const first = await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
+        expect(first.errors).toEqual([]);
+        await createIntentFixture().wrap(async () => undefined as never)('sync_run_page_bind_cmd', { pageNonce: 'another-document' });
+        const second = await runRemoteSync([file('b.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
+        expect(second.errors).toEqual([]);
+        expect(second.uploaded).toBe(1);
+        expect(calls.filter(c => c.cmd === 'upload_file')).toHaveLength(2);
+    });
+
+    // CodeRabbit 4579434397 on #1561: a failure the classifier cannot read
+    // (its command rejected) says nothing of the write either. After a native
+    // timeout so read, and an edit of the destination since, Resume must not
+    // send a replacement over the edit: it requires a comparison first.
     it('requires a comparison before Resume when the failure cannot be classified', async () => {
+        let destination = '';
         const { invoke, calls } = makeInvoke({
-            upload_file: () => { throw new Error('the reply did not come back'); },
+            upload_file: (_args, attempt) => {
+                if (attempt === 0) throw 'operation timed out';
+                destination = 'replacement';
+            },
             classify_transfer_error: () => { throw new Error('classifier unavailable'); },
         });
         const report = await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
@@ -1340,6 +1361,12 @@ describe('remoteSyncRunner: journal kept on failures', () => {
         const saved = lastSavedJournal(calls);
         expect(saved?.entries[0]?.status).toBe('failed');
         expect(saved?.resume_safe).toBe(false);
+        // The destination is edited after the run.
+        destination = 'edited';
+        await expect(runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke, { resumeJournal: saved })))
+            .rejects.toThrow('SYNC_RESUME_NEEDS_COMPARE');
+        expect(calls.filter(c => c.cmd === 'upload_file')).toHaveLength(1);
+        expect(destination).toBe('edited');
     });
 
     it('keeps the journal resumable when one file succeeds and another fails', async () => {

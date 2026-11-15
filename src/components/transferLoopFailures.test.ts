@@ -313,13 +313,58 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     }
     const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
     expect(attempts(f, command)).toBe(1);
-    f.stopCountRef.current += 1;
-    f.batchCancelledRef.current = true;
+    // A hard Stop: the backend's cancel is raised too (Hiron's CLI pass on
+    // #1561): the Retry clears it before its dispatch, as a batch does.
+    f.hardStop();
     const [retry] = [...f.retryCallbacksRef.current.values()];
     f.transferQueue.retryItem('q0');
     await retry();
     expect(attempts(f, command)).toBe(2);
     expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.nativeCancel.current).toBe(false);
+  });
+
+  // CodeRabbit 4579437718: a staged single file started after an intervening
+  // Stop is a new gesture, sent; a Stop during that Start still cancels it.
+  const stagedSingle = async (direction: 'upload' | 'download', extra: Partial<Parameters<typeof fixture>[0]> = {}) => {
+    let f: ReturnType<typeof fixture>;
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: extra.policy ? [remote('up.txt')] : [] }, autoStart: false, ...extra });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')], [SUB]: extra.policy ? [local('a.txt')] : [] }, autoStart: false, ...extra });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    return f;
+  };
+  it.each(['upload', 'download'] as const)('a staged single file started after a Stop is sent (%s)', async direction => {
+    const f = await stagedSingle(direction);
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    expect(attempts(f, command)).toBe(0);
+    expect(f.row('q0')).toMatchObject({ status: 'staged' });
+    f.hardStop();
+    const [start] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.startStaged('q0');
+    await start();
+    expect(attempts(f, command)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  it.each(['upload', 'download'] as const)('a Stop during a staged single file\'s Start sends nothing (%s)', async direction => {
+    const f = await stagedSingle(direction, { policy: 'overwrite' });
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    f.hardStop();
+    f.checkOverwrite.mockImplementation(async () => {
+      f.stopCountRef.current += 1;
+      f.batchCancelledRef.current = true;
+      return { action: 'overwrite', destinationExists: true };
+    });
+    const [start] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.startStaged('q0');
+    await start();
+    expect(f.checkOverwrite).toHaveBeenCalled();
+    expect(attempts(f, command)).toBe(0);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
   });
 
   // A Stop that lands during the Retry's own await (here its overwrite

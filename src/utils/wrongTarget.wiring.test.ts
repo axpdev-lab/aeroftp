@@ -570,11 +570,15 @@ describe('a switch to another server while the overwrite question is open', () =
             // target, right before each native dispatch. A row's Start or
             // Retry is the user's own gesture: its guard takes the Stop count
             // when it starts (dispatchGuardForGesture), after the same target.
-            for (const call of writes) expect(call).toMatch(/'throw', undefined, (?:onQueuedDispatch(?:, expectedGuiTarget)?|onRowDispatch)\)$/);
+            // The row's dispatch carries the epoch its native cancel reset was
+            // made on (rearmNativeCancelForRow).
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, (?:onQueuedDispatch(?:, expectedGuiTarget)?|onRowDispatch, rowEpoch)\)$/);
             if (writes.length > 0) expect(body).toMatch(/const onQueuedDispatch = \(\) => \{\n\s+onQueuedTarget\(\);\n\s+if \(stopCountRef\.current !== stops\) throw/);
             for (const row of body.split('const onRowDispatch = ').slice(1)) {
                 expect(row.slice(0, row.indexOf(';'))).toBe('dispatchGuardForGesture(onQueuedTarget, stopCountRef)');
             }
+            // Each row callback clears a hard Stop's native cancel first.
+            expect(body.split('const rowEpoch = await rearmNativeCancelForRow(onRowDispatch);').length).toBe(body.split('const onRowDispatch = ').length);
         }
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
@@ -612,6 +616,118 @@ describe('a switch to another server while the overwrite question is open', () =
  * server and wrote there. The plan now takes one target before it starts and
  * stops at the first entry that target refuses.
  */
+/** A plan staged through App's own `stageUnifiedTransferPlan`, on the
+ *  fixture's live connection: bound to the target and epoch live now. */
+async function stagedPlan(f: ReturnType<typeof fixture>, staged: Record<string, unknown>) {
+    const source = between(APP, '  const stageUnifiedTransferPlan = useLatestCallback(', '\n  // AeroSync dialog:');
+    const { code } = await transformWithOxc(source, 'stage.ts');
+    let pending: Record<string, unknown> | null = null;
+    const context: Record<string, unknown> = {
+        useLatestCallback: <T,>(fn: T) => fn, ...f.targetChecks,
+        captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
+        setPendingUnifiedTransferPlan: (value: Record<string, unknown>) => { pending = value; },
+    };
+    const stage = new Function(...Object.keys(context), `${code}; return stageUnifiedTransferPlan;`)(...Object.values(context)) as (staged: Record<string, unknown>) => void;
+    stage(staged);
+    return pending!;
+}
+
+describe('a transfer plan whose server changes after it was made', () => {
+    // CodeRabbit 4579437713 and the CLI on the round: the plan took its target
+    // and epoch when Execute ran, so a server switched to while its dialog was
+    // open received every entry.
+    it.each(['per-entry', 'batch'] as const)('sends no entry to the server switched to before Execute (%s)', async route => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const pending = await stagedPlan(f, {
+            sourceLocalPanelId: 'local',
+            plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+            transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        // The dialog is open; the user switches to another server, then Execute.
+        f.switchServer();
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: pending,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: route === 'batch' ? splitForFileBatch : (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        expect(f.invoke.mock.calls.filter(([command]) => /upload/.test(command))).toEqual([]);
+        expect(f.written()).toEqual([]);
+        expect(f.notify.error).toHaveBeenCalled();
+    });
+
+    // A switch to another server and back passes the target check: the epoch
+    // read when the plan was made is what the backend then refuses.
+    it('sends its entries with the epoch read when it was made', async () => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const pending = await stagedPlan(f, {
+            sourceLocalPanelId: 'local',
+            plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+            transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) =>
+            command === 'provider_gui_target_epoch' ? 8 : answer(command, args));
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
+            pendingUnifiedTransferPlan: pending,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        const uploads = f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file');
+        expect(uploads).toHaveLength(2);
+        for (const [, args] of uploads) expect(args!.expectedGuiTarget).toBe(7);
+    });
+
+    it('stages every plan through the binding', () => {
+        const staged = APP_CODE.match(/stageUnifiedTransferPlan\(\{/g) ?? [];
+        const direct = APP_CODE.match(/setPendingUnifiedTransferPlan\(\{/g) ?? [];
+        expect(staged.length).toBe(3);
+        expect(direct.length).toBe(1);
+    });
+});
+
+describe('a local file uploaded into another folder of a vault overlay', () => {
+    // CodeRabbit CLI on the round: the vault upload command took no folder and
+    // wrote into the vault session's current one, whatever folder the upload
+    // named (an upload that skips the overwrite listing, say).
+    it('names its own folder to the vault upload', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, vaultOverlay: true });
+        // The panel stands in REMOTE; the upload names its Inbox folder.
+        await f.uploadFile(`${LOCAL}/up.txt`, 'up.txt', false, 1, true, undefined, INBOX, 'throw');
+        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds).toHaveLength(1);
+        expect(adds[0][1]).toMatchObject({ remoteDir: INBOX, remotePlainName: 'up.txt' });
+    });
+
+    it('a Paste into it never writes into the current folder', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [INBOX]: [] }, vaultOverlay: true });
+        f.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        await f.clipboardPaste(true, INBOX);
+        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        // Its overwrite listing cannot read another vault folder: the Paste is
+        // refused there; a write, if any, names the Inbox.
+        for (const [, args] of adds) expect(args).toMatchObject({ remoteDir: INBOX });
+    });
+});
+
 describe('a transfer plan whose server changes during its first entry', () => {
     it('writes no later entry to the server switched to', async () => {
         const names = ['a.txt', 'b.txt'];
@@ -627,12 +743,11 @@ describe('a transfer plan whose server changes during its first entry', () => {
         const context: Record<string, unknown> = {
             useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
             ...f.targetChecks,
-            captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
-            pendingUnifiedTransferPlan: {
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
                 sourceLocalPanelId: 'local',
                 plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
                 transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
-            },
+            }),
             setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
             // The per-entry path, where each entry asks its own overwrite question.
             splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
@@ -657,12 +772,11 @@ describe('a transfer plan whose server changes during its first entry', () => {
         const context: Record<string, unknown> = {
             useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
             ...f.targetChecks,
-            captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
-            pendingUnifiedTransferPlan: {
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
                 sourceLocalPanelId: 'local',
                 plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: INBOX } },
                 transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
-            },
+            }),
             setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
             splitForFileBatch: route === 'batch' ? splitForFileBatch : (items: unknown[]) => ({ batch: [], sequential: [...items] }),
             // The panel stands in REMOTE; the plan was made for its Inbox.
@@ -685,17 +799,19 @@ describe('a transfer plan whose server changes during its first entry', () => {
             useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
             ...f.targetChecks,
             // The epoch answers after the user pressed Stop.
-            captureGuiTarget: async (check: () => void) => {
-                check();
+            resolveGuiTarget: async (prepared: Promise<{ epoch: number } | { error: unknown }>, check: () => void) => {
+                const captured = await prepared;
                 f.stopCountRef.current += 1;
                 f.batchCancelledRef.current = true;
-                return f.invoke('provider_gui_target_epoch');
+                if ('error' in captured) throw captured.error;
+                check();
+                return captured.epoch;
             },
-            pendingUnifiedTransferPlan: {
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
                 sourceLocalPanelId: 'local',
                 plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
                 transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
-            },
+            }),
             setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
             // The batch path: two plain files go out as one batch.
             splitForFileBatch, currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
@@ -718,6 +834,53 @@ describe('a local file pasted into a remote folder', () => {
         await f.clipboardPaste(true, INBOX);
         expect(f.written()).toEqual([`${INBOX}/up.txt`]);
         if (operation === 'cut') expect(f.fileClipboardRef.current).toBeNull();
+    });
+
+    // CodeRabbit 4579437716: the Paste began in the Inbox; the panel is in
+    // another folder while the target preparation is still pending (App reads
+    // the panel's folder when the upload runs, here REMOTE). The upload stays
+    // in the captured folder, and a Cut removes its source only after the
+    // upload landed.
+    const deferredEpoch = (f: ReturnType<typeof fixture>) => {
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            if (command === 'provider_gui_target_epoch') await held;
+            return answer(command, args);
+        });
+        return release;
+    };
+    const sourceDeletes = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
+        .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'delete_local_file');
+    const uploads = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
+        .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'provider_upload_file');
+
+    it('with its preparation deferred, uploads into the captured folder and cleans up the Cut after it', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        const release = deferredEpoch(f);
+        const paste = f.clipboardPaste(true, INBOX);
+        await Promise.resolve();
+        expect(uploads(f)).toEqual([]);
+        expect(sourceDeletes(f)).toEqual([]);
+        release();
+        await paste;
+        expect(f.written()).toEqual([`${INBOX}/up.txt`]);
+        expect(uploads(f)).toHaveLength(1);
+        for (const { index } of sourceDeletes(f)) expect(index).toBeGreaterThan(uploads(f)[0].index);
+        expect(f.fileClipboardRef.current).toBeNull();
+    });
+
+    it('with its preparation deferred, keeps the Cut\'s source when the upload fails', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: command => (command === 'provider_upload_file' ? 'permission denied' : undefined) });
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        const release = deferredEpoch(f);
+        const paste = f.clipboardPaste(true, INBOX);
+        release();
+        await paste;
+        expect(f.written()).toEqual([`${INBOX}/up.txt`]);
+        expect(sourceDeletes(f)).toEqual([]);
     });
 });
 

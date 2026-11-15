@@ -1148,6 +1148,11 @@ const App: React.FC = () => {
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void; onCancel?: () => void; confirmLabel?: string; confirmColor?: 'red' | 'blue' | 'green'; secondaryLabel?: string; onSecondary?: () => void; informational?: boolean } | null>(null);
   const [pendingUnifiedTransferPlan, setPendingUnifiedTransferPlan] = useState<{
     plan: UnifiedTransferPlan;
+    // The server and its epoch live when the plan was made: its entries go to
+    // that server or nowhere, however long its dialog stays open. Set only by
+    // `stageUnifiedTransferPlan`.
+    queuedTarget: QueuedTarget;
+    targetEpoch: Promise<{ readonly epoch: number } | { readonly error: unknown }>;
     sourceLocalPanelId?: 'local' | 'local2';
     // Z.3.5: remote-remote plans need the per-entry selection so we can issue
     // one cross_profile_plan call per file/directory selected on the source
@@ -1170,6 +1175,13 @@ const App: React.FC = () => {
     runtime?: AeroSyncRuntime;
   } | null>(null);
   const [unifiedTransferExecuting, setUnifiedTransferExecuting] = useState(false);
+  /** Opens a transfer plan bound to the target live now, and to its epoch read
+   *  now: a plan read both when Execute ran, so a server switched to while its
+   *  dialog was open received its entries (CodeRabbit on #1561). */
+  const stageUnifiedTransferPlan = useLatestCallback((staged: Omit<NonNullable<typeof pendingUnifiedTransferPlan>, 'queuedTarget' | 'targetEpoch'>) => {
+    const queuedTarget = snapshotQueuedTarget();
+    setPendingUnifiedTransferPlan({ ...staged, queuedTarget, targetEpoch: prepareGuiTarget(queuedTargetGuard(queuedTarget)) });
+  });
   // AeroSync dialog: unified 3-tab modal (Compare + Plan + Sync).
   // Replaces the legacy pendingCompareView + pendingSyncPresets +
   // showLocalSyncPanel triad that lived in separate View menu entries.
@@ -11007,7 +11019,7 @@ const App: React.FC = () => {
         currentRemotePath || activeUnifiedRemoteProfile.initialPath || '/',
       );
       const totalBytes = sourceFiles.reduce((sum, f) => sum + (f.size || 0), 0);
-      setPendingUnifiedTransferPlan({
+      stageUnifiedTransferPlan({
         plan: createUnifiedTransferPlan({
           mode: 'copy',
           source: sourceEndpoint,
@@ -11148,6 +11160,17 @@ const App: React.FC = () => {
     if ('error' in captured) throw captured.error;
     check();
     return captured.epoch;
+  };
+  /** A queue row's Start or Retry is the user's own gesture: it clears the
+   *  native cancel a hard Stop left set, as a batch does before it starts,
+   *  on the epoch it then dispatches with. Without it the backend refused the
+   *  file at once: the legacy commands check the flag, a provider file races
+   *  the cancelled token. A Stop after this sets both again. */
+  const rearmNativeCancelForRow = async (onRowDispatch: () => void): Promise<number> => {
+    const epoch = await captureGuiTarget(onRowDispatch);
+    await invoke('reset_cancel_flag', { expectedGuiTarget: epoch });
+    onRowDispatch();
+    return epoch;
   };
 
   const getOverwriteDestination = (direction: FileBatchDirection, path: string, expectedGuiTarget?: number) => {
@@ -11562,6 +11585,7 @@ const App: React.FC = () => {
             sessionId: aeroVaultOverlaySession?.sessionId,
             localPlaintextPath: localFilePath,
             remotePlainName: targetName,
+            remoteDir: remoteBase,
           });
         } else if (isProvider) {
           const uploadOutcome = await invoke<string>('provider_upload_file', { expectedGuiTarget, ...(ownership ? { expectedGeneration: ownership.generation, expectedProfileId: ownership.profileId, expectedCryptScope: ownership.cryptScope, requireCryptOverlay: ownership.requireOverlay || undefined } : {}), localPath: localFilePath, remotePath, commitMessage: commitMessage || null, resume: wantResume || null, noClobber: protocol === 'imagekit' && fileExistsAction === 'skip' || null });
@@ -12581,7 +12605,7 @@ const App: React.FC = () => {
     }
     const totalBytes = selectedFiles.reduce((sum, file) => sum + (file.size || 0), 0);
 
-    setPendingUnifiedTransferPlan({
+    stageUnifiedTransferPlan({
       sourceLocalPanelId: sourceId,
       plan: createUnifiedTransferPlan({
         mode,
@@ -12618,11 +12642,12 @@ const App: React.FC = () => {
     // resets and an earlier Stop leaves set (K3).
     const stops = stopCountRef.current;
     const stoppedSinceStart = () => stopCountRef.current !== stops;
-    // The plan's one target, taken here before any await: every entry, the
+    // The plan's one target, taken when the plan was made: every entry, the
     // batch and the per-entry ones alike, is checked against it, and the plan
     // stops at the first entry its server refuses. A fresh snapshot per entry
-    // let an entry after a switch take the new server (CodeRabbit on #1561).
-    const planTarget = snapshotQueuedTarget();
+    // let an entry after a switch take the new server, and one taken at
+    // Execute a switch made while the dialog was open (CodeRabbit on #1561).
+    const planTarget = pendingUnifiedTransferPlan.queuedTarget;
     const onPlanTarget = queuedTargetGuard(planTarget);
     const planRetargeted = () => queuedTargetProblem(planTarget) !== null;
     const planDispatch = () => {
@@ -12782,7 +12807,7 @@ const App: React.FC = () => {
           return;
         }
         let planEpoch: number;
-        try { planEpoch = await captureGuiTarget(onPlanTarget); }
+        try { planEpoch = await resolveGuiTarget(pendingUnifiedTransferPlan.targetEpoch, onPlanTarget); }
         catch (error) { notify.error(t('toast.uploadFailed') || 'Upload failed', String(error)); return; }
         // A Stop while the epoch was read ends the plan here: the batch below
         // takes its own Stop count and would start despite it.
@@ -12842,7 +12867,7 @@ const App: React.FC = () => {
           return;
         }
         let planEpoch: number;
-        try { planEpoch = await captureGuiTarget(onPlanTarget); }
+        try { planEpoch = await resolveGuiTarget(pendingUnifiedTransferPlan.targetEpoch, onPlanTarget); }
         catch (error) { notify.error(t('toast.downloadFailed') || 'Download failed', String(error)); return; }
         // A Stop while the epoch was read ends the plan here: the batch below
         // takes its own Stop count and would start despite it.
@@ -14935,7 +14960,8 @@ const App: React.FC = () => {
             const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onRowDispatch);
+              const rowEpoch = await rearmNativeCancelForRow(onRowDispatch);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onRowDispatch, rowEpoch);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -15292,7 +15318,8 @@ const App: React.FC = () => {
           const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onRowDispatch);
+            const rowEpoch = await rearmNativeCancelForRow(onRowDispatch);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onRowDispatch, rowEpoch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -15535,7 +15562,8 @@ const App: React.FC = () => {
           const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onRowDispatch);
+            const rowEpoch = await rearmNativeCancelForRow(onRowDispatch);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onRowDispatch, rowEpoch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -17795,7 +17823,7 @@ const App: React.FC = () => {
           const destPath = localPanelId === 'local' ? currentLocalPath2 : currentLocalPath;
           const filesOnSource = localPanelId === 'local' ? localFiles : localFiles2;
           const totalBytes = filesOnSource.reduce((sum, file) => sum + (file.size ?? 0), 0);
-          setPendingUnifiedTransferPlan({
+          stageUnifiedTransferPlan({
             plan: createUnifiedTransferPlan({
               mode: 'sync',
               source: sourcePanel.endpoint,
