@@ -158,6 +158,55 @@ pub enum AerorsyncErrorKind {
     Internal,
 }
 
+impl AerorsyncErrorKind {
+    /// Every kind, in declaration order, for the tests that go through all
+    /// of them.
+    #[cfg(test)]
+    pub(crate) const ALL: [Self; 14] = [
+        Self::UnsupportedVersion,
+        Self::InvalidFrame,
+        Self::TransportFailure,
+        Self::NegotiationFailed,
+        Self::PlannerRejected,
+        Self::IllegalStateTransition,
+        Self::RemoteError,
+        Self::UnexpectedMessage,
+        Self::Cancelled,
+        Self::HostKeyRejected,
+        Self::PinnedKeyMismatch,
+        Self::PinnedPasswordMismatch,
+        Self::PinnedLoginRefused,
+        Self::Internal,
+    ];
+
+    /// Whether a login (the capability probe's, or a batch's) that ended
+    /// with this kind is a refusal the run must not go past: the host key,
+    /// or the credential the session is pinned to, was refused. The one
+    /// list of such kinds: the probe mapping
+    /// (`aerorsync_adapter::errors::probe_error_to_rsync`) and the batch
+    /// login (`begin_batch`) both read it. Everything else a login ends
+    /// with says only that delta is unavailable. No catch-all: a kind
+    /// added later does not compile until it is placed here.
+    pub fn refuses_the_login(self) -> bool {
+        match self {
+            Self::HostKeyRejected
+            | Self::PinnedKeyMismatch
+            | Self::PinnedPasswordMismatch
+            | Self::PinnedLoginRefused => true,
+            Self::UnsupportedVersion
+            | Self::InvalidFrame
+            | Self::TransportFailure
+            | Self::NegotiationFailed
+            | Self::PlannerRejected
+            | Self::IllegalStateTransition
+            | Self::RemoteError
+            | Self::UnexpectedMessage
+            | Self::Cancelled
+            | Self::Internal => false,
+        }
+    }
+}
+
 /// Machine-readable sub-classification carried by transport-produced
 /// errors alongside [`AerorsyncErrorKind::TransportFailure`].
 ///
@@ -566,22 +615,7 @@ mod tests {
     use super::*;
     use crate::aerorsync::events::AerorsyncEvent;
 
-    const ALL_KINDS: [AerorsyncErrorKind; 14] = [
-        AerorsyncErrorKind::UnsupportedVersion,
-        AerorsyncErrorKind::InvalidFrame,
-        AerorsyncErrorKind::TransportFailure,
-        AerorsyncErrorKind::NegotiationFailed,
-        AerorsyncErrorKind::PlannerRejected,
-        AerorsyncErrorKind::IllegalStateTransition,
-        AerorsyncErrorKind::RemoteError,
-        AerorsyncErrorKind::UnexpectedMessage,
-        AerorsyncErrorKind::Cancelled,
-        AerorsyncErrorKind::HostKeyRejected,
-        AerorsyncErrorKind::PinnedKeyMismatch,
-        AerorsyncErrorKind::PinnedPasswordMismatch,
-        AerorsyncErrorKind::PinnedLoginRefused,
-        AerorsyncErrorKind::Internal,
-    ];
+    const ALL_KINDS: [AerorsyncErrorKind; 14] = AerorsyncErrorKind::ALL;
 
     /// The retry decision, case by case, inherited from the application
     /// classifier this predicate replaced.

@@ -12,7 +12,7 @@
 
 use crate::aerorsync::fallback_policy::{classify_fallback, FallbackVerdict};
 use crate::aerorsync::transport::TransportProbe;
-use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind, TransferError, TransferReport};
+use crate::aerorsync::types::{AerorsyncError, TransferError, TransferReport};
 use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
 
 /// Render a crate-owned [`TransferReport`] into the application
@@ -83,22 +83,17 @@ fn map_native_error_to_rsync(err: AerorsyncError, committed: bool) -> RsyncError
 
 /// Render a failed probe as the application error.
 ///
-/// The rule is the application's, not the module's, and it is kept
-/// verbatim: a host key rejection, a pinned session key that is not the
-/// key the session logged in with, a password pin the delta login cannot
-/// repeat, or the server's refusal of the pinned credential itself (X1),
-/// is surfaced as a hard rejection so the
+/// The rule is the application's, not the module's: a login refusal
+/// ([`AerorsyncErrorKind::refuses_the_login`]: a host key rejection, a
+/// pinned session key that is not the key the session logged in with, a
+/// password pin the delta login cannot repeat, or the server's refusal of
+/// the pinned credential itself, X1) is surfaced as a hard rejection so the
 /// user sees why the native path refused, and everything else collapses
 /// into "remote not available", which is the verdict the probe cache in
-/// `delta_sync_rsync` memoises for five minutes.
+/// `delta_sync_rsync` memoises. The batch login reads the same rule
+/// (`begin_batch`).
 pub fn probe_error_to_rsync(err: AerorsyncError) -> RsyncError {
-    if matches!(
-        err.kind,
-        AerorsyncErrorKind::HostKeyRejected
-            | AerorsyncErrorKind::PinnedKeyMismatch
-            | AerorsyncErrorKind::PinnedPasswordMismatch
-            | AerorsyncErrorKind::PinnedLoginRefused
-    ) {
+    if err.kind.refuses_the_login() {
         return map_native_error_to_rsync(err, false);
     }
     RsyncError::RemoteNotAvailable
@@ -117,7 +112,7 @@ pub fn probe_to_capability(probe: TransportProbe) -> RsyncCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::aerorsync::types::SessionStats;
+    use crate::aerorsync::types::{AerorsyncErrorKind, SessionStats};
 
     #[test]
     fn map_cancel_maps_to_rsync_cancelled_regardless_of_committed() {
@@ -179,6 +174,34 @@ mod tests {
                 assert!(msg.contains("probe fingerprint mismatch"));
             }
             other => panic!("probe HostKeyRejected must be hard, got {other:?}"),
+        }
+    }
+
+    /// CodeRabbit 4575991582: every kind through the probe mapping. The
+    /// four login refusals, named here and not read back from
+    /// `refuses_the_login`, are hard rejections that carry their kind and
+    /// detail; every other kind is "remote not available". Taking any of
+    /// the four out of `refuses_the_login`, or the mapping's call to it,
+    /// turns its row red.
+    #[test]
+    fn every_login_refusal_kind_is_hard_through_the_probe_mapping() {
+        const REFUSALS: [AerorsyncErrorKind; 4] = [
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
+        ];
+        for kind in AerorsyncErrorKind::ALL {
+            let refused = REFUSALS.contains(&kind);
+            assert_eq!(kind.refuses_the_login(), refused, "{kind:?}");
+            match probe_error_to_rsync(AerorsyncError::new(kind, "probe detail")) {
+                RsyncError::HardRejection(msg) if refused => {
+                    assert!(msg.contains(&format!("({kind:?})")), "{kind:?}: {msg}");
+                    assert!(msg.contains("probe detail"), "{kind:?}: {msg}");
+                }
+                RsyncError::RemoteNotAvailable if !refused => {}
+                other => panic!("probe {kind:?} (refusal: {refused}) gave {other:?}"),
+            }
         }
     }
 
