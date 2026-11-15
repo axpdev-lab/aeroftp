@@ -762,5 +762,65 @@
     "name": "R1 a backslash run that re-forms an escape, within the bound, masked exactly",
     "input": "log: https:\\\\\\\\u002f\\\\\\\\u002fbob:hunter2@host/p",
     "expected": "log: https:\\\\\\\\u002f\\\\\\\\u002f***REDACTED***@host/p"
+  },
+  {
+    "name": "signed url: an Azure SAS signature in the query",
+    "input": "GET https://acct.blob.example.test/c/b.txt?sv=2022-11-02&sp=r&sig=AbC%2Fdef%3D&se=2026-01-01 failed",
+    "expected": "GET https://acct.blob.example.test/c/b.txt?sv=2022-11-02&sp=r&sig=***REDACTED***&se=2026-01-01 failed",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: sig first in the query of a path with dot segments",
+    "input": "/a/../b?sig=examplesignature123&x=1",
+    "expected": "/a/../b?sig=***REDACTED***&x=1",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: sig last in the query",
+    "input": "https://host.example.test/a/../b?sig=example-signature",
+    "expected": "https://host.example.test/a/../b?sig=***REDACTED***",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: an S3 presigned URL (the token field's value runs to the end of the query: over-masked by policy)",
+    "input": "https://s3.example.test/b/o?X-Amz-Credential=AKIDEXAMPLE%2F20260101&X-Amz-Signature=abcdef0123&X-Amz-Security-Token=tok123&X-Amz-Expires=60",
+    "expected": "https://s3.example.test/b/o?X-Amz-Credential=***REDACTED***&X-Amz-Signature=***REDACTED***&X-Amz-Security-Token=***REDACTED***",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: a CloudFront signature, capitalised",
+    "input": "https://cdn.example.test/v.mp4?Expires=1&Signature=AbC~dEf_&Key-Pair-Id=K1",
+    "expected": "https://cdn.example.test/v.mp4?Expires=1&Signature=***REDACTED***&Key-Pair-Id=K1",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: a Google signature",
+    "input": "https://storage.example.test/b/o?X-Goog-Expires=60&X-Goog-Signature=5a6b7c",
+    "expected": "https://storage.example.test/b/o?X-Goog-Expires=60&X-Goog-Signature=***REDACTED***",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: a key parameter in the query",
+    "input": "https://api.example.test/v1/list?key=AIzaExample123&page=2",
+    "expected": "https://api.example.test/v1/list?key=***REDACTED***&page=2",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: the ampersand escaped in an XML body",
+    "input": "<Error><Url>https://h.example.test/c?sv=1&amp;sig=abc123</Url></Error>",
+    "expected": "<Error><Url>https://h.example.test/c?sv=1&amp;sig=***REDACTED***</Url></Error>",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: a masked signature stays as it is",
+    "input": "https://h.example.test/c?sig=***REDACTED***&x=1",
+    "expected": "https://h.example.test/c?sig=***REDACTED***&x=1",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: key and sig outside a query are left",
+    "input": "the object key=report.txt was kept and sig=nal is a word",
+    "expected": "the object key=report.txt was kept and sig=nal is a word",
+    "group": "signed-url"
   }
 ]

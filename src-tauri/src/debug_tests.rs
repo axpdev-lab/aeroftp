@@ -383,6 +383,19 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]+\.[A-Za-z]{2,}",
         Replacement::Email("***@***"),
     ),
+    // The signature of a signed URL (an S3 presigned URL, an Azure SAS, a
+    // CloudFront or Google signed URL): whoever holds it holds the access.
+    // `key` and `sig` go only as a query parameter (after `?`, `&`, or the
+    // `;` of `&amp;` in an XML body), so an object key named in the error
+    // text stays. The frontend twin writes the same two rules.
+    (
+        r#"(?i)\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+"#,
+        Replacement::Text("$1=***REDACTED***"),
+    ),
+    (
+        r#"(?i)([?&;](?:key|sig))=[^&\s"'<>]+"#,
+        Replacement::Text("$1=***REDACTED***"),
+    ),
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
     (r"/home/[A-Za-z0-9._-]+", Replacement::Identity("/home/***")),
     (

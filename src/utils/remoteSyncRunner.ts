@@ -17,6 +17,10 @@ import { withoutErrorTag } from './transferErrorClassifier';
 import { withTransferRun } from './transferRun';
 import { QueuedTargetChangedError } from './queuedTarget';
 import { redactCredentials } from './redactSensitive';
+import { isTargetChangedRefusal, TARGET_CHANGED_MARKER } from './targetChanged';
+
+/** The error a bulk file the backend refused for a changed target is classified as. */
+export const BULK_TARGET_CHANGED = `${TARGET_CHANGED_MARKER} the sync target changed; reconnect and compare again`;
 import type {
     RetryPolicy,
     VerifyPolicy,
@@ -755,7 +759,7 @@ const runSync = async (
             return await deps.invoke(cmd, guardedArgs);
         } catch (error) {
             let ownerChanged = error instanceof QueuedTargetChangedError;
-            if (!ownerChanged && String(error).includes('CONNECTION_CHANGED')) {
+            if (!ownerChanged && isTargetChangedRefusal(error)) {
                 // A server may quote the marker in arbitrary error text.
                 // Confirm it through the backend's local ownership endpoint;
                 // this endpoint computes a sealed tag without remote I/O.
@@ -1389,7 +1393,7 @@ const runSync = async (
         // reached the server: its journal row cannot say which. A resume must
         // not trust it as a plain failure, so a new compare decides.
         if (result.status === 'failed') journal.resume_safe = false;
-        const rawError = result.status === 'target_changed' ? 'CONNECTION_CHANGED'
+        const rawError = result.status === 'target_changed' ? BULK_TARGET_CHANGED
             : result.status === 'failed' ? result.message : 'Not sent';
         const error = await classifyRunError(invoke, rawError, filePath);
         return { success: false, attempts: 1, error };

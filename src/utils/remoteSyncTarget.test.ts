@@ -3,6 +3,7 @@
 
 import { runCompletionRefresh, runTrackedSync } from './completionRefresh';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../components/transferQueueActions';
+import { isTargetChangedRefusal } from './targetChanged';
 import { localPanelShows } from './localSelection';
 import { wrapIntentInvoke } from './testFixtures/syncIntents';
 import { describe, expect, it, vi } from 'vitest';
@@ -37,12 +38,12 @@ function harness(trigger: Trigger) {
             attempts.push(cmd);
             // The backend acquires the ownership gate and checks the epoch
             // before selecting its provider; a rejected call never touches B.
-            if (args?.expectedGuiTarget !== 1 || current !== 'A') throw 'CONNECTION_CHANGED';
+            if (args?.expectedGuiTarget !== 1 || current !== 'A') throw 'CONNECTION_CHANGED: the remote target changed';
             operations[current].push(cmd);
             if (cmd === 'provider_bulk_support') return { upload: trigger === 'bulk', download: false } as T;
             if (trigger === 'bulk' && cmd === 'provider_sync_transfer_bulk') {
                 current = 'B';
-                throw 'CONNECTION_CHANGED';
+                throw 'CONNECTION_CHANGED: the remote target changed';
             }
             if (trigger === 'retry' && cmd === 'provider_upload_file') throw new Error('temporary');
             if ((trigger === 'first-file' && cmd === 'provider_upload_file')
@@ -171,7 +172,7 @@ it('requires backend verification of the persisted owner before any resumed muta
     await expect(runRemoteSync([file('one')], { remote: [], local: [] }, config({ profileId: 'A' }), {}, {
         ...h.deps, resumeJournal: journal,
         invoke: async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
-            if (cmd === 'provider_gui_verify_resume_owner') { verify(args); throw new Error('CONNECTION_CHANGED'); }
+            if (cmd === 'provider_gui_verify_resume_owner') { verify(args); throw new Error('CONNECTION_CHANGED: the remote target changed'); }
             return h.deps.invoke<T>(cmd, args);
         },
     })).rejects.toThrow('CONNECTION_CHANGED');
@@ -381,7 +382,7 @@ it('validates the backend auth owner before archiving the next download destinat
         if (cmd === 'sync_backup_archive_local') {
             expect(args?.expectedGuiTarget).toBe(1);
             expect(args?.isProvider).toBe(true);
-            if (authChanged) throw 'CONNECTION_CHANGED';
+            if (authChanged) throw 'CONNECTION_CHANGED: the remote target changed';
             archives.push(args?.rel); return '/kept' as T;
         }
         if (cmd === 'provider_download_file') { downloads.push(args); authChanged = true; }
@@ -1598,7 +1599,7 @@ it.each(['sftp', 'webdav'] as const)('runs nothing compared on A after the overl
         syncPreflightPendingRef: { current: null as symbol | null }, setSyncPreflightPending: vi.fn(),
         batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null as Promise<void> | null }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
         snapshotQueuedTarget: () => ({ profileId: 'A', params: { protocol } }),
-        queuedTargetGuard: () => () => {}, QueuedTargetChangedError,
+        queuedTargetGuard: () => () => {}, QueuedTargetChangedError, isTargetChangedRefusal,
         currentLocalPath: '/local', currentRemotePath: '/remote', usesProviderApi: () => true,
         localStorage: { getItem: () => null }, isCryptOverlayActive: () => overlay, invoke,
         loadSavedServerProfiles: async () => [{ id: 'A' }], activeUnifiedRemoteProfile: { name: 'A' },

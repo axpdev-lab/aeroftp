@@ -6,6 +6,7 @@ import { transformWithOxc } from 'vite';
 import app from '../App.tsx?raw';
 import { normCryptScope, normLandingPath } from './cryptScope';
 import { assertOverlayActivationCurrent } from './profileOverlayUnlock';
+import { isTargetChangedRefusal } from './targetChanged';
 
 // Execute the real re-anchor and activation handlers, including their catches
 // and rollback, so changing either root-navigation call changes these results.
@@ -30,7 +31,7 @@ async function handlers(error: unknown, owned: boolean, staleAfterNavigation = f
   const bindSessionCryptOverlay = vi.fn();
   const context = {
     notify: { error: vi.fn() }, t: (s: string) => s,
-    invoke, normCryptScope, normLandingPath, assertOverlayActivationCurrent,
+    invoke, normCryptScope, normLandingPath, assertOverlayActivationCurrent, isTargetChangedRefusal,
     positionWrappedProviderAtScope: vi.fn().mockResolvedValue(undefined),
     applyProviderCryptOverlay: vi.fn().mockResolvedValue(''),
     cryptOverlaySentinel: () => 'rclone_crypt_provider',

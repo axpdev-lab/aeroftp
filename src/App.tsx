@@ -18,6 +18,7 @@ import { GuiControllerBanner } from './components/GuiControllerBanner';
 import { GuiError } from './gui/controller';
 import { TID, type GuiPanelId } from './utils/testIds';
 import { loadedCertificateCheck, loadedOption, loadedOptionOn, RELAXATION_LABEL_KEYS } from './utils/profileSecurity';
+import { isTargetChangedRefusal } from './utils/targetChanged';
 import { keystoreImportModalResult, keystoreImportSummary } from './utils/keystoreImportSummary';
 import { applyPanelSelection, type PanelSelectionMode } from './utils/panelSelection';
 import { quickLookStartIndex, quickLookView, type QuickLookPanelId } from './utils/quickLookPanel';
@@ -1587,7 +1588,7 @@ const App: React.FC = () => {
         targets.map(tg => invoke('opendrive_set_path_access', { path: tg.path, accessLevel: level, isDir: tg.isDir, expectedGuiTarget }))
       );
       checkTarget();
-      if (results.some(result => result.status === 'rejected' && String(result.reason).includes('CONNECTION_CHANGED'))) {
+      if (results.some(result => result.status === 'rejected' && isTargetChangedRefusal(result.reason))) {
         throw new Error('CONNECTION_CHANGED: the properties target changed');
       }
       const ok = results.filter(r => r.status === 'fulfilled').length;
@@ -6460,7 +6461,7 @@ const App: React.FC = () => {
       const landing = normLandingPath(opts.initialLandingPath);
       if (landing === '') {
         // Remote Path is the on-wire root.
-        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+        await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
         assertOverlayActivationCurrent(ownership);
       } else {
         await invoke('provider_change_dir', { path: landing, ...(ownership ? { expectedGeneration: ownership.generation } : {}) });
@@ -6473,7 +6474,7 @@ const App: React.FC = () => {
     if (cwdInView) return; // valid encrypted folder: keep the user in place
     await positionWrappedProviderAtScope(appliedScope, ownership);
     if (normCryptScope(appliedScope) === '') {
-      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && String(error).startsWith('CONNECTION_CHANGED')) throw error; });
+      await invoke('provider_change_dir', { path: '/', ...(ownership ? { expectedGeneration: ownership.generation } : {}) }).catch((error) => { if (ownership && isTargetChangedRefusal(error)) throw error; });
       assertOverlayActivationCurrent(ownership);
     }
   };
@@ -7130,7 +7131,7 @@ const App: React.FC = () => {
       if (ownership) {
         try { ownership.check(); } catch { return null; }
       }
-      if (ownership && (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED'))) return null;
+      if (ownership && (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error))) return null;
       // A superseded listing must not surface its (now irrelevant) error toast.
       if (navId !== remoteNavCounter.current) return null;
       // Neither must a listing the user aborted from the spinner's Cancel.
@@ -11153,7 +11154,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      if (onError === 'throw') throw String(error).includes('CONNECTION_CHANGED') ? new QueuedTargetChangedError(String(error)) : error;
+      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
@@ -11396,7 +11397,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
-      if (onError === 'throw') throw String(error).includes('CONNECTION_CHANGED') ? new QueuedTargetChangedError(String(error)) : error;
+      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
@@ -11717,7 +11718,7 @@ const App: React.FC = () => {
         try {
           await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
         } catch (error) {
-          if (String(error).includes('CONNECTION_CHANGED')) refuse();
+          if (isTargetChangedRefusal(error)) refuse();
           throw error;
         }
         humanLog.logSuccess('UPLOAD', { filename: file.name, size: formatBytes(content.length) }, logId);
@@ -13304,7 +13305,7 @@ const App: React.FC = () => {
               // eslint-disable-next-line no-console
               console.debug('[AeroSync] sftp_probe_delta_eligibility failed', err);
             }
-            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) {
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) {
               refused(t('aerosync.title'), String(err));
             } else {
               refused(
@@ -13852,7 +13853,7 @@ const App: React.FC = () => {
             : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'throw', undefined, onPasteDispatch, expectedGuiTarget);
           if (ok) landed.push(file);
         } catch (e) {
-          if (e instanceof QueuedTargetChangedError || String(e).includes('CONNECTION_CHANGED')) {
+          if (e instanceof QueuedTargetChangedError || isTargetChangedRefusal(e)) {
             retargetNotified = true;
             notify.error(t('contextMenu.paste'), t('transfer.pasteFromAnotherServer'));
             break;
@@ -13909,7 +13910,7 @@ const App: React.FC = () => {
             } catch (e) {
               if (isDeletionCancelled(e)) break;
               console.error(`Failed to delete source after cut: ${file.name}`, e);
-              if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+              if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
             }
           }
         }
@@ -13958,7 +13959,7 @@ const App: React.FC = () => {
             moveFinished.add(file.path);
           } catch (e) {
             notify.error(t('toast.renameFailed', { error: `${file.name}: ${String(e)}` }));
-            if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+            if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
           }
         }
         if (targetIsRemote) {
@@ -14036,7 +14037,7 @@ const App: React.FC = () => {
             } catch (e) {
               notify.error(t('toast.copyFailed'), `${file.name}: ${String(e)}`);
               anyFailed = true;
-              if (String(e).includes('CONNECTION_CHANGED')) { retargetNotified = true; break; }
+              if (isTargetChangedRefusal(e)) { retargetNotified = true; break; }
             }
           }
           if (!anyFailed && files.length > 0) {
@@ -14164,7 +14165,7 @@ const App: React.FC = () => {
     cancelLevelRef.current = 0;
     circuitBreaker.reset();
     try { await invoke('reset_cancel_flag', { expectedGuiTarget }); } catch (error) {
-      if (String(error).includes('CONNECTION_CHANGED')) {
+      if (isTargetChangedRefusal(error)) {
         result.failed = items.length;
         result.aborted = true;
         return result;
@@ -14315,7 +14316,7 @@ const App: React.FC = () => {
           await invoke(command, { path: entry.remote_path, isPublic: false, isDir: false, expectedGuiTarget: attempt.epoch });
           eligible.add(entry);
         } catch (error) {
-          if (String(error).includes('CONNECTION_CHANGED')) {
+          if (isTargetChangedRefusal(error)) {
             attempt.changed = true;
             result.aborted = true;
             const provider = protocol === 'opendrive' ? 'OpenDrive' : '4shared';
@@ -14407,7 +14408,7 @@ const App: React.FC = () => {
           await invoke<string>(fileBatchCommand(direction, false), { params });
         }
       } catch (error) {
-        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
+        if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) { attempt.changed = true; result.aborted = true; }
         // Rejected before any file started (not connected, a name the backend
         // forbids, a locked crypt store): no file event will ever settle these
         // queue rows, so settle them here instead of leaving them pending.
@@ -14481,7 +14482,7 @@ const App: React.FC = () => {
           result.succeededSources.push(sourceOf(entry));
           landedIds.add(queueIds[i]);
         } catch (error) {
-          if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) { attempt.changed = true; result.aborted = true; }
+          if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) { attempt.changed = true; result.aborted = true; }
           transferQueue.failTransfer(queueIds[i], String(error));
           result.failed++;
         } finally { releaseCompletion(); }
@@ -15585,7 +15586,7 @@ const App: React.FC = () => {
       batchCancelledRef.current = false;
       cancelLevelRef.current = 0;
       try { await invoke('reset_cancel_flag', { expectedGuiTarget }); } catch (error) {
-        if (String(error).includes('CONNECTION_CHANGED')) { notify.error(t('toast.deleteFail'), String(error)); return; }
+        if (isTargetChangedRefusal(error)) { notify.error(t('toast.deleteFail'), String(error)); return; }
       }
 
       // GitHub atomic batch delete: single commit for all non-dir files
@@ -15635,7 +15636,7 @@ const App: React.FC = () => {
             deletedFiles.push(...filePaths);
           } catch (err) {
             notify.error(t('toast.deleteFail'), String(err));
-            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) return;
           }
         }
 
@@ -15649,7 +15650,7 @@ const App: React.FC = () => {
           } catch (err) {
             if (batchCancelledRef.current || isDeletionCancelled(err)) break;
             notify.error(t('toast.deleteFail'), `${dir.name}: ${String(err)}`);
-            if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) return;
+            if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) return;
           }
         }
       } else {
@@ -15689,7 +15690,7 @@ const App: React.FC = () => {
             } catch (err) {
               if (batchCancelledRef.current || isDeletionCancelled(err)) break;
               notify.error(t('toast.deleteFail'), `${name}: ${String(err)}`);
-              if (err instanceof QueuedTargetChangedError || String(err).includes('CONNECTION_CHANGED')) {
+              if (err instanceof QueuedTargetChangedError || isTargetChangedRefusal(err)) {
                 setScanningState(INITIAL_SCANNING_STATE);
                 return;
               }
@@ -16204,7 +16205,7 @@ const App: React.FC = () => {
       } catch (error) {
         console.error(`[BatchRename] Failed to rename ${oldPath}:`, error);
         errorCount++;
-        if (error instanceof QueuedTargetChangedError || String(error).includes('CONNECTION_CHANGED')) {
+        if (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)) {
           notify.error(t('toast.renameFail'), String(error));
           setBatchRenameDialog(null);
           return;
@@ -19758,7 +19759,7 @@ const App: React.FC = () => {
               // switch that lands after the check above is refused there too.
               await invoke('provider_chmod', { path: dialog.file.path, mode, generation: dialog.generation });
             } catch (e) {
-              if (String(e).includes('CONNECTION_CHANGED')) sessionChanged();
+              if (isTargetChangedRefusal(e)) sessionChanged();
               else notify.error(t('common.failed'), String(e));
               return;
             } finally {

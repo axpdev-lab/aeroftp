@@ -3623,7 +3623,10 @@ async fn connect_ftp_inner(
             &params.username,
             &params.password,
         ))
-        .map_err(|_| provider_commands::CONNECTION_CHANGED_MARKER.to_owned())?,
+        .map_err(|_| {
+            use provider_commands::CONNECTION_CHANGED_MARKER;
+            format!("{CONNECTION_CHANGED_MARKER}: the connection owner could not be bound; nothing was done")
+        })?,
     );
     let binding = crate::credential_store::off_async_worker(|| owner.persistent_tag(&material))?;
     info!("Connecting to FTP server: {}", params.server);

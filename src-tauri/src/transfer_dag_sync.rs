@@ -1581,6 +1581,32 @@ pub async fn execute_sync_dag(
     // Phase 3: Executing.
     sink.on_phase(SyncPhase::Executing);
 
+    // Open the delta-sync batch once for the whole session: a single SSH
+    // session reused across every eligible file, exactly like the legacy
+    // core. `None` when delta policy is off or the provider is not
+    // delta-eligible. Opened before the first write (the remote root
+    // below): a refused batch login stops the run with nothing written
+    // (CodeRabbit 4575991598).
+    let mut delta_batch: Option<Box<dyn DeltaBatch>> =
+        if matches!(opts.delta_policy, DeltaPolicy::Delta) {
+            match crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+                Ok(batch) => batch,
+                Err(refusal) => {
+                    report.errors.push(SyncError {
+                        rel_path: String::new(),
+                        operation: "policy",
+                        message: format!("sync refused, nothing was written: {refusal}"),
+                        decision_policy: opts.delta_policy,
+                    });
+                    finish_sync_report(&mut report, start, None, resource_guard);
+                    sink.on_phase(SyncPhase::Done);
+                    return report;
+                }
+            }
+        } else {
+            None
+        };
+
     // Mirror the legacy gate: create the remote root only for an
     // upload-bearing sync that actually has local files to push. Running
     // this after the scans (rather than before the remote scan, as the
@@ -1622,17 +1648,6 @@ pub async fn execute_sync_dag(
             sink,
         );
     }
-
-    // Open the delta-sync batch once for the whole session: a single SSH
-    // session reused across every eligible file, exactly like the legacy
-    // core. `None` when delta policy is off or the provider is not
-    // delta-eligible.
-    let mut delta_batch: Option<Box<dyn DeltaBatch>> =
-        if matches!(opts.delta_policy, DeltaPolicy::Delta) {
-            crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
-        } else {
-            None
-        };
 
     // Snapshot the provider exactly once for this sync execution. Normal
     // whole-file work receives all of the independently cloned sessions the
@@ -4387,6 +4402,131 @@ mod tests {
             .any(|phase| matches!(phase, SyncPhase::Executing)));
         assert!(sink.starts.is_empty());
         assert_eq!(writes.load(Ordering::SeqCst), 0);
+    }
+
+    /// CodeRabbit 4575991598: the batch login is the run's first remote act
+    /// when delta is requested, in either direction, so a refused one stops
+    /// the run with nothing written or read (not the remote root, not a
+    /// file), and the report names the refusal. A run started again on the
+    /// same session goes through the same open and stops the same way.
+    /// Control: a batch login that only fails leaves the run to move files
+    /// as before.
+    #[tokio::test]
+    async fn a_refused_batch_login_stops_the_run_before_any_write() {
+        use crate::delta_transport::{DeltaBatch, DeltaTransport};
+        use crate::providers::RemoteEntry as E;
+        use crate::rsync_over_ssh::{RsyncCapability, RsyncError, RsyncStats};
+        use crate::sync_core::scan::tests::WalkTreeProvider;
+
+        struct BatchLogin(fn() -> RsyncError);
+        #[async_trait]
+        impl DeltaTransport for BatchLogin {
+            fn name(&self) -> &'static str {
+                "batch-login"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _: &str,
+                _: &std::path::Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn upload(&self, _: &std::path::Path, _: &str) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
+                Err((self.0)())
+            }
+        }
+
+        type Login = fn() -> RsyncError;
+        let logins: [(&str, Login); 2] = [
+            ("refused", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (PinnedLoginRefused): the server refused the key".into(),
+                )
+            }),
+            ("failed", || RsyncError::TransferFailed {
+                exit: -1,
+                stderr: "connect failed".into(),
+            }),
+        ];
+        for direction in [SyncDirection::Upload, SyncDirection::Download] {
+            for (case, login) in logins {
+                let local = tempfile::tempdir().expect("tempdir");
+                let local_root = local.path().to_str().unwrap().to_string();
+                let remote = if direction == SyncDirection::Upload {
+                    std::fs::write(local.path().join("a.txt"), b"a").expect("write a.txt");
+                    std::collections::HashMap::new()
+                } else {
+                    std::collections::HashMap::from([(
+                        "/root".to_string(),
+                        vec![E::file("b.txt".into(), "/root/b.txt".into(), 4)],
+                    )])
+                };
+                let tree = WalkTreeProvider::new(remote, true);
+                let (writes, reads) = (tree.writes.clone(), tree.reads.clone());
+                let mut provider: Box<dyn StorageProvider> = Box::new(tree);
+                let mut options = opts(direction);
+                options.delta_policy = DeltaPolicy::Delta;
+                crate::delta_sync_rsync::log_batches_in_through_for_test(Some((
+                    Arc::new(BatchLogin(login)),
+                    format!("test-ua-dag-{direction:?}-{case}"),
+                )));
+                let local_entries = |root: &std::path::Path| {
+                    let mut names: Vec<_> = walkdir::WalkDir::new(root)
+                        .into_iter()
+                        .map(|entry| entry.unwrap().path().to_path_buf())
+                        .collect();
+                    names.sort();
+                    names
+                };
+                let before = local_entries(local.path());
+                let runs = if case == "refused" { 2 } else { 1 };
+                for run in 0..runs {
+                    let mut sink = TestSyncSink::default();
+                    let report = crate::sync::sync_tree_core(
+                        &mut provider,
+                        &local_root,
+                        "/root",
+                        &options,
+                        &mut sink,
+                    )
+                    .await;
+                    let moved = report.uploaded + report.downloaded;
+                    if case == "refused" {
+                        assert!(
+                            report.errors.iter().any(|error| error
+                                .message
+                                .starts_with("sync refused, nothing was written")
+                                && error.message.contains("PinnedLoginRefused")),
+                            "{direction:?} run {run}: {:?}",
+                            report.errors
+                        );
+                        assert_eq!(writes.load(Ordering::SeqCst), 0, "{direction:?} run {run}");
+                        assert!(reads.lock().unwrap().is_empty(), "{direction:?} run {run}");
+                        assert_eq!(moved, 0, "{direction:?} run {run}");
+                        assert!(!local.path().join("b.txt").exists());
+                        assert_eq!(
+                            local_entries(local.path()),
+                            before,
+                            "{direction:?} run {run}: the local root is as it was"
+                        );
+                        assert!(sink.starts.is_empty(), "{direction:?} run {run}");
+                        assert!(matches!(sink.phases.last(), Some(SyncPhase::Done)));
+                    } else {
+                        assert_eq!(moved, 1, "{direction:?}: {:?}", report.errors);
+                    }
+                }
+                crate::delta_sync_rsync::log_batches_in_through_for_test(None);
+            }
+        }
     }
 
     /// A refused run closes its report like every other exit of the DAG route:

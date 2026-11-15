@@ -35,6 +35,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::LazyLock;
 use std::time::{Duration, Instant};
+#[cfg(test)]
 use tokio::sync::Mutex as TokioMutex;
 use tokio::time::timeout;
 
@@ -226,8 +227,66 @@ const CACHE_TTL_ERR: Duration = Duration::from_secs(1800); // 30 min
 /// transfer falls back to plain SFTP immediately and stays fast (#398).
 const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
 
-static PROBE_CACHE: LazyLock<TokioMutex<HashMap<String, CacheEntry>>> =
-    LazyLock::new(|| TokioMutex::new(HashMap::new()));
+static PROBE_CACHE: LazyLock<std::sync::Mutex<HashMap<String, CacheEntry>>> =
+    LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
+/// The probe cache, locked. Never held across an await, so a plain mutex
+/// serves, and [`DeltaSessionKey`]'s `Drop` can take it. A poisoned lock
+/// still holds a map of verdicts, which is used as it is.
+fn probe_cache() -> std::sync::MutexGuard<'static, HashMap<String, CacheEntry>> {
+    PROBE_CACHE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// One SSH session's key in the probe cache: a serial, so no later session
+/// is ever given it (an SSH handle's address can be reused once the handle
+/// is freed, a serial is not), and dropping it removes the session's
+/// verdict. `SftpProvider` holds it next to its SSH handle: made with the
+/// handle at connect, dropped with it at disconnect or with the provider. A
+/// new session therefore always starts from no verdict.
+#[derive(Debug)]
+pub struct DeltaSessionKey(String);
+
+impl DeltaSessionKey {
+    pub fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(format!(
+            "sftp#{}",
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        ))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for DeltaSessionKey {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Drop for DeltaSessionKey {
+    fn drop(&mut self) {
+        probe_cache().remove(&self.0);
+    }
+}
+
+/// The refusal an error is: a hard rejection that is not a transport drop
+/// (`rsync_over_ssh::is_transient_native_envelope`, the split
+/// `hard_rejection_result` makes).
+fn refusal_in(error: &RsyncError) -> Option<&str> {
+    match error {
+        RsyncError::HardRejection(msg)
+            if !crate::rsync_over_ssh::is_transient_native_envelope(&msg.to_ascii_lowercase()) =>
+        {
+            Some(msg)
+        }
+        _ => None,
+    }
+}
 
 /// Why a cached probe gave no capability. A hard rejection (a host key
 /// rejected, a pinned session key that is not the login key) keeps its type
@@ -265,9 +324,10 @@ async fn probe_capability_cached(
 ) -> Result<RsyncCapability, ProbeFailure> {
     let now = Instant::now();
 
-    {
-        let cache = PROBE_CACHE.lock().await;
-        if let Some(entry) = cache.get(session_key) {
+    let refused = {
+        let cache = probe_cache();
+        let entry = cache.get(session_key);
+        if let Some(entry) = entry {
             let ttl = if entry.capability.is_ok() {
                 CACHE_TTL_OK
             } else {
@@ -280,7 +340,11 @@ async fn probe_capability_cached(
                 };
             }
         }
-    }
+        entry
+            .and_then(|entry| entry.capability.as_ref().err())
+            .and_then(refusal_in)
+            .map(str::to_owned)
+    };
 
     // Bound the probe so a non-responding remote (SFTP-only, no rsync) cannot stall
     // the transfer; a timeout is cached as a negative result (below) exactly like a
@@ -292,12 +356,24 @@ async fn probe_capability_cached(
             PROBE_TIMEOUT.as_secs()
         ))),
     };
+    // For one session, a soft verdict never replaces a refusal, whoever
+    // stored it (a probe, or the batch login): past its TTL the refusal is
+    // replaced by an answer (the capability, or another refusal), and a probe
+    // that times out or finds delta unavailable leaves it standing,
+    // refreshed. Otherwise a refused login would turn, 30 minutes later and
+    // on one slow probe, into leave to write over classic SFTP.
+    let fresh = match (fresh, refused) {
+        (Err(soft), Some(refusal)) if refusal_in(&soft).is_none() => {
+            Err(RsyncError::HardRejection(refusal))
+        }
+        (fresh, _) => fresh,
+    };
     let report = match &fresh {
         Ok(cap) => Ok(cap.clone()),
         Err(e) => Err(probe_failure(e)),
     };
 
-    let mut cache = PROBE_CACHE.lock().await;
+    let mut cache = probe_cache();
     cache.insert(
         session_key.to_string(),
         CacheEntry {
@@ -600,15 +676,9 @@ pub async fn try_delta_transfer_with_progress(
 
     let transport = sftp.delta_transport()?;
 
-    // Session key: stable per connection (host+user). When the user reconnects
-    // with different credentials, `invalidate_session_cache()` should be called
-    // by the connection lifecycle: for now the 5-minute TTL handles staleness.
-    let handle_ptr = sftp
-        .handle_shared()
-        .as_ref()
-        .map(|h| std::sync::Arc::as_ptr(h) as usize)
-        .unwrap_or(0);
-    let session_key = format!("sftp#{:x}", handle_ptr);
+    // Session key: the SSH session's own (`DeltaSessionKey`), made at
+    // connect and dropped with the session, its verdict with it.
+    let session_key = sftp_session_key(sftp)?;
 
     try_delta_transfer_with_transport(
         transport.as_ref(),
@@ -706,25 +776,44 @@ pub async fn check_delta_eligibility(
         }
     };
 
-    let handle_ptr = sftp
-        .handle_shared()
-        .as_ref()
-        .map(|h| std::sync::Arc::as_ptr(h) as usize)
-        .unwrap_or(0);
-    let session_key = format!("sftp#{:x}", handle_ptr);
+    let Some(session_key) = sftp_session_key(sftp) else {
+        return Some(DeltaEligibilityStatus {
+            eligible: false,
+            reason: Some("Reconnect the SFTP session to evaluate delta sync.".to_string()),
+            hard_error: None,
+        });
+    };
 
     Some(check_delta_eligibility_with_transport(transport.as_ref(), &session_key).await)
 }
 
 /// P3-T01 W4: open a delta-sync batch for the current provider session.
 ///
-/// Returns `None` when:
+/// `Ok(None)` when:
 /// - The provider is not delta-eligible (non-SFTP, disconnected, or its
 ///   authentication/host-key state cannot create a transport)
 /// - The transport's `begin_batch()` returns a [`NoopBatch`] marker
 ///   (transport does not support session reuse: caller should fall
 ///   through to the per-file single-shot path).
-/// - `begin_batch()` itself returns an error (logged at warn).
+/// - `begin_batch()` itself returns an error that is no refusal (logged at
+///   warn).
+///
+/// `Err(reason)` when the batch login was refused (a host key, or the
+/// credential the session is pinned to: CodeRabbit 4575991598). The run
+/// must stop before it writes anything: every caller opens the batch
+/// before its first write and returns on this. The refusal is also stored
+/// as this session's probe verdict, over whatever the cache held, so a
+/// per-file transfer of the same session surfaces it instead of taking an
+/// earlier "unavailable" verdict as leave to write over classic SFTP.
+///
+/// The stored refusal expires like any failed probe ([`CACHE_TTL_ERR`],
+/// 30 minutes). The first per-file transfer of the session after that
+/// probes again: a probe that logs in is refused again and stores the
+/// refusal anew, but a probe that times out stores "unavailable", and that
+/// transfer and the later ones of the session then go over classic SFTP.
+/// A probe's own hard verdict has always expired the same way. A sync run
+/// is not exposed to it: each run opens its batch, so a refused login
+/// stops it again.
 ///
 /// The returned batch holds a single SSH handshake; the sync loop is
 /// expected to call `batch.finalize()` at the end and surface
@@ -734,32 +823,128 @@ pub async fn check_delta_eligibility(
 /// [`SyncReport`]: crate::sync::SyncReport
 pub async fn open_delta_batch(
     provider: &mut dyn crate::providers::StorageProvider,
-) -> Option<Box<dyn crate::delta_transport::DeltaBatch>> {
-    let sftp = provider
+) -> Result<Option<Box<dyn crate::delta_transport::DeltaBatch>>, String> {
+    #[cfg(test)]
+    if let Some((transport, session_key)) =
+        BATCH_LOGIN_FOR_TEST.with(|login| login.borrow().clone())
+    {
+        return open_delta_batch_with_transport(transport.as_ref(), &session_key).await;
+    }
+    let Some(sftp) = provider
         .as_any_mut()
-        .downcast_mut::<crate::providers::sftp::SftpProvider>()?;
-    let transport = sftp.delta_transport()?;
+        .downcast_mut::<crate::providers::sftp::SftpProvider>()
+    else {
+        return Ok(None);
+    };
+    // A session with no SSH handle has no transport either
+    // (`SftpProvider::delta_transport`) and no probe cache key: nothing is
+    // stored for it.
+    let Some(session_key) = sftp_session_key(sftp) else {
+        return Ok(None);
+    };
+    let Some(transport) = sftp.delta_transport() else {
+        return Ok(None);
+    };
+    open_delta_batch_with_transport(transport.as_ref(), &session_key).await
+}
+
+// The probe cache is a process-global static; tests that clear it and assert
+// on its contents must not interleave, or one test's `clear_probe_cache()`
+// wipes another's mid-test entry. Every cache-touching test, in this module
+// or another, acquires this guard first so they run serially with respect to
+// the cache.
+#[cfg(test)]
+pub(crate) static PROBE_CACHE_TEST_GUARD: LazyLock<TokioMutex<()>> =
+    LazyLock::new(|| TokioMutex::new(()));
+
+/// Stores `refusal` as the verdict of the session `key`, for the tests of
+/// another module.
+#[cfg(test)]
+pub(crate) fn store_refusal_for_test(key: &str, refusal: &str) {
+    probe_cache().insert(
+        key.to_string(),
+        CacheEntry {
+            capability: Err(RsyncError::HardRejection(refusal.to_string())),
+            cached_at: Instant::now(),
+        },
+    );
+}
+
+/// Whether the session `key` has a verdict, for the tests of another module.
+#[cfg(test)]
+pub(crate) fn has_verdict_for_test(key: &str) -> bool {
+    probe_cache().contains_key(key)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A sync core test's stand-in for an SFTP session (the cores take any
+    /// provider, and only an SFTP one has a delta transport): while set,
+    /// [`open_delta_batch`] logs in through this transport under this probe
+    /// cache key, whatever the provider. Per thread, so a test sets it for
+    /// its own runs only.
+    static BATCH_LOGIN_FOR_TEST: std::cell::RefCell<
+        Option<(std::sync::Arc<dyn DeltaTransport>, String)>,
+    > = const { std::cell::RefCell::new(None) };
+}
+
+/// Sets (or, with `None`, clears) [`BATCH_LOGIN_FOR_TEST`].
+#[cfg(test)]
+pub(crate) fn log_batches_in_through_for_test(
+    login: Option<(std::sync::Arc<dyn DeltaTransport>, String)>,
+) {
+    BATCH_LOGIN_FOR_TEST.with(|slot| *slot.borrow_mut() = login);
+}
+
+/// The probe cache's key for an SFTP session ([`DeltaSessionKey`]): `None`
+/// without an SSH session.
+fn sftp_session_key(sftp: &crate::providers::sftp::SftpProvider) -> Option<String> {
+    sftp.delta_session_key().map(str::to_owned)
+}
+
+/// [`open_delta_batch`] after the downcast, for tests with a synthetic
+/// transport.
+#[doc(hidden)]
+pub async fn open_delta_batch_with_transport(
+    transport: &dyn DeltaTransport,
+    session_key: &str,
+) -> Result<Option<Box<dyn crate::delta_transport::DeltaBatch>>, String> {
     match transport.begin_batch().await {
         Ok(batch) if !batch.is_noop() => {
             tracing::info!(
                 "delta batch opened: transport={}, session reuse active",
                 transport.name()
             );
-            Some(batch)
+            Ok(Some(batch))
         }
         Ok(_) => {
             tracing::debug!(
                 "delta batch open: transport={} returned NoopBatch: single-shot path",
                 transport.name()
             );
-            None
+            Ok(None)
+        }
+        Err(RsyncError::HardRejection(msg)) => {
+            // The split every hard rejection goes through: a transport drop
+            // stays an ordinary failure, a refusal stops the run.
+            let Some(hard) = hard_rejection_result(&msg).hard_error else {
+                return Ok(None);
+            };
+            probe_cache().insert(
+                session_key.to_string(),
+                CacheEntry {
+                    capability: Err(RsyncError::HardRejection(msg)),
+                    cached_at: Instant::now(),
+                },
+            );
+            Err(hard)
         }
         Err(e) => {
             tracing::warn!(
                 "delta batch open: begin_batch failed on transport={}: {e}",
                 transport.name()
             );
-            None
+            Ok(None)
         }
     }
 }
@@ -812,28 +997,27 @@ pub async fn try_delta_transfer_with_batch(
 /// Clear the probe cache. Called on disconnect or explicit user action.
 /// Not strictly required (entries expire after 5 min) but keeps memory clean.
 pub async fn clear_probe_cache() {
-    PROBE_CACHE.lock().await.clear();
+    probe_cache().clear();
 }
 
 /// Clear a single session's cached capability (e.g. after reconnect with new creds).
 pub async fn invalidate_session_cache(session_key: &str) {
-    PROBE_CACHE.lock().await.remove(session_key);
+    probe_cache().remove(session_key);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A batch login's outcome, and a probe's answer, as the test transports
+    /// give them.
+    type Login = fn() -> RsyncError;
+    type Answer = fn() -> Result<RsyncCapability, RsyncError>;
     // Only the unix tests build an `RsyncConfig` (Windows CI denies unused imports).
     #[cfg(unix)]
     use crate::rsync_over_ssh::RsyncConfig;
     #[cfg(unix)]
     use std::path::PathBuf;
-
-    // The probe cache is a process-global static; tests that clear it and assert
-    // on its contents must not interleave, or one test's `clear_probe_cache()`
-    // wipes another's mid-test entry. Every cache-touching test acquires this
-    // guard first so they run serially with respect to the cache.
-    static PROBE_CACHE_TEST_GUARD: LazyLock<TokioMutex<()>> = LazyLock::new(|| TokioMutex::new(()));
 
     #[test]
     fn hard_rejection_transport_drop_demotes_to_classic_fallback() {
@@ -1463,6 +1647,382 @@ mod tests {
         assert_eq!(stuck.transfers.load(Ordering::SeqCst), 0);
     }
 
+    /// CodeRabbit 4575991598: a gate probe that timed out left the session's
+    /// verdict at "unavailable", and the batch login is then refused. The
+    /// refusal leaves `open_delta_batch` as an error the cores stop on, and
+    /// it becomes the session's verdict, so a later per-file transfer is the
+    /// same hard error, naming the refusal, with no classic write (no
+    /// fallback) and no transfer through the transport. The same whatever
+    /// the cache held (that timed-out verdict, an available one, none) and
+    /// for each of the four refusals; another session's verdict is left as
+    /// it was. Controls: a batch login that fails for any other reason, or
+    /// drops on the wire, opens no batch and leaves the verdict alone.
+    #[tokio::test]
+    async fn a_refused_batch_login_stops_the_run_and_is_the_sessions_verdict() {
+        use crate::delta_transport::{DeltaBatch, DeltaTransport};
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        /// Probes after `delay` (unavailable past the bound, available
+        /// otherwise); its batch login ends with `login`.
+        struct BatchLogin {
+            delay: Duration,
+            login: fn() -> RsyncError,
+            probes: AtomicUsize,
+            transfers: AtomicUsize,
+        }
+        #[async_trait]
+        impl DeltaTransport for BatchLogin {
+            fn name(&self) -> &'static str {
+                "batch-login"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(self.delay).await;
+                Ok(RsyncCapability {
+                    version: "3.4.1".into(),
+                    protocol: 31,
+                })
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                self.transfers.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                self.transfers.fetch_add(1, Ordering::SeqCst);
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
+                Err((self.login)())
+            }
+        }
+        fn transport(delay: Duration, login: fn() -> RsyncError) -> BatchLogin {
+            BatchLogin {
+                delay,
+                login,
+                probes: AtomicUsize::new(0),
+                transfers: AtomicUsize::new(0),
+            }
+        }
+        // What the adapter's `begin_batch` returns for each refusal
+        // (`aerorsync_adapter::delta_transport::batch_login_failed`).
+        let refusals: [(&str, Login); 4] = [
+            ("HostKeyRejected", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (HostKeyRejected): fingerprint mismatch".into(),
+                )
+            }),
+            ("PinnedKeyMismatch", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (PinnedKeyMismatch): not the login key".into(),
+                )
+            }),
+            ("PinnedPasswordMismatch", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (PinnedPasswordMismatch): no password".into(),
+                )
+            }),
+            ("PinnedLoginRefused", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (PinnedLoginRefused): the server refused the key".into(),
+                )
+            }),
+        ];
+        let stuck = PROBE_TIMEOUT + Duration::from_secs(60);
+        async fn upload(transport: &BatchLogin, key: String) -> DeltaSyncResult {
+            transfer_with_delta(
+                transport,
+                SyncDirection::Upload,
+                Path::new("/tmp/ua-nope"),
+                "/remote/ua-nope",
+                &key,
+                None,
+            )
+            .await
+            .expect("a typed result")
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        clear_probe_cache().await;
+        let other = "test-ua-other-session";
+        let ready = transport(Duration::ZERO, || RsyncError::RemoteNotAvailable);
+        assert!(
+            check_delta_eligibility_with_transport(&ready, other)
+                .await
+                .eligible
+        );
+        for (cached, delay) in [
+            ("timed-out gate", stuck),
+            ("available", Duration::ZERO),
+            ("none", Duration::ZERO),
+        ] {
+            for (kind, login) in refusals {
+                let key = format!("test-ua-{cached}-{kind}");
+                let batch = transport(delay, login);
+                if cached != "none" {
+                    let gate = check_delta_eligibility_with_transport(&batch, &key).await;
+                    assert_eq!(gate.eligible, cached == "available", "{cached} {kind}");
+                    assert!(gate.hard_error.is_none(), "{cached} {kind}: {gate:?}");
+                }
+                let probes = batch.probes.load(Ordering::SeqCst);
+                let refusal = match open_delta_batch_with_transport(&batch, &key).await {
+                    Err(refusal) => refusal,
+                    Ok(opened) => panic!("{cached} {kind}: opened={}", opened.is_some()),
+                };
+                assert!(refusal.contains(kind), "{cached} {kind}: {refusal}");
+                for _ in 0..2 {
+                    let r = upload(&batch, key.clone()).await;
+                    assert!(!r.used_delta, "{cached} {kind}");
+                    assert!(
+                        r.fallback_reason.is_none(),
+                        "{cached} {kind}: classic write"
+                    );
+                    assert!(
+                        r.hard_error.as_deref().is_some_and(|e| e.contains(kind)),
+                        "{cached} {kind}: {r:?}"
+                    );
+                }
+                assert_eq!(
+                    batch.probes.load(Ordering::SeqCst),
+                    probes,
+                    "{cached} {kind}"
+                );
+                assert_eq!(batch.transfers.load(Ordering::SeqCst), 0, "{cached} {kind}");
+            }
+        }
+        assert!(
+            check_delta_eligibility_with_transport(&ready, other)
+                .await
+                .eligible,
+            "another session's verdict is its own"
+        );
+        assert_eq!(ready.probes.load(Ordering::SeqCst), 1);
+
+        // Controls: no batch, and the timed-out verdict stays the session's.
+        let soft: [(&str, Login); 2] = [
+            ("failed", || RsyncError::TransferFailed {
+                exit: -1,
+                stderr: "connect failed".into(),
+            }),
+            ("dropped", || {
+                RsyncError::HardRejection(
+                    "native hard rejection (TransportFailure): remote closed".into(),
+                )
+            }),
+        ];
+        for (case, login) in soft {
+            let key = format!("test-ua-control-{case}");
+            let batch = transport(stuck, login);
+            assert!(
+                !check_delta_eligibility_with_transport(&batch, &key)
+                    .await
+                    .eligible
+            );
+            assert!(
+                matches!(
+                    open_delta_batch_with_transport(&batch, &key).await,
+                    Ok(None)
+                ),
+                "{case}"
+            );
+            let r = upload(&batch, key.clone()).await;
+            assert!(r.hard_error.is_none(), "{case}: {r:?}");
+            assert!(
+                r.fallback_reason
+                    .as_deref()
+                    .is_some_and(|f| f.contains("remote delta unavailable")),
+                "{case}: {r:?}"
+            );
+        }
+
+        // What the user reads is the sanitised message: it names the refusal
+        // and carries no home or key path, whatever the detail held.
+        let leaky = transport(Duration::ZERO, || {
+            RsyncError::HardRejection(
+                "native hard rejection (PinnedKeyMismatch): /home/alice/.ssh/id_ed25519 is not \
+                 the login key"
+                    .into(),
+            )
+        });
+        let refusal = open_delta_batch_with_transport(&leaky, "test-ua-redacted")
+            .await
+            .err()
+            .expect("a refusal");
+        assert!(refusal.contains("PinnedKeyMismatch"), "{refusal}");
+        assert!(refusal.contains("<redacted>"), "{refusal}");
+        assert!(!refusal.contains("alice"), "{refusal}");
+        assert!(!refusal.contains("id_ed25519"), "{refusal}");
+    }
+
+    /// CodeRabbit 4575991598, the cache's half: for one session a soft
+    /// verdict never replaces a refusal. A refusal past its TTL (as if stored
+    /// 30 minutes ago) is probed again: a probe that times out or finds
+    /// delta unavailable leaves it standing, refreshed, so the transfer is
+    /// the same hard error with no classic write and nothing sent through
+    /// the transport, and the next transfer does not probe again; a probe
+    /// that answers another refusal replaces it; one that answers the
+    /// capability replaces it and delta goes ahead.
+    #[tokio::test]
+    async fn a_refusal_past_its_ttl_gives_way_only_to_an_answer() {
+        use crate::delta_transport::DeltaTransport;
+        use async_trait::async_trait;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct Reprobe {
+            delay: Duration,
+            answer: fn() -> Result<RsyncCapability, RsyncError>,
+            probes: AtomicUsize,
+            transfers: AtomicUsize,
+        }
+        #[async_trait]
+        impl DeltaTransport for Reprobe {
+            fn name(&self) -> &'static str {
+                "reprobe"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                self.probes.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(self.delay).await;
+                (self.answer)()
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(
+                &self,
+                _remote: &str,
+                _local: &Path,
+            ) -> Result<RsyncStats, RsyncError> {
+                unreachable!("uploads only")
+            }
+            async fn upload(&self, _local: &Path, _remote: &str) -> Result<RsyncStats, RsyncError> {
+                self.transfers.fetch_add(1, Ordering::SeqCst);
+                Ok(RsyncStats {
+                    bytes_sent: 1,
+                    bytes_received: 1,
+                    total_size: 10,
+                    speedup: 10.0,
+                    duration_ms: 1,
+                    copy_blocks: 0,
+                    warnings: vec![],
+                })
+            }
+        }
+        const REFUSED: &str =
+            "native hard rejection (PinnedLoginRefused): the server refused the key alice logged in with";
+        let cases: [(&str, Duration, Answer); 4] = [
+            ("timed out", PROBE_TIMEOUT + Duration::from_secs(60), || {
+                Err(RsyncError::RemoteNotAvailable)
+            }),
+            ("unavailable", Duration::ZERO, || {
+                Err(RsyncError::RemoteNotAvailable)
+            }),
+            ("refused again", Duration::ZERO, || {
+                Err(RsyncError::HardRejection(
+                    "native hard rejection (HostKeyRejected): the server's host key is not the pinned one"
+                        .into(),
+                ))
+            }),
+            ("available", Duration::ZERO, || {
+                Ok(RsyncCapability {
+                    version: "3.4.1".into(),
+                    protocol: 31,
+                })
+            }),
+        ];
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        for (case, delay, answer) in cases {
+            let key = format!("test-a2-{case}");
+            probe_cache().insert(
+                key.clone(),
+                CacheEntry {
+                    capability: Err(RsyncError::HardRejection(REFUSED.into())),
+                    cached_at: Instant::now()
+                        .checked_sub(CACHE_TTL_ERR + Duration::from_secs(1))
+                        .expect("an instant 30 minutes back"),
+                },
+            );
+            let transport = Reprobe {
+                delay,
+                answer,
+                probes: AtomicUsize::new(0),
+                transfers: AtomicUsize::new(0),
+            };
+            for attempt in 0..2 {
+                let r = transfer_with_delta(
+                    &transport,
+                    SyncDirection::Upload,
+                    Path::new("/tmp/a2-nope"),
+                    "/remote/a2-nope",
+                    &key,
+                    None,
+                )
+                .await
+                .expect("a typed result");
+                match case {
+                    "available" => assert!(r.used_delta, "{case} {attempt}: {r:?}"),
+                    _ => {
+                        let named = if case == "refused again" {
+                            "HostKeyRejected"
+                        } else {
+                            "PinnedLoginRefused"
+                        };
+                        assert!(
+                            r.fallback_reason.is_none(),
+                            "{case} {attempt}: classic write"
+                        );
+                        assert!(
+                            r.hard_error.as_deref().is_some_and(|e| e.contains(named)),
+                            "{case} {attempt}: {r:?}"
+                        );
+                    }
+                }
+            }
+            assert_eq!(
+                transport.probes.load(Ordering::SeqCst),
+                1,
+                "{case}: refreshed"
+            );
+            let sent = if case == "available" { 2 } else { 0 };
+            assert_eq!(transport.transfers.load(Ordering::SeqCst), sent, "{case}");
+        }
+    }
+
+    /// A session's key is its own and goes with it: two sessions never share
+    /// one, and dropping it (the provider's disconnect, or the provider
+    /// itself) removes its verdict.
+    #[tokio::test]
+    async fn a_session_key_is_never_reused_and_takes_its_verdict_with_it() {
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        let (first, second) = (DeltaSessionKey::new(), DeltaSessionKey::new());
+        assert_ne!(first.as_str(), second.as_str());
+        for key in [&first, &second] {
+            probe_cache().insert(
+                key.as_str().to_string(),
+                CacheEntry {
+                    capability: Err(RsyncError::HardRejection(
+                        "native hard rejection (PinnedLoginRefused): refused".into(),
+                    )),
+                    cached_at: Instant::now(),
+                },
+            );
+        }
+        let gone = first.as_str().to_string();
+        drop(first);
+        assert!(!probe_cache().contains_key(&gone));
+        assert!(probe_cache().contains_key(second.as_str()));
+        let gone = second.as_str().to_string();
+        drop(second);
+        assert!(!probe_cache().contains_key(&gone));
+    }
+
     /// CodeRabbit 4574777425 (X1), end to end: the session logged in with a
     /// key (or a password) and the server refuses that credential on the
     /// delta login, through the real native transport and a real SSH
@@ -1582,6 +2142,49 @@ mod tests {
                     .is_some_and(|e| e.contains("PinnedLoginRefused")),
                 hard,
                 "{case}: {gate:?}"
+            );
+            // CodeRabbit 4575991598, through the real batch login: the
+            // session's verdict is the one a timed-out gate leaves, and the
+            // batch login is refused all the same. The run stops on it, and
+            // the transfers that follow are the refusal, not a fallback.
+            let batch_key = format!("test-ua-{case}");
+            probe_cache().insert(
+                batch_key.clone(),
+                CacheEntry {
+                    capability: Err(RsyncError::ProbeFailed("timed out".into())),
+                    cached_at: Instant::now(),
+                },
+            );
+            let opened = open_delta_batch_with_transport(&transport, &batch_key).await;
+            if hard {
+                assert!(
+                    opened
+                        .as_ref()
+                        .err()
+                        .is_some_and(|e| e.contains("PinnedLoginRefused")),
+                    "{case}: opened={:?}",
+                    opened.as_ref().map(Option::is_some)
+                );
+            } else {
+                assert!(matches!(opened, Ok(None)), "{case}");
+            }
+            let r = transfer_with_delta(
+                &transport,
+                SyncDirection::Upload,
+                Path::new("/tmp/x1-nope"),
+                "/remote/x1-nope",
+                &batch_key,
+                None,
+            )
+            .await
+            .expect("a typed result");
+            assert_eq!(r.fallback_reason.is_none(), hard, "{case}: {r:?}");
+            assert_eq!(
+                r.hard_error
+                    .as_deref()
+                    .is_some_and(|e| e.contains("PinnedLoginRefused")),
+                hard,
+                "{case}: {r:?}"
             );
             for attempt in ["fresh", "cached"] {
                 if attempt == "fresh" {

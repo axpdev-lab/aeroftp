@@ -522,7 +522,7 @@ it('preserves the acknowledged upload local timestamp in an index-writing resume
         provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); },
     });
     first.deps.writeIndex = true;
-    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED: the remote target changed'); };
     const plan = files(3, 'upload').map(file => ({ ...file, mtime: null }));
     await runRemoteSync(plan, { remote: [], local: [] }, config(), {}, first.deps);
     const journal = structuredClone(first.journal());
@@ -540,7 +540,7 @@ it.each(['upload', 'download'] as const)('requires a fresh compare before an unp
     let current = true;
     const settings = config({ errorCorrection: { enabled: true, pct: 10 } });
     const first = harness({ provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); } });
-    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED: the remote target changed'); };
     await runRemoteSync(files(3, action).map(file => ({ ...file, expectedSha256: '1'.repeat(64) })), { remote: [], local: [] }, settings, {}, first.deps);
     const journal = structuredClone(first.journal());
     // The local file now contains a same-size user edit; a signed journal's
@@ -582,7 +582,7 @@ it('never adopts a same-size edited acknowledged download as the synced index ba
     const first = harness({ get_file_properties: () => ({ size: 1024, modified: '2026-11-11T00:00:00' }),
         provider_sync_transfer_bulk: args => { current = false; return (args!.items as BulkItem[]).map(() => ({ status: 'completed' })); } });
     first.deps.writeIndex = true;
-    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED'); };
+    first.deps.remoteTarget!.assertCurrent = () => { if (!current) throw new Error('CONNECTION_CHANGED: the remote target changed'); };
     await runRemoteSync(files(3, 'download').map(file => ({ ...file, mtime: null })), { remote: [], local: [] }, config({ verifyPolicy: 'size_only' }), {}, first.deps);
     const journal = structuredClone(first.journal());
     expect(journal.entries.every(entry => entry.local_modified === '2026-11-11T00:00:00Z')).toBe(true);

@@ -2169,19 +2169,51 @@ pub(crate) fn without_unclassified_items(raw: &str) -> &str {
 /// asked for.
 pub const TARGET_CHANGED_MARKER: &str = "CONNECTION_CHANGED:";
 
-/// Whether a rendered error is a refusal of that family, wherever the marker
-/// stands in it: an operation that reports a failure puts its own words in
-/// front (`upload failed: CONNECTION_CHANGED: ...`), and so can the window.
-/// The caller's own file path is taken out first when it holds the marker
-/// itself, and only then, so a file named after the marker is not read as
-/// the refusal and a short path (`a`) removes nothing from the text. A text
-/// that names the marker for any other reason is read as the refusal: the
-/// answer then is not to retry, which is the safe one.
+/// Whether a rendered error is a refusal of that family.
+///
+/// The marker counts where the message starts, or behind wrappers only: an
+/// operation that reports a failure puts its own words in front (`upload
+/// failed: CONNECTION_CHANGED: ...`), and so can the window (`Error: ...`).
+/// A wrapper is letters, digits and spaces closed by `: `. A marker later in
+/// the text is part of something the error names, such as a remote path
+/// (`Connection reset while uploading /CONNECTION_CHANGED: archive/a.txt`),
+/// and is not the refusal: that error is classified as what it is.
+///
+/// The caller's own file path is taken out first when it holds the marker,
+/// and so is each of its components that holds it (the remote side of a
+/// transfer names the same file under another root), so a file named after
+/// the marker is not read as the refusal; a short path (`a`) removes nothing.
+/// A path or component that is the marker and nothing else is left in: taking
+/// it out would take the refusal's own first word with it, and the same
+/// refused write would be retried.
+/// Twin: `isTargetChangedRefusal` in `src/utils/targetChanged.ts`; both run
+/// `src/shared/target-changed-cases.json`.
 pub fn is_target_changed_text(raw: &str, file_path: Option<&str>) -> bool {
-    match file_path.filter(|path| path.contains(TARGET_CHANGED_MARKER)) {
-        Some(path) => raw.replace(path, "").contains(TARGET_CHANGED_MARKER),
-        None => raw.contains(TARGET_CHANGED_MARKER),
+    let named =
+        |part: &&str| part.contains(TARGET_CHANGED_MARKER) && part.trim() != TARGET_CHANGED_MARKER;
+    let text = file_path
+        .into_iter()
+        .flat_map(|path| std::iter::once(path).chain(path.split(['/', '\\'])))
+        .filter(named)
+        .fold(raw.to_string(), |text, part| text.replace(part, ""));
+    text.find(TARGET_CHANGED_MARKER)
+        .is_some_and(|at| is_wrappers_only(&text[..at]))
+}
+
+/// Whether what stands in front of the marker is nothing, or wrappers only.
+fn is_wrappers_only(prefix: &str) -> bool {
+    let prefix = prefix.trim_start();
+    if prefix.is_empty() {
+        return true;
     }
+    prefix.strip_suffix(": ").is_some_and(|wrappers| {
+        wrappers.split(": ").all(|wrapper| {
+            !wrapper.is_empty()
+                && wrapper
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == ' ')
+        })
+    })
 }
 
 /// Provider error type
@@ -2667,6 +2699,99 @@ mod tests {
     }
 
     use super::*;
+
+    /// The two readers of a changed-target refusal, this one and
+    /// `isTargetChangedRefusal` in the window, answer one table the same way.
+    #[test]
+    fn a_changed_target_refusal_is_read_as_the_shared_table_says() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            text: String,
+            path: Option<String>,
+            refusal: bool,
+        }
+        #[derive(serde::Deserialize)]
+        struct Table {
+            cases: Vec<Case>,
+        }
+        let table: Table = serde_json::from_str(include_str!(
+            "../../../src/shared/target-changed-cases.json"
+        ))
+        .expect("the shared table parses");
+        assert!(table.cases.len() > 20);
+        for case in &table.cases {
+            assert_eq!(
+                is_target_changed_text(&case.text, case.path.as_deref()),
+                case.refusal,
+                "{:?}: {}",
+                case.path,
+                case.text
+            );
+        }
+        assert!(is_target_changed_text(
+            &ProviderError::TargetChanged.to_string(),
+            None
+        ));
+    }
+
+    /// The refusal's marker is never produced bare, in any native source
+    /// outside its tests: the word with no colon is no refusal for either
+    /// reader (the shared table's "CONNECTION_CHANGED" row), so a producer
+    /// that wrote it would be retried as an ordinary failure. Every
+    /// occurrence of the word is the colon form, `{CONNECTION_CHANGED_MARKER}:`
+    /// in a format string, the constant's definition or its import, a reader
+    /// (`starts_with`, `contains`, a match arm), or `IpcError::Marker`, which
+    /// `sync::ipc_error_parts` renders with its colon (pinned by its test, the
+    /// render a row of the shared table).
+    #[test]
+    fn no_native_producer_writes_the_changed_target_marker_without_its_colon() {
+        assert!(TARGET_CHANGED_MARKER.ends_with(':'));
+        let test_module = regex::Regex::new(
+            r"(?ms)^#\[cfg\(test\)\]\n(?:#\[[^\n]*\]\n)*mod [A-Za-z0-9_]+ \{\n.*?^\}\n",
+        )
+        .unwrap();
+        let reader =
+            regex::Regex::new(r"(?:starts_with|contains)\((?:crate::)?(?:provider_commands::)?$")
+                .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let (mut files, mut bare) = (0, Vec::new());
+        for entry in walkdir::WalkDir::new(&root) {
+            let entry = entry.unwrap();
+            if entry.path().extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            files += 1;
+            let source = std::fs::read_to_string(entry.path()).unwrap();
+            let production = test_module.replace_all(&source, "");
+            for line in production.lines() {
+                let code = line.trim_start();
+                if code.starts_with("//")
+                    || code.starts_with("use ")
+                    || code.starts_with(
+                        "pub const CONNECTION_CHANGED_MARKER: &str = \"CONNECTION_CHANGED\";",
+                    )
+                {
+                    continue;
+                }
+                for (at, word) in line.match_indices("CONNECTION_CHANGED") {
+                    let (before, rest) = (&line[..at], &line[at + word.len()..]);
+                    let colon = rest.starts_with(':') || rest.starts_with("_MARKER}:");
+                    let read = reader.is_match(before)
+                        || (before.ends_with('"') && rest.starts_with("\" =>"));
+                    let marker = before.ends_with("Marker(\"") && rest.starts_with("\")");
+                    if !(colon || read || marker) {
+                        bare.push(format!("{}: {}", entry.path().display(), line.trim()));
+                    }
+                }
+            }
+        }
+        assert!(files > 100, "read {files} files");
+        assert!(
+            bare.is_empty(),
+            "the marker written bare:\n{}",
+            bare.join("\n")
+        );
+    }
     use std::collections::HashMap;
 
     #[test]

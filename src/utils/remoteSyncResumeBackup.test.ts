@@ -29,12 +29,12 @@ function harness() {
         if (cmd === 'sync_backup_run_stamp') return 'stamp' as T;
         if (cmd === 'provider_bulk_support') return null as T;
         if (cmd === 'sync_ec_generate') {
-            if (args?.expectedGuiTarget !== epoch || current !== 'A') throw 'CONNECTION_CHANGED';
+            if (args?.expectedGuiTarget !== epoch || current !== 'A') throw 'CONNECTION_CHANGED: the remote target changed';
             calls.push(`A:sync_ec_generate:${String(args?.pct)}`);
             return { status: 'generated' } as T;
         }
         if (['sync_backup_archive_remote', 'sync_backup_verify_receipt', 'provider_upload_file', 'provider_mkdir'].includes(cmd)) {
-            if (args?.expectedGuiTarget !== epoch || current !== 'A') throw 'CONNECTION_CHANGED';
+            if (args?.expectedGuiTarget !== epoch || current !== 'A') throw 'CONNECTION_CHANGED: the remote target changed';
             calls.push(`${current}:${cmd}:${String(args?.rel ?? '')}`);
             if (cmd === 'sync_backup_archive_remote') {
                 if (String(args?.rel).endsWith('.aerocorrect')) return null as T;

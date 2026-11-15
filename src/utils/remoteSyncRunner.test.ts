@@ -2585,7 +2585,7 @@ describe('full-review owner and report boundaries', () => {
     it.each(['delete', 'backup'] as const)('redacts a token-bearing %s refusal when ownership confirmation fails', async action => {
         const secret = 'delete-token-never-visible';
         const status = vi.fn();
-        const fail = () => { throw `CONNECTION_CHANGED access_token=${secret}`; };
+        const fail = () => { throw `CONNECTION_CHANGED: access_token=${secret}`; };
         const { invoke } = makeInvoke({
             delete_remote_file: fail, sync_backup_archive_remote: fail,
             provider_gui_target_binding: () => { throw new Error('old owner'); },

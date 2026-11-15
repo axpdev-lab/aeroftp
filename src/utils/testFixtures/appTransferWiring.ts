@@ -12,6 +12,7 @@ import { usesProviderApi, type RemoteFile } from '../../types';
 import { loadOverwriteDestination } from '../overwriteDestination';
 import { fileBatchCommand, folderTransferIsComplete, keepsSingleFilePath } from '../fileBatchRouting';
 import { createFileBatchDispatcher, rearmedOnUserAction } from '../../components/transferQueueActions';
+import { isTargetChangedRefusal } from '../targetChanged';
 import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from '../localPath';
 
 
@@ -112,7 +113,7 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     queuedTargetProblem: () => null,
     queuedTargetGuard: () => () => undefined,
     failQueuedRestIfRetargeted: () => false,
-    QueuedTargetChangedError: Error,
+    QueuedTargetChangedError: Error, isTargetChangedRefusal,
     joinRemotePath: (dir: string, name: string) => `${dir}/${name}`,
     settings: { autoStartTransfers: !options.staged }, fileExistsAction: options.policy || 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,

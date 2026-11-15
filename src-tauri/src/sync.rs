@@ -1550,10 +1550,27 @@ pub async fn sync_tree_core(
     // transport's begin_batch returns NoopBatch (no session-reuse
     // support), or when delta policy is off: in those cases the
     // perform_upload/download functions fall through to the existing
-    // single-shot try_delta_transfer / classic provider path.
+    // single-shot try_delta_transfer / classic provider path. A refused
+    // batch login stops the run (CodeRabbit 4575991598). This body runs
+    // only dry runs (`should_route_sync_to_dag`), so neither this open nor
+    // the remote root above runs here; a real run opens its batch in
+    // `execute_sync_dag`, before its first write.
     let mut delta_batch: Option<Box<dyn DeltaBatch>> =
         if !opts.dry_run && matches!(opts.delta_policy, DeltaPolicy::Delta) {
-            crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
+            match crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+                Ok(batch) => batch,
+                Err(refusal) => {
+                    report.errors.push(SyncError {
+                        rel_path: String::new(),
+                        operation: "policy",
+                        message: format!("sync refused, nothing was written: {refusal}"),
+                        decision_policy: opts.delta_policy,
+                    });
+                    report.elapsed_secs = start.elapsed().as_secs_f64();
+                    sink.on_phase(SyncPhase::Done);
+                    return report;
+                }
+            }
         } else {
             None
         };
@@ -5605,7 +5622,10 @@ fn ipc_error_parts(command: &str, error: &IpcError) -> (String, String) {
             (info, human, None, format!(" (FTP {code})"))
         }
         IpcError::Marker(marker) => {
-            let info = classify_sync_error(marker, None);
+            // Classified as the page reads it, with its colon: the bare word
+            // is no refusal (`is_target_changed_text`), and would be read as
+            // a generic, retryable failure.
+            let info = classify_sync_error(&format!("{marker}: "), None);
             let human = match *marker {
                 "CONNECTION_CHANGED" => "The connection changed; reconnect and compare again",
                 _ => kind_message(&info.kind),
@@ -5689,9 +5709,11 @@ pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo 
     // the caller's path is taken out of it: the path is removed as a
     // substring, so a file named `a` used to strip the words the branches
     // below look for and leave `connection`, which is retryable. The marker
-    // counts wherever it stands: the operation that failed, or the window,
-    // may have put its own words in front (`upload failed: ...`). The refusal
-    // is final for this session: the same write is refused again.
+    // counts where the text starts or behind wrappers only: the operation
+    // that failed, or the window, may have put its own words in front
+    // (`upload failed: ...`). A marker inside something the error names, a
+    // remote path for one, is not the refusal. The refusal is final for this
+    // session: the same write is refused again.
     if crate::providers::types::is_target_changed_text(raw, file_path) {
         return SyncErrorInfo {
             kind: SyncErrorKind::Auth,
@@ -8423,9 +8445,17 @@ mod tests {
             assert!(!message.contains("(HTTP"), "{raw} -> {message}");
         }
         // The typed facts.
+        let changed = ipc_error_render("test_command", &IpcError::Marker("CONNECTION_CHANGED"));
+        assert!(changed.starts_with("CONNECTION_CHANGED: "), "{changed}");
+        // Its tag is the refusal's: final, never retried.
+        let read = classify_ipc_error(&changed, None);
+        assert_eq!(read.kind, SyncErrorKind::Auth, "{changed}");
+        assert!(!read.retryable, "{changed}");
+        // A row of the shared table, which both readers run.
         assert!(
-            ipc_error_render("test_command", &IpcError::Marker("CONNECTION_CHANGED"))
-                .starts_with("CONNECTION_CHANGED: ")
+            include_str!("../../src/shared/target-changed-cases.json")
+                .contains(&format!("{{ \"text\": \"{changed}\", \"refusal\": true }}")),
+            "{changed}"
         );
         assert!(ipc_error_render("test_command", &IpcError::Cancelled)
             .starts_with("Transfer cancelled by user"));
@@ -9770,6 +9800,37 @@ mod tests {
         // And a refusal about that very file is still the refusal.
         let both = classify_sync_error(&format!("upload failed: {text} ({named})"), Some(named));
         assert!(!both.retryable);
+        // CodeRabbit 4575757882, second round: the marker inside a path the
+        // error names is not the refusal, whichever path the caller gives.
+        // The FTP upload executor gives the local path while the server's
+        // text names the remote one.
+        let reset = "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt";
+        for path in [
+            Some("/home/user/sync/file.txt"),
+            Some("/CONNECTION_CHANGED: archive/file.txt"),
+            Some("/home/user/CONNECTION_CHANGED: archive/file.txt"),
+            None,
+        ] {
+            for raw in [reset.to_string(), format!("upload failed: {reset}")] {
+                let info = classify_sync_error(&raw, path);
+                assert_eq!(info.kind, SyncErrorKind::Network, "{path:?}: {raw}");
+                assert!(info.retryable, "{path:?}: {raw}");
+            }
+        }
+        // CodeRabbit 4575991602: a file whose name is the marker and nothing
+        // else does not take the refusal's own first word out of the text.
+        let refused = crate::providers::ProviderError::TargetChanged.to_string();
+        for path in [
+            crate::providers::types::TARGET_CHANGED_MARKER,
+            "/srv/CONNECTION_CHANGED:",
+            "CONNECTION_CHANGED:/notes.txt",
+        ] {
+            for raw in [refused.clone(), format!("upload failed: {refused}")] {
+                let info = classify_sync_error(&raw, Some(path));
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
+                assert!(!info.retryable, "{path}: {raw}");
+            }
+        }
         // The two spellings of the marker in the crate are one family.
         assert_eq!(
             crate::providers::types::TARGET_CHANGED_MARKER,

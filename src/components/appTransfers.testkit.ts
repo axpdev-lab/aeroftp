@@ -20,6 +20,7 @@ import type { PreviewFile } from './DevTools/types';
 import { connectionNumberOf, isSameConnection, savedProfileIdOf } from '../utils/liveConnection';
 import type { ConnectionParams } from '../types';
 import { withTransferRun } from '../utils/transferRun';
+import { isTargetChangedRefusal } from '../utils/targetChanged';
 import {
   cancelTransfer as cancelTransferRow,
   createFileBatchDispatcher,
@@ -257,7 +258,7 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: options.vaultOverlay ? { sessionId: 'vault-session' } : null, isConnected: true, isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
+    liveConnectionParams, aeroVaultOverlaySession: options.vaultOverlay ? { sessionId: 'vault-session' } : null, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef: { current: 0 },
