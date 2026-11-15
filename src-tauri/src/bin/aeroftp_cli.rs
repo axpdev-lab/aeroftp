@@ -15814,8 +15814,15 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     use ftp_client_gui_lib::{cloud_config, cloud_service};
 
     // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
-    // fast WITHOUT forcing an unnecessary vault unlock prompt.
-    let mut config = cloud_config::load_cloud_config();
+    // fast WITHOUT forcing an unnecessary vault unlock prompt. A file that
+    // cannot be read is a configuration error (exit 11), never "not enabled".
+    let mut config = match cloud_config::load_cloud_config_strict() {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
     if !config.enabled {
         print_error(
             format,
@@ -15884,7 +15891,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
 
     match command {
         AeroCloudCommands::Show => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             // A config written before this release, or by a GUI that does not
             // write the field, still carries the default. Deriving it here too
             // means the displayed value cannot be stale even when the stored
@@ -15894,7 +15907,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             0
         }
         AeroCloudCommands::Status => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_status(&config, format);
             0
@@ -16075,7 +16094,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
 
     match command {
         PairCommands::List => {
-            let cfg = cloud_pairs::load_cloud_pairs_config();
+            let cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if matches!(format, OutputFormat::Json) {
                 let pairs: Vec<_> = cfg
                     .pairs
@@ -16147,7 +16172,7 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 None => CompareDirection::Bidirectional,
             };
 
-            let mut pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+            let pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
                 Ok(cfg) => cfg,
                 Err(e) => {
                     print_error(format, &e, 11);
@@ -16217,66 +16242,106 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 print_error(format, &e, 5);
                 return 5;
             }
-            pairs_cfg.pairs.push(new_pair);
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
-                print_error(format, &e, 11);
-                return 11;
+            // Added to the list as it is at the write, under the pairs write
+            // lock: a folder a sync placed since the read above is kept.
+            let added = new_pair.clone();
+            let pushed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                // The same pair added meanwhile is not added twice.
+                if cloud_pairs::pair_exists(&added.local_path, remote, &stored.pairs) {
+                    return Ok(false);
+                }
+                stored.pairs.push(new_pair);
+                Ok(true)
+            });
+            match pushed {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+                Ok(false) => {
+                    print_error(
+                        format,
+                        &format!("pair already exists for local={} remote={}", local, remote),
+                        5,
+                    );
+                    return 5;
+                }
+                Ok(true) => {}
             }
             if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"status": "ok", "added": pairs_cfg.pairs.last()}));
+                print_json(&serde_json::json!({"status": "ok", "added": added}));
             } else {
                 println!("Added AeroCloud pair.");
             }
             0
         }
         PairCommands::Remove { id } => {
-            let mut cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
-                Ok(cfg) => cfg,
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let removed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                let before = stored.pairs.len();
+                stored.pairs.retain(|p| p.id != *id);
+                Ok(stored.pairs.len() != before)
+            });
+            match removed {
                 Err(e) => {
                     print_error(format, &e, 11);
-                    return 11;
+                    11
                 }
-            };
-            let before = cfg.pairs.len();
-            cfg.pairs.retain(|p| p.id != *id);
-            if cfg.pairs.len() == before {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                return 5;
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
+                Ok(true) => {
+                    println!("Removed pair {id}");
+                    0
+                }
             }
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
-                print_error(format, &e, 11);
-                return 11;
-            }
-            println!("Removed pair {id}");
-            0
         }
         PairCommands::Enable { id } | PairCommands::Disable { id } => {
             let enable = matches!(command, PairCommands::Enable { .. });
-            let mut cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
-                Ok(cfg) => cfg,
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let found = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                Ok(match stored.pairs.iter_mut().find(|p| p.id == *id) {
+                    Some(p) => {
+                        p.enabled = enable;
+                        true
+                    }
+                    None => false,
+                })
+            });
+            match found {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    11
+                }
+                Ok(true) => {
+                    println!(
+                        "Pair {} {}",
+                        id,
+                        if enable { "enabled" } else { "disabled" }
+                    );
+                    0
+                }
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
+            }
+        }
+        PairCommands::Sync { id, dry_run } => {
+            // The pairs file first, read as the other pair commands read it:
+            // one that cannot be read is a configuration error (exit 11),
+            // never an empty list, and it fails before the vault is asked for.
+            let mut pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
                 Err(e) => {
                     print_error(format, &e, 11);
                     return 11;
                 }
             };
-            if let Some(p) = cfg.pairs.iter_mut().find(|p| p.id == *id) {
-                p.enabled = enable;
-                if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
-                    print_error(format, &e, 11);
-                    return 11;
-                }
-                println!(
-                    "Pair {} {}",
-                    id,
-                    if enable { "enabled" } else { "disabled" }
-                );
-                0
-            } else {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                5
-            }
-        }
-        PairCommands::Sync { id, dry_run } => {
+
             // Vault open once for all pairs in this invocation (crypt wrap).
             let store = match open_vault(cli) {
                 Ok(s) => s,
@@ -16285,8 +16350,6 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                     return 5;
                 }
             };
-
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
 
             // Resolve protocol_type for each (same logic as single aerocloud sync).
             for p in &mut pairs_cfg.pairs {

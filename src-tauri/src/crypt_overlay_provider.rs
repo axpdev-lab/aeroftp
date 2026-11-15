@@ -1380,7 +1380,19 @@ impl StorageProvider for CryptOverlayProvider {
             self.settle_scope_alias().await?;
         }
         let enc = self.map(path, true, AccessKind::Read)?;
-        self.inner.cd(&enc).await?;
+        // Pending before the server is asked: a `cd` into the anchor that is
+        // cancelled after the server moved never reaches learn_scope_alias,
+        // and the next path call must still ask where the session landed
+        // instead of reading the anchor's other name as a folder outside it.
+        // A refused `cd` moved nothing and leaves the state as it was.
+        let before = self.alias_pending.clone();
+        if self.below_scope(&enc).is_some() {
+            self.alias_pending = Some(enc.clone());
+        }
+        if let Err(e) = self.inner.cd(&enc).await {
+            self.alias_pending = before;
+            return Err(e);
+        }
         self.learn_scope_alias(&enc).await;
         Ok(())
     }
@@ -3891,9 +3903,7 @@ pub(crate) async fn resolve_home_scope(
         .split('/')
         .collect();
     if segments.contains(&"..") {
-        return Err(format!(
-            "the overlay folder {scope} leaves the login folder"
-        ));
+        return Err("the overlay folder leaves the login folder".to_string());
     }
     // `.` and empty segments name the same folder, written as the server
     // lists it, as the window places it (`placeUnderLoginFolder`).
@@ -3903,8 +3913,7 @@ pub(crate) async fn resolve_home_scope(
         .collect::<Vec<_>>()
         .join("/");
     let rest = rest.as_str();
-    let unresolved =
-        |e: ProviderError| format!("the overlay folder {scope} could not be resolved: {e}");
+    let unresolved = |e: ProviderError| format!("the overlay folder could not be resolved: {e}");
     // A provider that recorded its login folder at connect (FTP keeps the
     // post-login `PWD`, the only `~` it has) answers without a `cd("~")`:
     // on FTP that command is not portable and can open a folder literally
@@ -3920,9 +3929,10 @@ pub(crate) async fn resolve_home_scope(
                 provider.provider_type(),
                 ProviderType::Ftp | ProviderType::Ftps
             ) {
-                return Err(format!(
-                    "the overlay folder {scope} could not be resolved: the server did not report its login folder"
-                ));
+                return Err(
+                    "the overlay folder could not be resolved: the server did not report its login folder"
+                        .to_string(),
+                );
             }
             let back = provider.pwd().await.map_err(unresolved)?;
             provider.cd("~").await.map_err(unresolved)?;
@@ -3931,16 +3941,17 @@ pub(crate) async fn resolve_home_scope(
             let home = home.map_err(unresolved)?;
             // Left in the login folder, every later relative path would land there.
             restored.map_err(|e| {
-                format!("the overlay folder {scope} was resolved, but the session could not return to {back}: {e}")
+                format!("the overlay folder was resolved, but the session could not return to the folder it was in: {e}")
             })?;
             // The probe opened `~` itself: a server with no login folder may
             // have a folder literally named `~`, which `pwd` then reports.
             // A recorded hint (the FTP post-login `PWD`) is a real folder
             // name instead, `/srv/~` included, and is not held to this.
             if home == "~" || home.ends_with("/~") {
-                return Err(format!(
-                    "the overlay folder {scope} could not be resolved: this server has no login folder"
-                ));
+                return Err(
+                    "the overlay folder could not be resolved: this server has no login folder"
+                        .to_string(),
+                );
             }
             home
         }
@@ -3999,7 +4010,7 @@ pub(crate) async fn place_start_folder(
     let current = provider
         .pwd()
         .await
-        .map_err(|e| format!("the start folder {path} could not be placed: {e}"))?;
+        .map_err(|e| format!("the starting folder could not be placed: {e}"))?;
     Ok(match current.trim_end_matches('/') {
         "" if path == "." => "/".to_string(),
         "" => format!("/{path}"),
@@ -5779,6 +5790,9 @@ pub(crate) mod tests {
         reports_as: Option<(&'static str, &'static str)>,
         /// How many `pwd` calls fail before the next one answers.
         pwd_failures: u32,
+        /// `cd` moves the session, then never answers, as a server whose
+        /// reply is lost after it changed folder.
+        cd_hangs_after_moving: bool,
     }
 
     impl MemProvider {
@@ -5805,6 +5819,7 @@ pub(crate) mod tests {
                 kind: ProviderType::Ftp,
                 reports_as: None,
                 pwd_failures: 0,
+                cd_hangs_after_moving: false,
             }
         }
         fn hidden(&self, path: &str) -> bool {
@@ -6024,6 +6039,9 @@ pub(crate) mod tests {
                 return Err(ProviderError::NotFound(resolved));
             }
             *self.cwd.lock().unwrap() = resolved;
+            if self.cd_hangs_after_moving {
+                std::future::pending::<()>().await;
+            }
             Ok(())
         }
         /// `CDUP`: the last step of the folder as the server holds it, dropped
@@ -7283,6 +7301,59 @@ pub(crate) mod tests {
         }
     }
 
+    /// A `cd` into the anchor cancelled after the server moved (the reply
+    /// lost, the caller timed out) leaves the probe pending: the next `pwd`
+    /// asks the server and reads its name for the anchor as the anchor, and
+    /// a write by that name is encrypted, never stored in clear. A refused
+    /// `cd` leaves the state as it was.
+    #[tokio::test]
+    async fn a_cancelled_cd_into_the_anchor_still_asks_where_it_landed() {
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.seed_raw_dir("/srv/other");
+            mem.reports_as = Some(("/home/u/docs", "/srv/docs"));
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys.clone(), "/home/u/docs");
+            p.cd("/srv/other").await.unwrap();
+            mem_of(&mut p).cd_hangs_after_moving = true;
+            let cancelled =
+                tokio::time::timeout(std::time::Duration::from_millis(50), p.cd("/home/u/docs"))
+                    .await;
+            assert!(cancelled.is_err(), "{label}");
+            assert_eq!(*mem_of(&mut p).cwd.lock().unwrap(), "/home/u/docs");
+            mem_of(&mut p).cd_hangs_after_moving = false;
+            assert_eq!(p.pwd().await.unwrap(), "/home/u/docs", "{label}");
+
+            let dir = std::env::temp_dir().join(format!("crypt_cancel_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            let local = local.to_str().unwrap();
+            tokio::fs::write(local, b"never in clear").await.unwrap();
+            p.upload(local, "/srv/docs/secret.txt", None).await.unwrap();
+            let mem = mem_of(&mut p);
+            assert_eq!(mem.raw_bytes("/srv/docs/secret.txt"), None, "{label}");
+            assert!(
+                mem.raw_paths()
+                    .iter()
+                    .any(|k| k.starts_with("/home/u/docs/") && !k.contains("secret")),
+                "{label}: {:?}",
+                mem.raw_paths()
+            );
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+
+            // A refused `cd` to the anchor leaves nothing pending.
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.refuse_cd = Some("/home/u/docs");
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
+            assert!(p.cd("/home/u/docs").await.is_err(), "{label}");
+            assert!(p.alias_pending.is_none(), "{label}");
+        }
+    }
+
     /// `checksum_capability` cannot ask the server (it is synchronous): while
     /// a `cd` into the anchor waits for its answer it offers no digest, and
     /// once the alias is known a path under it is marked as ciphertext.
@@ -7843,6 +7914,53 @@ pub(crate) mod tests {
         }
     }
 
+    /// Two objects outside the anchor whose keys differ only by a doubled
+    /// slash stay two: deleting one by its key, or by the folder the session
+    /// reports plus its name, leaves the other with its bytes.
+    #[tokio::test]
+    async fn a_doubled_slash_outside_the_anchor_names_its_own_object() {
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_file("/public/a//b.txt", b"doubled");
+            mem.seed_raw_file("/public/a/b.txt", b"single");
+            mem.seed_raw_file("/public/a//b/c.txt", b"deep doubled");
+            mem.seed_raw_file("/public/a/b/c.txt", b"deep single");
+            mem.seed_raw_dir("/public/a//b");
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/Vault");
+            let mem_of = |p: &mut CryptOverlayProvider| {
+                p.inner
+                    .as_any_mut()
+                    .downcast_mut::<MemProvider>()
+                    .unwrap()
+                    .raw_bytes("/public/a/b.txt")
+            };
+            p.delete("/public/a//b.txt").await.unwrap();
+            let inner = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            assert_eq!(inner.raw_bytes("/public/a//b.txt"), None, "{label}");
+            assert_eq!(mem_of(&mut p).as_deref(), Some(&b"single"[..]), "{label}");
+
+            // The session stands in the doubled folder: the path it reports
+            // keeps the doubled slash, and a delete built from it as well.
+            *p.inner
+                .as_any_mut()
+                .downcast_mut::<MemProvider>()
+                .unwrap()
+                .cwd
+                .lock()
+                .unwrap() = "/public/a//b".to_string();
+            let here = p.pwd().await.unwrap();
+            assert_eq!(here, "/public/a//b", "{label}");
+            p.delete(&format!("{here}/c.txt")).await.unwrap();
+            let inner = p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap();
+            assert_eq!(inner.raw_bytes("/public/a//b/c.txt"), None, "{label}");
+            assert_eq!(
+                inner.raw_bytes("/public/a/b/c.txt").as_deref(),
+                Some(&b"deep single"[..]),
+                "{label}"
+            );
+        }
+    }
+
     /// A path outside the anchor reaches the provider byte for byte, through
     /// every method that takes one: an object store keeps `/public/a//b.txt`
     /// and `/public/./a` as keys apart from `/public/a/b.txt` and
@@ -8118,7 +8236,7 @@ pub(crate) mod tests {
         stuck.cd("/srv").await.unwrap();
         stuck.refuse_cd = Some("/srv");
         let err = resolve_home_scope(&mut stuck, "~/docs").await.unwrap_err();
-        assert!(err.contains("could not return to /srv"), "{err}");
+        assert!(err.contains("could not return to the folder"), "{err}");
 
         // A recorded login folder may itself end in `~`: `/srv/~` is a real
         // directory an FTP `PWD` can report. Only the `cd ~` probe treats a

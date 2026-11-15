@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, relativeSyncSegments, savedLocationProblem, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, locationProblem, locationRefusal, type LocationProblem, relativeSyncSegments, savedLocationProblem, resolveSyncNavigationPath as resolvePath, type SyncNavigationEntry } from './syncNavigationPath';
 import locationCases from '../shared/path-location-cases.json';
 import syncNavigationSource from './syncNavigationPath.ts?raw';
 import overlayScopeSource from './overlayScope.ts?raw';
@@ -149,6 +149,21 @@ describe('isWithinSyncFolder', () => {
         expect(isWithinSyncFolder('\\\\nas\\share\\sync\\a', '\\\\nas\\share\\sync')).toBe(true);
     });
 
+    it('reads either separator as one on a Windows path, and only / on POSIX', () => {
+        expect(isWithinSyncFolder('C:/Users/u/AeroCloud/a', 'C:\\Users\\u\\AeroCloud')).toBe(true);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud\\a', 'C:/Users/u/AeroCloud')).toBe(true);
+        expect(isWithinSyncFolder('C:\\Users\\u\\AeroCloud2\\x', 'C:\\Users\\u\\AeroCloud')).toBe(false);
+        expect(isWithinSyncFolder('C:/Users/u/AeroCloud2/x', 'C:\\Users\\u\\AeroCloud')).toBe(false);
+        expect(isWithinSyncFolder('/home/u/AeroCloud\\a', '/home/u/AeroCloud')).toBe(false);
+        expect(isWithinSyncFolder('/docs\\a.txt', '/docs')).toBe(false);
+        expect(isWithinSyncFolder('/home/u/team/docs\\a.txt', '/home/u/team/docs')).toBe(false);
+        expect(isWithinSyncFolder('/home/u/AeroCloud/a', '/home/u/AeroCloud')).toBe(true);
+        expect(relativeSyncSegments('C:/Users/u/AeroCloud/a/b', 'C:\\Users\\u\\AeroCloud')).toEqual(['a', 'b']);
+        expect(relativeSyncSegments('C:\\Users\\u\\AeroCloud\\a', 'C:\\Users\\u\\AeroCloud')).toEqual(['a']);
+        expect(relativeSyncSegments('C:\\Users\\u\\AeroCloud2\\a', 'C:\\Users\\u\\AeroCloud')).toBeNull();
+        expect(relativeSyncSegments('/home/u/AeroCloud\\a', '/home/u/AeroCloud')).toBeNull();
+    });
+
     it('reads a path that is not plain as under no folder', () => {
         expect(isWithinSyncFolder('/docs/../private/a.txt', '/docs')).toBe(false);
         expect(isWithinSyncFolder('/docs/./a.txt', '/docs')).toBe(false);
@@ -166,6 +181,17 @@ describe('locationProblem', () => {
         for (const { path, problem } of locationCases.cases) {
             expect(locationProblem(path), JSON.stringify(path)).toBe(problem);
         }
+    });
+
+    it('refuses a location without naming it, with the backend text', () => {
+        for (const { path, problem, secret } of locationCases.cases) {
+            if (!problem) continue;
+            const refusal = locationRefusal('remote folder', problem as LocationProblem);
+            expect(refusal).toMatch(/^The remote folder contains /u);
+            if (path.length > 3) expect(refusal).not.toContain(path);
+            if (secret) expect(refusal).not.toContain(secret);
+        }
+        expect(locationRefusal('remote folder', 'parent')).toBe("The remote folder contains a '..' step: write it as a plain path, without '.' or '..' steps or doubled slashes");
     });
 
     it('refuses only a parent step or a NUL in a saved location, as the backend does', () => {
@@ -195,6 +221,7 @@ describe('every location site checks the path first', () => {
         loginRelativeForm: 'prefixes `~/`; every caller here checks the text first',
         normalizeLoginRelative: 'a normalizer the checked functions call; keeps `..` as written',
         hostOf: 'a host name, not a path',
+        isWindowsPath: 'tells a Windows path apart, strips nothing; its callers check first',
         profileRoot: 'the starting folder the server reads; aeroCloudBase checks the text it comes from',
         aeroCloudRemoteFolder: 'joined only after aeroCloudFolderNotPlain refused (handleComplete)',
         CloudSetupWizard: 'the label it shows, not a location it uses',

@@ -106,37 +106,34 @@ pub fn saved_location_problem(path: &str) -> Option<LocationProblem> {
         .then_some(LocationProblem::ParentStep)
 }
 
-/// `Err` naming a saved `path` as written, redacted, with `what` it is, when
-/// it has a `..` step or a NUL ([`saved_location_problem`]).
+/// `Err` saying `what` the saved `path` is and why it is refused, when it has
+/// a `..` step or a NUL ([`saved_location_problem`]).
 pub fn refuse_a_saved_location(what: &str, path: &str) -> Result<(), String> {
     match saved_location_problem(path) {
         None => Ok(()),
-        Some(problem) => Err(unusable(what, path, problem)),
+        Some(problem) => Err(unusable(what, problem)),
     }
 }
 
-/// The refusal names the path as the debug redaction writes it: a refused
-/// value may be a URL with a password or carry a token, and the message is
-/// shown, logged and copied into reports.
-fn unusable(what: &str, path: &str, problem: LocationProblem) -> String {
+/// The refusal names the setting and the reason, never the path: a refused
+/// value is hand-written or saved by an older version, may be a URL with a
+/// password or carry a token in a step or a query, and the message is shown,
+/// logged and copied into reports. A redaction that recognises secrets by
+/// their shape cannot know every one, so the path is left out whole.
+fn unusable(what: &str, problem: LocationProblem) -> String {
     format!(
-        "The {what} '{}' contains {}: write it as a plain path, without '.' or '..' steps \
+        "The {what} contains {}: write it as a plain path, without '.' or '..' steps \
          or doubled slashes",
-        named(path),
         problem.reason()
     )
 }
 
-fn named(path: &str) -> String {
-    crate::debug_tests::redact(&path.replace('\0', "\\0"))
-}
-
-/// `Err` naming `path` as written, redacted, with `what` it is
-/// (`"remote folder"`), when it cannot be used as a location.
+/// `Err` saying `what` `path` is (`"remote folder"`) and why it is refused,
+/// when it cannot be used as a location.
 pub fn refuse_an_unusable_location(what: &str, path: &str) -> Result<(), String> {
     match location_problem(path) {
         None => Ok(()),
-        Some(problem) => Err(unusable(what, path, problem)),
+        Some(problem) => Err(unusable(what, problem)),
     }
 }
 
@@ -197,11 +194,36 @@ mod tests {
             let secret = case["secret"].as_str();
             let saved_refusal = refuse_a_saved_location("remote folder", path).err();
             for message in refused.err().iter().chain(saved_refusal.iter()) {
-                assert!(message.contains(&named(path)), "{message}");
+                assert!(
+                    message.starts_with("The remote folder contains "),
+                    "{message}"
+                );
+                if path.len() > 3 {
+                    assert!(!message.contains(path), "{message}");
+                }
                 if let Some(secret) = secret {
                     assert!(!message.contains(secret), "{message}");
                 }
             }
+        }
+    }
+
+    /// The refusal says what is refused and why, in the text the frontend
+    /// twin (`locationRefusal`) writes, and never the path.
+    #[test]
+    fn a_refusal_names_the_setting_not_the_path() {
+        assert_eq!(
+            refuse_an_unusable_location("remote folder", "/a/../b").unwrap_err(),
+            "The remote folder contains a '..' step: write it as a plain path, without '.' or \
+             '..' steps or doubled slashes"
+        );
+        let signed = "/a/../b?sig=example-signature";
+        for refused in [
+            refuse_an_unusable_location("remote folder", signed),
+            refuse_a_saved_location("remote folder", signed),
+        ] {
+            let message = refused.unwrap_err();
+            assert!(!message.contains("example-signature"), "{message}");
         }
     }
 

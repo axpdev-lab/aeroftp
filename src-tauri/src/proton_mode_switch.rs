@@ -482,7 +482,14 @@ fn belongs(history: &HistoryFile, id: &str, keys: &HashSet<(String, String)>) ->
 /// Where a switch writes besides the history files. The app and the CLI use
 /// [`DiskTargets`]; tests replace it to fail a write half way.
 pub(crate) trait SwitchTargets {
-    fn store_cloud(&mut self, cloud: &CloudConfig, pairs: &CloudPairsConfig) -> Result<(), String>;
+    /// Writes `cloud` and `pairs`, edited from `read_as` (the files as the
+    /// switch read them), over the files as they are at the write.
+    fn store_cloud(
+        &mut self,
+        read_as: (&CloudConfig, &CloudPairsConfig),
+        cloud: &CloudConfig,
+        pairs: &CloudPairsConfig,
+    ) -> Result<(), String>;
     /// Sets the mode and, when given, the initial folder on the stored
     /// profile, leaving every other field as the store holds it now.
     fn store_profile(
@@ -619,7 +626,7 @@ pub(crate) fn apply_in(
         }
     }
     if cloud_changed {
-        if let Err(e) = targets.store_cloud(&new_cloud, &new_pairs) {
+        if let Err(e) = targets.store_cloud((cloud, pairs), &new_cloud, &new_pairs) {
             roll_back(&written);
             return Err(format!("AeroCloud not updated, nothing was changed: {e}"));
         }
@@ -638,7 +645,7 @@ pub(crate) fn apply_in(
         Ok(()) => {}
         Err(ProfileStoreError::NotSaved(e)) => {
             if cloud_changed {
-                let _ = targets.store_cloud(cloud, pairs);
+                let _ = targets.store_cloud((&new_cloud, &new_pairs), cloud, pairs);
             }
             roll_back(&written);
             return Err(format!("profile not saved, nothing was changed: {e}"));
@@ -737,13 +744,27 @@ pub struct DiskTargets<'a> {
 }
 
 impl SwitchTargets for DiskTargets<'_> {
-    fn store_cloud(&mut self, cloud: &CloudConfig, pairs: &CloudPairsConfig) -> Result<(), String> {
-        // Strict load for the rollback snapshot: if the config cannot be
-        // read, nothing is written at all, so the rollback can never save a
-        // default over the user's file.
-        let previous = crate::cloud_config::load_cloud_config_strict()?;
-        crate::cloud_config::save_cloud_config(cloud)?;
-        if let Err(e) = crate::cloud_pairs::save_cloud_pairs_config(pairs) {
+    fn store_cloud(
+        &mut self,
+        read_as: (&CloudConfig, &CloudPairsConfig),
+        cloud: &CloudConfig,
+        pairs: &CloudPairsConfig,
+    ) -> Result<(), String> {
+        // Each file is merged with the file as it is at the write, under its
+        // write lock, by the rule of the settings and the pair editor: what
+        // it gained since the switch read it and the switch did not change
+        // (a folder a sync placed meanwhile) stays as stored. A file that
+        // cannot be read is not written at all, so the rollback can never
+        // save a default over the user's file.
+        let previous = crate::cloud_config::with_cloud_config_mut(|stored| {
+            let previous = stored.clone();
+            *stored = crate::cloud_config::settings_save(stored, read_as.0, cloud.clone())?;
+            Ok(previous)
+        })?;
+        if let Err(e) = crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
+            *stored = crate::cloud_pairs::pairs_save(stored, read_as.1, pairs.clone())?;
+            Ok(())
+        }) {
             let _ = crate::cloud_config::save_cloud_config(&previous);
             return Err(e);
         }
@@ -1181,6 +1202,7 @@ mod tests {
     impl SwitchTargets for Memory {
         fn store_cloud(
             &mut self,
+            _read_as: (&CloudConfig, &CloudPairsConfig),
             cloud: &CloudConfig,
             pairs: &CloudPairsConfig,
         ) -> Result<(), String> {

@@ -703,7 +703,14 @@ mod tests {
         }
         let data = tempfile::tempdir().unwrap();
         let path = data.path().join("cloud_config.json");
-        let bytes = b"{ \"enabled\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&CloudConfig {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<CloudConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         struct PermGuard(std::path::PathBuf);
         impl Drop for PermGuard {
@@ -713,7 +720,11 @@ mod tests {
         }
         let _guard = PermGuard(path.clone());
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
-        assert!(save_cloud_config_unlocked_at(&CloudConfig::default(), &path).is_err());
+        let err = save_cloud_config_unlocked_at(&CloudConfig::default(), &path).unwrap_err();
+        assert!(
+            err.contains("Cannot read"),
+            "not refused for the read: {err}"
+        );
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
@@ -748,7 +759,14 @@ mod tests {
         let dir = data.path().join("cfg");
         std::fs::create_dir(&dir).unwrap();
         let path = dir.join("cloud_config.json");
-        let bytes = b"{ \"enabled\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&CloudConfig {
+            enabled: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<CloudConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         struct PermGuard(std::path::PathBuf);
         impl Drop for PermGuard {
@@ -765,6 +783,7 @@ mod tests {
         })
         .unwrap_err();
         assert!(!ran, "closure must not run on an unreadable config: {err}");
+        assert!(err.contains("read"), "not refused for the read: {err}");
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
@@ -831,7 +850,7 @@ mod tests {
                 };
                 assert!(validate_config(&config).is_err(), "{protocol} {folder}");
                 let err = refuse_an_unusable_remote_folder(folder, None).unwrap_err();
-                assert!(err.contains(&format!("'{folder}'")), "{err}");
+                assert!(!err.contains(folder), "the refusal names the folder: {err}");
             }
             for folder in ["~/docs", "~/docs..x", "~/..docs", "/srv/data/", "/", "~"] {
                 assert!(

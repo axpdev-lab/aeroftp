@@ -94,6 +94,39 @@ fn aerocloud_pair_mutations_refuse_unparseable_pairs() {
     }
 }
 
+/// The commands that only read the files read them strictly too: a file
+/// that cannot be read is a configuration error (exit 11) naming the cause,
+/// never an empty list ("no matching enabled pairs", exit 5) or a default
+/// configuration shown as the user's.
+#[test]
+fn aerocloud_reads_refuse_an_unparseable_file() {
+    let root = isolated_cli::root();
+    let root_path = root.path().to_path_buf();
+    let (pairs, pairs_bytes) = write_unparseable(&root_path, "cloud_pairs.json");
+    for args in [
+        vec!["aerocloud", "pair", "sync"],
+        vec!["aerocloud", "pair", "sync", "--id", "some-id"],
+        vec!["aerocloud", "pair", "list"],
+    ] {
+        let out = run(&root_path, &args);
+        assert_exit_11_and_bytes_kept(&pairs, &pairs_bytes, &out);
+        assert!(
+            String::from_utf8_lossy(&out.stderr).contains("cloud pairs"),
+            "{args:?} does not name the file it could not read: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    let (config, config_bytes) = write_unparseable(&root_path, "cloud_config.json");
+    for args in [
+        vec!["aerocloud", "sync"],
+        vec!["aerocloud", "show"],
+        vec!["aerocloud", "status"],
+    ] {
+        let out = run(&root_path, &args);
+        assert_exit_11_and_bytes_kept(&config, &config_bytes, &out);
+    }
+}
+
 /// The CodeRabbit scenario end to end: a mutating command that meets an
 /// unreadable `cloud_config.json` must leave the credential vault AND the
 /// mounts sidecar byte-identical — no migration, no partial write.

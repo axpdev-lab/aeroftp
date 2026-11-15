@@ -132,3 +132,30 @@ describe('CloudPairsEditor after a failed load', () => {
         expect(save.disabled).toBe(true);
     });
 });
+
+describe('CloudPairsEditor saves', () => {
+    // A sync placed `docs` as `/home/u/docs` after the editor read the list:
+    // the toggle sends the list as read, so the backend keeps the placed
+    // folder, and the editor shows the list it saved; the Save after it reads
+    // from that list.
+    it('sends the list as read with every save and adopts the list saved', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const read = { id: 'a', name: 'A', local_path: '/l', remote_path: 'docs', enabled: true, server_profile: 'nas', protocol_type: 'sftp', connection_params: {}, sync_direction: 'bidirectional', compress_enabled: false, compress_level: 3 };
+        mocks.invoke.mockImplementation(async (command: string, args?: { config: { pairs: Array<Record<string, unknown>> } }) => {
+            if (command === 'get_cloud_pairs_config') return { pairs: [read], parallel_pairs: false };
+            if (command === 'save_cloud_pairs_config_cmd') return { pairs: args!.config.pairs.map(pair => ({ ...pair, remote_path: '/home/u/docs' })), parallel_pairs: false };
+            return undefined;
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPairsEditor isOpen onClose={vi.fn()} />));
+        const toggle = host.querySelector('button[title="cloud.disable"]') as HTMLButtonElement;
+        await React.act(async () => toggle.click());
+        const saves = () => mocks.invoke.mock.calls.filter(([command]) => command === 'save_cloud_pairs_config_cmd').map(([, args]) => args as { config: { pairs: typeof read[] }; readAs: { pairs: typeof read[] } });
+        expect(saves()).toHaveLength(1);
+        expect(saves()[0].readAs.pairs).toEqual([read]);
+        expect(saves()[0].config.pairs[0].enabled).toBe(false);
+        const remote = Array.from(host.querySelectorAll('input')).map(input => input.value);
+        expect(remote).toContain('/home/u/docs');
+        expect(remote).not.toContain('docs');
+    });
+});

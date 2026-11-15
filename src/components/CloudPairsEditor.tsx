@@ -232,12 +232,17 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         const asked = opening.current;
         requests.begin(pairId);
         try {
-            // persist immediately for toggle (like multi path)
-            await invoke('save_cloud_pairs_config_cmd', {
+            // persist immediately for toggle (like multi path); the list as
+            // read goes with it, so the backend keeps what the file gained
+            // since (a folder a sync placed) and returns the list saved.
+            const saved = await invoke<CloudPairsConfig>('save_cloud_pairs_config_cmd', {
                 config: { pairs: updated, parallel_pairs: false },
+                readAs: { pairs: persistedPairs, parallel_pairs: false },
             });
             if (asked !== opening.current) return;
-            setPersistedPairs(updated);
+            const stored = (saved.pairs || []).map(normalizePair);
+            setPairs(stored);
+            setPersistedPairs(stored);
         } catch (e) {
             logger.error('[CloudPairsEditor] toggle save failed, rolling back:', e);
             if (asked !== opening.current) return;
@@ -294,6 +299,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         try {
             await invoke('save_cloud_pairs_config_cmd', {
                 config: { pairs, parallel_pairs: false },
+                readAs: { pairs: persistedPairs, parallel_pairs: false },
             });
             if (asked !== opening.current) return;
             onClose();

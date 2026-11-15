@@ -88,28 +88,37 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   const [excludeText, setExcludeText] = useState('');
   const [syncing, setSyncing] = useState(false);
 
-  // Load config and status on mount
-  useEffect(() => {
-    const load = async () => {
-      const asked = ++configOperation.current;
-      try {
-        const cfg = await invoke<CloudConfig | null>('get_cloud_config');
-        if (asked !== configOperation.current) return;
-        setConfig(cfg);
-        setReadAs(cfg);
-        if (cfg) {
-          setExcludeText((cfg.exclude_patterns || []).join('\n'));
-        }
-        const st = await invoke<CloudSyncStatus>('get_cloud_status').catch(() => null);
-        setStatus(st);
-      } catch {
-        // AeroCloud not configured
-      } finally {
-        setLoading(false);
+  // A configuration that exists but cannot be read (the strict load refuses
+  // a file that does not parse) is shown as a failure with a retry, never as
+  // the invitation to set AeroCloud up, which would start a new setup over it.
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Load config and status on mount, and again on Retry
+  const load = useCallback(async () => {
+    const asked = ++configOperation.current;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const cfg = await invoke<CloudConfig | null>('get_cloud_config');
+      if (asked !== configOperation.current) return;
+      setConfig(cfg);
+      setReadAs(cfg);
+      if (cfg) {
+        setExcludeText((cfg.exclude_patterns || []).join('\n'));
       }
-    };
-    load();
+      const st = await invoke<CloudSyncStatus>('get_cloud_status').catch(() => null);
+      setStatus(st);
+    } catch (e) {
+      if (asked !== configOperation.current) return;
+      console.error('Failed to load AeroCloud settings:', e);
+      setConfig(null);
+      setReadAs(null);
+      setLoadError(String(e));
+    } finally {
+      if (asked === configOperation.current) setLoading(false);
+    }
   }, []);
+  useEffect(() => { void load(); }, [load]);
 
   const handleSave = useCallback(() => runAlone(async () => {
     if (!config || !readAs) return;
@@ -177,6 +186,19 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 size={20} className="animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="space-y-6">
+        <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">AeroCloud</h3>
+        <div className="p-6 border border-red-200 dark:border-red-800 rounded-lg text-center space-y-4">
+          <AlertCircle size={28} className="text-red-500 mx-auto" />
+          <p role="alert" className="text-sm text-gray-600 dark:text-gray-300 break-words">{t('common.settingsLoadFailed', { error: loadError })}</p>
+          <button onClick={() => void load()} className="px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-600 text-white text-sm">{t('common.retry')}</button>
+        </div>
       </div>
     );
   }

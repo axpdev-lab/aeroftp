@@ -9918,27 +9918,48 @@ const App: React.FC = () => {
       // displayed form and the breadcrumb are the ones the server returned,
       // so a kept session with an unlocked overlay shows the folder entered,
       // the one uploads go to, not the one the user was in.
+      // The listing generation the last folder entry below took: the owner
+      // adopts that one, never whatever generation is current when it resumes.
+      let listedGeneration = remoteNavCounter.current;
+      // Whether a folder entry below listed and was applied: the panel then
+      // shows the folder the session is in.
+      let remoteEntered = false;
+      // The listing generation the last folder entry below took, listed or
+      // not: a failed entry sends the session back only while no listing
+      // started after it.
+      let triedGeneration = remoteNavCounter.current;
       const navigateToRemoteFolder = async (folder: string): Promise<string> => {
         if (isProvider) {
           // A folder is entered, not only listed: a provider listing of a path
           // reports the folder the session stands in, which on a kept session
           // is wherever the user was. '' lists where the connect opened.
-          const response = await withRemoteListSpinner(
+          const listing = withRemoteListSpinner(
             () => folder
               ? invoke<FileListResponse & { display_current_path?: string }>('provider_change_dir', { path: folder })
               : invoke<FileListResponse & { display_current_path?: string }>('provider_list_files', { path: null }),
             listingReason(folder),
           );
-          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          // withRemoteListSpinner takes its generation before its first await.
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
           return response.current_path;
         } else {
-          const response = await withRemoteListSpinner(
+          const listing = withRemoteListSpinner(
             () => invoke<FileListResponse>('change_directory', { path: folder }),
             listingReason(folder),
           );
-          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
           return response.current_path;
         }
       };
@@ -9953,7 +9974,7 @@ const App: React.FC = () => {
           cloudConfig.remote_folder,
           connectOpenedIt,
           placeStartFolder,
-          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(); return listed; }),
+          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(listedGeneration); return listed; }),
           owner.owns,
         );
       // The open owns the panel while the remote listing generation
@@ -9962,16 +9983,17 @@ const App: React.FC = () => {
       // switch), and so does any newer listing, which `withRemoteListSpinner`
       // already treats as superseding. The open's own listing moves it too:
       // that listing returned only while it was still the latest, so the
-      // owner adopts the generation it ended on. It adopts it only for its
+      // owner adopts the generation that listing took, never the one current
+      // when the owner resumes, which a takeover may have moved. It adopts it only for its
       // own phase (`ownsPhase`): an owner made after a switch or another
       // connect took the phase never owns, so it cannot take that
       // operation's generation for its own.
-      type AeroCloudOpenOwner = { owns: () => boolean; listed: () => void };
+      type AeroCloudOpenOwner = { owns: () => boolean; listed: (generation: number) => void };
       const ownSessionFromNow = (): AeroCloudOpenOwner => {
         let owned = remoteNavCounter.current;
         return {
           owns: () => ownsPhase() && owned === remoteNavCounter.current,
-          listed: () => { owned = remoteNavCounter.current; },
+          listed: (generation: number) => { owned = generation; },
         };
       };
 
@@ -10079,7 +10101,9 @@ const App: React.FC = () => {
             setLoading(false);
             return;
           } finally {
-            setLoading(false);
+            // The spinner belongs to the operation that owns the phase: an
+            // open another one took leaves it to that one.
+            if (ownsPhase()) setLoading(false);
           }
         } else {
           // Same backend kept. The AeroCloud tab has no session of its own, so
@@ -10103,6 +10127,7 @@ const App: React.FC = () => {
         try {
           const owner = ownSessionFromNow();
           const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
+          if (!owner.owns()) return;
           setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           if (!owner.owns()) return;
@@ -10120,15 +10145,37 @@ const App: React.FC = () => {
           if (!ownsPhase() || isListingCancelled(navError)) return;
           logger.error('Cloud navigation error:', navError);
           notify.error('AeroCloud', t('toast.navigationFailed', { error: String(navError) }));
-          // The folder was not entered: the panel shows the session where it
-          // stands, so the provisional lock above goes and the Navigation Sync
-          // the session had before comes back, and no sync is started for a
-          // folder the session is not in.
-          setIsSyncNavigation(navigationBefore.on);
-          setSyncBasePaths(navigationBefore.base);
+          if (remoteEntered) {
+            // The remote folder was entered and is shown; only the local
+            // side failed. The base the panel had before belongs to another
+            // folder: Navigation Sync stays off rather than lock on it.
+            setIsSyncNavigation(false);
+            setSyncBasePaths(null);
+          } else {
+            // The folder was not listed: the panel shows the folder it showed
+            // before, so the provisional lock above goes and the Navigation
+            // Sync it had comes back, and no sync is started.
+            setIsSyncNavigation(navigationBefore.on);
+            setSyncBasePaths(navigationBefore.base);
+          }
           // On a connection this open made, nothing was listed: the workspace
           // stays disconnected, and the user opens a connection again.
-          if (!isSameServer) setShowConnectionScreen(true);
+          if (!isSameServer) {
+            setShowConnectionScreen(true);
+          } else if (!remoteEntered && currentRemotePath && triedGeneration === remoteNavCounter.current) {
+            // A listing can fail after the server entered the folder: the
+            // session goes back to the folder the panel shows, so a relative
+            // command such as Up starts where the panel says. A way back that
+            // fails too leaves the session to the provider's lost-folder state
+            // (FTP closes it and refuses a relative target until a folder is
+            // entered by its full path). A listing started after this one
+            // decides where the session goes: no way back then.
+            try {
+              await invoke(isProvider ? 'provider_change_dir' : 'change_directory', { path: currentRemotePath });
+            } catch (backError) {
+              logger.error('Cloud navigation: returning to the folder shown failed:', backError);
+            }
+          }
           return;
         }
 
@@ -10153,7 +10200,9 @@ const App: React.FC = () => {
       await connectToCloudServer();
       if (!ownsPhase()) return;
       connectedHere = true;
-      setIsConnected(true);
+      // The workspace is connected once the AeroCloud folder has listed, as
+      // a replacing open does: until then no remote action, upload or drop
+      // runs, so none takes the folder the panel showed before.
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       setConnectionParams(connParams);
@@ -10166,6 +10215,7 @@ const App: React.FC = () => {
       const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
       if (!owner.owns()) return;
+      setIsConnected(true);
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
       adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
@@ -10208,7 +10258,7 @@ const App: React.FC = () => {
       setShowCloudPanel(true);
     } finally {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
-      setLoading(false);
+      if (ownsPhase()) setLoading(false);
     }
   };
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string, plainPath?: boolean) => {

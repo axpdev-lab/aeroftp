@@ -7016,12 +7016,23 @@ mod tests {
         }
         let data = tempfile::tempdir().unwrap();
         let path = data.path().join("multi_path.json");
-        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&MultiPathConfig {
+            pairs: Vec::new(),
+            parallel_pairs: true,
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<MultiPathConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
         let result = save_multi_path_config_unlocked_at(&MultiPathConfig::default(), &path);
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            err.contains("Failed to read"),
+            "not refused for the read: {err}"
+        );
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
 
@@ -7039,7 +7050,14 @@ mod tests {
         let dir = data.path().join("cfg");
         std::fs::create_dir(&dir).unwrap();
         let path = dir.join("multi_path.json");
-        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&MultiPathConfig {
+            pairs: Vec::new(),
+            parallel_pairs: true,
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<MultiPathConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         struct PermGuard(std::path::PathBuf);
         impl Drop for PermGuard {
@@ -7056,6 +7074,10 @@ mod tests {
         })
         .unwrap_err();
         assert!(!ran, "closure must not run on an unreadable config: {err}");
+        assert!(
+            err.contains("Failed to read"),
+            "not refused for the read: {err}"
+        );
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }

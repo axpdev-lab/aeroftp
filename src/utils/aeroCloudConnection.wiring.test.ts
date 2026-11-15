@@ -9,6 +9,7 @@ import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from '
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 import { AEROCLOUD_OPEN_SUPERSEDED } from './liveConnection';
+import locationCases from '../shared/path-location-cases.json';
 import { LOCAL, REMOTE, fixture } from '../components/appTransfers.testkit';
 
 const start = app.indexOf('const connectToCloudServer = async');
@@ -168,7 +169,7 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   // The AeroCloud tab opens its folder through the helper, with the
   // placement and the listing the app uses; a provider connect listing ''
   // lists the folder it stands in.
-  expect(app).toContain('openAeroCloudFolder(\n          cloudConfig.remote_folder,\n          connectOpenedIt,\n          placeStartFolder,\n          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(); return listed; }),\n          owner.owns,\n        )');
+  expect(app).toContain('openAeroCloudFolder(\n          cloudConfig.remote_folder,\n          connectOpenedIt,\n          placeStartFolder,\n          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(listedGeneration); return listed; }),\n          owner.owns,\n        )');
   const nav = app.slice(app.indexOf('const navigateToRemoteFolder = async'), app.indexOf('// Connection params to set'));
   expect(nav).toContain("invoke<FileListResponse & { display_current_path?: string }>('provider_change_dir', { path: folder })");
   expect(nav).toContain("invoke<FileListResponse & { display_current_path?: string }>('provider_list_files', { path: null })");
@@ -186,7 +187,7 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(relativeSyncSegments('/usr/home/u/docs', '~/docs')).toBeNull();
   // Both AeroCloud entries take that folder for the lock, the badges and the share link.
   const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
-  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*setSyncBasePaths\(\{ remote: listedFolder,/);
+  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*if \(!owner\.owns\(\)\) return;\s*setSyncBasePaths\(\{ remote: listedFolder,/);
   expect(lock).toContain('adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
   const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
   expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);');
@@ -209,12 +210,19 @@ it('lists the folder the connect opened when the session cannot place the saved 
   expect(ftp).toHaveBeenCalledWith('docs');
 });
 
-it('refuses a saved folder with a parent step or a NUL before listing anything, named as written', async () => {
+it('refuses a saved folder with a parent step or a NUL before listing anything, without naming it', async () => {
   const { openAeroCloudFolder } = await import('./liveConnection');
-  for (const folder of ['/docs/../private', '~/docs/../a', 'C:\\sync\\..\\x', '/docs\0a']) {
+  const withSecrets = locationCases.cases.filter(c => c.secret && c.savedProblem);
+  expect(withSecrets.length).toBeGreaterThanOrEqual(2);
+  const folders = ['/docs/../private', '~/docs/../a', 'C:\\sync\\..\\x', '/docs\0a', '/a/../b?sig=example-signature', ...withSecrets.map(c => c.path)];
+  for (const folder of folders) {
     const place = vi.fn(async (path: string) => path);
     const navigate = vi.fn(async (path: string) => path);
-    await expect(openAeroCloudFolder(folder, true, place, navigate)).rejects.toThrow(`'${folder}'`);
+    const refused = await openAeroCloudFolder(folder, true, place, navigate).then(() => null, (e: Error) => e.message);
+    expect(refused, folder).toMatch(/^The AeroCloud remote folder contains (a '\.\.' step|a NUL character): /u);
+    expect(refused, folder).not.toContain(folder);
+    expect(refused, folder).not.toContain('example-signature');
+    for (const { secret } of withSecrets) expect(refused, folder).not.toContain(secret);
     expect(place).not.toHaveBeenCalled();
     expect(navigate).not.toHaveBeenCalled();
   }
@@ -284,7 +292,7 @@ it('drops a folder open that finishes after another connection took the session'
     ['kept session', app.slice(app.indexOf('// === SCENARIO 1: ALREADY CONNECTED ==='), scenario2)],
     ['fresh connect', app.slice(scenario2, scenario2 + 4000)],
   ]) {
-    const check = entry.indexOf('if (!owner.owns()) return;');
+    const check = entry.indexOf('if (!owner.owns()) return;', entry.indexOf("await invoke('get_local_files'"));
     expect(check, marker).toBeGreaterThan(entry.indexOf("await invoke('get_local_files'"));
     expect(check, marker).toBeLessThan(entry.indexOf('adoptOpenedCloudFolder('));
     expect(check, marker).toBeLessThan(entry.indexOf("invoke('trigger_cloud_sync')"));
@@ -296,7 +304,13 @@ it('drops a folder open that finishes after another connection took the session'
   const own = app.slice(app.indexOf('const ownSessionFromNow = ()'), app.indexOf('const ownSessionFromNow = ()') + 300);
   expect(own).toContain('let owned = remoteNavCounter.current;');
   expect(own).toContain('owns: () => ownsPhase() && owned === remoteNavCounter.current,');
-  expect(own).toContain('listed: () => { owned = remoteNavCounter.current; },');
+  expect(own).toContain('listed: (generation: number) => { owned = generation; },');
+  // The generation adopted is the one the listing took, checked again when it
+  // resumes, and the kept session checks before it sets the Navigation Sync base.
+  const nav = app.slice(app.indexOf('const navigateToRemoteFolder = async'), app.indexOf('const openCloudRemoteFolder = '));
+  expect(nav.match(/const generation = remoteNavCounter\.current;\s*triedGeneration = generation;\s*const response = await listing;\s*if \(!ownsPhase\(\) \|\| generation !== remoteNavCounter\.current\) throw new Error\(AEROCLOUD_OPEN_SUPERSEDED\);/gu)).toHaveLength(2);
+  expect(nav.match(/listedGeneration = generation;/gu)).toHaveLength(2);
+  expect(app).toContain('.then(listed => { owner.listed(listedGeneration); return listed; })');
 });
 
 it('offers the sync badges and the share link only on the AeroCloud connection', async () => {
@@ -447,7 +461,7 @@ it('never lets an AeroCloud open own the session from a generation another phase
   const owner = app.slice(app.indexOf('const ownSessionFromNow = ()'), app.indexOf('\n      };\n', app.indexOf('const ownSessionFromNow = ()')) + 9);
   const { code: ownerCode } = await transformWithOxc(`${own}\n${owner}`, 'aerocloud-owner.ts');
   const refs = { phaseVersion: 1, remoteConnectPhaseVersionRef: { current: 1 }, remoteNavCounter: { current: 5 }, connectionAtEntry: 3, quotaConnectionRef: { current: 3 } };
-  const ownSessionFromNow = new Function(...Object.keys(refs), `${ownerCode}; return ownSessionFromNow;`)(...Object.values(refs)) as () => { owns: () => boolean; listed: () => void };
+  const ownSessionFromNow = new Function(...Object.keys(refs), `${ownerCode}; return ownSessionFromNow;`)(...Object.values(refs)) as () => { owns: () => boolean; listed: (generation: number) => void };
   const before = ownSessionFromNow();
   expect(before.owns()).toBe(true);
   // A switch takes the phase and the generation.
@@ -456,8 +470,18 @@ it('never lets an AeroCloud open own the session from a generation another phase
   const after = ownSessionFromNow();
   expect(before.owns()).toBe(false);
   expect(after.owns()).toBe(false);
-  after.listed();
+  after.listed(6);
   expect(after.owns()).toBe(false);
+  // In its own phase, an owner whose listing took generation 7 while a newer
+  // one took 8 does not own the panel: it adopts 7, not the current 8.
+  refs.phaseVersion = 2;
+  const own_ = new Function(...Object.keys(refs), `${ownerCode}; return ownSessionFromNow;`)(...Object.values(refs)) as () => { owns: () => boolean; listed: (generation: number) => void };
+  const stale = own_();
+  refs.remoteNavCounter.current = 8;
+  stale.listed(7);
+  expect(stale.owns()).toBe(false);
+  stale.listed(8);
+  expect(stale.owns()).toBe(true);
 });
 
 it.each([
@@ -527,6 +551,165 @@ it('shows the connection again once the AeroCloud folder of a replacing open has
   expect(Math.max(...spy('setIsConnected').mock.invocationCallOrder)).toBeGreaterThan(Math.max(...spy('setRemoteFiles').mock.invocationCallOrder));
 });
 
+it('leaves the spinner to the takeover when a replacing AeroCloud open loses its phase during the connect', async () => {
+  let finishConnect!: () => void;
+  const runConnect = vi.fn(() => new Promise<void>(resolve => { finishConnect = resolve; }));
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'get_cloud_config') return CLOUD_CONFIG;
+    if (command === 'provider_change_dir') return { files: [], current_path: '/cloud' };
+    if (command === 'get_local_files') return [];
+    return '';
+  });
+  const opened = await cloudTabApp({ invoke, runConnect, isSameConnection: () => false, sessions: [{ id: 'tab-a', status: 'connected' }] });
+  const open = opened.handleCloudTabClick();
+  for (let i = 0; i < 50 && runConnect.mock.calls.length === 0; i++) await Promise.resolve();
+  expect(runConnect).toHaveBeenCalled();
+  opened.takeOverActiveSession();
+  await Promise.resolve();
+  const loadingBefore = opened.spy('setLoading').mock.calls.length;
+  finishConnect();
+  await open;
+  expect(opened.spy('setLoading').mock.calls.slice(loadingBefore)).toEqual([]);
+  expect(invoke.mock.calls.map(([command]) => command)).not.toContain('provider_change_dir');
+});
+
+it('keeps a fresh AeroCloud connect disconnected until its folder has listed', async () => {
+  // No session on screen; the folder's listing is held. Uploads and drops
+  // start with the connection check, so while it is false none can take the
+  // folder the panel showed before.
+  expect(app.slice(app.indexOf('const uploadMultipleFiles = '), app.indexOf('const uploadMultipleFiles = ') + 400)).toContain('if (!isConnected) return;');
+  const listing = { files: [{ name: 'a.txt', path: '/cloud/a.txt', size: 1, is_dir: false, modified: null, permissions: null }], current_path: '/cloud', display_current_path: '/cloud', breadcrumb_labels: {} };
+  let releaseListing!: (value: unknown) => void;
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'get_cloud_config') return CLOUD_CONFIG;
+    if (command === 'provider_change_dir') return new Promise(resolve => { releaseListing = resolve; });
+    if (command === 'get_local_files') return [];
+    return '';
+  });
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, runConnect: vi.fn(async () => undefined), isConnected: false, activeSessionId: null });
+  const open = handleCloudTabClick();
+  for (let i = 0; i < 50 && !releaseListing; i++) await Promise.resolve();
+  expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/cloud' });
+  expect(spy('setIsConnected')).not.toHaveBeenCalledWith(true);
+  releaseListing(listing);
+  await open;
+  expect(spy('setIsConnected')).toHaveBeenLastCalledWith(true);
+  expect(spy('setRemoteFiles')).toHaveBeenLastCalledWith(listing.files);
+  expect(Math.max(...spy('setIsConnected').mock.invocationCallOrder)).toBeGreaterThan(Math.max(...spy('setRemoteFiles').mock.invocationCallOrder));
+});
+
+it('opens docs under the login folder from a kept session standing in /home/u/other', async () => {
+  // App's own placement and reuse rule, run as the control runs them.
+  const { mayReuseForAeroCloud } = await import('./liveConnection');
+  const { isLoginRelativeScope } = await import('./overlayScope');
+  const placeAt = app.indexOf('  const placeStartFolder = async');
+  const placeSource = app.slice(placeAt, app.indexOf('\n  );\n', placeAt) + 5);
+  const { code: placeCode } = await transformWithOxc(placeSource, 'place-start-folder.ts');
+  const login = '/home/u';
+  const state = { cwd: '/home/u/other' };
+  const listing = (path: string) => ({ files: [], current_path: path, display_current_path: path, breadcrumb_labels: {} });
+  const invoke = vi.fn(async (command: string, args?: { path?: string | null }) => {
+    if (command === 'get_cloud_config') return { ...CLOUD_CONFIG, remote_folder: 'docs' };
+    if (command === 'get_local_files') return [];
+    // As crypt_overlay_provider::place_start_folder: a bare relative folder
+    // is the one the connect just opened, the folder the session stands in.
+    if (command === 'provider_start_folder') return state.cwd;
+    if (command === 'provider_change_dir') { state.cwd = args!.path!.startsWith('/') ? args!.path! : `${state.cwd}/${args!.path}`; return listing(state.cwd); }
+    if (command === 'provider_list_files') return listing(state.cwd);
+    return '';
+  });
+  const placeStartFolder = new Function('invoke', 'isLoginRelativeScope', `${placeCode}; return placeStartFolder;`)(invoke, isLoginRelativeScope);
+  // The connect opens the saved folder from the login folder.
+  const runConnect = vi.fn(async () => { state.cwd = `${login}/docs`; });
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, runConnect, placeStartFolder, mayReuseForAeroCloud, currentRemotePath: '/home/u/other' });
+  await handleCloudTabClick();
+  // `docs` from /home/u/other is another folder: the session connects again.
+  expect(runConnect).toHaveBeenCalled();
+  expect(state.cwd).toBe('/home/u/docs');
+  expect(spy('setCurrentRemotePath')).toHaveBeenLastCalledWith('/home/u/docs');
+  expect(spy('setSyncBasePaths')).toHaveBeenLastCalledWith({ remote: '/home/u/docs', local: CLOUD_CONFIG.local_folder });
+  expect(spy('adoptOpenedCloudFolder')).toHaveBeenCalledWith(expect.objectContaining({ remoteFolder: '/home/u/docs', savedFolder: 'docs' }));
+  expect(JSON.stringify(invoke.mock.calls)).not.toContain('/home/u/other/docs');
+});
+
+describe('a kept session whose AeroCloud folder entry fails', () => {
+  // The server as the session sees it: a folder change moves its folder
+  // before the listing runs, so a listing that fails leaves it moved.
+  const server = (failing: { list?: string; back?: boolean; local?: boolean }) => {
+    const state = { cwd: '/other/sub', shown: '/other/sub' };
+    const parent = (path: string) => path.replace(/\/[^/]+\/?$/u, '') || '/';
+    const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
+      if (command === 'get_cloud_config') return CLOUD_CONFIG;
+      if (command === 'get_local_files') { if (failing.local) throw new Error('local folder missing'); return []; }
+      if (command === 'provider_change_dir') {
+        const path = args?.path ?? '';
+        const target = path === '..' ? parent(state.cwd) : path;
+        if (path === state.shown && failing.back) throw new Error('550 cannot enter');
+        state.cwd = target;
+        if (target === failing.list) throw new Error('Failed to list files: 550');
+        return { files: [], current_path: target, display_current_path: target, breadcrumb_labels: {} };
+      }
+      return '';
+    });
+    return { state, invoke };
+  };
+  const before = { isSyncNavigation: true, syncBasePaths: { remote: '/other', local: '/l' }, currentRemotePath: '/other/sub' };
+
+  it('sends the session back to the folder shown, so Up goes to the parent of that folder', async () => {
+    const { state, invoke } = server({ list: '/cloud' });
+    const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, ...before });
+    await handleCloudTabClick();
+    expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/cloud' });
+    expect(invoke).toHaveBeenLastCalledWith('provider_change_dir', { path: '/other/sub' });
+    expect(state.cwd).toBe('/other/sub');
+    // Up sends '..' as changeRemoteDirectory does: it lands on the parent of
+    // the folder shown, not of the folder the failed entry moved to.
+    await invoke('provider_change_dir', { path: '..' });
+    expect(state.cwd).toBe('/other');
+    expect(spy('setIsSyncNavigation')).toHaveBeenLastCalledWith(true);
+    expect(spy('setSyncBasePaths')).toHaveBeenLastCalledWith(before.syncBasePaths);
+    expect(spy('setIsConnected')).not.toHaveBeenCalledWith(false);
+    expect(invoke.mock.calls.map(([command]) => command)).not.toContain('trigger_cloud_sync');
+  });
+
+  it('leaves the session to the lost-folder state when the way back fails too', async () => {
+    const { invoke } = server({ list: '/cloud', back: true });
+    const { handleCloudTabClick, given, spy } = await cloudTabApp({ invoke, ...before });
+    await expect(handleCloudTabClick()).resolves.toBeUndefined();
+    expect(invoke).toHaveBeenLastCalledWith('provider_change_dir', { path: '/other/sub' });
+    // One failure is shown, the navigation one; the connection stays.
+    expect((given.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledTimes(1);
+    expect(spy('setIsConnected')).not.toHaveBeenCalledWith(false);
+    expect(invoke.mock.calls.map(([command]) => command)).not.toContain('trigger_cloud_sync');
+  });
+
+  it('leaves the session to a listing that started after the failed entry: no way back', async () => {
+    const { state, invoke: serverInvoke } = server({ list: '/cloud' });
+    const remoteNavCounter = { current: 5 };
+    // The user opens another folder while the entry runs: its listing takes
+    // the next generation before the entry fails.
+    const invoke = vi.fn(async (command: string, args?: { path?: string }) => {
+      if (command === 'provider_change_dir' && args?.path === '/cloud') { await Promise.resolve(); remoteNavCounter.current += 1; }
+      return serverInvoke(command, args);
+    });
+    const { handleCloudTabClick } = await cloudTabApp({ invoke, remoteNavCounter, ...before });
+    await handleCloudTabClick();
+    expect(invoke.mock.calls.filter(([command]) => command === 'provider_change_dir')).toEqual([['provider_change_dir', { path: '/cloud' }]]);
+    expect(state.cwd).toBe('/cloud');
+  });
+
+  it('keeps the session in the folder it entered when only the local side fails, with Navigation Sync off', async () => {
+    const { state, invoke } = server({ local: true });
+    const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, ...before });
+    await handleCloudTabClick();
+    expect(state.cwd).toBe('/cloud');
+    expect(invoke.mock.calls.filter(([command]) => command === 'provider_change_dir')).toEqual([['provider_change_dir', { path: '/cloud' }]]);
+    expect(spy('setCurrentRemotePath')).toHaveBeenLastCalledWith('/cloud');
+    expect(spy('setIsSyncNavigation')).toHaveBeenLastCalledWith(false);
+    expect(spy('setSyncBasePaths')).toHaveBeenLastCalledWith(null);
+  });
+});
+
 it('shows the folder the server returned when a kept session enters the AeroCloud folder from a subfolder', async () => {
   // An unlocked overlay session at /cloud/sub is kept, and the open enters /cloud.
   const listing = { files: [{ name: 'a.txt', path: '/cloud/a.txt', size: 1, is_dir: false, modified: null, permissions: null }], current_path: '/cloud', display_current_path: '/cloud', breadcrumb_labels: { '/cloud': 'cloud' } };
@@ -536,11 +719,15 @@ it('shows the folder the server returned when a kept session enters the AeroClou
     if (command === 'get_local_files') return [];
     return '';
   });
-  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke });
+  // The reviewer's state: an unlocked crypt session stands in /cloud/sub,
+  // shown as such.
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, currentRemotePath: '/cloud/sub', currentRemoteDisplayPath: '/cloud/sub', rcloneCryptVaultId: 'vault-1' });
   await handleCloudTabClick();
   expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/cloud' });
   // The breadcrumb shows the displayed path, and uploads go to the remote
-  // path: both are the folder the server returned, not /cloud/sub.
+  // path: both are the folder the server returned, not /cloud/sub. An upload
+  // with no folder of its own takes currentRemotePath (its default below).
+  expect(app).toContain("const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {");
   expect(spy('setCurrentRemoteDisplayPath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setCurrentRemotePath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setRemoteBreadcrumb')).toHaveBeenLastCalledWith(listing);
@@ -651,8 +838,11 @@ it.each([
   else if (takeover === 'device') void opened.openMtpSessionFromLiveDevice({ deviceId: 'phone', displayName: 'Phone' });
   else opened.takeOverActiveSession();
   await Promise.resolve();
+  const loadingBefore = opened.spy('setLoading').mock.calls.length;
   finishConnect();
   await open;
+  // The spinner is the takeover's now: the old open does not clear it.
+  expect(opened.spy('setLoading').mock.calls.slice(loadingBefore)).toEqual([]);
   // Nothing of the AeroCloud connection lands on the panel the takeover took.
   expect(opened.spy('setIsConnected')).not.toHaveBeenCalledWith(true);
   expect(opened.spy('setIsConnected')).toHaveBeenLastCalledWith(false);

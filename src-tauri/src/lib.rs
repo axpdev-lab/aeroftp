@@ -226,6 +226,116 @@ mod remote_share_link_tests {
         assert!(link("/docs/../private", "/private/a.txt").is_err());
     }
 
+    /// Each step of a shared path is percent-encoded and the `/` between
+    /// them kept, in every builder: a `#` would start a fragment, a `?` a
+    /// query, and a `%` followed by two hex digits is decoded by the server
+    /// into another name.
+    #[test]
+    fn every_share_link_encodes_each_step_of_the_path() {
+        let names = [
+            ("a#b.txt", "a%23b.txt"),
+            ("a?b.txt", "a%3Fb.txt"),
+            ("a%20b.txt", "a%2520b.txt"),
+            ("a b.txt", "a%20b.txt"),
+        ];
+        for (name, encoded) in names {
+            assert_eq!(
+                remote_share_link(
+                    "https://files.example/pub/",
+                    "/docs",
+                    &format!("/docs/d/{name}")
+                )
+                .unwrap(),
+                format!("https://files.example/pub/d/{encoded}")
+            );
+            assert_eq!(
+                super::server_share_link(
+                    "https://www.example/",
+                    "/var/www",
+                    &format!("/var/www/d/{name}")
+                )
+                .unwrap(),
+                format!("https://www.example/d/{encoded}")
+            );
+            let folder = std::path::Path::new("/home/u/AeroCloud");
+            assert_eq!(
+                super::local_share_link(
+                    "https://files.example/pub",
+                    folder,
+                    &folder.join("d").join(name)
+                )
+                .unwrap(),
+                format!("https://files.example/pub/d/{encoded}")
+            );
+        }
+    }
+
+    /// A saved AeroCloud folder (or starting folder) with a doubled slash or
+    /// a `.` step syncs as saved, so its files share as well; what follows
+    /// the folder is still checked whole.
+    #[test]
+    fn a_share_link_takes_a_saved_folder_as_it_syncs() {
+        assert_eq!(
+            remote_share_link(
+                "https://files.example/pub/",
+                "/docs//sub",
+                "/docs//sub/a.txt"
+            )
+            .unwrap(),
+            "https://files.example/pub/a.txt"
+        );
+        assert_eq!(
+            remote_share_link(
+                "https://files.example/pub/",
+                "/docs/./sub",
+                "/docs/./sub/a.txt"
+            )
+            .unwrap(),
+            "https://files.example/pub/a.txt"
+        );
+        assert_eq!(
+            super::server_share_link("https://www.example/", "/var//www", "/var//www/a.txt")
+                .unwrap(),
+            "https://www.example/a.txt"
+        );
+        assert!(remote_share_link(
+            "https://files.example/pub/",
+            "/docs//sub",
+            "/docs//sub//a.txt"
+        )
+        .is_err());
+        assert!(remote_share_link(
+            "https://files.example/pub/",
+            "/docs//sub",
+            "/docs//sub/./a.txt"
+        )
+        .is_err());
+        assert!(
+            remote_share_link("https://files.example/pub/", "/docs/../sub", "/sub/a.txt").is_err()
+        );
+    }
+
+    /// The local share link compares the folder step by step: a sibling
+    /// that only starts with its name is outside, and a `..` step is
+    /// refused.
+    #[test]
+    fn a_local_share_link_is_built_only_for_a_file_under_the_folder() {
+        let folder = std::path::Path::new("/home/u/AeroCloud");
+        let link = |path: &str| {
+            super::local_share_link(
+                "https://files.example/pub/",
+                folder,
+                std::path::Path::new(path),
+            )
+        };
+        assert_eq!(
+            link("/home/u/AeroCloud/a/b.txt").unwrap(),
+            "https://files.example/pub/a/b.txt"
+        );
+        assert!(link("/home/u/AeroCloud2/a.txt").is_err());
+        assert!(link("/home/u/AeroCloud/../secret.txt").is_err());
+    }
+
     /// The share link of any server with a public URL base: a path under
     /// the web root at a component boundary is linked from it, any other
     /// path whole, and a path that is not plain is refused.
@@ -244,7 +354,8 @@ mod remote_share_link_tests {
         assert!(link("/docs", "/docs").is_err());
         for path in ["/docs/../private/a.txt", "/docs/./a.txt", "/docs//a.txt"] {
             let err = link("/docs", path).unwrap_err();
-            assert!(err.contains(&format!("'{path}'")), "{err}");
+            assert!(err.contains("contains"), "{err}");
+            assert!(!err.contains(path), "the refusal names the path: {err}");
         }
     }
 }
@@ -256,6 +367,11 @@ mod parent_step_save_tests {
     /// The configuration as the settings view would read it now.
     fn on_disk() -> cloud_config::CloudConfig {
         cloud_config::load_cloud_config_strict().unwrap()
+    }
+
+    /// The pairs list as the editor would read it now.
+    fn pairs_on_disk() -> cloud_pairs::CloudPairsConfig {
+        cloud_pairs::load_cloud_pairs_config_strict().unwrap()
     }
 
     /// Settings read with the folder `docs`; a sync then places it as
@@ -359,6 +475,105 @@ mod parent_step_save_tests {
         }
     }
 
+    /// The pair editor read pairs `a` (folder `docs`) and `b`; a sync then
+    /// places `a` as `/home/u/docs`. The editor's save of an edit to `b`
+    /// keeps `a`'s placed folder and applies the edit to `b`. A folder the
+    /// user wrote for `a` replaces the placed one. A save from a read of a
+    /// list that moved since (a pair added elsewhere, a pair's profile
+    /// changed) is refused and the file keeps its bytes.
+    #[test]
+    fn a_pairs_save_keeps_what_the_file_gained_since_it_was_read() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let outcome = std::panic::catch_unwind(|| {
+            let pair = |id: &str, remote: &str| cloud_pairs::CloudPathPair {
+                id: id.to_string(),
+                remote_path: remote.to_string(),
+                local_path: format!("/sync/{id}").into(),
+                ..cloud_pairs::CloudPathPair::from_legacy(&cloud_config::CloudConfig {
+                    server_profile: "nas".to_string(),
+                    protocol_type: "sftp".to_string(),
+                    ..Default::default()
+                })
+            };
+            let list = |pairs: Vec<cloud_pairs::CloudPathPair>| cloud_pairs::CloudPairsConfig {
+                pairs,
+                ..Default::default()
+            };
+            cloud_pairs::save_cloud_pairs_config(&list(vec![
+                pair("a", "docs"),
+                pair("b", "/srv/b"),
+            ]))
+            .unwrap();
+            let read_as = pairs_on_disk();
+            // The sync places `a` after the editor read the list.
+            cloud_pairs::with_cloud_pairs_mut(|stored| {
+                stored.pairs[0].remote_path = "/home/u/docs".to_string();
+                Ok(())
+            })
+            .unwrap();
+            let mut draft = read_as.clone();
+            draft.pairs[1].update_only = !draft.pairs[1].update_only;
+            let saved =
+                save_cloud_pairs_config_cmd_blocking(draft.clone(), read_as.clone()).unwrap();
+            let stored = pairs_on_disk();
+            assert_eq!(stored.pairs[0].remote_path, "/home/u/docs");
+            assert_eq!(stored.pairs[1].update_only, draft.pairs[1].update_only);
+            assert_eq!(saved.pairs[0].remote_path, "/home/u/docs");
+
+            // The user's own folder for `a` decides.
+            let read_as = pairs_on_disk();
+            cloud_pairs::with_cloud_pairs_mut(|stored| {
+                stored.pairs[0].remote_path = "/home/u/placed-again".to_string();
+                Ok(())
+            })
+            .unwrap();
+            let mut draft = read_as.clone();
+            draft.pairs[0].remote_path = "/srv/mine".to_string();
+            save_cloud_pairs_config_cmd_blocking(draft, read_as).unwrap();
+            assert_eq!(pairs_on_disk().pairs[0].remote_path, "/srv/mine");
+
+            // A list that moved since the read: the save is refused, the
+            // file keeps its bytes.
+            let read_as = pairs_on_disk();
+            let path = cloud_pairs::get_pairs_path();
+            for moved in [
+                |stored: &mut cloud_pairs::CloudPairsConfig| {
+                    stored.pairs.push(cloud_pairs::CloudPathPair {
+                        id: "c".to_string(),
+                        ..stored.pairs[1].clone()
+                    })
+                },
+                |stored: &mut cloud_pairs::CloudPairsConfig| {
+                    stored.pairs[1].server_profile = "other".to_string()
+                },
+            ] {
+                let before = std::fs::read(&path).unwrap();
+                cloud_pairs::with_cloud_pairs_mut(|stored| {
+                    moved(stored);
+                    Ok(())
+                })
+                .unwrap();
+                let bytes = std::fs::read(&path).unwrap();
+                let mut draft = read_as.clone();
+                draft.pairs[1].update_only = !draft.pairs[1].update_only;
+                let err = save_cloud_pairs_config_cmd_blocking(draft, read_as.clone()).unwrap_err();
+                assert!(err.contains("changed since this list was opened"), "{err}");
+                assert_eq!(std::fs::read(&path).unwrap(), bytes);
+                std::fs::write(&path, before).unwrap();
+            }
+        });
+        match prev_xdg {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Err(panic) = outcome {
+            std::panic::resume_unwind(panic);
+        }
+    }
+
     #[test]
     fn the_save_commands_refuse_a_parent_step_under_the_login_folder() {
         let _env = crate::test_env::lock();
@@ -373,16 +588,21 @@ mod parent_step_save_tests {
                 ..Default::default()
             };
             let err = save_cloud_config_cmd_blocking(config.clone(), on_disk()).unwrap_err();
-            assert!(err.contains("'~/docs/../shared'"), "{err}");
+            assert!(err.contains("contains a '..' step"), "{err}");
+            assert!(
+                !err.contains("~/docs/../shared"),
+                "the refusal names the folder: {err}"
+            );
             let pair = cloud_pairs::CloudPathPair::from_legacy(&config);
             assert!(add_cloud_pair_blocking(pair.clone()).is_err());
-            assert!(
-                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+            assert!(save_cloud_pairs_config_cmd_blocking(
+                cloud_pairs::CloudPairsConfig {
                     pairs: vec![pair],
                     ..Default::default()
-                })
-                .is_err()
-            );
+                },
+                pairs_on_disk()
+            )
+            .is_err());
             assert!(!cloud_pairs::get_pairs_path().exists());
             assert_eq!(
                 cloud_config::load_cloud_config_strict()
@@ -427,10 +647,13 @@ mod parent_step_save_tests {
             })
             .unwrap();
             pair.enabled = !pair.enabled;
-            save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
-                pairs: vec![pair.clone()],
-                ..Default::default()
-            })
+            save_cloud_pairs_config_cmd_blocking(
+                cloud_pairs::CloudPairsConfig {
+                    pairs: vec![pair.clone()],
+                    ..Default::default()
+                },
+                pairs_on_disk(),
+            )
             .unwrap();
             assert_eq!(
                 cloud_pairs::load_cloud_pairs_config_strict().unwrap().pairs[0].remote_path,
@@ -438,13 +661,14 @@ mod parent_step_save_tests {
             );
             let mut renamed = pair.clone();
             renamed.id = "new".to_string();
-            assert!(
-                save_cloud_pairs_config_cmd_blocking(cloud_pairs::CloudPairsConfig {
+            assert!(save_cloud_pairs_config_cmd_blocking(
+                cloud_pairs::CloudPairsConfig {
                     pairs: vec![renamed],
                     ..Default::default()
-                })
-                .is_err()
-            );
+                },
+                pairs_on_disk()
+            )
+            .is_err());
             cloud_config::save_cloud_config(&cloud_config::CloudConfig {
                 remote_folder: "/srv/../x".to_string(),
                 ..fine.clone()
@@ -16545,25 +16769,24 @@ fn get_cloud_pairs_config_blocking() -> Result<cloud_pairs::CloudPairsConfig, St
 }
 
 #[tauri::command]
-async fn save_cloud_pairs_config_cmd(config: cloud_pairs::CloudPairsConfig) -> Result<(), String> {
-    tokio::task::spawn_blocking(move || save_cloud_pairs_config_cmd_blocking(config))
+async fn save_cloud_pairs_config_cmd(
+    config: cloud_pairs::CloudPairsConfig,
+    read_as: cloud_pairs::CloudPairsConfig,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
+    tokio::task::spawn_blocking(move || save_cloud_pairs_config_cmd_blocking(config, read_as))
         .await
         .unwrap_or_else(|err| Err(format!("save_cloud_pairs_config_cmd task failed: {err}")))
 }
 
-/// The body of `save_cloud_pairs_config_cmd`, kept synchronous and run on the blocking pool.
+/// The body of `save_cloud_pairs_config_cmd`, kept synchronous and run on the
+/// blocking pool. `read_as` is the list the editor read: the list is merged
+/// with the file as it is at the write, under the process's pairs write lock
+/// ([`cloud_pairs::pairs_save`]), so a folder a sync placed after the editor
+/// read the list is kept. Returns the list saved.
 fn save_cloud_pairs_config_cmd_blocking(
     config: cloud_pairs::CloudPairsConfig,
-) -> Result<(), String> {
-    // A pair whose folder is kept as saved follows the saved rule.
-    let saved = cloud_pairs::load_cloud_pairs_config_strict().ok();
-    for pair in &config.pairs {
-        let kept = saved
-            .as_ref()
-            .and_then(|saved| saved.pairs.iter().find(|stored| stored.id == pair.id))
-            .map(|stored| stored.remote_path.as_str());
-        cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, kept)?;
-    }
+    read_as: cloud_pairs::CloudPairsConfig,
+) -> Result<cloud_pairs::CloudPairsConfig, String> {
     // Each pair is saved with the protocol its profile speaks.
     let mut config = config;
     if let Some(store) = credential_store::CredentialStore::from_cache() {
@@ -16571,7 +16794,20 @@ fn save_cloud_pairs_config_cmd_blocking(
             cloud_provider_factory::apply_saved_profile_protocol_to_pair(&store, pair);
         }
     }
-    cloud_pairs::save_cloud_pairs_config(&config)
+    cloud_pairs::with_cloud_pairs_mut(|stored| {
+        let saved = cloud_pairs::pairs_save(stored, &read_as, config)?;
+        // A pair whose folder is kept as stored follows the saved rule.
+        for pair in &saved.pairs {
+            let kept = stored
+                .pairs
+                .iter()
+                .find(|now| now.id == pair.id)
+                .map(|now| now.remote_path.as_str());
+            cloud_config::refuse_an_unusable_remote_folder(&pair.remote_path, kept)?;
+        }
+        *stored = saved.clone();
+        Ok(saved)
+    })
 }
 
 #[tauri::command]
@@ -17223,7 +17459,7 @@ async fn generate_share_link(local_path: String) -> Result<String, String> {
 
 /// The body of `generate_share_link`, kept synchronous and run on the blocking pool.
 fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
-    let config = cloud_config::load_cloud_config();
+    let config = cloud_config::load_cloud_config_strict()?;
 
     if !config.enabled {
         return Err("AeroCloud is not enabled".to_string());
@@ -17234,28 +17470,34 @@ fn generate_share_link_blocking(local_path: String) -> Result<String, String> {
             .to_string()
     })?;
 
-    let local_folder = config.local_folder.to_string_lossy();
-    let local_path_str = local_path.clone();
+    local_share_link(
+        public_base,
+        &config.local_folder,
+        std::path::Path::new(&local_path),
+    )
+}
 
-    // Check if file is within AeroCloud folder
-    let local_folder_str: &str = local_folder.as_ref();
-    if !local_path_str.starts_with(local_folder_str) {
-        return Err("File is not in AeroCloud folder".to_string());
-    }
-
-    // Get relative path from AeroCloud folder
-    let relative_path = local_path_str
-        .strip_prefix(local_folder_str)
-        .unwrap_or(&local_path_str)
-        .trim_start_matches('/');
-
-    // Construct public URL
-    let base = public_base.trim_end_matches('/');
-    let url = format!("{}/{}", base, relative_path);
-
-    info!("Generated share link: {}", url);
-
-    Ok(url)
+/// The public URL of `local_path` under the AeroCloud folder `local_folder`.
+/// The path is compared step by step, with the platform's separators (both
+/// `\` and `/` on Windows), so `AeroCloud2` is not under `AeroCloud`; each
+/// step is percent-encoded as [`public_url`] writes it. A step that is not a
+/// name (`..`, a root inside the path) is refused.
+fn local_share_link(
+    public_base: &str,
+    local_folder: &std::path::Path,
+    local_path: &std::path::Path,
+) -> Result<String, String> {
+    let relative = local_path
+        .strip_prefix(local_folder)
+        .map_err(|_| "File is not in AeroCloud folder".to_string())?;
+    let steps = relative
+        .components()
+        .map(|step| match step {
+            std::path::Component::Normal(name) => Ok(name.to_string_lossy().into_owned()),
+            _ => Err("The file path is not a plain path under the AeroCloud folder".to_string()),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(public_url(public_base, &steps.join("/")))
 }
 
 /// Generate share link from remote path (when browsing remote files)
@@ -17332,18 +17574,48 @@ fn share_link_connection_check(
 /// The public URL of `remote_path` under the AeroCloud folder `root`. The
 /// path must be `root` or under it at a component boundary: `/docs2/a` is
 /// not under `/docs`, and read as its `2/a` gave a link to another file.
-/// Both paths must be plain ([`util::path_location`]): `/docs/../private/a`
-/// starts with `/docs` and names a file outside it.
+/// The root is a saved folder and follows the saved rule (`/backup//docs`
+/// syncs, so it shares too); what follows it must be plain
+/// ([`util::path_location`]): `/docs/../private/a` starts with `/docs` and
+/// names a file outside it.
 fn remote_share_link(public_base: &str, root: &str, remote_path: &str) -> Result<String, String> {
-    util::path_location::refuse_an_unusable_location("AeroCloud folder", root)?;
-    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
+    let relative = under_share_root("AeroCloud folder", root, remote_path)?
+        .ok_or_else(|| "File is not in AeroCloud remote folder".to_string())?;
+    Ok(public_url(public_base, relative))
+}
+
+/// The part of `remote_path` under `root` at a component boundary, without
+/// its leading separators, or `None` when the path is not under it. `root`
+/// is a saved folder (`what` it is), refused only for what the saved rule
+/// refuses (a `..` step or a NUL); the rest of the path is checked whole,
+/// separators included, before they are trimmed, so `/docs//a.txt` under
+/// `/docs` stays refused.
+fn under_share_root<'a>(
+    what: &str,
+    root: &str,
+    remote_path: &'a str,
+) -> Result<Option<&'a str>, String> {
+    util::path_location::refuse_a_saved_location(what, root)?;
     let root = root.trim_end_matches('/');
-    let relative_path = match remote_path.strip_prefix(root) {
-        Some(rest) if rest.is_empty() || rest.starts_with('/') => rest.trim_start_matches('/'),
-        _ => return Err("File is not in AeroCloud remote folder".to_string()),
-    };
-    let base = public_base.trim_end_matches('/');
-    Ok(format!("{}/{}", base, relative_path))
+    match remote_path.strip_prefix(root) {
+        Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+            util::path_location::refuse_an_unusable_location("file path", rest)?;
+            Ok(Some(rest.trim_start_matches('/')))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// `relative` linked from `public_base`, each step percent-encoded and the
+/// `/` between them kept: `a#b.txt` is a file, not `a` with a fragment, and
+/// `a%20b.txt` is that name, not `a b.txt`.
+fn public_url(public_base: &str, relative: &str) -> String {
+    let encoded = relative
+        .split('/')
+        .map(|step| urlencoding::encode(step))
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("{}/{}", public_base.trim_end_matches('/'), encoded)
 }
 
 /// Generate share link for any server with a configured public URL base.
@@ -17377,33 +17649,25 @@ fn server_share_link(
     initial_path: &str,
     remote_path: &str,
 ) -> Result<String, String> {
-    util::path_location::refuse_an_unusable_location("file path", remote_path)?;
-    let root = initial_path.trim_end_matches('/');
-    let base = public_url_base.trim_end_matches('/');
-
-    // Strip server root from remote path to get relative path
-    let relative = match remote_path.strip_prefix(root) {
-        Some(rest) if !root.is_empty() && (rest.is_empty() || rest.starts_with('/')) => {
-            rest.trim_start_matches('/')
+    // A path under the web root is linked from it; with no root, or a path
+    // outside it, the path is linked whole.
+    let under_root = match under_share_root("starting folder", initial_path, remote_path)? {
+        Some(rest) if !initial_path.trim_end_matches('/').is_empty() => Some(rest),
+        _ => None,
+    };
+    let relative = match under_root {
+        Some(rest) => rest,
+        None => {
+            util::path_location::refuse_an_unusable_location("file path", remote_path)?;
+            remote_path.trim_start_matches('/')
         }
-        // No initial path or path doesn't match: use full remote path
-        _ => remote_path.trim_start_matches('/'),
     };
 
     if relative.is_empty() {
         return Err("Cannot generate share link for root directory".to_string());
     }
 
-    // URL-encode path segments (spaces, special chars) but preserve /
-    let encoded = relative
-        .split('/')
-        .map(|seg| urlencoding::encode(seg))
-        .collect::<Vec<_>>()
-        .join("/");
-
-    let url = format!("{}/{}", base, encoded);
-    debug!("Generated server share link: {}", url);
-    Ok(url)
+    Ok(public_url(public_url_base, relative))
 }
 
 #[tauri::command]
@@ -18028,7 +18292,12 @@ async fn background_sync_worker(app: AppHandle) {
                                         ledger.full_scan_allowed(&key, std_now),
                                     )
                                 };
-                                match cloud_service::prepare_incremental(&cfg, &changes, hints) {
+                                match cloud_service::prepare_incremental_with_store(
+                                    &cfg,
+                                    store.as_ref(),
+                                    &changes,
+                                    hints,
+                                ) {
                                     Err(e) => {
                                         prep_errors.push(e);
                                         PairRun::Settled

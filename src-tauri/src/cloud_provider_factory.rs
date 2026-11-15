@@ -520,7 +520,7 @@ async fn enter_profile_root(
         let placed = provider
             .pwd()
             .await
-            .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
+            .map_err(|e| format!("Cannot open the profile's starting folder: {e}"))?;
         return Ok(Some(placed));
     }
     if login_relative && root.split('/').any(|segment| segment == "..") {
@@ -533,7 +533,7 @@ async fn enter_profile_root(
     let (placed, placed_root) = if login_relative {
         let placed = crate::crypt_overlay_provider::resolve_home_scope(provider, root)
             .await?
-            .ok_or_else(|| format!("Cannot resolve the profile folder '{}'", root))?;
+            .ok_or_else(|| "Cannot resolve the profile's starting folder".to_string())?;
         (placed.clone(), Some(placed))
     } else {
         (root.to_string(), None)
@@ -541,7 +541,7 @@ async fn enter_profile_root(
     provider
         .cd(&placed)
         .await
-        .map_err(|e| format!("Cannot open the profile folder '{}': {}", root, e))?;
+        .map_err(|e| format!("Cannot open the profile's starting folder: {e}"))?;
     Ok(placed_root)
 }
 
@@ -567,7 +567,7 @@ async fn enter_login_relative_root_through_session(
     root: &str,
 ) -> Result<String, String> {
     let failed = |e: crate::providers::ProviderError| {
-        format!("Cannot open the profile folder '{}': {}", root, e)
+        format!("Cannot open the profile's starting folder: {e}")
     };
     let home = match provider.login_folder_hint() {
         Some(home) => home,
@@ -576,10 +576,10 @@ async fn enter_login_relative_root_through_session(
             ProviderType::Ftp | ProviderType::Ftps
         ) =>
         {
-            return Err(format!(
-                "Cannot open the profile folder '{}': the server did not report its login folder",
-                root
-            ))
+            return Err(
+                "Cannot open the profile's starting folder: the server did not report its login folder"
+                    .to_string(),
+            )
         }
         None => {
             provider.cd("~").await.map_err(failed)?;
@@ -829,7 +829,7 @@ async fn create_via_factory(
                     provider
                         .pwd()
                         .await
-                        .map_err(|e| format!("Cannot open the folder '{}': {}", initial, e))?,
+                        .map_err(|e| format!("Cannot open the starting folder: {e}"))?,
                 );
             } else if let Some(placed) =
                 crate::crypt_overlay_provider::resolve_home_scope(&mut *provider, &initial).await?

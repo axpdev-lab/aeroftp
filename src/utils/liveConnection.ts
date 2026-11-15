@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import type { ConnectionParams } from '../types';
-import { savedLocationProblem } from './syncNavigationPath';
+import { locationRefusal, savedLocationProblem } from './syncNavigationPath';
 
 /** The part of a session tab this resolution reads. */
 export interface LiveConnectionSession {
@@ -221,9 +221,8 @@ export async function openAeroCloudFolder(
     navigate: (folder: string) => Promise<string>,
     ownsTheSession: () => boolean = () => true,
 ): Promise<string> {
-    if (savedLocationProblem(remoteFolder)) {
-        throw new Error(`The AeroCloud remote folder '${remoteFolder}' contains a '..' step or a NUL: set it again as a plain path`);
-    }
+    const problem = savedLocationProblem(remoteFolder);
+    if (problem) throw new Error(locationRefusal('AeroCloud remote folder', problem));
     const placed = await place(remoteFolder);
     if (!ownsTheSession()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
     const listed = await navigate(placed ?? (connectOpenedIt ? '' : remoteFolder));

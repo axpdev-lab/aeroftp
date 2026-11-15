@@ -398,10 +398,17 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     // saved it does nothing (Discussion #1527); the X and Cancel of the
     // settings view only leave it, as before.
     const [settingsBaseline, setSettingsBaseline] = useState<CloudConfig | null>(null);
-    // The baseline as of the latest commit, for the post-sync refresh, which
-    // runs after an await and would otherwise read the one it started with.
+    // The baseline as last written, for the post-sync refresh, which runs
+    // after an await and would otherwise read the one it started with. Every
+    // write goes through setBaseline, which writes the ref in the same call:
+    // two refresh replies handled before React commits read each other's
+    // baseline, never the one the render saw.
     const settingsBaselineRef = useRef(settingsBaseline);
-    useEffect(() => { settingsBaselineRef.current = settingsBaseline; }, [settingsBaseline]);
+    const setBaseline = (next: CloudConfig | null | ((prev: CloudConfig | null) => CloudConfig | null)) => {
+        const value = typeof next === 'function' ? next(settingsBaselineRef.current) : next;
+        settingsBaselineRef.current = value;
+        setSettingsBaseline(value);
+    };
     // Settings does not open while Pause, Resume or Disable is in flight
     // (pendingLifecycle, below): their result replaces the configuration and
     // would drop a draft opened meanwhile. Every entry (the dashboard button,
@@ -409,7 +416,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
     const openSettings = () => {
         if (pendingLifecycle > 0) return;
         setSettingsSaveError(null);
-        setSettingsBaseline(config);
+        setBaseline(config);
         setShowSettings(true);
         // A sync run from the tray, the watcher or the scheduler may have
         // placed a `~/...` folder since the panel last read the file: the
@@ -432,7 +439,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         setConfig(settingsBaseline);
         setShowSettings(false);
         // The baseline belongs to the settings session that just ended.
-        setSettingsBaseline(null);
+        setBaseline(null);
     };
     const settingsEdited = showSettings && JSON.stringify(config) !== JSON.stringify(settingsBaseline);
     // A save cannot be stopped: while it runs the whole settings view is busy,
@@ -476,7 +483,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
         configIdentity.current += 1;
         setConfig(next);
         setShowSettings(false);
-        setSettingsBaseline(null);
+        setBaseline(null);
     };
 
     // Use modular tray sync hook. Pause/Resume/Disable now go through the
@@ -606,7 +613,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                     last_sync: cfg.last_sync,
                     remote_folder: savedFolder === undefined || prev.remote_folder === savedFolder ? cfg.remote_folder : prev.remote_folder,
                 } : prev);
-                setSettingsBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync, remote_folder: cfg.remote_folder } : prev);
+                setBaseline(prev => prev ? { ...prev, last_sync: cfg.last_sync, remote_folder: cfg.remote_folder } : prev);
             } else {
                 setConfigLoadError(null);
                 replaceConfig(cfg);
@@ -1000,7 +1007,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                             if (asked !== configIdentity.current) return;
                                             setConfig(prev => prev ? { ...prev, excluded_folders: folders } : null);
                                             // Persisted immediately, so it must not count as an unsaved edit.
-                                            setSettingsBaseline(prev => prev ? { ...prev, excluded_folders: folders } : prev);
+                                            setBaseline(prev => prev ? { ...prev, excluded_folders: folders } : prev);
                                         } catch (e) {
                                             console.error('Failed to update excluded folders:', e);
                                         }
@@ -1091,7 +1098,7 @@ export const CloudPanel: React.FC<CloudPanelProps> = ({ isOpen, onClose, onOpenS
                                         // What was saved is now the configuration: the
                                         // old baseline would read the saved folder as a
                                         // draft edit and keep it over a later placement.
-                                        setSettingsBaseline(null);
+                                        setBaseline(null);
                                         logger.debug('Settings saved!');
                                     } catch (e) {
                                         console.error('Failed to save settings:', e);

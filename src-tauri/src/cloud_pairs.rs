@@ -258,6 +258,74 @@ where
     with_cloud_pairs_mut_at(&get_pairs_path(), f)
 }
 
+/// The list a whole-list save writes over `stored`, the file as it is now,
+/// from `draft`, the list edited after it was read as `read_as`. What a pair
+/// gained in the file since that read and the edit did not change stays as
+/// stored, field by field: the remote folder a sync placed under the login
+/// folder (`docs` saved as `/home/u/docs`), the time of the last sync, a
+/// toggle made from the CLI. A field the edit changed is the edit's, the
+/// remote folder included: a folder the user wrote replaces the placed one.
+/// Pairs added or removed by the edit are added or removed. When the list
+/// itself moved since the read (a pair added or removed elsewhere, or a
+/// pair's profile, local folder, protocol or connection parameters changed),
+/// the draft belongs to a list that was replaced, and the save is refused.
+pub fn pairs_save(
+    stored: &CloudPairsConfig,
+    read_as: &CloudPairsConfig,
+    mut draft: CloudPairsConfig,
+) -> Result<CloudPairsConfig, String> {
+    let setup = |config: &CloudPairsConfig| {
+        let mut pairs: Vec<_> = config
+            .pairs
+            .iter()
+            .map(|pair| {
+                (
+                    pair.id.clone(),
+                    pair.server_profile.clone(),
+                    pair.local_path.clone(),
+                    pair.protocol_type.clone(),
+                    pair.connection_params.to_string(),
+                )
+            })
+            .collect();
+        pairs.sort();
+        pairs
+    };
+    if setup(stored) != setup(read_as) {
+        return Err(
+            "The AeroCloud folder pairs changed since this list was opened: open it again to \
+             edit them as they are now"
+                .to_string(),
+        );
+    }
+    for pair in &mut draft.pairs {
+        let (Some(read), Some(now)) = (
+            read_as.pairs.iter().find(|read| read.id == pair.id),
+            stored.pairs.iter().find(|now| now.id == pair.id),
+        ) else {
+            continue;
+        };
+        let (Ok(read), Ok(now), Ok(mut edited)) = (
+            serde_json::to_value(read),
+            serde_json::to_value(now),
+            serde_json::to_value(&*pair),
+        ) else {
+            return Err("The AeroCloud folder pairs could not be compared".to_string());
+        };
+        if let Some(fields) = edited.as_object_mut() {
+            for (name, value) in fields.iter_mut() {
+                if read.get(name) == Some(value) {
+                    if let Some(kept) = now.get(name) {
+                        *value = kept.clone();
+                    }
+                }
+            }
+        }
+        *pair = serde_json::from_value(edited).map_err(|e| e.to_string())?;
+    }
+    Ok(draft)
+}
+
 /// Save pairs config (atomic + lock protected).
 pub fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> {
     let _lock = PAIRS_WRITE_LOCK
@@ -432,7 +500,14 @@ mod tests {
         }
         let data = tempfile::tempdir().unwrap();
         let path = data.path().join("cloud_pairs.json");
-        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&CloudPairsConfig {
+            parallel_pairs: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<CloudPairsConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         struct PermGuard(std::path::PathBuf);
         impl Drop for PermGuard {
@@ -442,7 +517,12 @@ mod tests {
         }
         let _guard = PermGuard(path.clone());
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
-        assert!(save_cloud_pairs_config_unlocked_at(&CloudPairsConfig::default(), &path).is_err());
+        let err =
+            save_cloud_pairs_config_unlocked_at(&CloudPairsConfig::default(), &path).unwrap_err();
+        assert!(
+            err.contains("Cannot read"),
+            "not refused for the read: {err}"
+        );
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
@@ -476,7 +556,14 @@ mod tests {
         let dir = data.path().join("cfg");
         std::fs::create_dir(&dir).unwrap();
         let path = dir.join("cloud_pairs.json");
-        let bytes = b"{ \"parallel_pairs\": true }".as_slice();
+        // A file that parses: only the read can make the save refuse it.
+        let bytes = serde_json::to_vec(&CloudPairsConfig {
+            parallel_pairs: true,
+            ..Default::default()
+        })
+        .unwrap();
+        let bytes = bytes.as_slice();
+        assert!(serde_json::from_slice::<CloudPairsConfig>(bytes).is_ok());
         std::fs::write(&path, bytes).unwrap();
         struct PermGuard(std::path::PathBuf);
         impl Drop for PermGuard {
@@ -495,6 +582,10 @@ mod tests {
         assert!(
             !ran,
             "closure must not run on an unreadable pairs file: {err}"
+        );
+        assert!(
+            err.contains("Failed to read"),
+            "not refused for the read: {err}"
         );
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
