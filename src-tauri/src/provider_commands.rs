@@ -590,24 +590,22 @@ impl ConnectionCancelRegistry {
     /// connect command to `select!` on. If a token is already registered for
     /// the same key (a retried attempt that reused the id), it is cancelled
     /// and replaced so a stale entry can never shadow the live attempt.
-    pub fn register(&self, key: &str) -> CancellationToken {
+    /// Returns the registration's own id with its token: the id goes to the
+    /// attempt's guard ([`ConnectTokenGuard::new`]), so its cleanup ends this
+    /// registration and no other.
+    pub fn register(&self, key: &str) -> (u64, CancellationToken) {
         let token = CancellationToken::new();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut map = self.lock();
         if let Some((_, previous)) = map.insert(key.to_string(), (id, token.clone())) {
             previous.cancel();
         }
-        token
+        (id, token)
     }
 
     /// Remove the token for `key`. A no-op when the key is absent.
     pub fn unregister(&self, key: &str) {
         self.lock().remove(key);
-    }
-
-    /// The id of `key`'s live registration, if any.
-    fn registration_id(&self, key: &str) -> Option<u64> {
-        self.lock().get(key).map(|(id, _)| *id)
     }
 
     /// Remove `key` only while it still holds the registration `id`: a newer
@@ -656,23 +654,20 @@ impl ConnectionCancelRegistry {
 pub(crate) struct ConnectTokenGuard<'a> {
     registry: &'a ConnectionCancelRegistry,
     key: String,
-    /// The registration this guard ends, taken when it is made, right after
-    /// that registration: a later one of the same key is not this guard's.
-    id: Option<u64>,
+    /// The registration this guard ends, the id `register` returned for it:
+    /// a later registration of the same key is not this guard's.
+    id: u64,
 }
 
 impl<'a> ConnectTokenGuard<'a> {
-    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String) -> Self {
-        let id = registry.registration_id(&key);
+    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String, id: u64) -> Self {
         Self { registry, key, id }
     }
 }
 
 impl Drop for ConnectTokenGuard<'_> {
     fn drop(&mut self) {
-        if let Some(id) = self.id {
-            self.registry.unregister_registration(&self.key, id);
-        }
+        self.registry.unregister_registration(&self.key, self.id);
     }
 }
 
@@ -713,9 +708,15 @@ pub(crate) struct ConnectRegistration<'a> {
 
 impl<'a> ConnectRegistration<'a> {
     pub(crate) fn new(registry: &'a ConnectionCancelRegistry, connect_token: Option<&str>) -> Self {
-        Self {
-            token: connect_token.map(|key| registry.register(key)),
-            _guard: connect_token.map(|key| ConnectTokenGuard::new(registry, key.to_string())),
+        match connect_token.map(|key| (key, registry.register(key))) {
+            Some((key, (id, token))) => Self {
+                token: Some(token),
+                _guard: Some(ConnectTokenGuard::new(registry, key.to_string(), id)),
+            },
+            None => Self {
+                token: None,
+                _guard: None,
+            },
         }
     }
 
@@ -8065,14 +8066,13 @@ pub async fn twake_sign_in(
     use crate::providers::oauth2::{bind_callback_listener_on_port, wait_for_callback};
     use crate::providers::twake;
 
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let (listener, port) = bind_callback_listener_on_port(twake::TWAKE_CALLBACK_PORT)
         .await
@@ -8155,14 +8155,13 @@ pub async fn oauth2_full_auth(
     // #360: register the connect token so an Esc / "still connecting" Cancel can
     // abort the browser-callback wait below (the longest phase of the flow).
     // The guard de-registers it on every exit path.
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let (_, port) = oauth_callback_endpoint(&params.provider)?;
     let (listener, port) = bind_callback_listener_on_port(port)
@@ -9648,14 +9647,13 @@ pub async fn fourshared_full_auth(
     info!("Starting full 4shared OAuth 1.0 flow");
 
     // #360: register the connect token so Esc / Cancel can abort the callback wait.
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -17205,7 +17203,7 @@ mod tests {
     fn test_connection_cancel_registry_register_and_cleanup() {
         let registry = ConnectionCancelRegistry::new();
         assert_eq!(registry.active_count(), 0);
-        let token = registry.register("conn-1");
+        let (_, token) = registry.register("conn-1");
         assert_eq!(registry.active_count(), 1);
         assert!(!token.is_cancelled());
         // The drop guard mirrors what the connect command does on every exit
@@ -17217,7 +17215,7 @@ mod tests {
     #[test]
     fn test_connection_cancel_registry_cancel_signals_token() {
         let registry = ConnectionCancelRegistry::new();
-        let token = registry.register("conn-2");
+        let (_, token) = registry.register("conn-2");
         assert!(registry.cancel("conn-2"), "live token must report found");
         assert!(token.is_cancelled());
     }
@@ -17228,7 +17226,7 @@ mod tests {
         // Cancelling a token that was never registered is a no-op returning false.
         assert!(!registry.cancel("missing"));
         // Once the entry is de-registered, a late cancel stays false (no panic).
-        let token = registry.register("conn-3");
+        let (_, token) = registry.register("conn-3");
         assert!(registry.cancel("conn-3"));
         registry.unregister("conn-3");
         assert!(!registry.cancel("conn-3"));
@@ -17236,14 +17234,17 @@ mod tests {
     }
 
     /// A reused key: dropping the first attempt's guard leaves the second
-    /// attempt registered, so a cancel still reaches it.
+    /// attempt registered, so a cancel still reaches it, also when the second
+    /// registers before the first attempt's guard is built.
     #[test]
     fn an_earlier_guard_never_removes_a_newer_registration_of_its_key() {
         let registry = ConnectionCancelRegistry::new();
-        let first = registry.register("K");
-        let first_guard = ConnectTokenGuard::new(&registry, "K".to_string());
-        let second = registry.register("K");
-        let second_guard = ConnectTokenGuard::new(&registry, "K".to_string());
+        // B registers between A's register and A's guard: A's guard still
+        // carries A's own id, the one register returned.
+        let (first_id, first) = registry.register("K");
+        let (second_id, second) = registry.register("K");
+        let first_guard = ConnectTokenGuard::new(&registry, "K".to_string(), first_id);
+        let second_guard = ConnectTokenGuard::new(&registry, "K".to_string(), second_id);
         assert!(
             first.is_cancelled(),
             "the second registration cancels the first"
@@ -17261,9 +17262,9 @@ mod tests {
     #[test]
     fn test_connection_cancel_registry_reregister_cancels_previous() {
         let registry = ConnectionCancelRegistry::new();
-        let first = registry.register("conn-4");
+        let (_, first) = registry.register("conn-4");
         // A retried attempt reusing the same id must not leave two live tokens.
-        let second = registry.register("conn-4");
+        let (_, second) = registry.register("conn-4");
         assert!(
             first.is_cancelled(),
             "stale token must be cancelled on re-register"
@@ -17276,8 +17277,8 @@ mod tests {
     async fn test_select_cancel_returns_marker_and_guard_cleans_up() {
         let registry = ConnectionCancelRegistry::new();
         let key = "conn-select";
-        let token = registry.register(key);
-        let guard = ConnectTokenGuard::new(&registry, key.to_string());
+        let (id, token) = registry.register(key);
+        let guard = ConnectTokenGuard::new(&registry, key.to_string(), id);
         assert_eq!(registry.active_count(), 1);
 
         // A connect that never resolves; the cancel branch must win the select

@@ -3508,12 +3508,13 @@ async fn connect_ftp_inner(
     // every exit path. suppaftp's connect/login are async, so dropping the
     // future on cancel tears the in-flight TCP/TLS handshake down cleanly.
     let connect_key = params.connect_token.clone();
-    let cancel_token = connect_key
+    let registration = connect_key
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = connect_key
-        .as_deref()
-        .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration.map(|(key, (id, _))| {
+        provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string(), id)
+    });
 
     let mut ftp_manager = state.ftp_manager.lock().await;
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
