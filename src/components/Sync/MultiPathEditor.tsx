@@ -45,6 +45,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     const writeInFlight = useRef(false);
     const [writing, setWriting] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         if (!isOpen || embedded) return;
@@ -68,9 +69,17 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                 if (!active) return;
                 persistedPairs.current = config.pairs;
                 hasConfirmedConfig.current = true;
+                setLoadError(null);
                 setPairs(config.pairs);
             })
-            .catch(() => { if (active) setPairs(persistedPairs.current); })
+            .catch(e => {
+                if (!active) return;
+                logger.error('[MultiPathEditor] get_multi_path_config failed:', e);
+                setLoadError(String(e));
+                // A failed load leaves the file's content unknown: no write until a load succeeds.
+                hasConfirmedConfig.current = false;
+                setPairs(persistedPairs.current);
+            })
             .finally(() => { if (active) setLoading(false); });
         return () => { active = false; };
     }, [isOpen, localPath, remotePath, persistenceScope]);
@@ -168,6 +177,7 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
     };
 
     if (!isOpen) return null;
+    const writesLocked = loading || writing || !hasConfirmedConfig.current;
 
     return (
         <div className={embedded ? "relative flex flex-col" : "fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4"} onClick={embedded ? undefined : onClose} role={embedded ? undefined : "dialog"} aria-modal={embedded ? undefined : true} aria-label={embedded ? undefined : t('syncPanel.multiPathEditorLabel')}>
@@ -187,12 +197,17 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                     </button>
                 </div>
 
-                <fieldset disabled={loading || writing || !hasConfirmedConfig.current} className="contents">
+                <fieldset disabled={writesLocked} className="contents">
                 {/* Content */}
                 <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
+                    {loadError && !loading && (
+                        <div role="alert" className="text-sm text-red-600 dark:text-red-400 break-words">
+                            {t('common.settingsLoadFailed', { error: loadError })}
+                        </div>
+                    )}
                     {loading ? (
                         <div className="text-center text-gray-400 py-8 text-sm">{t('common.loading')}</div>
-                    ) : pairs.length === 0 ? (
+                    ) : pairs.length === 0 && !loadError ? (
                         <div className="text-center text-gray-400 py-8 text-sm">
                             {t('syncPanel.multiPathEmpty')}
                         </div>
@@ -254,12 +269,15 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                     )}
                 </div>
 
-                {/* Footer */}
+                </fieldset>
+
+                {/* Footer: Cancel stays outside the locked fieldset, so a failed
+                    load never leaves the editor without a way out. */}
                 <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200 dark:border-gray-700">
                     <button
                         className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-blue-500/15 text-blue-400 border border-blue-500/25 hover:bg-blue-500/25 disabled:opacity-40"
                         onClick={handleAdd}
-                        disabled={pairs.length >= MAX_PATH_PAIRS}
+                        disabled={writesLocked || pairs.length >= MAX_PATH_PAIRS}
                     >
                         <Plus size={12} /> {t('syncPanel.multiPathAdd')}
                     </button>
@@ -267,18 +285,19 @@ export const MultiPathEditor: React.FC<MultiPathEditorProps> = ({
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600"
                             onClick={handleCancel}
+                            disabled={loading || writing}
                         >
                             {t('common.cancel')}
                         </button>
                         <button
                             className="text-xs px-4 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600"
                             onClick={handleSave}
+                            disabled={writesLocked}
                         >
                             {t('common.save')}
                         </button>
                     </div>
                 </div>
-                </fieldset>
             </div>
         </div>
     );

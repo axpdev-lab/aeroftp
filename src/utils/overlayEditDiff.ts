@@ -18,7 +18,7 @@ export interface OverlayEditForm {
     overlaysRemotePath: string;
     /** The Remote Path field. */
     remoteDir: string;
-    /** The profile's protocol: SFTP and SCP open a relative Remote Path under the login folder. */
+    /** The profile's protocol: SFTP, SCP, FTP and FTPS (an omitted protocol is FTP) open a relative Remote Path under the login folder. */
     protocol?: string | null;
     /** Typed secrets. Never prefilled on edit, so any text is a change. */
     password: string;

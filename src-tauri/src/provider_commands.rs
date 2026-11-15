@@ -98,6 +98,11 @@ pub struct ProviderState {
     /// Bumped on every connection change (connect swap, disconnect, hard lock)
     /// so a stale cached key can never be re-armed onto a new connection.
     connection_generation: Arc<AtomicU64>,
+    /// The connection generation a silent reconnect closed because it could
+    /// not open the session's folder again ([`try_silent_reconnect`]). While
+    /// it is the live generation the slot is empty and a request is told to
+    /// reconnect; any install bumps the generation, which ends it.
+    lost_folder: std::sync::Mutex<Option<u64>>,
     /// Restored transfers pin a verified connection across multi-phase work.
     /// Swaps, disconnects and overlay mutations take the write side before
     /// touching the provider slot or changing how its paths are interpreted.
@@ -156,6 +161,7 @@ impl ProviderState {
             cached_overlay: std::sync::Mutex::new(None),
             overlay_activation_id: std::sync::Mutex::new(None),
             connection_generation: Arc::new(AtomicU64::new(0)),
+            lost_folder: std::sync::Mutex::new(None),
             transfer_owner_gate: RwLock::new(()),
             connected_profile_id: std::sync::Mutex::new(None),
             config: Arc::new(Mutex::new(None)),
@@ -168,6 +174,14 @@ impl ProviderState {
             active_crypt_overlay: Arc::new(AtomicBool::new(false)),
             overlay_wrapped: Arc::new(AtomicBool::new(false)),
         }
+    }
+
+    /// The saved profile the connected provider was opened with, if any.
+    pub(crate) fn connected_profile_id(&self) -> Option<String> {
+        self.connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Bind an optional restored-transfer generation before any remote I/O.
@@ -514,6 +528,55 @@ impl ProviderState {
     fn invalidate_overlay_key_cache(&self) {
         self.connection_generation.fetch_add(1, Ordering::SeqCst);
         self.clear_overlay_key_cache();
+    }
+
+    /// Leave the slot without a provider, as a disconnect does: no profile,
+    /// no config, no overlay, and a new generation, so a cached key or a
+    /// pinned transfer of the old connection never applies again. `slot` is
+    /// the content of [`Self::provider`], whose lock the caller holds.
+    async fn clear_slot(&self, slot: &mut Option<Box<dyn StorageProvider>>) {
+        *self.config.lock().await = None;
+        self.clear_slot_now(slot);
+    }
+
+    /// [`Self::clear_slot`] without waiting: for a drop, which cannot await.
+    /// The saved connect parameters go only when nobody holds them; with the
+    /// slot empty, no request uses them, and a connect replaces them.
+    fn clear_slot_now(&self, slot: &mut Option<Box<dyn StorageProvider>>) {
+        *slot = None;
+        *self
+            .connected_profile_id
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = None;
+        if let Ok(mut config) = self.config.try_lock() {
+            *config = None;
+        }
+        self.active_crypt_overlay.store(false, Ordering::SeqCst);
+        self.overlay_wrapped.store(false, Ordering::SeqCst);
+        self.invalidate_overlay_key_cache();
+    }
+
+    /// Whether the live generation is one a silent reconnect closed because
+    /// its folder could not be opened again.
+    fn folder_lost(&self) -> bool {
+        *self.lost_folder.lock().unwrap_or_else(|e| e.into_inner())
+            == Some(self.connection_generation.load(Ordering::SeqCst))
+    }
+
+    /// Mark the live generation as one whose folder was lost. A connect
+    /// installs a new generation, which clears the mark by itself.
+    fn mark_folder_lost(&self) {
+        *self.lost_folder.lock().unwrap_or_else(|e| e.into_inner()) =
+            Some(self.connection_generation.load(Ordering::SeqCst));
+    }
+
+    /// Why a request found no provider in the slot.
+    fn not_connected(&self) -> String {
+        if self.folder_lost() {
+            FOLDER_LOST_REFUSAL.to_string()
+        } else {
+            "Not connected to any provider".to_string()
+        }
     }
 
     /// Take the cached keys for an instant re-arm IF one exists AND still belongs
@@ -988,6 +1051,10 @@ enum SessionEventKind {
     Reconnected,
     /// Reconnect itself failed: the original error stands.
     ReconnectFailed,
+    /// The reconnect could not open the session's folder again, so the
+    /// connection was closed and the slot left empty: the tab is
+    /// disconnected until the user connects again.
+    Closed,
     /// An SFTP connection whose server has no SFTP went on over SCP; the
     /// detail is the host.
     ScpMode,
@@ -1005,37 +1072,78 @@ struct SessionEvent {
     detail: String,
 }
 
-fn emit_session_event(app: &AppHandle, kind: SessionEventKind, detail: impl Into<String>) {
-    let _ = app.emit(
-        "provider-session",
-        SessionEvent {
-            kind,
-            detail: detail.into(),
-        },
-    );
+/// Where the session lifecycle goes: the app's `provider-session` event, or
+/// a recorder in tests.
+trait SessionEvents: Sync {
+    fn session_event(&self, event: SessionEvent);
 }
 
-/// Drive a single silent reconnect attempt against the live provider
-/// instance, reusing the credentials it captured at original
-/// connect-time. The provider's internal `current_dir` is saved and
-/// best-effort restored after the new session is established, so a
-/// subsequent retry of the user's operation sees the same path
-/// context as before the disconnect.
+impl SessionEvents for AppHandle {
+    fn session_event(&self, event: SessionEvent) {
+        let _ = self.emit("provider-session", event);
+    }
+}
+
+fn emit_session_event(
+    events: &impl SessionEvents,
+    kind: SessionEventKind,
+    detail: impl Into<String>,
+) {
+    events.session_event(SessionEvent {
+        kind,
+        detail: detail.into(),
+    });
+}
+
+/// The answer to a request after [`try_silent_reconnect`] closed a session
+/// it could not return to its folder. Names no folder.
+const FOLDER_LOST_REFUSAL: &str =
+    "The connection was closed because its folder could not be opened again; reconnect to continue";
+
+/// Drive a single silent reconnect attempt against the provider in `slot`
+/// (the content of the state's provider lock, held by the caller), reusing
+/// the credentials it captured at original connect-time, and return the new
+/// session to the folder the old one was in.
 ///
-/// Returns `Ok(restored_pwd)` on success. The caller is responsible
-/// for replaying the failed operation against the freshly-reconnected
-/// provider.
+/// When that folder is not known (its `pwd` failed) or cannot be entered
+/// again, the new session stands in another folder, where a relative
+/// request from any caller would land. It is not kept: it is disconnected,
+/// the slot is left empty as after a disconnect, the generation is marked
+/// lost and the app is told the tab is closed ([`SessionEventKind::Closed`]).
+/// Every later request then finds no provider, and the way out is a connect,
+/// which installs a new generation. The caller replays the failed operation
+/// only after an `Ok`.
 async fn try_silent_reconnect(
-    app: &AppHandle,
-    provider: &mut Box<dyn StorageProvider>,
-) -> Result<String, ProviderError> {
-    let prev_dir = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
-    emit_session_event(app, SessionEventKind::Reconnecting, "");
+    events: &impl SessionEvents,
+    state: &ProviderState,
+    slot: &mut Option<Box<dyn StorageProvider>>,
+) -> Result<(), String> {
+    if state.folder_lost() {
+        return Err(FOLDER_LOST_REFUSAL.to_string());
+    }
+    let provider = slot.as_mut().ok_or_else(|| state.not_connected())?;
+    let prev_dir = provider.pwd().await.ok();
+    emit_session_event(events, SessionEventKind::Reconnecting, "");
     tracing::warn!("Provider session lost; attempting silent reconnect");
 
-    provider.connect().await.inspect_err(|e| {
-        emit_session_event(app, SessionEventKind::ReconnectFailed, e.to_string());
-    })?;
+    // From the redial until the folder is entered again the session may
+    // stand in another folder. A request cancelled meanwhile drops this
+    // future: the guard then closes the connection as a failed restore does,
+    // so no later request reaches that folder.
+    let mut pending = RestorePending {
+        events,
+        state,
+        slot: Some(slot),
+    };
+    let Some(provider) = pending.provider() else {
+        pending.disarm();
+        return Err(state.not_connected());
+    };
+    if let Err(e) = provider.connect().await {
+        pending.disarm();
+        emit_session_event(events, SessionEventKind::ReconnectFailed, e.to_string());
+        return Err(format!("Failed to reconnect: {}", e));
+    }
     if provider.provider_type() == ProviderType::Sftp {
         let transport = if crate::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut())
         {
@@ -1043,21 +1151,66 @@ async fn try_silent_reconnect(
         } else {
             "sftp"
         };
-        emit_session_event(app, SessionEventKind::SshTransport, transport);
+        emit_session_event(events, SessionEventKind::SshTransport, transport);
     }
 
-    // Best-effort cwd restore. Failure here is not fatal: the caller's
-    // retry will hit the right error if the path is genuinely gone.
-    if prev_dir != "/" {
-        if let Err(e) = provider.cd(&prev_dir).await {
+    let restored = match prev_dir {
+        Some(prev_dir) => {
+            match provider.cd(&prev_dir).await {
+                Ok(()) => true,
+                Err(e) => {
+                    tracing::warn!("Reconnect succeeded but the previous folder could not be opened again: {e}");
+                    false
+                }
+            }
+        }
+        None => false,
+    };
+    let slot = pending.disarm();
+    if restored {
+        return Ok(());
+    }
+    if let Some(mut stale) = slot.take() {
+        let _ = tokio::time::timeout(Duration::from_secs(2), stale.disconnect()).await;
+    }
+    state.clear_slot(slot).await;
+    state.mark_folder_lost();
+    emit_session_event(events, SessionEventKind::Closed, FOLDER_LOST_REFUSAL);
+    Err(FOLDER_LOST_REFUSAL.to_string())
+}
+
+/// The slot of a silent reconnect between its redial and its folder
+/// restore, closed when dropped before [`Self::disarm`]: see
+/// [`try_silent_reconnect`].
+struct RestorePending<'a, E: SessionEvents> {
+    events: &'a E,
+    state: &'a ProviderState,
+    slot: Option<&'a mut Option<Box<dyn StorageProvider>>>,
+}
+
+impl<'a, E: SessionEvents> RestorePending<'a, E> {
+    fn provider(&mut self) -> Option<&mut Box<dyn StorageProvider>> {
+        self.slot.as_deref_mut().and_then(Option::as_mut)
+    }
+
+    /// The restore ran to its end: the caller keeps or closes the session.
+    fn disarm(mut self) -> &'a mut Option<Box<dyn StorageProvider>> {
+        self.slot.take().expect("a restore is disarmed once")
+    }
+}
+
+impl<E: SessionEvents> Drop for RestorePending<'_, E> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.take() {
             tracing::warn!(
-                "Reconnect succeeded but failed to restore previous dir {}: {}",
-                prev_dir,
-                e
+                "Silent reconnect cancelled before its folder was restored; connection closed"
             );
+            self.state.clear_slot_now(slot);
+            self.state.mark_folder_lost();
+            // The tab is told, as a failed restore tells it.
+            emit_session_event(self.events, SessionEventKind::Closed, FOLDER_LOST_REFUSAL);
         }
     }
-    Ok(prev_dir)
 }
 
 // ============ Request/Response Types ============
@@ -2187,20 +2340,9 @@ where
             .map_err(|e| format!("Disconnect failed: {}", e))?;
     }
 
-    *provider_lock = None;
-    *state
-        .connected_profile_id
-        .lock()
-        .unwrap_or_else(|e| e.into_inner()) = None;
-
-    let mut config_lock = state.config.lock().await;
-    *config_lock = None;
-
-    // The provider (raw or wrapped) is gone: clear both crypt-overlay flags.
-    state.active_crypt_overlay.store(false, Ordering::SeqCst);
-    state.overlay_wrapped.store(false, Ordering::SeqCst);
-    // Connection torn down: zeroize any cached overlay keys and bump generation.
-    state.invalidate_overlay_key_cache();
+    // The provider (raw or wrapped) is gone: no profile, config or overlay
+    // flags, and the cached overlay keys zeroized with a new generation.
+    state.clear_slot(&mut provider_lock).await;
 
     Ok(())
 }
@@ -3239,7 +3381,7 @@ pub async fn provider_list_files(
 }
 
 async fn provider_list_files_inner(
-    app: &AppHandle,
+    events: &impl SessionEvents,
     state: &ProviderState,
     path: Option<String>,
 ) -> Result<ProviderListResponse, String> {
@@ -3247,7 +3389,7 @@ async fn provider_list_files_inner(
 
     let provider = provider_lock
         .as_mut()
-        .ok_or("Not connected to any provider")?;
+        .ok_or_else(|| state.not_connected())?;
 
     let list_path = path.as_deref().unwrap_or(".");
 
@@ -3259,21 +3401,24 @@ async fn provider_list_files_inner(
     let files = match provider.list_for_display(list_path).await {
         Ok(files) => files,
         Err(e) if e.is_connection_lost() => {
-            emit_session_event(app, SessionEventKind::Lost, e.to_string());
-            try_silent_reconnect(app, provider)
-                .await
-                .map_err(|err| format!("Failed to reconnect: {}", err))?;
-            let files = provider
+            emit_session_event(events, SessionEventKind::Lost, e.to_string());
+            try_silent_reconnect(events, state, &mut provider_lock).await?;
+            let files = provider_lock
+                .as_mut()
+                .ok_or_else(|| state.not_connected())?
                 .list_for_display(list_path)
                 .await
                 .map_err(|err| format!("Failed to list files after reconnect: {}", err))?;
-            emit_session_event(app, SessionEventKind::Reconnected, "");
+            emit_session_event(events, SessionEventKind::Reconnected, "");
             files
         }
         Err(e) => return Err(format!("Failed to list files: {}", e)),
     };
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| state.not_connected())?;
 
-    let current_path = provider.pwd().await.unwrap_or_else(|_| "/".to_string());
+    let current_path = entered_folder(provider.pwd().await, list_path)?;
 
     Ok(ProviderListResponse {
         files,
@@ -3305,8 +3450,26 @@ pub async fn provider_change_dir(
     .await
 }
 
+/// The folder a change of directory entered, as the session reports it.
+/// When the server does not report it, an absolute request names that
+/// folder; a relative one (`docs`, `..`) does not, and the folder the
+/// caller would show and sync from is unknown, so the change fails rather
+/// than report the request as the folder.
+fn entered_folder(
+    reported: Result<String, ProviderError>,
+    requested: &str,
+) -> Result<String, String> {
+    match reported {
+        Ok(folder) => Ok(folder),
+        Err(_) if requested.starts_with('/') => Ok(requested.to_string()),
+        Err(e) => Err(format!(
+            "Changed directory, but the server did not report the folder entered: {e}"
+        )),
+    }
+}
+
 async fn provider_change_dir_inner(
-    app: &AppHandle,
+    events: &impl SessionEvents,
     state: &ProviderState,
     path: String,
     expected_generation: Option<u64>,
@@ -3316,13 +3479,13 @@ async fn provider_change_dir_inner(
 
     let provider = provider_lock
         .as_mut()
-        .ok_or("Not connected to any provider")?;
+        .ok_or_else(|| state.not_connected())?;
 
     // Run the cd op, and on a transport-level disconnect retry it
     // exactly once after a silent reconnect. `try_silent_reconnect`
     // restores the pre-disconnect cwd, so a `cd("..")` request is
     // resolved relative to where the user actually was (not the
-    // post-reconnect home dir).
+    // post-reconnect home dir), or closes the connection when it cannot.
     let nav_result = if path == ".." {
         provider.cd_up().await
     } else {
@@ -3337,10 +3500,11 @@ async fn provider_change_dir_inner(
                 format!("Failed to change directory: {}", e)
             });
         }
-        emit_session_event(app, SessionEventKind::Lost, e.to_string());
-        try_silent_reconnect(app, provider)
-            .await
-            .map_err(|err| format!("Failed to reconnect: {}", err))?;
+        emit_session_event(events, SessionEventKind::Lost, e.to_string());
+        try_silent_reconnect(events, state, &mut provider_lock).await?;
+        let provider = provider_lock
+            .as_mut()
+            .ok_or_else(|| state.not_connected())?;
         let retry = if path == ".." {
             provider.cd_up().await
         } else {
@@ -3353,15 +3517,18 @@ async fn provider_change_dir_inner(
                 format!("Failed to change directory after reconnect: {}", err)
             }
         })?;
-        emit_session_event(app, SessionEventKind::Reconnected, "");
+        emit_session_event(events, SessionEventKind::Reconnected, "");
     }
+    let provider = provider_lock
+        .as_mut()
+        .ok_or_else(|| state.not_connected())?;
 
     let files = provider
         .list_for_display(".")
         .await
         .map_err(|e| format!("Failed to list files: {}", e))?;
 
-    let current_path = provider.pwd().await.unwrap_or_else(|_| path.clone());
+    let current_path = entered_folder(provider.pwd().await, &path)?;
 
     Ok(ProviderListResponse {
         files,
@@ -10744,6 +10911,7 @@ pub async fn opendrive_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10793,6 +10961,7 @@ pub async fn opendrive_set_path_access(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -10851,6 +11020,7 @@ pub async fn fourshared_set_path_privacy(
 
     let wire_path =
         crate::crypt_overlay_provider::physical_write_path(&mut **provider, &path, is_dir)
+            .await
             .map_err(|e| e.to_string())?;
 
     let fourshared = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
@@ -15156,6 +15326,507 @@ mod tests {
 
     use super::*;
 
+    /// A change of directory reports the folder the server says it entered.
+    /// When the server does not answer, only an absolute request names the
+    /// folder; a relative one fails instead of being shown as the folder.
+    #[test]
+    fn a_change_of_directory_reports_only_a_folder_it_knows() {
+        let silent = || Err(ProviderError::ServerError("PWD refused".into()));
+        assert_eq!(
+            entered_folder(Ok("/home/u/docs".into()), "docs"),
+            Ok("/home/u/docs".to_string())
+        );
+        assert_eq!(
+            entered_folder(silent(), "/home/u/docs"),
+            Ok("/home/u/docs".to_string())
+        );
+        for relative in ["docs", ".."] {
+            let refused = entered_folder(silent(), relative).unwrap_err();
+            assert!(refused.contains("did not report"), "{refused}");
+        }
+    }
+
+    /// What a [`Wanderer`] was asked, shared with the test after the
+    /// provider is boxed into the slot.
+    #[derive(Default)]
+    struct WandererLog {
+        dials: AtomicUsize,
+        disconnects: AtomicUsize,
+        /// Every request that reached the provider, in order.
+        requests: std::sync::Mutex<Vec<String>>,
+        /// The transport is gone: requests fail as a lost connection.
+        dead: AtomicBool,
+    }
+
+    impl WandererLog {
+        fn requests(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+        fn note(&self, request: String) {
+            self.requests.lock().unwrap().push(request);
+        }
+    }
+
+    /// A recording provider whose silent reconnect opens in another folder
+    /// (`/home/u`) and, when `gone` names the folder it was in, cannot enter
+    /// that one again.
+    struct Wanderer {
+        kind: ProviderType,
+        log: Arc<WandererLog>,
+        cwd: String,
+        /// The folder a `cd` cannot enter.
+        gone: Option<String>,
+        /// Whether `pwd` answers.
+        reports_folder: bool,
+        /// The first download waits here: (it started, let it finish).
+        hold: Option<Arc<(Notify, Notify)>>,
+        /// The first `cd` to an absolute folder (a reconnect's restore)
+        /// signals here, then never returns.
+        restore_waits: Option<Arc<Notify>>,
+    }
+
+    impl Wanderer {
+        fn in_folder(kind: ProviderType, folder: &str) -> (Self, Arc<WandererLog>) {
+            let log = Arc::new(WandererLog::default());
+            (
+                Wanderer {
+                    kind,
+                    log: log.clone(),
+                    cwd: folder.to_string(),
+                    gone: Some(folder.to_string()),
+                    reports_folder: true,
+                    hold: None,
+                    restore_waits: None,
+                },
+                log,
+            )
+        }
+        fn lost(&self) -> Result<(), ProviderError> {
+            if self.log.dead.load(Ordering::SeqCst) {
+                Err(ProviderError::ConnectionLost("session closed".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for Wanderer {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            self.kind
+        }
+        fn display_name(&self) -> String {
+            "wanderer".to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            self.log.dials.fetch_add(1, Ordering::SeqCst);
+            self.log.dead.store(false, Ordering::SeqCst);
+            self.cwd = "/home/u".to_string();
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.log.disconnects.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            !self.log.dead.load(Ordering::SeqCst)
+        }
+        async fn list(&mut self, path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            self.log.note(format!("list {path} in {}", self.cwd));
+            self.lost()?;
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            if self.reports_folder {
+                Ok(self.cwd.clone())
+            } else {
+                Err(ProviderError::NotSupported("pwd".to_string()))
+            }
+        }
+        async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
+            self.log.note(format!("cd {path} in {}", self.cwd));
+            self.lost()?;
+            if path.starts_with('/') {
+                if let Some(started) = self.restore_waits.take() {
+                    started.notify_one();
+                    std::future::pending::<()>().await;
+                }
+            }
+            if self.gone.as_deref() == Some(path) {
+                return Err(ProviderError::NotFound(path.to_string()));
+            }
+            self.cwd = if path.starts_with('/') {
+                path.to_string()
+            } else {
+                format!("{}/{path}", self.cwd)
+            };
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            self.log.note(format!("cd_up in {}", self.cwd));
+            self.lost()
+        }
+        async fn download(
+            &mut self,
+            remote_path: &str,
+            local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            self.log.note(format!("download {remote_path}"));
+            if let Some(hold) = self.hold.take() {
+                hold.0.notify_one();
+                hold.1.notified().await;
+            }
+            std::fs::write(local_path, b"ok").map_err(ProviderError::IoError)
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Ok(b"ok".to_vec())
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn stat(&mut self, _path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotSupported("stat".to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(2)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok("wanderer".to_string())
+        }
+    }
+
+    /// The `provider-session` events a command emitted, by wire name.
+    #[derive(Default)]
+    struct RecordedEvents(std::sync::Mutex<Vec<String>>);
+
+    impl SessionEvents for RecordedEvents {
+        fn session_event(&self, event: SessionEvent) {
+            let kind = serde_json::to_value(event.kind).unwrap();
+            self.0
+                .lock()
+                .unwrap()
+                .push(kind.as_str().unwrap().to_string());
+        }
+    }
+
+    impl RecordedEvents {
+        fn kinds(&self) -> Vec<String> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    /// Every request a tab can send after the connection was closed, relative
+    /// and absolute, through the listing and the change of folder.
+    async fn every_request_is_refused(state: &ProviderState, events: &RecordedEvents) {
+        for request in ["docs", ".", "..", "/work/docs", "/home/u"] {
+            let listed = provider_list_files_inner(events, state, Some(request.to_string()))
+                .await
+                .map(|_| ())
+                .unwrap_err();
+            assert_eq!(listed, FOLDER_LOST_REFUSAL, "list {request}");
+            let entered = provider_change_dir_inner(events, state, request.to_string(), None)
+                .await
+                .map(|_| ())
+                .unwrap_err();
+            assert_eq!(entered, FOLDER_LOST_REFUSAL, "cd {request}");
+        }
+    }
+
+    /// Finding 5 of round 11: a silent reconnect that cannot open the
+    /// session's folder again (it is gone, or the old session never reported
+    /// it) must not keep the new session, which stands in another folder: a
+    /// relative request from any caller would land there. The connection is
+    /// closed, the slot left empty and the tab told; nothing redials, and
+    /// every request, relative or absolute, is told to reconnect. SFTP and SCP
+    /// go through the same path; only SFTP reports its transport.
+    #[tokio::test]
+    async fn a_reconnect_that_cannot_reopen_the_folder_closes_the_connection() {
+        for kind in [ProviderType::Sftp, ProviderType::Scp] {
+            for folder_known in [true, false] {
+                let case = format!("{kind:?}, folder reported: {folder_known}");
+                let state = ProviderState::new();
+                let (mut wanderer, log) = Wanderer::in_folder(kind, "/work");
+                wanderer.reports_folder = folder_known;
+                *state.provider.lock().await = Some(Box::new(wanderer));
+                *state.connected_profile_id.lock().unwrap() = Some("p1".to_string());
+                let opened_on = state.connection_generation.load(Ordering::SeqCst);
+                log.dead.store(true, Ordering::SeqCst);
+
+                let events = RecordedEvents::default();
+                let refused = provider_list_files_inner(&events, &state, Some("docs".to_string()))
+                    .await
+                    .map(|_| ())
+                    .unwrap_err();
+                assert_eq!(refused, FOLDER_LOST_REFUSAL, "{case}");
+                assert!(!refused.contains("/work"), "{case}: {refused}");
+                assert!(
+                    state.provider.lock().await.is_none(),
+                    "{case}: the session was kept"
+                );
+                assert!(
+                    state.connected_profile_id.lock().unwrap().is_none(),
+                    "{case}"
+                );
+                assert!(
+                    state.connection_generation.load(Ordering::SeqCst) > opened_on,
+                    "{case}: the old generation stays live"
+                );
+                assert!(state.folder_lost(), "{case}");
+                assert_eq!(log.dials.load(Ordering::SeqCst), 1, "{case}");
+                assert_eq!(log.disconnects.load(Ordering::SeqCst), 1, "{case}");
+                let mut expected = vec!["lost", "reconnecting"];
+                if kind == ProviderType::Sftp {
+                    expected.push("ssh-transport");
+                }
+                expected.push("closed");
+                assert_eq!(events.kinds(), expected, "{case}");
+                // The new session was asked at most for the old folder.
+                let reached = log.requests();
+                assert!(
+                    !reached.iter().any(|r| r.contains("docs in /home/u")),
+                    "{case}: {reached:?}"
+                );
+
+                every_request_is_refused(&state, &events).await;
+                assert_eq!(
+                    log.dials.load(Ordering::SeqCst),
+                    1,
+                    "{case}: a request redialled"
+                );
+                assert_eq!(
+                    log.requests(),
+                    reached,
+                    "{case}: a request reached the provider"
+                );
+            }
+        }
+    }
+
+    /// Finding 5 again: a request cancelled while its silent reconnect
+    /// restores the folder drops the reconnect between the redial, which
+    /// stands in another folder, and the restore. The connection is closed
+    /// as a failed restore closes it, so a later relative request is refused
+    /// and never reaches the provider at the wrong folder.
+    #[tokio::test]
+    async fn a_reconnect_cancelled_during_its_restore_closes_the_connection() {
+        let state = ProviderState::new();
+        let (mut wanderer, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        wanderer.gone = None;
+        let restoring = Arc::new(Notify::new());
+        wanderer.restore_waits = Some(restoring.clone());
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        *state.connected_profile_id.lock().unwrap() = Some("p1".to_string());
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        log.dead.store(true, Ordering::SeqCst);
+
+        let events = RecordedEvents::default();
+        let listing = provider_list_files_inner(&events, &state, Some("docs".to_string()));
+        tokio::select! {
+            _ = listing => panic!("the restore was meant to wait"),
+            _ = restoring.notified() => {}
+        }
+        // The listing is dropped here, in the middle of its restore; the tab
+        // is told the connection closed.
+        let expected = vec!["lost", "reconnecting", "ssh-transport", "closed"];
+        assert_eq!(events.kinds(), expected);
+
+        assert!(
+            state.provider.lock().await.is_none(),
+            "the session in the other folder was kept"
+        );
+        assert!(state.connected_profile_id.lock().unwrap().is_none());
+        assert!(state.connection_generation.load(Ordering::SeqCst) > opened_on);
+        assert!(state.folder_lost());
+        let reached = log.requests();
+        assert_eq!(
+            reached.last().map(String::as_str),
+            Some("cd /work in /home/u")
+        );
+
+        every_request_is_refused(&state, &events).await;
+        assert_eq!(log.dials.load(Ordering::SeqCst), 1, "a request redialled");
+        assert_eq!(log.requests(), reached, "a request reached the provider");
+    }
+
+    /// The way out is a connect, which installs a new generation and clears
+    /// the mark; a generation after the closed one is not affected by it, and
+    /// a provider that reached the slot without a connect never redials the
+    /// closed one.
+    #[tokio::test]
+    async fn a_connect_clears_a_closed_folder_and_a_newer_generation_is_not_affected() {
+        let state = ProviderState::new();
+        let (wanderer, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        log.dead.store(true, Ordering::SeqCst);
+        let events = RecordedEvents::default();
+        let _ = provider_list_files_inner(&events, &state, Some("docs".to_string())).await;
+        assert!(state.folder_lost());
+
+        // Put in the slot without a connect: the closed generation stays.
+        let (stray, stray_log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        stray_log.dead.store(true, Ordering::SeqCst);
+        *state.provider.lock().await = Some(Box::new(stray));
+        let refused = provider_change_dir_inner(&events, &state, "docs".to_string(), None)
+            .await
+            .map(|_| ())
+            .unwrap_err();
+        assert_eq!(refused, FOLDER_LOST_REFUSAL);
+        assert_eq!(
+            stray_log.dials.load(Ordering::SeqCst),
+            0,
+            "a closed generation redialled"
+        );
+
+        let (fresh, fresh_log) = Wanderer::in_folder(ProviderType::Sftp, "/home/u");
+        install_connected_provider(&state, Box::new(fresh), Some("p1".to_string()))
+            .await
+            .unwrap();
+        assert!(!state.folder_lost(), "a connect left the mark");
+        provider_list_files_inner(&events, &state, Some("docs".to_string()))
+            .await
+            .expect("the new connection lists");
+        assert_eq!(
+            fresh_log.requests(),
+            vec!["list docs in /home/u".to_string()]
+        );
+
+        // A drop on the new generation whose folder opens again replays.
+        if let Some(p) = state.provider.lock().await.as_mut() {
+            p.as_any_mut().downcast_mut::<Wanderer>().unwrap().gone = None;
+        }
+        fresh_log.dead.store(true, Ordering::SeqCst);
+        let events = RecordedEvents::default();
+        provider_list_files_inner(&events, &state, Some("docs".to_string()))
+            .await
+            .expect("a reconnect back in its folder replays");
+        assert_eq!(
+            events.kinds().last().map(String::as_str),
+            Some("reconnected")
+        );
+        assert!(state.provider.lock().await.is_some());
+        assert_eq!(fresh_log.dials.load(Ordering::SeqCst), 1);
+
+        // The mark names one generation: any later one is not lost.
+        state.mark_folder_lost();
+        state.invalidate_overlay_key_cache();
+        assert!(!state.folder_lost());
+    }
+
+    /// A batch in flight when the reconnect closes the connection (the slot
+    /// is emptied under its lock, without the transfer-owner gate or the
+    /// drain) fails its next files through the transfer executor, writes
+    /// nothing after the close and never waits on it.
+    #[tokio::test]
+    async fn a_batch_in_flight_when_the_folder_is_lost_fails_its_next_files() {
+        let state = Arc::new(ProviderState::new());
+        let (mut wanderer, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        let hold = Arc::new((Notify::new(), Notify::new()));
+        wanderer.hold = Some(hold.clone());
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        let dir = tempfile::tempdir().expect("scratch dir");
+        let entries: Vec<TransferEntry> = (0..3)
+            .map(|i| TransferEntry {
+                id: String::new(),
+                display_name: format!("f{i}.bin"),
+                remote_path: format!("/work/f{i}.bin"),
+                local_path: dir
+                    .path()
+                    .join(format!("f{i}.bin"))
+                    .to_string_lossy()
+                    .to_string(),
+                size: 2,
+                modified: None,
+            })
+            .collect();
+        let batch = tokio::spawn(super::run_provider_file_batch(
+            state.provider.clone(),
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(|_event: crate::TransferEvent| {}),
+            Arc::new(AtomicBool::new(false)),
+            CancellationToken::new(),
+            TransferDirection::Download,
+            super::ProviderFileBatchParams {
+                no_clobber: false,
+                entries,
+                max_concurrent: Some(1),
+                retry_count: Some(0),
+                timeout_seconds: Some(30),
+                download_segments: None,
+                sftp_download_preset: None,
+                commit_message: None,
+                batch_id: None,
+            },
+        ));
+        tokio::time::timeout(Duration::from_secs(10), hold.0.notified())
+            .await
+            .expect("the first file started");
+        // The first file holds the slot; the listing that finds the session
+        // dead queues behind it.
+        log.dead.store(true, Ordering::SeqCst);
+        let listing = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                let events = RecordedEvents::default();
+                provider_list_files_inner(&events, &state, Some("docs".to_string()))
+                    .await
+                    .map(|_| ())
+            })
+        };
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        hold.1.notify_one();
+        let (listed, batch) = tokio::time::timeout(Duration::from_secs(10), async {
+            (listing.await.unwrap(), batch.await.unwrap())
+        })
+        .await
+        .expect("the close waited on the batch, or the batch on the close");
+        assert_eq!(listed.unwrap_err(), FOLDER_LOST_REFUSAL);
+        let batch = batch.expect("the batch runs");
+        assert_eq!((batch.completed, batch.failed), (1, 2), "{batch:?}");
+        assert_eq!(batch.succeeded, vec![0]);
+        let downloads: Vec<String> = log
+            .requests()
+            .into_iter()
+            .filter(|r| r.starts_with("download"))
+            .collect();
+        assert_eq!(downloads, vec!["download /work/f0.bin".to_string()]);
+        assert!(!dir.path().join("f1.bin").exists());
+        assert!(!dir.path().join("f2.bin").exists());
+        assert!(state.provider.lock().await.is_none());
+    }
+
     /// The editor's remote read is bound to the connection it was opened on:
     /// refused once another connection took the slot, and while it holds the
     /// connection a swap waits for it instead of changing what it reads.
@@ -15441,6 +16112,8 @@ mod tests {
             (SessionEventKind::ScpMode, "scp-mode"),
             (SessionEventKind::SshTransport, "ssh-transport"),
             (SessionEventKind::Reconnected, "reconnected"),
+            (SessionEventKind::ReconnectFailed, "reconnect-failed"),
+            (SessionEventKind::Closed, "closed"),
         ] {
             assert_eq!(serde_json::to_value(kind).unwrap(), wire);
         }

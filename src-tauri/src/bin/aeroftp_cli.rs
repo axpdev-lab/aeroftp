@@ -6862,23 +6862,26 @@ fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn load_update_cache() -> CliUpdateCache {
-    let Ok(path) = cli_update_cache_path() else {
-        return CliUpdateCache::default();
+fn load_update_cache_at(path: &Path) -> Result<CliUpdateCache, String> {
+    // No exists() here either: it reports false on metadata errors, which
+    // would pick the default and let a later save overwrite an unread file.
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CliUpdateCache::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Cannot read update cache '{}': {}",
+                path.display(),
+                e
+            ));
+        }
     };
-    if !path.exists() {
-        return CliUpdateCache::default();
-    }
-
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return CliUpdateCache::default();
-    };
-
-    toml::from_str(&raw).unwrap_or_default()
+    toml::from_str(&raw).map_err(|e| format!("Invalid update cache '{}': {}", path.display(), e))
 }
 
-fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
-    let path = cli_update_cache_path()?;
+fn save_update_cache_at(cache: &CliUpdateCache, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -6891,9 +6894,9 @@ fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
 
     let content = toml::to_string_pretty(cache)
         .map_err(|e| format!("Cannot serialize update cache: {}", e))?;
-    std::fs::write(&path, content)
+    std::fs::write(path, content)
         .map_err(|e| format!("Cannot write update cache '{}': {}", path.display(), e))?;
-    Ok(path)
+    Ok(())
 }
 
 fn parse_json_fields(cli: &Cli) -> Option<std::collections::HashSet<String>> {
@@ -7008,33 +7011,69 @@ async fn fetch_latest_release_version() -> Result<String, String> {
         .ok_or_else(|| format!("Invalid release tag '{}'", release.tag_name))
 }
 
+/// Record the outcome of an update check on `path` and return the version
+/// to announce, if any. A cache that failed to load (`loaded` is `Err`) is
+/// never written back: the check still runs on defaults in memory, the
+/// file keeps its bytes.
+fn record_update_check_at(
+    path: &Path,
+    loaded: Result<CliUpdateCache, String>,
+    now: chrono::DateTime<chrono::Utc>,
+    fetched: Result<String, String>,
+) -> Option<String> {
+    let (mut cache, cache_readable) = match loaded {
+        Ok(cache) => (cache, true),
+        Err(_) => (CliUpdateCache::default(), false),
+    };
+    if !update_check_due(&cache, now) {
+        return None;
+    }
+
+    cache.checked_at = Some(now.to_rfc3339());
+    match fetched {
+        Ok(latest_version) => {
+            cache.latest_version = Some(latest_version.clone());
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")).then_some(latest_version)
+        }
+        Err(_) => {
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            None
+        }
+    }
+}
+
 async fn maybe_check_for_updates(cli: &Cli) {
     if cli.quiet {
         return;
     }
 
+    let Ok(path) = cli_update_cache_path() else {
+        return;
+    };
     let now = chrono::Utc::now();
-    let mut cache = load_update_cache();
-    if !update_check_due(&cache, now) {
+    // A cache file that exists but cannot be read is never rewritten: the
+    // check still runs on defaults, the file keeps its bytes.
+    let loaded = load_update_cache_at(&path);
+    let due = match &loaded {
+        Ok(cache) => update_check_due(cache, now),
+        Err(_) => update_check_due(&CliUpdateCache::default(), now),
+    };
+    if !due {
         return;
     }
 
-    cache.checked_at = Some(now.to_rfc3339());
-    match fetch_latest_release_version().await {
-        Ok(latest_version) => {
-            cache.latest_version = Some(latest_version.clone());
-            let _ = save_update_cache(&cache);
-            if is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")) {
-                eprintln!(
-                    "Update available: v{} -> v{} (download the latest release from GitHub)",
-                    env!("CARGO_PKG_VERSION"),
-                    latest_version
-                );
-            }
-        }
-        Err(_) => {
-            let _ = save_update_cache(&cache);
-        }
+    let fetched = fetch_latest_release_version().await;
+    if let Some(latest_version) = record_update_check_at(&path, loaded, now, fetched) {
+        eprintln!(
+            "Update available: v{} -> v{} (download the latest release from GitHub)",
+            env!("CARGO_PKG_VERSION"),
+            latest_version
+        );
     }
 }
 
@@ -13711,14 +13750,35 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 /// from `AEROFTP_TOTP_CODE` when present. If the vault has 2FA, no code was
 /// supplied, and we are on an interactive terminal, prompt for the code once
 /// and retry instead of failing outright. The code is zeroized after use.
-fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
+/// Whether opening the vault may ask the user for a secret. A lookup the
+/// command can do without (the protocol `pair add` stores) opens it only with
+/// what it was given: a cached vault, auto mode, `--master-password` or
+/// `AEROFTP_MASTER_PASSWORD`, `AEROFTP_TOTP_CODE`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Asking {
+    Allowed,
+    Never,
+}
+
+impl Asking {
+    /// Whether a prompt may be shown now: allowed, and a terminal to read it.
+    fn at_terminal(self) -> bool {
+        self.may_prompt(std::io::stdin().is_terminal())
+    }
+
+    fn may_prompt(self, terminal: bool) -> bool {
+        self == Asking::Allowed && terminal
+    }
+}
+
+fn unlock_with_master_and_totp(password: &str, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_with_master(password, env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13735,14 +13795,14 @@ fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
     }
 }
 
-fn unlock_auto_keyring_with_totp() -> Result<(), String> {
+fn unlock_auto_keyring_with_totp(asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_auto_keyring_with_totp(env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13776,9 +13836,24 @@ fn vault_once<T>(
 }
 
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Allowed)
+}
+
+/// [`open_vault`] for a lookup the command can do without: it never asks for
+/// the master password or a second factor.
+fn open_vault_without_asking(
+    cli: &Cli,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Never)
+}
+
+fn open_vault_asking(
+    cli: &Cli,
+    asking: Asking,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
-    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli))?;
+    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli, asking))?;
 
     // MU-3: run partition migration eagerly so `cli.user` can be resolved
     // by the per-command unlock helper. Resolve+unlock is intentionally
@@ -13789,8 +13864,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
 }
 
 /// Opens the vault: `init` (auto mode unlocks by itself), else the master
-/// password and the second factor when the vault asks for them.
-fn unlock_vault(cli: &Cli) -> Result<(), String> {
+/// password and the second factor when the vault asks for them, prompting
+/// for either only when `asking` allows it.
+fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
     // Try to init vault (auto mode unlocks automatically)
@@ -13807,16 +13883,16 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
                 let mut mp_copy = mp.clone();
                 // 2FA code comes from AEROFTP_TOTP_CODE, or an interactive
                 // prompt on a TTY when the vault requires it but none was set.
-                let result = unlock_with_master_and_totp(&mp_copy);
+                let result = unlock_with_master_and_totp(&mp_copy, asking);
                 mp_copy.zeroize();
                 result?;
-            } else if std::io::stdin().is_terminal() {
+            } else if asking.at_terminal() {
                 // Interactive: prompt for master password (hidden input)
                 eprint!("Master password: ");
                 let _ = io::stderr().flush();
                 let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                let result = unlock_with_master_and_totp(mp.trim());
+                let result = unlock_with_master_and_totp(mp.trim(), asking);
                 mp.zeroize();
                 result?;
             } else {
@@ -13827,7 +13903,7 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
             }
         }
         Ok(status) if status == "2FA_REQUIRED" => {
-            unlock_auto_keyring_with_totp()?;
+            unlock_auto_keyring_with_totp(asking)?;
         }
         Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
@@ -13837,8 +13913,39 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
 
 #[cfg(test)]
 mod vault_once_tests {
-    use super::vault_once;
+    use super::{vault_once, Asking};
     use std::cell::Cell;
+
+    /// A lookup the command can do without opens the vault only with what it
+    /// was given: no prompt at a terminal, for the master password or the
+    /// second factor. Every prompt of the unlock goes through `Asking`, and
+    /// the protocol lookup of `pair add` opens the vault that way.
+    #[test]
+    fn a_lookup_the_command_can_do_without_never_asks() {
+        assert!(!Asking::Never.may_prompt(true));
+        assert!(Asking::Allowed.may_prompt(true));
+        assert!(!Asking::Allowed.may_prompt(false));
+        let source = include_str!("aeroftp_cli.rs");
+        let between = |from: &str, to: &str| {
+            let start = source.find(from).unwrap();
+            &source[start..start + source[start..].find(to).unwrap()]
+        };
+        let unlock = between(
+            concat!("fn unlock_with_", "master_and_totp("),
+            concat!("mod vault_", "once_tests"),
+        );
+        assert_eq!(unlock.matches(concat!("is_terminal", "()")).count(), 0);
+        assert_eq!(
+            unlock.matches(concat!("asking.", "at_terminal()")).count(),
+            3
+        );
+        let add = between(
+            concat!("PairCommands::", "Add {"),
+            concat!("PairCommands::", "Remove {"),
+        );
+        assert!(add.contains(concat!("open_vault_without_asking", "(cli)")));
+        assert!(!add.contains(concat!("open_vault", "(cli)")));
+    }
 
     /// The key is derived once per command: a vault this process already
     /// opened is used as it is, and only a closed one is unlocked.
@@ -15503,18 +15610,7 @@ fn aerocloud_protocol_for_profile(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     config: &ftp_client_gui_lib::cloud_config::CloudConfig,
 ) -> Option<String> {
-    if config.server_profile_id.is_none() && config.server_profile.is_empty() {
-        return None;
-    }
-    let profiles =
-        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store).ok()?;
-    ftp_client_gui_lib::crypt_overlay_provider::select_aerocloud_profile(
-        &profiles,
-        config.server_profile_id.as_deref(),
-        &config.server_profile,
-    )
-    .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-    .map(str::to_string)
+    ftp_client_gui_lib::cloud_provider_factory::saved_profile_protocol(store, config)
 }
 
 /// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
@@ -15736,10 +15832,20 @@ fn aerocloud_print_sync_result(
 /// Toggle `enabled` on the persisted AeroCloud config (`aerocloud enable|disable`).
 fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::cloud_config;
-    let mut config = cloud_config::load_cloud_config();
+    let read_as = match cloud_config::load_cloud_config_strict() {
+        Ok(config) => config,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
+    let mut config = read_as.clone();
     config.enabled = enabled;
-    match cloud_config::save_cloud_config(&config) {
-        Ok(()) => {
+    // Merged with the file as it is at the write, as the settings view saves:
+    // what the app saved since this read stays. A write refused because
+    // another AeroFTP process is saving exits with 11, nothing written.
+    match cloud_config::save_settings_edit(config, &read_as) {
+        Ok(_) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({ "status": "ok", "enabled": enabled }));
             } else {
@@ -15761,8 +15867,15 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     use ftp_client_gui_lib::{cloud_config, cloud_service};
 
     // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
-    // fast WITHOUT forcing an unnecessary vault unlock prompt.
-    let mut config = cloud_config::load_cloud_config();
+    // fast WITHOUT forcing an unnecessary vault unlock prompt. A file that
+    // cannot be read is a configuration error (exit 11), never "not enabled".
+    let mut config = match cloud_config::load_cloud_config_strict() {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
     if !config.enabled {
         print_error(
             format,
@@ -15831,7 +15944,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
 
     match command {
         AeroCloudCommands::Show => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             // A config written before this release, or by a GUI that does not
             // write the field, still carries the default. Deriving it here too
             // means the displayed value cannot be stale even when the stored
@@ -15841,7 +15960,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             0
         }
         AeroCloudCommands::Status => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_status(&config, format);
             0
@@ -15885,7 +16010,15 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 }
             }
 
-            let mut config = cloud_config::load_cloud_config();
+            let read_as = match cloud_config::load_cloud_config_strict() {
+                Ok(config) => config,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
+            let mut config = read_as.clone();
+            let saved_folder = config.remote_folder.clone();
             let mut changed = false;
             if let Some(local) = local {
                 config.local_folder = std::path::PathBuf::from(local);
@@ -15985,9 +16118,19 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 return 5;
             }
 
-            match cloud_config::save_cloud_config(&config) {
-                Ok(()) => {
-                    aerocloud_print_show(&config, format);
+            if let Err(e) = cloud_config::refuse_an_unusable_remote_folder(
+                &config.remote_folder,
+                Some(&saved_folder),
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            // Merged with the file as it is at the write, as the settings
+            // view saves; a write refused because another AeroFTP process is
+            // saving exits with 11, nothing written.
+            match cloud_config::save_settings_edit(config, &read_as) {
+                Ok(saved) => {
+                    aerocloud_print_show(&saved, format);
                     0
                 }
                 Err(e) => {
@@ -16008,7 +16151,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
 
     match command {
         PairCommands::List => {
-            let cfg = cloud_pairs::load_cloud_pairs_config();
+            let cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if matches!(format, OutputFormat::Json) {
                 let pairs: Vec<_> = cfg
                     .pairs
@@ -16080,7 +16229,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 None => CompareDirection::Bidirectional,
             };
 
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
+            let pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if cloud_pairs::pair_exists(&local_path, remote, &pairs_cfg.pairs) {
                 print_error(
                     format,
@@ -16124,61 +16279,126 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 new_pair.compress_level = *level;
             }
 
-            // FIX-1 (partial): pair add is intentionally vault-less (profile name is just a
-            // string label at this point). Protocol resolution for non-FTP happens in the
-            // worker (see lib.rs batch builder using mcp_list_active_server_profiles) and
-            // in explicit `pair sync` (which does open the vault). This keeps `add` usable
-            // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
-            // until first resolution; the worker always corrects it before dispatch.
+            // The pair is saved with the protocol its profile speaks when the vault
+            // opens. Without it (a locked vault in a script) the default 'ftp' is
+            // stored, and every reader corrects it through
+            // `cloud_provider_factory::apply_saved_profile_protocol_to_pair`: the
+            // connect, the worker, `pair sync` and the placement check alike.
+            // So the lookup never asks for a secret.
+            if let Ok(store) = open_vault_without_asking(cli) {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store,
+                    &mut new_pair,
+                );
+            }
 
-            pairs_cfg.pairs.push(new_pair);
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
-                print_error(format, &e, 11);
-                return 11;
+            if let Err(e) = ftp_client_gui_lib::cloud_config::refuse_an_unusable_remote_folder(
+                &new_pair.remote_path,
+                None,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            // Added to the list as it is at the write, under the pairs write
+            // lock: a folder a sync placed since the read above is kept.
+            let added = new_pair.clone();
+            let pushed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                // The same pair added meanwhile is not added twice.
+                if cloud_pairs::pair_exists(&added.local_path, remote, &stored.pairs) {
+                    return Ok(false);
+                }
+                stored.pairs.push(new_pair);
+                Ok(true)
+            });
+            match pushed {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+                Ok(false) => {
+                    print_error(
+                        format,
+                        &format!("pair already exists for local={} remote={}", local, remote),
+                        5,
+                    );
+                    return 5;
+                }
+                Ok(true) => {}
             }
             if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"status": "ok", "added": pairs_cfg.pairs.last()}));
+                print_json(&serde_json::json!({"status": "ok", "added": added}));
             } else {
                 println!("Added AeroCloud pair.");
             }
             0
         }
         PairCommands::Remove { id } => {
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
-            let before = cfg.pairs.len();
-            cfg.pairs.retain(|p| p.id != *id);
-            if cfg.pairs.len() == before {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                return 5;
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let removed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                let before = stored.pairs.len();
+                stored.pairs.retain(|p| p.id != *id);
+                Ok(stored.pairs.len() != before)
+            });
+            match removed {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    11
+                }
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
+                Ok(true) => {
+                    println!("Removed pair {id}");
+                    0
+                }
             }
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
-                print_error(format, &e, 11);
-                return 11;
-            }
-            println!("Removed pair {id}");
-            0
         }
         PairCommands::Enable { id } | PairCommands::Disable { id } => {
             let enable = matches!(command, PairCommands::Enable { .. });
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
-            if let Some(p) = cfg.pairs.iter_mut().find(|p| p.id == *id) {
-                p.enabled = enable;
-                if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let found = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                Ok(match stored.pairs.iter_mut().find(|p| p.id == *id) {
+                    Some(p) => {
+                        p.enabled = enable;
+                        true
+                    }
+                    None => false,
+                })
+            });
+            match found {
+                Err(e) => {
                     print_error(format, &e, 11);
-                    return 11;
+                    11
                 }
-                println!(
-                    "Pair {} {}",
-                    id,
-                    if enable { "enabled" } else { "disabled" }
-                );
-                0
-            } else {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                5
+                Ok(true) => {
+                    println!(
+                        "Pair {} {}",
+                        id,
+                        if enable { "enabled" } else { "disabled" }
+                    );
+                    0
+                }
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
             }
         }
         PairCommands::Sync { id, dry_run } => {
+            // The pairs file first, read as the other pair commands read it:
+            // one that cannot be read is a configuration error (exit 11),
+            // never an empty list, and it fails before the vault is asked for.
+            let mut pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
+
             // Vault open once for all pairs in this invocation (crypt wrap).
             let store = match open_vault(cli) {
                 Ok(s) => s,
@@ -16188,24 +16408,11 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 }
             };
 
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
-
             // Resolve protocol_type for each (same logic as single aerocloud sync).
-            if let Ok(profiles) =
-                ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
-            {
-                for p in &mut pairs_cfg.pairs {
-                    if let Some(proto) = profiles
-                        .iter()
-                        .find(|pr| {
-                            pr.get("name").and_then(|v| v.as_str())
-                                == Some(p.server_profile.as_str())
-                        })
-                        .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                    {
-                        p.protocol_type = proto.to_string();
-                    }
-                }
+            for p in &mut pairs_cfg.pairs {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store, p,
+                );
             }
 
             let targets: Vec<_> = if let Some(only_id) = id {
@@ -90217,6 +90424,122 @@ mod tests {
         };
 
         assert!(update_check_due(&cache, now));
+    }
+
+    /// An `update-check.toml` that exists but does not parse is an error on
+    /// the load path, so the update check runs on defaults and never
+    /// rewrites the file it could not read.
+    #[test]
+    fn an_unparseable_update_cache_is_an_error_not_a_default() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::remove_file(&path).unwrap();
+        assert!(load_update_cache_at(&path).unwrap().checked_at.is_none());
+    }
+
+    /// A metadata error on the cache (unreadable parent directory) is an
+    /// error, not a missing file: `exists()` would report false here.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The save half of the guard: `record_update_check_at` on a cache that
+    /// failed to load must leave the file byte-identical whether the fetch
+    /// succeeded or failed, and still announce the newer version.
+    #[test]
+    fn an_unreadable_update_cache_is_never_rewritten_by_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let now = chrono::Utc::now();
+
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let announced = record_update_check_at(
+            &path,
+            load_update_cache_at(&path),
+            now,
+            Err("network down".into()),
+        );
+        assert_eq!(announced, None);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guarantee when the unreadability is a metadata error: the file
+    /// is write-only (chmod 200), so the load fails but a naive save would
+    /// still succeed and overwrite it.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_file_is_never_rewritten_by_the_check() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The positive case: an absent or readable cache is written back with
+    /// the fetched `latest_version`.
+    #[test]
+    fn a_readable_update_cache_records_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        let saved = load_update_cache_at(&path).unwrap();
+        assert_eq!(saved.latest_version.as_deref(), Some("99.0.0"));
+        assert!(saved.checked_at.is_some());
     }
 
     // ── pget effective-segment-count tests ─────────────────────────

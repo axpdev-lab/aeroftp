@@ -50,7 +50,7 @@ import type { OverlayActivationOwnership, ProviderCryptOverlayApply, ProviderCry
 import { bannerAnchorFolder, bannerOverlayParams } from './utils/rcloneCryptBanner';
 import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
-import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
+import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
 interface DownloadFolderParams {
@@ -549,7 +549,7 @@ import { useLocalPanel } from './hooks/useLocalPanel';
 import { useTerminalCwd } from './hooks/useTerminalCwd';
 import { useUnifiedPanelController } from './hooks/useUnifiedPanelController';
 import { isFilenDesktopBridge, withFilenBridgeCredentialDefaults } from './utils/filenDesktopBridge';
-import { connectionNumberOf, connectionTargetKey, isSameConnection, resolveLiveConnectionParams, savedProfileIdOf } from './utils/liveConnection';
+import { AEROCLOUD_OPEN_SUPERSEDED, connectionNumberOf, connectionTargetKey, isAeroCloudConnection, isSameConnection, liveSavedServerId, mayReuseForAeroCloud, openAeroCloudFolder, resolveLiveConnectionParams, savedProfileIdOf, selectAeroCloudProfile } from './utils/liveConnection';
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
@@ -884,6 +884,8 @@ const App: React.FC = () => {
   // bumps quotaVersionRef, the debounced one after an upload included, so that
   // ref cannot tell whether a finished used-storage scan still describes the
   // connection it measured: this one decides persistence and the cancel label.
+  // The AeroCloud tab's open reads it too: a park (every takeover of the live
+  // tab) moves it on, so an open still awaiting stops (`handleCloudTabClick`).
   const quotaConnectionRef = useRef(0);
   const scanInFlightRef = useRef(false); // Synchronous re-entry latch for scanUsedStorage
   const [remoteSearchQuery, setRemoteSearchQuery] = useState('');
@@ -1898,15 +1900,23 @@ const App: React.FC = () => {
   }, [t]);
   const isImageFile = (name: string) => /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico)$/i.test(name);
 
+  // Whether the connection on screen is the one AeroCloud syncs with (the
+  // saved profile, by id): the remote badges and the share link are its.
+  const onAeroCloudConnection = () =>
+    isAeroCloudConnection(liveSavedServerId(sessions, activeSessionId, liveConnectionParams), cloudProfileId);
+
   // Sync Badge Helper - returns badge element if file is in cloud folder
   const getSyncBadge = (fileModified: string | undefined, isLocal: boolean) => {
-    // Only show badges if cloud is active and we have cloud folder paths
+    // Only show badges if cloud is active and we have cloud folder paths. A
+    // remote badge only on the AeroCloud connection: another server can list
+    // the same path, and its files are not the ones AeroCloud synced.
     if (!isCloudActive || !cloudLastSync || !cloudLocalFolder || !cloudRemoteFolder) return null;
+    if (!isLocal && !onAeroCloudConnection()) return null;
 
     // Check if current path is within cloud folder (local or remote)
     const currentPath = isLocal ? currentLocalPath : currentRemotePath;
     const cloudFolder = isLocal ? cloudLocalFolder : cloudRemoteFolder;
-    const isInCloudFolder = currentPath.startsWith(cloudFolder) || currentPath === cloudFolder;
+    const isInCloudFolder = isWithinSyncFolder(currentPath, cloudFolder);
 
     if (!isInCloudFolder) return null;
 
@@ -2464,9 +2474,11 @@ const App: React.FC = () => {
     isCloudPaused,
     cloudServerName,
     cloudLastSync,
-    cloudLocalFolder, setCloudLocalFolder,
-    cloudRemoteFolder, setCloudRemoteFolder,
+    cloudLocalFolder,
+    cloudRemoteFolder,
+    cloudProfileId,
     cloudPublicUrlBase,
+    adoptOpenedCloudFolder,
   } = useCloudSync({
     activityLog, humanLog, t, checkForUpdate, isAppLocked,
     onSyncComplete: () => {
@@ -6118,8 +6130,9 @@ const App: React.FC = () => {
 
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
-  // was recovered automatically. Backend emits four phases: lost,
-  // reconnecting, reconnected, reconnect-failed.
+  // was recovered automatically. Backend emits five phases: lost,
+  // reconnecting, reconnected, reconnect-failed, and closed when the
+  // reconnect could not open the session's folder again.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
     let cancelled = false;
@@ -6134,10 +6147,14 @@ const App: React.FC = () => {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.success(t('reconnect.toastTitle'), t('reconnect.reconnected'));
-          } else if (kind === 'reconnect-failed') {
+          } else if (kind === 'reconnect-failed' || kind === 'closed') {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
+            // 'closed': the reconnect could not open the folder again, so the
+            // backend closed the connection and holds no provider; the tab is
+            // disconnected, as after an FTP keep-alive whose reconnect fails.
+            if (kind === 'closed') setIsConnected(false);
           }
           // Properties and Copy URL follow the transport: a full connect
           // and a silent reconnect can each land on SCP or SFTP.
@@ -6174,6 +6191,17 @@ const App: React.FC = () => {
       display_current_path: response.display_current_path,
       boundScope: sessions.find((s) => s.id === activeSessionId)?.cryptOverlay?.remoteScope,
     });
+  };
+
+  // A listing of a folder the panel moved to (a navigation, the AeroCloud
+  // open): the listing, and nothing left of the folder before it. A search
+  // shown over the previous folder is dropped, so the rows and their actions
+  // are the new folder's; the query stays in the box and filters the new
+  // listing, as it does after any navigation. A refresh of the folder shown
+  // (`loadRemoteFiles`) applies the listing alone and keeps the search.
+  const applyRemoteNavigation = (response: FileListResponse & { display_current_path?: string }) => {
+    applyRemoteFileList(response);
+    setRemoteSearchResults(null);
   };
 
   // The session's overlay binding WITHOUT the scope gate: "this tab owns an
@@ -6471,7 +6499,7 @@ const App: React.FC = () => {
         || (binding?.kind === 'aerocrypt' && profile?.hasStoredAeroCryptKeyfilePath);
       if (!binding?.enabled || !hasUnlockFactor) return null;
       const profileInitialPath = resolveUsernameTemplate(profile.initialPath, profile.username);
-      // On SFTP and SCP a relative Remote Path opens under the login folder,
+      // On SFTP, SCP, FTP and FTPS a relative Remote Path opens under the login folder,
       // as the scope below reads it.
       const configuredLanding = loginRelativeForm(landingPath === undefined
         ? profileInitialPath
@@ -9780,6 +9808,21 @@ const App: React.FC = () => {
     // on its listing has no usable session to fall back to either.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'connect';
+    // The open belongs to its phase: another connect, a tab switch or a newer
+    // AeroCloud open takes the next one, and from then on this open connects,
+    // lists and shows nothing. A takeover outside a connect phase (the "+" new
+    // tab, a portable device open, the OAuth or 4shared handshake of My
+    // Servers) takes no phase, but it parks the live tab, which moves the
+    // connection counter on (`quotaConnectionRef`, as a connect, a disconnect
+    // and a switch do): the open owns the panel only while both are its own.
+    // Every await below whose result is used is followed by this check (the
+    // folder open's owner reads it too).
+    const connectionAtEntry = quotaConnectionRef.current;
+    const ownsPhase = () => phaseVersion === remoteConnectPhaseVersionRef.current
+      && connectionAtEntry === quotaConnectionRef.current;
+    // The connection this open made when none was on screen (scenario 2):
+    // a failure after it leaves no row or folder of it actionable.
+    let connectedHere = false;
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -9787,8 +9830,10 @@ const App: React.FC = () => {
         local_folder: string;
         remote_folder: string;
         server_profile: string;
+        server_profile_id?: string | null;
         protocol_type?: string;
       }>('get_cloud_config');
+      if (!ownsPhase()) return;
 
       logger.debug('Cloud config:', cloudConfig);
 
@@ -9799,13 +9844,17 @@ const App: React.FC = () => {
 
       // Get saved servers from vault (with localStorage fallback)
       const savedServers = await loadSavedServerProfiles();
+      if (!ownsPhase()) return;
       if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
         return;
       }
 
-      const cloudServer = savedServers.find((s: { name: string }) => s.name === cloudConfig.server_profile);
+      // The profile the config is pinned to, by id; by name only for a config
+      // saved without one, as the backend selects it. A name two profiles
+      // share would otherwise open whichever is listed first.
+      const cloudServer = selectAeroCloudProfile(savedServers, cloudConfig.server_profile_id, cloudConfig.server_profile);
 
       if (!cloudServer) {
         notify.error(t('toast.serverNotFound'), t('toast.serverProfileNotFound', { name: cloudConfig.server_profile }));
@@ -9841,13 +9890,20 @@ const App: React.FC = () => {
           if (storedFilenKey) cloudFilenApiKey = storedFilenKey;
         } catch { /* no stored Filen API key for this profile */ }
       }
+      if (!ownsPhase()) return;
 
       // Helper: connect to cloud server using the correct protocol. It ends
       // the current connection itself, after the host-key check: a refused
       // key leaves that connection live for the callers to restore.
+      // Set once the open starts ending the connection it found: from then on
+      // that session is gone whatever the connect does, and a failure leaves
+      // its tab cached, never marked connected again.
+      let previousSessionEnded = false;
       const connectToCloudServer = async (): Promise<void> => {
         const endCurrentConnection = async () => {
+          previousSessionEnded = true;
           try { await invoke('provider_disconnect'); } catch { }
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           try { await invoke('disconnect_ftp'); } catch { }
         };
         if (isProvider) {
@@ -9892,8 +9948,10 @@ const App: React.FC = () => {
           if (isSshProtocol(protocol)) {
             const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
             if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
+            if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           }
           await endCurrentConnection();
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('provider_connect', providerParams);
         } else {
           // FTP/FTPS: use connect_ftp
@@ -9904,33 +9962,96 @@ const App: React.FC = () => {
             protocol,
           };
           await endCurrentConnection();
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('connect_ftp', ftpParams);
         }
       };
 
       // Helper: navigate to remote folder using correct API. Both arms are a
       // foreground listing on a freshly connected server, so both raise the
-      // spinner and name the folder they are waiting on.
-      const navigateToRemoteFolder = async (folder: string): Promise<void> => {
+      // spinner and name the folder they are waiting on. Returns the folder
+      // as the session reports it. The listing is applied whole, as a
+      // navigation applies it (`applyRemoteNavigation`): the folder, its
+      // displayed form and the breadcrumb are the ones the server returned,
+      // so a kept session with an unlocked overlay shows the folder entered,
+      // the one uploads go to, not the one the user was in.
+      // The listing generation the last folder entry below took: the owner
+      // adopts that one, never whatever generation is current when it resumes.
+      let listedGeneration = remoteNavCounter.current;
+      // Whether a folder entry below listed and was applied: the panel then
+      // shows the folder the session is in.
+      let remoteEntered = false;
+      // The listing generation the last folder entry below took, listed or
+      // not: a failed entry sends the session back only while no listing
+      // started after it.
+      let triedGeneration = remoteNavCounter.current;
+      const navigateToRemoteFolder = async (folder: string): Promise<string> => {
         if (isProvider) {
-          const response = await withRemoteListSpinner(
-            () => invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null }),
+          // A folder is entered, not only listed: a provider listing of a path
+          // reports the folder the session stands in, which on a kept session
+          // is wherever the user was. '' lists where the connect opened.
+          const listing = withRemoteListSpinner(
+            () => folder
+              ? invoke<FileListResponse & { display_current_path?: string }>('provider_change_dir', { path: folder })
+              : invoke<FileListResponse & { display_current_path?: string }>('provider_list_files', { path: null }),
             listingReason(folder),
           );
-          const files = response.files.map((f: any) => ({
-            name: f.name, path: f.path || f.name, size: f.size, is_dir: f.is_dir,
-            modified: f.modified, permissions: f.permissions || null,
-          }));
-          setRemoteFiles(files);
-          setCurrentRemotePath(response.current_path);
+          // withRemoteListSpinner takes its generation before its first await.
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
+          return response.current_path;
         } else {
-          const response = await withRemoteListSpinner(
+          const listing = withRemoteListSpinner(
             () => invoke<FileListResponse>('change_directory', { path: folder }),
             listingReason(folder),
           );
-          setRemoteFiles(response.files);
-          setCurrentRemotePath(response.current_path);
+          const generation = remoteNavCounter.current;
+          triedGeneration = generation;
+          const response = await listing;
+          if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          applyRemoteNavigation(response);
+          listedGeneration = generation;
+          remoteEntered = true;
+          return response.current_path;
         }
+      };
+
+      // The AeroCloud remote folder, listed, as the session names it
+      // (`openAeroCloudFolder`): the saved form never matched the listing
+      // paths, so the lock read every folder as above the root.
+      // `connectOpenedIt`: this open's own connect took the saved folder as its
+      // starting folder (a provider connect); a kept session did not.
+      const openCloudRemoteFolder = (connectOpenedIt: boolean, owner: AeroCloudOpenOwner): Promise<string> =>
+        openAeroCloudFolder(
+          cloudConfig.remote_folder,
+          connectOpenedIt,
+          placeStartFolder,
+          folder => navigateToRemoteFolder(folder).then(listed => { owner.listed(listedGeneration); return listed; }),
+          owner.owns,
+        );
+      // The open owns the panel while the remote listing generation
+      // (`remoteNavCounter`) is its own. Every takeover moves it on as its
+      // first step (`releaseRemoteNavigation`: a connect phase, a tab
+      // switch), and so does any newer listing, which `withRemoteListSpinner`
+      // already treats as superseding. The open's own listing moves it too:
+      // that listing returned only while it was still the latest, so the
+      // owner adopts the generation that listing took, never the one current
+      // when the owner resumes, which a takeover may have moved. It adopts it only for its
+      // own phase (`ownsPhase`): an owner made after a switch or another
+      // connect took the phase never owns, so it cannot take that
+      // operation's generation for its own.
+      type AeroCloudOpenOwner = { owns: () => boolean; listed: (generation: number) => void };
+      const ownSessionFromNow = (): AeroCloudOpenOwner => {
+        let owned = remoteNavCounter.current;
+        return {
+          owns: () => ownsPhase() && owned === remoteNavCounter.current,
+          listed: (generation: number) => { owned = generation; },
+        };
       };
 
       // Connection params to set (for protocol detection in other parts of the app)
@@ -9961,6 +10082,10 @@ const App: React.FC = () => {
         const isSameServer = isSameConnection(
           normalizeProviderConnectionParams(liveConnectionParams),
           normalizeProviderConnectionParams(connParams),
+        ) && mayReuseForAeroCloud(
+          liveSavedServerId(sessions, activeSessionId, liveConnectionParams),
+          cloudServer.id,
+          cloudConfig.remote_folder,
         );
 
         logger.debug(`Current: ${liveConnectionParams.server} (${liveConnectionParams.protocol}), Cloud: ${cloudServerString} (${protocol}), Same: ${isSameServer}`);
@@ -9993,17 +10118,38 @@ const App: React.FC = () => {
           try {
             setLoading(true);
             await connectToCloudServer();
+            if (!ownsPhase()) return;
+            // The rows on screen are the previous server's (kept in its cached
+            // tab): none may stay actionable on this connection while the
+            // AeroCloud folder lists, nor after a listing that fails. The
+            // workspace waits for that listing, as every connect that parks
+            // the session it replaces does (parkActiveSession).
+            setRemoteFiles([]);
+            setSelectedRemoteFiles(new Set());
+            setRemoteSearchResults(null);
+            setRemoteSearchQuery('');
+            setIsConnected(false);
             setConnectionParams(connParams);
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
+            // A connect that lost its phase restores nothing: the session on
+            // screen now belongs to the operation that took it.
+            if (!ownsPhase()) return;
             // W3.1: a user cancel skips the error toast but still restores the
             // previous session (runConnect already toasted the cancellation).
             if (!isConnectCancelledError(connError)) {
               logger.error('Failed to connect to cloud server:', connError);
               notify.error(t('toast.connectionFailedTitle'), String(connError));
             }
-            // Restore previous session
-            if (capturedSessionId) {
+            if (previousSessionEnded) {
+              // The session was ended before the connect failed: its tab
+              // stays cached, as it was parked above, and the workspace is
+              // disconnected until the user opens a connection again.
+              setIsConnected(false);
+              setRemoteFiles([]);
+              setShowConnectionScreen(true);
+            } else if (capturedSessionId) {
+              // Nothing was ended: the previous session is still live.
               setActiveSessionId(capturedSessionId);
               setSessions(prev => prev.map(s =>
                 s.id === capturedSessionId ? { ...s, status: 'connected' } : s
@@ -10012,7 +10158,9 @@ const App: React.FC = () => {
             setLoading(false);
             return;
           } finally {
-            setLoading(false);
+            // The spinner belongs to the operation that owns the phase: an
+            // open another one took leaves it to that one.
+            if (ownsPhase()) setLoading(false);
           }
         } else {
           // Same backend kept. The AeroCloud tab has no session of its own, so
@@ -10026,27 +10174,66 @@ const App: React.FC = () => {
         setShowRemotePanel(true);
         setShowLocalPreview(false);
         setShowConnectionScreen(false);
-        // Lock navigation to cloud folders (prevent navigating above remote_folder)
+        // Lock navigation to cloud folders (prevent navigating above remote_folder).
+        // What the panel had before is kept: a folder change that fails puts it back.
+        const navigationBefore = { on: isSyncNavigation, base: syncBasePaths };
         setIsSyncNavigation(true);
         setSyncBasePaths({ remote: cloudConfig.remote_folder, local: cloudConfig.local_folder });
 
         // Navigate to cloud folders
         try {
-          await navigateToRemoteFolder(cloudConfig.remote_folder);
+          const owner = ownSessionFromNow();
+          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
+          if (!owner.owns()) return;
+          setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+          if (!owner.owns()) return;
+          if (!isSameServer) setIsConnected(true);
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
-          setCloudRemoteFolder(cloudConfig.remote_folder);
-          setCloudLocalFolder(cloudConfig.local_folder);
+          adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
           if (isSameServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
           // A cancelled listing already tore the session down: no error toast,
           // and no cloud sync to trigger on a connection that no longer exists.
-          if (isListingCancelled(navError)) return;
+          // Nor after another operation took the phase.
+          if (!ownsPhase() || isListingCancelled(navError)) return;
           logger.error('Cloud navigation error:', navError);
           notify.error('AeroCloud', t('toast.navigationFailed', { error: String(navError) }));
+          if (remoteEntered) {
+            // The remote folder was entered and is shown; only the local
+            // side failed. The base the panel had before belongs to another
+            // folder: Navigation Sync stays off rather than lock on it.
+            setIsSyncNavigation(false);
+            setSyncBasePaths(null);
+          } else {
+            // The folder was not listed: the panel shows the folder it showed
+            // before, so the provisional lock above goes and the Navigation
+            // Sync it had comes back, and no sync is started.
+            setIsSyncNavigation(navigationBefore.on);
+            setSyncBasePaths(navigationBefore.base);
+          }
+          // On a connection this open made, nothing was listed: the workspace
+          // stays disconnected, and the user opens a connection again.
+          if (!isSameServer) {
+            setShowConnectionScreen(true);
+          } else if (!remoteEntered && currentRemotePath && triedGeneration === remoteNavCounter.current) {
+            // A listing can fail after the server entered the folder: the
+            // session goes back to the folder the panel shows, so a relative
+            // command such as Up starts where the panel says. A way back that
+            // fails too leaves the session to the provider's lost-folder state
+            // (FTP closes it and refuses a relative target until a folder is
+            // entered by its full path). A listing started after this one
+            // decides where the session goes: no way back then.
+            try {
+              await invoke(isProvider ? 'provider_change_dir' : 'change_directory', { path: currentRemotePath });
+            } catch (backError) {
+              logger.error('Cloud navigation: returning to the folder shown failed:', backError);
+            }
+          }
+          return;
         }
 
         // Trigger sync
@@ -10061,9 +10248,18 @@ const App: React.FC = () => {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      // connectToCloudServer ends any stale connection first.
+      // connectToCloudServer ends any stale connection first. No row is
+      // shown for it until the AeroCloud folder lists.
+      setRemoteFiles([]);
+      setSelectedRemoteFiles(new Set());
+      setRemoteSearchResults(null);
+      setRemoteSearchQuery('');
       await connectToCloudServer();
-      setIsConnected(true);
+      if (!ownsPhase()) return;
+      connectedHere = true;
+      // The workspace is connected once the AeroCloud folder has listed, as
+      // a replacing open does: until then no remote action, upload or drop
+      // runs, so none takes the folder the panel showed before.
       setShowRemotePanel(true);
       setShowLocalPreview(false);
       setConnectionParams(connParams);
@@ -10072,12 +10268,14 @@ const App: React.FC = () => {
       setSyncBasePaths(null);
 
       // Navigate to cloud folders
-      await navigateToRemoteFolder(cloudConfig.remote_folder);
+      const owner = ownSessionFromNow();
+      const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+      if (!owner.owns()) return;
+      setIsConnected(true);
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
-      setCloudRemoteFolder(cloudConfig.remote_folder);
-      setCloudLocalFolder(cloudConfig.local_folder);
+      adoptOpenedCloudFolder({ remoteFolder: listedCloudFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
 
       humanLog.logSuccess('CONNECT', { server: `AeroCloud (${cloudConfig.server_profile})`, protocol: protocolLabel }, logId);
       notify.success(t('toast.connected'), t('toast.connectedTo', { server: `AeroCloud (${cloudConfig.server_profile})` }));
@@ -10093,6 +10291,16 @@ const App: React.FC = () => {
       }
 
     } catch (error) {
+      // An open that lost its phase reports nothing over the operation that
+      // took it: no cloud panel, no failure toast.
+      if (!ownsPhase()) return;
+      // The connection this open made listed nothing: no row and no folder
+      // of it is actionable, the workspace is disconnected.
+      if (connectedHere) {
+        setIsConnected(false);
+        setRemoteFiles([]);
+        setShowConnectionScreen(true);
+      }
       // W3.1: user-cancelled AeroCloud connect. Reopen the cloud panel so the
       // user can retry, but skip the error toast (runConnect already toasted).
       if (isConnectCancelledError(error)) {
@@ -10107,7 +10315,7 @@ const App: React.FC = () => {
       setShowCloudPanel(true);
     } finally {
       if (phaseVersion === remoteConnectPhaseVersionRef.current) remoteConnectPhaseRef.current = false;
-      setLoading(false);
+      if (ownsPhase()) setLoading(false);
     }
   };
   const changeRemoteDirectory = async (path: string, overrideProtocol?: string, plainPath?: boolean) => {
@@ -10210,13 +10418,17 @@ const App: React.FC = () => {
         response = await invoke('provider_change_dir', { path: providerNavPath, ...(reactivatedOverlayGeneration !== undefined ? { expectedGeneration: reactivatedOverlayGeneration } : {}) });
         if (reactivatedOverlayForNav && navId === remoteNavCounter.current) settleNavigationOverlayLog('success');
       } else {
-        // Use FTP API
-        response = await invoke('change_directory', { path });
+        // Use FTP API. The server resolves a relative path against its own
+        // folder, which after a reconnect inside a download is the login
+        // folder and not the one this tab shows: send the folder the tab
+        // means. A server reporting folders without a leading slash keeps
+        // the path as asked.
+        const legacyPath = currentRemotePath.startsWith('/') ? resolveTargetDisplayPath(currentRemotePath, path) : path;
+        response = await invoke('change_directory', { path: legacyPath });
       }
       // Discard response if a newer navigation was initiated while we awaited
       if (navId !== remoteNavCounter.current) return null;
-      applyRemoteFileList(response as FileListResponse & { display_current_path?: string });
-      setRemoteSearchResults(null);
+      applyRemoteNavigation(response as FileListResponse & { display_current_path?: string });
       humanLog.logNavigate(response.current_path, true);
 
       // Navigation Sync: mirror to local panel if enabled.
@@ -16008,14 +16220,14 @@ const App: React.FC = () => {
 
     // Add Share Link option if AeroCloud is active with public_url_base configured
     // and the file is within the AeroCloud remote folder
-    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && file.path.startsWith(cloudRemoteFolder)) {
+    if (isCloudActive && cloudPublicUrlBase && cloudRemoteFolder && onAeroCloudConnection() && isWithinSyncFolder(file.path, cloudRemoteFolder)) {
       items.push({
         label: t('contextMenu.copyShareLink'),
         icon: <Share2 size={14} />,
         disabled: cryptOverlayActive,
         action: async () => {
           try {
-            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path });
+            const shareUrl = await invoke<string>('generate_share_link_remote', { remotePath: file.path, remoteRoot: cloudRemoteFolder });
             await copyText(shareUrl);
             notify.success(t('contextMenu.shareLinkCopied'), shareUrl);
           } catch (err) {

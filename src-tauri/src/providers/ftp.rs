@@ -228,6 +228,22 @@ pub struct FtpProvider {
     /// `ensure_connected` puts a session that was dropped back in its
     /// directory; a pool worker that never dialled has none to go back to.
     has_dialled: bool,
+    /// A redial could not enter this session's folder again (it was removed
+    /// or renamed meanwhile): the session is closed and `current_path` still
+    /// names that folder. No transfer redials into it again; a `cd` to an
+    /// absolute folder or a `cd_up` opens a session in its own target, and a
+    /// new `connect` starts over. Set only by
+    /// [`Self::restore_working_directory`].
+    folder_lost: bool,
+    /// The folder a redial owes the caller: set before the redial's
+    /// `connect` overwrites `current_path` with the login folder, cleared once
+    /// the session stands in that folder again or is closed as
+    /// [`Self::folder_lost`]. A redial cancelled in between (a dropped
+    /// future during its `CWD` or `PWD`) leaves it set; the cancel also marks
+    /// the session [`Self::abandoned_command`], so the next command redials,
+    /// and that redial restores this folder, whatever `current_path` says,
+    /// instead of the login folder. An explicit `disconnect` forgets it.
+    owed_folder: Option<String>,
     /// The server answered `REST` with 502 or 504: it cannot restart a
     /// transfer at all. Learnt once and kept for the session, because
     /// suppaftp 12.2.1 sends `REST` only after PASV, so every further attempt
@@ -246,12 +262,64 @@ pub struct FtpProvider {
     /// command redials ([`Self::redial_if_a_reply_is_pending`]) and
     /// `disconnect` closes without QUIT; a new control connection clears it.
     abandoned_command: Arc<AtomicBool>,
+    /// The directory the server put the session in right after login, read
+    /// with `PWD` before `initial_path` moves it. FTP has no reliable `~`, so
+    /// this is the only certain login folder: a relative `initial_path` and a
+    /// `~/...` scope both anchor under it. `None` when that `PWD` failed (the
+    /// connect does not fail for it) or before the first connect.
+    login_folder: Option<String>,
 }
 
 /// The error for a server that did not accept the explicit TLS upgrade, the
 /// same in every mode that asks for it. The upgrade runs before `login`, so the
 /// connection stops before the user name and password are sent (CodeRabbit on
 /// #1524).
+/// A `PWD` reply as the session keeps it. A path that starts with `/` is a
+/// POSIX one and is kept as the server spells it: there a `\` is a
+/// character of a folder name, and read as a separator it named another
+/// folder (`/home/a\b` as `/home/a/b`). Any other reply is a Windows-style
+/// path, whose backslashes are separators.
+fn server_path(reply: String) -> String {
+    if reply.starts_with('/') {
+        reply
+    } else {
+        reply.replace('\\', "/")
+    }
+}
+
+/// Whether `path` names the same folder from whatever folder the session
+/// stands in: a POSIX absolute path, or a drive-qualified one (`C:/x`, as
+/// [`server_path`] writes a Windows reply). Only such a folder can be
+/// entered again with a `CWD`: a relative one (`home/u`, from a server whose
+/// `PWD` answers relative paths) is resolved from where the server stands
+/// now, and names another folder.
+fn names_one_folder(path: &str) -> bool {
+    let bytes = path.as_bytes();
+    path.starts_with('/')
+        || (bytes.len() >= 3
+            && bytes[0].is_ascii_alphabetic()
+            && bytes[1] == b':'
+            && matches!(bytes[2], b'/' | b'\\'))
+}
+
+/// The folder a `CWD` or `CDUP` entered: the server's `PWD`, read as
+/// [`server_path`] reads it. When the server does not answer, a request that
+/// names one folder ([`names_one_folder`]) names the folder entered; a
+/// relative one or a parent step (`None`) does not, and the change fails
+/// rather than record a folder the session may not be in.
+fn folder_entered(
+    reported: Result<String, impl std::fmt::Display>,
+    requested: Option<&str>,
+) -> Result<String, ProviderError> {
+    match (reported, requested) {
+        (Ok(reply), _) => Ok(server_path(reply)),
+        (Err(_), Some(path)) if names_one_folder(path) => Ok(path.to_string()),
+        (Err(e), _) => Err(ProviderError::ServerError(format!(
+            "changed directory, but the server did not report the folder entered: {e}"
+        ))),
+    }
+}
+
 fn tls_upgrade_refused(error: impl std::fmt::Display) -> ProviderError {
     ProviderError::ConnectionFailed(format!(
         "TLS upgrade failed: {error}. The server did not accept explicit TLS, so the \
@@ -281,14 +349,45 @@ impl FtpProvider {
             multi_thread_streams: 1,
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
             has_dialled: false,
+            folder_lost: false,
+            owed_folder: None,
             restart_unsupported: false,
             abandoned_command: Arc::default(),
+            login_folder: None,
         }
     }
 
     /// Get mutable reference to the FTP stream, returning error if not connected
     fn stream_mut(&mut self) -> Result<&mut FtpControl, ProviderError> {
         self.stream.as_mut().ok_or(ProviderError::NotConnected)
+    }
+
+    /// The `initial_path` as a `CWD` argument, `None` when the session already
+    /// stands there. `~` and `~/...` name folders under the login folder, the
+    /// only `~` FTP has: `CWD ~` is not portable (many servers have no such
+    /// folder), so the path is placed against the `PWD` read right after
+    /// login, the same rule `resolve_start_dir` applies for SFTP. Without that
+    /// `PWD` (refused, or a Windows `C:\Users\u` one no absolute path can
+    /// extend) the rest is sent relative: the session has not moved since the
+    /// login, so the server resolves it under the login folder, as it always
+    /// did for a relative start path. A relative path stays relative.
+    fn place_initial_path(&self, path: &str) -> Option<String> {
+        let Some(rest) = crate::util::path_location::login_relative_rest(path) else {
+            return Some(path.to_string());
+        };
+        let Some(home) = self.login_folder.as_deref() else {
+            return (!rest.is_empty()).then(|| rest.to_string());
+        };
+        let home = home.trim_end_matches('/');
+        Some(if rest.is_empty() {
+            if home.is_empty() {
+                "/".to_string()
+            } else {
+                home.to_string()
+            }
+        } else {
+            format!("{home}/{rest}")
+        })
     }
 
     /// Connection spec captured at `connect()` (`None` until connected, or
@@ -308,6 +407,13 @@ impl FtpProvider {
         if self.stream.is_some() {
             return Ok(());
         }
+        // A redial would try the folder that could not be entered again and
+        // fail the same way, once per transfer. Until a `cd` enters a folder
+        // (or a new `connect`), every transfer, absolute or relative, finds
+        // the session not connected.
+        if self.folder_lost {
+            return Err(ProviderError::NotConnected);
+        }
         let spec = self
             .connection_spec
             .clone()
@@ -318,7 +424,8 @@ impl FtpProvider {
         // file in another directory while `current_path` said otherwise. Put
         // it back where the session was, as `redial_if_a_reply_is_pending`
         // does.
-        let previous_path = self.has_dialled.then(|| self.current_path.clone());
+        let previous_path = self.has_dialled.then(|| self.folder_to_restore());
+        self.owed_folder = previous_path.clone();
         self.config = spec;
         self.connect().await?;
         match previous_path {
@@ -734,8 +841,9 @@ impl FtpProvider {
             path,
             err
         );
-        let previous_path = self.current_path.clone();
+        let previous_path = self.folder_to_restore();
         let _ = self.disconnect().await;
+        self.owed_folder = Some(previous_path.clone());
         self.connect().await?;
         self.restore_working_directory(&previous_path).await
     }
@@ -1632,15 +1740,24 @@ impl FtpProvider {
                 outcome = self.stream_mut()?.pwd().await;
             }
         }
-        let path = outcome
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
-            .replace('\\', "/");
+        let path = server_path(outcome.map_err(|e| ProviderError::ServerError(e.to_string()))?);
         self.current_path = path.clone();
         Ok(path)
     }
 
     /// The body of `cd`: change directory, then record the server's own path.
     async fn cd_command(&mut self, path: &str) -> Result<(), ProviderError> {
+        if self.folder_lost && self.stream.is_none() {
+            if !path.starts_with('/') {
+                // No folder in the text: a path may carry a password or a
+                // token.
+                return Err(ProviderError::InvalidPath(
+                    "the session's folder could not be entered again, so a relative folder names nothing; enter an absolute folder"
+                        .to_string(),
+                ));
+            }
+            return self.enter_from_a_lost_folder(path).await;
+        }
         self.redial_if_a_reply_is_pending().await?;
         let mut outcome = self.stream_mut()?.cwd(path).await;
         if let Err(err) = &outcome {
@@ -1652,17 +1769,37 @@ impl FtpProvider {
             }
         }
         outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-        self.current_path = self
-            .stream_mut()?
-            .pwd()
-            .await
-            .unwrap_or_else(|_| path.to_string())
-            .replace('\\', "/");
-        Ok(())
+        let reported = self.stream_mut()?.pwd().await;
+        match folder_entered(reported, Some(path)) {
+            Ok(folder) => {
+                // The caller's folder now: nothing a cancelled redial owed
+                // is restored over it.
+                self.owed_folder = None;
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(failure) => Err(self.return_to_the_recorded_folder(failure).await),
+        }
     }
 
     /// The body of `cd_up`: the parent directory, then record the server's own path.
     async fn cd_up_command(&mut self) -> Result<(), ProviderError> {
+        if self.folder_lost && self.stream.is_none() {
+            let lost = self.current_path.trim_end_matches('/');
+            // A relative folder (`docs`) does not say what its parent is:
+            // `/` is a guess, not the folder above it.
+            if !names_one_folder(lost) {
+                return Err(ProviderError::InvalidPath(
+                    "the session's folder is unknown: change to an absolute folder to go on"
+                        .to_string(),
+                ));
+            }
+            let parent = match lost.rfind('/') {
+                Some(0) | None => "/".to_string(),
+                Some(at) => lost[..at].to_string(),
+            };
+            return self.enter_from_a_lost_folder(&parent).await;
+        }
         self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
         stream
@@ -1670,13 +1807,93 @@ impl FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
-        self.current_path = stream
-            .pwd()
-            .await
-            .unwrap_or_else(|_| "/".to_string())
-            .replace('\\', "/");
+        let reported = stream.pwd().await;
+        match folder_entered(reported, None) {
+            Ok(folder) => {
+                self.owed_folder = None;
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(failure) => Err(self.return_to_the_recorded_folder(failure).await),
+        }
+    }
 
-        Ok(())
+    /// The way out of [`Self::folder_lost`]: a new session that enters
+    /// `target`, an absolute folder that does not depend on the one lost, and
+    /// records where the server says it landed. If it cannot, the session is
+    /// closed again and the lost folder stays recorded, so nothing runs in
+    /// the login folder that a relative path would then name.
+    async fn enter_from_a_lost_folder(&mut self, target: &str) -> Result<(), ProviderError> {
+        // The parent of a lost relative folder is relative too, and would be
+        // entered from the login folder.
+        if !names_one_folder(target) {
+            return Err(ProviderError::InvalidPath(
+                "the session's folder is unknown: change to an absolute folder to go on"
+                    .to_string(),
+            ));
+        }
+        let lost = self.current_path.clone();
+        let spec = self
+            .connection_spec
+            .clone()
+            .ok_or(ProviderError::NotConnected)?;
+        self.config = spec;
+        // Owed until the target is entered: cancelled after `connect`, the
+        // next command redials to the lost folder and is closed back into
+        // this state, instead of running in the login folder.
+        self.owed_folder = Some(lost.clone());
+        self.connect().await?;
+        let stream = self.stream_mut()?;
+        let entered = match stream.cwd(target).await {
+            Ok(()) => folder_entered(stream.pwd().await, Some(target)),
+            Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
+        };
+        self.owed_folder = None;
+        match entered {
+            Ok(folder) => {
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(err) => {
+                self.stream = None;
+                self.current_path = lost;
+                self.folder_lost = true;
+                Err(err)
+            }
+        }
+    }
+
+    /// A `CWD` or `CDUP` succeeded and the `PWD` after it did not: the server
+    /// stands in a folder nobody recorded, and a listing of `.` or a relative
+    /// name would run there. The session goes back to the recorded folder,
+    /// which is absolute, so the server and `current_path` name the same
+    /// folder again. If it cannot, no folder of this session is known, so the
+    /// session is dropped and marked [`Self::folder_lost`], as after a
+    /// restore that fails: the next operation finds it not connected, and a
+    /// `cd` to an absolute folder (or `cd_up`) opens a new one there.
+    async fn return_to_the_recorded_folder(&mut self, failure: ProviderError) -> ProviderError {
+        let recorded = self.current_path.clone();
+        // A recorded folder that does not name one folder from anywhere is
+        // not entered again: from where the server stands now it would name
+        // another folder, which the session would then take for its own.
+        let back = if !names_one_folder(&recorded) {
+            Err("it is a relative folder".to_string())
+        } else {
+            match self.stream_mut() {
+                Ok(stream) => stream.cwd(&recorded).await.map_err(|e| e.to_string()),
+                Err(e) => Err(e.to_string()),
+            }
+        };
+        match back {
+            Ok(()) => failure,
+            Err(e) => {
+                self.stream = None;
+                self.folder_lost = true;
+                ProviderError::ServerError(format!(
+                    "{failure}; returning to the recorded folder failed too ({e}): the session's folder is unknown, so it was closed"
+                ))
+            }
+        }
     }
 }
 
@@ -1806,6 +2023,21 @@ impl StorageProvider for FtpProvider {
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
 
+        // The login folder is the only `~` this protocol has: many servers do
+        // not expand `CWD ~`, so it is read here, before `initial_path` moves
+        // the session, and kept for `login_folder_hint`. A server that does
+        // not answer this PWD leaves the field empty; the connect goes on.
+        // Read as [`server_path`] reads every PWD. A login folder that is not
+        // absolute then (a Windows `C:\Users\u` PWD, read `C:/Users/u`) is
+        // not a folder the `~/...` placement can name: kept, it would read as
+        // relative and place `~/docs` under nothing.
+        self.login_folder = stream
+            .pwd()
+            .await
+            .ok()
+            .map(server_path)
+            .filter(|dir| dir.starts_with('/'));
+
         // Navigate to initial path if specified.
         //
         // Skip CWD on bare "/" so we don't override the server-provided
@@ -1819,10 +2051,12 @@ impl StorageProvider for FtpProvider {
         // non-"/" `initial_path` explicitly.
         if let Some(ref initial_path) = self.config.initial_path {
             if !initial_path.is_empty() && initial_path != "/" {
-                stream
-                    .cwd(initial_path)
-                    .await
-                    .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                if let Some(target) = self.place_initial_path(initial_path) {
+                    stream
+                        .cwd(&target)
+                        .await
+                        .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                }
             }
         }
 
@@ -1851,15 +2085,17 @@ impl StorageProvider for FtpProvider {
         };
 
         // Get current directory (normalize Windows backslashes from FTP servers)
-        self.current_path = stream
-            .pwd()
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?
-            .replace('\\', "/");
+        self.current_path = server_path(
+            stream
+                .pwd()
+                .await
+                .map_err(|e| ProviderError::ServerError(e.to_string()))?,
+        );
 
         self.stream = Some(stream);
         self.abandoned_command.store(false, Ordering::Relaxed);
         self.has_dialled = true;
+        self.folder_lost = false;
 
         // PD-FTP-1: capture the connection spec now so the shared transfer
         // engine can re-dial N independent FTP connections for intra-file
@@ -1898,6 +2134,7 @@ impl StorageProvider for FtpProvider {
     /// where the QUIT used to cost the user the whole budget after a Cancel.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+        self.owed_folder = None;
         let abandoned = self.abandoned_command.swap(false, Ordering::Relaxed);
         if let Some(mut stream) = self.stream.take() {
             if abandoned {
@@ -1930,6 +2167,10 @@ impl StorageProvider for FtpProvider {
         let outcome = self.pwd_command().await;
         guard.disarm();
         outcome
+    }
+
+    fn login_folder_hint(&self) -> Option<String> {
+        self.login_folder.clone()
     }
 
     async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -3953,7 +4194,8 @@ impl FtpProvider {
                 "FTP session held an unread reply at the start of a new command; redialing instead of misattributing it"
             );
         }
-        let previous_path = self.current_path.clone();
+        let previous_path = self.folder_to_restore();
+        self.owed_folder = Some(previous_path.clone());
         self.stream = None;
         let spec = self
             .connection_spec
@@ -3962,6 +4204,14 @@ impl FtpProvider {
         self.config = spec;
         self.connect().await?;
         self.restore_working_directory(&previous_path).await
+    }
+
+    /// The folder a redial returns to: the one a cancelled redial still
+    /// owes, else the recorded one.
+    fn folder_to_restore(&self) -> String {
+        self.owed_folder
+            .clone()
+            .unwrap_or_else(|| self.current_path.clone())
     }
 
     /// Whether the control connection is encrypted: a TLS mode was asked for
@@ -4262,35 +4512,59 @@ impl FtpProvider {
     ///
     /// A `CWD` that fails is reported rather than swallowed: the alternative is
     /// a session whose directory is not the one the caller believes, which is
-    /// the class this exists to close.
+    /// the class this exists to close. Reporting it is not enough on its own:
+    /// the fresh session would stay connected in the login directory, and the
+    /// next relative command (a second `upload("x")` finds it connected and
+    /// does not redial) would run there. So a restore that fails drops the
+    /// session, keeps `current_path` on the folder the caller left and marks
+    /// it [`Self::folder_lost`]: no command runs in another folder, and a
+    /// `cd` to an absolute folder (or `cd_up`) is the way out.
     ///
     /// It runs inside the recovery of any command, upload included, so a
     /// recovery dropped during its `CWD` or `PWD` marks the fresh session as
     /// [`Self::abandoned_command`] like a dropped listing.
     async fn restore_working_directory(&mut self, previous: &str) -> Result<(), ProviderError> {
         if previous == self.current_path {
+            self.owed_folder = None;
             return Ok(());
+        }
+        // A relative folder is resolved from the login folder the new
+        // session stands in, and names another folder than the one left:
+        // the session is closed as lost instead.
+        if !names_one_folder(previous) {
+            self.owed_folder = None;
+            self.stream = None;
+            self.current_path = previous.to_string();
+            self.folder_lost = true;
+            return Err(ProviderError::InvalidPath(
+                "reconnected, but the session's folder was reported as a relative path, which \
+                 cannot be entered again: change to an absolute folder to go on"
+                    .to_string(),
+            ));
         }
         let guard = AbandonGuard::arm(&self.abandoned_command);
         let Ok(stream) = self.stream_mut() else {
             guard.disarm();
             return Err(ProviderError::NotConnected);
         };
-        let changed = stream
-            .cwd(previous)
-            .await
-            .map_err(|e| ProviderError::InvalidPath(e.to_string()));
-        if let Err(err) = changed {
-            guard.disarm();
-            return Err(err);
-        }
-        self.current_path = stream
-            .pwd()
-            .await
-            .unwrap_or_else(|_| previous.to_string())
-            .replace('\\', "/");
+        let entered = match stream.cwd(previous).await {
+            Ok(()) => folder_entered(stream.pwd().await, Some(previous)),
+            Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
+        };
         guard.disarm();
-        Ok(())
+        self.owed_folder = None;
+        match entered {
+            Ok(folder) => {
+                self.current_path = folder;
+                Ok(())
+            }
+            Err(err) => {
+                self.stream = None;
+                self.current_path = previous.to_string();
+                self.folder_lost = true;
+                Err(err)
+            }
+        }
     }
 
     /// A refused data open, classified, with the session given up.
@@ -6047,6 +6321,165 @@ mod tests {
 
     use super::*;
 
+    /// A relative `CWD` the server honours, then a `PWD` it refuses: the
+    /// session goes back to the folder it recorded, so the server's folder
+    /// and the recorded one are the same, and a listing of `.` afterwards
+    /// lists the recorded folder. The same for a `CDUP`. When the way back
+    /// is refused too, no folder is known and the session is closed: the
+    /// next operation, a transfer included, finds it not connected, the
+    /// reconnect that follows replays only a request that names its own
+    /// folder, and a `cd` to an absolute folder opens a new session there.
+    #[tokio::test]
+    async fn a_change_the_server_did_not_report_returns_to_the_recorded_folder() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let server_log = log.clone();
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let server_log = server_log.clone();
+                tokio::spawn(async move {
+                    let (read, mut write) = stream.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    write.write_all(b"220 ready\r\n").await.unwrap();
+                    let mut cwd = "/home/u".to_string();
+                    let mut refuse_next_pwd = false;
+                    let mut refuse_the_way_back = false;
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let mut parts = line.splitn(2, ' ');
+                        let cmd = parts.next().unwrap_or("").to_uppercase();
+                        let arg = parts.next().unwrap_or("").to_string();
+                        server_log.lock().unwrap().push(line.clone());
+                        let reply = match cmd.as_str() {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "CWD"
+                                if arg.starts_with('/')
+                                    && std::mem::take(&mut refuse_the_way_back) =>
+                            {
+                                "550 folder not available\r\n".to_string()
+                            }
+                            "CWD" => {
+                                cwd = if arg.starts_with('/') {
+                                    arg
+                                } else {
+                                    refuse_next_pwd = true;
+                                    refuse_the_way_back = arg == "gone";
+                                    format!("{cwd}/{arg}")
+                                };
+                                "250 directory changed\r\n".to_string()
+                            }
+                            "CDUP" => {
+                                refuse_next_pwd = true;
+                                cwd = "/home".to_string();
+                                "250 directory changed\r\n".to_string()
+                            }
+                            "PWD" if std::mem::take(&mut refuse_next_pwd) => {
+                                "550 PWD not available\r\n".to_string()
+                            }
+                            "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        let mut provider = FtpProvider::new(FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address: false,
+        });
+        provider.connect().await.unwrap();
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u");
+
+        let refused = provider.cd("docs").await.unwrap_err();
+        assert!(refused.to_string().contains("did not report"), "{refused}");
+        assert!(
+            log.lock().unwrap().iter().any(|l| l == "CWD /home/u"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+        assert_eq!(provider.current_path, "/home/u", "the recorded folder");
+        assert_eq!(
+            provider.pwd().await.unwrap(),
+            "/home/u",
+            "the server's folder"
+        );
+
+        let refused = provider.cd_up().await.unwrap_err();
+        assert!(refused.to_string().contains("did not report"), "{refused}");
+        assert_eq!(provider.current_path, "/home/u", "the recorded folder");
+        assert_eq!(
+            provider.pwd().await.unwrap(),
+            "/home/u",
+            "the server's folder"
+        );
+
+        let lost = provider.cd("gone").await.unwrap_err();
+        assert!(lost.to_string().contains("folder is unknown"), "{lost}");
+        assert!(!provider.is_connected(), "the session was kept");
+        let commands = log.lock().unwrap().len();
+        assert!(
+            matches!(provider.list(".").await, Err(ProviderError::NotConnected)),
+            "a listing ran on the session"
+        );
+        assert!(
+            matches!(
+                provider.download_to_bytes("/home/u/a.txt").await,
+                Err(ProviderError::NotConnected)
+            ),
+            "a transfer dialled the folder that could not be entered"
+        );
+        // `try_silent_reconnect` reads the folder to return to with `pwd`,
+        // and closes a session that reports none.
+        let restored = provider.pwd().await.is_ok();
+        assert!(!restored, "a folder was reported for the closed session");
+        assert_eq!(
+            log.lock().unwrap().len(),
+            commands,
+            "a command reached the server after the session was closed"
+        );
+        provider.cd("/home").await.expect("the way out");
+        assert!(provider.is_connected());
+        assert_eq!(provider.current_path, "/home");
+    }
+
+    /// After a `CWD` or `CDUP` the session records the folder the server
+    /// reports; with no report, only an absolute request names it.
+    #[test]
+    fn a_folder_change_records_only_a_folder_it_knows() {
+        let silent = || Err::<String, _>("PWD refused");
+        assert_eq!(
+            folder_entered(Ok::<_, &str>("/home/a\\b".into()), Some("b")).unwrap(),
+            "/home/a\\b"
+        );
+        assert_eq!(
+            folder_entered(silent(), Some("/home/u/docs")).unwrap(),
+            "/home/u/docs"
+        );
+        assert!(folder_entered(silent(), Some("docs")).is_err());
+        assert!(folder_entered(silent(), None).is_err());
+    }
+
+    /// A POSIX PWD keeps its `\` as a name character; a Windows-style one
+    /// reads its backslashes as separators.
+    #[test]
+    fn a_pwd_reply_is_kept_as_the_server_spells_a_posix_path() {
+        assert_eq!(server_path("/home/a\\b".into()), "/home/a\\b");
+        assert_eq!(server_path("/".into()), "/");
+        assert_eq!(server_path("C:\\Users\\u".into()), "C:/Users/u");
+        assert_eq!(server_path("\\dir\\sub".into()), "/dir/sub");
+    }
+
     /// One refusal text for both modes that ask for explicit TLS (CodeRabbit
     /// on #1524): it names what the code guarantees and how to choose plain FTP.
     #[test]
@@ -7748,11 +8181,13 @@ mod late_reply_guard_tests {
             }
             if cmd == "PWD" {
                 pwd_seen += 1;
-                // The first PWD on the wire belongs to connect() itself; the
-                // second is the caller's first command. The goodbye leaves in
-                // its own write after THAT answer, when every check the
-                // failure paths own has already run.
-                if late_goodbye && pwd_seen == 2 {
+                // connect() itself issues two PWDs since the login folder is
+                // captured right after login: the first for that folder, the
+                // last for the current path. The caller's first command is
+                // therefore the third. The goodbye leaves in its own write
+                // after THAT answer, when every check the failure paths own
+                // has already run.
+                if late_goodbye && pwd_seen == 3 {
                     tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     if write
                         .write_all(b"421 Service not available, closing\r\n")
@@ -8007,7 +8442,7 @@ mod rename_contract_tests {
 
     use super::*;
     use std::sync::{Arc, Mutex};
-    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
     use tokio::net::{TcpListener, TcpStream};
 
     /// How a scripted server differs from the default one.
@@ -8032,6 +8467,18 @@ mod rename_contract_tests {
         rnto_refuses_taken: bool,
         /// `LIST -a` is refused; a bare LIST still answers.
         list_all_refused: bool,
+        /// The directory the session opens in after login, as a chrooted or
+        /// jailed account reports it; `/` by default.
+        login_dir: Option<&'static str>,
+        /// The first `PWD` after login fails, as on a server that does not
+        /// answer it; the connect must go on without a login-folder hint.
+        fail_login_pwd: bool,
+        /// Every command is appended to the shared log, for tests that check
+        /// what went on the wire.
+        log_commands: bool,
+        /// `PWD` answers the folder without its leading `/` (`home/u`), as a
+        /// server that reports relative paths does.
+        relative_pwd: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -8052,11 +8499,15 @@ mod rename_contract_tests {
         }
         let mut data: Option<TcpListener> = None;
         let mut rename_from = String::new();
-        let mut cwd = "/".to_string();
+        let mut cwd = quirks.login_dir.unwrap_or("/").to_string();
+        let mut pwd_calls = 0u32;
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
             let cmd = cmd.to_uppercase();
             let argument = argument.trim().to_string();
+            if quirks.log_commands {
+                log.lock().unwrap().push(format!("{cmd} {argument}"));
+            }
             let present =
                 |path: &str| {
                     files.lock().unwrap().iter().any(|f| {
@@ -8064,6 +8515,17 @@ mod rename_contract_tests {
                     })
                 };
             let reply = match cmd.as_str() {
+                "USER" if {
+                    // `!stall USER` in the files: this login is never
+                    // answered, once.
+                    let mut held = files.lock().unwrap();
+                    let before = held.len();
+                    held.retain(|f| f != "!stall USER");
+                    held.len() != before
+                } =>
+                {
+                    continue;
+                }
                 "USER" => "331 password please\r\n".to_string(),
                 "PASS" => "230 logged in\r\n".to_string(),
                 "FEAT" if quirks.listing_denied || quirks.list_only => {
@@ -8075,13 +8537,44 @@ mod rename_contract_tests {
                 "LIST" | "NLST" | "MLSD" | "MLST" if quirks.listing_denied => {
                     "550 Permission denied\r\n".to_string()
                 }
-                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "PWD" => {
+                    pwd_calls += 1;
+                    // `!refuse PWD in <folder>` in the files: a `PWD` asked
+                    // there is refused, once.
+                    let refuse = format!("!refuse PWD in {cwd}");
+                    let refused = {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != &refuse);
+                        held.len() != before
+                    };
+                    if refused || (quirks.fail_login_pwd && pwd_calls == 1) {
+                        "500 PWD refused\r\n".to_string()
+                    } else if quirks.relative_pwd {
+                        format!("257 \"{}\" is current\r\n", cwd.trim_start_matches('/'))
+                    } else {
+                        format!("257 \"{cwd}\" is current\r\n")
+                    }
+                }
                 "CWD" => {
                     let target = if argument.starts_with('/') {
                         argument.clone()
                     } else {
                         format!("{}/{argument}", cwd.trim_end_matches('/'))
                     };
+                    // A test that holds `!stall CWD <folder>` in the files
+                    // gets that CWD unanswered, once, as from a server that
+                    // stopped answering.
+                    let stall = format!("!stall CWD {target}");
+                    let stalled = {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != &stall);
+                        held.len() != before
+                    };
+                    if stalled {
+                        continue;
+                    }
                     let is_dir = target == "/"
                         || files
                             .lock()
@@ -8109,6 +8602,25 @@ mod rename_contract_tests {
                     log.lock().unwrap().push(format!("DELE {argument}"));
                     files.lock().unwrap().retain(|f| f != &argument);
                     "250 Deleted\r\n".to_string()
+                }
+                "STOR" => {
+                    // Stored in the folder the session stands in, as a
+                    // server resolves a relative name.
+                    let target = if argument.starts_with('/') {
+                        argument.clone()
+                    } else {
+                        format!("{}/{argument}", cwd.trim_end_matches('/'))
+                    };
+                    if write.write_all(b"150 send it\r\n").await.is_err() {
+                        return;
+                    }
+                    if let Some(listener) = data.take() {
+                        if let Ok((mut socket, _)) = listener.accept().await {
+                            let _ = socket.read_to_end(&mut Vec::new()).await;
+                        }
+                    }
+                    files.lock().unwrap().push(target);
+                    "226 Transfer complete\r\n".to_string()
                 }
                 "LIST" if quirks.list_only && argument == "/missing" => {
                     "550 No such file or directory\r\n".to_string()
@@ -8239,6 +8751,30 @@ mod rename_contract_tests {
         files: &[&str],
         quirks: Quirks,
     ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        provider_on_server_full(files, quirks, None).await
+    }
+
+    /// `provider_on_server_with` with an `initial_path` for the connect.
+    async fn provider_on_server_full(
+        files: &[&str],
+        quirks: Quirks,
+        initial_path: Option<&str>,
+    ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (provider, log, _) = provider_on_server_holding(files, quirks, initial_path).await;
+        (provider, log)
+    }
+
+    /// `provider_on_server_full`, with the server's files as well, for a test
+    /// that changes them while the session runs.
+    async fn provider_on_server_holding(
+        files: &[&str],
+        quirks: Quirks,
+        initial_path: Option<&str>,
+    ) -> (
+        FtpProvider,
+        Arc<Mutex<Vec<String>>>,
+        Arc<Mutex<Vec<String>>>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let files = Arc::new(Mutex::new(
@@ -8246,6 +8782,7 @@ mod rename_contract_tests {
         ));
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
+        let held = Arc::clone(&files);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 tokio::spawn(serve_connection(
@@ -8263,14 +8800,204 @@ mod rename_contract_tests {
             password: "p".to_string().into(),
             tls_mode: FtpTlsMode::None,
             verify_cert: false,
-            initial_path: None,
+            initial_path: initial_path.map(str::to_string),
             trust_pasv_address: false,
         });
         provider
             .connect()
             .await
             .expect("connect to the scripted server");
-        (provider, log)
+        (provider, log, held)
+    }
+
+    /// The post-login `PWD` is the login folder: a relative `initial_path`
+    /// goes out as a relative `CWD` the server resolves under it, and
+    /// `login_folder_hint` answers it for the overlay scope resolution.
+    #[tokio::test]
+    async fn connect_records_the_login_folder_and_opens_a_relative_start() {
+        let (mut provider, _) = provider_on_server_full(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+            Some("docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint().as_deref(), Some("/home/u"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+    }
+
+    /// A `~/...` start folder is placed against the recorded login folder
+    /// and sent absolute, never as `CWD ~`, which many servers do not expand.
+    #[tokio::test]
+    async fn connect_places_a_login_relative_start_under_the_login_folder() {
+        let (mut provider, _) = provider_on_server_full(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+            Some("~/docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint().as_deref(), Some("/home/u"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u/docs");
+    }
+
+    /// A server that does not answer the post-login `PWD` leaves no hint;
+    /// the connect still succeeds and the session opens where it always did.
+    #[tokio::test]
+    async fn connect_survives_a_failed_login_pwd() {
+        let (mut provider, _) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                fail_login_pwd: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
+        assert_eq!(provider.pwd().await.unwrap(), "/");
+    }
+
+    /// `resolve_home_scope` on a live FTP session answers from the recorded
+    /// login folder: no `CWD ~` goes on the wire (this server would fail it
+    /// or open a literal `~`), and the session stays where it was.
+    #[tokio::test]
+    async fn overlay_scope_resolution_uses_the_ftp_login_folder() {
+        let (mut provider, _) = provider_on_server_with(
+            &["/home/u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("/home/u"),
+                ..Default::default()
+            },
+        )
+        .await;
+        let resolved = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap();
+        assert_eq!(resolved.as_deref(), Some("/home/u/docs"));
+        assert_eq!(provider.pwd().await.unwrap(), "/home/u");
+    }
+
+    /// With no login `PWD` on an FTP session the login folder is unknown:
+    /// `resolve_home_scope` fails closed instead of sending `CWD ~`, the
+    /// command the ACK excluded.
+    #[tokio::test]
+    async fn overlay_scope_resolution_fails_closed_without_a_login_pwd() {
+        let (mut provider, log) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                fail_login_pwd: true,
+                log_commands: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        let err = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap_err();
+        assert!(err.contains("did not report its login folder"), "{err}");
+        assert!(
+            !log.lock().unwrap().iter().any(|command| command == "CWD ~"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+    }
+
+    /// A Windows `PWD` answer (`C:\Users\u`, read `C:/Users/u`) names no
+    /// absolute folder the `~/...` placement can use: the hint stays empty,
+    /// the connect goes on, and `resolve_home_scope` fails closed without a
+    /// `CWD ~` on the wire.
+    #[tokio::test]
+    async fn a_non_absolute_login_pwd_leaves_no_hint_and_fails_closed() {
+        let (mut provider, log) = provider_on_server_with(
+            &["/a.txt"],
+            Quirks {
+                login_dir: Some("C:\\Users\\u"),
+                log_commands: true,
+                ..Default::default()
+            },
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
+        let err = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap_err();
+        assert!(err.contains("did not report its login folder"), "{err}");
+        assert!(
+            !log.lock().unwrap().iter().any(|command| command == "CWD ~"),
+            "{:?}",
+            log.lock().unwrap()
+        );
+    }
+
+    /// A relative start folder (`docs`, which the profile reads as `~/docs`)
+    /// still opens on a server whose login `PWD` is a Windows path: the rest
+    /// is sent relative from the login folder, never as `CWD ~`.
+    #[tokio::test]
+    async fn a_login_relative_start_opens_without_an_absolute_login_folder() {
+        let (mut provider, log) = provider_on_server_full(
+            &["C:\\Users\\u/docs/a.txt"],
+            Quirks {
+                login_dir: Some("C:\\Users\\u"),
+                log_commands: true,
+                ..Default::default()
+            },
+            Some("~/docs"),
+        )
+        .await;
+        assert_eq!(provider.login_folder_hint(), None);
+        assert_eq!(provider.pwd().await.unwrap(), "C:/Users/u/docs");
+        let log = log.lock().unwrap();
+        assert!(log.iter().any(|command| command == "CWD docs"), "{log:?}");
+        assert!(
+            !log.iter().any(|command| command.starts_with("CWD ~")),
+            "{log:?}"
+        );
+    }
+
+    /// On a chrooted account whose login folder is `/`, `~/docs` is `/docs`.
+    #[tokio::test]
+    async fn overlay_scope_resolution_places_under_a_root_login_folder() {
+        let (mut provider, _) = provider_on_server_with(&["/docs/a.txt"], Quirks::default()).await;
+        let resolved = crate::crypt_overlay_provider::resolve_home_scope(&mut provider, "~/docs")
+            .await
+            .unwrap();
+        assert_eq!(resolved.as_deref(), Some("/docs"));
+    }
+
+    /// `place_initial_path`: a relative path stays relative (the server
+    /// resolves it under the login directory), `~` forms are placed against
+    /// the recorded login folder, and without one the rest goes relative from
+    /// where the login left the session, never as `CWD ~`.
+    #[test]
+    fn place_initial_path_keeps_relative_and_places_login_relative() {
+        let config = || FtpConfig {
+            host: "127.0.0.1".to_string(),
+            port: 21,
+            username: "u".to_string(),
+            password: "p".to_string().into(),
+            tls_mode: FtpTlsMode::None,
+            verify_cert: false,
+            initial_path: None,
+            trust_pasv_address: false,
+        };
+        let mut provider = FtpProvider::new(config());
+        provider.login_folder = Some("/home/u".to_string());
+        let placed = |provider: &FtpProvider, path: &str| provider.place_initial_path(path);
+        assert_eq!(placed(&provider, "docs").as_deref(), Some("docs"));
+        assert_eq!(placed(&provider, "docs/sub").as_deref(), Some("docs/sub"));
+        assert_eq!(placed(&provider, "~/docs").as_deref(), Some("/home/u/docs"));
+        assert_eq!(placed(&provider, "~").as_deref(), Some("/home/u"));
+        assert_eq!(placed(&provider, "/abs").as_deref(), Some("/abs"));
+        // `~docs` is not the login folder notation: it stays a literal name.
+        assert_eq!(placed(&provider, "~docs").as_deref(), Some("~docs"));
+        provider.login_folder = None;
+        assert_eq!(placed(&provider, "~/docs").as_deref(), Some("docs"));
+        assert_eq!(placed(&provider, "~").as_deref(), None);
+        assert_eq!(placed(&provider, "docs").as_deref(), Some("docs"));
     }
 
     #[tokio::test]
@@ -8625,9 +9352,430 @@ mod rename_contract_tests {
         assert_eq!(names, ["b.txt"], "a relative listing reads /d");
     }
 
-    /// Where the listing is refused, the look answered "unknown" and the
-    /// RNTO went out over an existing file, which vsftpd replaces. SIZE needs
-    /// no listing: a file it finds is refused before RNFR.
+    /// When the redial cannot go back to the session's folder, the fresh
+    /// session stood connected in the login directory: the first relative
+    /// upload reported the failed restore, and the second found the session
+    /// connected and sent its `STOR` to the login directory. A failed restore
+    /// drops the session and keeps the folder the caller left, whichever of
+    /// the three redials ran it: no transfer runs and no redial tries that
+    /// folder again, a relative `cd` names nothing, and a `cd` to an absolute
+    /// folder or a `cd_up` opens a session there, after which a relative
+    /// upload is stored in that folder.
+    #[tokio::test]
+    async fn a_redial_that_cannot_restore_the_folder_stores_nothing_elsewhere() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        for route in [
+            "ensure_connected",
+            "redial_if_a_reply_is_pending",
+            "reconnect_after_data_error",
+        ] {
+            let (mut provider, log) =
+                provider_on_server_with(&["/d/b.txt", "/e/c.txt"], quirks).await;
+            provider.cd("/d").await.expect("cd");
+            // The folder goes away, so the redial's `CWD /d` is refused.
+            provider.delete("/d/b.txt").await.expect("delete");
+            let failed = match route {
+                "ensure_connected" => {
+                    provider.stream = None;
+                    provider.upload(local, "x.txt", None).await
+                }
+                "redial_if_a_reply_is_pending" => {
+                    provider.abandoned_command.store(true, Ordering::Relaxed);
+                    provider.list("/e").await.map(|_| ())
+                }
+                _ => {
+                    let lost = ProviderError::ConnectionFailed("reset".to_string());
+                    provider
+                        .reconnect_after_data_error("LIST", "/e", &lost)
+                        .await
+                }
+            };
+            assert!(failed.is_err(), "{route}: {failed:?}");
+            assert!(!provider.is_connected(), "{route}: the session was kept");
+            assert_eq!(provider.current_path, "/d", "{route}");
+            log.lock().unwrap().clear();
+            for target in ["x.txt", "/x.txt"] {
+                let outcome = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    provider.upload(local, target, None),
+                )
+                .await
+                .expect("the upload answers");
+                assert!(
+                    matches!(outcome, Err(ProviderError::NotConnected)),
+                    "{route}, {target}: {outcome:?}"
+                );
+            }
+            assert!(provider.cd("e").await.is_err(), "{route}: a relative cd");
+            assert!(
+                log.lock().unwrap().is_empty(),
+                "{route}: nothing reaches the server before a cd: {:?}",
+                log.lock().unwrap()
+            );
+            // The way out: an absolute folder, or the parent of the lost one.
+            if route == "reconnect_after_data_error" {
+                provider.cd_up().await.expect("cd_up");
+            } else {
+                provider.cd("/").await.expect("cd /");
+            }
+            assert_eq!(provider.current_path, "/", "{route}");
+            assert!(provider.is_connected(), "{route}");
+            provider
+                .upload(local, "x.txt", None)
+                .await
+                .expect("a relative upload after the cd");
+            let sent = log.lock().unwrap().clone();
+            assert!(
+                sent.contains(&"STOR x.txt".to_string()),
+                "{route}: {sent:?}"
+            );
+            assert!(!sent.contains(&"CWD /d".to_string()), "{route}: {sent:?}");
+        }
+    }
+
+    /// A redial cancelled while it returned to the session's folder (the
+    /// caller dropped the transfer during that `CWD`) had already let
+    /// `connect` record the login folder: the next relative upload redialled
+    /// "back" to the login folder and stored there. The folder stays owed
+    /// until the session stands in it, so the next upload returns to `/d`
+    /// first and stores there.
+    #[tokio::test]
+    async fn a_redial_cancelled_on_its_way_back_still_owes_the_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) =
+            provider_on_server_holding(&["/d/b.txt"], quirks, None).await;
+        provider.cd("/d").await.expect("cd");
+        provider.stream = None;
+        files.lock().unwrap().push("!stall CWD /d".to_string());
+        log.lock().unwrap().clear();
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.upload(local, "x.txt", None),
+        )
+        .await;
+        assert!(
+            cancelled.is_err(),
+            "the way back was answered: {cancelled:?}"
+        );
+        assert!(
+            log.lock().unwrap().contains(&"CWD /d".to_string()),
+            "the cancel did not land on the way back: {:?}",
+            log.lock().unwrap()
+        );
+        provider
+            .upload(local, "x.txt", None)
+            .await
+            .expect("the upload after the cancel");
+        let sent = log.lock().unwrap().clone();
+        let stored = sent.iter().position(|c| c == "STOR x.txt").expect("a STOR");
+        assert_eq!(
+            sent[..stored].iter().rev().find(|c| c.starts_with("CWD")),
+            Some(&"CWD /d".to_string()),
+            "{sent:?}"
+        );
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/d/x.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/x.txt".to_string()), "{held:?}");
+        assert_eq!(provider.current_path, "/d");
+
+        // Once the session stands in its folder nothing is owed: a later
+        // redial returns to the folder recorded since.
+        provider.cd("/").await.expect("cd /");
+        provider.stream = None;
+        provider
+            .upload(local, "y.txt", None)
+            .await
+            .expect("an upload after a later drop");
+        assert!(files.lock().unwrap().contains(&"/y.txt".to_string()));
+
+        // An explicit disconnect forgets what a cancelled redial owed: the
+        // session that connects next records its own folder.
+        provider.cd("/d").await.expect("cd /d");
+        provider.stream = None;
+        files.lock().unwrap().push("!stall CWD /d".to_string());
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.upload(local, "z.txt", None),
+        )
+        .await;
+        assert!(
+            cancelled.is_err(),
+            "the way back was answered: {cancelled:?}"
+        );
+        provider.disconnect().await.expect("disconnect");
+        provider.connect().await.expect("connect");
+        provider.stream = None;
+        provider
+            .upload(local, "z.txt", None)
+            .await
+            .expect("an upload after the reconnect");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/z.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/d/z.txt".to_string()), "{held:?}");
+    }
+
+    /// The other cancels of a redial. During its `connect` (the login never
+    /// answered): the folder is still recorded and still owed, and the next
+    /// upload stores there. Two in a row on the way back: the second redial
+    /// restores the folder the first owed, not the login folder the first
+    /// left recorded. And a `cd` that succeeds is the caller's folder: a
+    /// folder owed before it is not restored over it.
+    #[tokio::test]
+    async fn every_cancelled_redial_still_returns_to_the_folder_the_caller_chose() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _log, files) =
+            provider_on_server_holding(&["/d/b.txt", "/e/c.txt"], quirks, None).await;
+        async fn cancel(provider: &mut FtpProvider, local: &str) -> bool {
+            let upload = provider.upload(local, "a.txt", None);
+            tokio::time::timeout(std::time::Duration::from_millis(500), upload)
+                .await
+                .is_err()
+        }
+        provider.cd("/d").await.expect("cd");
+
+        // During the redial's connect.
+        provider.stream = None;
+        files.lock().unwrap().push("!stall USER".to_string());
+        assert!(cancel(&mut provider, local).await, "the login was answered");
+        assert_eq!(provider.current_path, "/d");
+        provider
+            .upload(local, "x1.txt", None)
+            .await
+            .expect("an upload after a cancelled connect");
+        assert!(files.lock().unwrap().contains(&"/d/x1.txt".to_string()));
+
+        // Two in a row on the way back.
+        provider.stream = None;
+        for _ in 0..2 {
+            files.lock().unwrap().push("!stall CWD /d".to_string());
+            assert!(
+                cancel(&mut provider, local).await,
+                "the way back was answered"
+            );
+        }
+        provider
+            .upload(local, "x2.txt", None)
+            .await
+            .expect("an upload after two cancels");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/d/x2.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/x2.txt".to_string()), "{held:?}");
+
+        // A cd that succeeds while a folder is owed.
+        provider.owed_folder = Some("/d".to_string());
+        provider.cd("/e").await.expect("cd /e");
+        provider.stream = None;
+        provider
+            .upload(local, "x3.txt", None)
+            .await
+            .expect("an upload after the cd");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/e/x3.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/d/x3.txt".to_string()), "{held:?}");
+    }
+
+    /// The way out of a lost folder, cancelled after its `connect` and
+    /// before its `CWD` was answered, left a session in the login folder
+    /// that no longer counted as lost: a relative upload stored there. The
+    /// lost folder stays owed until the target is entered, so that upload
+    /// is closed back into the lost state and stores nothing, and the next
+    /// `cd` to an absolute folder still gets out.
+    #[tokio::test]
+    async fn a_way_out_cancelled_before_its_folder_leaves_the_folder_lost() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) =
+            provider_on_server_holding(&["/d/b.txt", "/e/c.txt"], quirks, None).await;
+        provider.cd("/d").await.expect("cd");
+        provider.delete("/d/b.txt").await.expect("delete");
+        provider.stream = None;
+        assert!(provider.upload(local, "x.txt", None).await.is_err());
+        assert!(!provider.is_connected(), "the restore left a session");
+        files.lock().unwrap().push("!stall CWD /e".to_string());
+        let cancelled =
+            tokio::time::timeout(std::time::Duration::from_millis(500), provider.cd("/e")).await;
+        assert!(
+            cancelled.is_err(),
+            "the way out was answered: {cancelled:?}"
+        );
+        log.lock().unwrap().clear();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.upload(local, "x.txt", None),
+        )
+        .await
+        .expect("the upload answers");
+        assert!(outcome.is_err(), "{outcome:?}");
+        let sent = log.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("STOR")), "{sent:?}");
+        assert!(!files.lock().unwrap().contains(&"/x.txt".to_string()));
+        assert!(!provider.is_connected(), "the session was kept");
+        assert_eq!(provider.current_path, "/d");
+        provider.cd("/e").await.expect("the way out");
+        assert_eq!(provider.current_path, "/e");
+    }
+
+    /// A server that reports relative folders (`home/u`): a `cd docs` whose
+    /// `PWD` fails is not undone with `CWD home/u`, which from
+    /// `/home/u/docs` enters `/home/u/docs/home/u`; the session is closed as
+    /// lost, and a relative upload stores nothing anywhere.
+    #[tokio::test]
+    async fn a_relative_recorded_folder_is_never_entered_again() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            login_dir: Some("/home/u"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(
+            &["/home/u/docs/home/u/a.txt", "!refuse PWD in /home/u/docs"],
+            quirks,
+            None,
+        )
+        .await;
+        assert_eq!(provider.current_path, "home/u");
+        assert!(provider.cd("docs").await.is_err());
+        let sent = log.lock().unwrap().clone();
+        assert!(
+            !sent.iter().any(|c| c == "CWD home/u"),
+            "the relative folder was entered again: {sent:?}"
+        );
+        assert!(!provider.is_connected(), "the session was kept");
+        let outcome = provider.upload(local, "x.txt", None).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert!(
+            !files.lock().unwrap().iter().any(|f| f.ends_with("/x.txt")),
+            "{:?}",
+            files.lock().unwrap()
+        );
+        log.lock().unwrap().clear();
+        assert!(
+            provider.cd_up().await.is_err(),
+            "a relative parent was entered"
+        );
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "a session was opened for a relative parent: {:?}",
+            log.lock().unwrap()
+        );
+        provider.cd("/home/u").await.expect("the way out");
+        assert_eq!(provider.current_path, "home/u");
+    }
+
+    /// A single-step relative folder (`docs`) has no known parent: Up from
+    /// it when it is lost opens no session at the server root, and the
+    /// refusal names no folder.
+    #[tokio::test]
+    async fn up_from_a_lost_single_step_relative_folder_enters_nothing() {
+        let quirks = Quirks {
+            login_dir: Some("/docs"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, _files) =
+            provider_on_server_holding(&["/docs/a/b.txt", "!refuse PWD in /docs/a"], quirks, None)
+                .await;
+        assert_eq!(provider.current_path, "docs");
+        let refused = provider.cd("a").await.unwrap_err().to_string();
+        assert!(!provider.is_connected(), "the session was kept");
+        assert!(!refused.contains("docs"), "{refused}");
+        log.lock().unwrap().clear();
+        let up = provider.cd_up().await.unwrap_err().to_string();
+        assert!(!up.contains("docs"), "{up}");
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "a session was opened for a guessed parent: {:?}",
+            log.lock().unwrap()
+        );
+        let relative = provider.cd("x").await.unwrap_err().to_string();
+        assert!(!relative.contains("docs"), "{relative}");
+        assert_eq!(provider.current_path, "docs");
+    }
+
+    /// Every redial returns to the folder it left only when that folder
+    /// names one folder: a relative one (`home/u/docs`) is not entered from
+    /// the login folder, where it names `/home/u/home/u/docs`.
+    #[tokio::test]
+    async fn a_redial_never_enters_a_relative_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            login_dir: Some("/home/u"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(
+            &["/home/u/docs/a.txt", "/home/u/home/u/docs/b.txt"],
+            quirks,
+            None,
+        )
+        .await;
+        provider.cd("/home/u/docs").await.expect("cd");
+        assert_eq!(provider.current_path, "home/u/docs");
+        provider.stream = None;
+        log.lock().unwrap().clear();
+        let outcome = provider.upload(local, "x.txt", None).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let sent = log.lock().unwrap().clone();
+        assert!(
+            !sent
+                .iter()
+                .any(|c| c.starts_with("CWD") || c.starts_with("STOR")),
+            "{sent:?}"
+        );
+        assert!(
+            !files.lock().unwrap().iter().any(|f| f.ends_with("/x.txt")),
+            "{:?}",
+            files.lock().unwrap()
+        );
+        assert!(!provider.is_connected(), "the session was kept");
+        provider.cd("/home/u/docs").await.expect("the way out");
+        provider.upload(local, "x.txt", None).await.expect("upload");
+        assert!(files
+            .lock()
+            .unwrap()
+            .contains(&"/home/u/docs/x.txt".to_string()));
+    }
+
     #[tokio::test]
     async fn a_refused_listing_still_refuses_a_file_that_size_finds() {
         let quirks = Quirks {
