@@ -855,6 +855,13 @@ fn rclone_config_dir(config_path: &Path) -> Option<std::path::PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// The characters that separate path components in a key path: `/` and, on
+/// Windows only, `\\`. On Unix a backslash is part of a file name.
+#[cfg(windows)]
+const KEY_PATH_SEPARATORS: &[char] = &['/', '\\'];
+#[cfg(not(windows))]
+const KEY_PATH_SEPARATORS: &[char] = &['/'];
+
 /// A key path written under the file's own folder (`${RCLONE_CONFIG_DIR}/...`
 /// or `$RCLONE_CONFIG_DIR/...` with no other variable) joined onto that folder
 /// with `Path::push`, one component at a time, so the platform separator is
@@ -865,11 +872,11 @@ fn join_under_config_dir(key_file: &str, config_dir: Option<&Path>) -> Option<St
     let rest = key_file
         .strip_prefix("${RCLONE_CONFIG_DIR}")
         .or_else(|| key_file.strip_prefix("$RCLONE_CONFIG_DIR"))?;
-    if !rest.starts_with(['/', '\\']) || rest.contains('$') {
+    if !rest.starts_with(KEY_PATH_SEPARATORS) || rest.contains('$') {
         return None;
     }
     let mut joined = dir.to_path_buf();
-    for component in rest.split(['/', '\\']).filter(|c| !c.is_empty()) {
+    for component in rest.split(KEY_PATH_SEPARATORS).filter(|c| !c.is_empty()) {
         joined.push(component);
     }
     let joined = joined.to_string_lossy().into_owned();
@@ -13747,6 +13754,20 @@ host = sftp://u:TopSecret99@sftp.example.test
             None
         );
         assert_eq!(join_under_config_dir("$RCLONE_CONFIG_DIR/id", None), None);
+    }
+
+    /// On Unix a backslash is part of a key file's name, never a separator.
+    #[cfg(unix)]
+    #[test]
+    fn a_backslash_stays_in_a_unix_key_file_name() {
+        let dir = Path::new("/srv/templates");
+        assert_eq!(
+            join_under_config_dir("$RCLONE_CONFIG_DIR/deploy\\key.pem", Some(dir)),
+            Some("/srv/templates/deploy\\key.pem".to_string())
+        );
+        // A backslash right after the folder variable is not a separator either:
+        // the textual expansion keeps it.
+        assert_eq!(join_under_config_dir("$RCLONE_CONFIG_DIR\\key.pem", Some(dir)), None);
     }
 
     #[test]
