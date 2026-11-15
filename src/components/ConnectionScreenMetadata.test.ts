@@ -664,7 +664,7 @@ describe('A sign-in that swapped the backend', () => {
         // App's transfers on the live tab, and App's swap listener on the same
         // backend accounting.
         const app = fixture({ folders: { [LOCAL]: [local('a.txt')] } });
-        const start = APP.indexOf('  const confirmBackendConnection = () => {');
+        const start = APP.indexOf('  const backendMark = (): BackendMark => ({');
         const listener = APP.indexOf('  const backendSwapRef = useRef<');
         const { code } = await transformWithOxc([
             APP.slice(start, APP.indexOf('  const remoteConnectPhaseVersionRef = useRef(0);', start)),
@@ -986,7 +986,7 @@ async function liveTabChecks() {
         return APP.slice(start, APP.indexOf(to, start));
     };
     const source = [
-        between('  const confirmBackendConnection = () => {', '  const remoteConnectPhaseVersionRef = useRef(0);'),
+        between('  const backendMark = (): BackendMark => ({', '  const remoteConnectPhaseVersionRef = useRef(0);'),
         between('  const backendSwapRef = useRef<', '  // FTP operations'),
         between('  const backendServesLiveTab = () =>', '  /** Fails the rows from'),
     ].join('\n');
@@ -1092,6 +1092,7 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
         const runConnect = vi.fn(async () => { live.replacingBackend()(); });
         const ctx = {
             confirmBackendConnection: live.confirmBackendConnection,
+            remoteConnectPhaseVersionRef: { current: 0 },
             invoke: vi.fn(async () => undefined),
             isProvider,
             protocol: isProvider ? 'webdav' : 'ftp',
@@ -1239,6 +1240,15 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         expect(added[0].status).toBe('cached');
     });
 
+    it("leaves the live connection's Navigation Sync alone when A is refused as stale", async () => {
+        const { ctx } = await createSessionRun(true, true);
+        expect(ctx.setIsSyncNavigation).not.toHaveBeenCalled();
+        expect(ctx.setSyncBasePaths).not.toHaveBeenCalled();
+        const live = await createSessionRun(false);
+        expect(live.ctx.setIsSyncNavigation).toHaveBeenCalledWith(false);
+        expect(live.ctx.setSyncBasePaths).toHaveBeenCalledWith(null);
+    });
+
     it('confirms and makes the tab live when nothing replaced the backend', async () => {
         const { ctx, added, outcome } = await createSessionRun(false);
         expect(outcome).toBe('live');
@@ -1273,11 +1283,13 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
             expect(tail, APP.slice(call, call + 80)).toMatch(/^\)? === 'stale'\) return( 'failed' as const)?;$/);
         }
         for (const read of ['providerReplacedAt', 'ftpReplacedAt', 'savedProviderReplacedAt', 'savedFtpReplacedAt']) {
-            // Read on the statement right after the flow's own connect.
-            const at = APP.indexOf(`const ${read} = backendMark();`);
+            // Taken from the receipt the flow's own connect filled as its
+            // replacement ended, on the statement right after that connect.
+            const receipt = read.replace('ReplacedAt', 'Receipt');
+            const at = APP.indexOf(`const ${read} = ${receipt}.mark!;`);
             expect(at, read).toBeGreaterThan(-1);
             const before = APP.slice(APP.lastIndexOf('await ', at), at);
-            expect(before, read).toMatch(/^await connectUnderRow\([^]*runConnect\('(provider_connect|connect_ftp)'[^]*\);\n\s+$/);
+            expect(before, read).toMatch(new RegExp(`^await connectUnderRow\\([^]*runConnect\\('(provider_connect|connect_ftp)'[^]*, ${receipt}\\)\\)?\\);\\n\\s+$`));
         }
         for (const read of ['oauthReplacedAt', 'savedOAuthReplacedAt']) {
             expect(APP, read).toContain(`const ${read} = backendMark();`);
@@ -1299,7 +1311,9 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
             // Only more connects of the same step (a sign-in, then its
             // connect) may come before the read.
             const after = sw.slice(sw.indexOf(';', close) + 1);
-            expect(after, sw.slice(connect.index!, connect.index! + 120)).toMatch(/^(\s*await connectScope\.step\(\(\) => (runConnect|cancellableConnect)\([^;]*;)*\s*switchReplacedAt = backendReplacementSeqRef\.current;/);
+            expect(after, sw.slice(connect.index!, connect.index! + 120)).toMatch(/^(\s*await connectScope\.step\(\(\) => (runConnect|cancellableConnect)\([^;]*;)*\s*switchReplacedAt = switchReceipt\.mark!\.replacements;/);
+            // Each connect carries the switch's receipt.
+            expect(sw.slice(connect.index!, close + 1), sw.slice(connect.index!, connect.index! + 120)).toMatch(/, switchReceipt\)\)$/);
         }
         expect(sw).toMatch(/if \(backendReplacementSeqRef\.current !== switchReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n\s+setSessions\(prev => prev\.map\(s => s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \}[^\n]+\n[^\n]+\n\s+confirmBackendConnection\(\);/);
         // The device open counts its own replacement, reads the sequence once
@@ -1308,7 +1322,9 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         expect(APP).toMatch(/if \(backendReplacementSeqRef\.current !== deviceReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n[^\n]+\n\s+confirmBackendConnection\(\);/);
         // The AeroCloud open (both of its connects) and a GitHub branch switch
         // confirm with no await after their connect: nothing else would.
-        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+confirmBackendConnection\(\);/g)?.length).toBe(3);
+        // confirm with no await after their connect, and only while no newer
+        // connect owns the workspace.
+        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+if \((remoteConnectPhaseVersionRef\.current === cloudPhase|phaseVersion === remoteConnectPhaseVersionRef\.current)\) confirmBackendConnection\(\);/g)?.length).toBe(3);
     });
 });
 
@@ -1363,7 +1379,11 @@ describe('Bot-named runs of the backend replacement checks', () => {
             if (command === 'get_local_files') return [];
             return undefined;
         });
-        const runConnect = vi.fn(async () => { seq.current += 1; });
+        // Ends its own replacement, and hands back the receipt that end leaves.
+        const runConnect = vi.fn(async (_command: string, _params: unknown, _scope: unknown, receipt?: { mark?: unknown }) => {
+            seq.current += 1;
+            if (receipt) receipt.mark = { replacements: seq.current, confirmations: 0 };
+        });
         const source = appBetween('  const switchSession = async (', '\n  };\n');
         const switchSession = await runAppSlice(source, {
             sessions: [target], activeSessionId: 'other-tab', backendReplacementSeqRef: seq, confirmBackendConnection,
@@ -1378,7 +1398,7 @@ describe('Bot-named runs of the backend replacement checks', () => {
 
     it('completes an FTP switch whose liveness probe fails without remoteTargetChanged', async () => {
         const { confirmBackendConnection, logger, activityLog, runConnect } = await ftpSwitch(false);
-        expect(runConnect).toHaveBeenCalledWith('connect_ftp', expect.anything(), expect.anything());
+        expect(runConnect).toHaveBeenCalledWith('connect_ftp', expect.anything(), expect.anything(), expect.anything());
         expect(logger.error).not.toHaveBeenCalled();
         expect(confirmBackendConnection).toHaveBeenCalledOnce();
         expect(activityLog.updateEntry).toHaveBeenLastCalledWith('log', expect.objectContaining({ status: 'success' }));
@@ -1464,6 +1484,108 @@ describe('Bot-named runs of the backend replacement checks', () => {
         expect(fetchStorageQuota).not.toHaveBeenCalled();
         expect(markSessionOverlayKind).not.toHaveBeenCalled();
         expect(setPendingOverlayUnlock).not.toHaveBeenCalled();
+    });
+});
+
+describe('Reviewed ownership of a connect', () => {
+    /** App's backend accounting on fresh refs. */
+    async function accountingOn(refs: Record<string, unknown>) {
+        return runAppSlice(
+            appBetween('  const backendMark = (): BackendMark => ({', '\n  const remoteConnectPhaseVersionRef = useRef(0);'),
+            { ...refs, useRef: (current: unknown) => ({ current }) },
+            '{ confirmBackendConnection, replacingBackend, backendMark }',
+        );
+    }
+    const freshRefs = () => ({
+        backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+        backendConfirmationsRef: { current: 0 }, backendReplacementSeqRef: { current: 0 },
+        remoteConnectPhaseVersionRef: { current: 0 },
+    });
+
+    it("keeps the backend uncertain when B confirms before A's branch-switch connect returns", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A's connect replaces the backend; B starts, connects and confirms
+        // its tab before A's connect returns.
+        const runConnect = vi.fn(async () => {
+            const endA = accounting.replacingBackend();
+            refs.remoteConnectPhaseVersionRef.current += 1;
+            accounting.confirmBackendConnection();
+            endA();
+        });
+        const source = APP.slice(APP.indexOf('  const switchGitHubBranch ='), APP.indexOf('  const requestGitHubBatchCommitMessage'));
+        const switchGitHubBranch = await runAppSlice(`const __switch = ${source.replace(/^\s*const switchGitHubBranch =\s*/, '').replace(/;\s*$/, '')};`, {
+            ...refs, ...accounting, runConnect, useCallback: (fn: unknown) => fn,
+            normalizeProviderConnectionParams: () => ({}), liveConnectionParams: {}, activeSessionId: null, currentRemotePath: '/',
+            buildProviderParams: async () => ({ effectiveParams: {}, providerParams: {} }),
+            invoke: vi.fn(async (command: string) => command === 'provider_list_files' ? { files: [], current_path: '/' } : undefined),
+            withRemoteListSpinner: (fn: () => unknown) => fn(), t: (key: string) => key, notify: { success: vi.fn(), error: vi.fn() },
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+        }, '__switch');
+        await switchGitHubBranch('other');
+        expect(runConnect).toHaveBeenCalledOnce();
+        expect(refs.backendUncertainRef.current).toBe(true);
+    });
+
+    it.each([['a provider', true], ['an FTP server', false]])("keeps the backend uncertain when B confirms before A's AeroCloud connect to %s returns", async (_label, isProvider) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const runConnect = vi.fn(async () => {
+            const endA = accounting.replacingBackend();
+            refs.remoteConnectPhaseVersionRef.current += 1;
+            accounting.confirmBackendConnection();
+            endA();
+        });
+        const connect = await runAppSlice(appBetween('const connectToCloudServer = async', '\n      };\n'), {
+            ...refs, ...accounting, runConnect, isProvider, protocol: isProvider ? 'webdav' : 'ftp',
+            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
+            cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
+            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
+            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false, isSshProtocol: () => false,
+        }, 'connectToCloudServer');
+        await connect();
+        expect(runConnect).toHaveBeenCalledOnce();
+        expect(refs.backendUncertainRef.current).toBe(true);
+    });
+
+    it("hands A the receipt of its own replacement when B's ends between A's end and A's continuation", async () => {
+        // A sequence ref that queues B's end right after A's end, ahead of
+        // A's continuation.
+        let seq = 0;
+        let afterNextEnd: (() => void) | null = null;
+        const backendReplacementSeqRef = {
+            get current() { return seq; },
+            set current(value: number) {
+                seq = value;
+                const next = afterNextEnd;
+                afterNextEnd = null;
+                if (next) queueMicrotask(next);
+            },
+        };
+        const refs = { ...freshRefs(), backendReplacementSeqRef };
+        const accounting = await accountingOn(refs);
+        const wrappers = await runAppSlice(
+            `${appBetween('  const cancellableConnect = useCallback(async <T,>(', '\n  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);')}\n${appBetween('  const runConnect = useCallback(<T,>(', '\n  }, receipt), [cancellableConnect]);')}\n${appBetween('  const connectUnderRow = async (', '\n  };\n')}`,
+            { ...refs, ...accounting, useCallback: (fn: unknown) => fn, beginConnectAttempt: () => 'token', endConnectAttempt: () => undefined,
+                invoke: vi.fn(async () => undefined), connectCancelledRef: { current: false }, extendHardTimeoutRef: { current: null },
+                isConnectHardTimeoutError: () => false, isConnectCancelledError: () => false, humanLog: { updateEntry: vi.fn() } },
+            '{ runConnect, connectUnderRow }',
+        );
+        const endB = accounting.replacingBackend();
+        afterNextEnd = endB;
+        const receipt: { mark?: { replacements: number; confirmations: number } } = {};
+        await wrappers.connectUnderRow(null, () => wrappers.runConnect('provider_connect', {}, undefined, receipt));
+        // B's end landed before A's continuation: the receipt is A's own.
+        expect(seq).toBe(2);
+        expect(receipt.mark).toEqual({ replacements: 1, confirmations: 0 });
+        expect(accounting.backendMark().replacements).toBe(2);
+        // And createSession refuses A on that receipt.
+        const createStart = APP.indexOf('  const createSession = async (');
+        const createSession = await runAppSlice(APP.slice(createStart, APP.indexOf('\n  };\n', createStart) + '\n  };'.length), {
+            ...refs, ...accounting, remoteFiles: [], localFiles: [], notify: { error: vi.fn() }, t: (key: string) => key,
+            loadSavedServerProfiles: async () => [],
+        }, 'createSession');
+        expect(await createSession('A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, receipt.mark)).toBe('stale');
     });
 });
 

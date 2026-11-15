@@ -61,6 +61,14 @@ interface BackendMark {
   confirmations: number;
 }
 
+/** Where a connect's replacement left the backend: the mark its end produced,
+ *  filled synchronously by that end and carried back by the connect wrappers
+ *  (`cancellableConnect`, `runConnect`), so a replacement another connect ends
+ *  while the result travels back is not counted as this connect's. */
+interface ConnectReceipt {
+  mark?: BackendMark;
+}
+
 interface DownloadFolderParams {
   remote_path: string;
   local_path: string;
@@ -1064,19 +1072,22 @@ const App: React.FC = () => {
    *  the backend may already hold the new provider before the invoke
    *  returns. At its end, a tab another
    *  connect confirmed meanwhile has had its backend replaced, so the backend
-   *  is marked uncertain until a connect confirms a tab again. */
+   *  is marked uncertain until a connect confirms a tab again. The end
+   *  returns the mark it leaves (`backendMark`), the receipt of this
+   *  replacement. */
   const replacingBackend = () => {
     const confirmedBefore = backendConfirmationsRef.current;
     // Counted with the teardowns: either way the live tab is not what the
     // backend serves until it ends (`backendServesLiveTab`).
     backendTeardownsRef.current += 1;
-    let ended = false;
-    return () => {
-      if (ended) return;
-      ended = true;
+    let receipt: BackendMark | null = null;
+    return (): BackendMark => {
+      if (receipt) return receipt;
       backendTeardownsRef.current -= 1;
       backendReplacementSeqRef.current += 1;
       if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
+      receipt = backendMark();
+      return receipt;
     };
   };
   const remoteConnectPhaseVersionRef = useRef(0);
@@ -2601,6 +2612,7 @@ const App: React.FC = () => {
   // one registers under it and a cancel reaches whichever phase is in flight.
   const cancellableConnect = useCallback(async <T,>(
     run: (connectToken: string) => Promise<T>,
+    receipt?: ConnectReceipt,
   ): Promise<T> => {
     const token = beginConnectAttempt();
     let hardTimer: ReturnType<typeof setTimeout> | null = null;
@@ -2644,7 +2656,8 @@ const App: React.FC = () => {
       if (hardTimer) clearTimeout(hardTimer);
       extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
-      endReplacement();
+      const mark = endReplacement();
+      if (receipt) receipt.mark = mark;
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
@@ -2659,12 +2672,13 @@ const App: React.FC = () => {
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
     scope?: ConnectScope,
+    receipt?: ConnectReceipt,
   ): Promise<T> => cancellableConnect<T>((token) => {
     wentOnOverScpRef.current = false;
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }), [cancellableConnect]);
+  }, receipt), [cancellableConnect]);
 
   // Esc aborts an in-progress connection. Always-mounted listener that only
   // acts while a token is live, so it never competes with other Esc handlers
@@ -7910,8 +7924,9 @@ const App: React.FC = () => {
       cancelRemoteSearch();
       setRemoteSearchResults(null);
       await runConnect('provider_connect', providerParams);
-      // The same tab is connected to the backend again, on its new branch.
-      confirmBackendConnection();
+      // The same tab is connected to the backend again, on its new branch,
+      // unless a newer connect owns the workspace now.
+      if (phaseVersion === remoteConnectPhaseVersionRef.current) confirmBackendConnection();
 
       // One spinner over both attempts: the retry at the provider root is the
       // same wait to the user, and it must not fire when the first attempt was
@@ -8779,8 +8794,9 @@ const App: React.FC = () => {
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
-        await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams));
-        const providerReplacedAt = backendMark();
+        const providerReceipt: ConnectReceipt = {};
+        await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams, undefined, providerReceipt));
+        const providerReplacedAt = providerReceipt.mark!;
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
         totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -8959,12 +8975,13 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
+      const ftpReceipt: ConnectReceipt = {};
       await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
         ...(effectiveParams as unknown as Record<string, unknown>),
         // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
         trustPasvAddress: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
-      }));
-      const ftpReplacedAt = backendMark();
+      }, undefined, ftpReceipt));
+      const ftpReplacedAt = ftpReceipt.mark!;
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -9173,9 +9190,12 @@ const App: React.FC = () => {
       syncBasePaths: null,
       aeroVaultOverlaySession: null,
     };
-    // Reset global sync state for new session
-    setIsSyncNavigation(false);
-    setSyncBasePaths(null);
+    // Reset global sync state for the new session, when it becomes the live
+    // one: a stale tab leaves the live connection's settings alone.
+    if (!replacedMeanwhile) {
+      setIsSyncNavigation(false);
+      setSyncBasePaths(null);
+    }
     setSessions(prev => [...prev, newSession]);
     if (!replacedMeanwhile) setActiveSessionId(newSession.id);
     // A stale tab is not this connect's success: its caller stops before any
@@ -9360,6 +9380,8 @@ const App: React.FC = () => {
       // Read again after this switch's own connect, if it reconnects, and checked
       // before its tab is confirmed (`backendReplacementSeqRef`).
       let switchReplacedAt = backendReplacementSeqRef.current;
+      // Each connect of this switch fills it as its own replacement ends.
+      const switchReceipt: ConnectReceipt = {};
 
       if (stillAlive) {
         logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
@@ -9424,8 +9446,8 @@ const App: React.FC = () => {
           await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(
             () => invoke<void>('cancel_connection', { token }),
             () => invoke('fourshared_connect', { params: { consumer_key: clientId, consumer_secret: clientSecret,
-              profile_id: targetSession.savedServerId ?? '', connect_token: token } }))));
-          switchReplacedAt = backendReplacementSeqRef.current;
+              profile_id: targetSession.savedServerId ?? '', connect_token: token } })), switchReceipt));
+          switchReplacedAt = switchReceipt.mark!.replacements;
         } else {
           // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho)
           const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -9451,8 +9473,8 @@ const App: React.FC = () => {
             ...(region && { region }),
           };
           try {
-            await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
-            switchReplacedAt = backendReplacementSeqRef.current;
+            await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } })), switchReceipt));
+            switchReplacedAt = switchReceipt.mark!.replacements;
           } catch (connectErr) { connectScope.assert();
             const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
             const lower = errMsg.toLowerCase();
@@ -9462,9 +9484,9 @@ const App: React.FC = () => {
                 lower.includes('token expired') ||
                 (lower.includes('token') && lower.includes('refresh'))) {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
-              switchReplacedAt = backendReplacementSeqRef.current;
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } }))), switchReceipt));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } })), switchReceipt));
+              switchReplacedAt = switchReceipt.mark!.replacements;
             } else {
               throw connectErr;
             }
@@ -9507,8 +9529,8 @@ const App: React.FC = () => {
         const providerParams = providerPayload.providerParams;
 
         logger.debug('[switchSession] provider protocol:', providerParams.protocol);
-        await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope));
-        switchReplacedAt = backendReplacementSeqRef.current;
+        await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope, switchReceipt));
+        switchReplacedAt = switchReceipt.mark!.replacements;
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try {
             await connectScope.step(() => listWithSpinner(() => invoke('provider_change_dir', { path: targetSession.remotePath })));
@@ -9530,8 +9552,8 @@ const App: React.FC = () => {
         await connectScope.step(() => runConnect('connect_ftp', {
           ...(targetSession.connectionParams as unknown as Record<string, unknown>),
           trustPasvAddress: loadedOptionOn(targetSession.connectionParams.options, 'trustPasvAddress'),
-        }, connectScope));
-        switchReplacedAt = backendReplacementSeqRef.current;
+        }, connectScope, switchReceipt));
+        switchReplacedAt = switchReceipt.mark!.replacements;
 
         // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
@@ -10055,11 +10077,13 @@ const App: React.FC = () => {
             if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
           }
           await endCurrentConnection();
+          const cloudPhase = remoteConnectPhaseVersionRef.current;
           await runConnect('provider_connect', providerParams);
           // Confirmed here, with no await after the connect, in both of its
           // callers (a reconnect to another server, a first connect): a backend
-          // left uncertain otherwise refused every action on AeroCloud.
-          confirmBackendConnection();
+          // left uncertain otherwise refused every action on AeroCloud. Not
+          // when a newer connect owns the workspace now.
+          if (remoteConnectPhaseVersionRef.current === cloudPhase) confirmBackendConnection();
         } else {
           // FTP/FTPS: use connect_ftp
           const ftpParams = {
@@ -10069,8 +10093,9 @@ const App: React.FC = () => {
             protocol,
           };
           await endCurrentConnection();
+          const cloudPhase = remoteConnectPhaseVersionRef.current;
           await runConnect('connect_ftp', ftpParams);
-          confirmBackendConnection();
+          if (remoteConnectPhaseVersionRef.current === cloudPhase) confirmBackendConnection();
         }
       };
 
@@ -20151,8 +20176,9 @@ const App: React.FC = () => {
                     logger.debug('[onSavedServerConnect] provider protocol:', providerParams.protocol);
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await connectScope.step(() => logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp'));
-                      await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope)));
-                      const savedProviderReplacedAt = backendMark();
+                      const savedProviderReceipt: ConnectReceipt = {};
+                      await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope, savedProviderReceipt)));
+                      const savedProviderReplacedAt = savedProviderReceipt.mark!;
 
                       const isFilenConnect =
                         connectedParams.protocol === 'filen' ||
@@ -20311,8 +20337,9 @@ const App: React.FC = () => {
 
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await connectScope.step(() => logConnectionSteps(params.server, params.port || 21, savedFtpProto));
-                  await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope)));
-                  const savedFtpReplacedAt = backendMark();
+                  const savedFtpReceipt: ConnectReceipt = {};
+                  await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope, savedFtpReceipt)));
+                  const savedFtpReplacedAt = savedFtpReceipt.mark!;
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                   // Clear standalone connect-failure marker (#180 / 4486730822).
                   if (params.savedServerId) {
