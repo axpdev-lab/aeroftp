@@ -96,6 +96,11 @@ pub struct GitHubBranch {
 pub struct GitHubCompare {
     pub ahead_by: u64,
     pub behind_by: u64,
+    /// The base's tip the comparison was made against. GitHub sends it;
+    /// `None` when an answer lacks it, which is read as "unknown", never as
+    /// "unchanged".
+    #[serde(default)]
+    pub base_commit: Option<GitHubCommitRef>,
 }
 
 /// Minimal commit reference (SHA only)
