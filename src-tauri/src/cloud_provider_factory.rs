@@ -1768,7 +1768,9 @@ mod tests {
             tokio::time::timeout(std::time::Duration::from_secs(20), async {
                 let mut provider = crate::providers::ProviderFactory::create(&config).unwrap();
                 provider.connect().await.unwrap();
-                enter_profile_root(&mut *provider, Some(&root)).await.unwrap();
+                enter_profile_root(&mut *provider, Some(&root))
+                    .await
+                    .unwrap();
                 provider.cd("/").await.unwrap();
                 let here = provider.pwd().await.unwrap();
                 provider.list("/").await.unwrap();
@@ -1948,18 +1950,24 @@ mod tests {
         // Present: an absolute root is entered as written, which checks it
         // exists where the connect did not.
         let mut provider = stands("/data/set", vec!["/data/set"]);
-        enter_profile_root(&mut provider, Some("/data/set")).await.unwrap();
+        enter_profile_root(&mut provider, Some("/data/set"))
+            .await
+            .unwrap();
         assert_eq!(provider.cds, ["/data/set"]);
         // A provider that ignored the root and stands in its login folder.
         let mut provider = stands("/home/u", vec!["/home/u", "/home/u/docs"]);
-        enter_profile_root(&mut provider, Some("docs")).await.unwrap();
+        enter_profile_root(&mut provider, Some("docs"))
+            .await
+            .unwrap();
         assert_eq!(provider.cds, ["docs"]);
         assert_eq!(provider.here, "/home/u/docs");
     }
 
     /// An FTP profile whose root is relative (a leading space) is entered
-    /// once: the provider's connect places it, and the factory confirms the
-    /// folder by its absolute path instead of entering the root again.
+    /// once (CodeRabbit 4575732643): the root is `~/ /reports`, placed under
+    /// the login folder by its absolute path (#1568's `enter_profile_root`),
+    /// so the session stands in `/home/u/ /reports`, never in the root again
+    /// below itself.
     #[tokio::test]
     async fn an_ftp_relative_root_is_entered_once_then_confirmed() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -2017,18 +2025,24 @@ mod tests {
         let here = tokio::time::timeout(std::time::Duration::from_secs(20), async {
             let mut provider = crate::providers::ProviderFactory::create(&config).unwrap();
             provider.connect().await.unwrap();
-            enter_profile_root(&mut *provider, Some(&root)).await.unwrap();
+            enter_profile_root(&mut *provider, Some(&root))
+                .await
+                .unwrap();
             provider.pwd().await.unwrap()
         })
         .await
         .expect("the FTP exchange finished");
-        // The connect enters the root; the factory confirms the folder the
-        // server reports, by its absolute path, and does not enter it again.
-        assert_eq!(
-            *cwds.lock().unwrap(),
-            vec![" /reports".to_string(), "/home/u/ /reports".to_string()]
-        );
+        assert_eq!(root, "~/ /reports");
         assert_eq!(here, "/home/u/ /reports");
+        assert!(
+            !cwds
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|cwd| cwd.ends_with(" /reports/ /reports")),
+            "the root was entered again below itself: {:?}",
+            cwds.lock().unwrap()
+        );
     }
 
     /// The factory connect enters the root once, through `enter_profile_root`
@@ -2039,7 +2053,10 @@ mod tests {
         let start = source.find("async fn create_via_factory(").unwrap();
         let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
         assert_eq!(body.matches("enter_profile_root(").count(), 1, "{body}");
-        assert!(body.contains("enter_profile_root(&mut *provider, Some(root))"), "{body}");
+        assert!(
+            body.contains("enter_profile_root(&mut *provider, Some(root))"),
+            "{body}"
+        );
         assert!(
             body.find("let root = profile.as_ref().map(profile_root).transpose()?;")
                 < body.find(".connect()"),
@@ -2131,22 +2148,30 @@ mod tests {
                 remote,
             )
         };
-        // Root-independent remote folders: main's trimmed form.
+        // Root-independent remote folders: main's trimmed form. A profile
+        // without `protocol` is FTP, which places a relative root under the
+        // login folder (#1568), so the protocol is written where it matters.
         let absolute = [
             (
-                serde_json::json!({ "initialPath": "/reports " }),
+                serde_json::json!({ "protocol": "ftp", "initialPath": " /reports" }),
+                "/cloud/",
+                "/reports",
+                "~/ /reports",
+            ),
+            (
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
                 "/cloud/",
                 "/reports",
                 "/reports ",
             ),
             (
-                serde_json::json!({ "initialPath": " /reports" }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": " /reports" }),
                 "/cloud/",
                 "/reports",
                 " /reports",
             ),
             (
-                serde_json::json!({ "initialPath": "/users/{username}", "username": "alice " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/users/{username}", "username": "alice " }),
                 "/cloud/",
                 "/users/alice",
                 "/users/alice ",
@@ -2164,7 +2189,7 @@ mod tests {
                 "~/ docs",
             ),
             (
-                serde_json::json!({ "initialPath": "  " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "  " }),
                 "/cloud/",
                 "/",
                 "/",
@@ -2182,22 +2207,22 @@ mod tests {
         // under the login folder only on SFTP and SCP.
         for (profile, remote, identity) in [
             (
-                serde_json::json!({ "initialPath": "/reports " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
                 "cloud/",
                 "/reports ",
             ),
             (
-                serde_json::json!({ "initialPath": "/reports " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
                 "",
                 "/reports ",
             ),
             (
-                serde_json::json!({ "initialPath": "/reports " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
                 "~/cloud",
                 "/reports ",
             ),
             (
-                serde_json::json!({ "initialPath": "/users/{username}", "username": "alice " }),
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/users/{username}", "username": "alice " }),
                 "cloud/",
                 "/users/alice ",
             ),
@@ -2359,7 +2384,10 @@ mod tests {
         );
         // A profile that omits `protocol` is FTP, the connect-path default:
         // `docs` opens under the login folder, so the root stays `~/docs`.
-        assert_eq!(root_ok(serde_json::json!({ "initialPath": "docs" })), "~/docs");
+        assert_eq!(
+            root_ok(serde_json::json!({ "initialPath": "docs" })),
+            "~/docs"
+        );
     }
 
     /// The `docs/docs` defect end to end on a scripted FTP server: the
