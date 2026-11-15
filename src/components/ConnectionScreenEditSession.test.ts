@@ -62,15 +62,25 @@ describe('ConnectionScreen edit sessions', () => {
             .map(m => text.slice(text.lastIndexOf('\n', m.index!), m.index!));
         expect(swaps(source, 'fourshared_connect')).toEqual([expect.stringMatching(/swapBackend\(\(\) => $/)]);
         expect(swaps(oauthHookSource, 'oauth2_connect')).toEqual([expect.stringMatching(/swapBackend\(\(\) => $/)]);
-        expect(oauthHookSource).toMatch(/tell\('start'\);\n\s+let swap: Promise<T>;\n\s+try \{\n\s+swap = run\(\);/);
+        // App is told first, before anything is awaited, and the invoke runs
+        // only in the swap's turn.
+        expect(oauthHookSource).toMatch(/const token = \+\+lastBackendSwapToken;[\s\S]{0,400}?\n  tell\('start'\);\n  const previous = swapQueueTail;/);
+        expect(oauthHookSource).toMatch(/ran = true;\n\s+return run\(\);/);
         // The resume of a restored transfer connects a saved OAuth or 4shared
         // profile itself: it parks first too.
         const resume = appSource.slice(appSource.indexOf('  const connectSavedProfileForResume = async ('));
         for (const [before, command] of [['let oauthResult:', "invoke('oauth2_connect'"], ["invoke<boolean>('fourshared_has_tokens'", "invoke('fourshared_connect'"]]) {
             const from = resume.indexOf(before);
             expect(from, before).toBeGreaterThan(-1);
-            expect(resume.slice(from, resume.indexOf(command, from)), command).toContain('backendUncertainRef.current = true;\n        takeOverActiveSession();');
+            const untilCommand = resume.slice(from, resume.indexOf(command, from));
+            expect(untilCommand, command).toContain('backendUncertainRef.current = true;\n        takeOverActiveSession();');
+            // Counted as a replacement in flight until it returns, in a finally.
+            expect(untilCommand, command).toMatch(/const end\w+Replacement = replacingBackend\(\);\n\s+try \{\n\s+[^\n]*$/);
         }
+        // Every connect, switch and swap invoke goes through cancellableConnect,
+        // which counts it the same way.
+        const central = appSource.slice(appSource.indexOf('  const cancellableConnect = useCallback('));
+        expect(central.slice(0, central.indexOf('  }, [beginConnectAttempt'))).toMatch(/const endReplacement = replacingBackend\(\);[\s\S]*\} finally \{[\s\S]*endReplacement\(\);\n\s+\}\n$/);
     });
 
     it('gates every path that writes overlay fields on the one overlay predicate', () => {

@@ -9,6 +9,7 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
+import { translate } from '../i18n';
 
 export type OAuthProvider = 'google_drive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive' | 'yandexdisk';
 
@@ -49,27 +50,64 @@ let lastSettledBackendSwapToken = 0;
  *  its own sign-in even when another one is still running. */
 export const latestSettledBackendSwapToken = (): number => lastSettledBackendSwapToken;
 
+/** How long a sign-in waits for the one before it to settle, as long as a
+ *  connect may take (`CONNECT_HARD_TIMEOUT_MS` in App). */
+export const BACKEND_SWAP_WAIT_MS = 120_000;
+
+/** Settles when the latest queued swap settles (or gives up waiting). Module
+ *  state, so a window reload starts with an empty queue. */
+let swapQueueTail: Promise<void> = Promise.resolve();
+
 /** Runs a sign-in's invoke that replaces the backend's provider
  *  (`oauth2_connect`, `fourshared_connect`). App is told first, in the same
  *  task, so the live tab is put aside before the backend leaves it: the swap
  *  used to happen first, and until the form handed the connect over the tab
  *  stayed live, and the transfer queue could start on it, over the new
- *  account. */
+ *  account.
+ *
+ *  One swap at a time: a second sign-in is put aside and counted at once,
+ *  but its invoke starts only once the one before it settled, so the backend
+ *  installs the providers in the order their replies arrive and the swap that
+ *  settled last is the one it holds. The live tab stays put aside for the
+ *  whole wait (App counts the swap from its start). The wait is bounded: past
+ *  `BACKEND_SWAP_WAIT_MS` the sign-in fails with the timed-out connect text,
+ *  replacing nothing and owning nothing, and its place in the queue passes on
+ *  the swap still running before it, so the sign-ins behind it keep waiting
+ *  for that one, each with its own bounded wait. A sign-in whose invoke ran,
+ *  even one that threw at once or was rejected, frees its place when it
+ *  settles. */
 export function swapBackend<T>(run: () => Promise<T>): Promise<T> {
   const token = ++lastBackendSwapToken;
+  let ran = false;
   const tell = (phase: BackendSwapDetail['phase']) => {
-    if (phase === 'settled') lastSettledBackendSwapToken = token;
+    if (phase === 'settled' && ran) lastSettledBackendSwapToken = token;
     window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
   };
   tell('start');
-  let swap: Promise<T>;
-  try {
-    swap = run();
-  } catch (e) {
-    tell('settled');
-    throw e;
-  }
-  return swap.finally(() => tell('settled'));
+  const previous = swapQueueTail;
+  let release!: () => void;
+  swapQueueTail = new Promise<void>((resolve) => { release = resolve; });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const turn = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), BACKEND_SWAP_WAIT_MS);
+    void previous.then(() => resolve(true));
+  });
+  let handedOn = false;
+  return turn
+    .then((ready) => {
+      clearTimeout(timer);
+      if (!ready) {
+        handedOn = true;
+        void previous.then(release);
+        throw new Error(translate('toast.connectTimedOut'));
+      }
+      ran = true;
+      return run();
+    })
+    .finally(() => {
+      if (!handedOn) release();
+      tell('settled');
+    });
 }
 
 interface UseOAuth2Return {

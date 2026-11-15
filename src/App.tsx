@@ -1037,6 +1037,27 @@ const App: React.FC = () => {
     backendUncertainRef.current = false;
     backendConfirmationsRef.current += 1;
   };
+  /** Starts an invoke that replaces the backend's provider (every connect,
+   *  a tab switch, a sign-in swap, the resume of a restored transfer) and
+   *  returns its end, to call in a finally. While one runs, nothing is bound
+   *  to the live tab (`backendServesLiveTab`, through `backendTeardownsRef`):
+   *  the backend may already hold the new provider before the invoke
+   *  returns. At its end, a tab another
+   *  connect confirmed meanwhile has had its backend replaced, so the backend
+   *  is marked uncertain until a connect confirms a tab again. */
+  const replacingBackend = () => {
+    const confirmedBefore = backendConfirmationsRef.current;
+    // Counted with the teardowns: either way the live tab is not what the
+    // backend serves until it ends (`backendServesLiveTab`).
+    backendTeardownsRef.current += 1;
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      backendTeardownsRef.current -= 1;
+      if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
+    };
+  };
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
   // Connect form started, keyed by its phase version: a Cancel of that connect
@@ -2562,6 +2583,8 @@ const App: React.FC = () => {
   ): Promise<T> => {
     const token = beginConnectAttempt();
     let hardTimer: ReturnType<typeof setTimeout> | null = null;
+    // This connect replaces the backend's provider (`replacingBackend`).
+    const endReplacement = replacingBackend();
     try {
       // Race the connect against a hard-timeout deadline so even a backend
       // command that can never answer (a panic strands the IPC resolver) still
@@ -2600,6 +2623,7 @@ const App: React.FC = () => {
       if (hardTimer) clearTimeout(hardTimer);
       extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
+      endReplacement();
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
@@ -8252,13 +8276,21 @@ const App: React.FC = () => {
     notify.error(t('connection.connectionFailed'), t('toast.remoteTargetChanged'));
   });
   useEffect(() => {
+    // The end of each swap still in flight (`replacingBackend`).
+    const swapsInFlight = new Map<number, () => void>();
     const ownsBackend = (token: number | undefined) => {
       const last = backendSwapRef.current;
       return !!last && last.token === token && last.settledAtPhase === remoteConnectPhaseVersionRef.current;
     };
     const swap = (event: Event) => {
       const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
-      if (phase === 'settled') {
+      // `swapBackend` tells every start one settle, after a throw or a
+      // rejection too.
+      if (phase === 'start') {
+        swapsInFlight.set(token, replacingBackend());
+      } else {
+        swapsInFlight.get(token)?.();
+        swapsInFlight.delete(token);
         backendSwapRef.current = { token, settledAtPhase: remoteConnectPhaseVersionRef.current };
       }
       // Nothing is bound to the backend until a connect or a switch confirms
@@ -11674,6 +11706,7 @@ const App: React.FC = () => {
         // once, so no queued write passes before React commits the park.
         backendUncertainRef.current = true;
         takeOverActiveSession();
+        const endOAuthReplacement = replacingBackend();
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
         } catch (connectErr) {
@@ -11690,6 +11723,8 @@ const App: React.FC = () => {
           } else {
             throw connectErr;
           }
+        } finally {
+          endOAuthReplacement();
         }
         const displayName = oauthResult?.display_name || profile.name;
         const accountEmail = oauthResult?.account_email || profile.username || '';
@@ -11733,11 +11768,14 @@ const App: React.FC = () => {
         // As for OAuth above: the tab is put aside before the backend leaves it.
         backendUncertainRef.current = true;
         takeOverActiveSession();
+        const endFourSharedReplacement = replacingBackend();
         try {
           await invoke('fourshared_connect', { params });
         } catch {
           await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
           await invoke('fourshared_connect', { params });
+        } finally {
+          endFourSharedReplacement();
         }
         await connectToFtp({
           server: profile.name,

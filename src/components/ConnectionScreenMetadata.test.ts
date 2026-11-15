@@ -15,6 +15,7 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../i18n', () => ({
     useTranslation: () => mocks.t,
     useI18n: () => ({ t: mocks.t, language: 'en' }),
+    translate: (key: string) => key,
 }));
 vi.mock('../hooks/useActivityLog', () => ({ useActivityLog: () => ({ log: mocks.log }) }));
 // Keep the real QuickConnect controls and save handlers, without signing in.
@@ -40,7 +41,7 @@ vi.mock('./IntroHub/DiscoverPanel', () => ({
 vi.mock('./IntroHub/PortableIsolationBanner', () => ({ PortableIsolationBanner: () => null }));
 
 import { ConnectionScreen } from './ConnectionScreen';
-import { latestSettledBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
+import { BACKEND_SWAP_WAIT_MS, latestSettledBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
 import { connectStartFolder } from '../utils/usernameTemplate';
 import { IntroHub } from './IntroHub/IntroHub';
 
@@ -769,6 +770,7 @@ async function mountSwapListener() {
         parkActiveSession: vi.fn(),
         remoteConnectPhaseVersionRef: { current: 7 },
         backendUncertainRef: { current: false },
+        replacingBackend: () => () => undefined,
     };
     new Function(...Object.keys(ctx), code)(...Object.values(ctx));
     return ctx;
@@ -781,11 +783,28 @@ const handOffFor = (token: number) => {
     window.dispatchEvent(new CustomEvent('aeroftp-sign-in-handoff', { detail: request }));
     return request.accepted;
 };
+/** The events of a sign-in swap, sent as `swapBackend` sends them, in an
+ *  order the queue no longer lets happen: the token rules hold anyway. */
+let eventToken = 9000;
+const swapEvents = () => {
+    const token = ++eventToken;
+    const tell = (phase: 'start' | 'settled') =>
+        window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
+    tell('start');
+    return { token, settle: () => tell('settled') };
+};
 /** A sign-in swap the test settles when it wants: its token, and the settle. */
 const pendingSwap = () => {
-    let settle!: () => void;
+    let settle: (() => void) | undefined;
     const done = swapBackend(() => new Promise<void>(resolve => { settle = resolve; }));
-    return { settle: async () => { settle(); await done; } };
+    return {
+        settle: async () => {
+            // Its invoke runs in its turn, a few microtasks after the start.
+            for (let i = 0; i < 20 && !settle; i++) await Promise.resolve();
+            settle!();
+            await done;
+        },
+    };
 };
 
 describe('App around a sign-in swap', () => {
@@ -834,50 +853,47 @@ describe('Overlapping sign-ins', () => {
 
     it('puts aside a tab opened while two sign-ins wait, when the first one settles', async () => {
         const app = await mountSwapListener();
-        const a = pendingSwap();
-        const b = pendingSwap();
+        const a = swapEvents();
+        const b = swapEvents();
         // Tab C connects while both wait: its connect advances the phase.
         app.remoteConnectPhaseVersionRef.current++;
         const before = app.takeOverActiveSession.mock.calls.length;
-        await a.settle();
-        const tokenA = latestSettledBackendSwapToken();
+        a.settle();
         // A's settle replaced C's backend: C is put aside.
         expect(app.takeOverActiveSession.mock.calls.length).toBe(before + 1);
         // A's form fails its profile save: its report names A, which owns the backend.
-        abandon(tokenA);
+        abandon(a.token);
         expect(app.parkActiveSession).toHaveBeenCalledOnce();
-        await b.settle();
+        b.settle();
     });
 
     it('puts aside the later sign-in\'s tab when the earlier one settles after it', async () => {
         const app = await mountSwapListener();
-        const a = pendingSwap();
-        const b = pendingSwap();
-        await b.settle();
-        expect(handOffFor(latestSettledBackendSwapToken())).toBe(true);
+        const a = swapEvents();
+        const b = swapEvents();
+        b.settle();
+        expect(handOffFor(b.token)).toBe(true);
         // App's connect of B's session.
         app.remoteConnectPhaseVersionRef.current++;
         const before = app.takeOverActiveSession.mock.calls.length;
-        await a.settle();
+        a.settle();
         expect(app.takeOverActiveSession.mock.calls.length).toBe(before + 1);
         // A now owns the backend: its own hand-off is the right one.
-        expect(handOffFor(latestSettledBackendSwapToken())).toBe(true);
+        expect(handOffFor(a.token)).toBe(true);
     });
 
     it('refuses the hand-off of a sign-in that another one overtook', async () => {
         const app = await mountSwapListener();
-        const a = pendingSwap();
-        const b = pendingSwap();
-        await a.settle();
-        const tokenA = latestSettledBackendSwapToken();
-        await b.settle();
-        const tokenB = latestSettledBackendSwapToken();
-        expect(handOffFor(tokenA)).toBe(false);
+        const a = swapEvents();
+        const b = swapEvents();
+        a.settle();
+        b.settle();
+        expect(handOffFor(a.token)).toBe(false);
         expect(app.notify.error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
         // Its abandoned report is left alone; B hands off.
-        abandon(tokenA);
+        abandon(a.token);
         expect(app.parkActiveSession).not.toHaveBeenCalled();
-        expect(handOffFor(tokenB)).toBe(true);
+        expect(handOffFor(b.token)).toBe(true);
     });
 
     it('refuses a hand-off after a connect took the backend since the settle', async () => {
@@ -898,16 +914,20 @@ describe('Overlapping sign-ins', () => {
     });
 });
 
-/** App's sign-in swap listener, `backendServesLiveTab`, `remoteActionGuard`
- *  and `queuedTargetProblem`, run together on stubs. */
+/** App's backend confirmation and replacement accounting, its sign-in swap
+ *  listener, `backendServesLiveTab`, `remoteActionGuard`, `queuedTargetProblem`
+ *  and `queuedTargetGuard`, run together on stubs. */
 async function liveTabChecks() {
-    const listenerStart = APP.indexOf('  const backendSwapRef = useRef<');
-    const listenerEnd = APP.indexOf('  // FTP operations', listenerStart);
-    const checksStart = APP.indexOf('  const backendServesLiveTab = () =>');
-    const checksEnd = APP.indexOf('\n  });\n', APP.indexOf('  const queuedTargetProblem = useLatestCallback(', checksStart)) + '\n  });'.length;
-    expect(listenerStart, 'the swap listener in App.tsx').toBeGreaterThan(-1);
-    expect(checksStart, 'backendServesLiveTab in App.tsx').toBeGreaterThan(-1);
-    const source = APP.slice(listenerStart, listenerEnd) + '\n' + APP.slice(checksStart, checksEnd);
+    const between = (from: string, to: string) => {
+        const start = APP.indexOf(from);
+        expect(start, from).toBeGreaterThan(-1);
+        return APP.slice(start, APP.indexOf(to, start));
+    };
+    const source = [
+        between('  const confirmBackendConnection = () => {', '  const remoteConnectPhaseVersionRef = useRef(0);'),
+        between('  const backendSwapRef = useRef<', '  // FTP operations'),
+        between('  const backendServesLiveTab = () =>', '  /** Fails the rows from'),
+    ].join('\n');
     const { code } = await transformWithOxc(source, 'live-tab.ts');
     const params = { protocol: 'ftp', server: 'example.test', username: 'u', password: '' };
     const target = { params, profileId: null, oauthLogins: 0, overlay: null };
@@ -924,6 +944,7 @@ async function liveTabChecks() {
         remoteConnectPhaseRef: { current: false },
         backendTeardownsRef: { current: 0 },
         backendUncertainRef: { current: false },
+        backendConfirmationsRef: { current: 0 },
         isConnected: true,
         isSameConnection: () => true,
         liveConnectionParams: params,
@@ -936,11 +957,11 @@ async function liveTabChecks() {
         QueuedTargetChangedError,
         t: (key: string) => key,
     };
-    const fns = new Function(...Object.keys(ctx), `${code}; return { remoteActionGuard, queuedTargetProblem };`)(...Object.values(ctx));
+    const fns = new Function(...Object.keys(ctx), `${code}; return { confirmBackendConnection, replacingBackend, remoteActionGuard, queuedTargetProblem, queuedTargetGuard };`)(...Object.values(ctx));
     return { ...fns, target, ctx };
 }
 
-describe('The live tab while a sign-in swap is being put aside', () => {
+describe('The live tab while the backend is being replaced', () => {
     afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
 
     it('refuses the queue and a direct action at once, before React commits the park', async () => {
@@ -950,9 +971,107 @@ describe('The live tab while a sign-in swap is being put aside', () => {
         const swap = pendingSwap();
         expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
         expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
-        // Still refused once it settles, until a connect confirms a tab.
+        // The batch's own guard, run before each write while the form still
+        // reads the profile to save (the swap settled, the hand-off pending).
         await swap.settle();
+        expect(() => live.queuedTargetGuard(live.target)()).toThrow('transfer.queuedForAnotherServer');
+        // A connect that confirms a tab binds it again.
+        live.confirmBackendConnection();
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+
+    it('keeps the tab another sign-in confirmed unbound while an earlier one is in flight', async () => {
+        const live = await liveTabChecks();
+        const a = swapEvents();
+        const b = swapEvents();
+        b.settle();
+        // B hands off and its connect confirms B's tab.
+        live.confirmBackendConnection();
+        // A is still in flight: the backend may hold A's provider already.
         expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
+        a.settle();
+        // A replaced the backend under B's tab: unbound until a connect confirms.
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        expect(live.ctx.backendTeardownsRef.current).toBe(0);
+    });
+
+    it('does the same when the earlier replacement is a resume connect', async () => {
+        const live = await liveTabChecks();
+        // The resume of a restored transfer starts its OAuth connect.
+        const endResume = live.replacingBackend();
+        // Another connect confirms its tab meanwhile.
+        live.confirmBackendConnection();
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        endResume();
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        // A replacement nobody confirmed around leaves nothing behind.
+        live.confirmBackendConnection();
+        const endAlone = live.replacingBackend();
+        endAlone();
+        endAlone();
+        expect(live.ctx.backendTeardownsRef.current).toBe(0);
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+});
+
+describe('One sign-in swap at a time', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('starts a second swap only once the first has settled', async () => {
+        const settled: number[] = [];
+        const record = (event: Event) => {
+            const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
+            if (phase === 'settled') settled.push(token);
+        };
+        window.addEventListener('aeroftp-backend-swap', record);
+        try {
+            const first = pendingSwap();
+            const run = vi.fn(async () => undefined);
+            const second = swapBackend(run);
+            for (let i = 0; i < 5; i++) await Promise.resolve();
+            expect(run).not.toHaveBeenCalled();
+            await first.settle();
+            await second;
+            expect(run).toHaveBeenCalledOnce();
+            // Installed in settle order: the one that settled last owns the backend.
+            expect(latestSettledBackendSwapToken()).toBe(settled[settled.length - 1]);
+        } finally {
+            window.removeEventListener('aeroftp-backend-swap', record);
+        }
+    });
+
+    it('stops waiting for a swap that never settles, and keeps the next ones behind it', async () => {
+        vi.useFakeTimers();
+        const ownerBefore = latestSettledBackendSwapToken();
+        // A is still running; B and C queue behind it.
+        let settleA!: () => void;
+        const a = swapBackend(() => new Promise<void>((resolve) => { settleA = resolve; }));
+        const runB = vi.fn(async () => undefined);
+        const b = swapBackend(runB).catch((error: Error) => error.message);
+        await vi.advanceTimersByTimeAsync(BACKEND_SWAP_WAIT_MS);
+        // B fails as a timed-out connect, replacing and owning nothing.
+        expect(await b).toBe('toast.connectTimedOut');
+        expect(runB).not.toHaveBeenCalled();
+        expect(latestSettledBackendSwapToken()).toBe(ownerBefore);
+        // C, queued after B gave up, still waits for A, which is running.
+        const runC = vi.fn(async () => undefined);
+        const c = swapBackend(runC);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(runC).not.toHaveBeenCalled();
+        // Only once A settles does C start.
+        settleA();
+        await a;
+        await c;
+        expect(runC).toHaveBeenCalledOnce();
+    });
+
+    it('lets the ones behind go when a swap that ran fails at once', async () => {
+        const failing = swapBackend<void>(() => { throw new Error('refused'); }).catch(() => 'failed');
+        const next = vi.fn(async () => undefined);
+        expect(await failing).toBe('failed');
+        await swapBackend(next);
+        expect(next).toHaveBeenCalledOnce();
     });
 });
 
