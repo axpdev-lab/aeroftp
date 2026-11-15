@@ -6,7 +6,7 @@
         "enHash is the SHA-256 of the flattened current en.json. Change English and run --write in the same commit.",
         "A value listed here fails the gate when a locale still equals it and the current English does not."
     ],
-    "enHash": "420b877e8a59bfa981ef47eeae14d451ca4bd5959a011588f4afffc5ec1e753c",
+    "enHash": "91e236a61e54dc91ccc1b13d3c928d2ed9212bf04a1cde86ccb763bad56330c7",
     "former": {
         "about.aiCredits": [
             "AI: Claude Opus 4.5 + support models"
@@ -271,6 +271,9 @@
         ],
         "cloud.paused": [
             "Sync paused"
+        ],
+        "cloud.remoteFolderNotPlain": [
+            "The remote folder {folder} contains a \".\" or \"..\" step or a doubled slash. AeroCloud uses a folder as written and does not resolve them. Choose a sub-folder without them, or remove them from the server profile's starting folder or overlay folder."
         ],
         "cloud.syncing": [
             "Syncing..."

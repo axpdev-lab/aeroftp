@@ -1,4 +1,4 @@
-import { isSshProtocol } from '../types';
+import { locationProblem } from './syncNavigationPath';
 
 const normalizeSegments = (value: string): string[] => {
     const segments: string[] = [];
@@ -33,16 +33,28 @@ export const isLoginRelativeScope = (s?: string | null): boolean =>
     s === '~' || !!s?.startsWith('~/');
 
 /**
- * A path as the protocol opens it. SFTP and SCP open a relative folder under
- * the login folder (`resolve_start_dir` in the backend), as rclone's sftp
- * does, so there `docs` is `~/docs`; read from the root it was `/docs`, which
- * the session never opened. Any other path, and any other protocol, comes
- * back as given. The backend maps a relative scope the same way
- * (`binding_with_resolved_scope`).
+ * Protocols that open a relative folder under the login folder: SFTP and SCP
+ * resolve it against home (`resolve_start_dir` in the backend), FTP and FTPS
+ * issue a relative `CWD` from the login directory. There `docs` is `~/docs`;
+ * read from the root it was `/docs`, a folder the session never opened.
+ * `protocol` is optional on `ServerProfile` and defaults to `'ftp'`
+ * (`types.ts`), so an omitted protocol is FTP, not "unknown".
+ */
+export const loginRelativeProtocol = (protocol?: string | null): boolean => {
+    const effective = protocol ?? 'ftp';
+    return effective === 'sftp' || effective === 'scp' || effective === 'ftp' || effective === 'ftps';
+};
+
+/**
+ * A path as the protocol opens it. On a login-relative protocol a relative
+ * folder opens under the login folder, so there `docs` is `~/docs`; read from
+ * the root it was `/docs`, which the session never opened. Any other path,
+ * and any other protocol, comes back as given. The backend maps a relative
+ * scope the same way (`binding_with_resolved_scope`).
  */
 export const loginRelativeForm = (path: string | null | undefined, protocol?: string | null): string => {
     const p = path || '';
-    if (!p || p.startsWith('/') || isLoginRelativeScope(p) || !isSshProtocol(protocol)) return p;
+    if (!p || p.startsWith('/') || isLoginRelativeScope(p) || !loginRelativeProtocol(protocol)) return p;
     return `~/${p}`;
 };
 
@@ -70,6 +82,9 @@ export const normalizeLoginRelative = (p: string): string => {
 // anchor above the vault is the misconfiguration that produces the empty-listing).
 export const isValidOverlayScope = (scope: string, remotePath: string, protocol?: string | null): boolean => {
     if (!scope) return true;
+    // A scope that is not plain names no folder this form can compare
+    // (`locationProblem`, the backend's `util::path_location` rule).
+    if (locationProblem(scope)) return false;
     // A `..` would leave the login folder: the backend refuses it, so the form does too.
     if (isLoginRelativeScope(scope) && normalizeLoginRelative(scope).split('/').includes('..')) return false;
     const remote = loginRelativeForm(remotePath, protocol);
@@ -91,12 +106,17 @@ export const isValidOverlayScope = (scope: string, remotePath: string, protocol?
 // interpreting it RELATIVE to the Remote Path so the prefix is never re-typed
 // (#369 UX). Blank or "/" means "the Remote Path itself". A value already equal
 // to or under the Remote Path is kept verbatim (an operator may still paste the
-// full absolute path). Anything else is treated as a subfolder name and nested
-// under the Remote Path, so the anchor can never escape the Remote Path by
-// construction and isValidOverlayScope(resolveOverlayScope(x, r), r) is always
-// true. The returned value is normalized (the exact form the backend reads).
+// full absolute path). An input with a `.`, `..` or empty step is returned as
+// typed, never normalized into another folder, and isValidOverlayScope refuses
+// it. Anything else is treated as a subfolder name and nested under the Remote
+// Path, so the anchor cannot escape it. The returned value is normalized (the
+// exact form the backend reads).
 export const resolveOverlayScope = (input: string, remotePath: string, protocol?: string | null): string => {
     const raw = input || '';
+    // A `.`, `..` or empty step is kept as typed, in either form, so
+    // `isValidOverlayScope` refuses it: nested or normalized, `~/../vault`
+    // became `~/docs/vault`, a folder the operator never named.
+    if (locationProblem(raw)) return raw;
     const remote = loginRelativeForm(remotePath, protocol);
     if (isLoginRelativeScope(remote)) {
         // Only the session places the login folder, so the anchor stays in
@@ -116,7 +136,7 @@ export const resolveOverlayScope = (input: string, remotePath: string, protocol?
     const r = normalizeRemotePath(remote);
     if (raw === '' || raw === '/') return r;           // same as the Remote Path
     if (r === '') {                                    // remote is root: any folder is absolute
-        return isSshProtocol(protocol) && isLoginRelativeScope(raw) ? normalizeLoginRelative(raw) : normalizeRemotePath(raw);
+        return loginRelativeProtocol(protocol) && isLoginRelativeScope(raw) ? normalizeLoginRelative(raw) : normalizeRemotePath(raw);
     }
     const s = normalizeRemotePath(raw);
     if (s === r || s.startsWith(r + '/')) return s;    // already absolute and in scope
