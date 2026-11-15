@@ -2171,33 +2171,27 @@ pub const TARGET_CHANGED_MARKER: &str = "CONNECTION_CHANGED:";
 
 /// Whether a rendered error is a refusal of that family.
 ///
-/// The marker counts where the message starts, or behind wrappers only: an
-/// operation that reports a failure puts its own words in front (`upload
-/// failed: CONNECTION_CHANGED: ...`), and so can the window (`Error: ...`).
-/// A wrapper is letters, digits and spaces closed by `: `. A marker later in
-/// the text is part of something the error names, such as a remote path
-/// (`Connection reset while uploading /CONNECTION_CHANGED: archive/a.txt`),
-/// and is not the refusal: that error is classified as what it is.
+/// The position of the marker decides, and nothing else: it counts where the
+/// message starts, or behind wrappers only. An operation that reports a
+/// failure puts its own words in front (`upload failed: CONNECTION_CHANGED:
+/// ...`), and so can the window (`Error: ...`); a wrapper is letters, digits
+/// and spaces closed by `: `. A marker later in the text is part of something
+/// the error names, such as a remote path (`Connection reset while uploading
+/// /CONNECTION_CHANGED: archive/a.txt`), and is not the refusal: that error is
+/// classified as what it is.
 ///
-/// The caller's own file path is taken out first when it holds the marker,
-/// and so is each of its components that holds it (the remote side of a
-/// transfer names the same file under another root), so a file named after
-/// the marker is not read as the refusal; a short path (`a`) removes nothing.
-/// A path or component that is the marker and nothing else is left in: taking
-/// it out would take the refusal's own first word with it, and the same
-/// refused write would be retried.
+/// No path is taken out of the text first. A file can be named after the
+/// marker, or after the first words of the refusal itself (`CONNECTION_CHANGED:
+/// the account`), and removing the caller's path then removed the refusal's
+/// own start and the refused write was retried. A marker that stands where a
+/// refusal starts is therefore read as the refusal whatever the file is
+/// called: for a file whose relative path opens an error text with the marker
+/// the answer is "not retried", which is the safe one of the two.
 /// Twin: `isTargetChangedRefusal` in `src/utils/targetChanged.ts`; both run
 /// `src/shared/target-changed-cases.json`.
-pub fn is_target_changed_text(raw: &str, file_path: Option<&str>) -> bool {
-    let named =
-        |part: &&str| part.contains(TARGET_CHANGED_MARKER) && part.trim() != TARGET_CHANGED_MARKER;
-    let text = file_path
-        .into_iter()
-        .flat_map(|path| std::iter::once(path).chain(path.split(['/', '\\'])))
-        .filter(named)
-        .fold(raw.to_string(), |text, part| text.replace(part, ""));
-    text.find(TARGET_CHANGED_MARKER)
-        .is_some_and(|at| is_wrappers_only(&text[..at]))
+pub fn is_target_changed_text(raw: &str) -> bool {
+    raw.find(TARGET_CHANGED_MARKER)
+        .is_some_and(|at| is_wrappers_only(&raw[..at]))
 }
 
 /// Whether what stands in front of the marker is nothing, or wrappers only.
@@ -2700,7 +2694,6 @@ mod tests {
         #[derive(serde::Deserialize)]
         struct Case {
             text: String,
-            path: Option<String>,
             refusal: bool,
         }
         #[derive(serde::Deserialize)]
@@ -2714,16 +2707,14 @@ mod tests {
         assert!(table.cases.len() > 20);
         for case in &table.cases {
             assert_eq!(
-                is_target_changed_text(&case.text, case.path.as_deref()),
+                is_target_changed_text(&case.text),
                 case.refusal,
-                "{:?}: {}",
-                case.path,
+                "{}",
                 case.text
             );
         }
         assert!(is_target_changed_text(
-            &ProviderError::TargetChanged.to_string(),
-            None
+            &ProviderError::TargetChanged.to_string()
         ));
     }
     use std::collections::HashMap;

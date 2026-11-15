@@ -8,8 +8,8 @@ import { isTargetChangedRefusal, TARGET_CHANGED_MARKER } from './targetChanged';
 describe('a changed-target refusal', () => {
     it('is read as the shared table says, the same as the backend reads it', () => {
         expect(TABLE.cases.length).toBeGreaterThan(20);
-        for (const row of TABLE.cases as { text: string; path?: string; refusal: boolean }[]) {
-            expect(isTargetChangedRefusal(row.text, row.path), `${row.path ?? '(no path)'}: ${row.text}`).toBe(row.refusal);
+        for (const row of TABLE.cases as { text: string; refusal: boolean }[]) {
+            expect(isTargetChangedRefusal(row.text), row.text).toBe(row.refusal);
         }
     });
 

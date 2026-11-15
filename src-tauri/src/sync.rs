@@ -2478,7 +2478,7 @@ async fn verify_repair_sync_ec_after_download(
 /// starts.
 fn operation_failure(operation: &str, error: &dyn std::fmt::Display) -> String {
     let text = error.to_string();
-    if crate::providers::types::is_target_changed_text(&text, None) {
+    if crate::providers::types::is_target_changed_text(&text) {
         text
     } else {
         format!("{operation} failed: {text}")
@@ -4669,16 +4669,16 @@ fn sync_error_of_os_kind(kind: std::io::ErrorKind) -> Option<(SyncErrorKind, boo
 
 /// Classify a raw error message into a structured SyncErrorInfo
 pub fn classify_sync_error(raw: &str, file_path: Option<&str>) -> SyncErrorInfo {
-    // A changed target is decided by its marker, on the text as given, before
-    // the caller's path is taken out of it: the path is removed as a
-    // substring, so a file named `a` used to strip the words the branches
-    // below look for and leave `connection`, which is retryable. The marker
-    // counts where the text starts or behind wrappers only: the operation
-    // that failed, or the window, may have put its own words in front
-    // (`upload failed: ...`). A marker inside something the error names, a
-    // remote path for one, is not the refusal. The refusal is final for this
-    // session: the same write is refused again.
-    if crate::providers::types::is_target_changed_text(raw, file_path) {
+    // A changed target is decided by its marker, on the text as given and
+    // before anything is taken out of it: the caller's path is removed below
+    // as a substring, and a file named `a`, or one named after the refusal's
+    // own first words, used to strip the words that decide and leave a
+    // retryable kind. The marker counts where the text starts or behind
+    // wrappers only: the operation that failed, or the window, may have put
+    // its own words in front (`upload failed: ...`). A marker inside
+    // something the error names, a remote path for one, is not the refusal.
+    // The refusal is final for this session: the same write is refused again.
+    if crate::providers::types::is_target_changed_text(raw) {
         return SyncErrorInfo {
             kind: SyncErrorKind::Auth,
             message: raw.to_string(),
@@ -7876,6 +7876,29 @@ mod tests {
                 assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
                 assert!(!info.retryable, "{path}: {raw}");
             }
+        }
+        // CodeRabbit 4575757882 (third round) and 4576777955: a file named
+        // after the refusal's own first words takes nothing out of it. No
+        // path is removed from the text any more; the marker's position
+        // decides.
+        for path in [
+            "CONNECTION_CHANGED: the account",
+            "/srv/CONNECTION_CHANGED: the",
+            "CONNECTION_CHANGED: the account or the write target changed",
+        ] {
+            for raw in [refused.clone(), format!("upload failed: {refused}")] {
+                let info = classify_sync_error(&raw, Some(path));
+                assert_eq!(info.kind, SyncErrorKind::Auth, "{path}: {raw}");
+                assert!(!info.retryable, "{path}: {raw}");
+            }
+            // An error that names that file after other words is not the
+            // refusal.
+            let named = classify_sync_error(
+                &format!("Connection reset while uploading {path}"),
+                Some(path),
+            );
+            assert_eq!(named.kind, SyncErrorKind::Network, "{path}");
+            assert!(named.retryable, "{path}");
         }
         // The two spellings of the marker in the crate are one family.
         assert_eq!(
