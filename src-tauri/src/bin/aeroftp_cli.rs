@@ -87362,6 +87362,134 @@ mod tests {
     }
 
     #[test]
+    fn crypt_over_skipped_base_cli_secret_form_for_mixed_case() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_CHILD";
+        const SEED: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_SEED";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            let seed_path = std::env::var(SEED).expect("seed path");
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+
+                let seed_code = rt.block_on(cmd_import_template(
+                    seed_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(seed_code, 0, "seeding [base] profile must succeed");
+
+                let missing_base_code = rt.block_on(cmd_import_template(
+                    tpl_path.clone(),
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    vec!["vault=clear".to_string()],
+                    false,
+                    &cli,
+                ));
+                assert_eq!(
+                    missing_base_code, 5,
+                    "omitting --secret-form-for base on skipped inherited base must exit 5"
+                );
+
+                let ok_code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    vec!["vault=clear".to_string(), "base=obscured".to_string()],
+                    false,
+                    &cli,
+                ));
+                assert_eq!(ok_code, 0, "mixed --secret-form-for apply must succeed");
+
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active CLI test user");
+                let (profiles, _) =
+                    ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                        &store, active.id,
+                    )
+                    .unwrap();
+                let vault = profiles
+                    .iter()
+                    .find(|p| p.get("name").and_then(serde_json::Value::as_str) == Some("vault"))
+                    .expect("imported vault profile");
+                let vault_id = vault
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("vault id");
+
+                let login_pw = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("server_{vault_id}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    login_pw.as_deref().map(|z| z.as_str()),
+                    Some("PlainLoginPw!")
+                );
+
+                let crypt_pw = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("aerocrypt_overlay_pw_{vault_id}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    crypt_pw.as_deref().map(|z| z.as_str()),
+                    Some("ClearVaultPw!")
+                );
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let seed_file = dir.path().join("seed.conf");
+        std::fs::write(
+            &seed_file,
+            "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\n",
+        )
+        .unwrap();
+        let obscured_base_pw = "AQIDBAUGBwgJCgsMDQ4PEAsEp7cjRnTRuCeemrY";
+        let tpl_file = dir.path().join("template.conf");
+        std::fs::write(
+            &tpl_file,
+            format!(
+                "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = {obscured_base_pw}\n\n\
+                 [vault]\ntype = crypt\nremote = base:enc\npassword = ClearVaultPw!\n"
+            ),
+        )
+        .unwrap();
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin_within(
+            "tests::crypt_over_skipped_base_cli_secret_form_for_mixed_case",
+            &[
+                (CHILD, tpl_file.to_str().unwrap()),
+                (SEED, seed_file.to_str().unwrap()),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+                ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
+                ("HOME", cfg_dir.to_str().unwrap()),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+            std::time::Duration::from_secs(30),
+        );
+    }
+
+    #[test]
     fn keystore_repair_does_not_block_on_open_non_tty_stdin_pipe() {
         const CHILD: &str = "AEROFTP_CLI_TEST_KEYSTORE_REPAIR_OPEN_STDIN_CHILD";
         if let Ok(backup_path) = std::env::var(CHILD) {
