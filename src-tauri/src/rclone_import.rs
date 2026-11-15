@@ -3136,20 +3136,16 @@ fn proton_session_of(server: &RcloneExportServer) -> Option<[(&'static str, Stri
         .and_then(aeroftp_proton_session_to_rclone)
 }
 
-/// rclone's s3 backend has no `bucket` key. A pinned bucket is exported as
-/// an `alias` remote `<base>-<bucket>` whose path is `<base>:<bucket>`, so
-/// keys stay bucket-relative (the way AeroFTP writes them). A crypt overlay
-/// on that profile must wrap the alias, not the raw s3 remote: wrapping
-/// `minio:/vault` makes rclone look for a bucket named `vault`.
-/// The bucket as written: rclone keeps a space after the colon of an alias
-/// (`remote = s3r: media` opens ` media`), and one at the end leaves the alias
-/// out (`write_bucket_alias`). Trimmed, a leading space named another bucket.
-/// A blank one is no bucket.
+/// The bucket an S3 profile opens: `S3Config::from_provider_config` trims it
+/// on connect, so the alias names the same bucket (written as stored, a
+/// leading space sent rclone to another one). A blank one is no bucket. Azure
+/// and B2 open their bucket as written, and keep it so in their alias.
 fn s3_pinned_bucket(options: Option<&serde_json::Value>) -> Option<&str> {
     options
         .and_then(|o| o.get("bucket"))
         .and_then(|v| v.as_str())
-        .filter(|s| !s.trim().is_empty())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
 }
 
 /// Write the `alias` remote that opens `remote_name` inside `bucket` (an S3
@@ -12794,6 +12790,44 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         );
 
         const TOKEN: &str = "edgevalue7";
+        // The bucket or container each backend's own connect opens for the
+        // profile, computed by its config builder: the export must name that
+        // one. A backend whose connect does not read it (Swift discovers its
+        // container) keeps the value as given.
+        let connect_bucket = |proto: &str, given: &str| -> Option<String> {
+            use crate::providers::ProviderType;
+            let config = |provider_type, key: &str| crate::providers::ProviderConfig {
+                name: "remote".into(),
+                provider_type,
+                host: "host.example".into(),
+                port: Some(443),
+                username: Some("user".into()),
+                password: Some("pw".into()),
+                initial_path: None,
+                extra: [(key.to_string(), given.to_string())].into_iter().collect(),
+            };
+            match proto {
+                "s3" => crate::providers::types::S3Config::from_provider_config(&config(
+                    ProviderType::S3,
+                    "bucket",
+                ))
+                .ok()
+                .map(|c| c.bucket),
+                "azure" => crate::providers::types::AzureConfig::from_provider_config(&config(
+                    ProviderType::Azure,
+                    "container",
+                ))
+                .ok()
+                .map(|c| c.container),
+                "backblaze" => crate::providers::b2::B2Config::from_provider_config(&config(
+                    ProviderType::Backblaze,
+                    "bucket",
+                ))
+                .ok()
+                .map(|c| c.bucket),
+                _ => None,
+            }
+        };
         let base_options = |proto: &str| -> serde_json::Value {
             match proto {
                 "proton" => serde_json::json!({
@@ -12846,10 +12880,18 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                         };
                         if value.trim() != value {
                             twins.push(format!("{proto} {field} {given:?}: `{line}` keeps an edge space rclone drops"));
-                        } else if value.contains(TOKEN) && !value.contains(given.as_str()) {
-                            twins.push(format!(
-                                "{proto} {field} {given:?}: `{line}` is the trimmed twin"
-                            ));
+                        } else if value.contains(TOKEN) {
+                            let expected = (field == "option bucket")
+                                .then(|| connect_bucket(proto, &given))
+                                .flatten()
+                                .unwrap_or_else(|| given.clone());
+                            if !value.contains(expected.as_str())
+                                || (expected != given && value.contains(given.as_str()))
+                            {
+                                twins.push(format!(
+                                    "{proto} {field} {given:?}: `{line}` is not what the profile opens ({expected:?})"
+                                ));
+                            }
                         }
                     }
                 }
