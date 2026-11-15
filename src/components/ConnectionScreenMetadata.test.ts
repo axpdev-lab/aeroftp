@@ -1159,7 +1159,7 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
         const ctx = {
             confirmBackendConnection: live.confirmBackendConnection,
             remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, AEROCLOUD_OPEN_SUPERSEDED: 'AEROCLOUD_OPEN_SUPERSEDED',
-            ownsPhase: () => true, previousSessionEnded: false,
+            ownsPhase: () => true, supersedeOlderConnects: () => undefined, previousSessionEnded: false,
             invoke: vi.fn(async () => undefined),
             isProvider,
             protocol: isProvider ? 'webdav' : 'ftp',
@@ -1814,6 +1814,52 @@ describe('Reviewed ownership of a connect', () => {
         expect(fake.backend.provider).toBe('B');
         expect(refs.backendConfirmationsRef.current).toBe(1);
         expect(refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([
+        ['AeroCloud is off', { enabled: false }, [], false, []],
+        ['no profile is saved', {}, [], false, []],
+        ['the live server is the cloud\'s', {}, ['cloud'], true, ['supersede 1']],
+        ['the open ends another server to connect its own', {}, ['cloud'], false, ['supersede 1', 'provider_connection_generation']],
+    ] as const)('cancels a connect in flight only where the AeroCloud open takes the backend (%s)', async (_label, config, profiles, sameServer, expected) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const events: string[] = [];
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            events.push(command);
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud', ...config };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        const supersedeOlderConnects = vi.fn((phase: number) => { events.push(`supersede ${phase}`); });
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, remoteConnectPhaseRef: { current: false },
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => profiles.map(id => ({ id, name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} })),
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => sameServer, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId: vi.fn(), setShowCloudPanel: vi.fn(),
+            setSessions: vi.fn(), setConnectionParams: vi.fn(), remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify: { error: vi.fn(), success: vi.fn() },
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        await handleCloudTabClick();
+        // A server connect still in flight is cancelled only by an open that
+        // uses the backend, and before that open ends anything.
+        const relevant = events.filter(event => event.startsWith('supersede') || event === 'provider_connection_generation');
+        expect(relevant.slice(0, expected.length)).toEqual(expected);
+        if (expected.length === 0) expect(supersedeOlderConnects).not.toHaveBeenCalled();
+        else expect(supersedeOlderConnects).toHaveBeenCalledTimes(1);
     });
 
     it.each([

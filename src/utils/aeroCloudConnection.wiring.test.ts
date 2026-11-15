@@ -49,7 +49,7 @@ it('forwards the saved S3 SSE policy through the real AeroCloud connection build
     checkSftpHostKey: vi.fn(async () => true),
     CONNECT_CANCELLED_MARKER,
     AEROCLOUD_OPEN_SUPERSEDED,
-    ownsPhase: () => true,
+    ownsPhase: () => true, supersedeOlderConnects: () => undefined,
   };
   const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
   await connect();
@@ -82,7 +82,7 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
       checkSftpHostKey: vi.fn(async () => true),
       CONNECT_CANCELLED_MARKER,
       AEROCLOUD_OPEN_SUPERSEDED,
-      ownsPhase: () => true,
+      ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     await connect();
@@ -118,7 +118,7 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
       checkSftpHostKey,
       CONNECT_CANCELLED_MARKER,
       AEROCLOUD_OPEN_SUPERSEDED,
-      ownsPhase: () => true,
+      ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     const error = await connect().then(() => null, (e: unknown) => e);
@@ -153,7 +153,7 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
       cloudConfig: { remote_folder: '/' }, cloudPassword: 'secret', cloudFilenApiKey: null,
       runConnect, scpFallbackConnectParam, loadedCertificateCheck, loadedOption, loadedOptionOn,
       isSshProtocol, checkSftpHostKey: vi.fn(async () => true), CONNECT_CANCELLED_MARKER,
-      AEROCLOUD_OPEN_SUPERSEDED, ownsPhase: () => true,
+      AEROCLOUD_OPEN_SUPERSEDED, ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     await connect();

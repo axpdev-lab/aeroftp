@@ -10099,9 +10099,11 @@ const App: React.FC = () => {
     logger.debug('Cloud Tab clicked');
 
     // AeroCloud opens (or re-points) a connection before it lists, so a Cancel
-    // on its listing has no usable session to fall back to either.
+    // on its listing has no usable session to fall back to either. The connects
+    // still in flight are cancelled only where the open takes the backend (it
+    // reuses the live server, or ends it to connect its own): an open that only
+    // shows the panel (no config, profile or credentials) leaves them alone.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
-    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'connect';
     // The open belongs to its phase: another connect, a tab switch or a newer
     // AeroCloud open takes the next one, and from then on this open connects,
@@ -10200,6 +10202,9 @@ const App: React.FC = () => {
         // provider or FTP, keeps its own, even if this teardown was already
         // dispatched (the backend refuses a disconnect of another generation).
         const endCurrentConnection = async () => {
+          // From here the open takes the backend: a connect that began before
+          // it and is still in flight would install over the cloud's own.
+          supersedeOlderConnects(phaseVersion);
           const providerGeneration = await invoke<number>('provider_connection_generation');
           const ftpGeneration = await invoke<number>('ftp_connection_generation');
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
@@ -10474,7 +10479,10 @@ const App: React.FC = () => {
             if (ownsPhase()) setLoading(false);
           }
         } else {
-          // Same backend kept. The AeroCloud tab has no session of its own, so
+          // Same backend kept, now the cloud's: a connect that began before
+          // this open and is still in flight would install over it.
+          supersedeOlderConnects(phaseVersion);
+          // The AeroCloud tab has no session of its own, so
           // with the tab deselected the form state is what names its
           // connection (resolveLiveConnectionParams): give it the cloud's
           // params, as the reconnect above does.
