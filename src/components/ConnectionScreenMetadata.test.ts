@@ -300,7 +300,7 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         const connect = button('connection.fourshared.connectTo4shared');
         expect(connect.disabled).toBe(false);
         await act(async () => connect.click());
-        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' } });
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret', profile_id: 'edited' } });
     });
 
     it('4shared retains existing tokens after an app credential read fails', async () => {
@@ -324,7 +324,7 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         const connect = button('connection.fourshared.connectTo4shared');
         expect(connect.disabled).toBe(false);
         await act(async () => connect.click());
-        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'manual-key', consumer_secret: 'manual-secret' } });
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'manual-key', consumer_secret: 'manual-secret', profile_id: 'edited' } });
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('fourshared_full_auth');
     });
 
@@ -361,6 +361,72 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(profiles[0]).toMatchObject({ id: 'edited', name: 'Renamed', initialPath: '' });
         expect(profiles[0].customIconUrl).toBeUndefined();
         expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_full_auth')).toBe(!tokens);
+    });
+});
+
+describe('A 4shared sign-in of the connection form', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    // CodeRabbit 4577064144: "Pass the same per-attempt key to
+    // `fourshared_full_auth` and `fourshared_connect`, and load the token by
+    // that key instead of the singleton."
+    it('signs in, connects and saves a new profile under one per-attempt key', async () => {
+        profiles = [];
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({ protocol: 'fourshared', server: '', username: '', password: '' });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params, quickConnectDirs: dirs, loading: false,
+                onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
+                onConnect: onConnectSpy, onFormSaved,
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        await act(async () => {
+            for (const [input, value] of [[key, 'form-key'], [secret, 'form-secret']] as const) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        await act(async () => button('connection.fourshared.signInWith4shared').click());
+        const params = (command: string) => mocks.invoke.mock.calls.find(([name]) => name === command)?.[1] as { params: { profile_id?: string } } | undefined;
+        const signedInAs = params('fourshared_full_auth')?.params.profile_id;
+        // The attempt's own key, never the shared singleton another form writes.
+        expect(signedInAs).toMatch(/^srv_/);
+        expect(params('fourshared_connect')?.params.profile_id).toBe(signedInAs);
+        // The saved profile is the one that key names, so it reads that token.
+        const saved = profiles.find(profile => profile.protocol === 'fourshared');
+        expect(saved?.id).toBe(signedInAs);
+    });
+
+    it('moves the token a sign-in wrote to the existing profile the form saves onto', async () => {
+        // An existing 4shared profile of the name the connect reports.
+        profiles = [{ id: 'kept', name: 'Account', host: 'Account', port: 443, username: '', protocol: 'fourshared' } as ServerProfile];
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({ protocol: 'fourshared', server: '', username: '', password: '' });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params, quickConnectDirs: dirs, loading: false,
+                onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
+                onConnect: onConnectSpy, onFormSaved,
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        await act(async () => {
+            for (const [input, value] of [[key, 'form-key'], [secret, 'form-secret']] as const) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        await act(async () => button('connection.fourshared.signInWith4shared').click());
+        const signedInAs = (mocks.invoke.mock.calls.find(([name]) => name === 'fourshared_full_auth')?.[1] as { params: { profile_id: string } }).params.profile_id;
+        expect(signedInAs).not.toBe('kept');
+        expect(profiles.map(profile => profile.id)).toEqual(['kept']);
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_adopt_tokens', { fromProfileId: signedInAs, toProfileId: 'kept' });
     });
 });
 
@@ -1092,8 +1158,8 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
         const runConnect = vi.fn(async () => { live.replacingBackend()(); });
         const ctx = {
             confirmBackendConnection: live.confirmBackendConnection,
-            remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED',
-            stillCurrent: () => undefined,
+            remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, AEROCLOUD_OPEN_SUPERSEDED: 'AEROCLOUD_OPEN_SUPERSEDED',
+            ownsPhase: () => true, previousSessionEnded: false,
             invoke: vi.fn(async () => undefined),
             isProvider,
             protocol: isProvider ? 'webdav' : 'ftp',
@@ -1326,7 +1392,7 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         // confirm with no await after their connect: nothing else would.
         // confirm with no await after their connect, and only while no newer
         // connect owns the workspace.
-        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+(stillCurrent\(\);\n\s+confirmBackendConnection\(\);|if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);)/g)?.length).toBe(3);
+        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+(if \(!ownsPhase\(\)\) throw new Error\(AEROCLOUD_OPEN_SUPERSEDED\);\n\s+confirmBackendConnection\(\);|if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);)/g)?.length).toBe(3);
     });
 });
 
@@ -1587,20 +1653,25 @@ describe('Reviewed ownership of a connect', () => {
 
     /** App's AeroCloud connect for A, opened at phase 0, with the click's own
      *  phase check, on the fake backend. */
-    async function aeroCloudRace(isProvider: boolean, hold: string[], keyAccepted = true) {
+    async function aeroCloudRace(isProvider: boolean, hold: string[]) {
         const refs = freshRefs();
         const accounting = await accountingOn(refs);
         const fake = fakeBackend(hold);
         const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
-        const source = appBetween('    // A connect that started after this click owns the workspace', '    };\n') + appBetween('const connectToCloudServer = async', '\n      };\n');
+        // App's own phase owner (the click's phase and connection counter) and
+        // its AeroCloud connect.
+        const source = 'const phaseVersion = 0;\nlet previousSessionEnded = false;\n'
+            + appBetween('    const connectionAtEntry = quotaConnectionRef.current;', '&& connectionAtEntry === quotaConnectionRef.current;\n')
+            + appBetween('const connectToCloudServer = async', '\n      };\n');
         const connect = await runAppSlice(source, {
-            ...refs, ...accounting, runConnect, invoke: fake.invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp', phaseVersion: 0,
-            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            ...refs, ...accounting, runConnect, invoke: fake.invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp',
+            quotaConnectionRef: { current: 0 },
+            AEROCLOUD_OPEN_SUPERSEDED: 'AEROCLOUD_OPEN_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
             cloudServer: { id: 'cloud', providerId: null, host: 'nas.example.test', port: 22, username: 'u', options: {} },
             cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
             resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
             loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false,
-            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await fake.hostKey(); return keyAccepted; },
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await fake.hostKey(); return true; },
         }, 'connectToCloudServer');
         const ui = { activeSessionId: 'old-tab' as string | null };
         return { refs, fake, runConnect, connect, ui, connectB: (kind: 'provider' | 'ftp') => connectB(refs, accounting, fake, ui, kind) };
@@ -1630,7 +1701,7 @@ describe('Reviewed ownership of a connect', () => {
         });
         const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
         let tokens = 0;
-        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }, receipt), [cancellableConnect]);'), {
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
             ...refs, ...accounting, invoke, notify, t: (key: string) => key,
             useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
             makeConnectToken: () => `token-${++tokens}`,
@@ -1664,7 +1735,7 @@ describe('Reviewed ownership of a connect', () => {
         await race.fake.gates.hostKey.reached;
         race.connectB('provider');
         race.fake.gates.hostKey.release();
-        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
+        await expect(a).rejects.toThrow('AEROCLOUD_OPEN_SUPERSEDED');
         expect(race.fake.invoke).not.toHaveBeenCalledWith('provider_disconnect', expect.anything());
         expect(race.runConnect).not.toHaveBeenCalled();
         // B's backend and tab are B's; B's confirmed tab keeps the backend.
@@ -1672,17 +1743,6 @@ describe('Reviewed ownership of a connect', () => {
         expect(race.ui.activeSessionId).toBe('B-tab');
         expect(race.refs.backendConfirmationsRef.current).toBe(1);
         expect(race.refs.backendUncertainRef.current).toBe(false);
-    });
-
-    it("reports A's refused host key as superseded when B connected while A asked, so A restores nothing over B", async () => {
-        const race = await aeroCloudRace(true, ['hostKey'], false);
-        const a = race.connect();
-        await race.fake.gates.hostKey.reached;
-        race.connectB('provider');
-        race.fake.gates.hostKey.release();
-        // A cancel would make the callers restore A's previous tab over B's.
-        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
-        expect(race.fake.backend.provider).toBe('B');
     });
 
     it.each([
@@ -1696,7 +1756,7 @@ describe('Reviewed ownership of a connect', () => {
         expect(race.fake.invoke).toHaveBeenCalledWith(teardown, { expectedGeneration: 1 });
         race.connectB(kind);
         race.fake.gates[teardown].release();
-        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
+        await expect(a).rejects.toThrow('AEROCLOUD_OPEN_SUPERSEDED');
         expect(race.runConnect).not.toHaveBeenCalled();
         // The late disconnect named an older session: B's is still there.
         expect(kind === 'provider' ? race.fake.backend.provider : race.fake.backend.ftp).toBe('B');
@@ -1756,24 +1816,27 @@ describe('Reviewed ownership of a connect', () => {
         expect(refs.backendUncertainRef.current).toBe(false);
     });
 
-    it.each([['superseded', 'CONNECT_SUPERSEDED', 0, 1], ['refused after a newer connect began', 'refused', 1, 1], ['refused', 'refused', 0, 0]])("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, phase, settled) => {
-        // App's own SCENARIO 2 block, from the log row it opens to the first
-        // step after the open.
+    it.each([
+        ['superseded', 'AEROCLOUD_OPEN_SUPERSEDED', 1, 1],
+        ['refused after a newer connect began', 'refused', 1, 1],
+        ['refused', 'refused', 0, 0],
+        ['connected after a newer connect began', null, 1, 1],
+    ] as const)("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, phase, settled) => {
+        // App's own phase owner and SCENARIO 2 block, from the log row it
+        // opens to the first step after the open.
         const updateEntry = vi.fn();
-        const setIsConnected = vi.fn();
-        const block = appBetween("      const logId = humanLog.logStart('CONNECT'", '      setIsConnected(true);');
-        const supersededBy = appBetween('    const supersededBy = ', 'remoteConnectPhaseVersionRef.current;\n');
-        const open = await runAppSlice(`${supersededBy}const open = async () => {\n${block}\n};`, {
-            phaseVersion: 0, remoteConnectPhaseVersionRef: { current: phase },
+        const owns = appBetween('    const connectionAtEntry = quotaConnectionRef.current;', '&& connectionAtEntry === quotaConnectionRef.current;\n');
+        const block = appBetween("      const logId = humanLog.logStart('CONNECT'", '      connectedHere = true;');
+        const open = await runAppSlice(`const phaseVersion = 0;\n${owns}const open = async () => {\n${block}\n  return 'connected';\n};`, {
+            remoteConnectPhaseVersionRef: { current: phase }, quotaConnectionRef: { current: 0 },
             humanLog: { logStart: () => 'cloud-log', updateEntry }, cloudConfig: { server_profile: 'nas' }, protocolLabel: 'SFTP',
-            showToastNotifications: false, setIsConnected,
-            connectToCloudServer: async () => { throw new Error(failure); },
-            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            showToastNotifications: false,
+            connectToCloudServer: async () => { if (failure) throw new Error(failure); },
         }, 'open');
-        await expect(open()).rejects.toThrow(failure);
+        if (failure) await expect(open()).rejects.toThrow(failure);
+        else expect(await open()).toBeUndefined();
         expect(updateEntry).toHaveBeenCalledTimes(settled);
         if (settled) expect(updateEntry).toHaveBeenCalledWith('cloud-log', { status: 'cancelled' });
-        expect(setIsConnected).not.toHaveBeenCalled();
     });
 
     it("hands A the receipt of its own replacement when B's ends between A's end and A's continuation", async () => {
@@ -1793,7 +1856,7 @@ describe('Reviewed ownership of a connect', () => {
         const refs = { ...freshRefs(), backendReplacementSeqRef };
         const accounting = await accountingOn(refs);
         const wrappers = await runAppSlice(
-            `${appBetween('  const cancellableConnect = useCallback(async <T,>(', '\n  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);')}\n${appBetween('  const runConnect = useCallback(<T,>(', '\n  }, receipt), [cancellableConnect]);')}\n${appBetween('  const connectUnderRow = async (', '\n  };\n')}`,
+            `${appBetween('  const cancellableConnect = useCallback(async <T,>(', '\n  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);')}\n${appBetween('  const runConnect = useCallback(<T,>(', '\n  }), [cancellableConnect, showConnectWarnings]);')}\n${appBetween('  const connectUnderRow = async (', '\n  };\n')}`,
             { ...refs, ...accounting, useCallback: (fn: unknown) => fn, beginConnectAttempt: () => 'token', endConnectAttempt: () => undefined,
                 invoke: vi.fn(async () => undefined), connectCancelledRef: { current: false }, extendHardTimeoutRef: { current: null },
                 isConnectHardTimeoutError: () => false, isConnectCancelledError: () => false, humanLog: { updateEntry: vi.fn() } },

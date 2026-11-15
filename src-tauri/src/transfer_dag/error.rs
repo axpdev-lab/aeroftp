@@ -174,9 +174,12 @@ impl TransferError {
             ProviderError::Timeout => TransferErrorKind::Timeout,
             ProviderError::Cancelled => TransferErrorKind::Cancelled,
             ProviderError::NotConnected => TransferErrorKind::NotConnected,
-            ProviderError::AuthenticationFailed(_) | ProviderError::HostKeyRejected(_) => {
-                TransferErrorKind::Auth
-            }
+            // A changed authorization (an SFTP pin, a poisoned GitHub
+            // session) is never retried on this session: like a refused
+            // login, it waits for a reconnect.
+            ProviderError::AuthenticationFailed(_)
+            | ProviderError::HostKeyRejected(_)
+            | ProviderError::TargetChanged => TransferErrorKind::Auth,
             ProviderError::NotFound(_) => TransferErrorKind::NotFound,
             ProviderError::PermissionDenied(_) => TransferErrorKind::PermissionDenied,
             ProviderError::FileTooLarge(_) => TransferErrorKind::FileTooLarge,

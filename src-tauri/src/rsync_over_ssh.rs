@@ -118,6 +118,22 @@ pub struct RsyncConfig {
     /// Path to known_hosts file (typically `~/.ssh/known_hosts`). Required when
     /// `strict_host_key_check` is not `"no"`.
     pub known_hosts_path: Option<PathBuf>,
+    /// The parsed key the SFTP session authenticated with, and the SHA-256
+    /// fingerprint recorded at that login, when the session logged in with a
+    /// private key. The native russh leg checks the fingerprint, then signs
+    /// with this object and does not open a key file. The `rsync` binary path
+    /// cannot use it (`ssh -i` reads a path itself), so `build_ssh_e_arg`
+    /// refuses a config that carries one.
+    pub pinned_private_key: Option<std::sync::Arc<russh::keys::PrivateKey>>,
+    /// SHA-256 fingerprint (`SHA256:` form) of the public key the session
+    /// logged in with, recorded at that login. Travels with
+    /// `pinned_private_key`; a missing one never matches.
+    pub pinned_key_sha256: Option<String>,
+    /// The SFTP session logged in with a password: the delta login uses
+    /// `ssh_password` and no other method, `none` included. The `rsync`
+    /// binary path cannot hold that (OpenSSH always sends `none` first), so
+    /// `build_ssh_e_arg` refuses a config that carries it.
+    pub pinned_password: bool,
 }
 
 impl fmt::Debug for RsyncConfig {
@@ -138,6 +154,12 @@ impl fmt::Debug for RsyncConfig {
             .field("ssh_host", &self.ssh_host)
             .field("strict_host_key_check", &self.strict_host_key_check)
             .field("known_hosts_path", &self.known_hosts_path)
+            .field(
+                "pinned_private_key",
+                &self.pinned_private_key.as_ref().map(|_| "<redacted>"),
+            )
+            .field("pinned_key_sha256", &self.pinned_key_sha256)
+            .field("pinned_password", &self.pinned_password)
             .finish()
     }
 }
@@ -157,6 +179,9 @@ impl Default for RsyncConfig {
             ssh_host: String::new(),
             strict_host_key_check: "accept-new".to_string(),
             known_hosts_path: None,
+            pinned_private_key: None,
+            pinned_key_sha256: None,
+            pinned_password: false,
         }
     }
 }
@@ -175,6 +200,12 @@ impl RsyncConfig {
         // "neither key nor password" hard guard below. SSH_AUTH_SOCK
         // reachability is checked at connect time by the russh leg.
         if matches!(self.auth_method, AuthMethod::Agent) {
+            return Ok(());
+        }
+
+        // A session key held in memory is the whole credential: there is no
+        // path to check, and the russh leg never opens one for it.
+        if self.pinned_private_key.is_some() && matches!(self.auth_method, AuthMethod::SshKey) {
             return Ok(());
         }
 
@@ -316,22 +347,29 @@ impl std::error::Error for RsyncError {}
 /// The denylist wins: any deny marker returns false even when a
 /// transient kind is also mentioned.
 ///
-/// The caller passes the message lowercased, because the `Debug` output
-/// of the kind enum is mixed case while the substring match is not.
+/// The kind comes from the envelope's tag alone ([`native_error_kind`]),
+/// never from a search of the message (CodeRabbit 4577134047): the detail
+/// is any text, a user name, a host, a server's banner, and one that reads
+/// `alice(TransportFailure)` must not make a login refusal transient. The
+/// deny list still searches the whole message, but it can only veto a
+/// retry, never grant one. Any case.
 #[cfg(feature = "aerorsync")]
-pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
+pub(crate) fn is_transient_native_envelope(message: &str) -> bool {
     use crate::aerorsync::types::{TRANSIENT_DENY_DETAILS, TRANSIENT_KINDS};
 
+    let Some(kind) = native_error_kind(message) else {
+        return false;
+    };
+    let lower = message.to_ascii_lowercase();
     if TRANSIENT_DENY_DETAILS
         .iter()
         .any(|needle| lower.contains(needle))
     {
         return false;
     }
-    TRANSIENT_KINDS.iter().any(|kind| {
-        let needle = format!("({kind:?})").to_ascii_lowercase();
-        lower.contains(&needle)
-    })
+    TRANSIENT_KINDS
+        .iter()
+        .any(|transient| format!("{transient:?}").eq_ignore_ascii_case(kind))
 }
 
 /// Without the `aerorsync` feature no native envelope can exist: the only
@@ -339,8 +377,55 @@ pub(crate) fn is_transient_native_envelope(lower: &str) -> bool {
 /// refusal above, which carries no kind tag, so the answer is the same
 /// `false` the list-driven version would return.
 #[cfg(not(feature = "aerorsync"))]
-pub(crate) fn is_transient_native_envelope(_lower: &str) -> bool {
+pub(crate) fn is_transient_native_envelope(_message: &str) -> bool {
     false
+}
+
+/// The kinds a login must not go past, by name: the names of the kinds
+/// `AerorsyncErrorKind::refuses_the_login` answers true for (pinned by a
+/// test), spelled out so the reader below needs no feature.
+pub const LOGIN_REFUSAL_KINDS: [&str; 4] = [
+    "HostKeyRejected",
+    "PinnedKeyMismatch",
+    "PinnedPasswordMismatch",
+    "PinnedLoginRefused",
+];
+
+/// The kind a native delta error names, read only where its producers put
+/// it: the envelope's tag (`native hard rejection (Kind): detail`,
+/// `native fallback (Kind): detail`, the adapter's), or, for a login
+/// refusal only, a bare `Kind: detail` (the binary transport's). Nothing
+/// after the tag is read, so a detail holding `(PinnedLoginRefused)` or
+/// `): ` changes nothing. Any case.
+pub fn native_error_kind(message: &str) -> Option<&str> {
+    for envelope in ["native hard rejection (", "native fallback ("] {
+        let Some(rest) = message
+            .get(..envelope.len())
+            .filter(|head| head.eq_ignore_ascii_case(envelope))
+            .map(|_| &message[envelope.len()..])
+        else {
+            continue;
+        };
+        let end = rest.find(')')?;
+        let kind = &rest[..end];
+        let tag = !kind.is_empty() && kind.bytes().all(|b| b.is_ascii_alphabetic());
+        return (tag && rest[end..].starts_with("): ")).then_some(kind);
+    }
+    let (kind, _) = message.split_once(": ")?;
+    LOGIN_REFUSAL_KINDS
+        .iter()
+        .any(|refusal| refusal.eq_ignore_ascii_case(kind))
+        .then_some(kind)
+}
+
+/// Whether a native delta error is a login refusal, by its kind
+/// ([`native_error_kind`]).
+pub fn is_login_refusal(message: &str) -> bool {
+    native_error_kind(message).is_some_and(|kind| {
+        LOGIN_REFUSAL_KINDS
+            .iter()
+            .any(|refusal| refusal.eq_ignore_ascii_case(kind))
+    })
 }
 
 #[cfg(all(test, feature = "aerorsync"))]
@@ -381,6 +466,7 @@ mod native_envelope_tests {
             AerorsyncErrorKind::InvalidFrame,
             AerorsyncErrorKind::PlannerRejected,
             AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
             AerorsyncErrorKind::Internal,
             AerorsyncErrorKind::RemoteError,
             AerorsyncErrorKind::UnexpectedMessage,
@@ -394,6 +480,61 @@ mod native_envelope_tests {
                 "{kind:?} is not a transient kind and must not be retried"
             );
         }
+    }
+
+    /// CodeRabbit 4577134047: the kind is the envelope's tag, whatever the
+    /// detail says, in both directions. A login refusal whose detail holds a
+    /// transient kind (a user named `alice(TransportFailure)`) stays a
+    /// refusal; a transport drop whose detail names a refusal kind stays a
+    /// drop and is no login refusal (the deny list may still make it hard,
+    /// never a refusal). Only the tag at its fixed place counts.
+    #[test]
+    fn the_kind_is_the_envelopes_tag_whatever_the_detail_holds() {
+        let cases: [(&str, Option<&str>, bool, bool); 8] = [
+            (
+                "native hard rejection (PinnedLoginRefused): the server refused the key alice(TransportFailure) logged in with",
+                Some("PinnedLoginRefused"), false, true,
+            ),
+            (
+                "native hard rejection (PinnedLoginRefused): banner (NegotiationFailed): (UnsupportedVersion): x",
+                Some("PinnedLoginRefused"), false, true,
+            ),
+            (
+                "native fallback (TransportFailure): the banner says (PinnedLoginRefused): go away",
+                Some("TransportFailure"), true, false,
+            ),
+            (
+                "native hard rejection (TransportFailure): remote closed for user (HostKeyRejected)",
+                Some("TransportFailure"), false, false,
+            ),
+            (
+                "PinnedPasswordMismatch: the session logged in with a password (TransportFailure)",
+                Some("PinnedPasswordMismatch"), false, true,
+            ),
+            ("upload failed: PinnedLoginRefused: x", None, false, false),
+            ("native hard rejection (Pinned Login): x", None, false, false),
+            ("Native Fallback (TransportFailure): Channel Send Error", Some("TransportFailure"), true, false),
+        ];
+        for (message, kind, transient, refusal) in cases {
+            assert_eq!(native_error_kind(message), kind, "{message}");
+            assert_eq!(
+                is_transient_native_envelope(message),
+                transient,
+                "{message}"
+            );
+            assert_eq!(is_login_refusal(message), refusal, "{message}");
+        }
+    }
+
+    /// The four names are the kinds `refuses_the_login` answers true for.
+    #[test]
+    fn the_login_refusal_names_are_the_crates_refusal_kinds() {
+        let crate_list: Vec<String> = AerorsyncErrorKind::ALL
+            .iter()
+            .filter(|kind| kind.refuses_the_login())
+            .map(|kind| format!("{kind:?}"))
+            .collect();
+        assert_eq!(crate_list, LOGIN_REFUSAL_KINDS.map(str::to_owned).to_vec());
     }
 
     #[test]
@@ -553,7 +694,25 @@ pub async fn probe_local_rsync() -> Result<String, RsyncError> {
 /// transport. Covers: port, identity file, known_hosts, StrictHostKeyChecking.
 #[cfg(unix)]
 fn build_ssh_e_arg(cfg: &RsyncConfig) -> Result<String, RsyncError> {
+    // First, before any credential check: the session logged in with a
+    // password, and `ssh` would send `none` before it. Whatever else the
+    // config holds (no password, a pinned key too), this is a hard
+    // rejection, never a recoverable credential error or a classic fallback.
+    if cfg.pinned_password {
+        return Err(RsyncError::HardRejection(
+            "PinnedPasswordMismatch: the session logged in with a password; the rsync binary cannot repeat it".into(),
+        ));
+    }
     cfg.validate_auth_material()?;
+
+    if cfg.pinned_private_key.is_some() {
+        // The session authenticated with a key that is held in memory.
+        // `ssh -i` would read whatever file is at the path now, which may be
+        // a different key, and the pinned key is never written to disk.
+        return Err(RsyncError::MissingKey(
+            "the session key is pinned in memory and the rsync binary cannot use it".into(),
+        ));
+    }
 
     if matches!(cfg.auth_method, AuthMethod::Password) {
         // R1 foundation is in place, but the secure password transport must
@@ -953,6 +1112,35 @@ mod tests {
         }
     }
 
+    /// A session that logged in with a key keeps that key in memory. The
+    /// `rsync` binary would hand `ssh -i` a path, and the file there can be a
+    /// different key by now, so no `ssh` command is built at all, even when
+    /// a readable key path is also present in the config.
+    #[test]
+    fn ssh_e_arg_refuses_a_session_key_pinned_in_memory() {
+        let key = PathBuf::from("/etc/hostname");
+        if !key.exists() {
+            return; // Skip on non-Linux CI
+        }
+        let pinned =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("ed25519 key");
+        for ssh_key_path in [None, Some(key)] {
+            let cfg = RsyncConfig {
+                ssh_key_path,
+                pinned_private_key: Some(std::sync::Arc::new(pinned.clone())),
+                ..Default::default()
+            };
+            assert!(cfg.validate_auth_material().is_ok());
+            match build_ssh_e_arg(&cfg) {
+                Err(RsyncError::MissingKey(message)) => {
+                    assert!(message.contains("pinned in memory"), "{message}")
+                }
+                other => panic!("expected MissingKey, got {:?}", other),
+            }
+        }
+    }
+
     #[test]
     fn ssh_e_arg_shape() {
         // Use /etc/hostname which is guaranteed to exist and readable on Linux CI.
@@ -1098,6 +1286,59 @@ mod tests {
         match build_ssh_e_arg(&cfg) {
             Err(RsyncError::PasswordAuthUnsupported) => {}
             other => panic!("expected PasswordAuthUnsupported, got {:?}", other),
+        }
+    }
+
+    /// A password session's pin cannot ride the `rsync` binary: refused as a
+    /// hard rejection, which the delta adapter never turns into a classic
+    /// fallback (`transfer_with_delta_maps_hard_rejection_to_hard_error`).
+    #[test]
+    fn ssh_e_arg_refuses_a_password_pin_as_a_hard_rejection() {
+        let cfg = RsyncConfig {
+            auth_method: AuthMethod::Password,
+            ssh_password: Some(SecretString::from("pinned-session-password".to_string())),
+            pinned_password: true,
+            ..Default::default()
+        };
+        match build_ssh_e_arg(&cfg) {
+            Err(RsyncError::HardRejection(reason)) => {
+                assert!(reason.contains("PinnedPasswordMismatch"), "{reason}");
+                assert!(!reason.contains("pinned-session-password"));
+            }
+            other => panic!("expected HardRejection, got {:?}", other),
+        }
+        // D1: the same with no password at all (a key path set, so the
+        // credential check would answer MissingPassword, not its "neither"
+        // rejection), and with a pinned key too (MissingKey otherwise): the
+        // pin decides before any credential check.
+        for cfg in [
+            RsyncConfig {
+                auth_method: AuthMethod::Password,
+                ssh_password: None,
+                ssh_key_path: Some(std::path::PathBuf::from("/nonexistent/id_ed25519")),
+                pinned_password: true,
+                ..Default::default()
+            },
+            RsyncConfig {
+                auth_method: AuthMethod::SshKey,
+                pinned_private_key: Some(std::sync::Arc::new(
+                    russh::keys::PrivateKey::random(
+                        &mut rand_010::rng(),
+                        russh::keys::Algorithm::Ed25519,
+                    )
+                    .unwrap(),
+                )),
+                pinned_password: true,
+                ..Default::default()
+            },
+        ] {
+            assert!(
+                matches!(
+                    build_ssh_e_arg(&cfg),
+                    Err(RsyncError::HardRejection(reason)) if reason.contains("PinnedPasswordMismatch")
+                ),
+                "{cfg:?}"
+            );
         }
     }
 

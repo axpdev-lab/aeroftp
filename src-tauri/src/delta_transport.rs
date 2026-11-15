@@ -297,6 +297,19 @@ impl RsyncBinaryTransport {
     pub fn new(config: RsyncConfig, handle: Option<SharedSshHandle>) -> Self {
         Self { config, handle }
     }
+
+    /// A password session's pin cannot ride `ssh`, which sends `none` first:
+    /// every operation is a hard rejection, never a soft "unavailable" that
+    /// the adapter would turn into a fallback. `providers::sftp` never builds
+    /// this transport for such a session (`classic_binary_allowed`).
+    fn refuse_password_pin(&self) -> Result<(), RsyncError> {
+        if self.config.pinned_password {
+            return Err(RsyncError::HardRejection(
+                "PinnedPasswordMismatch: the session logged in with a password; the rsync binary cannot repeat it".into(),
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(unix)]
@@ -307,6 +320,7 @@ impl DeltaTransport for RsyncBinaryTransport {
     }
 
     async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+        self.refuse_password_pin()?;
         let handle = self.handle.clone().ok_or(RsyncError::RemoteNotAvailable)?;
         probe_rsync(handle).await
     }
@@ -320,10 +334,12 @@ impl DeltaTransport for RsyncBinaryTransport {
         remote_path: &str,
         local_path: &Path,
     ) -> Result<RsyncStats, RsyncError> {
+        self.refuse_password_pin()?;
         rsync_download(remote_path, local_path, &self.config, None).await
     }
 
     async fn upload(&self, local_path: &Path, remote_path: &str) -> Result<RsyncStats, RsyncError> {
+        self.refuse_password_pin()?;
         rsync_upload(local_path, remote_path, &self.config, None).await
     }
 
@@ -333,6 +349,7 @@ impl DeltaTransport for RsyncBinaryTransport {
         local_path: &Path,
         progress: Option<DeltaProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
+        self.refuse_password_pin()?;
         rsync_download(remote_path, local_path, &self.config, progress).await
     }
 
@@ -342,6 +359,7 @@ impl DeltaTransport for RsyncBinaryTransport {
         remote_path: &str,
         progress: Option<DeltaProgressSink>,
     ) -> Result<RsyncStats, RsyncError> {
+        self.refuse_password_pin()?;
         rsync_upload(local_path, remote_path, &self.config, progress).await
     }
 }

@@ -24,6 +24,7 @@ import type { QueuedTarget } from '../utils/queuedTarget';
 import { useLatestCallback } from './useLatestCallback';
 import { buildGallery, galleryStep, parentDir, sortByName } from '../components/Preview/utils/gallery';
 import DOMPurify from 'dompurify';
+import { isTargetChangedRefusal } from '../utils/targetChanged';
 
 /** Max file size (in bytes) for base64 media preview: 25 MB */
 const MAX_PREVIEW_SIZE_BYTES = 25 * 1024 * 1024;
@@ -81,7 +82,7 @@ export const usePreview = ({ notify, toast, remoteTarget }: UsePreviewProps) => 
     try {
       content = await invoke<string>('preview_remote_file', { path, expectedGeneration });
     } catch (error) {
-      if (String(error).includes('CONNECTION_CHANGED')) throw new Error(remoteTarget.changedMessage());
+      if (isTargetChangedRefusal(error)) throw new Error(remoteTarget.changedMessage());
       throw error;
     }
     if (remoteTarget.changedSince(target)) throw new Error(remoteTarget.changedMessage());

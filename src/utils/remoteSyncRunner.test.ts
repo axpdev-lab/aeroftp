@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
+import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
+import APP from '../App.tsx?raw';
 import {
     readEmptyDirAnswer,
     runRemoteSync,
     groupErrorsByKind,
     filesFromJournal,
     retryPolicyForSpeed,
+    deltaGateDecision,
+    runDeltaGate,
+    type DeltaGateDeps,
     type SyncRunFile,
     type SyncRunDirs,
     type RemoteSyncConfig,
@@ -2029,5 +2034,514 @@ describe('canonical Unicode paths (#1326)', () => {
         expect(savedIndex?.files?.[remoteRel]).toBeUndefined();
         expect(savedIndex?.files?.[localRel]).toMatchObject({ size: 9 });
         expect(savedIndex?.remote_spellings?.[localRel]).toBe(remoteRel);
+    });
+});
+
+// C2: the sync-start gate. A hard refusal stops the run (no question, no
+// launch), whatever the profile's opt-out; otherwise an eligible session or
+// an opted-out question launches, and an unavailable one asks.
+describe('deltaGateDecision', () => {
+    it.each([
+        [{ eligible: false, hard_error: 'PinnedKeyMismatch' }, false, 'stop'],
+        [{ eligible: false, hard_error: 'PinnedKeyMismatch' }, true, 'stop'],
+        [{ eligible: true, hard_error: 'HostKeyRejected' }, true, 'stop'],
+        [{ eligible: true, hard_error: null }, false, 'launch'],
+        [{ eligible: false, hard_error: null }, true, 'launch'],
+        [{ eligible: false }, false, 'ask'],
+    ] as const)('%j with skip=%s: %s', (verdict, skip, expected) => {
+        expect(deltaGateDecision(verdict, skip)).toBe(expected);
+    });
+});
+
+// D2: the gate around the probe. The generation read at the request is
+// compared before every way out; a changed connection launches nothing,
+// and a failed probe launches nothing either (fail closed).
+describe('runDeltaGate', () => {
+    type Verdict = Awaited<ReturnType<DeltaGateDeps['probe']>>;
+    const eligible: Verdict = { eligible: true, reason: null, hard_error: null, server_identity: null };
+    const unavailable: Verdict = { eligible: false, reason: 'no rsync', hard_error: null, server_identity: null };
+
+    /** A gate whose probe answers only when the test releases it. */
+    const gate = (verdict: Verdict | Error, skip: boolean) => {
+        let generation = 1;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        let onContinue: (() => void) | undefined;
+        const deps = {
+            requested: Promise.resolve(1),
+            probeDelta: true,
+            generation: vi.fn(async () => generation),
+            skipPrompt: vi.fn(async () => skip),
+            probe: vi.fn(async () => {
+                await held;
+                if (verdict instanceof Error) throw verdict;
+                return verdict;
+            }),
+            launch: vi.fn(),
+            refuse: vi.fn(),
+            failed: vi.fn(),
+            changed: vi.fn(),
+            ask: vi.fn((_verdict: Verdict, answer: () => void) => { onContinue = answer; }),
+        } satisfies DeltaGateDeps;
+        return { deps, switchConnection: () => { generation += 1; }, release, answer: () => onContinue?.() };
+    };
+
+    it.each([
+        ['an opted-out profile', unavailable, true],
+        ['an eligible verdict', eligible, false],
+        ['a failed probe', new Error('probe failed'), false],
+        ['an unavailable verdict (no question shown)', unavailable, false],
+    ] as const)('launches nothing and asks nothing after a switch, for %s', async (_case, verdict, skip) => {
+        const g = gate(verdict, skip);
+        const pending = runDeltaGate(g.deps);
+        await vi.waitFor(() => expect(g.deps.probe).toHaveBeenCalled());
+        g.switchConnection();
+        g.release();
+        await pending;
+        expect(g.deps.launch).not.toHaveBeenCalled();
+        expect(g.deps.ask).not.toHaveBeenCalled();
+        expect(g.deps.failed).not.toHaveBeenCalled();
+        expect(g.deps.changed).toHaveBeenCalledTimes(1);
+    });
+
+    it('launches nothing from Continue answered after a switch', async () => {
+        const g = gate(unavailable, false);
+        g.release();
+        await runDeltaGate(g.deps);
+        expect(g.deps.ask).toHaveBeenCalledTimes(1);
+        g.switchConnection();
+        g.answer();
+        await vi.waitFor(() => expect(g.deps.changed).toHaveBeenCalledTimes(1));
+        expect(g.deps.launch).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the probe command fails, on the same connection', async () => {
+        const g = gate(new Error('probe failed'), true);
+        g.release();
+        await runDeltaGate(g.deps);
+        expect(g.deps.failed).toHaveBeenCalledTimes(1);
+        expect(g.deps.launch).not.toHaveBeenCalled();
+    });
+
+    it('checks a run that is not probed against the generation before it launches (E3)', async () => {
+        const switched = gate(eligible, false);
+        switched.switchConnection();
+        await runDeltaGate({ ...switched.deps, probeDelta: false });
+        expect(switched.deps.probe).not.toHaveBeenCalled();
+        expect(switched.deps.launch).not.toHaveBeenCalled();
+        expect(switched.deps.changed).toHaveBeenCalledTimes(1);
+        const same = gate(eligible, false);
+        await runDeltaGate({ ...same.deps, probeDelta: false });
+        expect(same.deps.probe).not.toHaveBeenCalled();
+        expect(same.deps.launch).toHaveBeenCalledTimes(1);
+    });
+
+    it('launches on the same connection, and stops on a refusal even without a profile', async () => {
+        for (const [verdict, skip] of [[eligible, false], [unavailable, true]] as const) {
+            const g = gate(verdict, skip);
+            g.release();
+            await runDeltaGate(g.deps);
+            expect(g.deps.launch).toHaveBeenCalledTimes(1);
+        }
+        const answered = gate(unavailable, false);
+        answered.release();
+        await runDeltaGate(answered.deps);
+        answered.answer();
+        await vi.waitFor(() => expect(answered.deps.launch).toHaveBeenCalledTimes(1));
+        // An ad-hoc session (no saved profile: the question is off) still
+        // stops on a hard refusal.
+        const adHoc = gate({ ...unavailable, hard_error: 'PinnedKeyMismatch' }, true);
+        adHoc.release();
+        await runDeltaGate(adHoc.deps);
+        expect(adHoc.deps.refuse).toHaveBeenCalledWith('PinnedKeyMismatch');
+        expect(adHoc.deps.launch).not.toHaveBeenCalled();
+    });
+
+    // CodeRabbit 4573911803, the complement: saved profiles that cannot be
+    // read have no place to keep an answer either, so the question is not
+    // asked; the probe and a hard refusal still apply.
+    it('skips the question when the saved profiles cannot be read, and still stops on a refusal', async () => {
+        for (const [verdict, launches] of [[unavailable, true], [{ ...unavailable, hard_error: 'PinnedKeyMismatch' }, false]] as const) {
+            const g = gate(verdict, false);
+            g.deps.skipPrompt.mockRejectedValueOnce(new Error('saved profiles unreadable'));
+            g.release();
+            await runDeltaGate(g.deps);
+            expect(g.deps.probe).toHaveBeenCalledTimes(1);
+            expect(g.deps.ask).not.toHaveBeenCalled();
+            expect(g.deps.launch).toHaveBeenCalledTimes(launches ? 1 : 0);
+            expect(g.deps.refuse).toHaveBeenCalledTimes(launches ? 0 : 1);
+        }
+    });
+});
+
+/**
+ * E1: App's own sync actions, run from its source with their collaborators
+ * injected. The connection generation the gate compares is read by the
+ * action at its start, before the plan is built and before a canary trial
+ * and its approval; a run never reads a fresh one for itself.
+ */
+describe('the sync actions read the generation at the action (E1)', () => {
+    const block = (start: string, end: string) => {
+        const a = APP.indexOf(start);
+        const b = APP.indexOf(end, a + start.length);
+        if (a < 0 || b < 0) throw new Error(`Missing block: ${start}`);
+        return APP.slice(a, b);
+    };
+    const ACTIONS = ['executeSyncPresetPlan', 'handleCompareMirrorLeftToRight', 'handleCompareMirrorRightToLeft', 'handleResumeJournal'] as const;
+    type Action = (typeof ACTIONS)[number];
+    let compiled: string | undefined;
+    const compile = async () => {
+        compiled ??= (await transformWithOxc([
+            block('  const connectionAtAction = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.'),
+            block('  const handleCompareMirrorLeftToRight = useCallback(', '  const { dismissJournal: handleDismissJournal'),
+            block('  const executeSyncPresetPlan = useCallback(', '  const clipboardCut'),
+        ].join('\n'), 'sync-actions.ts')).code;
+        return compiled;
+    };
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const FILE = { relative_path: 'a.txt', action: 'upload' };
+
+    /** App's actions on one session (SFTP unless named) whose generation
+     *  and protocol the test moves. */
+    const station = async (protocol = 'sftp', options: {
+        verdict?: { eligible: boolean; reason: string | null; hard_error: string | null; server_identity: null };
+        saved?: () => Promise<unknown[]>;
+    } = {}) => {
+        let generation = 1;
+        const profile = { protocol, savedProfileId: 'p1', name: 'S' };
+        const order: string[] = [];
+        let finishCanary!: (result: unknown) => void;
+        let approve: (() => void) | undefined;
+        const plan = <T>(value: T) => { order.push('plan'); return value; };
+        const ctx: Record<string, unknown> = {
+            useLatestCallback: <F>(fn: F) => fn,
+            useCallback: <F>(fn: F) => fn,
+            activeUnifiedRemoteProfile: profile,
+            invoke: vi.fn((command: string) => {
+                if (command === 'provider_connection_generation') {
+                    order.push('generation');
+                    return Promise.resolve(generation);
+                }
+                if (command === 'sftp_probe_delta_eligibility') {
+                    return Promise.resolve(options.verdict ?? { eligible: true, reason: null, hard_error: null, server_identity: null });
+                }
+                if (command === 'sync_canary_run') return new Promise((resolve) => { finishCanary = resolve; });
+                return Promise.reject(new Error(`unexpected ${command}`));
+            }),
+            notify: { info: vi.fn(), warning: vi.fn(), error: vi.fn() },
+            t: (key: string) => key,
+            usesProviderApi: () => true,
+            localStorage: { getItem: () => null },
+            currentLocalPath: '/local',
+            currentRemotePath: '/remote',
+            isCryptOverlayActive: () => false,
+            remoteSyncRunningRef: { current: false },
+            batchCancelledRef: { current: false },
+            cancelLevelRef: { current: 0 },
+            window: { addEventListener: vi.fn(), removeEventListener: vi.fn() },
+            TRANSFER_EVENT_BRIDGE: 'transfer-event',
+            runRemoteSync: vi.fn(async () => ({ uploaded: 0, downloaded: 0, deleted: 0 })),
+            syncRunQueueBridge: () => () => undefined,
+            transferQueue: {},
+            setRemoteSyncResult: vi.fn(),
+            loadRemoteFiles: vi.fn(async () => undefined),
+            loadLocalFiles: vi.fn(async () => undefined),
+            setSyncCancelling: vi.fn(),
+            runDeltaGate,
+            debugMode: false,
+            loadSavedServerProfiles: options.saved ?? (async () => []),
+            setDeltaEligibilityPrompt: vi.fn(),
+            aeroSync: { context: { pairKind: 'local-remote', activeProfileId: 'p1' }, connection: null as unknown },
+            setAeroSync: vi.fn(),
+            buildMirrorSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
+            buildRemoteSyncInput: () => plan({ files: [FILE], dirs: { remote: [], local: [] } }),
+            filesFromJournal: () => plan([FILE]),
+            runLocalLocalSync: vi.fn(),
+            SPEED_PRESETS: { normal: { deltaSyncEnabled: false } },
+            canaryRunningRef: { current: false },
+            setCanaryResult: (shown: { onApprove: () => void } | null) => { approve = shown?.onApprove; },
+        };
+        const state = ctx.aeroSync as { connection: unknown };
+        const actions = new Function(...Object.keys(ctx), `${await compile()}; return { ${ACTIONS.join(', ')}, connectionAtAction };`)(
+            ...Object.values(ctx),
+        ) as Record<Action, (...args: unknown[]) => void> & { connectionAtAction: () => unknown };
+        // The dialog's comparison, as `openAeroSync` builds its state: the
+        // connection every plan of this state comes from, stored with it.
+        state.connection = actions.connectionAtAction();
+        return {
+            actions,
+            ctx: ctx as { runRemoteSync: ReturnType<typeof vi.fn>; notify: { error: ReturnType<typeof vi.fn> }; invoke: ReturnType<typeof vi.fn> },
+            order,
+            /** Another connection: a new generation, and its protocol. */
+            switchConnection: (to = profile.protocol) => { generation += 1; profile.protocol = to; },
+            finishCanary: () => finishCanary({ sampled: 1 }),
+            approve: () => approve?.(),
+            approvalShown: () => approve !== undefined,
+            state,
+        };
+    };
+    const runtime = (canary: boolean) => ({
+        speedMode: 'normal',
+        verifyPolicy: 'size_only',
+        retryPolicy: undefined,
+        transferBudget: 0,
+        versionedBackup: null,
+        errorCorrection: null,
+        canary: canary ? { percent: 10, selection: 'random' } : undefined,
+    });
+    const preset = { preset: 'mirror', direction: 'left-to-right' };
+
+    it('launches nothing when the connection switches while the canary approval waits', async () => {
+        const s = await station();
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        // The plan was built for generation 1; the user switches, then approves.
+        s.switchConnection();
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    it('launches the approved canary run on the same connection', async () => {
+        const s = await station();
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+        expect(s.ctx.notify.error).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['the preset run', (s: Awaited<ReturnType<typeof station>>) => s.actions.executeSyncPresetPlan(preset, runtime(false))],
+        ['the left-to-right mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }])],
+        ['the right-to-left mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorRightToLeft([{ relativePath: 'a.txt' }])],
+        ['the journal resume', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined })],
+    ] as const)('%s reads the generation before it builds its plan, and stops after a switch', async (_name, act) => {
+        const s = await station();
+        act(s);
+        expect(s.order.slice(0, 2)).toEqual(['generation', 'plan']);
+        // No wait in this action before the gate: the switch lands while the
+        // gate probes, and the run is still the earlier connection's.
+        s.switchConnection();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        // The same action on an unchanged connection runs.
+        const same = await station();
+        act(same);
+        await vi.waitFor(() => expect(same.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+    });
+
+    // CodeRabbit 4573911803: the question keeps its answer in a saved
+    // profile. An ad-hoc session (its fallback id, here `p1`, names no saved
+    // profile) and an unreadable profile list run without it; a saved
+    // profile that keeps the question asks it.
+    it.each([
+        ['an ad-hoc session', async () => [], false],
+        ['an unreadable profile list', async () => { throw new Error('saved profiles unreadable'); }, false],
+        ['a saved profile that keeps the question', async () => [{ id: 'p1' }], true],
+    ] as const)('asks about continuing without delta for %s only when a saved profile can keep the answer', async (_name, saved, asks) => {
+        const unavailable = { eligible: false, reason: 'no rsync', hard_error: null, server_identity: null };
+        const s = await station('sftp', { verdict: unavailable, saved });
+        const prompt = (s.ctx as unknown as { setDeltaEligibilityPrompt: ReturnType<typeof vi.fn> }).setDeltaEligibilityPrompt;
+        s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }]);
+        if (asks) {
+            await vi.waitFor(() => expect(prompt).toHaveBeenCalledTimes(1));
+            expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        } else {
+            await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+            expect(prompt).not.toHaveBeenCalled();
+        }
+        expect(s.ctx.invoke).toHaveBeenCalledWith('sftp_probe_delta_eligibility');
+    });
+
+    it('every call of runConnectedRemoteSync is one of these actions, with its generation', () => {
+        const calls = APP.split('runConnectedRemoteSync(').length - 1;
+        expect(calls).toBe(4);
+        const run = block('  const runConnectedRemoteSync = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.');
+        // Its only read is the gate's "now"; the "requested" one is the caller's.
+        expect(run.split("'provider_connection_generation'").length - 1).toBe(1);
+        expect(run).toContain("generation: () => invoke<number>('provider_connection_generation'),");
+        expect(run).toContain('requested: opts.requestedConnection?.generation');
+        // E3: no launch path around the gate, and the probe follows the
+        // action's protocol.
+        expect(run.split('launch: launchRun').length - 1).toBe(1);
+        expect(run.split('launchRun()').length - 1).toBe(0);
+        expect(run).toContain("probeDelta: protocol === 'sftp',");
+        expect(run).toContain('const protocol = opts.requestedConnection?.protocol;');
+    });
+
+    // P1: the connection moves after the compare and before the click (an
+    // overlay armed or cleared, a reconnect: the dialog stays open). Every
+    // action's plan comes from that compare, so nothing launches.
+    it.each([
+        ['the preset run', (s: Awaited<ReturnType<typeof station>>) => s.actions.executeSyncPresetPlan(preset, runtime(false))],
+        ['the left-to-right mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }])],
+        ['the right-to-left mirror', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleCompareMirrorRightToLeft([{ relativePath: 'a.txt' }])],
+        ['the journal resume', (s: Awaited<ReturnType<typeof station>>) => s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined })],
+    ] as const)('%s launches nothing after a switch between the compare and the click', async (_name, act) => {
+        const s = await station();
+        s.switchConnection();
+        act(s);
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    // P1: a Rescan builds a new state with its own capture; the click on
+    // the entries still displayed acts on the state they belong to, whose
+    // connection is the earlier one: nothing launches.
+    it('launches nothing from the entries of a comparison whose rescan started on another connection', async () => {
+        const s = await station();
+        const earlier = s.state.connection;
+        // The rescan on B: openAeroSync captures B into the NEW state only.
+        s.switchConnection();
+        const rescan = { connection: s.actions.connectionAtAction() };
+        expect(rescan.connection).not.toBe(earlier);
+        expect(s.state.connection).toBe(earlier);
+        s.actions.handleCompareMirrorLeftToRight([{ relativePath: 'a.txt' }]);
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+    });
+
+    it.each([
+        ['no connection captured', (): unknown => null],
+        ['a generation read that rejected', (): unknown => {
+            const generation = Promise.reject(new Error('read failed'));
+            generation.catch(() => undefined);
+            return { generation, protocol: 'sftp' };
+        }],
+    ] as const)('fails closed with %s', async (_name, capture) => {
+        for (const act of ACTIONS) {
+            const s = await station();
+            s.state.connection = capture();
+            if (act === 'executeSyncPresetPlan') s.actions.executeSyncPresetPlan(preset, runtime(false));
+            else if (act === 'handleResumeJournal') s.actions.handleResumeJournal({ direction: 'local_to_remote', verify_policy: 'size_only', retry_policy: undefined });
+            else s.actions[act]([{ relativePath: 'a.txt' }]);
+            await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+            await tick();
+            expect(s.ctx.runRemoteSync, act).not.toHaveBeenCalled();
+        }
+    });
+
+    it('stores the connection with the comparison openAeroSync builds, and every action reads it there', () => {
+        const open = block('  const openAeroSync = useLatestCallback(', '  // GAP-5: shared connected-remote sync launcher.');
+        expect(open).toContain('const connection = connectionAtAction();');
+        // Replaced together: the remote state carries this call's capture,
+        // the others none; nothing else writes it.
+        const states = open.split('\n').filter(line => /^\s+connection(: null)?,$/.test(line));
+        expect(states.map(line => line.trim()).sort()).toEqual(['connection,', 'connection: null,', 'connection: null,']);
+        expect(APP).not.toMatch(/\.connection = /);
+        expect(APP.split('const requestedConnection = aeroSync?.connection ?? null;').length - 1).toBe(4);
+        // The context hook keeps the comparison's own connection.
+        expect(APP).toContain('useAeroSyncContextActions(aeroSync, setAeroSyncComparison, aeroSyncCompareSeqRef);');
+        expect(APP).toContain("return next ? { ...next, connection: prev?.connection ?? null } : null;");
+        // No fallback to a read at the click.
+        const run = block('  const runConnectedRemoteSync = useLatestCallback(', '  // GAP-10: shared local-local sync launcher.');
+        expect(run).toContain("?? Promise.reject(new Error('no connection was captured with this comparison')),");
+    });
+
+    // E3: the connection switches to another protocol while the canary
+    // approval waits; the earlier plan must not launch on it.
+    it.each([
+        ['SFTP to FTP', 'sftp', 'ftp'],
+        ['FTP to SFTP', 'ftp', 'sftp'],
+        ['FTP to S3', 'ftp', 's3'],
+    ] as const)('launches nothing after a %s switch while the canary approval waits', async (_name, from, to) => {
+        const s = await station(from);
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.switchConnection(to);
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.notify.error).toHaveBeenCalledWith('aerosync.title', 'toast.remoteTargetChanged'));
+        await tick();
+        expect(s.ctx.runRemoteSync).not.toHaveBeenCalled();
+        // The probe is chosen by the action's protocol, not the new one.
+        const probed = s.ctx.invoke.mock.calls.some(([command]) => command === 'sftp_probe_delta_eligibility');
+        expect(probed).toBe(from === 'sftp');
+    });
+
+    it.each(['ftp', 's3'])('launches an approved %s canary run on the same connection', async (protocol) => {
+        const s = await station(protocol);
+        s.actions.executeSyncPresetPlan(preset, runtime(true));
+        s.finishCanary();
+        await vi.waitFor(() => expect(s.approvalShown()).toBe(true));
+        s.approve();
+        await vi.waitFor(() => expect(s.ctx.runRemoteSync).toHaveBeenCalledTimes(1));
+        expect(s.ctx.notify.error).not.toHaveBeenCalled();
+        expect(s.ctx.invoke.mock.calls.some(([command]) => command === 'sftp_probe_delta_eligibility')).toBe(false);
+    });
+});
+
+/**
+ * CodeRabbit 4573911765: what a provider reports while it connects (a GitHub
+ * working branch an earlier version made, with commits the protected branch
+ * lacks) reaches the user of the page. App's own `runConnect`, from its
+ * source: a `provider_connect` answer's warnings are each shown once, titled
+ * with the existing warning key, and kept in the activity log; none, none
+ * shown; an older backend's plain string holds none.
+ */
+describe('a connect shows what its provider reported', () => {
+    const LEGACY = 'GitHub: a working branch named aeroftp/alice-smith/main, as earlier AeroFTP versions named it, has commits the protected branch does not.';
+    const station = async (answers: unknown[]) => {
+        const a = APP.indexOf('  // What a provider reported while it connected');
+        const b = APP.indexOf('  // Esc aborts an in-progress connection.', a);
+        if (a < 0 || b < 0) throw new Error('Missing block: runConnect');
+        const { code } = await transformWithOxc(APP.slice(a, b), 'run-connect.ts');
+        const queue = [...answers];
+        const ctx = {
+            useCallback: <F>(fn: F) => fn,
+            cancellableConnect: (run: (token: string) => Promise<unknown>) => run('token-1'),
+            wentOnOverScpRef: { current: false },
+            invoke: vi.fn(async () => queue.shift()),
+            notify: { warning: vi.fn() },
+            humanLog: { log: vi.fn() },
+            t: (key: string) => key,
+        };
+        const runConnect = new Function(...Object.keys(ctx), `${code}; return runConnect;`)(...Object.values(ctx)) as
+            (command: string, params: Record<string, unknown>) => Promise<unknown>;
+        return { runConnect, ctx };
+    };
+
+    it('shows a pending legacy branch once, and keeps it in the activity log', async () => {
+        const s = await station([{ message: 'Connected to repo via github', warnings: [LEGACY] }]);
+        await expect(s.runConnect('provider_connect', { protocol: 'github' })).resolves.toEqual({ message: 'Connected to repo via github', warnings: [LEGACY] });
+        expect(s.ctx.notify.warning).toHaveBeenCalledTimes(1);
+        expect(s.ctx.notify.warning).toHaveBeenCalledWith('common.warning', LEGACY);
+        expect(s.ctx.humanLog.log).toHaveBeenCalledTimes(1);
+        expect(s.ctx.humanLog.log).toHaveBeenCalledWith('CONNECT', `common.warning: ${LEGACY}`, 'success');
+        // No status the activity log counts as a running operation
+        // ('running' or 'pending'), or its badge stays active after the connect.
+        for (const call of s.ctx.humanLog.log.mock.calls) {
+            expect(['running', 'pending']).not.toContain(call[2]);
+        }
+    });
+
+    it.each([
+        ['no warning', { message: 'Connected', warnings: [] }],
+        ['an older backend (a plain string)', 'Connected to repo via github'],
+        ['no answer', undefined],
+    ] as const)('shows nothing for %s', async (_name, answer) => {
+        const s = await station([answer]);
+        await expect(s.runConnect('provider_connect', {})).resolves.toEqual(answer);
+        expect(s.ctx.notify.warning).not.toHaveBeenCalled();
+        expect(s.ctx.humanLog.log).not.toHaveBeenCalled();
+    });
+
+    it('shows a warning only with the connect that reported it, never again on a reconnect', async () => {
+        const s = await station([{ message: 'Connected', warnings: [LEGACY] }, { message: 'Connected', warnings: [] }]);
+        await s.runConnect('provider_connect', {});
+        await s.runConnect('provider_connect', {});
+        expect(s.ctx.notify.warning).toHaveBeenCalledTimes(1);
+    });
+
+    it('reads warnings from provider_connect only', async () => {
+        const s = await station([{ warnings: [LEGACY] }]);
+        await s.runConnect('connect_ftp', {});
+        expect(s.ctx.notify.warning).not.toHaveBeenCalled();
     });
 });

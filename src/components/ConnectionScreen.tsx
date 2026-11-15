@@ -135,9 +135,14 @@ interface FourSharedConnectProps {
     onConnected: (displayName: string) => void | Promise<void>;
     /** The sign-in cannot start: it would swap the backend for a connect the form then refuses. */
     disabled?: boolean;
+    /** This attempt's own token key: the id the profile is saved under (the
+     *  one edited, or the one a new profile will take). The sign-in writes the
+     *  token there and the connect reads it there, so another form's sign-in
+     *  cannot replace it while this connect waits. */
+    tokenProfileId: string;
 }
 
-const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected, disabled }) => {
+const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected, disabled, tokenProfileId }) => {
     const t = useTranslation();
     const [hasExistingTokens, setHasExistingTokens] = useState(false);
     const [isChecking, setIsChecking] = useState(true);
@@ -185,7 +190,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         setError(null);
         try {
             const result = await swapBackend(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
-                params: { consumer_key: consumerKey, consumer_secret: consumerSecret },
+                params: { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: tokenProfileId },
             }));
             await onConnected(result.display_name || '4shared');
         } catch (err) {
@@ -202,7 +207,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
         try {
             // One call: an import or another window must not see half of the pair.
             await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
-            await countedOAuthLogin(oauthLoginKey('fourshared', null), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } }));
+            await countedOAuthLogin(oauthLoginKey('fourshared', tokenProfileId), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: tokenProfileId } }));
             setHasExistingTokens(true);
             setWantsNewAccount(false);
             await handleConnect();
@@ -344,6 +349,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Edit state
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+    // The id a new profile takes, chosen before a 4shared sign-in so the token
+    // is written where the saved profile reads it (renewed once it is used).
+    const newFourSharedProfileId = () => `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    const [pendingFourSharedProfileId, setPendingFourSharedProfileId] = useState(newFourSharedProfileId);
+    const fourSharedTokenProfileId = editingProfileId || pendingFourSharedProfileId;
     const editingProfileIdRef = useRef<string | null>(null);
     // Snapshot of the (protocol, providerId) pair captured when the user
     // entered edit mode. Used by `modeChanged` to detect when the operator
@@ -4090,6 +4100,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         ) : isFourSharedProvider(protocol) ? (
                             <FourSharedConnect
                                 disabled={remotePathEscapesOverlay || overlaySaveBlocked}
+                                tokenProfileId={fourSharedTokenProfileId}
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
@@ -4118,7 +4129,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         }
                                         const duplicate = editTarget || existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
-                                            const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+                                            // The id this attempt signed in under, so its token is the profile's.
+                                            const newId = fourSharedTokenProfileId;
                                             const overlayFields = await aeroCryptOverlayFields(newId, undefined, undefined, undefined, credentials.write);
                                             const newServer: ServerProfile = {
                                                 id: newId,
@@ -4136,6 +4148,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             const newServers = [...existingServers, newServer];
                                             if (!(await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = newId;
+                                            // That id is a profile's now: the next new one takes another.
+                                            if (!editingProfileId) setPendingFourSharedProfileId(newFourSharedProfileId());
                                         } else {
                                             const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath, credentials.write);
                                             const updated = existingServers.map(s => s.id === duplicate.id ? {
@@ -4147,6 +4161,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...overlayFields,
                                             } : s);
                                             if (!(await persistProfilesForSave(updated, credentials, profilesUserId, profilesRevision))) return;
+                                            // Saved onto another profile of that name: the token this attempt
+                                            // signed in under moves to it, inside the vault.
+                                            if (duplicate.id !== fourSharedTokenProfileId) {
+                                                await invoke('fourshared_adopt_tokens', { fromProfileId: fourSharedTokenProfileId, toProfileId: duplicate.id });
+                                            }
                                             connectedSavedId = duplicate.id;
                                         }
                                     }

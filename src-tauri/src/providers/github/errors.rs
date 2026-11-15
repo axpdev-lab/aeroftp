@@ -13,6 +13,10 @@ use std::fmt;
 /// [`ProviderError`] variants before being converted at the trait boundary.
 #[derive(Debug)]
 pub enum GitHubError {
+    /// Refused before any request: the branch this session reads and writes
+    /// changed (the working-branch fallback), so the session refuses every
+    /// write from then on (see `StorageProvider::target_poison`).
+    TargetChanged,
     // ── Auth ────────────────────────────────────────────────────────
     /// 401: token invalid or revoked.
     Unauthorized,
@@ -148,6 +152,7 @@ impl fmt::Display for GitHubError {
 
             // Transport
             Self::NetworkError(msg) => write!(f, "Network error: {}", msg),
+            Self::TargetChanged => write!(f, "The branch of this connection changed"),
             Self::ApiError { status, message } => write!(
                 f,
                 "GitHub API error (HTTP {}): {}",
@@ -214,6 +219,7 @@ impl GitHubError {
             Self::NotFound(msg) => msg.clone(),
             // "Network error: " + "Network error: ..."
             Self::NetworkError(msg) => msg.clone(),
+            Self::TargetChanged => String::new(),
             // "Server error: " + "GitHub server error: ..."
             Self::ServerError(msg) => msg.clone(),
             // "Parse error: " + "Parse error: ..."
@@ -284,6 +290,7 @@ impl From<GitHubError> for ProviderError {
 
             // Transport
             GitHubError::NetworkError(_) => ProviderError::NetworkError(text),
+            GitHubError::TargetChanged => ProviderError::TargetChanged,
             GitHubError::ApiError { status, .. } if status == 408 || status == 504 => {
                 ProviderError::Timeout
             }

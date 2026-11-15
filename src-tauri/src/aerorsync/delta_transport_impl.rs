@@ -3638,6 +3638,8 @@ mod tests {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         }
     }
 

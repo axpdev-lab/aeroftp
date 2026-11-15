@@ -2233,10 +2233,66 @@ pub(crate) fn without_unclassified_items(raw: &str) -> &str {
     }
 }
 
+/// How the display text of [`ProviderError::TargetChanged`] starts, and of
+/// every refusal of its family (the `CONNECTION_CHANGED: ...` errors of the
+/// window's commands): what the session acts on is no longer what the caller
+/// asked for.
+pub const TARGET_CHANGED_MARKER: &str = "CONNECTION_CHANGED:";
+
+/// Whether a rendered error is a refusal of that family.
+///
+/// The position of the marker decides, and nothing else: it counts where the
+/// message starts, or behind wrappers only. An operation that reports a
+/// failure puts its own words in front (`upload failed: CONNECTION_CHANGED:
+/// ...`), and so can the window (`Error: ...`); a wrapper is letters, digits
+/// and spaces closed by `: `. A marker later in the text is part of something
+/// the error names, such as a remote path (`Connection reset while uploading
+/// /CONNECTION_CHANGED: archive/a.txt`), and is not the refusal: that error is
+/// classified as what it is.
+///
+/// No path is taken out of the text first. A file can be named after the
+/// marker, or after the first words of the refusal itself (`CONNECTION_CHANGED:
+/// the account`), and removing the caller's path then removed the refusal's
+/// own start and the refused write was retried. A marker that stands where a
+/// refusal starts is therefore read as the refusal whatever the file is
+/// called: for a file whose relative path opens an error text with the marker
+/// the answer is "not retried", which is the safe one of the two.
+/// Twin: `isTargetChangedRefusal` in `src/utils/targetChanged.ts`; both run
+/// `src/shared/target-changed-cases.json`.
+pub fn is_target_changed_text(raw: &str) -> bool {
+    raw.find(TARGET_CHANGED_MARKER)
+        .is_some_and(|at| is_wrappers_only(&raw[..at]))
+}
+
+/// Whether what stands in front of the marker is nothing, or wrappers only.
+fn is_wrappers_only(prefix: &str) -> bool {
+    let prefix = prefix.trim_start();
+    if prefix.is_empty() {
+        return true;
+    }
+    prefix.strip_suffix(": ").is_some_and(|wrappers| {
+        wrappers.split(": ").all(|wrapper| {
+            !wrapper.is_empty()
+                && wrapper
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == ' ')
+        })
+    })
+}
+
 /// Provider error type
 #[derive(Error, Debug)]
 #[allow(dead_code)]
 pub enum ProviderError {
+    /// What the session acts on is no longer what the caller's plan was made
+    /// for: another account's authorization, or a write target that moved
+    /// (a GitHub session that left its protected branch). The text starts
+    /// with [`TARGET_CHANGED_MARKER`] and claims no more than that.
+    #[error(
+        "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again"
+    )]
+    TargetChanged,
+
     #[error("Not connected to server")]
     NotConnected,
 
@@ -2700,6 +2756,37 @@ mod tests {
     }
 
     use super::*;
+
+    /// The two readers of a changed-target refusal, this one and
+    /// `isTargetChangedRefusal` in the window, answer one table the same way.
+    #[test]
+    fn a_changed_target_refusal_is_read_as_the_shared_table_says() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            text: String,
+            refusal: bool,
+        }
+        #[derive(serde::Deserialize)]
+        struct Table {
+            cases: Vec<Case>,
+        }
+        let table: Table = serde_json::from_str(include_str!(
+            "../../../src/shared/target-changed-cases.json"
+        ))
+        .expect("the shared table parses");
+        assert!(table.cases.len() > 20);
+        for case in &table.cases {
+            assert_eq!(
+                is_target_changed_text(&case.text),
+                case.refusal,
+                "{}",
+                case.text
+            );
+        }
+        assert!(is_target_changed_text(
+            &ProviderError::TargetChanged.to_string()
+        ));
+    }
     use std::collections::HashMap;
 
     #[test]

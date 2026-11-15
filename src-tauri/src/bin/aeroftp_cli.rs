@@ -6864,23 +6864,26 @@ fn save_cli_config(config: &CliConfigFile) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn load_update_cache() -> CliUpdateCache {
-    let Ok(path) = cli_update_cache_path() else {
-        return CliUpdateCache::default();
+fn load_update_cache_at(path: &Path) -> Result<CliUpdateCache, String> {
+    // No exists() here either: it reports false on metadata errors, which
+    // would pick the default and let a later save overwrite an unread file.
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(CliUpdateCache::default());
+        }
+        Err(e) => {
+            return Err(format!(
+                "Cannot read update cache '{}': {}",
+                path.display(),
+                e
+            ));
+        }
     };
-    if !path.exists() {
-        return CliUpdateCache::default();
-    }
-
-    let Ok(raw) = std::fs::read_to_string(&path) else {
-        return CliUpdateCache::default();
-    };
-
-    toml::from_str(&raw).unwrap_or_default()
+    toml::from_str(&raw).map_err(|e| format!("Invalid update cache '{}': {}", path.display(), e))
 }
 
-fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
-    let path = cli_update_cache_path()?;
+fn save_update_cache_at(cache: &CliUpdateCache, path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
             format!(
@@ -6893,9 +6896,9 @@ fn save_update_cache(cache: &CliUpdateCache) -> Result<PathBuf, String> {
 
     let content = toml::to_string_pretty(cache)
         .map_err(|e| format!("Cannot serialize update cache: {}", e))?;
-    std::fs::write(&path, content)
+    std::fs::write(path, content)
         .map_err(|e| format!("Cannot write update cache '{}': {}", path.display(), e))?;
-    Ok(path)
+    Ok(())
 }
 
 fn parse_json_fields(cli: &Cli) -> Option<std::collections::HashSet<String>> {
@@ -7010,33 +7013,69 @@ async fn fetch_latest_release_version() -> Result<String, String> {
         .ok_or_else(|| format!("Invalid release tag '{}'", release.tag_name))
 }
 
+/// Record the outcome of an update check on `path` and return the version
+/// to announce, if any. A cache that failed to load (`loaded` is `Err`) is
+/// never written back: the check still runs on defaults in memory, the
+/// file keeps its bytes.
+fn record_update_check_at(
+    path: &Path,
+    loaded: Result<CliUpdateCache, String>,
+    now: chrono::DateTime<chrono::Utc>,
+    fetched: Result<String, String>,
+) -> Option<String> {
+    let (mut cache, cache_readable) = match loaded {
+        Ok(cache) => (cache, true),
+        Err(_) => (CliUpdateCache::default(), false),
+    };
+    if !update_check_due(&cache, now) {
+        return None;
+    }
+
+    cache.checked_at = Some(now.to_rfc3339());
+    match fetched {
+        Ok(latest_version) => {
+            cache.latest_version = Some(latest_version.clone());
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")).then_some(latest_version)
+        }
+        Err(_) => {
+            if cache_readable {
+                let _ = save_update_cache_at(&cache, path);
+            }
+            None
+        }
+    }
+}
+
 async fn maybe_check_for_updates(cli: &Cli) {
     if cli.quiet {
         return;
     }
 
+    let Ok(path) = cli_update_cache_path() else {
+        return;
+    };
     let now = chrono::Utc::now();
-    let mut cache = load_update_cache();
-    if !update_check_due(&cache, now) {
+    // A cache file that exists but cannot be read is never rewritten: the
+    // check still runs on defaults, the file keeps its bytes.
+    let loaded = load_update_cache_at(&path);
+    let due = match &loaded {
+        Ok(cache) => update_check_due(cache, now),
+        Err(_) => update_check_due(&CliUpdateCache::default(), now),
+    };
+    if !due {
         return;
     }
 
-    cache.checked_at = Some(now.to_rfc3339());
-    match fetch_latest_release_version().await {
-        Ok(latest_version) => {
-            cache.latest_version = Some(latest_version.clone());
-            let _ = save_update_cache(&cache);
-            if is_newer_release(&latest_version, env!("CARGO_PKG_VERSION")) {
-                eprintln!(
-                    "Update available: v{} -> v{} (download the latest release from GitHub)",
-                    env!("CARGO_PKG_VERSION"),
-                    latest_version
-                );
-            }
-        }
-        Err(_) => {
-            let _ = save_update_cache(&cache);
-        }
+    let fetched = fetch_latest_release_version().await;
+    if let Some(latest_version) = record_update_check_at(&path, loaded, now, fetched) {
+        eprintln!(
+            "Update available: v{} -> v{} (download the latest release from GitHub)",
+            env!("CARGO_PKG_VERSION"),
+            latest_version
+        );
     }
 }
 
@@ -7792,6 +7831,7 @@ fn connect_failure_message(e: &ProviderError) -> String {
 fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
     match err {
         ProviderError::ConnectionFailed(_)
+        | ProviderError::TargetChanged
         | ProviderError::ConnectionLost(_)
         | ProviderError::NotConnected
         | ProviderError::NetworkError(_) => 1,
@@ -13709,14 +13749,35 @@ fn parse_github_target(url_obj: &url::Url) -> Result<(String, Option<String>), S
 /// from `AEROFTP_TOTP_CODE` when present. If the vault has 2FA, no code was
 /// supplied, and we are on an interactive terminal, prompt for the code once
 /// and retry instead of failing outright. The code is zeroized after use.
-fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
+/// Whether opening the vault may ask the user for a secret. A lookup the
+/// command can do without (the protocol `pair add` stores) opens it only with
+/// what it was given: a cached vault, auto mode, `--master-password` or
+/// `AEROFTP_MASTER_PASSWORD`, `AEROFTP_TOTP_CODE`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Asking {
+    Allowed,
+    Never,
+}
+
+impl Asking {
+    /// Whether a prompt may be shown now: allowed, and a terminal to read it.
+    fn at_terminal(self) -> bool {
+        self.may_prompt(std::io::stdin().is_terminal())
+    }
+
+    fn may_prompt(self, terminal: bool) -> bool {
+        self == Asking::Allowed && terminal
+    }
+}
+
+fn unlock_with_master_and_totp(password: &str, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_with_master(password, env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13733,14 +13794,14 @@ fn unlock_with_master_and_totp(password: &str) -> Result<(), String> {
     }
 }
 
-fn unlock_auto_keyring_with_totp() -> Result<(), String> {
+fn unlock_auto_keyring_with_totp(asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::{CredentialError, CredentialStore};
 
     let totp_env = std::env::var("AEROFTP_TOTP_CODE").ok();
     let env_code = totp_env.as_deref().map(str::trim).filter(|c| !c.is_empty());
 
     match CredentialStore::unlock_auto_keyring_with_totp(env_code) {
-        Err(CredentialError::TotpRequired) if std::io::stdin().is_terminal() => {
+        Err(CredentialError::TotpRequired) if asking.at_terminal() => {
             eprint!("Two-factor code: ");
             let _ = io::stderr().flush();
             let mut line = String::new();
@@ -13774,9 +13835,24 @@ fn vault_once<T>(
 }
 
 fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Allowed)
+}
+
+/// [`open_vault`] for a lookup the command can do without: it never asks for
+/// the master password or a second factor.
+fn open_vault_without_asking(
+    cli: &Cli,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
+    open_vault_asking(cli, Asking::Never)
+}
+
+fn open_vault_asking(
+    cli: &Cli,
+    asking: Asking,
+) -> Result<ftp_client_gui_lib::credential_store::CredentialStore, String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
-    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli))?;
+    let store = vault_once(CredentialStore::from_cache, || unlock_vault(cli, asking))?;
 
     // MU-3: run partition migration eagerly so `cli.user` can be resolved
     // by the per-command unlock helper. Resolve+unlock is intentionally
@@ -13787,8 +13863,9 @@ fn open_vault(cli: &Cli) -> Result<ftp_client_gui_lib::credential_store::Credent
 }
 
 /// Opens the vault: `init` (auto mode unlocks by itself), else the master
-/// password and the second factor when the vault asks for them.
-fn unlock_vault(cli: &Cli) -> Result<(), String> {
+/// password and the second factor when the vault asks for them, prompting
+/// for either only when `asking` allows it.
+fn unlock_vault(cli: &Cli, asking: Asking) -> Result<(), String> {
     use ftp_client_gui_lib::credential_store::CredentialStore;
 
     // Try to init vault (auto mode unlocks automatically)
@@ -13805,16 +13882,16 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
                 let mut mp_copy = mp.clone();
                 // 2FA code comes from AEROFTP_TOTP_CODE, or an interactive
                 // prompt on a TTY when the vault requires it but none was set.
-                let result = unlock_with_master_and_totp(&mp_copy);
+                let result = unlock_with_master_and_totp(&mp_copy, asking);
                 mp_copy.zeroize();
                 result?;
-            } else if std::io::stdin().is_terminal() {
+            } else if asking.at_terminal() {
                 // Interactive: prompt for master password (hidden input)
                 eprint!("Master password: ");
                 let _ = io::stderr().flush();
                 let mut mp = rpassword::read_password()
                     .map_err(|e| format!("Failed to read master password: {}", e))?;
-                let result = unlock_with_master_and_totp(mp.trim());
+                let result = unlock_with_master_and_totp(mp.trim(), asking);
                 mp.zeroize();
                 result?;
             } else {
@@ -13825,7 +13902,7 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
             }
         }
         Ok(status) if status == "2FA_REQUIRED" => {
-            unlock_auto_keyring_with_totp()?;
+            unlock_auto_keyring_with_totp(asking)?;
         }
         Ok(_) => {} // Auto mode - already open
         Err(e) => return Err(format!("Failed to open vault: {}", e)),
@@ -13835,8 +13912,39 @@ fn unlock_vault(cli: &Cli) -> Result<(), String> {
 
 #[cfg(test)]
 mod vault_once_tests {
-    use super::vault_once;
+    use super::{vault_once, Asking};
     use std::cell::Cell;
+
+    /// A lookup the command can do without opens the vault only with what it
+    /// was given: no prompt at a terminal, for the master password or the
+    /// second factor. Every prompt of the unlock goes through `Asking`, and
+    /// the protocol lookup of `pair add` opens the vault that way.
+    #[test]
+    fn a_lookup_the_command_can_do_without_never_asks() {
+        assert!(!Asking::Never.may_prompt(true));
+        assert!(Asking::Allowed.may_prompt(true));
+        assert!(!Asking::Allowed.may_prompt(false));
+        let source = include_str!("aeroftp_cli.rs");
+        let between = |from: &str, to: &str| {
+            let start = source.find(from).unwrap();
+            &source[start..start + source[start..].find(to).unwrap()]
+        };
+        let unlock = between(
+            concat!("fn unlock_with_", "master_and_totp("),
+            concat!("mod vault_", "once_tests"),
+        );
+        assert_eq!(unlock.matches(concat!("is_terminal", "()")).count(), 0);
+        assert_eq!(
+            unlock.matches(concat!("asking.", "at_terminal()")).count(),
+            3
+        );
+        let add = between(
+            concat!("PairCommands::", "Add {"),
+            concat!("PairCommands::", "Remove {"),
+        );
+        assert!(add.contains(concat!("open_vault_without_asking", "(cli)")));
+        assert!(!add.contains(concat!("open_vault", "(cli)")));
+    }
 
     /// The key is derived once per command: a vault this process already
     /// opened is used as it is, and only a closed one is unlocked.
@@ -15501,18 +15609,7 @@ fn aerocloud_protocol_for_profile(
     store: &ftp_client_gui_lib::credential_store::CredentialStore,
     config: &ftp_client_gui_lib::cloud_config::CloudConfig,
 ) -> Option<String> {
-    if config.server_profile_id.is_none() && config.server_profile.is_empty() {
-        return None;
-    }
-    let profiles =
-        ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(store).ok()?;
-    ftp_client_gui_lib::crypt_overlay_provider::select_aerocloud_profile(
-        &profiles,
-        config.server_profile_id.as_deref(),
-        &config.server_profile,
-    )
-    .and_then(|p| p.get("protocol").and_then(|v| v.as_str()))
-    .map(str::to_string)
+    ftp_client_gui_lib::cloud_provider_factory::saved_profile_protocol(store, config)
 }
 
 /// Every spelling [`aerocloud_parse_direction`] accepts, in the order a person
@@ -15734,10 +15831,20 @@ fn aerocloud_print_sync_result(
 /// Toggle `enabled` on the persisted AeroCloud config (`aerocloud enable|disable`).
 fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::cloud_config;
-    let mut config = cloud_config::load_cloud_config();
+    let read_as = match cloud_config::load_cloud_config_strict() {
+        Ok(config) => config,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
+    let mut config = read_as.clone();
     config.enabled = enabled;
-    match cloud_config::save_cloud_config(&config) {
-        Ok(()) => {
+    // Merged with the file as it is at the write, as the settings view saves:
+    // what the app saved since this read stays. A write refused because
+    // another AeroFTP process is saving exits with 11, nothing written.
+    match cloud_config::save_settings_edit(config, &read_as) {
+        Ok(_) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({ "status": "ok", "enabled": enabled }));
             } else {
@@ -15759,8 +15866,15 @@ async fn cmd_aerocloud_sync(cli: &Cli, dry_run: bool, format: OutputFormat) -> i
     use ftp_client_gui_lib::{cloud_config, cloud_service};
 
     // Cheap config checks first, so a disabled / unconfigured AeroCloud fails
-    // fast WITHOUT forcing an unnecessary vault unlock prompt.
-    let mut config = cloud_config::load_cloud_config();
+    // fast WITHOUT forcing an unnecessary vault unlock prompt. A file that
+    // cannot be read is a configuration error (exit 11), never "not enabled".
+    let mut config = match cloud_config::load_cloud_config_strict() {
+        Ok(c) => c,
+        Err(e) => {
+            print_error(format, &e, 11);
+            return 11;
+        }
+    };
     if !config.enabled {
         print_error(
             format,
@@ -15829,7 +15943,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
 
     match command {
         AeroCloudCommands::Show => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             // A config written before this release, or by a GUI that does not
             // write the field, still carries the default. Deriving it here too
             // means the displayed value cannot be stale even when the stored
@@ -15839,7 +15959,13 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
             0
         }
         AeroCloudCommands::Status => {
-            let mut config = cloud_config::load_cloud_config();
+            let mut config = match cloud_config::load_cloud_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             aerocloud_refresh_protocol_for_display(cli, &mut config);
             aerocloud_print_status(&config, format);
             0
@@ -15883,7 +16009,15 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 }
             }
 
-            let mut config = cloud_config::load_cloud_config();
+            let read_as = match cloud_config::load_cloud_config_strict() {
+                Ok(config) => config,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
+            let mut config = read_as.clone();
+            let saved_folder = config.remote_folder.clone();
             let mut changed = false;
             if let Some(local) = local {
                 config.local_folder = std::path::PathBuf::from(local);
@@ -15983,9 +16117,19 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 return 5;
             }
 
-            match cloud_config::save_cloud_config(&config) {
-                Ok(()) => {
-                    aerocloud_print_show(&config, format);
+            if let Err(e) = cloud_config::refuse_an_unusable_remote_folder(
+                &config.remote_folder,
+                Some(&saved_folder),
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            // Merged with the file as it is at the write, as the settings
+            // view saves; a write refused because another AeroFTP process is
+            // saving exits with 11, nothing written.
+            match cloud_config::save_settings_edit(config, &read_as) {
+                Ok(saved) => {
+                    aerocloud_print_show(&saved, format);
                     0
                 }
                 Err(e) => {
@@ -16006,7 +16150,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
 
     match command {
         PairCommands::List => {
-            let cfg = cloud_pairs::load_cloud_pairs_config();
+            let cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if matches!(format, OutputFormat::Json) {
                 let pairs: Vec<_> = cfg
                     .pairs
@@ -16078,7 +16228,13 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 None => CompareDirection::Bidirectional,
             };
 
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
+            let pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(cfg) => cfg,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
             if cloud_pairs::pair_exists(&local_path, remote, &pairs_cfg.pairs) {
                 print_error(
                     format,
@@ -16122,61 +16278,126 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 new_pair.compress_level = *level;
             }
 
-            // FIX-1 (partial): pair add is intentionally vault-less (profile name is just a
-            // string label at this point). Protocol resolution for non-FTP happens in the
-            // worker (see lib.rs batch builder using mcp_list_active_server_profiles) and
-            // in explicit `pair sync` (which does open the vault). This keeps `add` usable
-            // in scripts without forcing unlock. Stored protocol may be the default 'ftp'
-            // until first resolution; the worker always corrects it before dispatch.
+            // The pair is saved with the protocol its profile speaks when the vault
+            // opens. Without it (a locked vault in a script) the default 'ftp' is
+            // stored, and every reader corrects it through
+            // `cloud_provider_factory::apply_saved_profile_protocol_to_pair`: the
+            // connect, the worker, `pair sync` and the placement check alike.
+            // So the lookup never asks for a secret.
+            if let Ok(store) = open_vault_without_asking(cli) {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store,
+                    &mut new_pair,
+                );
+            }
 
-            pairs_cfg.pairs.push(new_pair);
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&pairs_cfg) {
-                print_error(format, &e, 11);
-                return 11;
+            if let Err(e) = ftp_client_gui_lib::cloud_config::refuse_an_unusable_remote_folder(
+                &new_pair.remote_path,
+                None,
+            ) {
+                print_error(format, &e, 5);
+                return 5;
+            }
+            // Added to the list as it is at the write, under the pairs write
+            // lock: a folder a sync placed since the read above is kept.
+            let added = new_pair.clone();
+            let pushed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                // The same pair added meanwhile is not added twice.
+                if cloud_pairs::pair_exists(&added.local_path, remote, &stored.pairs) {
+                    return Ok(false);
+                }
+                stored.pairs.push(new_pair);
+                Ok(true)
+            });
+            match pushed {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+                Ok(false) => {
+                    print_error(
+                        format,
+                        &format!("pair already exists for local={} remote={}", local, remote),
+                        5,
+                    );
+                    return 5;
+                }
+                Ok(true) => {}
             }
             if matches!(format, OutputFormat::Json) {
-                print_json(&serde_json::json!({"status": "ok", "added": pairs_cfg.pairs.last()}));
+                print_json(&serde_json::json!({"status": "ok", "added": added}));
             } else {
                 println!("Added AeroCloud pair.");
             }
             0
         }
         PairCommands::Remove { id } => {
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
-            let before = cfg.pairs.len();
-            cfg.pairs.retain(|p| p.id != *id);
-            if cfg.pairs.len() == before {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                return 5;
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let removed = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                let before = stored.pairs.len();
+                stored.pairs.retain(|p| p.id != *id);
+                Ok(stored.pairs.len() != before)
+            });
+            match removed {
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    11
+                }
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
+                Ok(true) => {
+                    println!("Removed pair {id}");
+                    0
+                }
             }
-            if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
-                print_error(format, &e, 11);
-                return 11;
-            }
-            println!("Removed pair {id}");
-            0
         }
         PairCommands::Enable { id } | PairCommands::Disable { id } => {
             let enable = matches!(command, PairCommands::Enable { .. });
-            let mut cfg = cloud_pairs::load_cloud_pairs_config();
-            if let Some(p) = cfg.pairs.iter_mut().find(|p| p.id == *id) {
-                p.enabled = enable;
-                if let Err(e) = cloud_pairs::save_cloud_pairs_config(&cfg) {
+            // Read, changed and written under the pairs write lock, on the
+            // list as it is at the write.
+            let found = cloud_pairs::with_cloud_pairs_mut(|stored| {
+                Ok(match stored.pairs.iter_mut().find(|p| p.id == *id) {
+                    Some(p) => {
+                        p.enabled = enable;
+                        true
+                    }
+                    None => false,
+                })
+            });
+            match found {
+                Err(e) => {
                     print_error(format, &e, 11);
-                    return 11;
+                    11
                 }
-                println!(
-                    "Pair {} {}",
-                    id,
-                    if enable { "enabled" } else { "disabled" }
-                );
-                0
-            } else {
-                print_error(format, &format!("no pair with id '{id}'"), 5);
-                5
+                Ok(true) => {
+                    println!(
+                        "Pair {} {}",
+                        id,
+                        if enable { "enabled" } else { "disabled" }
+                    );
+                    0
+                }
+                Ok(false) => {
+                    print_error(format, &format!("no pair with id '{id}'"), 5);
+                    5
+                }
             }
         }
         PairCommands::Sync { id, dry_run } => {
+            // The pairs file first, read as the other pair commands read it:
+            // one that cannot be read is a configuration error (exit 11),
+            // never an empty list, and it fails before the vault is asked for.
+            let mut pairs_cfg = match cloud_pairs::load_cloud_pairs_config_strict() {
+                Ok(c) => c,
+                Err(e) => {
+                    print_error(format, &e, 11);
+                    return 11;
+                }
+            };
+
             // Vault open once for all pairs in this invocation (crypt wrap).
             let store = match open_vault(cli) {
                 Ok(s) => s,
@@ -16186,24 +16407,11 @@ async fn cmd_aerocloud_pair(cli: &Cli, command: &PairCommands, format: OutputFor
                 }
             };
 
-            let mut pairs_cfg = cloud_pairs::load_cloud_pairs_config();
-
             // Resolve protocol_type for each (same logic as single aerocloud sync).
-            if let Ok(profiles) =
-                ftp_client_gui_lib::user_partitions::mcp_list_active_server_profiles(&store)
-            {
-                for p in &mut pairs_cfg.pairs {
-                    if let Some(proto) = profiles
-                        .iter()
-                        .find(|pr| {
-                            pr.get("name").and_then(|v| v.as_str())
-                                == Some(p.server_profile.as_str())
-                        })
-                        .and_then(|pr| pr.get("protocol").and_then(|v| v.as_str()))
-                    {
-                        p.protocol_type = proto.to_string();
-                    }
-                }
+            for p in &mut pairs_cfg.pairs {
+                ftp_client_gui_lib::cloud_provider_factory::apply_saved_profile_protocol_to_pair(
+                    &store, p,
+                );
             }
 
             let targets: Vec<_> = if let Some(only_id) = id {
@@ -45498,6 +45706,10 @@ async fn cmd_aerorsync_probe(
         },
         auth_password: Some(SecretString::from(password)),
         auth_agent: false,
+        pinned_private_key: None,
+        // The operator gave a password: the probe logs in with it, never
+        // through `none`.
+        pinned_password: true,
     };
 
     let transport = match RusshSessionTransport::connect(cfg).await {
@@ -57119,6 +57331,168 @@ mod missing_root_note_tests {
     }
 }
 
+/// CodeRabbit 4575991598, the CLI's half: `cmd_sync` tries the delta login
+/// before anything it writes, and a refusal returns before any of it. Read
+/// from the source, in order: the preflight `open_delta_batch`, its refusal
+/// branch's return, then the first local write (the copy-dest copy), the
+/// first folder creation and every provider write. A refusal exits with the
+/// authentication code, 6.
+#[cfg(test)]
+mod sync_delta_login_order_tests {
+    use super::*;
+
+    fn cmd_sync_body() -> &'static str {
+        let source = include_str!("aeroftp_cli.rs");
+        // At the start of a line: the definition, never this test's own
+        // needles (written with an escaped newline, so no line starts with
+        // them).
+        let start = source.find("\nasync fn cmd_sync(").expect("cmd_sync");
+        let end = start + source[start..].find("\n}\n").expect("cmd_sync's end");
+        let body = &source[start..end];
+        assert!(!body.contains("mod sync_delta_login_order_tests"));
+        body
+    }
+
+    #[test]
+    fn a_refused_delta_login_stops_the_cli_sync_before_its_first_write() {
+        let body = cmd_sync_body();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("{needle} is in cmd_sync"))
+        };
+        let preflight = at("delta_sync_rsync::open_delta_batch(provider.as_mut()).await");
+        let refused = preflight + body[preflight..].find("Err(refusal) =>").unwrap();
+        let returned = refused + body[refused..].find("return code.into();").unwrap();
+        let copy = at("std::fs::copy(src, dst)");
+        let mkdir = at("mkdir_parent_component(provider.as_mut()");
+        assert!(preflight < refused && refused < returned && returned < copy);
+        assert!(copy < mkdir);
+        for write in [
+            "provider.upload(",
+            "provider.mkdir(",
+            "provider.delete(",
+            "provider.rmdir(",
+            "provider.rename(",
+            "provider.as_mut().upload(",
+            "provider.as_mut().mkdir(",
+            "provider.as_mut().delete(",
+            "provider.as_mut().rmdir(",
+            "provider.as_mut().rename(",
+        ] {
+            if let Some(first) = body.find(write) {
+                assert!(returned < first, "{write} comes before the delta login");
+            }
+        }
+        // The preflight is the first delta login of the run: both legs reuse
+        // what it opened before they would open one of their own.
+        assert_eq!(
+            at("open_delta_batch("),
+            preflight + "delta_sync_rsync::".len()
+        );
+    }
+
+    /// U-F: a delta login refused once the run has started (a leg's own
+    /// open, or the batch's reconnect inside it) ends the run after that
+    /// leg: each leg's stop stands after the leg and before every later step
+    /// that writes (its own classic stream, the conflict renames, the other
+    /// leg, the renames, the deletes, the empty-folder cleanup, the bisync
+    /// snapshot), and each leg's refusals raise it.
+    #[test]
+    fn a_delta_login_refused_mid_run_ends_the_cli_sync_after_its_leg() {
+        let body = cmd_sync_body();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("{needle} is in cmd_sync"))
+        };
+        let after = |from: usize, needle: &str| {
+            from + body[from..]
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle} after {from}"))
+        };
+        let stop = "if let Some(refusal) = login_refused.take() {";
+        let upload_leg = at("AerorsyncBatch engaged: 1 SSH session for");
+        let upload_stop = after(upload_leg, stop);
+        let download_leg = at("AerorsyncBatch engaged: 1 SSH session, {} download(s)");
+        let download_stop = after(download_leg, stop);
+        assert!(body[upload_stop..].starts_with(stop));
+        for (leg, stop_at) in [(upload_leg, upload_stop), (download_leg, download_stop)] {
+            let raised_by_reconnect = after(leg, "login_refused = Some(hard.clone());");
+            let raised_by_open = after(leg, "login_refused = Some(refusal);");
+            assert!(raised_by_reconnect < stop_at && raised_by_open < stop_at);
+            let returns = body[stop_at..].find("return refused_login_stats(").unwrap();
+            let block_ends = body[stop_at..].find('}').unwrap();
+            assert!(returns < block_ends, "the stop returns");
+        }
+        assert!(
+            upload_stop < at("if !leftover_upload_jobs.is_empty() {"),
+            "before the classic uploads"
+        );
+        assert!(upload_stop < at("// Execute conflict renames first"));
+        assert!(upload_stop < download_leg);
+        for later in [
+            "// PD-CLI-CONV-D: converge the sync download",
+            "// Execute renames (--track-renames)",
+            "for path in &to_delete_remote {",
+            "for path in &to_delete_local {",
+            "for dir in &orphan_dirs {",
+            "// Save bisync snapshot after successful sync",
+        ] {
+            assert!(download_stop < at(later), "{later}");
+        }
+    }
+
+    #[test]
+    fn a_refused_delta_login_exits_with_the_authentication_code() {
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::AuthenticationFailed(
+                "native hard rejection (PinnedLoginRefused): refused".into()
+            )),
+            6
+        );
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::HostKeyRejected("x".into())),
+            6
+        );
+    }
+}
+
+/// How a `sync` run ends when its delta login is refused once the run has
+/// started (`login_refused` in [`cmd_sync`]): the refusal is printed (the
+/// JSON form an error, never an ok summary), the connection closed, and the
+/// exit is the authentication code, the batch-open refusal's, with the counts
+/// of what the run moved before it.
+#[cfg(feature = "aerorsync")]
+async fn refused_login_stats(
+    provider: &mut dyn StorageProvider,
+    format: OutputFormat,
+    quiet: bool,
+    refusal: &str,
+    uploaded: u32,
+    downloaded: u32,
+    errors: &[String],
+) -> SyncCycleStats {
+    let code =
+        provider_error_to_exit_code(&ProviderError::AuthenticationFailed(refusal.to_string()));
+    if !quiet && matches!(format, OutputFormat::Text) {
+        for error in errors {
+            eprintln!("  {error}");
+        }
+    }
+    print_error(
+        format,
+        &format!("sync stopped, the delta login was refused: {refusal}"),
+        code,
+    );
+    let _ = provider.disconnect().await;
+    SyncCycleStats {
+        exit_code: code,
+        uploaded,
+        downloaded,
+        error_count: errors.len() as u32,
+        ..Default::default()
+    }
+}
+
 /// `sync`: plan from the two listings, then run the transfers, renames,
 /// deletes and the empty-directory cleanup, and answer one exit code out of
 /// several facts. Ctrl-C in any phase ends the run interrupted (130,
@@ -58353,6 +58727,38 @@ async fn cmd_sync(
         };
     }
 
+    // CodeRabbit 4575991598: the delta login is tried before the first
+    // write of the run (the copies below, the parent folders, the uploads):
+    // a refused one stops the run with nothing written. What it gives (a
+    // batch, or `None` for no batch) is taken by the first delta leg that
+    // runs; a later leg opens its own, and a refusal there fails that leg's
+    // remaining files, none of which goes over the classic path.
+    #[cfg(feature = "aerorsync")]
+    let mut preflight_batch: Option<
+        Option<Box<dyn ftp_client_gui_lib::delta_transport::DeltaBatch>>,
+    > = None;
+    #[cfg(feature = "aerorsync")]
+    if use_aerorsync_batch
+        && !error_correction_enabled
+        && !(to_upload.is_empty() && to_download.is_empty())
+    {
+        match ftp_client_gui_lib::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+            Ok(batch) => preflight_batch = Some(batch),
+            Err(refusal) => {
+                let code = provider_error_to_exit_code(&ProviderError::AuthenticationFailed(
+                    refusal.clone(),
+                ));
+                print_error(
+                    format,
+                    &format!("sync refused, nothing was written: {refusal}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code.into();
+            }
+        }
+    }
+
     // Execute --copy-dest local copies first
     for (src, dst) in &copy_dest_ops {
         if let Some(parent) = Path::new(dst).parent() {
@@ -58466,6 +58872,14 @@ async fn cmd_sync(
     // Both bindings are mutated only inside the `aerorsync` feature
     // gate below; when the feature is off they stay at their initial
     // values and look immutable to clippy.
+    // CodeRabbit review 5907590915 (U-F): a delta login refused once the run
+    // has started (a leg's own open, or the batch's reconnect inside a leg)
+    // ends the run there: the leg's remaining files are reported refused, and
+    // no later step (the classic stream, the conflict renames, the other leg,
+    // the renames, the deletes, the empty-folder cleanup, the bisync
+    // snapshot) runs.
+    #[cfg(feature = "aerorsync")]
+    let mut login_refused: Option<String> = None;
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut used_batch_for_uploads = false;
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
@@ -58475,8 +58889,12 @@ async fn cmd_sync(
         use ftp_client_gui_lib::delta_sync_rsync::{
             open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
         };
-        match open_delta_batch(provider.as_mut()).await {
-            Some(mut batch) => {
+        let opened = match preflight_batch.take() {
+            Some(batch) => Ok(batch),
+            None => open_delta_batch(provider.as_mut()).await,
+        };
+        match opened {
+            Ok(Some(mut batch)) => {
                 if !quiet {
                     eprintln!(
                         "AerorsyncBatch engaged: 1 SSH session for {} upload(s)",
@@ -58485,6 +58903,10 @@ async fn cmd_sync(
                 }
                 let mut pending: Vec<(String, String, String, u64)> = Vec::new();
                 for (rel, local_path_s, remote_path, _size) in leftover_upload_jobs.drain(..) {
+                    if let Some(refusal) = &login_refused {
+                        errors.push(format!("upload {rel}: refused: {refusal}"));
+                        continue;
+                    }
                     if cancelled.load(Ordering::Relaxed) {
                         errors.push(format!("upload {}: cancelled", rel));
                         continue;
@@ -58501,6 +58923,9 @@ async fn cmd_sync(
                         uploaded += 1;
                     } else if let Some(hard) = res.hard_error.as_ref() {
                         errors.push(format!("upload {}: hard rejection: {}", rel, hard));
+                        if ftp_client_gui_lib::rsync_over_ssh::is_login_refusal(hard) {
+                            login_refused = Some(hard.clone());
+                        }
                     } else {
                         // Soft fallback (TooSmall, NoopBatch, etc.):
                         // re-queue for the classic stream below so the
@@ -58528,7 +58953,15 @@ async fn cmd_sync(
                 leftover_upload_jobs = pending;
                 used_batch_for_uploads = true;
             }
-            None => {
+            // A login refused after the run wrote something: no upload goes
+            // over the classic path in its place.
+            Err(refusal) => {
+                for (rel, _, _, _) in leftover_upload_jobs.drain(..) {
+                    errors.push(format!("upload {rel}: refused: {refusal}"));
+                }
+                login_refused = Some(refusal);
+            }
+            Ok(None) => {
                 if !quiet {
                     eprintln!(
                         // The reasons are the ones `open_delta_batch` really
@@ -58551,6 +58984,19 @@ async fn cmd_sync(
         }
     }
 
+    #[cfg(feature = "aerorsync")]
+    if let Some(refusal) = login_refused.take() {
+        return refused_login_stats(
+            provider.as_mut(),
+            format,
+            quiet,
+            &refusal,
+            uploaded,
+            0,
+            &errors,
+        )
+        .await;
+    }
     if !leftover_upload_jobs.is_empty() {
         let _ = used_batch_for_uploads; // already logged above; flag retained for follow-up reporting
 
@@ -58838,8 +59284,12 @@ async fn cmd_sync(
             .filter(|(rel, _, _, _)| local_map.contains_key(rel.as_str()))
             .count();
         if eligible > 0 {
-            match open_delta_batch(provider.as_mut()).await {
-                Some(mut batch) => {
+            let opened = match preflight_batch.take() {
+                Some(batch) => Ok(batch),
+                None => open_delta_batch(provider.as_mut()).await,
+            };
+            match opened {
+                Ok(Some(mut batch)) => {
                     if !quiet {
                         // G106: "eligible", not "will be transferred". The
                         // budget below can still turn some of these away, and
@@ -58862,6 +59312,10 @@ async fn cmd_sync(
                     // nothing.
                     let mut queued = std::mem::take(&mut leftover_download_jobs).into_iter();
                     while let Some((rel, local_path_s, remote_path, size)) = queued.next() {
+                        if let Some(refusal) = &login_refused {
+                            errors.push(format!("download {rel}: refused: {refusal}"));
+                            continue;
+                        }
                         if cancelled.load(Ordering::Relaxed) {
                             errors.push(format!("download {}: cancelled", rel));
                             continue;
@@ -58917,6 +59371,9 @@ async fn cmd_sync(
                             session_transfer_add(moved);
                         } else if let Some(hard) = res.hard_error.as_ref() {
                             errors.push(format!("download {}: hard rejection: {}", rel, hard));
+                            if ftp_client_gui_lib::rsync_over_ssh::is_login_refusal(hard) {
+                                login_refused = Some(hard.clone());
+                            }
                         } else {
                             // Soft fallback (TooSmall, NoopBatch, a transport
                             // that opted out): re-queue for the classic stream
@@ -58943,7 +59400,15 @@ async fn cmd_sync(
                     }
                     leftover_download_jobs = pending;
                 }
-                None => {
+                // A login refused after the run wrote something: no download
+                // goes over the classic path in its place.
+                Err(refusal) => {
+                    for (rel, _, _, _) in leftover_download_jobs.drain(..) {
+                        errors.push(format!("download {rel}: refused: {refusal}"));
+                    }
+                    login_refused = Some(refusal);
+                }
+                Ok(None) => {
                     if !quiet {
                         eprintln!(
                             "--delta requested but the provider/transport is not delta-eligible \
@@ -58961,6 +59426,19 @@ async fn cmd_sync(
                 leftover_download_jobs.len()
             );
         }
+    }
+    #[cfg(feature = "aerorsync")]
+    if let Some(refusal) = login_refused.take() {
+        return refused_login_stats(
+            provider.as_mut(),
+            format,
+            quiet,
+            &refusal,
+            uploaded,
+            downloaded,
+            &errors,
+        )
+        .await;
     }
     #[cfg(feature = "aerorsync")]
     let download_jobs = leftover_download_jobs;
@@ -88748,6 +89226,122 @@ mod tests {
         };
 
         assert!(update_check_due(&cache, now));
+    }
+
+    /// An `update-check.toml` that exists but does not parse is an error on
+    /// the load path, so the update check runs on defaults and never
+    /// rewrites the file it could not read.
+    #[test]
+    fn an_unparseable_update_cache_is_an_error_not_a_default() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        std::fs::remove_file(&path).unwrap();
+        assert!(load_update_cache_at(&path).unwrap().checked_at.is_none());
+    }
+
+    /// A metadata error on the cache (unreadable parent directory) is an
+    /// error, not a missing file: `exists()` would report false here.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_dir_is_an_error_not_a_default() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let dir = data.path().join("cfg");
+        std::fs::create_dir(&dir).unwrap();
+        let path = dir.join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o755));
+            }
+        }
+        let _guard = PermGuard(dir.clone());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+        assert!(load_update_cache_at(&path).is_err());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The save half of the guard: `record_update_check_at` on a cache that
+    /// failed to load must leave the file byte-identical whether the fetch
+    /// succeeded or failed, and still announce the newer version.
+    #[test]
+    fn an_unreadable_update_cache_is_never_rewritten_by_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"not = [valid".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        let now = chrono::Utc::now();
+
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+
+        let announced = record_update_check_at(
+            &path,
+            load_update_cache_at(&path),
+            now,
+            Err("network down".into()),
+        );
+        assert_eq!(announced, None);
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// Same guarantee when the unreadability is a metadata error: the file
+    /// is write-only (chmod 200), so the load fails but a naive save would
+    /// still succeed and overwrite it.
+    #[cfg(unix)]
+    #[test]
+    fn an_unreadable_update_cache_file_is_never_rewritten_by_the_check() {
+        use std::os::unix::fs::PermissionsExt;
+        if unsafe { libc::geteuid() } == 0 {
+            eprintln!("running as root: chmod cannot block the read, skipping");
+            return;
+        }
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let bytes = b"checked_at = \"2026-01-01T00:00:00Z\"".as_slice();
+        std::fs::write(&path, bytes).unwrap();
+        struct PermGuard(std::path::PathBuf);
+        impl Drop for PermGuard {
+            fn drop(&mut self) {
+                let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o644));
+            }
+        }
+        let _guard = PermGuard(path.clone());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o200)).unwrap();
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+    }
+
+    /// The positive case: an absent or readable cache is written back with
+    /// the fetched `latest_version`.
+    #[test]
+    fn a_readable_update_cache_records_the_check() {
+        let data = tempfile::tempdir().unwrap();
+        let path = data.path().join("update-check.toml");
+        let now = chrono::Utc::now();
+        let announced =
+            record_update_check_at(&path, load_update_cache_at(&path), now, Ok("99.0.0".into()));
+        assert_eq!(announced.as_deref(), Some("99.0.0"));
+        let saved = load_update_cache_at(&path).unwrap();
+        assert_eq!(saved.latest_version.as_deref(), Some("99.0.0"));
+        assert!(saved.checked_at.is_some());
     }
 
     // ── pget effective-segment-count tests ─────────────────────────

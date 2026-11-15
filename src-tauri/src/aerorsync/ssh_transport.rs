@@ -84,6 +84,71 @@ impl SshHostKeyPolicy {
     }
 }
 
+/// A private key held in memory, set when the caller already authenticated a
+/// session with it and wants this transport to sign with that same object,
+/// together with the SHA-256 fingerprint of the public key that login used.
+/// The key is never written to disk. `Debug` prints the login fingerprint
+/// and nothing else.
+#[derive(Clone)]
+pub struct PinnedPrivateKey {
+    key: Arc<russh::keys::PrivateKey>,
+    login_sha256: String,
+}
+
+impl PinnedPrivateKey {
+    /// `login_sha256` is the fingerprint the session recorded when it logged
+    /// in, in OpenSSH's `SHA256:` form. An empty one never matches.
+    pub fn new(key: Arc<russh::keys::PrivateKey>, login_sha256: String) -> Self {
+        Self { key, login_sha256 }
+    }
+
+    /// SHA-256 fingerprint of a key's public half, in OpenSSH's `SHA256:` form.
+    pub fn fingerprint_of(key: &russh::keys::PrivateKey) -> String {
+        key.public_key()
+            .fingerprint(russh::keys::HashAlg::Sha256)
+            .to_string()
+    }
+
+    /// SHA-256 fingerprint of the held key's public half.
+    pub fn public_fingerprint(&self) -> String {
+        Self::fingerprint_of(&self.key)
+    }
+
+    /// The fingerprint recorded at login.
+    pub fn login_fingerprint(&self) -> &str {
+        &self.login_sha256
+    }
+
+    /// The held key object, without the login check. For assertions only;
+    /// signing goes through [`PinnedPrivateKey::verified_key`].
+    pub fn key(&self) -> &Arc<russh::keys::PrivateKey> {
+        &self.key
+    }
+
+    /// The key to offer, once its public fingerprint is the one recorded at
+    /// login. Otherwise a typed `PinnedKeyMismatch`, before anything is sent.
+    pub fn verified_key(&self) -> Result<Arc<russh::keys::PrivateKey>, AerorsyncError> {
+        let held = self.public_fingerprint();
+        if self.login_sha256.is_empty() || held != self.login_sha256 {
+            return Err(AerorsyncError::pinned_key_mismatch(format!(
+                "the session key in memory ({held}) is not the key the session logged in with ({})",
+                if self.login_sha256.is_empty() {
+                    "none recorded"
+                } else {
+                    self.login_sha256.as_str()
+                }
+            )));
+        }
+        Ok(self.key.clone())
+    }
+}
+
+impl std::fmt::Debug for PinnedPrivateKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "PinnedPrivateKey({})", self.login_sha256)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SshTransportConfig {
     pub host: String,
@@ -123,6 +188,18 @@ pub struct SshTransportConfig {
     /// russh leg via [`SshTransportConfig::prefers_russh_leg`]. Password
     /// auth still takes precedence when both are configured.
     pub auth_agent: bool,
+    /// When set, the russh leg authenticates with this key and nothing else:
+    /// it does not open `private_key_path`, and it sends neither `none`, a
+    /// password nor an agent identity. The libssh2 leg hands a path to
+    /// libssh2 and cannot sign with an in-memory key, so it refuses such a
+    /// config, and [`SshTransportConfig::prefers_russh_leg`] routes it away.
+    pub pinned_private_key: Option<PinnedPrivateKey>,
+    /// The session logged in with a password: the russh leg authenticates
+    /// with `auth_password` and nothing else, `none` included, on every
+    /// login (probe, transfer, reconnect). Without a usable password it
+    /// refuses with a typed `PinnedPasswordMismatch` before the socket
+    /// opens. The libssh2 leg is key-file only and refuses such a config.
+    pub pinned_password: bool,
 }
 
 impl SshTransportConfig {
@@ -147,6 +224,8 @@ impl SshTransportConfig {
             },
             auth_password: None,
             auth_agent: false,
+            pinned_private_key: None,
+            pinned_password: false,
         }
     }
 
@@ -166,13 +245,17 @@ impl SshTransportConfig {
     /// Whether this profile must be driven through the russh leg rather
     /// than the libssh2 single-shot leg. True for password auth (libssh2
     /// leg is pubkey-only) and for agent auth (libssh2 leg cannot reach
-    /// `SSH_AUTH_SOCK` in this codebase). Pubkey-file profiles return
+    /// `SSH_AUTH_SOCK` in this codebase) and for a pinned in-memory key
+    /// (libssh2 reads a key path itself). Pubkey-file profiles return
     /// false and keep using the historical libssh2 single-shot path for
     /// non-batch transfers. Probe and single-shot upload/download share
     /// this predicate so leg selection is consistent across the call
     /// sites in `delta_transport_impl.rs`.
     pub fn prefers_russh_leg(&self) -> bool {
-        self.usable_password().is_some() || self.auth_agent
+        self.usable_password().is_some()
+            || self.auth_agent
+            || self.pinned_private_key.is_some()
+            || self.pinned_password
     }
 }
 
@@ -521,6 +604,21 @@ fn spawn_worker(
 fn connect_and_auth(
     config: &SshTransportConfig,
 ) -> Result<(Session, Arc<TcpStream>), AerorsyncError> {
+    if config.pinned_private_key.is_some() {
+        // `userauth_pubkey_file` below makes libssh2 read the key path
+        // itself, so the key it would sign with is whatever is in that file
+        // now. Refuse before any socket is opened.
+        return Err(AerorsyncError::new(
+            AerorsyncErrorKind::Internal,
+            "the session key is pinned in memory; the libssh2 leg reads a key path and must not be used",
+        ));
+    }
+    if config.pinned_password {
+        // This leg logs in with a key file only: not the session's method.
+        return Err(AerorsyncError::pinned_password_mismatch(
+            "the session logged in with a password; the libssh2 leg cannot repeat it",
+        ));
+    }
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).map_err(|e| {
         AerorsyncError::transport(format!("tcp connect {}:{}: {e}", config.host, config.port))
     })?;
@@ -1087,6 +1185,39 @@ mod tests {
             abc,
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    /// A config that carries the session key in memory never reaches
+    /// libssh2, which would read the key path itself: the leg selection
+    /// routes it to russh, and the libssh2 connect refuses it before it
+    /// opens a socket (port 1 would otherwise fail as a TCP connect).
+    #[test]
+    fn pinned_key_routes_to_russh_and_the_libssh2_leg_refuses_it() {
+        use super::{connect_and_auth, PinnedPrivateKey, SshTransportConfig};
+        use std::path::PathBuf;
+
+        let key =
+            russh::keys::PrivateKey::random(&mut rand_010::rng(), russh::keys::Algorithm::Ed25519)
+                .expect("ed25519 key");
+        let login = PinnedPrivateKey::fingerprint_of(&key);
+        let pinned = PinnedPrivateKey::new(std::sync::Arc::new(key), login);
+        let cfg = SshTransportConfig {
+            port: 1,
+            pinned_private_key: Some(pinned.clone()),
+            ..SshTransportConfig::localhost_test(PathBuf::from("/dev/null"), 1 << 20)
+        };
+        assert!(cfg.prefers_russh_leg());
+        let err = connect_and_auth(&cfg).err().expect("libssh2 leg refuses");
+        assert_eq!(
+            err.kind,
+            crate::aerorsync::types::AerorsyncErrorKind::Internal
+        );
+        assert!(err.to_string().contains("pinned in memory"), "{err}");
+
+        // Debug shows the public fingerprint, not key material.
+        let shown = format!("{cfg:?}");
+        assert!(shown.contains(&pinned.public_fingerprint()), "{shown}");
+        assert!(!shown.contains("PRIVATE"), "{shown}");
     }
 
     #[test]

@@ -3571,43 +3571,54 @@ fn edge_space_problem(
     options: Option<&serde_json::Value>,
     password: Option<&str>,
 ) -> Option<String> {
-    let mut values: Vec<(&str, &str)> = Vec::new();
+    // Each value, and whether the connect uses it as written even when it is
+    // only spaces (a login, a password), so that rclone, which reads it back
+    // empty, would open another account. The other values the connect treats
+    // as absent when blank, as the export does (a default region, the
+    // preset's server).
+    let mut values: Vec<(&str, &str, bool)> = Vec::new();
     if USER_NAME_BACKENDS.contains(&proto) {
-        values.push(("user name", server.username.as_str()));
+        values.push(("user name", server.username.as_str(), true));
     }
     if HOST_BACKENDS.contains(&proto) {
-        values.push(("host", server.host.as_str()));
+        values.push(("host", server.host.as_str(), false));
     }
     if let Some(options) = options {
         for (key, what) in EXPORTED_OPTION_VALUES {
             if let Some(value) = options.get(*key).and_then(|v| v.as_str()) {
-                values.push((what, value));
+                values.push((what, value, false));
             }
         }
         for (backend, key, what) in BACKEND_OPTION_VALUES {
             if *backend == proto {
                 if let Some(value) = options.get(*key).and_then(|v| v.as_str()) {
-                    values.push((what, value));
+                    values.push((what, value, false));
                 }
             }
         }
     }
     if CLEAR_SECRET_BACKENDS.contains(&proto) {
         if let Some(secret) = password {
-            values.push(("secret", secret));
+            values.push(("secret", secret, true));
         }
     }
-    values
-        .into_iter()
-        // A blank value is not written as is: the export treats it as absent
-        // (a default region, the preset's server).
-        .find(|(_, value)| !value.trim().is_empty() && value.trim() != *value)
-        .map(|(what, _)| {
-            format!(
+    values.into_iter().find_map(|(what, value, as_written)| {
+        if value.trim() == value {
+            None
+        } else if !value.trim().is_empty() {
+            Some(format!(
                 "its {what} starts or ends in a space, which rclone's config cannot hold: \
-                 rclone would read it back without the space"
-            )
-        })
+                     rclone would read it back without the space"
+            ))
+        } else if as_written {
+            Some(format!(
+                "its {what} is only spaces, which rclone's config cannot hold: \
+                     rclone would read it back empty"
+            ))
+        } else {
+            None
+        }
+    })
 }
 
 /// The profile's options with its start folder and, when the overlay is
@@ -12746,6 +12757,85 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(remote.get("user").map(String::as_str), Some("alice"));
         let pass = remote.get("pass").expect("pass written");
         assert_eq!(reveal_canonical_rclone(pass).unwrap(), " pw ");
+    }
+
+    /// A value of only spaces is read back by rclone as empty. Where the
+    /// connect uses it as written (a password a backend writes in clear, a
+    /// login), the export would open another account, and the profile is
+    /// refused. A password written in obscured form keeps its bytes, and a
+    /// value the connect treats as absent when blank (a region) is exported.
+    #[test]
+    fn a_value_of_only_spaces_is_refused_where_the_connect_uses_it_as_written() {
+        let only_spaces = |what: &str| {
+            format!(
+                "its {what} is only spaces, which rclone's config cannot hold: rclone would read it back empty"
+            )
+        };
+        let swift = server_with(
+            "swift",
+            "swift",
+            "https://auth.example.test/v3",
+            443,
+            None,
+            serde_json::json!({ "tenant": "team" }),
+        );
+        let s3 = server_with(
+            "s3",
+            "s3",
+            "",
+            443,
+            None,
+            serde_json::json!({ "bucket": "media" }),
+        );
+        for (server, name) in [(swift, "swift"), (s3, "s3")] {
+            let (outcome, conf) =
+                export_with_passwords(&[server], &[(name, "   ")], "only-spaces-secret");
+            assert_eq!(outcome.exported, 0, "{name}: {conf}");
+            let reasons: Vec<&str> = outcome.skipped.iter().map(|s| s.reason.as_str()).collect();
+            assert_eq!(reasons, [only_spaces("secret")], "{name}");
+        }
+        let mut login = server_with(
+            "login",
+            "sftp",
+            "nas.example",
+            22,
+            None,
+            serde_json::json!({}),
+        );
+        login.username = "   ".into();
+        let (outcome, conf) = export_to_string(&[login], "only-spaces-login");
+        assert_eq!(outcome.exported, 0, "{conf}");
+        assert_eq!(outcome.skipped[0].reason, only_spaces("user name"));
+
+        // Obscured, the password keeps its bytes.
+        let obscured = server_with(
+            "obscured",
+            "sftp",
+            "nas.example",
+            22,
+            None,
+            serde_json::json!({}),
+        );
+        let (outcome, conf) =
+            export_with_passwords(&[obscured], &[("obscured", "   ")], "only-spaces-obscured");
+        assert_eq!(outcome.exported, 1, "{conf}");
+        let sections = parse_rclone_conf(&conf);
+        let pass = sections["obscured"].get("pass").expect("pass written");
+        assert_eq!(reveal_canonical_rclone(pass).unwrap(), "   ");
+
+        // A blank region is no region for the connect and for rclone alike.
+        let region = server_with(
+            "region",
+            "s3",
+            "",
+            443,
+            None,
+            serde_json::json!({ "bucket": "media", "region": "   " }),
+        );
+        let (outcome, conf) =
+            export_with_passwords(&[region], &[("region", "secret")], "only-spaces-region");
+        assert!(outcome.skipped.is_empty(), "{:?}\n{conf}", outcome.skipped);
+        assert!(conf.contains("\n[region]\ntype = s3\n"), "{conf}");
     }
 
     /// Every value the export may write keeps its edge spaces or refuses the
