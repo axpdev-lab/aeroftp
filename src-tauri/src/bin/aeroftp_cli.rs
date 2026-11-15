@@ -42748,7 +42748,6 @@ fn format_template_apply_text(
     (stdout_buf, stderr_buf)
 }
 
-
 /// The blocks a template import still needs a secret form for, as the
 /// preview lists them: also a skipped base that an imported crypt inherits,
 /// which is the block the user must answer, not the crypt.
@@ -87708,7 +87707,10 @@ mod tests {
                     )
                     .unwrap();
                     let hint = template_missing_secret_form_blocks(&preview);
-                    assert!(hint.contains(&"base".to_string()), "the hint names base: {hint:?}");
+                    assert!(
+                        hint.contains(&"base".to_string()),
+                        "the hint names base: {hint:?}"
+                    );
                 }
 
                 let ok_code = rt.block_on(cmd_import_template(

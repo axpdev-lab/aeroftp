@@ -13767,7 +13767,10 @@ host = sftp://u:TopSecret99@sftp.example.test
         );
         // A backslash right after the folder variable is not a separator either:
         // the textual expansion keeps it.
-        assert_eq!(join_under_config_dir("$RCLONE_CONFIG_DIR\\key.pem", Some(dir)), None);
+        assert_eq!(
+            join_under_config_dir("$RCLONE_CONFIG_DIR\\key.pem", Some(dir)),
+            None
+        );
     }
 
     #[test]
