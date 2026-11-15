@@ -576,7 +576,9 @@ pub const CONNECT_CANCELLED: &str = "CONNECT_CANCELLED";
 /// cancel), so the map never accumulates stale entries.
 #[derive(Default)]
 pub struct ConnectionCancelRegistry {
-    tokens: std::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+    /// Each key's live registration: its own id and its token.
+    tokens: std::sync::Mutex<std::collections::HashMap<String, (u64, CancellationToken)>>,
+    next_id: std::sync::atomic::AtomicU64,
 }
 
 impl ConnectionCancelRegistry {
@@ -590,17 +592,31 @@ impl ConnectionCancelRegistry {
     /// and replaced so a stale entry can never shadow the live attempt.
     pub fn register(&self, key: &str) -> CancellationToken {
         let token = CancellationToken::new();
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut map = self.lock();
-        if let Some(previous) = map.insert(key.to_string(), token.clone()) {
+        if let Some((_, previous)) = map.insert(key.to_string(), (id, token.clone())) {
             previous.cancel();
         }
         token
     }
 
-    /// Remove the token for `key`. Called by the drop guard once the connect
-    /// resolves. A no-op when the key is absent.
+    /// Remove the token for `key`. A no-op when the key is absent.
     pub fn unregister(&self, key: &str) {
         self.lock().remove(key);
+    }
+
+    /// The id of `key`'s live registration, if any.
+    fn registration_id(&self, key: &str) -> Option<u64> {
+        self.lock().get(key).map(|(id, _)| *id)
+    }
+
+    /// Remove `key` only while it still holds the registration `id`: a newer
+    /// registration of a reused key stays.
+    fn unregister_registration(&self, key: &str, id: u64) {
+        let mut map = self.lock();
+        if map.get(key).is_some_and(|(live, _)| *live == id) {
+            map.remove(key);
+        }
     }
 
     /// Cancel the in-progress connection registered under `key`. Idempotent:
@@ -609,7 +625,7 @@ impl ConnectionCancelRegistry {
     /// it was never registered).
     pub fn cancel(&self, key: &str) -> bool {
         match self.lock().get(key) {
-            Some(token) => {
+            Some((_, token)) => {
                 token.cancel();
                 true
             }
@@ -619,7 +635,8 @@ impl ConnectionCancelRegistry {
 
     fn lock(
         &self,
-    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, CancellationToken>> {
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, (u64, CancellationToken)>>
+    {
         self.tokens
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -639,17 +656,23 @@ impl ConnectionCancelRegistry {
 pub(crate) struct ConnectTokenGuard<'a> {
     registry: &'a ConnectionCancelRegistry,
     key: String,
+    /// The registration this guard ends, taken when it is made, right after
+    /// that registration: a later one of the same key is not this guard's.
+    id: Option<u64>,
 }
 
 impl<'a> ConnectTokenGuard<'a> {
     pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String) -> Self {
-        Self { registry, key }
+        let id = registry.registration_id(&key);
+        Self { registry, key, id }
     }
 }
 
 impl Drop for ConnectTokenGuard<'_> {
     fn drop(&mut self) {
-        self.registry.unregister(&self.key);
+        if let Some(id) = self.id {
+            self.registry.unregister_registration(&self.key, id);
+        }
     }
 }
 
@@ -17210,6 +17233,29 @@ mod tests {
         registry.unregister("conn-3");
         assert!(!registry.cancel("conn-3"));
         assert!(token.is_cancelled());
+    }
+
+    /// A reused key: dropping the first attempt's guard leaves the second
+    /// attempt registered, so a cancel still reaches it.
+    #[test]
+    fn an_earlier_guard_never_removes_a_newer_registration_of_its_key() {
+        let registry = ConnectionCancelRegistry::new();
+        let first = registry.register("K");
+        let first_guard = ConnectTokenGuard::new(&registry, "K".to_string());
+        let second = registry.register("K");
+        let second_guard = ConnectTokenGuard::new(&registry, "K".to_string());
+        assert!(
+            first.is_cancelled(),
+            "the second registration cancels the first"
+        );
+        drop(first_guard);
+        assert!(
+            registry.cancel("K"),
+            "the second registration is still there"
+        );
+        assert!(second.is_cancelled());
+        drop(second_guard);
+        assert_eq!(registry.active_count(), 0);
     }
 
     #[test]
