@@ -54,20 +54,6 @@ import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
 
-/** The backend's replacement and confirmation counts at one moment
- *  (`backendMark`). */
-interface BackendMark {
-  replacements: number;
-  confirmations: number;
-}
-
-/** Where a connect's replacement left the backend: the mark its end produced,
- *  filled synchronously by that end and carried back by the connect wrappers
- *  (`cancellableConnect`, `runConnect`), so a replacement another connect ends
- *  while the result travels back is not counted as this connect's. */
-interface ConnectReceipt {
-  mark?: BackendMark;
-}
 
 interface DownloadFolderParams {
   remote_path: string;
@@ -548,6 +534,7 @@ import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarge
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
+import type { BackendMark, ConnectReceipt } from './utils/backendMark';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -10076,8 +10063,10 @@ const App: React.FC = () => {
             const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
             if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
           }
-          await endCurrentConnection();
+          // Read before the teardown: a connect that starts while it runs
+          // owns the workspace.
           const cloudPhase = remoteConnectPhaseVersionRef.current;
+          await endCurrentConnection();
           await runConnect('provider_connect', providerParams);
           // Confirmed here, with no await after the connect, in both of its
           // callers (a reconnect to another server, a first connect): a backend
@@ -10092,8 +10081,8 @@ const App: React.FC = () => {
             password: cloudPassword,
             protocol,
           };
-          await endCurrentConnection();
           const cloudPhase = remoteConnectPhaseVersionRef.current;
+          await endCurrentConnection();
           await runConnect('connect_ftp', ftpParams);
           if (remoteConnectPhaseVersionRef.current === cloudPhase) confirmBackendConnection();
         }
@@ -19963,7 +19952,7 @@ const App: React.FC = () => {
               onAeroFile={handleToggleAeroFile}
               onOpenCrossProfile={(opts) => setShowCrossProfilePanel(opts ?? {})}
               onOpenMountManager={() => setShowMountManager({})}
-              onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath, connectScope = new ConnectScope()) => {
+              onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath, signInMark, connectScope = new ConnectScope()) => {
                 connectScope.assert();
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
@@ -19979,7 +19968,9 @@ const App: React.FC = () => {
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
                 // My Servers' sign-in returned before this connect: the
                 // replacements ended by now are the ones this tab may sit on.
-                const savedOAuthReplacedAt = backendMark();
+                // My Servers' sign-in hands its own replacement's receipt over;
+                // without one, the mark now.
+                const savedOAuthReplacedAt = signInMark ?? backendMark();
 
                 if (isOAuth) {
                   // My Servers put the live tab aside (onParkActiveSession)

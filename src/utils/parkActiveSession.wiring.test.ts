@@ -323,7 +323,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
     });
 
     it('parks before an OAuth or 4shared connect replaces the backend in My Servers', () => {
-        for (const run of ['scopedCancellable(doOAuthConnect)', 'scopedCancellable(doFourSharedConnect)']) {
+        for (const run of ['scopedCancellable(doOAuthConnect, signIn)', 'scopedCancellable(doFourSharedConnect, signIn)']) {
             const at = MY_SERVERS.indexOf(run);
             const branch = MY_SERVERS.slice(MY_SERVERS.lastIndexOf('setOauthConnecting(server.id);', at), at);
             expect(at, run).toBeGreaterThan(-1);

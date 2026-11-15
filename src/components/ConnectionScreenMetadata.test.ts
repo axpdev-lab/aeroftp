@@ -1291,9 +1291,10 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
             const before = APP.slice(APP.lastIndexOf('await ', at), at);
             expect(before, read).toMatch(new RegExp(`^await connectUnderRow\\([^]*runConnect\\('(provider_connect|connect_ftp)'[^]*, ${receipt}\\)\\)?\\);\\n\\s+$`));
         }
-        for (const read of ['oauthReplacedAt', 'savedOAuthReplacedAt']) {
-            expect(APP, read).toContain(`const ${read} = backendMark();`);
-        }
+        expect(APP).toContain('const oauthReplacedAt = backendMark();');
+        // My Servers' sign-in hands over its own replacement's receipt.
+        expect(APP).toContain('const savedOAuthReplacedAt = signInMark ?? backendMark();');
+        expect(APP).toMatch(/onSavedServerConnect=\{asConnectPhase\(async \(params, initialPath, localInitialPath, signInMark, connectScope = new ConnectScope\(\)\) => \{/);
         // A tab switch reads it after each of its own connects, before any
         // other statement, and refuses before confirming.
         const swStart = APP.indexOf('  const switchSession = ');
@@ -1548,6 +1549,37 @@ describe('Reviewed ownership of a connect', () => {
         expect(refs.backendUncertainRef.current).toBe(true);
     });
 
+    it.each([['a provider', true], ['an FTP server', false]])("does not confirm A's AeroCloud connect to %s when B starts while A's teardown is paused", async (_label, isProvider) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        let resumeTeardown!: () => void;
+        let teardownStarted!: () => void;
+        const paused = new Promise<void>(resolve => { teardownStarted = resolve; });
+        const invoke = vi.fn(async (command: string) => {
+            if (command === 'provider_disconnect') {
+                teardownStarted();
+                await new Promise<void>(resolve => { resumeTeardown = resolve; });
+            }
+            return undefined;
+        });
+        const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
+        const connect = await runAppSlice(appBetween('const connectToCloudServer = async', '\n      };\n'), {
+            ...refs, ...accounting, runConnect, invoke, isProvider, protocol: isProvider ? 'webdav' : 'ftp',
+            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
+            cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
+            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
+            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false, isSshProtocol: () => false,
+        }, 'connectToCloudServer');
+        const a = connect();
+        await paused;
+        // B starts while A's teardown is paused.
+        refs.remoteConnectPhaseVersionRef.current += 1;
+        resumeTeardown();
+        await a;
+        expect(runConnect).toHaveBeenCalledOnce();
+        expect(refs.backendConfirmationsRef.current).toBe(0);
+    });
+
     it("hands A the receipt of its own replacement when B's ends between A's end and A's continuation", async () => {
         // A sequence ref that queues B's end right after A's end, ahead of
         // A's continuation.
@@ -1612,7 +1644,7 @@ describe('Every invoke that installs a provider in the backend slot', () => {
                         // Its connect closures run through App's cancellableConnect.
                         const fn = before.match(/const (do\w+Connect) = async[^]*$/);
                         expect(fn, where).not.toBeNull();
-                        expect(source, where).toContain(`scopedCancellable(${fn![1]})`);
+                        expect(source, where).toMatch(new RegExp(`scopedCancellable\\(${fn![1]}[,)]`));
                         continue;
                     }
                     expect(/cancellableConnect\(|= replacingBackend\(\);/.test(before), where).toBe(true);

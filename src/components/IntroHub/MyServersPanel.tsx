@@ -7,6 +7,7 @@ import { Plus, Server as ServerIcon, Play, Edit2, Copy, Trash2, Activity, Star, 
 import { Bucket } from '../connectionMethodIcons';
 import { AeroCryptRecoveryKitModal } from '../AeroCryptRecoveryKitModal';
 import { ServerProfile, ConnectionParams, ProviderType, getE2EBits, getProtocolClass, isOAuthProvider, isFourSharedProvider, isNativeApiProtocol, getServerCryptOverlay, NATIVE_PROVIDER_PROTOCOLS } from '../../types';
+import type { BackendMark, ConnectReceipt } from '../../utils/backendMark';
 import { MyServersViewMode, MyServersFilterBy, FILTER_CHIPS, CatalogCategoryId } from '../../types/catalog';
 import { MyServersToolbar } from './MyServersToolbar';
 import { MyServersSidebar } from './MyServersSidebar';
@@ -209,13 +210,13 @@ interface MyServersPanelProps {
      *  or a session in the foreground). Default true. */
     visible?: boolean;
     registerProfileConnector?: RegisterProfileConnector;
-    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, scope?: ConnectScope) => void | Promise<void | ProfileConnectOutcome>;
+    onConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, signInMark?: BackendMark, scope?: ConnectScope) => void | Promise<void | ProfileConnectOutcome>;
     /** Run a connect phase under a cancel token so Esc / "still connecting"
      *  Cancel aborts it. The OAuth / 4shared connects below dispatch their
      *  backend invokes through this so Esc cancels them like the credential
      *  providers already do (#360). Optional: when absent the invokes run
      *  bare (non-cancellable), preserving the prior behavior. */
-    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>) => Promise<T>;
+    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>, receipt?: ConnectReceipt) => Promise<T>;
     onEdit: (profile: ServerProfile) => void;
     onQuickConnect: () => void;
     /** Jump to Discover tab pre-filtered on a specific category. */
@@ -1047,9 +1048,9 @@ export function MyServersPanel({
     const performConnect = useCallback(async (server: ServerProfile, connectScope: ConnectScope): Promise<ProfileConnectOutcome> => {
         connectScope.assert();
         if (connectingId || connectingProfileId) return 'failed';
-        const scopedCancellable = cancellableConnect ? <T,>(run: (token: string) => Promise<T>) =>
+        const scopedCancellable = cancellableConnect ? <T,>(run: (token: string) => Promise<T>, receipt?: ConnectReceipt) =>
             cancellableConnect(token => connectScope.cancellable(
-                () => invoke<void>('cancel_connection', { token }), () => run(token))) : undefined;
+                () => invoke<void>('cancel_connection', { token }), () => run(token)), receipt) : undefined;
 
         // AeroShare friend (design §2 "what happens after you click"): if a
         // drive is already bound, fall through to the standard credential-based
@@ -1184,8 +1185,12 @@ export function MyServersPanel({
                 };
                 // The live tab is put aside before its backend goes.
                 onParkActiveSession?.();
+                // The sign-in's own replacement receipt, handed to the connect
+                // below: a replacement another connect ends meanwhile is not
+                // this sign-in's.
+                const signIn: ConnectReceipt = {};
                 const result = scopedCancellable
-                    ? await connectScope.step(() => scopedCancellable(doOAuthConnect))
+                    ? await connectScope.step(() => scopedCancellable(doOAuthConnect, signIn))
                     : await connectScope.step(() => doOAuthConnect());
 
                 // Yandex Disk doesn't expose account_email() from the backend
@@ -1202,7 +1207,7 @@ export function MyServersPanel({
                     username: updatedUsername || latest.username,
                 }), true));
 
-                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, connectScope));
+                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, signIn.mark, connectScope));
                 return outcome ?? 'connected';
             } catch (e) { connectScope.assert();
                 // #360: a user cancel is not a failure (cancellableConnect already
@@ -1261,8 +1266,9 @@ export function MyServersPanel({
                 };
                 // The live tab is put aside before its backend goes.
                 onParkActiveSession?.();
+                const signIn: ConnectReceipt = {};
                 const result = scopedCancellable
-                    ? await connectScope.step(() => scopedCancellable(doFourSharedConnect))
+                    ? await connectScope.step(() => scopedCancellable(doFourSharedConnect, signIn))
                     : await connectScope.step(() => doFourSharedConnect());
 
                 const updatedUsername = result.account_email || server.username;
@@ -1275,7 +1281,7 @@ export function MyServersPanel({
                     username: updatedUsername || latest.username,
                 }), true));
 
-                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, connectScope));
+                const outcome = await connectScope.step(() => onConnect({ server: result.display_name, username: updatedUsername, password: '', protocol: server.protocol, displayName: server.name, providerId: server.providerId, savedServerId: server.id }, server.initialPath, server.localInitialPath, signIn.mark, connectScope));
                 return outcome ?? 'connected';
             } catch (e) { connectScope.assert();
                 // #360: a user cancel is not a failure (calm toast already shown).
@@ -1330,7 +1336,7 @@ export function MyServersPanel({
                 options: server.options,
                 providerId: server.providerId,
                 savedServerId: server.id,
-            }, server.initialPath, server.localInitialPath, connectScope));
+            }, server.initialPath, server.localInitialPath, undefined, connectScope));
 
             // Best-effort Filen auth-version badge enrichment, detached on purpose.
             // filen_get_auth_version takes the provider lock, so it queues behind the
