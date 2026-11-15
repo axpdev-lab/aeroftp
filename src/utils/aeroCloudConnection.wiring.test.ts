@@ -17,6 +17,7 @@ const { code } = await transformWithOxc(app.slice(start, end), 'aerocloud-connec
 it('forwards the saved S3 SSE policy through the real AeroCloud connection builder', async () => {
   const runConnect = vi.fn(async () => undefined);
   const context = {
+      confirmBackendConnection: () => undefined,
     isProvider: true,
     protocol: 's3',
     cloudServer: {
@@ -59,6 +60,7 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
   const connectWith = async (options: Record<string, unknown>) => {
     const runConnect = vi.fn(async (_command: string, _params: Record<string, unknown>) => undefined);
     const context = {
+        confirmBackendConnection: () => undefined,
       isProvider: true,
       protocol: 'sftp',
       cloudServer: { id: 'profile-ssh', host: 'router.lan', port: 22, username: 'root', options },
@@ -92,6 +94,7 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
     const runConnect = vi.fn(async () => { order.push('connect'); });
     const checkSftpHostKey = vi.fn(async () => { order.push('host-key'); return accepted; });
     const context = {
+        confirmBackendConnection: () => undefined,
       isProvider: true,
       protocol,
       cloudServer: { id: 'profile-ssh', host: 'nas.lan', port, username: 'root', options: {} },
@@ -134,6 +137,7 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   const connectWith = async (protocol: string, providerId: string, options: Record<string, unknown>) => {
     const runConnect = vi.fn(async (_command: string, _params: Record<string, unknown>) => undefined);
     const context = {
+        confirmBackendConnection: () => undefined,
       isProvider: true, protocol,
       cloudServer: { id: 'profile', providerId, host: 'dav.example.test', port: 80, username: 'user', options },
       resolveProfileS3Location: () => ({ endpoint: options.endpoint ?? null, signingRegion: 'us-east-1' }),

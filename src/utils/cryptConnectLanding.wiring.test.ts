@@ -506,9 +506,11 @@ describe('OAuth landing probe recovers the current provider directory', () => {
                 connectScope: { step: (op: () => Promise<unknown>) => op(), assert: vi.fn() },
                 oauthTabName: 'Profile', providerName: 'Profile', effectiveParams: {}, normalizedParams: {},
                 oauthLocalDir: '/local', currentLocalPath: '/local', resolvedLocalPath: '/local',
+                // The replacement sequence the branch read when it started.
+                oauthReplacedAt: 4, savedOAuthReplacedAt: 4,
             }, `return ${saved ? 'savedOverlayHint' : 'overlayHint'};`);
             expect(hint.opensOutside).toBe(outside);
-            expect(createSession).toHaveBeenCalledWith('Profile', {}, fallback, '/local', outside ? current.files : [], undefined, fallback);
+            expect(createSession).toHaveBeenCalledWith('Profile', {}, fallback, '/local', outside ? current.files : [], undefined, fallback, 4);
         });
 
         it(`${saved ? 'saved' : 'Quick Connect'} falls back to a usable current listing after landing failure`, async () => {

@@ -945,6 +945,7 @@ async function liveTabChecks() {
         backendTeardownsRef: { current: 0 },
         backendUncertainRef: { current: false },
         backendConfirmationsRef: { current: 0 },
+        backendReplacementSeqRef: { current: 0 },
         isConnected: true,
         isSameConnection: () => true,
         liveConnectionParams: params,
@@ -1015,6 +1016,56 @@ describe('The live tab while the backend is being replaced', () => {
     });
 });
 
+describe('An AeroCloud open after an abandoned sign-in', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    /** App's AeroCloud connect closure, run on stubs, confirming through the
+     *  same accounting as `live`; its connect replaces the backend as App's
+     *  `runConnect` does. */
+    async function aeroCloudConnect(live: Awaited<ReturnType<typeof liveTabChecks>>, isProvider: boolean) {
+        const start = APP.indexOf('const connectToCloudServer = async');
+        const end = APP.indexOf('// Helper: navigate to remote folder', start);
+        expect(start, 'connectToCloudServer in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end), 'aerocloud-connect.ts');
+        const runConnect = vi.fn(async () => { live.replacingBackend()(); });
+        const ctx = {
+            confirmBackendConnection: live.confirmBackendConnection,
+            invoke: vi.fn(async () => undefined),
+            isProvider,
+            protocol: isProvider ? 'webdav' : 'ftp',
+            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
+            cloudServerString: 'ftp.example.test:21',
+            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }),
+            cloudConfig: { remote_folder: '/sync' },
+            cloudPassword: 'dummy-password',
+            cloudFilenApiKey: null,
+            runConnect,
+            scpFallbackConnectParam: () => ({}),
+            loadedCertificateCheck: () => true,
+            loadedOption: () => undefined,
+            loadedOptionOn: () => false,
+            isSshProtocol: () => false,
+            checkSftpHostKey: vi.fn(async () => true),
+            CONNECT_CANCELLED_MARKER: 'cancelled',
+        };
+        const connect = new Function(...Object.keys(ctx), `${code}; return connectToCloudServer;`)(...Object.values(ctx));
+        await connect();
+        expect(runConnect).toHaveBeenCalledOnce();
+    }
+
+    it.each([['a provider', true], ['an FTP server', false]])('lets a remote action through once it has connected %s', async (_label, isProvider) => {
+        const live = await liveTabChecks();
+        // A sign-in swapped the backend and was then abandoned.
+        await swapBackend(async () => { live.ctx.remoteConnectPhaseVersionRef.current++; });
+        abandon(latestSettledBackendSwapToken());
+        expect(live.ctx.parkActiveSession).toHaveBeenCalledOnce();
+        expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
+        await aeroCloudConnect(live, isProvider);
+        expect(() => live.remoteActionGuard()()).not.toThrow();
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+});
+
 describe('One sign-in swap at a time', () => {
     afterEach(() => { vi.useRealTimers(); });
 
@@ -1072,6 +1123,89 @@ describe('One sign-in swap at a time', () => {
         expect(await failing).toBe('failed');
         await swapBackend(next);
         expect(next).toHaveBeenCalledOnce();
+    });
+});
+
+describe('A connect whose backend another invoke replaced meanwhile', () => {
+    /** App's createSession, run on stubs; `replaceDuringRead` ends another
+     *  replacement while it reads the saved profiles. */
+    async function createSessionRun(replaceDuringRead: boolean) {
+        const start = APP.indexOf('  const createSession = async (');
+        const end = APP.indexOf('\n  };\n', start);
+        expect(start, 'createSession in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end + '\n  };'.length), 'create-session.ts');
+        const seq = { current: 4 };
+        const ctx: Record<string, unknown> = {
+            backendReplacementSeqRef: seq,
+            loadSavedServerProfiles: async () => {
+                if (replaceDuringRead) seq.current += 1;
+                return [];
+            },
+            confirmBackendConnection: vi.fn(),
+            notify: { error: vi.fn() },
+            t: (key: string) => key,
+            remoteFiles: [],
+            localFiles: [],
+        };
+        for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
+        const createSession = new Function(...Object.keys(ctx), `${code}; return createSession;`)(...Object.values(ctx));
+        // The caller read the sequence as its own connect returned.
+        await createSession('Server', { protocol: 'sftp', server: 'h', username: 'u', password: '' }, '/', '/home', [], [], undefined, 4);
+        const added = (ctx.setSessions as ReturnType<typeof vi.fn>).mock.calls[0][0]([]) as { status: string }[];
+        return { ctx, added };
+    }
+
+    it('keeps the tab cached and confirms nothing when a replacement ended during the profile read', async () => {
+        const { ctx, added } = await createSessionRun(true);
+        expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.setIsConnected).toHaveBeenCalledWith(false);
+        expect(added[0].status).toBe('cached');
+        expect((ctx.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
+    });
+
+    it('confirms and makes the tab live when nothing replaced the backend', async () => {
+        const { ctx, added } = await createSessionRun(false);
+        expect(ctx.confirmBackendConnection).toHaveBeenCalledOnce();
+        expect(ctx.setActiveSessionId).toHaveBeenCalled();
+        expect(added[0].status).toBe('connected');
+    });
+
+    it('checks the sequence in every connect path that awaits before it confirms', () => {
+        // Every createSession call of a connect flow passes the sequence read
+        // right after that flow's own connect (or, for an OAuth hand-off, when
+        // the branch starts, after its sign-in's swap returned).
+        const calls = [...APP.matchAll(/createSession\(/g)].map(m => m.index!).filter(i => !APP.slice(i - 30, i).includes('const '));
+        expect(calls.length).toBe(6);
+        for (const call of calls) {
+            // The argument list, by parenthesis depth.
+            const open = APP.indexOf('(', call);
+            let depth = 0;
+            let close = open;
+            for (let i = open; i < APP.length; i++) {
+                if (APP[i] === '(') depth++;
+                else if (APP[i] === ')' && --depth === 0) { close = i; break; }
+            }
+            const args = APP.slice(open, close + 1);
+            expect(args, APP.slice(call, call + 80)).toMatch(/\w+ReplacedAt,?\s*\)$/);
+        }
+        for (const read of ['providerReplacedAt', 'ftpReplacedAt', 'savedProviderReplacedAt', 'savedFtpReplacedAt']) {
+            // Read on the statement right after the flow's own connect.
+            const at = APP.indexOf(`const ${read} = backendReplacementSeqRef.current;`);
+            expect(at, read).toBeGreaterThan(-1);
+            const before = APP.slice(APP.lastIndexOf('await ', at), at);
+            expect(before, read).toMatch(/^await connectUnderRow\([^]*runConnect\('(provider_connect|connect_ftp)'[^]*\);\n\s+$/);
+        }
+        // A tab switch reads it after its own probe or connect and refuses
+        // before confirming.
+        const sw = APP.slice(APP.indexOf('  const switchSession = '));
+        expect(sw.match(/switchReplacedAt = backendReplacementSeqRef\.current;/g)!.length).toBeGreaterThanOrEqual(5);
+        expect(sw).toMatch(/if \(backendReplacementSeqRef\.current !== switchReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n\s+setSessions\(prev => prev\.map\(s => s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \}[^\n]+\n[^\n]+\n\s+confirmBackendConnection\(\);/);
+        // The device open, after its listing.
+        expect(APP).toMatch(/if \(backendReplacementSeqRef\.current !== deviceReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n[^\n]+\n\s+confirmBackendConnection\(\);/);
+        // The AeroCloud open (both of its connects) and a GitHub branch switch
+        // confirm with no await after their connect: nothing else would.
+        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+confirmBackendConnection\(\);/g)?.length).toBe(3);
     });
 });
 

@@ -61,7 +61,7 @@ describe('a failure that would otherwise read as success', () => {
             useCallback: (fn: unknown) => fn, cancelRemoteSearch: cancel, setRemoteSearchResults: clear,
             normalizeProviderConnectionParams: () => { throw new Error('fixture stops before reconnect'); },
             activeSessionId: 'a', liveConnectionParams: {}, currentRemotePath: '/', notify: {},
-            refreshGitHubContext: vi.fn(), runConnect: vi.fn(), t: (key: string) => key,
+            refreshGitHubContext: vi.fn(), runConnect: vi.fn(), confirmBackendConnection: vi.fn(), t: (key: string) => key,
         };
         const handler = new Function(...Object.keys(context), `${code}\nreturn switchGitHubBranch;`)(...Object.values(context));
         await expect(handler('other')).rejects.toThrow('fixture stops before reconnect');
@@ -96,6 +96,7 @@ describe('a failure that would otherwise read as success', () => {
             setSelectedRemoteFiles: vi.fn(), activeSessionId: null, currentRemotePath: '/',
             setSessions: vi.fn(), refreshGitHubContext: vi.fn(), notify: { success: vi.fn(), error: vi.fn() },
             t: (key: string) => key, isConnectCancelledError: () => false, isListingCancelled: () => false,
+            confirmBackendConnection: vi.fn(),
         };
         const handler = new Function(...Object.keys(context), `${code}\nreturn switchGitHubBranch;`)(...Object.values(context));
         const switching = handler('new');

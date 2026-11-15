@@ -363,10 +363,17 @@ describe('a queued transfer', () => {
         // The flag is cleared in one helper, which the confirmations call.
         expect(APP_CODE.match(/backendUncertainRef\.current = false;/g)).toHaveLength(1);
         expect(APP_CODE).toMatch(/const confirmBackendConnection = \(\) => \{\n\s+backendUncertainRef\.current = false;\n\s+backendConfirmationsRef\.current \+= 1;/);
-        expect(APP_CODE.match(/confirmBackendConnection\(\);/g)).toHaveLength(4);
+        expect(APP_CODE.match(/confirmBackendConnection\(\);/g)).toHaveLength(7);
         for (const confirmed of [
             /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_mtp_/,
-            /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            // createSession confirms only when no replacement ended since its
+            // caller's own connect (`replacedAt`).
+            /\} else \{\n\s+confirmBackendConnection\(\);\n\s+\}\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            // The AeroCloud open (both arms) and a GitHub branch switch, right
+            // after their connect.
+            /await runConnect\('provider_connect', providerParams\);\n\s+confirmBackendConnection\(\);\n\s+\} else \{/,
+            /await runConnect\('connect_ftp', ftpParams\);\n\s+confirmBackendConnection\(\);/,
+            /await runConnect\('provider_connect', providerParams\);\n\s+confirmBackendConnection\(\);\n\s+const response = await withRemoteListSpinner/,
             /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
             /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
         ]) expect(APP_CODE).toMatch(confirmed);

@@ -1031,6 +1031,11 @@ const App: React.FC = () => {
   // Connections confirmed so far: a teardown that times out leaves the
   // backend uncertain unless one was confirmed after it started.
   const backendConfirmationsRef = useRef(0);
+  // Replacements ended so far (`replacingBackend`). A connect reads it as its
+  // own invoke returns and checks it again before it confirms its tab: one
+  // more means another replacement ended meanwhile, and the backend holds that
+  // one's provider.
+  const backendReplacementSeqRef = useRef(0);
   /** A tab is connected to the backend again: its state is known. Called at
    *  the points a connect or a switch confirms its connection, and only there. */
   const confirmBackendConnection = () => {
@@ -1055,6 +1060,7 @@ const App: React.FC = () => {
       if (ended) return;
       ended = true;
       backendTeardownsRef.current -= 1;
+      backendReplacementSeqRef.current += 1;
       if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
     };
   };
@@ -5027,6 +5033,16 @@ const App: React.FC = () => {
     parkActiveSession(keepDeviceTab);
   });
 
+  /** My Servers' OAuth and 4shared sign-in puts the live tab aside after its
+   *  awaits, right before its connect replaces the backend: marked uncertain
+   *  at once, so no queued write passes `backendServesLiveTab` before React
+   *  commits the park (`isConnected` reads true until then), as the
+   *  connection form's sign-in swap does. */
+  const takeOverBeforeSignIn = useLatestCallback(() => {
+    backendUncertainRef.current = true;
+    takeOverActiveSession();
+  });
+
   /** Shared open path for PLACES exclusive fallback and saved device profile card.
    *  Gvfs-first: if the desktop already mounted the phone, install an FS-backed
    *  provider rooted at that mount (no libmtp; no bus fight). Else exclusive
@@ -5075,6 +5091,9 @@ const App: React.FC = () => {
         mtpGvfsMountPathRef.current = null;
       }
       setActivePortableDeviceId(session.deviceId);
+      // The device holds the backend now: checked again before its tab is
+      // confirmed, after the listing below.
+      const deviceReplacedAt = backendReplacementSeqRef.current;
 
       const displayName =
         profile?.name || session.displayName || device.displayName || t('sidebar.portable_device');
@@ -5185,6 +5204,9 @@ const App: React.FC = () => {
 
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
+      if (backendReplacementSeqRef.current !== deviceReplacedAt) {
+        throw new Error(t('toast.remoteTargetChanged'));
+      }
       // The backend is connected to this tab's server: no longer uncertain.
       confirmBackendConnection();
       const newSession: FtpSession = {
@@ -7866,6 +7888,8 @@ const App: React.FC = () => {
       cancelRemoteSearch();
       setRemoteSearchResults(null);
       await runConnect('provider_connect', providerParams);
+      // The same tab is connected to the backend again, on its new branch.
+      confirmBackendConnection();
 
       // One spinner over both attempts: the retry at the provider root is the
       // same wait to the user, and it must not fire when the first attempt was
@@ -8363,6 +8387,9 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
+    // An OAuth connect arrives after its sign-in's swap returned: the
+    // replacements ended by now are the ones this tab may sit on.
+    const oauthReplacedAt = backendReplacementSeqRef.current;
     if (isOAuth) {
       // An OAuth connect arrives after the connection form's sign-in swapped
       // the backend: the live tab is put aside before any lookup, await or exit
@@ -8540,7 +8567,8 @@ const App: React.FC = () => {
         oauthLocalDir || currentLocalPath,
         overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files,
         undefined,
-        overlayHint ? oauthInitialPath : undefined
+        overlayHint ? oauthInitialPath : undefined,
+        oauthReplacedAt,
       );
       if (overlayHint && overlaySavedId) {
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -8730,6 +8758,7 @@ const App: React.FC = () => {
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
         await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams));
+        const providerReplacedAt = backendReplacementSeqRef.current;
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
         totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -8844,7 +8873,8 @@ const App: React.FC = () => {
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined,
+          providerReplacedAt,
         );
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -8912,6 +8942,7 @@ const App: React.FC = () => {
         // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
         trustPasvAddress: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
       }));
+      const ftpReplacedAt = backendReplacementSeqRef.current;
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -8954,7 +8985,10 @@ const App: React.FC = () => {
         effectiveParams,
         ftpResponse?.current_path || remoteDirInput || currentRemotePath,
         quickConnectDirs.localDir || currentLocalPath,
-        ftpResponse?.files
+        ftpResponse?.files,
+        undefined,
+        undefined,
+        ftpReplacedAt,
       );
     } catch (error) {
       // W3.1: user-cancelled connect, not a failure (see runConnect).
@@ -9061,7 +9095,7 @@ const App: React.FC = () => {
   // Session Management for Multi-Tab
   // Accept optional file lists to avoid stale closure captures: callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
-  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string) => {
+  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string, replacedAt?: number) => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
 
@@ -9081,14 +9115,24 @@ const App: React.FC = () => {
       }
     } catch { /* ignore */ }
 
-    // The backend is connected to this tab's server: no longer uncertain.
-    confirmBackendConnection();
+    // Another invoke replaced the backend after this connect's own returned
+    // (`replacedAt`, read then by the caller): the backend holds that one's
+    // provider. The tab is kept, cached, to reconnect with a click, and nothing
+    // is confirmed or made live.
+    const replacedMeanwhile = replacedAt !== undefined && backendReplacementSeqRef.current !== replacedAt;
+    if (replacedMeanwhile) {
+      setIsConnected(false);
+      notify.error(t('connection.connectionFailed'), t('toast.remoteTargetChanged'));
+    } else {
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
+    }
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
       savedServerId: paramsCopy.savedServerId,
       serverName,
-      status: 'connected',
+      status: replacedMeanwhile ? 'cached' : 'connected',
       remotePath,
       localPath,
       remoteFiles: freshRemoteFiles ? [...freshRemoteFiles] : [...remoteFiles],
@@ -9109,7 +9153,7 @@ const App: React.FC = () => {
     setIsSyncNavigation(false);
     setSyncBasePaths(null);
     setSessions(prev => [...prev, newSession]);
-    setActiveSessionId(newSession.id);
+    if (!replacedMeanwhile) setActiveSessionId(newSession.id);
   };
 
   // Favicon detection: auto-detect project favicon from FTP/SFTP web projects
@@ -9285,6 +9329,9 @@ const App: React.FC = () => {
           stillAlive = false;
         }
       }
+      // Read again after this switch's own connect, if it reconnects, and checked
+      // before its tab is confirmed (`backendReplacementSeqRef`).
+      let switchReplacedAt = backendReplacementSeqRef.current;
 
       if (stillAlive) {
         logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
@@ -9350,6 +9397,7 @@ const App: React.FC = () => {
             () => invoke<void>('cancel_connection', { token }),
             () => invoke('fourshared_connect', { params: { consumer_key: clientId, consumer_secret: clientSecret,
               profile_id: targetSession.savedServerId ?? '', connect_token: token } }))));
+          switchReplacedAt = backendReplacementSeqRef.current;
         } else {
           // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho)
           const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -9376,6 +9424,7 @@ const App: React.FC = () => {
           };
           try {
             await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
+            switchReplacedAt = backendReplacementSeqRef.current;
           } catch (connectErr) { connectScope.assert();
             const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
             const lower = errMsg.toLowerCase();
@@ -9387,6 +9436,7 @@ const App: React.FC = () => {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
               await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
               await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
+              switchReplacedAt = backendReplacementSeqRef.current;
             } else {
               throw connectErr;
             }
@@ -9430,6 +9480,7 @@ const App: React.FC = () => {
 
         logger.debug('[switchSession] provider protocol:', providerParams.protocol);
         await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope));
+        switchReplacedAt = backendReplacementSeqRef.current;
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try {
             await connectScope.step(() => listWithSpinner(() => invoke('provider_change_dir', { path: targetSession.remotePath })));
@@ -9552,6 +9603,11 @@ const App: React.FC = () => {
         await connectScope.step(() => invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined));
       }
 
+      // Another invoke replaced the backend after this switch's own connect
+      // or probe: the tab is not this server's any more, and the switch fails.
+      if (backendReplacementSeqRef.current !== switchReplacedAt) {
+        throw new Error(t('toast.remoteTargetChanged'));
+      }
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
       // The backend is connected to this tab's server: no longer uncertain.
       confirmBackendConnection();
@@ -9971,6 +10027,10 @@ const App: React.FC = () => {
           }
           await endCurrentConnection();
           await runConnect('provider_connect', providerParams);
+          // Confirmed here, with no await after the connect, in both of its
+          // callers (a reconnect to another server, a first connect): a backend
+          // left uncertain otherwise refused every action on AeroCloud.
+          confirmBackendConnection();
         } else {
           // FTP/FTPS: use connect_ftp
           const ftpParams = {
@@ -9981,6 +10041,7 @@ const App: React.FC = () => {
           };
           await endCurrentConnection();
           await runConnect('connect_ftp', ftpParams);
+          confirmBackendConnection();
         }
       };
 
@@ -19830,7 +19891,7 @@ const App: React.FC = () => {
               connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
               onOpenMtpDeviceProfile={openMtpSessionFromLiveDevice}
-              onParkActiveSession={takeOverActiveSession}
+              onParkActiveSession={takeOverBeforeSignIn}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
@@ -19862,6 +19923,9 @@ const App: React.FC = () => {
                 const isOAuth = normalizedParams.protocol && (isOAuthProvider(normalizedParams.protocol) || isFourSharedProvider(normalizedParams.protocol));
                 logger.debug('[onSavedServerConnect] profile:', { protocol: normalizedParams.protocol, savedServerId: normalizedParams.savedServerId });
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
+                // My Servers' sign-in returned before this connect: the
+                // replacements ended by now are the ones this tab may sit on.
+                const savedOAuthReplacedAt = backendReplacementSeqRef.current;
 
                 if (isOAuth) {
                   // My Servers put the live tab aside (onParkActiveSession)
@@ -19961,7 +20025,8 @@ const App: React.FC = () => {
                     resolvedLocalPath,
                     savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files,
                     undefined,
-                    savedOverlayHint ? savedOauthInitialPath : undefined
+                    savedOverlayHint ? savedOauthInitialPath : undefined,
+                    savedOAuthReplacedAt,
                   ));
                   if (savedOverlayHint && savedOverlaySavedId) {
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
@@ -20058,6 +20123,7 @@ const App: React.FC = () => {
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await connectScope.step(() => logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp'));
                       await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope)));
+                      const savedProviderReplacedAt = backendReplacementSeqRef.current;
 
                       const isFilenConnect =
                         connectedParams.protocol === 'filen' ||
@@ -20146,7 +20212,8 @@ const App: React.FC = () => {
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined,
+                      savedProviderReplacedAt,
                     ));
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
@@ -20216,6 +20283,7 @@ const App: React.FC = () => {
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await connectScope.step(() => logConnectionSteps(params.server, params.port || 21, savedFtpProto));
                   await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope)));
+                  const savedFtpReplacedAt = backendReplacementSeqRef.current;
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                   // Clear standalone connect-failure marker (#180 / 4486730822).
                   if (params.savedServerId) {
@@ -20254,7 +20322,10 @@ const App: React.FC = () => {
                     params,
                     savedFtpResponse?.current_path || initialPath || '/',
                     resolvedLocalPath3,
-                    savedFtpResponse?.files
+                    savedFtpResponse?.files,
+                    undefined,
+                    undefined,
+                    savedFtpReplacedAt,
                   ));
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
