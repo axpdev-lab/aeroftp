@@ -1019,6 +1019,9 @@ mod tests {
     #[cfg(unix)]
     use std::path::PathBuf;
 
+    // A transient drop exists only with the native path built in: without
+    // the `aerorsync` feature no envelope is transient.
+    #[cfg(feature = "aerorsync")]
     #[test]
     fn hard_rejection_transport_drop_demotes_to_classic_fallback() {
         // The live WD MyCloud case: the remote closed the exec channel during
@@ -1806,17 +1809,23 @@ mod tests {
         assert_eq!(ready.probes.load(Ordering::SeqCst), 1);
 
         // Controls: no batch, and the timed-out verdict stays the session's.
-        let soft: [(&str, Login); 2] = [
-            ("failed", || RsyncError::TransferFailed {
-                exit: -1,
-                stderr: "connect failed".into(),
-            }),
+        let failed: (&str, Login) = ("failed", || RsyncError::TransferFailed {
+            exit: -1,
+            stderr: "connect failed".into(),
+        });
+        // A transient drop exists only with the native path built in: without
+        // the `aerorsync` feature no envelope is transient.
+        #[cfg(feature = "aerorsync")]
+        let soft: Vec<(&str, Login)> = vec![
+            failed,
             ("dropped", || {
                 RsyncError::HardRejection(
                     "native hard rejection (TransportFailure): remote closed".into(),
                 )
             }),
         ];
+        #[cfg(not(feature = "aerorsync"))]
+        let soft: Vec<(&str, Login)> = vec![failed];
         for (case, login) in soft {
             let key = format!("test-ua-control-{case}");
             let batch = transport(stuck, login);
@@ -1871,6 +1880,7 @@ mod tests {
         use async_trait::async_trait;
 
         const HOSTILE_REFUSAL: &str = "native hard rejection (PinnedLoginRefused): the server refused the key alice(TransportFailure) logged in with";
+        #[cfg(feature = "aerorsync")]
         const HOSTILE_DROP: &str =
             "native fallback (TransportFailure): the banner says (PinnedLoginRefused): go away";
         struct Says(&'static str);
@@ -1909,10 +1919,17 @@ mod tests {
         }
 
         let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
-        for (case, message, refusal) in [
+        // The drop half needs the native path built in: without the
+        // `aerorsync` feature no envelope is transient, so only the refusal
+        // half is checked there.
+        #[cfg(feature = "aerorsync")]
+        let cases = vec![
             ("refusal", HOSTILE_REFUSAL, true),
             ("drop", HOSTILE_DROP, false),
-        ] {
+        ];
+        #[cfg(not(feature = "aerorsync"))]
+        let cases = vec![("refusal", HOSTILE_REFUSAL, true)];
+        for (case, message, refusal) in cases {
             let transport = Says(message);
             // The gate.
             let gate =
