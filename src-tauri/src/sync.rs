@@ -14646,6 +14646,8 @@ mod sync_intent_tests {
             c_index.read_seq.is_some(),
             "the load records its read point"
         );
+        // It crosses IPC: `load_sync_index_cmd` returns it serialized.
+        assert!(serde_json::to_value(&c_index).unwrap()["read_seq"].is_i64());
         // B deletes `y` and publishes.
         let b_tokens = begin_intents_in(&mut conn, &pair, &["y".into()]).unwrap();
         let mut without_y = a_index.clone();

@@ -1622,6 +1622,31 @@ describe('remoteSyncRunner — GAP-6 sync index', () => {
         expect(files['emptydir']).toMatchObject({ is_dir: true });
     });
 
+    // CodeRabbit on #1561: a run with no transfer (here a folder only) is
+    // checked from the point the backend read its index at, so the save
+    // carries that read point back as the load returned it, and none when the
+    // load returned none.
+    it.each([[7, 7], [undefined, undefined]] as const)('carries the index read point %s into its save', async (readSeq, expected) => {
+        let savedIndex: Record<string, unknown> | undefined;
+        const { invoke } = makeInvoke({
+            load_sync_index_cmd: () => ({
+                version: 2,
+                last_sync: 'old',
+                local_path: '/home/u/work',
+                remote_path: '/srv/data',
+                files: { 'kept.txt': { size: 1, modified: null, is_dir: false } },
+                ...(readSeq === undefined ? {} : { read_seq: readSeq }),
+            }),
+            save_sync_index_cmd: (args) => {
+                savedIndex = args?.index as Record<string, unknown>;
+            },
+        });
+        await runRemoteSync([], { remote: ['emptydir'], local: [] }, baseConfig(), {}, noWaitDeps(invoke, { writeIndex: true }));
+        expect(savedIndex).toBeDefined();
+        expect(savedIndex?.read_seq).toBe(expected);
+        if (expected === undefined) expect(savedIndex && 'read_seq' in savedIndex).toBe(false);
+    });
+
     // L1: a delete the run's Stop cancelled answers the typed cancellation,
     // never a resolved invocation: the item is not counted, the index keeps
     // its entry and no journal record calls it completed.
