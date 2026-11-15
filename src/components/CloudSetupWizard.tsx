@@ -56,9 +56,13 @@ export function profileRoot(profile: ServerProfile): string {
  * A folder label as shown. A folder written as a URL shows its scheme and
  * host only: its user part, path, query or fragment can carry a password or
  * a token that no rule recognises. Any other folder is shown as written, a
- * `?` in a name included.
+ * `?` in a name included. A `~/` prefix is kept and the rest shown by the
+ * same rule.
  */
 function shownFolderLabel(label: string): string {
+    // A folder saved in login-relative form is shown by the same rule after
+    // its `~/`.
+    if (label.startsWith('~/')) return `~/${shownFolderLabel(label.slice(2))}`;
     const url = /^([a-z][a-z0-9+.-]*:\/\/)(?:[^@/?#]*@)?([^/?#]*)/i.exec(label);
     return url ? `${url[1]}${url[2]}/…` : label;
 }

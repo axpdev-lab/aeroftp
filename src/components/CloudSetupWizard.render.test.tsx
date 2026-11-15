@@ -145,10 +145,12 @@ it('shows a profile folder written as a URL by its host only, anywhere in the wi
     }
 });
 
-it('shows a URL folder of a login-relative profile by its host only, in the root label and its title', async () => {
+it('shows a URL folder of a login-relative profile by its host only, saved with or without ~/, in the list, the root label and its title', async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-    for (const protocol of ['sftp', 'ftp'] as const) {
-        mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol, initialPath: 'https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g' }];
+    // Written as a URL, and saved already in `~/` form.
+    const written = ['https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g', '~/https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g'];
+    for (const [protocol, initialPath] of (['sftp', 'ftp'] as const).flatMap(p => written.map(w => [p, w] as const))) {
+        mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol, initialPath }];
         mocks.invoke.mockImplementation(async (command: string) => command === 'get_default_cloud_folder' ? '/home/u/AeroCloud' : null);
         host = document.createElement('div'); document.body.append(host); root = createRoot(host);
         await React.act(async () => root!.render(<CloudSetupWizard onComplete={vi.fn()} onCancel={vi.fn()} />));
@@ -157,9 +159,11 @@ it('shows a URL folder of a login-relative profile by its host only, in the root
         await React.act(async () => button('nas')!.click());
         // The folder opens under the login folder: the label carries `~/`.
         const label = [...host.querySelectorAll('span[title]')].find(s => s.getAttribute('title')?.startsWith('~/'));
-        expect(label?.getAttribute('title'), protocol).toBe('~/https://example.com/…/');
-        expect(label?.textContent?.trim(), protocol).toBe('~/https://example.com/…/');
-        for (const secret of ['pa55word', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, protocol).not.toContain(secret);
+        const name = `${protocol} ${initialPath}`;
+        expect(label?.getAttribute('title'), name).toBe('~/https://example.com/…/');
+        expect(label?.textContent?.trim(), name).toBe('~/https://example.com/…/');
+        // The profile list, the label and its title alike.
+        for (const secret of ['pa55word', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, name).not.toContain(secret);
         await React.act(async () => root!.unmount()); host.remove(); root = undefined;
     }
 });
