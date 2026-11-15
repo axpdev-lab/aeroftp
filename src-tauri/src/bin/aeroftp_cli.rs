@@ -42952,6 +42952,10 @@ fn format_template_apply_text(
             "Warning: \"{safe_name}\" was imported, but a shared secret or session of the file could not be stored. Sign this profile in again.\n"
         ));
     }
+    for line in import_security_notice_lines(&res.security, false) {
+        stderr_buf.push_str(&line);
+        stderr_buf.push('\n');
+    }
     (stdout_buf, stderr_buf)
 }
 
@@ -43130,6 +43134,7 @@ async fn cmd_import_template(
         keep_relaxed,
         expected_digest_sha256: Some(preview.digest_sha256),
         expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+        expected_user_id: Some(target.id),
     };
 
     match apply_template_for_user(&store, target.id, &input, &apply_opts) {
@@ -44788,29 +44793,41 @@ fn print_import_security_notice(
     found: &[ftp_client_gui_lib::profile_import_plan::ImportedSecurity],
     dry_run: bool,
 ) {
+    for line in import_security_notice_lines(found, dry_run) {
+        eprintln!("{line}");
+    }
+}
+
+/// The lines of [`print_import_security_notice`], also written by the text
+/// result of a template apply, which prints no preview before it stores.
+fn import_security_notice_lines(
+    found: &[ftp_client_gui_lib::profile_import_plan::ImportedSecurity],
+    dry_run: bool,
+) -> Vec<String> {
     let keys = |list: &[ftp_client_gui_lib::profile_security::Relaxation]| {
         list.iter()
-            .map(|r| format!("{}={}", r.key, r.value))
+            .map(|r| format!("{}={}", r.key, sanitize_filename(&r.value)))
             .collect::<Vec<_>>()
             .join(", ")
     };
     let verb = if dry_run { "would be reset" } else { "reset" };
+    let mut lines = Vec::new();
     for entry in found {
+        let name = sanitize_filename(&entry.name);
         if !entry.reset.is_empty() {
-            eprintln!(
-                "Security: \"{}\" {verb} to the safe default: {} (pass --keep-insecure-options to keep them)",
-                entry.name,
+            lines.push(format!(
+                "Security: \"{name}\" {verb} to the safe default: {} (pass --keep-insecure-options to keep them)",
                 keys(&entry.reset)
-            );
+            ));
         }
         if !entry.kept.is_empty() {
-            eprintln!(
-                "Warning: \"{}\" keeps options that turn a security check off: {}",
-                entry.name,
+            lines.push(format!(
+                "Warning: \"{name}\" keeps options that turn a security check off: {}",
                 keys(&entry.kept)
-            );
+            ));
         }
     }
+    lines
 }
 
 /// The summary's ", N resemble an existing profile", or nothing for none.
@@ -83829,6 +83846,13 @@ fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
 
 // ── Tests ──────────────────────────────────────────────────────────
 
+// A private executable with its own portable.marker for every child test run,
+// so a child never resolves the developer's data root (on Windows `dirs`
+// ignores HOME and XDG_CONFIG_HOME).
+#[cfg(test)]
+#[path = "../../tests/support/isolated_cli.rs"]
+mod isolated_cli;
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -87460,6 +87484,8 @@ mod tests {
     fn import_template_reports_when_vault_profiles_unreadable() {
         const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_C1_CHILD";
         if std::env::var_os(CHILD).is_some() {
+            // Its data root is broken on purpose, so only where it runs is checked.
+            assert_child_runs_from_private_root();
             on_big_stack(|| {
                 let cli = Cli::try_parse_from(["aeroftp-cli", "--json", "import", "template", "-"])
                     .expect("parse preview template command");
@@ -87477,12 +87503,17 @@ mod tests {
             return;
         }
 
-        let dir = tempfile::TempDir::new().unwrap();
-        let bad_xdg = dir.path().join("not-a-directory");
-        std::fs::write(&bad_xdg, b"corrupt-xdg").unwrap();
-        assert_child_finishes_with_open_stdin(
+        // The child's data root is a file where its folder should be, so the
+        // saved profiles cannot be read on any platform.
+        let root = crate::isolated_cli::root();
+        let portable_dir = root.path().join("cli");
+        std::fs::create_dir_all(&portable_dir).unwrap();
+        std::fs::write(portable_dir.join("data"), b"not-a-directory").unwrap();
+        assert_child_finishes_in(
+            root.path(),
             "tests::import_template_reports_when_vault_profiles_unreadable",
-            &[(CHILD, "1"), ("XDG_CONFIG_HOME", bad_xdg.to_str().unwrap())],
+            &[(CHILD, "1")],
+            std::time::Duration::from_secs(15),
         );
     }
 
@@ -87559,6 +87590,60 @@ mod tests {
     }
 
     #[test]
+    fn template_apply_text_reports_each_reset_and_kept_security_option() {
+        use ftp_client_gui_lib::profile_import_plan::ImportedSecurity;
+        use ftp_client_gui_lib::profile_security::Relaxation;
+        let relaxed = |key: &str, value: &str| Relaxation {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
+            applied: Vec::new(),
+            skipped_existing: Vec::new(),
+            skipped_duplicate_in_template: Vec::new(),
+            skipped_unselected: Vec::new(),
+            skipped_invalid: Vec::new(),
+            warnings: Vec::new(),
+            parse_issues: Vec::new(),
+            security: vec![
+                ImportedSecurity {
+                    file_index: 0,
+                    name: "plain-dav".to_string(),
+                    reset: vec![
+                        relaxed("webdavScheme", "http"),
+                        relaxed("verifyCert", "false"),
+                    ],
+                    kept: Vec::new(),
+                },
+                ImportedSecurity {
+                    file_index: 1,
+                    name: "lab-ftp\u{1b}[31m".to_string(),
+                    reset: Vec::new(),
+                    kept: vec![relaxed("trustPasvAddress", "true")],
+                },
+            ],
+            oauth_apps_kept: Vec::new(),
+            shared_secrets_failed: Vec::new(),
+            stored: Vec::new(),
+            digest_sha256: "d".to_string(),
+        };
+        let (_stdout, stderr_text) = format_template_apply_text(&fake_res);
+        assert!(
+            stderr_text.contains(
+                "Security: \"plain-dav\" reset to the safe default: webdavScheme=http, verifyCert=false (pass --keep-insecure-options to keep them)\n"
+            ),
+            "{stderr_text}"
+        );
+        assert!(
+            stderr_text.contains(
+                "Warning: \"lab-ftp\" keeps options that turn a security check off: trustPasvAddress=true\n"
+            ),
+            "{stderr_text}"
+        );
+        assert!(!stderr_text.contains('\u{1b}'), "{stderr_text:?}");
+    }
+
+    #[test]
     fn template_apply_text_reports_parse_issues_shared_secret_failures_and_kept_oauth_apps() {
         let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
             applied: Vec::new(),
@@ -87618,6 +87703,7 @@ mod tests {
         // Canonical 22-char base64url shape matching a 16-byte rclone IV.
         let canonical_22 = "AAAAAAAAAAAAAAAAAAAAAA";
         if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
             on_big_stack(move || {
                 let cli = test_cli();
                 let rt = tokio::runtime::Runtime::new().unwrap();
@@ -87695,7 +87781,22 @@ mod tests {
         envs: &[(&str, &str)],
         timeout: std::time::Duration,
     ) {
-        let mut cmd = std::process::Command::new(std::env::current_exe().unwrap());
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(root.path(), test_name, envs, timeout);
+    }
+
+    /// [`assert_child_finishes_with_open_stdin_within`] in a private root the
+    /// caller made (and may have prepared, as a broken data root).
+    fn assert_child_finishes_in(
+        root: &std::path::Path,
+        test_name: &str,
+        envs: &[(&str, &str)],
+        timeout: std::time::Duration,
+    ) {
+        // Its own executable beside a portable.marker: the child's data root is
+        // inside `root`, whatever the platform does with HOME and XDG variables.
+        let mut cmd = crate::isolated_cli::command(&std::env::current_exe().unwrap(), root);
+        cmd.env(PRIVATE_ROOT_ENV, root);
         cmd.args(["--exact", test_name, "--nocapture", "--test-threads=1"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -87721,6 +87822,35 @@ mod tests {
         assert!(status.success(), "{test_name} child failed: {status}");
     }
 
+    /// Set by the child runner to the child's private root.
+    const PRIVATE_ROOT_ENV: &str = "AEROFTP_CLI_TEST_PRIVATE_ROOT";
+
+    /// Called first in a child: it runs as the portable copy in its private
+    /// root. Returns that root.
+    fn assert_child_runs_from_private_root() -> std::ffi::OsString {
+        let root = std::env::var_os(PRIVATE_ROOT_ENV).expect("started by the child runner");
+        let exe = std::env::current_exe().unwrap();
+        assert!(
+            exe.starts_with(&root) && ftp_client_gui_lib::portable::is_portable(),
+            "the child runs {} outside its private root {}",
+            exe.display(),
+            std::path::Path::new(&root).display()
+        );
+        root
+    }
+
+    /// Called first in a child: its data root is the private one the runner made.
+    fn assert_child_data_root_is_private() {
+        let root = assert_child_runs_from_private_root();
+        let data = ftp_client_gui_lib::portable::aeroftp_data_root().expect("a data root");
+        assert!(
+            data.starts_with(&root),
+            "the child resolves {} outside its private root {}",
+            data.display(),
+            std::path::Path::new(&root).display()
+        );
+    }
+
     fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
         assert_child_finishes_with_open_stdin_within(
             test_name,
@@ -87733,6 +87863,7 @@ mod tests {
     fn import_template_file_never_reads_open_stdin_pipe() {
         const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_FILE_OPEN_STDIN_CHILD";
         if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
             on_big_stack(move || {
                 let cli = test_cli();
                 let rt = tokio::runtime::Runtime::new().unwrap();
@@ -87789,6 +87920,7 @@ mod tests {
     fn import_template_refusals_exit_with_config_error_code_5() {
         const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_EXIT5_CHILD";
         if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
             on_big_stack(move || {
                 let cli = test_cli();
                 let rt = tokio::runtime::Runtime::new().unwrap();
@@ -87852,6 +87984,7 @@ mod tests {
         const CHILD: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_CHILD";
         const SEED: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_SEED";
         if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
             let seed_path = std::env::var(SEED).expect("seed path");
             on_big_stack(move || {
                 let cli = test_cli();
@@ -88013,6 +88146,7 @@ mod tests {
     fn keystore_repair_does_not_block_on_open_non_tty_stdin_pipe() {
         const CHILD: &str = "AEROFTP_CLI_TEST_KEYSTORE_REPAIR_OPEN_STDIN_CHILD";
         if let Ok(backup_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
             on_big_stack(move || {
                 let cli = test_cli();
                 let rt = tokio::runtime::Runtime::new().unwrap();

@@ -1876,18 +1876,7 @@ impl ProviderConnectionParams {
             self.server.clone()
         };
 
-        // Strip port suffix from host if present (e.g. "127.0.0.1:2121" → "127.0.0.1")
-        // Users sometimes enter host:port in the server field, but port is a separate param
-        let host = if let Some(colon_idx) = host.rfind(':') {
-            let after = &host[colon_idx + 1..];
-            if after.parse::<u16>().is_ok() {
-                host[..colon_idx].to_string()
-            } else {
-                host
-            }
-        } else {
-            host
-        };
+        let host = without_port_suffix(&host).to_string();
 
         Ok(ProviderConfig {
             name: format!("{}@{}", self.username, host),
@@ -3028,6 +3017,17 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
     }
 }
 
+/// The server field without a trailing `:port` ("127.0.0.1:2121" is
+/// "127.0.0.1"): users sometimes write the port there, but the port is its own
+/// setting, and the connect ([`ProviderConnectionParams::to_provider_config`])
+/// builds its target from the host without it.
+fn without_port_suffix(host: &str) -> &str {
+    match host.rfind(':') {
+        Some(colon_idx) if host[colon_idx + 1..].parse::<u16>().is_ok() => &host[..colon_idx],
+        _ => host,
+    }
+}
+
 /// The root URL a WebDAV connection with these settings requests, built by
 /// the connect's own construction (`WebDavConfig::from_provider_config`:
 /// scheme, base path, `{username}`), then the root listing's `/` placed before
@@ -3217,6 +3217,9 @@ fn slot_matches_identity(
     // compares its collection only.
     let webdav_matches = |exp_host: Option<&str>, act_host: Option<&str>| -> bool {
         const NO_HOST: &str = "webdav.invalid";
+        // The tab carries the server field as written; the slot's host went
+        // through the connect's preprocessing, so the tab's does here too.
+        let exp_host = exp_host.map(without_port_suffix);
         let expected_target = webdav_connect_target(
             exp_host.unwrap_or(NO_HOST),
             expected.port.filter(|port| *port != 0),
@@ -23449,6 +23452,49 @@ mod restored_transfer_owner_tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn a_webdav_server_written_with_its_port_probes_the_slot_its_connect_built() {
+        for server in ["dav.example.test:8443", "https://dav.example.test:8443"] {
+            let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+                "protocol": "webdav",
+                "server": server,
+                "port": 8443,
+                "username": "alice",
+                "password": "secret",
+                "tlsMode": "https",
+                "basePath": "/files/",
+            }))
+            .unwrap();
+            let slot = params.to_provider_config().unwrap();
+            let tab = |host: &'static str| ProbeIdentity {
+                protocol: Some("webdav"),
+                username: Some("alice"),
+                profile_id: None,
+                host: Some(host),
+                port: Some(8443),
+                bucket: None,
+                endpoint: None,
+                region: None,
+                base_path: Some("/files/"),
+            };
+            assert!(
+                slot_matches_identity(&slot, None, &tab(server)),
+                "{server}: the connect's own slot failed its liveness check"
+            );
+            assert!(
+                !slot_matches_identity(&slot, None, &tab("other.example.test:8443")),
+                "{server}: another server passed for the slot"
+            );
+        }
+        assert_eq!(without_port_suffix("127.0.0.1:2121"), "127.0.0.1");
+        assert_eq!(without_port_suffix("https://h.test:8443"), "https://h.test");
+        assert_eq!(
+            without_port_suffix("https://h.test:8443/dav"),
+            "https://h.test:8443/dav"
+        );
+        assert_eq!(without_port_suffix("h.test"), "h.test");
     }
 
     #[test]

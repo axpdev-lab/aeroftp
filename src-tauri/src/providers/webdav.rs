@@ -10394,6 +10394,43 @@ mod request_target_tests {
         (provider.build_url("/docs/f.txt"), provider.build_url("/"))
     }
 
+    /// A root URL's query, which the import keeps on the base path
+    /// (`/?tenant=alice`, from `https://dav.example.test?tenant=alice` or
+    /// `https://bob:pw@dav.example.test?collection=team`), stays after the
+    /// request path: a file name never lands inside it.
+    #[test]
+    fn a_query_on_the_base_path_stays_after_a_file_path() {
+        for (base_path, query) in [
+            ("/?tenant=alice", "?tenant=alice"),
+            ("/?collection=team", "?collection=team"),
+        ] {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("base_path".to_string(), base_path.to_string());
+            let config = crate::providers::ProviderConfig {
+                name: "dav".into(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: "dav.example.test".into(),
+                port: Some(443),
+                username: Some("bob".into()),
+                password: None,
+                initial_path: None,
+                extra,
+            };
+            let provider =
+                WebDavProvider::new(WebDavConfig::from_provider_config(&config).unwrap()).unwrap();
+            assert_eq!(
+                provider.build_url("/docs/f.txt"),
+                format!("https://dav.example.test/docs/f.txt{query}"),
+                "{base_path}"
+            );
+            assert_eq!(
+                provider.build_url("/"),
+                format!("https://dav.example.test/{query}"),
+                "{base_path}"
+            );
+        }
+    }
+
     /// The collection path is requested before the query, for both query
     /// forms (a plain query and one holding a slash).
     #[test]

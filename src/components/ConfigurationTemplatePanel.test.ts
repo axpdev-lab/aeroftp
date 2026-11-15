@@ -100,6 +100,7 @@ describe('ConfigurationTemplatePanel', () => {
                     sourceLabel: 'template',
                     digestSha256: 'abc123',
                     planDigestSha256: 'plan-sha-1',
+                    userId: 7,
                 };
             }
             if (cmd === 'import_configuration_template') {
@@ -221,6 +222,7 @@ describe('ConfigurationTemplatePanel', () => {
                     selectedBlocks: ['alpha'],
                     expectedDigestSha256: 'abc123',
                     expectedPlanDigestSha256: 'plan-sha-1',
+                    expectedUserId: 7,
                 }),
             }),
         );
@@ -1062,5 +1064,134 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         await flush();
         expect(imported?.selectedBlocks).toEqual(['vault']);
         expect(imported?.secretForms).toEqual({ base: 'obscured', vault: 'clear' });
+    });
+
+    describe('a preview never outlives the text it was computed for', () => {
+        const report = (digest: string) => ({
+            rows: [
+                {
+                    fileIndex: 0,
+                    blockName: 'alpha',
+                    targetName: 'alpha',
+                    startLine: 1,
+                    protocol: 'sftp',
+                    providerId: null,
+                    host: 'alpha.example.test',
+                    port: 22,
+                    username: 'deploy',
+                    hasCredential: false,
+                    hasSecretInput: false,
+                    looksObscured: false,
+                    secretForm: null,
+                    needsSecretFormChoice: false,
+                    existingMatchId: null,
+                    existingMatchName: null,
+                    action: 'add',
+                    duplicateInTemplate: false,
+                    secretDisposition: 'none',
+                    secretNote: null,
+                },
+            ],
+            skipped: [],
+            warnings: [],
+            parseIssues: [],
+            security: [],
+            secretChoiceBlocks: [],
+            totalBlocks: 1,
+            capped: false,
+            sourceLabel: 'pasted',
+            digestSha256: digest,
+            planDigestSha256: `plan-${digest}`,
+        });
+        const oversized = '🔑'.repeat(2_621_441);
+        const submit = () => host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!;
+        const render = async () => {
+            await act(async () => {
+                root.render(
+                    createElement(
+                        ActivityLogProvider,
+                        null,
+                        createElement(ConfigurationTemplatePanel, {
+                            onProfilesStored: vi.fn(),
+                            onBack: vi.fn(),
+                            onClose: vi.fn(),
+                        }),
+                    ),
+                );
+            });
+        };
+        const type = async (value: string) => {
+            const textarea = host.querySelector<HTMLTextAreaElement>('[data-testid="template-textarea"]')!;
+            await act(async () => {
+                Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, value);
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            });
+        };
+        const settle = async () => {
+            await act(async () => { vi.advanceTimersByTime(300); });
+            await flush();
+        };
+        const rowsShown = () => host.querySelectorAll('[role="checkbox"]').length;
+        const previewCalls = () =>
+            vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'preview_configuration_template').length;
+
+        it('takes the import away as soon as the text changes, before the debounced preview', async () => {
+            vi.mocked(invoke).mockImplementation(async () => report('first'));
+            await render();
+            await type('[alpha]\ntype = sftp\nhost = alpha.example.test\n');
+            await settle();
+            expect(submit().disabled).toBe(false);
+            expect(rowsShown()).toBe(1);
+
+            await type('[alpha]\ntype = sftp\nhost = beta.example.test\n');
+            // Still inside the debounce: the preview on screen is the old text's.
+            expect(previewCalls()).toBe(1);
+            expect(submit().disabled).toBe(true);
+            expect(rowsShown()).toBe(0);
+            // A click before the delay ends imports nothing.
+            await act(async () => { submit().click(); });
+            await flush();
+            expect(vi.mocked(invoke).mock.calls.some(([cmd]) => cmd === 'import_configuration_template')).toBe(false);
+
+            await settle();
+            expect(previewCalls()).toBe(2);
+            expect(submit().disabled).toBe(false);
+        });
+
+        it('drops a pending answer when the next text is refused as too large', async () => {
+            let answer: (value: unknown) => void = () => {};
+            vi.mocked(invoke).mockImplementation(() => new Promise(resolve => { answer = resolve; }));
+            await render();
+            await type('[alpha]\ntype = sftp\nhost = alpha.example.test\n');
+            await settle();
+            expect(previewCalls()).toBe(1);
+
+            await type(oversized);
+            await settle();
+            expect(host.textContent).toContain('settings.templateTooLarge');
+            // The request for the earlier text answers only now.
+            await act(async () => { answer(report('stale')); });
+            await flush();
+            expect(previewCalls()).toBe(1);
+            expect(rowsShown()).toBe(0);
+            expect(submit().disabled).toBe(true);
+        });
+
+        it('clears an answered preview when the next text is refused as too large', async () => {
+            vi.mocked(invoke).mockImplementation(async () => report('answered'));
+            await render();
+            await type('[alpha]\ntype = sftp\nhost = alpha.example.test\n');
+            await settle();
+            expect(submit().disabled).toBe(false);
+            expect(rowsShown()).toBe(1);
+
+            await type(oversized);
+            expect(submit().disabled).toBe(true);
+            await settle();
+            expect(previewCalls()).toBe(1);
+            expect(host.textContent).toContain('settings.templateTooLarge');
+            expect(rowsShown()).toBe(0);
+            expect(submit().disabled).toBe(true);
+        });
     });
 });

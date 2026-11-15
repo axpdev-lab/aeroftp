@@ -248,6 +248,72 @@ pub(crate) type RcloneRemote = HashMap<String, String>;
 /// into a quadratic write storm. Matches the cap the other importers use.
 const MAX_REMOTES: usize = 10_000;
 
+/// At most this many syntax diagnostics are kept per parse; the rest are counted
+/// into one closing summary, so a template under the input cap cannot make the
+/// parser retain one diagnostic per line.
+const MAX_PARSE_ISSUES: usize = 200;
+
+/// A block name quoted in a diagnostic is cut to this many characters, so a
+/// huge header is never copied into every diagnostic of its block.
+const MAX_ISSUE_BLOCK_NAME_CHARS: usize = 120;
+
+/// Bounded storage for parse diagnostics: block names are cloned (and cut) only
+/// for a diagnostic that is kept, and everything past [`MAX_PARSE_ISSUES`] is
+/// only counted.
+struct ParseIssueSink {
+    kept: Vec<IniParseIssue>,
+    dropped: usize,
+    first_dropped_line: usize,
+}
+
+impl ParseIssueSink {
+    fn new() -> Self {
+        Self {
+            kept: Vec::new(),
+            dropped: 0,
+            first_dropped_line: 0,
+        }
+    }
+
+    fn push(&mut self, line: usize, block_name: Option<&str>, message: impl FnOnce() -> String) {
+        if self.kept.len() >= MAX_PARSE_ISSUES {
+            if self.dropped == 0 {
+                self.first_dropped_line = line;
+            }
+            self.dropped += 1;
+            return;
+        }
+        self.kept.push(IniParseIssue {
+            line,
+            block_name: block_name.map(issue_block_name),
+            message: message(),
+        });
+    }
+
+    fn finish(mut self) -> Vec<IniParseIssue> {
+        if self.dropped > 0 {
+            self.kept.push(IniParseIssue {
+                line: self.first_dropped_line,
+                block_name: None,
+                message: format!(
+                    "{} more syntax issues from line {} on are not listed.",
+                    self.dropped, self.first_dropped_line
+                ),
+            });
+        }
+        self.kept
+    }
+}
+
+/// The block name as a diagnostic quotes it: whole when short, otherwise its
+/// first [`MAX_ISSUE_BLOCK_NAME_CHARS`] characters followed by `...`.
+fn issue_block_name(name: &str) -> String {
+    match name.char_indices().nth(MAX_ISSUE_BLOCK_NAME_CHARS) {
+        Some((cut, _)) => format!("{}...", &name[..cut]),
+        None => name.to_string(),
+    }
+}
+
 /// A syntax diagnostic produced while parsing an INI configuration template.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -281,7 +347,7 @@ pub(crate) struct IniSpanParseResult {
 pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult {
     let mut sections: Vec<IniSectionWithSpan> = Vec::new();
     let mut index_by_name: HashMap<String, usize> = HashMap::new();
-    let mut issues: Vec<IniParseIssue> = Vec::new();
+    let mut issues = ParseIssueSink::new();
     let mut current_section: Option<usize> = None;
     let mut capped = false;
 
@@ -303,32 +369,29 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
         if let Some(inner) = line.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
             let name = inner.trim().to_string();
             if name.is_empty() {
-                issues.push(IniParseIssue {
-                    line: line_num,
-                    block_name: current_section.map(|i| sections[i].name.clone()),
-                    message: format!("Empty block header '[]' on line {} was ignored.", line_num),
-                });
+                issues.push(
+                    line_num,
+                    current_section.map(|i| sections[i].name.as_str()),
+                    || format!("Empty block header '[]' on line {} was ignored.", line_num),
+                );
                 continue;
             }
             if let Some(&existing_idx) = index_by_name.get(&name) {
-                issues.push(IniParseIssue {
-                    line: line_num,
-                    block_name: Some(name.clone()),
-                    message: format!(
+                issues.push(line_num, Some(&name), || {
+                    format!(
                         "Duplicate block header '[{}]' on line {}; keys merge into the earlier block.",
-                        name, line_num
-                    ),
+                        issue_block_name(&name),
+                        line_num
+                    )
                 });
                 current_section = Some(existing_idx);
             } else if sections.len() >= MAX_REMOTES {
                 capped = true;
-                issues.push(IniParseIssue {
-                    line: line_num,
-                    block_name: Some(name),
-                    message: format!(
+                issues.push(line_num, Some(&name), || {
+                    format!(
                         "Stopped parsing at the {MAX_REMOTES}-profile limit on line {}.",
                         line_num
-                    ),
+                    )
                 });
                 break;
             } else {
@@ -344,16 +407,17 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
             continue;
         }
 
-        let active_block = current_section.map(|i| sections[i].name.clone());
         if line.starts_with('[') {
-            issues.push(IniParseIssue {
-                line: line_num,
-                block_name: active_block,
-                message: format!(
-                    "Malformed block header on line {}: expected closing ']'.",
-                    line_num
-                ),
-            });
+            issues.push(
+                line_num,
+                current_section.map(|i| sections[i].name.as_str()),
+                || {
+                    format!(
+                        "Malformed block header on line {}: expected closing ']'.",
+                        line_num
+                    )
+                },
+            );
             continue;
         }
 
@@ -363,38 +427,36 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
             let value = raw_value.trim().to_string();
             if let Some(sec_idx) = current_section {
                 if key.is_empty() {
-                    issues.push(IniParseIssue {
-                        line: line_num,
-                        block_name: Some(sections[sec_idx].name.clone()),
-                        message: format!("Missing key name before '=' on line {}.", line_num),
+                    issues.push(line_num, Some(&sections[sec_idx].name), || {
+                        format!("Missing key name before '=' on line {}.", line_num)
                     });
                 }
                 sections[sec_idx].data.insert(key, value);
             } else {
-                issues.push(IniParseIssue {
-                    line: line_num,
-                    block_name: None,
-                    message: format!(
+                issues.push(line_num, None, || {
+                    format!(
                         "Key-value entry on line {} appears outside any [name] block and was ignored.",
                         line_num
-                    ),
+                    )
                 });
             }
         } else {
-            issues.push(IniParseIssue {
-                line: line_num,
-                block_name: active_block,
-                message: format!(
-                    "Unrecognized syntax on line {}: expected [name] or key = value.",
-                    line_num
-                ),
-            });
+            issues.push(
+                line_num,
+                current_section.map(|i| sections[i].name.as_str()),
+                || {
+                    format!(
+                        "Unrecognized syntax on line {}: expected [name] or key = value.",
+                        line_num
+                    )
+                },
+            );
         }
     }
 
     IniSpanParseResult {
         sections,
-        issues,
+        issues: issues.finish(),
         capped,
     }
 }
@@ -1252,7 +1314,14 @@ fn map_remote(
                 .trim()
                 .split_once("://")
                 .map(|(s, _)| s.to_ascii_lowercase());
-            if let Some(scheme @ ("http" | "https")) = scheme.as_deref() {
+            // The aliases rclone and AeroFTP accept name the same two schemes,
+            // with or without credentials in the url.
+            let scheme = match scheme.as_deref() {
+                Some("http" | "webdav" | "dav") => Some("http"),
+                Some("https" | "webdavs" | "davs") => Some("https"),
+                _ => None,
+            };
+            if let Some(scheme) = scheme {
                 options.insert(
                     "webdavScheme".into(),
                     serde_json::Value::String(scheme.to_string()),
@@ -2500,11 +2569,14 @@ fn parse_webdav_url_parts(url: &str) -> WebDavUrlParts {
         }
     };
 
+    // A query or fragment with no path before it (`https://h?tenant=alice`)
+    // is kept on the root path (`/?tenant=alice`): it can select the
+    // collection, and dropping it opened the default one.
     let (authority, path) = match without_scheme.find(['/', '?', '#']) {
         Some(i) if without_scheme.as_bytes()[i] == b'/' => {
             (&without_scheme[..i], without_scheme[i..].to_string())
         }
-        Some(i) => (&without_scheme[..i], String::new()),
+        Some(i) => (&without_scheme[..i], format!("/{}", &without_scheme[i..])),
         None => (without_scheme, String::new()),
     };
 
@@ -7085,6 +7157,132 @@ force_path_style = false
         }
         // An explicit choice is kept.
         assert_eq!(path_style_of("fastly-path-style-off"), Some(false));
+    }
+
+    /// A WebDAV url whose query selects the collection with no path before
+    /// it keeps that query through import, the connect's URL and export,
+    /// also with credentials in the url (CodeRabbit 4579494998, Greptile
+    /// 4579465417).
+    #[test]
+    fn a_webdav_root_url_with_a_query_keeps_it_from_import_to_connect_and_export() {
+        for (url, user, base) in [
+            (
+                "https://dav.example.test?tenant=alice",
+                "",
+                "/?tenant=alice",
+            ),
+            (
+                "https://bob:pw@dav.example.test?collection=team",
+                "bob",
+                "/?collection=team",
+            ),
+        ] {
+            let imported = map_remote(
+                "q",
+                &RcloneRemote::from([
+                    ("type".to_string(), "webdav".to_string()),
+                    ("url".to_string(), parse_webdav_url_parts(url).sanitized_url),
+                    ("user".to_string(), user.to_string()),
+                ]),
+                None,
+                ImportSourceKind::Template,
+            )
+            .unwrap();
+            let options = imported.options.clone().unwrap();
+            assert_eq!(options["basePath"], base, "{url}");
+            assert_eq!(imported.host, "dav.example.test", "{url}");
+            // The connect's own URL names the root collection with the query.
+            let mut extra = HashMap::new();
+            extra.insert("base_path".to_string(), base.to_string());
+            let config = crate::providers::ProviderConfig {
+                name: "q".into(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: imported.host.clone(),
+                port: Some(imported.port as u16),
+                username: Some(user.to_string()),
+                password: None,
+                initial_path: None,
+                extra,
+            };
+            let connect =
+                crate::providers::types::WebDavConfig::from_provider_config(&config).unwrap();
+            assert_eq!(
+                connect.url,
+                format!("https://dav.example.test{base}"),
+                "{url}"
+            );
+            // And the export writes it back.
+            let servers = vec![RcloneExportServer {
+                id: "q".into(),
+                name: "q".into(),
+                host: imported.host.clone(),
+                port: imported.port,
+                username: user.into(),
+                protocol: Some("webdav".into()),
+                options: Some(options),
+                provider_id: None,
+            }];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_rclone(&servers, &HashMap::new(), &path).unwrap();
+            let conf = std::fs::read_to_string(path).unwrap();
+            assert!(
+                conf.contains(&format!("url = https://dav.example.test{base}\n")),
+                "{conf}"
+            );
+        }
+    }
+
+    /// `webdav://` and its sibling aliases name a scheme the import keeps
+    /// without credentials in the url, so the export does not turn HTTP into
+    /// HTTPS (CodeRabbit 4579495003).
+    #[test]
+    fn a_webdav_scheme_alias_without_userinfo_keeps_its_scheme() {
+        for (url, scheme, exported) in [
+            (
+                "webdav://dav.example.test:8080/files",
+                "http",
+                "url = http://dav.example.test:8080/files",
+            ),
+            (
+                "dav://dav.example.test:8080/files",
+                "http",
+                "url = http://dav.example.test:8080/files",
+            ),
+            (
+                "webdavs://dav.example.test/files",
+                "https",
+                "url = https://dav.example.test/files",
+            ),
+        ] {
+            let imported = map_remote(
+                "s",
+                &RcloneRemote::from([
+                    ("type".to_string(), "webdav".to_string()),
+                    ("url".to_string(), url.to_string()),
+                ]),
+                None,
+                ImportSourceKind::Template,
+            )
+            .unwrap();
+            let options = imported.options.clone().unwrap();
+            assert_eq!(options["webdavScheme"], scheme, "{url}");
+            let servers = vec![RcloneExportServer {
+                id: "s".into(),
+                name: "s".into(),
+                host: imported.host.clone(),
+                port: imported.port,
+                username: String::new(),
+                protocol: Some("webdav".into()),
+                options: Some(options),
+                provider_id: None,
+            }];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("rclone.conf");
+            export_rclone(&servers, &HashMap::new(), &path).unwrap();
+            let conf = std::fs::read_to_string(path).unwrap();
+            assert!(conf.contains(exported), "{url}: {conf}");
+        }
     }
 
     #[test]
@@ -13012,6 +13210,73 @@ not_an_assignment
             .issues
             .iter()
             .any(|i| i.line == 9 && i.block_name.as_deref() == Some("alpha")));
+    }
+
+    #[test]
+    fn a_long_block_name_with_many_bad_lines_keeps_bounded_diagnostics() {
+        // One huge header followed by thousands of unparsable lines: every bad
+        // line used to clone the whole block name into its own diagnostic.
+        let name = "n".repeat(8192);
+        let bad_lines = 5000;
+        let mut input = format!("[{name}]\ntype = ftp\n");
+        for _ in 0..bad_lines {
+            input.push_str("x\n");
+        }
+        input.push_str(&format!("[{name}]\n"));
+
+        let res = parse_ini_sections_with_spans(&input);
+        assert_eq!(res.sections.len(), 1);
+        assert_eq!(res.issues.len(), MAX_PARSE_ISSUES + 1);
+        let retained: usize = res
+            .issues
+            .iter()
+            .map(|i| i.message.len() + i.block_name.as_ref().map_or(0, String::len))
+            .sum();
+        assert!(retained < 64 * 1024, "diagnostics retain {retained} bytes");
+        for issue in &res.issues[..MAX_PARSE_ISSUES] {
+            let quoted = issue.block_name.as_deref().unwrap();
+            assert_eq!(
+                quoted,
+                format!("{}...", &name[..MAX_ISSUE_BLOCK_NAME_CHARS])
+            );
+        }
+        let summary = res.issues.last().unwrap();
+        let dropped = bad_lines + 1 - MAX_PARSE_ISSUES;
+        assert_eq!(summary.line, 3 + MAX_PARSE_ISSUES);
+        assert_eq!(summary.block_name, None);
+        assert_eq!(
+            summary.message,
+            format!(
+                "{dropped} more syntax issues from line {} on are not listed.",
+                3 + MAX_PARSE_ISSUES
+            )
+        );
+    }
+
+    #[test]
+    fn a_duplicate_long_header_is_quoted_cut_and_a_short_one_whole() {
+        let name = "d".repeat(4096);
+        let res = parse_ini_sections_with_spans(&format!("[{name}]\n[{name}]\n[ab]\n[ab]\n"));
+        assert_eq!(res.issues.len(), 2);
+        let cut = format!("{}...", &name[..MAX_ISSUE_BLOCK_NAME_CHARS]);
+        assert_eq!(res.issues[0].block_name.as_deref(), Some(cut.as_str()));
+        assert_eq!(
+            res.issues[0].message,
+            format!(
+                "Duplicate block header '[{cut}]' on line 2; keys merge into the earlier block."
+            )
+        );
+        assert_eq!(res.issues[1].block_name.as_deref(), Some("ab"));
+        assert_eq!(
+            res.issues[1].message,
+            "Duplicate block header '[ab]' on line 4; keys merge into the earlier block."
+        );
+        // a multibyte name is cut on a character boundary
+        let wide = "é".repeat(MAX_ISSUE_BLOCK_NAME_CHARS + 5);
+        assert_eq!(
+            issue_block_name(&wide),
+            format!("{}...", "é".repeat(MAX_ISSUE_BLOCK_NAME_CHARS))
+        );
     }
 
     #[test]

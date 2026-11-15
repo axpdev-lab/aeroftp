@@ -90,6 +90,8 @@ export interface TemplatePreviewReport {
     sourceLabel: string;
     digestSha256: string;
     planDigestSha256: string;
+    /** The account whose saved profiles the plan was computed against. */
+    userId?: number | null;
 }
 
 export interface TemplateAppliedRow {
@@ -282,15 +284,19 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         mode: TemplateExistingMode,
         forms: Record<string, CryptSecretForm>,
     ) => {
+        // Every evaluation, a refused one included, supersedes the requests
+        // still in flight: an earlier answer never restores its rows (and its
+        // digests) over a text it was not computed for.
+        const seq = ++requestSeqRef.current;
         if (payload.kind === 'text') {
             const byteLen = new TextEncoder().encode(payload.content).length;
             if (byteLen > MAX_TEMPLATE_BYTES) {
                 setPreview(null);
+                setPreviewing(false);
                 setError(tRef.current('settings.templateTooLarge'));
                 return;
             }
         }
-        const seq = ++requestSeqRef.current;
         setPreviewing(true);
         setError(null);
         try {
@@ -344,6 +350,11 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         }
         const textChanged = sourceTab === 'paste' && lastDebouncedTextRef.current !== textContent;
         if (textChanged) {
+            // The shown preview describes the text before this edit: until the
+            // debounced evaluation of this text answers, there is none to import.
+            requestSeqRef.current += 1;
+            setPreview(null);
+            setPreviewing(true);
             const timer = setTimeout(() => {
                 lastDebouncedTextRef.current = textContent;
                 void runPreview(currentInput, existingMode, secretForms);
@@ -449,6 +460,9 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     keepRelaxed: keepRelaxedList,
                     expectedDigestSha256: preview.digestSha256,
                     expectedPlanDigestSha256: preview.planDigestSha256,
+                    // The account the preview read: a switch before the import
+                    // runs refuses it instead of writing into the other account.
+                    expectedUserId: preview.userId ?? null,
                 },
             });
 

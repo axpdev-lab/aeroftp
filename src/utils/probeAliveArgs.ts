@@ -44,4 +44,22 @@ export const sameQuickConnectTarget = (tab: ConnectionParams, wanted: Connection
     && (tab.options?.bucket || '') === (wanted.options?.bucket || '')
     && (tab.options?.endpoint || '') === (wanted.options?.endpoint || '')
     && (tab.options?.region || '') === (wanted.options?.region || '')
-    && (webdavConnectBasePath(protocol, tab.options) || '') === (webdavConnectBasePath(protocol, wanted.options) || '');
+    && sameWebdavCollection(tab, wanted, protocol);
+
+/** Whether a WebDAV connect asks for the collection `tab` has open: the base
+ *  path the connect places its URL under. Always true for other protocols. */
+const sameWebdavCollection = (tab: ConnectionParams, wanted: ConnectionParams, protocol: string): boolean =>
+    (webdavConnectBasePath(protocol, tab.options) || '') === (webdavConnectBasePath(protocol, wanted.options) || '');
+
+/** Whether a connect for `wanted` may reactivate the open tab whose
+ *  connection is `tab` instead of connecting again (#128-C). Two tabs of
+ *  one saved profile are the same account, but a request can carry a saved
+ *  profile's id for another WebDAV collection (a Quick Connect that the
+ *  profile lookup matched on host and user), so the collection is compared
+ *  as well; without saved profiles the whole target is. */
+export const reusesOpenTab = (tab: ConnectionParams, wanted: ConnectionParams, protocol: string): boolean => {
+    if (tab.protocol !== protocol) return false;
+    return (tab.savedServerId && wanted.savedServerId)
+        ? tab.savedServerId === wanted.savedServerId && sameWebdavCollection(tab, wanted, protocol)
+        : sameQuickConnectTarget(tab, wanted, protocol);
+};

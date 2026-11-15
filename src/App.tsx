@@ -553,7 +553,7 @@ import { AEROCLOUD_OPEN_SUPERSEDED, connectionNumberOf, connectionTargetKey, isA
 import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarget';
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
-import { probeAliveArgs, sameQuickConnectTarget } from './utils/probeAliveArgs';
+import { probeAliveArgs, reusesOpenTab } from './utils/probeAliveArgs';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -8552,10 +8552,7 @@ const App: React.FC = () => {
         const reusable = sessions.find(s => {
           if (s.cryptOverlay) return false;
           const p = s.connectionParams;
-          if (!p || p.protocol !== protocol) return false;
-          return (p.savedServerId && effectiveParams.savedServerId)
-            ? p.savedServerId === effectiveParams.savedServerId
-            : sameQuickConnectTarget(p, effectiveParams, protocol);
+          return !!p && reusesOpenTab(p, effectiveParams, protocol);
         });
         if (reusable) {
           let alive = false;

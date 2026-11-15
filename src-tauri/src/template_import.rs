@@ -25,7 +25,8 @@ use crate::profile_import_plan::{
     SecretCommit, SecretSlots, SecretWrite,
 };
 use crate::profile_security::{
-    make_parts_safe, new_relaxations, security_relaxations_of, KeptRelaxation, RelaxationPolicy,
+    make_parts_safe, make_profile_safe, new_relaxations, security_relaxations_of, KeptRelaxation,
+    RelaxationPolicy,
 };
 use crate::rclone_import::{
     evaluate_template_text, IniParseIssue, TemplateBlockWarning, TemplateEngineOutput,
@@ -94,6 +95,10 @@ pub struct TemplateApplyOptions {
     /// SHA-256 hex digest of the previewed import plan; when set, apply fails if saved profiles changed.
     #[serde(default)]
     pub expected_plan_digest_sha256: Option<String>,
+    /// The account the preview was computed for ([`TemplatePreviewReport::user_id`]);
+    /// when set, apply refuses before any write if it is not the account it imports into.
+    #[serde(default)]
+    pub expected_user_id: Option<i64>,
 }
 
 /// Action planned for a single mapped template block against the active user's list.
@@ -158,6 +163,10 @@ pub struct TemplatePreviewReport {
     pub source_label: String,
     pub digest_sha256: String,
     pub plan_digest_sha256: String,
+    /// The account whose saved profiles the plan was computed against, set by
+    /// the command; the import passes it back as
+    /// [`TemplateApplyOptions::expected_user_id`].
+    pub user_id: Option<i64>,
 }
 
 /// One profile applied during template import.
@@ -438,9 +447,15 @@ fn build_plan(
                 server.protocol.as_deref(),
                 server.options.as_ref(),
             );
+            // A setting the stored profile already has imports nothing new only
+            // while the profile keeps its target: the same exception on another
+            // server is a new exception, reviewed and reset like any other.
             if action == TemplatePlannedAction::Replace {
                 if let Some(existing) = matched {
-                    relaxations = new_relaxations(relaxations, existing);
+                    let incoming = serde_json::to_value(&server).unwrap_or(Value::Null);
+                    if same_target_apart_from_relaxations(existing, &incoming) {
+                        relaxations = new_relaxations(relaxations, existing);
+                    }
                 }
             }
             if !relaxations.is_empty() {
@@ -632,6 +647,21 @@ fn canonical_json_sha256(value: &Value) -> String {
 /// acts on (identity, target endpoint, initialPath, options, security relaxations,
 /// and stored-credential flag), ignoring volatile UI/telemetry metadata such as
 /// `lastConnected`, quota caches, favicons, and connection-failure markers.
+/// Whether `existing` and `incoming` connect to the same target, the
+/// security-relaxing options aside: [`same_target`] also compares options that
+/// turn a check off (`verifyCert`, `trustUnknownHosts`, ...), and those are the
+/// options under review, so both sides are compared in their safe state. A
+/// relaxation the template adds then never makes an unchanged server look
+/// moved, and reset an exception the user already has there.
+fn same_target_apart_from_relaxations(existing: &Value, incoming: &Value) -> bool {
+    let safe = |profile: &Value| {
+        let mut profile = profile.clone();
+        make_profile_safe(&mut profile, &[]);
+        profile
+    };
+    same_target(&safe(existing), &safe(incoming))
+}
+
 fn existing_target_digest_projection(matched: &Value) -> String {
     let mut relaxations: Vec<String> = crate::profile_security::security_relaxations(matched)
         .into_iter()
@@ -769,6 +799,7 @@ pub fn preview_template_with_current(
         source_label: eval.source_label,
         digest_sha256: loaded.digest_sha256,
         plan_digest_sha256,
+        user_id: None,
     })
 }
 
@@ -808,6 +839,14 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
     input: &TemplateInput,
     options: &TemplateApplyOptions,
 ) -> Result<TemplateImportResult, String> {
+    // A plan computed for one account never writes into another: two accounts
+    // can yield the same plan (two empty lists), so the digests cannot tell.
+    if options
+        .expected_user_id
+        .is_some_and(|expected| expected != user)
+    {
+        return Err(user_partitions::ACCOUNT_CHANGED.to_string());
+    }
     let loaded = load_template_input(input)?;
     if let Some(expected) = options.expected_digest_sha256.as_deref() {
         if loaded.digest_sha256 != expected {
@@ -1126,7 +1165,10 @@ pub async fn preview_configuration_template(
             .ok_or_else(|| format!("{}: NO_ACTIVE_USER", crate::IMPORT_NEEDS_PARTITION))?;
         let (current, _) = user_partitions::cli_read_active_profiles_at_revision(&store, user.id)
             .map_err(|e| format!("{}: {e}", crate::IMPORT_NEEDS_PARTITION))?;
-        preview_template_with_current(&input, &options.unwrap_or_default(), &current)
+        let mut report =
+            preview_template_with_current(&input, &options.unwrap_or_default(), &current)?;
+        report.user_id = Some(user.id);
+        Ok(report)
     })
     .await
     .map_err(|e| format!("Template preview task failed: {e}"))?
@@ -1605,6 +1647,329 @@ no_check_certificate = true
                 .pointer("/options/acceptInvalidCerts")
                 .and_then(Value::as_bool),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn an_import_previewed_for_one_account_never_writes_into_another() {
+        let env = TestVaultEnv::new();
+        // The test switches the active account.
+        let _partition = user_partitions::test_lock();
+        let input = TemplateInput::Text {
+            content: "[box]\ntype = sftp\nhost = box.example.test\nuser = bob\npass = BobSecret!\n"
+                .to_string(),
+        };
+        let account_a = env.user_id;
+        // Both accounts hold no profile, so the plan and its digest are the same.
+        let preview = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+            &[],
+        )
+        .unwrap();
+        let account_b = user_partitions::cli_create_user(&env.store, "Other", None, None, None)
+            .unwrap()
+            .id;
+        assert_ne!(account_a, account_b);
+        user_partitions::cli_set_active_user(&env.store, account_b).unwrap();
+        let options = |expected| TemplateApplyOptions {
+            default_secret_form: Some(TemplateSecretForm::Clear),
+            expected_digest_sha256: Some(preview.digest_sha256.clone()),
+            expected_plan_digest_sha256: Some(preview.plan_digest_sha256.clone()),
+            expected_user_id: Some(expected),
+            ..Default::default()
+        };
+
+        // The worker starts after the switch: the active account is B.
+        let refused = apply_template_for_user(&env.store, account_b, &input, &options(account_a))
+            .unwrap_err();
+        assert_eq!(refused, user_partitions::ACCOUNT_CHANGED);
+        let (b_profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, account_b).unwrap();
+        assert!(b_profiles.is_empty(), "{b_profiles:?}");
+        let b_secrets = user_partitions::list_user_credential_ids_for(
+            &user_partitions::open_or_init_cli().unwrap(),
+            account_b,
+        )
+        .unwrap();
+        assert!(b_secrets.is_empty(), "{b_secrets:?}");
+
+        // The account the preview read still imports.
+        user_partitions::cli_set_active_user(&env.store, account_a).unwrap();
+        let applied =
+            apply_template_for_user(&env.store, account_a, &input, &options(account_a)).unwrap();
+        assert_eq!(applied.applied.len(), 1);
+    }
+
+    #[test]
+    fn a_relaxation_added_on_the_same_server_leaves_the_accepted_one_alone() {
+        let env = TestVaultEnv::new();
+        let at = |extra: &str| TemplateInput::Text {
+            content: format!(
+                "[shared]\ntype = webdav\nurl = http://dav.example.test/\nuser = alice\n{extra}"
+            ),
+        };
+        let keys = |profile: &Value| -> Vec<String> {
+            let mut keys: Vec<String> = crate::profile_security::security_relaxations(profile)
+                .into_iter()
+                .map(|r| r.key)
+                .collect();
+            keys.sort();
+            keys
+        };
+        // The user accepted plain HTTP on this server.
+        let seed = at("");
+        let seed_preview =
+            preview_template_with_current(&seed, &TemplatePreviewOptions::default(), &[]).unwrap();
+        let keep_relaxed: Vec<KeptRelaxation> = seed_preview
+            .security
+            .iter()
+            .flat_map(|sec| {
+                sec.reset.iter().map(|r| KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                })
+            })
+            .collect();
+        let seeded = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &seed,
+            &TemplateApplyOptions {
+                keep_relaxed,
+                expected_plan_digest_sha256: Some(seed_preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(keys(&seeded.stored[0]), ["webdavScheme"]);
+        let (current, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+
+        // The same server again, now also with the certificate check off.
+        let more = at("override.no_check_certificate = true\n");
+        let preview = preview_template_with_current(
+            &more,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert_eq!(preview.rows[0].action, TemplatePlannedAction::Replace);
+        assert_eq!(preview.security.len(), 1);
+        let reported: Vec<&str> = preview.security[0]
+            .reset
+            .iter()
+            .chain(&preview.security[0].kept)
+            .map(|r| r.key.as_str())
+            .collect();
+        assert_eq!(reported, ["verifyCert"]);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &more,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        // The accepted exception stays, the new one came in safe.
+        assert_eq!(keys(&applied.stored[0]), ["webdavScheme"]);
+    }
+
+    /// Store `input` keeping every relaxation its preview reports, as a user
+    /// who accepted them, and return the saved list it leaves.
+    fn seed_keeping_every_relaxation(env: &TestVaultEnv, input: &TemplateInput) -> Vec<Value> {
+        let preview =
+            preview_template_with_current(input, &TemplatePreviewOptions::default(), &[]).unwrap();
+        let keep_relaxed: Vec<KeptRelaxation> = preview
+            .security
+            .iter()
+            .flat_map(|sec| {
+                sec.reset.iter().map(|r| KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                })
+            })
+            .collect();
+        assert!(!keep_relaxed.is_empty());
+        apply_template_for_user(
+            &env.store,
+            env.user_id,
+            input,
+            &TemplateApplyOptions {
+                keep_relaxed,
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id)
+            .unwrap()
+            .0
+    }
+
+    #[test]
+    fn an_exception_on_the_new_server_stays_only_when_the_user_keeps_it() {
+        let env = TestVaultEnv::new();
+        let template_at = |url: &str| {
+            TemplateInput::Text {
+            content: format!(
+                "[shared]\ntype = webdav\nurl = {url}\nuser = alice\noverride.no_check_certificate = true\n"
+            ),
+        }
+        };
+        let current =
+            seed_keeping_every_relaxation(&env, &template_at("https://dav-old.example.test/"));
+        let moved = template_at("https://dav-new.example.test/");
+        let preview = preview_template_with_current(
+            &moved,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Overwrite,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        let sec = &preview.security[0];
+        assert!(sec.reset.iter().any(|r| r.key == "verifyCert"));
+
+        // Kept explicitly for the new server: stored as the user chose, and
+        // reported as kept, not reset.
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &moved,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                keep_relaxed: vec![KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: "verifyCert".to_string(),
+                }],
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let stored = &applied.stored[0];
+        assert!(stored
+            .get("host")
+            .and_then(Value::as_str)
+            .unwrap()
+            .contains("dav-new.example.test"));
+        assert_eq!(
+            stored
+                .pointer("/options/verifyCert")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert!(applied.security[0]
+            .kept
+            .iter()
+            .any(|r| r.key == "verifyCert"));
+        assert!(
+            applied.security[0].reset.is_empty(),
+            "{:?}",
+            applied.security
+        );
+    }
+
+    #[test]
+    fn an_exception_kept_on_one_server_is_reviewed_again_when_the_template_moves_it() {
+        let env = TestVaultEnv::new();
+        let template_at = |url: &str| {
+            TemplateInput::Text {
+                content: format!(
+                    "[shared]\ntype = webdav\nurl = {url}\nuser = alice\noverride.no_check_certificate = true\n"
+                ),
+            }
+        };
+        let old = template_at("https://dav-old.example.test/");
+        let seed_preview =
+            preview_template_with_current(&old, &TemplatePreviewOptions::default(), &[]).unwrap();
+        let keep_relaxed: Vec<KeptRelaxation> = seed_preview
+            .security
+            .iter()
+            .flat_map(|sec| {
+                sec.reset.iter().map(|r| KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                })
+            })
+            .collect();
+        assert!(!keep_relaxed.is_empty());
+        let seeded = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &old,
+            &TemplateApplyOptions {
+                keep_relaxed,
+                expected_plan_digest_sha256: Some(seed_preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            seeded.stored[0]
+                .pointer("/options/verifyCert")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let (current, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        let overwrite = TemplatePreviewOptions {
+            existing: ExistingProfileMode::Overwrite,
+            ..Default::default()
+        };
+
+        // The same server again: the exception is already the user's, nothing new.
+        let same = preview_template_with_current(&old, &overwrite, &current).unwrap();
+        assert_eq!(same.rows[0].action, TemplatePlannedAction::Replace);
+        assert!(same.security.is_empty(), "{:?}", same.security);
+
+        // Another server under the same block name: the exception is new there.
+        let moved = template_at("https://dav-new.example.test/");
+        let preview = preview_template_with_current(&moved, &overwrite, &current).unwrap();
+        assert_eq!(preview.rows[0].action, TemplatePlannedAction::Replace);
+        assert_eq!(preview.security.len(), 1);
+        assert!(preview.security[0]
+            .reset
+            .iter()
+            .any(|r| r.key == "verifyCert"));
+        assert!(preview.security[0].kept.is_empty());
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &moved,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Overwrite,
+                keep_relaxed: Vec::new(),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.stored.len(), 1);
+        let stored = &applied.stored[0];
+        assert!(stored
+            .get("host")
+            .and_then(Value::as_str)
+            .unwrap()
+            .contains("dav-new.example.test"));
+        assert_ne!(
+            stored
+                .pointer("/options/verifyCert")
+                .and_then(Value::as_bool),
+            Some(false)
         );
     }
 

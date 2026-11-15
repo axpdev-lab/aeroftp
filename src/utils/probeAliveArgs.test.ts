@@ -5,7 +5,8 @@ import { describe, expect, it } from 'vitest';
 import APP from '../App.tsx?raw';
 import PROVIDER_COMMANDS from '../../src-tauri/src/provider_commands.rs?raw';
 import PROBE_ALIVE_SRC from './probeAliveArgs.ts?raw';
-import { probeAliveArgs, sameQuickConnectTarget } from './probeAliveArgs';
+import { probeAliveArgs, reusesOpenTab, sameQuickConnectTarget } from './probeAliveArgs';
+import type { ConnectionParams } from '../types';
 
 describe('probeAliveArgs', () => {
     it('names the saved profile and the endpoint, not only the user', () => {
@@ -64,7 +65,39 @@ describe('the liveness probes of App.tsx', () => {
         const at = APP.indexOf('const reusable = sessions.find(s => {');
         const match = APP.slice(at, APP.indexOf('});', at));
         expect(at).toBeGreaterThan(-1);
-        expect(match).toContain('sameQuickConnectTarget(p, effectiveParams, protocol)');
+        expect(match).toContain('return !!p && reusesOpenTab(p, effectiveParams, protocol);');
+        expect(match).not.toContain('savedServerId');
+    });
+});
+
+describe('reusesOpenTab', () => {
+    const team = (basePath: string, savedServerId?: string): ConnectionParams => ({
+        server: 'dav.example.test',
+        port: 443,
+        username: 'alice',
+        password: '',
+        protocol: 'webdav',
+        savedServerId,
+        options: { basePath },
+    });
+
+    it('does not reuse a saved profile tab for a request of another WebDAV collection', () => {
+        // One saved profile on /team-a; a Quick Connect for /team-b that the
+        // profile lookup matched on host and user carries the same id.
+        const open = team('/team-a', 'srv_dav');
+        expect(reusesOpenTab(open, team('/team-b', 'srv_dav'), 'webdav')).toBe(false);
+        expect(reusesOpenTab(open, team('/team-a', 'srv_dav'), 'webdav')).toBe(true);
+    });
+
+    it('keeps the earlier rules for saved profiles and Quick Connect tabs', () => {
+        const ftp: ConnectionParams = { server: 'ftp.example.test', username: 'u', password: '', protocol: 'ftp', savedServerId: 'srv_1' };
+        expect(reusesOpenTab(ftp, { ...ftp, server: 'renamed.example.test' }, 'ftp')).toBe(true);
+        expect(reusesOpenTab(ftp, { ...ftp, savedServerId: 'srv_2' }, 'ftp')).toBe(false);
+        expect(reusesOpenTab(ftp, ftp, 'sftp')).toBe(false);
+        const quick = { ...ftp, savedServerId: undefined };
+        expect(reusesOpenTab(quick, quick, 'ftp')).toBe(true);
+        expect(reusesOpenTab(quick, { ...quick, port: 2121 }, 'ftp')).toBe(false);
+        expect(reusesOpenTab(team('/team-a'), team('/team-b'), 'webdav')).toBe(false);
     });
 });
 
