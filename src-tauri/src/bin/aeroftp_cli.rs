@@ -42747,6 +42747,20 @@ fn format_template_apply_text(
     (stdout_buf, stderr_buf)
 }
 
+
+/// The blocks a template import still needs a secret form for, as the
+/// preview lists them: also a skipped base that an imported crypt inherits,
+/// which is the block the user must answer, not the crypt.
+fn template_missing_secret_form_blocks(
+    preview: &ftp_client_gui_lib::template_import::TemplatePreviewReport,
+) -> Vec<String> {
+    preview
+        .secret_choice_blocks
+        .iter()
+        .map(|block| sanitize_filename(block))
+        .collect()
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn cmd_import_template(
     path: String,
@@ -42762,7 +42776,7 @@ async fn cmd_import_template(
     use ftp_client_gui_lib::profile_security::KeptRelaxation;
     use ftp_client_gui_lib::template_import::{
         apply_template_for_user, preview_template_with_current, TemplateApplyOptions,
-        TemplatePlannedAction, TemplatePreviewOptions,
+        TemplatePreviewOptions,
     };
 
     let emit_err = |msg: &str| {
@@ -42880,12 +42894,7 @@ async fn cmd_import_template(
         }
     };
 
-    let missing_form_blocks: Vec<String> = preview
-        .rows
-        .iter()
-        .filter(|r| r.action != TemplatePlannedAction::Skip && r.needs_secret_form_choice)
-        .map(|r| sanitize_filename(&r.block_name))
-        .collect();
+    let missing_form_blocks = template_missing_secret_form_blocks(&preview);
     if !missing_form_blocks.is_empty() {
         emit_err(&format!(
             "Configuration template contains secret(s) in [{}] without an explicit encoding. Pass `--secret-form clear|obscured` or `--secret-form-for BLOCK=clear|obscured`.",
@@ -87399,6 +87408,37 @@ mod tests {
                     missing_base_code, 5,
                     "omitting --secret-form-for base on skipped inherited base must exit 5"
                 );
+                // The hint names the block the user must answer: the base.
+                {
+                    let store = open_vault(&cli).expect("open CLI test vault");
+                    let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                        .unwrap()
+                        .expect("active CLI test user");
+                    let (current, _) =
+                        ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                            &store, active.id,
+                        )
+                        .unwrap();
+                    let mut forms = std::collections::HashMap::new();
+                    forms.insert(
+                        "vault".to_string(),
+                        ftp_client_gui_lib::rclone_import::TemplateSecretForm::Clear,
+                    );
+                    let preview = ftp_client_gui_lib::template_import::preview_template_with_current(
+                        &ftp_client_gui_lib::template_import::TemplateInput::File {
+                            path: tpl_path.clone(),
+                        },
+                        &ftp_client_gui_lib::template_import::TemplatePreviewOptions {
+                            existing: ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+                            default_secret_form: None,
+                            secret_forms: forms,
+                        },
+                        &current,
+                    )
+                    .unwrap();
+                    let hint = template_missing_secret_form_blocks(&preview);
+                    assert!(hint.contains(&"base".to_string()), "the hint names base: {hint:?}");
+                }
 
                 let ok_code = rt.block_on(cmd_import_template(
                     tpl_path,
