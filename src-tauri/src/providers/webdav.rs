@@ -1192,16 +1192,19 @@ impl WebDavProvider {
         self.build_url(from).trim_end_matches('/') == destination.trim_end_matches('/')
     }
 
-    /// Extract the path component of a URL (everything after `host[:port]`),
-    /// or `""` if the URL has no path beyond the authority.
+    /// Extract the path component of a URL (everything after `host[:port]`,
+    /// up to a `?query` or `#fragment`), or `""` if the URL has no path
+    /// beyond the authority: a slash inside the query is not a path.
     /// Best-effort string parser: avoids pulling in `url` for one call.
     fn url_path_component(url: &str) -> &str {
         let after_scheme = match url.find("://") {
             Some(i) => &url[i + 3..],
             None => url,
         };
-        match after_scheme.find('/') {
-            Some(i) => &after_scheme[i..],
+        let before_query =
+            &after_scheme[..after_scheme.find(['?', '#']).unwrap_or(after_scheme.len())];
+        match before_query.find('/') {
+            Some(i) => &before_query[i..],
             None => "",
         }
     }
