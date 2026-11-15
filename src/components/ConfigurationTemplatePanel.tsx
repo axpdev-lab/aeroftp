@@ -158,6 +158,13 @@ interface Props {
     onBusyChange?: (busy: boolean) => void;
 }
 
+/** What a consent to keep a security-relaxing option is given for: the
+ *  block's name, the option and the value reviewed. A preview that moves the
+ *  block keeps it; one that changes the block or the value drops it. */
+function relaxationIdentity(sec: ImportedSecurity, relaxation: { key: string; value: string }): string {
+    return JSON.stringify([sec.name, relaxation.key, relaxation.value]);
+}
+
 function actionBadgeClass(action: TemplatePlannedAction): string {
     switch (action) {
         case 'add':
@@ -203,6 +210,10 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
     const [warningNote, setWarningNote] = useState<string | null>(null);
 
     const requestSeqRef = useRef(0);
+    // Whether the selection was set by a preview of this source: only the
+    // first one selects every importable block, so an explicit None survives
+    // the previews that follow (a secret form, a mode change).
+    const selectionInitializedRef = useRef(false);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const lastDebouncedTextRef = useRef<string>('');
 
@@ -216,11 +227,25 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         };
     }, []);
 
+    /** A pending close of an earlier import, cancelled when the source
+     *  changes or another import starts. */
+    const cancelPendingClose = useCallback(() => {
+        if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+    }, []);
+
     const resetSelectionAndPolicies = useCallback(() => {
+        cancelPendingClose();
+        selectionInitializedRef.current = false;
         setSecretForms({});
         setSelectedBlocks(new Set());
         setKeptRelaxed(new Set());
-    }, []);
+    }, [cancelPendingClose]);
+
+    // An earlier import's pending close never ends a later source's work.
+    useEffect(() => {
+        cancelPendingClose();
+    }, [textContent, filePath, sourceTab, cancelPendingClose]);
 
     // Route dropped template file into File mode directly.
     useEffect(() => {
@@ -267,30 +292,23 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
             });
             if (seq !== requestSeqRef.current) return;
             setPreview(report);
+            const initialized = selectionInitializedRef.current;
+            selectionInitializedRef.current = true;
             setSelectedBlocks(prev => {
                 const next = new Set<string>();
-                const existingKnown = prev.size > 0;
                 for (const row of report.rows) {
                     if (row.action === 'skip') continue;
-                    if (!existingKnown || prev.has(row.blockName)) {
-                        next.add(row.blockName);
-                    }
-                }
-                if (next.size === 0 && !existingKnown) {
-                    for (const row of report.rows) {
-                        if (row.action !== 'skip') next.add(row.blockName);
-                    }
+                    if (!initialized || prev.has(row.blockName)) next.add(row.blockName);
                 }
                 return next;
             });
+            // A consent stays only on the option it was given for: the same
+            // block, key and value (`relaxationIdentity`), wherever the block
+            // now sits.
             setKeptRelaxed(prev => {
-                const allowed = new Set<string>();
-                for (const sec of report.security) {
-                    for (const r of [...sec.reset, ...sec.kept]) {
-                        allowed.add(keptRelaxationId(sec.fileIndex, r.key));
-                    }
-                }
-                return new Set([...prev].filter(id => allowed.has(id)));
+                const allowed = new Set(report.security.flatMap(sec =>
+                    [...sec.reset, ...sec.kept].map(r => relaxationIdentity(sec, r))));
+                return new Set([...prev].filter(identity => allowed.has(identity)));
             });
         } catch (err) {
             if (seq !== requestSeqRef.current) return;
@@ -361,6 +379,15 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         }));
     };
 
+    // The review's checkbox ids (by position) and the consents (by identity).
+    const relaxationIdentityById = useMemo(() => new Map((preview?.security ?? []).flatMap(sec =>
+        [...sec.reset, ...sec.kept].map(r => [keptRelaxationId(sec.fileIndex, r.key), relaxationIdentity(sec, r)] as const))),
+    [preview]);
+    const keptRelaxedIds = useMemo(
+        () => new Set([...relaxationIdentityById].filter(([, identity]) => keptRelaxed.has(identity)).map(([id]) => id)),
+        [relaxationIdentityById, keptRelaxed],
+    );
+
     const selectableRows = useMemo(
         () => (preview ? preview.rows.filter(r => r.action !== 'skip') : []),
         [preview],
@@ -378,6 +405,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
 
     const handleImport = async () => {
         if (!currentInput || !preview || activeSelectedCount === 0 || missingSecretFormCount > 0 || importing) return;
+        cancelPendingClose();
         setImporting(true);
         setError(null);
         setSuccess(null);
@@ -386,7 +414,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
         try {
             const keepRelaxedList = preview.security.flatMap(sec =>
                 [...sec.reset, ...sec.kept]
-                    .filter(r => keptRelaxed.has(keptRelaxationId(sec.fileIndex, r.key)))
+                    .filter(r => keptRelaxed.has(relaxationIdentity(sec, r)))
                     .map(r => ({ fileIndex: sec.fileIndex, key: r.key })),
             );
             const activeSecretForms = Object.fromEntries(
@@ -784,13 +812,17 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     {preview.security.length > 0 && (
                         <ImportSecurityReview
                             entries={preview.security}
-                            kept={keptRelaxed}
-                            onToggle={id => setKeptRelaxed(prev => {
-                                const next = new Set(prev);
-                                if (next.has(id)) next.delete(id);
-                                else next.add(id);
-                                return next;
-                            })}
+                            kept={keptRelaxedIds}
+                            onToggle={id => {
+                                const identity = relaxationIdentityById.get(id);
+                                if (identity === undefined) return;
+                                setKeptRelaxed(prev => {
+                                    const next = new Set(prev);
+                                    if (next.has(identity)) next.delete(identity);
+                                    else next.add(identity);
+                                    return next;
+                                });
+                            }}
                         />
                     )}
                 </div>

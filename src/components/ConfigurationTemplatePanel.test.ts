@@ -747,3 +747,134 @@ describe('ConfigurationTemplatePanel', () => {
         expect(rows[1].textContent).not.toContain('settings.templateDuplicateInTemplate');
     });
 });
+
+describe('ConfigurationTemplatePanel review state across previews', () => {
+    type Block = { name: string; relaxed?: boolean; secret?: boolean };
+    /** A preview report of `blocks`, in that order; `forms` are the chosen
+     *  secret forms. */
+    const report = (blocks: Block[], forms: Record<string, string> = {}) => ({
+        rows: blocks.map((block, fileIndex) => ({
+            fileIndex, blockName: block.name, targetName: block.name, startLine: 1 + fileIndex * 4,
+            protocol: 'webdav', providerId: null, host: `${block.name}.example.com`, port: 443, username: 'u',
+            hasCredential: false, hasSecretInput: !!block.secret, looksObscured: false,
+            secretForm: forms[block.name] ?? null, needsSecretFormChoice: !!block.secret && !forms[block.name],
+            existingMatchId: null, existingMatchName: null, action: 'add', duplicateInTemplate: false,
+            secretDisposition: 'none', secretNote: '',
+        })),
+        skipped: [], warnings: [], parseIssues: [],
+        security: blocks.flatMap((block, fileIndex) => block.relaxed
+            ? [{ fileIndex, name: block.name, reset: [{ key: 'verifyCert', value: 'false' }], kept: [] }]
+            : []),
+        secretChoiceBlocks: blocks.filter(block => block.secret).map(block => block.name),
+        totalBlocks: blocks.length, capped: false, sourceLabel: 'template',
+        digestSha256: 'd', planDigestSha256: 'p',
+    });
+    const importResult = {
+        applied: [], skippedExisting: [], skippedUnselected: [], skippedInvalid: [], warnings: [], parseIssues: [],
+        security: [], oauthAppsKept: [], sharedSecretsFailed: [], stored: [], digestSha256: 'd',
+    };
+
+    async function renderPanel(onClose = vi.fn()) {
+        await act(async () => {
+            root.render(createElement(ActivityLogProvider, null, createElement(ConfigurationTemplatePanel, {
+                onProfilesStored: vi.fn(), onBack: vi.fn(), onClose,
+            })));
+        });
+        return onClose;
+    }
+    async function type(text: string) {
+        const textarea = host.querySelector<HTMLTextAreaElement>('[data-testid="template-textarea"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(textarea, text);
+            textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        await act(async () => { vi.advanceTimersByTime(300); });
+        await flush();
+    }
+    const buttonWithText = (text: string) =>
+        [...host.querySelectorAll('button')].find(button => button.textContent?.includes(text))!;
+    const lastImportOptions = () => vi.mocked(invoke).mock.calls.filter(([cmd]) => cmd === 'import_configuration_template').slice(-1)[0]?.[1] as
+        { options: { selectedBlocks: string[]; keepRelaxed: { fileIndex: number; key: string }[] } } | undefined;
+
+    it('keeps an explicit None through the preview a secret form change runs', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+            if (cmd === 'preview_configuration_template') {
+                const forms = (args as { options: { secretForms?: Record<string, string> } }).options.secretForms ?? {};
+                return report([{ name: 'alpha', secret: true }, { name: 'beta' }], forms);
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[alpha]\n[beta]\n');
+        await act(async () => { buttonWithText('settings.templateSelectNone').click(); });
+        const radios = host.querySelectorAll<HTMLInputElement>('[data-testid="template-secret-choice-alpha"] input[type="radio"]');
+        await act(async () => { radios[0].click(); });
+        await flush();
+        expect(vi.mocked(invoke)).toHaveBeenLastCalledWith('preview_configuration_template', expect.objectContaining({
+            options: expect.objectContaining({ secretForms: { alpha: 'clear' } }),
+        }));
+        expect(host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.disabled).toBe(true);
+    });
+
+    it("keeps a consent on alpha's option when the blocks are reordered, and never moves it to beta", async () => {
+        let order: Block[] = [{ name: 'alpha', relaxed: true }, { name: 'beta', relaxed: true }];
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') return report(order);
+            if (cmd === 'import_configuration_template') return importResult;
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[alpha]\n[beta]\n');
+        await act(async () => { host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:verifyCert"]')!.click(); });
+        order = [{ name: 'beta', relaxed: true }, { name: 'alpha', relaxed: true }];
+        await type('[beta]\n[alpha]\n');
+        expect(host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:verifyCert"]')!.checked).toBe(false);
+        expect(host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-1:verifyCert"]')!.checked).toBe(true);
+        await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click(); });
+        await flush();
+        expect(lastImportOptions()!.options.keepRelaxed).toEqual([{ fileIndex: 1, key: 'verifyCert' }]);
+    });
+
+    it('drops the consent when the reviewed value changes', async () => {
+        let value = 'false';
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') {
+                const r = report([{ name: 'alpha', relaxed: true }]);
+                r.security[0].reset[0].value = value;
+                return r;
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[alpha]\n');
+        await act(async () => { host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:verifyCert"]')!.click(); });
+        value = 'no';
+        await type('[alpha]\nverifyCert = no\n');
+        expect(host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:verifyCert"]')!.checked).toBe(false);
+    });
+
+    it('does not let an earlier import close the dialog while a later one is pending', async () => {
+        let imports = 0;
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') return report([{ name: 'alpha' }]);
+            if (cmd === 'import_configuration_template') {
+                imports += 1;
+                if (imports === 1) return importResult;
+                return new Promise(() => undefined);
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        const onClose = await renderPanel();
+        await type('[alpha]\n');
+        const submit = () => host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!;
+        await act(async () => { submit().click(); });
+        await flush();
+        // A new source inside the close delay, then a second import.
+        await type('[alpha]\nport = 8443\n');
+        await act(async () => { submit().click(); });
+        await flush();
+        await act(async () => { vi.advanceTimersByTime(3000); });
+        expect(imports).toBe(2);
+        expect(onClose).not.toHaveBeenCalled();
+    });
+});
