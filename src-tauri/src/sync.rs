@@ -1550,10 +1550,27 @@ pub async fn sync_tree_core(
     // transport's begin_batch returns NoopBatch (no session-reuse
     // support), or when delta policy is off: in those cases the
     // perform_upload/download functions fall through to the existing
-    // single-shot try_delta_transfer / classic provider path.
+    // single-shot try_delta_transfer / classic provider path. A refused
+    // batch login stops the run (CodeRabbit 4575991598). This body runs
+    // only dry runs (`should_route_sync_to_dag`), so neither this open nor
+    // the remote root above runs here; a real run opens its batch in
+    // `execute_sync_dag`, before its first write.
     let mut delta_batch: Option<Box<dyn DeltaBatch>> =
         if !opts.dry_run && matches!(opts.delta_policy, DeltaPolicy::Delta) {
-            crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await
+            match crate::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+                Ok(batch) => batch,
+                Err(refusal) => {
+                    report.errors.push(SyncError {
+                        rel_path: String::new(),
+                        operation: "policy",
+                        message: format!("sync refused, nothing was written: {refusal}"),
+                        decision_policy: opts.delta_policy,
+                    });
+                    report.elapsed_secs = start.elapsed().as_secs_f64();
+                    sink.on_phase(SyncPhase::Done);
+                    return report;
+                }
+            }
         } else {
             None
         };

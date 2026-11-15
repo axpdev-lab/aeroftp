@@ -113,17 +113,65 @@ impl DeltaTransport for AerorsyncDeltaTransport {
 
     /// Open a session-reuse batch. A failed handshake degrades to
     /// [`crate::delta_transport::NoopBatch`] so the sync loop falls back
-    /// to the single-shot per-file path without losing the file.
+    /// to the single-shot per-file path without losing the file, except a
+    /// login refusal ([`AerorsyncErrorKind::refuses_the_login`], the rule
+    /// the probe mapping reads too): that one is returned as the hard
+    /// rejection it is, so the run stops before anything is written
+    /// (CodeRabbit 4575991598).
+    ///
+    /// [`AerorsyncErrorKind::refuses_the_login`]: crate::aerorsync::types::AerorsyncErrorKind::refuses_the_login
     async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
         match self.open_batch().await {
             Ok(batch) => Ok(Box::new(batch)),
-            Err(e) => {
-                tracing::warn!(
-                    "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
-                     falling back to NoopBatch: sync loop will use single-shot per-file path",
-                    e
-                );
-                Ok(Box::new(crate::delta_transport::NoopBatch::new()))
+            Err(e) => batch_login_failed(e),
+        }
+    }
+}
+
+/// What a batch whose login failed with `e` becomes: the hard rejection of
+/// a login refusal, or a [`crate::delta_transport::NoopBatch`].
+fn batch_login_failed(
+    e: crate::aerorsync::types::AerorsyncError,
+) -> Result<Box<dyn DeltaBatch>, RsyncError> {
+    if e.kind.refuses_the_login() {
+        return Err(probe_error_to_rsync(e));
+    }
+    tracing::warn!(
+        "AerorsyncDeltaTransport::begin_batch: russh connect failed ({}); \
+         falling back to NoopBatch: sync loop will use single-shot per-file path",
+        e
+    );
+    Ok(Box::new(crate::delta_transport::NoopBatch::new()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind};
+
+    /// CodeRabbit 4575991598: a batch login that ends with a login refusal
+    /// is the hard rejection the probe would give, naming its kind; every
+    /// other kind degrades to the single-shot path. The four refusals are
+    /// named here, not read back from `refuses_the_login`.
+    #[test]
+    fn a_refused_batch_login_is_a_hard_rejection_and_nothing_else_is() {
+        const REFUSALS: [AerorsyncErrorKind; 4] = [
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
+        ];
+        for kind in AerorsyncErrorKind::ALL {
+            let outcome = batch_login_failed(AerorsyncError::new(kind, "login detail"));
+            match outcome {
+                Err(RsyncError::HardRejection(msg)) if REFUSALS.contains(&kind) => {
+                    assert!(msg.contains(&format!("({kind:?})")), "{kind:?}: {msg}");
+                }
+                Ok(batch) if !REFUSALS.contains(&kind) => {
+                    assert!(batch.is_noop(), "{kind:?}");
+                }
+                Err(other) => panic!("{kind:?} gave {other:?}"),
+                Ok(_) => panic!("{kind:?} gave a batch"),
             }
         }
     }

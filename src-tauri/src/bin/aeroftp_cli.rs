@@ -57049,6 +57049,76 @@ mod missing_root_note_tests {
     }
 }
 
+/// CodeRabbit 4575991598, the CLI's half: `cmd_sync` tries the delta login
+/// before anything it writes, and a refusal returns before any of it. Read
+/// from the source, in order: the preflight `open_delta_batch`, its refusal
+/// branch's return, then the first local write (the copy-dest copy), the
+/// first folder creation and every provider write. A refusal exits with the
+/// authentication code, 6.
+#[cfg(test)]
+mod sync_delta_login_order_tests {
+    use super::*;
+
+    fn cmd_sync_body() -> &'static str {
+        let source = include_str!("aeroftp_cli.rs");
+        let start = source.find("async fn cmd_sync(").expect("cmd_sync");
+        let end = start + source[start..].find("\n}\n").expect("cmd_sync's end");
+        &source[start..end]
+    }
+
+    #[test]
+    fn a_refused_delta_login_stops_the_cli_sync_before_its_first_write() {
+        let body = cmd_sync_body();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("{needle} is in cmd_sync"))
+        };
+        let preflight = at("delta_sync_rsync::open_delta_batch(provider.as_mut()).await");
+        let refused = preflight + body[preflight..].find("Err(refusal) =>").unwrap();
+        let returned = refused + body[refused..].find("return code.into();").unwrap();
+        let copy = at("std::fs::copy(src, dst)");
+        let mkdir = at("mkdir_parent_component(provider.as_mut()");
+        assert!(preflight < refused && refused < returned && returned < copy);
+        assert!(copy < mkdir);
+        for write in [
+            "provider.upload(",
+            "provider.mkdir(",
+            "provider.delete(",
+            "provider.rmdir(",
+            "provider.rename(",
+            "provider.as_mut().upload(",
+            "provider.as_mut().mkdir(",
+            "provider.as_mut().delete(",
+            "provider.as_mut().rmdir(",
+            "provider.as_mut().rename(",
+        ] {
+            if let Some(first) = body.find(write) {
+                assert!(returned < first, "{write} comes before the delta login");
+            }
+        }
+        // The preflight is the first delta login of the run: both legs reuse
+        // what it opened before they would open one of their own.
+        assert_eq!(
+            at("open_delta_batch("),
+            preflight + "delta_sync_rsync::".len()
+        );
+    }
+
+    #[test]
+    fn a_refused_delta_login_exits_with_the_authentication_code() {
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::AuthenticationFailed(
+                "native hard rejection (PinnedLoginRefused): refused".into()
+            )),
+            6
+        );
+        assert_eq!(
+            provider_error_to_exit_code(&ProviderError::HostKeyRejected("x".into())),
+            6
+        );
+    }
+}
+
 /// `sync`: plan from the two listings, then run the transfers, renames,
 /// deletes and the empty-directory cleanup, and answer one exit code out of
 /// several facts. Ctrl-C in any phase ends the run interrupted (130,
@@ -58283,6 +58353,38 @@ async fn cmd_sync(
         };
     }
 
+    // CodeRabbit 4575991598: the delta login is tried before the first
+    // write of the run (the copies below, the parent folders, the uploads):
+    // a refused one stops the run with nothing written. What it gives (a
+    // batch, or `None` for no batch) is taken by the first delta leg that
+    // runs; a later leg opens its own, and a refusal there fails that leg's
+    // remaining files, none of which goes over the classic path.
+    #[cfg(feature = "aerorsync")]
+    let mut preflight_batch: Option<
+        Option<Box<dyn ftp_client_gui_lib::delta_transport::DeltaBatch>>,
+    > = None;
+    #[cfg(feature = "aerorsync")]
+    if use_aerorsync_batch
+        && !error_correction_enabled
+        && !(to_upload.is_empty() && to_download.is_empty())
+    {
+        match ftp_client_gui_lib::delta_sync_rsync::open_delta_batch(provider.as_mut()).await {
+            Ok(batch) => preflight_batch = Some(batch),
+            Err(refusal) => {
+                let code = provider_error_to_exit_code(&ProviderError::AuthenticationFailed(
+                    refusal.clone(),
+                ));
+                print_error(
+                    format,
+                    &format!("sync refused, nothing was written: {refusal}"),
+                    code,
+                );
+                let _ = provider.disconnect().await;
+                return code.into();
+            }
+        }
+    }
+
     // Execute --copy-dest local copies first
     for (src, dst) in &copy_dest_ops {
         if let Some(parent) = Path::new(dst).parent() {
@@ -58405,8 +58507,12 @@ async fn cmd_sync(
         use ftp_client_gui_lib::delta_sync_rsync::{
             open_delta_batch, try_delta_transfer_with_batch, SyncDirection as DeltaDir,
         };
-        match open_delta_batch(provider.as_mut()).await {
-            Some(mut batch) => {
+        let opened = match preflight_batch.take() {
+            Some(batch) => Ok(batch),
+            None => open_delta_batch(provider.as_mut()).await,
+        };
+        match opened {
+            Ok(Some(mut batch)) => {
                 if !quiet {
                     eprintln!(
                         "AerorsyncBatch engaged: 1 SSH session for {} upload(s)",
@@ -58458,7 +58564,14 @@ async fn cmd_sync(
                 leftover_upload_jobs = pending;
                 used_batch_for_uploads = true;
             }
-            None => {
+            // A login refused after the run wrote something: no upload goes
+            // over the classic path in its place.
+            Err(refusal) => {
+                for (rel, _, _, _) in leftover_upload_jobs.drain(..) {
+                    errors.push(format!("upload {rel}: refused: {refusal}"));
+                }
+            }
+            Ok(None) => {
                 if !quiet {
                     eprintln!(
                         // The reasons are the ones `open_delta_batch` really
@@ -58768,8 +58881,12 @@ async fn cmd_sync(
             .filter(|(rel, _, _, _)| local_map.contains_key(rel.as_str()))
             .count();
         if eligible > 0 {
-            match open_delta_batch(provider.as_mut()).await {
-                Some(mut batch) => {
+            let opened = match preflight_batch.take() {
+                Some(batch) => Ok(batch),
+                None => open_delta_batch(provider.as_mut()).await,
+            };
+            match opened {
+                Ok(Some(mut batch)) => {
                     if !quiet {
                         // G106: "eligible", not "will be transferred". The
                         // budget below can still turn some of these away, and
@@ -58873,7 +58990,14 @@ async fn cmd_sync(
                     }
                     leftover_download_jobs = pending;
                 }
-                None => {
+                // A login refused after the run wrote something: no download
+                // goes over the classic path in its place.
+                Err(refusal) => {
+                    for (rel, _, _, _) in leftover_download_jobs.drain(..) {
+                        errors.push(format!("download {rel}: refused: {refusal}"));
+                    }
+                }
+                Ok(None) => {
                     if !quiet {
                         eprintln!(
                             "--delta requested but the provider/transport is not delta-eligible \
