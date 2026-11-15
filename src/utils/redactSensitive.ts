@@ -509,6 +509,14 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
         pattern: new RegExp(String.raw`(\b${SECRET_NAME}\s*[:=]\s*)${SECRET_VALUE}`, 'gi'),
         replacement: '$1***REDACTED***',
     },
+    // The signature of a signed URL (an S3 presigned URL, an Azure SAS, a
+    // CloudFront or Google signed URL): whoever holds it holds the access.
+    // Both entry points mask it, and the Rust twin mirrors the two rules.
+    // `key` and `sig` go only as a query parameter (after `?`, `&`, or the
+    // `;` of `&amp;` in an XML body), so an object key named in the error
+    // text stays.
+    { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    { pattern: /([?&;](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
 ];
 
 export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [
@@ -540,22 +548,12 @@ export function redactSensitive(msg: string): string {
     return applyRules(msg, REDACTION_PATTERNS);
 }
 
-// Signed URL parameters and the userinfo of any URL. They are not part of
-// `REDACTION_PATTERNS`, whose rules the Rust twin mirrors. `key` and `sig` go
-// only as a query parameter, so an object key named in the error text stays.
-const SIGNED_URL_PATTERNS: ReadonlyArray<RedactionRule> = [
-    { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
-    { pattern: /([?&](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
-    // The userinfo of a URL of any scheme is the shared rule's, in
-    // `CREDENTIAL_PATTERNS` (S1): both entry points mask the same URLs.
-];
-
 /**
  * Masks credentials in an error text a user will read (a sync journal, report
  * or status line) and keeps the rest of it: paths, hosts, codes and the error
  * wording. Unlike `redactSensitive`, emails, addresses, home folders and hashes stay.
  */
-export const CREDENTIAL_RULES: ReadonlyArray<RedactionRule> = [...CREDENTIAL_PATTERNS, ...SIGNED_URL_PATTERNS];
+export const CREDENTIAL_RULES: ReadonlyArray<RedactionRule> = CREDENTIAL_PATTERNS;
 
 export function redactCredentials(msg: string): string {
     if (!msg) return msg;
