@@ -184,6 +184,8 @@ export function fixture(options: Options = {}) {
     if (['provider_delete_file', 'delete_remote_file', 'delete_local_file', 'provider_rename', 'rename_remote_file', 'provider_server_copy'].includes(command)) return undefined;
     if (command === 'aerovault_overlay_delete_entries') return args!.entryPaths.length;
     if (command === 'aerovault_overlay_extract_entry') return undefined;
+    // The vault's listing reads the session's current folder: the panel's.
+    if (command === 'aerovault_overlay_list') return { files: listingOf(REMOTE), current_path: REMOTE };
     if (command === 'aerovault_overlay_add_file') return `${args!.remoteDir ?? ''}/${args!.remotePlainName}`;
     throw new Error(`Unexpected IPC: ${command}`);
   });
@@ -332,8 +334,13 @@ export function fixture(options: Options = {}) {
     batchCancelledRef.current = true;
     nativeCancel.current = true;
   };
+  /** The user opens another AeroVault on the same connection: the server and
+   *  its epoch stay, the vault session changes. */
+  const switchVault = (sessionId = 'vault-session-b') => {
+    (context.aeroVaultOverlaySession as { sessionId: string }).sessionId = sessionId;
+  };
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { hardStop, nativeCancel, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { hardStop, nativeCancel, switchVault, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

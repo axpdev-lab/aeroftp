@@ -125,7 +125,7 @@ describe('a queued transfer', () => {
             isConnected: true,
             remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
-            activeSessionId: 'A',
+            activeSessionId: 'A', aeroVaultOverlaySession: null,
             liveConnectionParams: session.connectionParams,
             isSameConnection,
             savedProfileIdOf,
@@ -161,7 +161,7 @@ describe('a queued transfer', () => {
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
@@ -183,7 +183,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
@@ -717,14 +717,45 @@ describe('a local file uploaded into another folder of a vault overlay', () => {
         expect(adds[0][1]).toMatchObject({ remoteDir: INBOX, remotePlainName: 'up.txt' });
     });
 
-    it('a Paste into it never writes into the current folder', async () => {
-        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [INBOX]: [] }, vaultOverlay: true });
-        f.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
-        await f.clipboardPaste(true, INBOX);
-        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
-        // Its overwrite listing cannot read another vault folder: the Paste is
-        // refused there; a write, if any, names the Inbox.
-        for (const [, args] of adds) expect(args).toMatchObject({ remoteDir: INBOX });
+    // CodeRabbit CLI on the combined range of #1561: a file staged in vault A
+    // went to vault B, opened since on the same connection: the queued target
+    // did not record the vault session, and the server and epoch are the same.
+    it('a file staged in one vault sends nothing to another vault opened since', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] }, vaultOverlay: true, autoStart: false });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'staged' });
+        f.switchVault();
+        const [start] = [...f.retryCallbacksRef.current.values()];
+        f.transferQueue.startStaged('q0');
+        await start();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file')).toEqual([]);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedOverlayChanged' });
+    });
+
+    // The editor reads and saves through the provider, never a vault session:
+    // its target leaves the vault out, so a vault opened meanwhile refuses
+    // no save of a provider file.
+    it('the editor\'s remote target leaves the vault session out', () => {
+        expect(APP_CODE).toContain('changedSince: (target: QueuedTarget) => queuedTargetProblem({ ...target, aeroVault: aeroVaultOverlaySession?.sessionId ?? null }) !== null,');
+    });
+
+    // A Paste reaches the vault upload in the folder its listing can read,
+    // the session's current one, and names it; into another vault folder its
+    // overwrite listing refuses it (overwriteDestination.ts), and nothing is
+    // written, into the current folder least of all.
+    it('a Paste names its folder to the vault upload, and one into another vault folder writes nothing', async () => {
+        const here = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] }, vaultOverlay: true });
+        here.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        await here.clipboardPaste(true, REMOTE);
+        const adds = here.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds).toHaveLength(1);
+        expect(adds[0][1]).toMatchObject({ remoteDir: REMOTE, remotePlainName: 'up.txt' });
+
+        const other = fixture({ folders: { [LOCAL]: [local('up.txt')], [INBOX]: [] }, vaultOverlay: true });
+        other.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        await other.clipboardPaste(true, INBOX);
+        expect(other.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file')).toEqual([]);
+        expect(other.notify.error).toHaveBeenCalled();
     });
 });
 
@@ -841,6 +872,8 @@ describe('a local file pasted into a remote folder', () => {
     // the panel's folder when the upload runs, here REMOTE). The upload stays
     // in the captured folder, and a Cut removes its source only after the
     // upload landed.
+    // Holds every epoch read until the release: the Paste's target
+    // preparation (a local source's Cut prepares none; the Paste reads it).
     const deferredEpoch = (f: ReturnType<typeof fixture>) => {
         let release!: () => void;
         const held = new Promise<void>(resolve => { release = resolve; });
@@ -851,6 +884,8 @@ describe('a local file pasted into a remote folder', () => {
         });
         return release;
     };
+    // A macrotask: every microtask the Paste can run without the epoch has run.
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
     const sourceDeletes = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
         .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'delete_local_file');
     const uploads = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
@@ -858,10 +893,11 @@ describe('a local file pasted into a remote folder', () => {
 
     it('with its preparation deferred, uploads into the captured folder and cleans up the Cut after it', async () => {
         const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
-        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
         const release = deferredEpoch(f);
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
         const paste = f.clipboardPaste(true, INBOX);
-        await Promise.resolve();
+        await settle();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_gui_target_epoch')).toHaveLength(1);
         expect(uploads(f)).toEqual([]);
         expect(sourceDeletes(f)).toEqual([]);
         release();
@@ -874,9 +910,13 @@ describe('a local file pasted into a remote folder', () => {
 
     it('with its preparation deferred, keeps the Cut\'s source when the upload fails', async () => {
         const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: command => (command === 'provider_upload_file' ? 'permission denied' : undefined) });
-        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
         const release = deferredEpoch(f);
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
         const paste = f.clipboardPaste(true, INBOX);
+        await settle();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_gui_target_epoch')).toHaveLength(1);
+        expect(uploads(f)).toEqual([]);
+        expect(sourceDeletes(f)).toEqual([]);
         release();
         await paste;
         expect(f.written()).toEqual([`${INBOX}/up.txt`]);
@@ -1135,7 +1175,7 @@ describe('a direct remote action', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };

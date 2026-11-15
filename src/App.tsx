@@ -2869,7 +2869,10 @@ const App: React.FC = () => {
     toast,
     remoteTarget: {
       snapshot: () => snapshotQueuedTarget(),
-      changedSince: (target: QueuedTarget) => queuedTargetProblem(target) !== null,
+      // The editor reads and saves through the provider itself
+      // (`preview_remote_file`, `save_remote_file`), never through an
+      // AeroVault session: another vault opened meanwhile changes nothing.
+      changedSince: (target: QueuedTarget) => queuedTargetProblem({ ...target, aeroVault: aeroVaultOverlaySession?.sessionId ?? null }) !== null,
       changedMessage: () => t('toast.openedOnAnotherServer'),
     },
   });
@@ -11820,6 +11823,7 @@ const App: React.FC = () => {
     connection: connectionNumberOf(liveConnectionParams),
     oauthLogins: oauthLoginCount(oauthLoginKey(liveConnectionParams.protocol, liveProfileId())),
     overlay: liveOverlay(),
+    aeroVault: aeroVaultOverlaySession?.sessionId ?? null,
   }));
 
   /** A queued transfer's Start or Retry, bound to the server it was queued
@@ -11907,6 +11911,9 @@ const App: React.FC = () => {
       return 'transfer.queuedForAnotherServer';
     }
     if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
+    // Another AeroVault opened on the same connection: the server and its
+    // epoch are unchanged, so the vault session is what refuses the write.
+    if ((aeroVaultOverlaySession?.sessionId ?? null) !== queuedFor.aeroVault) return 'transfer.queuedOverlayChanged';
     return null;
   });
 
