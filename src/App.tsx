@@ -29,6 +29,7 @@ import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
 import type { BackendSwapDetail } from './hooks/useOAuth2';
+import { getConnectionPreset } from './providers/connectionManifest';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -7355,6 +7356,19 @@ const App: React.FC = () => {
         ...params,
         port: params.port || 443,
       };
+    }
+    // A named WebDAV preset saved with an empty host (LifetimeCloud, Puter)
+    // connects to the manifest's server, as the CLI and the bridges do
+    // (`apply_webdav_profile_defaults`): blank, the resume of a saved
+    // profile, a tab switch and the quick connect stopped at "fill in the
+    // endpoint". Only the preset's own server: `custom-webdav` and the
+    // protocol default leave a blank host blank.
+    if (protocol === 'webdav' && !(params.server ?? '').trim() && params.providerId) {
+      const preset = getConnectionPreset(params.providerId);
+      const server = preset?.protocol === 'webdav' && !preset.generic
+        ? String(preset.defaults.server ?? '').trim()
+        : '';
+      if (server) return { ...params, server };
     }
     return params;
   };
