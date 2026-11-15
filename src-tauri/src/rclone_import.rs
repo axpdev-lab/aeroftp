@@ -855,6 +855,27 @@ fn rclone_config_dir(config_path: &Path) -> Option<std::path::PathBuf> {
         .map(Path::to_path_buf)
 }
 
+/// A key path written under the file's own folder (`${RCLONE_CONFIG_DIR}/...`
+/// or `$RCLONE_CONFIG_DIR/...` with no other variable) joined onto that folder
+/// with `Path::push`, one component at a time, so the platform separator is
+/// used: a Windows folder in verbatim form (`\\?\C:\...`) does not accept `/`.
+/// `None` for any other path, which keeps the textual expansion.
+fn join_under_config_dir(key_file: &str, config_dir: Option<&Path>) -> Option<String> {
+    let dir = config_dir?;
+    let rest = key_file
+        .strip_prefix("${RCLONE_CONFIG_DIR}")
+        .or_else(|| key_file.strip_prefix("$RCLONE_CONFIG_DIR"))?;
+    if !rest.starts_with(['/', '\\']) || rest.contains('$') {
+        return None;
+    }
+    let mut joined = dir.to_path_buf();
+    for component in rest.split(['/', '\\']).filter(|c| !c.is_empty()) {
+        joined.push(component);
+    }
+    let joined = joined.to_string_lossy().into_owned();
+    (joined.len() <= MAX_RCLONE_KEY_PATH_BYTES).then_some(joined)
+}
+
 /// Expand every `key_file` the way rclone does ([`expand_rclone_path`]) once,
 /// where the folder of the file is known.
 fn expand_rclone_key_files(
@@ -863,7 +884,9 @@ fn expand_rclone_key_files(
 ) -> Result<(), String> {
     for (name, remote) in sections.iter_mut() {
         if let Some(key_file) = remote.get_mut("key_file") {
-            if key_file.contains('$') {
+            if let Some(joined) = join_under_config_dir(key_file, config_dir) {
+                *key_file = joined;
+            } else if key_file.contains('$') {
                 *key_file = expand_rclone_path(key_file, config_dir).ok_or_else(|| {
                     format!(
                         "the key_file of '{}' expands past {} bytes, which names no file; \
@@ -13721,6 +13744,36 @@ host = sftp://u:TopSecret99@sftp.example.test
                 "composed URL for {name} doubled basePath: {composed}"
             );
         }
+    }
+
+    /// A key path under the file's folder is joined with the platform's own
+    /// separator, component by component; any other variable keeps the
+    /// textual expansion.
+    #[test]
+    fn a_key_path_under_the_config_folder_is_joined_onto_it() {
+        let dir = Path::new("/srv/templates");
+        assert_eq!(
+            join_under_config_dir("$RCLONE_CONFIG_DIR/keys/id_ed25519", Some(dir)),
+            Some(
+                dir.join("keys")
+                    .join("id_ed25519")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        );
+        assert_eq!(
+            join_under_config_dir("${RCLONE_CONFIG_DIR}/id_ed25519", Some(dir)),
+            Some(dir.join("id_ed25519").to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            join_under_config_dir("$RCLONE_CONFIG_DIRX/id", Some(dir)),
+            None
+        );
+        assert_eq!(
+            join_under_config_dir("$RCLONE_CONFIG_DIR/$USER/id", Some(dir)),
+            None
+        );
+        assert_eq!(join_under_config_dir("$RCLONE_CONFIG_DIR/id", None), None);
     }
 
     #[test]
