@@ -63,6 +63,21 @@ function shownFolderLabel(label: string): string {
     return url ? `${url[1]}${url[2]}/…` : label;
 }
 
+/**
+ * The profile with its folders as shown ([`shownFolderLabel`]), for the
+ * labels composed from them: masked before the `~/` prefix or any
+ * normalization is added, which a URL would no longer start or keep its
+ * `//` under. Display only: the folder saved is built from the profile.
+ */
+function withShownFolders(profile: ServerProfile): ServerProfile {
+    const overlay = profile.aeroCryptOverlay;
+    return {
+        ...profile,
+        initialPath: profile.initialPath && shownFolderLabel(profile.initialPath),
+        ...(overlay?.remoteScope ? { aeroCryptOverlay: { ...overlay, remoteScope: shownFolderLabel(overlay.remoteScope) } } : {}),
+    };
+}
+
 export function aeroCloudBase(profile: ServerProfile): string {
     // A folder with a `.`, `..` or empty step comes back as written, so the
     // wizard names it and refuses it (`aeroCloudFolderNotPlain`): normalized,
@@ -193,7 +208,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
         if (selected) setLocalFolder(selected as string);
     };
 
-    const rootLabel = `${profile ? aeroCloudBase(profile) : ''}/`;
+    const rootLabel = `${profile ? aeroCloudBase(withShownFolders(profile)) : ''}/`;
     // A sub-folder refused for an empty step is named as written: stripped,
     // `a//` would read `.../a/`, a folder with nothing wrong in it.
     const sub = subfolder.trim();
@@ -350,8 +365,8 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                         <div className={profile ? '' : 'opacity-50'}>
                             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">{t('cloud.remoteFolder')}</label>
                             <div className="flex items-stretch font-mono text-sm">
-                                <span className="flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 max-w-[55%] truncate" title={shownFolderLabel(rootLabel)}>
-                                    {shownFolderLabel(rootLabel)}
+                                <span className="flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 max-w-[55%] truncate" title={rootLabel}>
+                                    {rootLabel}
                                 </span>
                                 <input type="text" value={subfolder} onChange={(e) => setSubfolder(e.target.value)} disabled={!profile}
                                     placeholder={t('cloud.remoteSubfolderPlaceholder')} aria-label={t('cloud.remoteFolder')}
@@ -409,7 +424,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                 </div>
                             </div>
                             <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Folder size={14} className="shrink-0" /> {t('cloud.localFolder')}: <code className="truncate text-xs">{localFolder}</code></p>
-                            <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Server size={14} className="shrink-0" /> {t('cloud.remoteFolder')}: <code className="truncate text-xs">{shownFolderLabel(remoteLabel)}</code></p>
+                            <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Server size={14} className="shrink-0" /> {t('cloud.remoteFolder')}: <code className="truncate text-xs">{remoteLabel}</code></p>
                         </div>
                         {error && (
                             <div className="flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-700 dark:text-red-300">

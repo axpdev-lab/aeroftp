@@ -508,9 +508,12 @@ pub(crate) trait SwitchTargets {
         to: ProtonMode,
         initial_path: Option<&str>,
     ) -> Result<(), ProfileStoreError>;
-    /// Holds the syncs of the folders a failed switch could not put back,
-    /// until they are repaired: see [`refuse_an_unrepaired_folder`].
+    /// Holds the syncs of the folders a switch changes, before it changes
+    /// them, until it is done or they are repaired: see
+    /// [`refuse_an_unrepaired_folder`].
     fn hold_syncs(&mut self, left: &UnrepairedSwitch) -> Result<(), String>;
+    /// Releases the hold of the profile `profile_id`.
+    fn release_syncs(&mut self, profile_id: &str) -> Result<(), String>;
 }
 
 /// Puts back over `stored` the settings folder the switch changed from
@@ -875,15 +878,6 @@ pub(crate) fn apply_in(
             .count()
     };
 
-    let mut written = Vec::new();
-    for (path, bytes) in &writes {
-        if let Err(e) = crate::sync::atomic_write(path, bytes) {
-            let left = left_behind(roll_back(&written), None);
-            return Err(format!("sync history not moved, {left}: {e}"));
-        }
-        written.push(path.clone());
-    }
-
     let mut new_cloud = cloud.clone();
     let mut new_pairs = pairs.clone();
     let name = field(profile, "name").to_string();
@@ -930,21 +924,84 @@ pub(crate) fn apply_in(
             .map(|(_, wrote)| wrote.clone())
             .collect(),
     };
-    let hold = |targets: &mut dyn SwitchTargets, what: String| match targets.hold_syncs(&unrepaired)
-    {
-        Ok(()) => format!("{what}; its syncs are held until then"),
-        Err(e) => format!("{what}; its syncs could NOT be held ({e}), do not sync before"),
-    };
+    // The syncs of the folders the switch changes are held before any
+    // change, and released only when the switch is done or everything it
+    // changed in AeroCloud is back: a failure at any step, of a put back
+    // too, can never leave a sync free to run on a folder spelled for the
+    // other mode. A hold that cannot be written refuses the switch.
     if cloud_changed {
-        if let Err(e) = targets.store_cloud((cloud, pairs), &new_cloud, &new_pairs) {
-            let cloud = matches!(e, CloudStoreError::SettingsOnly(_)).then(|| {
-                hold(
-                    targets,
-                    cloud_left("the AeroCloud settings were updated and its pairs were not"),
-                )
+        if let Err(e) = targets.hold_syncs(&unrepaired) {
+            return Err(format!(
+                "AeroCloud syncs could not be held, nothing was changed: {e}"
+            ));
+        }
+    }
+    let (applied, folders_left) = write_switch(
+        targets,
+        &id,
+        to,
+        &plan,
+        (cloud, pairs),
+        (&new_cloud, &new_pairs),
+        cloud_changed,
+        &writes,
+        &moved,
+        &new_paths,
+        &roll_back,
+        &cloud_left,
+    );
+    if cloud_changed && !folders_left {
+        if let Err(e) = targets.release_syncs(&id) {
+            // Left behind, the record holds folders no sync names any more,
+            // or a profile already in its mode, which drops it at the next
+            // sync: it never holds a sync it should not.
+            tracing::warn!("proton mode switch: sync hold not released: {e}");
+        }
+    }
+    applied.map(|()| plan)
+}
+
+/// The writes of [`apply_in`] once the syncs are held, and whether they
+/// leave AeroCloud folders spelled for `to` while the profile stays in the
+/// other mode (the hold is then kept).
+#[allow(clippy::too_many_arguments)]
+fn write_switch(
+    targets: &mut dyn SwitchTargets,
+    id: &str,
+    to: ProtonMode,
+    plan: &SwitchPlan,
+    (cloud, pairs): (&CloudConfig, &CloudPairsConfig),
+    (new_cloud, new_pairs): (&CloudConfig, &CloudPairsConfig),
+    cloud_changed: bool,
+    writes: &[(PathBuf, Vec<u8>)],
+    moved: &[PathBuf],
+    new_paths: &HashSet<PathBuf>,
+    roll_back: &dyn Fn(&[PathBuf]) -> usize,
+    cloud_left: &dyn Fn(&str) -> String,
+) -> (Result<(), String>, bool) {
+    let held = |what: String| format!("{what}; its syncs are held until then");
+    let mut written = Vec::new();
+    for (path, bytes) in writes {
+        if let Err(e) = crate::sync::atomic_write(path, bytes) {
+            let left = left_behind(roll_back(&written), None);
+            return (Err(format!("sync history not moved, {left}: {e}")), false);
+        }
+        written.push(path.clone());
+    }
+
+    if cloud_changed {
+        if let Err(e) = targets.store_cloud((cloud, pairs), new_cloud, new_pairs) {
+            let settings_only = matches!(e, CloudStoreError::SettingsOnly(_));
+            let cloud = settings_only.then(|| {
+                held(cloud_left(
+                    "the AeroCloud settings were updated and its pairs were not",
+                ))
             });
             let left = left_behind(roll_back(&written), cloud);
-            return Err(format!("AeroCloud not updated, {left}: {e}"));
+            return (
+                Err(format!("AeroCloud not updated, {left}: {e}")),
+                settings_only,
+            );
         }
     }
 
@@ -957,29 +1014,29 @@ pub(crate) fn apply_in(
     // putting those back would point them at folders the profile no longer
     // spells that way. The error says what happened.
     let mut switched_anyway = None;
-    match targets.store_profile(&id, to, initial.as_deref()) {
+    match targets.store_profile(id, to, initial.as_deref()) {
         Ok(()) => {}
         Err(ProfileStoreError::NotSaved(e)) => {
             // AeroCloud is put back over the files as they are now: a pair
             // added since is kept, and a put back that fails is said.
             let cloud = if cloud_changed {
-                match targets.put_back_cloud((&new_cloud, &new_pairs), cloud, pairs) {
+                match targets.put_back_cloud((new_cloud, new_pairs), cloud, pairs) {
                     Ok(()) => None,
-                    Err(back) => Some(hold(
-                        targets,
-                        cloud_left(&format!("AeroCloud could not be put back ({back})")),
-                    )),
+                    Err(back) => Some(held(cloud_left(&format!(
+                        "AeroCloud could not be put back ({back})"
+                    )))),
                 }
             } else {
                 None
             };
+            let folders_left = cloud.is_some();
             let left = left_behind(roll_back(&written), cloud);
-            return Err(format!("profile not saved, {left}: {e}"));
+            return (Err(format!("profile not saved, {left}: {e}")), folders_left);
         }
         Err(ProfileStoreError::Switched(e)) => switched_anyway = Some(e),
     }
 
-    for old in &moved {
+    for old in moved {
         if !new_paths.contains(old) {
             if let Err(e) = std::fs::remove_file(old) {
                 tracing::warn!(
@@ -990,12 +1047,15 @@ pub(crate) fn apply_in(
         }
     }
     if let Some(e) = switched_anyway {
-        return Err(format!(
-            "the profile is now in {} mode, but {e}; its folders and sync histories were moved with it",
-            to.label()
-        ));
+        return (
+            Err(format!(
+                "the profile is now in {} mode, but {e}; its folders and sync histories were moved with it",
+                to.label()
+            )),
+            false,
+        );
     }
-    Ok(plan)
+    (Ok(()), false)
 }
 
 /// One edit of a profile list: true when it changed the list.
@@ -1092,6 +1152,12 @@ impl SwitchTargets for DiskTargets<'_> {
         with_unrepaired_at(&unrepaired_path(), |held| {
             held.retain(|other| other.profile_id != left.profile_id);
             held.push(left.clone());
+        })
+    }
+
+    fn release_syncs(&mut self, profile_id: &str) -> Result<(), String> {
+        with_unrepaired_at(&unrepaired_path(), |held| {
+            held.retain(|other| other.profile_id != profile_id);
         })
     }
 
@@ -1536,6 +1602,8 @@ mod tests {
         held: Vec<UnrepairedSwitch>,
         /// [`SwitchTargets::hold_syncs`] fails.
         refuse_hold: bool,
+        /// [`SwitchTargets::release_syncs`] fails.
+        refuse_release: bool,
         /// Made read-only at the AeroCloud write: a history file written
         /// there before cannot be removed again (Unix permissions).
         #[cfg_attr(not(unix), allow(dead_code))]
@@ -1587,7 +1655,16 @@ mod tests {
             if self.refuse_hold {
                 return Err("disk full".to_string());
             }
+            self.held
+                .retain(|other| other.profile_id != left.profile_id);
             self.held.push(left.clone());
+            Ok(())
+        }
+        fn release_syncs(&mut self, profile_id: &str) -> Result<(), String> {
+            if self.refuse_release {
+                return Err("disk full".to_string());
+            }
+            self.held.retain(|other| other.profile_id != profile_id);
             Ok(())
         }
         fn store_profile(
@@ -2552,16 +2629,215 @@ mod tests {
         let native = |_: &str| Some(ProtonMode::Native);
         assert_eq!(unrepaired_refusal(&mut list, &settings, native), None);
         assert!(list.is_empty());
+    }
 
-        // A hold that cannot be written is said.
-        let mut memory = Memory {
-            fail_profile: true,
-            refuse_cloud_restore: true,
-            refuse_hold: true,
-            ..Memory::default()
+    /// Every step of a switch, failing alone and with the put back that
+    /// follows it: the syncs of the folders it changes are held before any
+    /// change, kept while a folder stays spelled for native mode under a
+    /// profile in CLI mode, and released otherwise. No row leaves a sync free
+    /// to run on such a folder.
+    #[test]
+    fn no_step_of_a_switch_leaves_a_sync_free_on_a_mismatched_folder() {
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
         };
-        let err = run(&mut memory);
-        assert!(err.contains("its syncs could NOT be held"), "{err}");
+        let moved = crate::cloud_pairs::CloudPathPair {
+            id: "moved".to_string(),
+            remote_path: "/my-files/docs".to_string(),
+            ..crate::cloud_pairs::CloudPathPair::from_legacy(&CloudConfig {
+                server_profile: "Proton".to_string(),
+                ..CloudConfig::default()
+            })
+        };
+        let pairs = CloudPairsConfig {
+            pairs: vec![moved.clone()],
+            ..CloudPairsConfig::default()
+        };
+        let original = profile(ProtonMode::Cli, "/my-files/docs");
+        let record = UnrepairedSwitch {
+            profile_id: "p1".to_string(),
+            profile_name: "Proton".to_string(),
+            to: ProtonMode::Native,
+            folders: vec!["/cloud".to_string(), "/docs".to_string()],
+        };
+        // Whether a sync of what `memory` stores can run on a folder spelled
+        // for native mode while the profile stays in CLI mode.
+        let a_sync_runs_mismatched = |memory: &Memory| {
+            let native = memory
+                .profile
+                .as_ref()
+                .is_some_and(|(_, mode, _)| *mode == ProtonMode::Native)
+                || memory.partition.as_ref().is_some_and(|partition| {
+                    ProtonMode::of_profile(&partition[0]) == ProtonMode::Native
+                });
+            let Some((settings, stored)) = &memory.cloud else {
+                return false;
+            };
+            let mode_of = |_: &str| {
+                Some(if native {
+                    ProtonMode::Native
+                } else {
+                    ProtonMode::Cli
+                })
+            };
+            std::iter::once(settings.clone())
+                .chain(stored.pairs.iter().map(|pair| pair.to_cloud_config()))
+                .filter(|config| !native && record.folders.contains(&config.remote_folder))
+                .any(|config| {
+                    unrepaired_refusal(&mut memory.held.clone(), &config, mode_of).is_none()
+                })
+        };
+        let rows: Vec<(&str, Memory, Option<&str>, bool)> = vec![
+            ("done", Memory::default(), None, false),
+            (
+                "hold not written",
+                Memory {
+                    refuse_hold: true,
+                    ..Memory::default()
+                },
+                Some("AeroCloud syncs could not be held, nothing was changed"),
+                false,
+            ),
+            (
+                "settings not written",
+                Memory {
+                    cloud_refusal: Some(CloudStoreError::NotSaved("disk full".to_string())),
+                    ..Memory::default()
+                },
+                Some("nothing was changed"),
+                false,
+            ),
+            (
+                "pairs not written, settings not put back",
+                Memory {
+                    cloud_refusal: Some(CloudStoreError::SettingsOnly("refused".to_string())),
+                    ..Memory::default()
+                },
+                Some("its syncs are held until then"),
+                true,
+            ),
+            (
+                "profile not saved, AeroCloud put back",
+                Memory {
+                    fail_profile: true,
+                    ..Memory::default()
+                },
+                Some("nothing was changed"),
+                false,
+            ),
+            (
+                "profile not saved, AeroCloud not put back",
+                Memory {
+                    fail_profile: true,
+                    refuse_cloud_restore: true,
+                    ..Memory::default()
+                },
+                Some("its syncs are held until then"),
+                true,
+            ),
+            (
+                "profile saved and not put back",
+                Memory {
+                    partition: Some(vec![original.clone()]),
+                    fail_mirror: true,
+                    fail_restore: true,
+                    ..Memory::default()
+                },
+                Some("now in native mode"),
+                false,
+            ),
+            (
+                "done, hold not released",
+                Memory {
+                    refuse_release: true,
+                    ..Memory::default()
+                },
+                None,
+                true,
+            ),
+        ];
+        for (row, mut memory, refused, kept) in rows {
+            let f = fixture();
+            let before = snapshot(&f.dirs);
+            let applied = apply_in(
+                &f.dirs,
+                &original,
+                ProtonMode::Native,
+                &cloud,
+                &pairs,
+                None,
+                &mut memory,
+            );
+            match refused {
+                None => assert!(applied.is_ok(), "{row}: {:?}", applied.err()),
+                Some(said) => {
+                    let err = applied.expect_err(row);
+                    assert!(err.contains(said), "{row}: {err}");
+                }
+            }
+            assert_eq!(memory.held.is_empty(), !kept, "{row}: {:?}", memory.held);
+            if kept {
+                assert_eq!(memory.held, std::slice::from_ref(&record), "{row}");
+            }
+            assert!(!a_sync_runs_mismatched(&memory), "{row}");
+            if row == "hold not written" {
+                assert_eq!(memory.cloud_writes, 0, "{row}");
+                assert!(memory.cloud.is_none() && memory.profile.is_none(), "{row}");
+                assert_eq!(snapshot(&f.dirs), before, "{row}");
+            }
+            if row == "done, hold not released" {
+                // The profile is in native mode: the next sync drops it.
+                let mut held = memory.held.clone();
+                let native = |_: &str| Some(ProtonMode::Native);
+                let settings = &memory.cloud.as_ref().unwrap().0;
+                assert_eq!(unrepaired_refusal(&mut held, settings, native), None);
+                assert!(held.is_empty(), "{row}");
+            }
+        }
+    }
+
+    /// A history that cannot be written refuses the switch before AeroCloud
+    /// is touched, and releases the hold it took.
+    #[test]
+    #[cfg(unix)]
+    fn a_history_not_written_releases_the_hold_and_changes_nothing() {
+        use std::os::unix::fs::PermissionsExt;
+        let f = fixture();
+        write_index(
+            &f.dirs,
+            "/home/u/docs",
+            "/my-files/docs",
+            Some("p1"),
+            "a.txt",
+        );
+        let before = snapshot(&f.dirs);
+        std::fs::set_permissions(&f.dirs.index, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        let mut memory = Memory::default();
+        let err = apply_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, "/my-files/docs"),
+            ProtonMode::Native,
+            &cloud,
+            &CloudPairsConfig::default(),
+            None,
+            &mut memory,
+        )
+        .unwrap_err();
+        std::fs::set_permissions(&f.dirs.index, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(err.contains("sync history not moved"), "{err}");
+        assert!(err.contains("nothing was changed"), "{err}");
+        assert_eq!(memory.cloud_writes, 0);
+        assert!(memory.held.is_empty(), "{:?}", memory.held);
+        assert_eq!(snapshot(&f.dirs), before);
     }
 
     #[test]

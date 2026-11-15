@@ -1131,6 +1131,7 @@ async fn try_silent_reconnect(
     // future: the guard then closes the connection as a failed restore does,
     // so no later request reaches that folder.
     let mut pending = RestorePending {
+        events,
         state,
         slot: Some(slot),
     };
@@ -1181,12 +1182,13 @@ async fn try_silent_reconnect(
 /// The slot of a silent reconnect between its redial and its folder
 /// restore, closed when dropped before [`Self::disarm`]: see
 /// [`try_silent_reconnect`].
-struct RestorePending<'a> {
+struct RestorePending<'a, E: SessionEvents> {
+    events: &'a E,
     state: &'a ProviderState,
     slot: Option<&'a mut Option<Box<dyn StorageProvider>>>,
 }
 
-impl<'a> RestorePending<'a> {
+impl<'a, E: SessionEvents> RestorePending<'a, E> {
     fn provider(&mut self) -> Option<&mut Box<dyn StorageProvider>> {
         self.slot.as_deref_mut().and_then(Option::as_mut)
     }
@@ -1197,7 +1199,7 @@ impl<'a> RestorePending<'a> {
     }
 }
 
-impl Drop for RestorePending<'_> {
+impl<E: SessionEvents> Drop for RestorePending<'_, E> {
     fn drop(&mut self) {
         if let Some(slot) = self.slot.take() {
             tracing::warn!(
@@ -1205,6 +1207,8 @@ impl Drop for RestorePending<'_> {
             );
             self.state.clear_slot_now(slot);
             self.state.mark_folder_lost();
+            // The tab is told, as a failed restore tells it.
+            emit_session_event(self.events, SessionEventKind::Closed, FOLDER_LOST_REFUSAL);
         }
     }
 }
@@ -15432,7 +15436,10 @@ mod tests {
             _ = listing => panic!("the restore was meant to wait"),
             _ = restoring.notified() => {}
         }
-        // The listing is dropped here, in the middle of its restore.
+        // The listing is dropped here, in the middle of its restore; the tab
+        // is told the connection closed.
+        let expected = vec!["lost", "reconnecting", "ssh-transport", "closed"];
+        assert_eq!(events.kinds(), expected);
 
         assert!(
             state.provider.lock().await.is_none(),
