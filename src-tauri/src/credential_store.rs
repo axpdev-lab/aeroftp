@@ -4285,7 +4285,7 @@ mod vault_lock_tests {
             (
                 include_str!("providers/jottacloud.rs"),
                 "fn persist_refresh_token(&self) {",
-                "persist_refresh_token_now()",
+                "persist_refresh_token_now(&accounts)",
             ),
             (
                 include_str!("providers/mega_native.rs"),

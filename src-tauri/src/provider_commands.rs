@@ -1217,12 +1217,14 @@ pub struct ListingCancelState {
     next_id: AtomicU64,
 }
 
-/// What a [`ListingCancelState`] guards: the armed request, and the named
-/// cancels that came before their request armed, kept as the local folder
-/// size walks keep theirs ([`crate::folder_size::EarlyCancels`]).
+/// What a [`ListingCancelState`] guards: the armed request, the listings it
+/// superseded that are still running, and the named cancels that came before
+/// their request armed, kept as the local folder size walks keep theirs
+/// ([`crate::folder_size::EarlyCancels`]).
 #[derive(Default)]
 struct Slot {
     armed: Option<Armed>,
+    superseded: Vec<Armed>,
     cancelled_early: crate::folder_size::EarlyCancels,
 }
 
@@ -1240,15 +1242,19 @@ impl ListingCancelState {
 
     /// Arm a fresh token for a listing that is about to start, superseding any
     /// token left in the slot. Returns the generation id (for the drop guard)
-    /// and the token to `select!` on.
+    /// and the token to `select!` on. A superseded listing still running stays
+    /// reachable by [`Self::cancel`]: it may hold the target pin the new one
+    /// waits for, behind a queued connection writer.
     fn arm(&self) -> (u64, CancellationToken) {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let token = CancellationToken::new();
-        self.lock().armed = Some(Armed {
+        let mut slot = self.lock();
+        let previous = slot.armed.replace(Armed {
             id,
             owner: None,
             token: token.clone(),
         });
+        slot.superseded.extend(previous);
         (id, token)
     }
 
@@ -1310,19 +1316,21 @@ impl ListingCancelState {
         if slot.armed.as_ref().is_some_and(|armed| armed.id == id) {
             slot.armed = None;
         }
+        slot.superseded.retain(|armed| armed.id != id);
     }
 
-    /// Signal the in-flight foreground listing. Idempotent: `false` means there
-    /// was nothing to cancel (it resolved before the click landed), which the UI
-    /// treats as success, since the outcome the user asked for already holds.
+    /// Signal the in-flight foreground listing, and the ones it superseded
+    /// that are still running. Idempotent: `false` means there was nothing to
+    /// cancel (it resolved before the click landed), which the UI treats as
+    /// success, since the outcome the user asked for already holds.
     pub fn cancel(&self) -> bool {
-        match self.lock().armed.as_ref() {
-            Some(armed) => {
-                armed.token.cancel();
-                true
-            }
-            None => false,
+        let slot = self.lock();
+        let mut signalled = false;
+        for armed in slot.armed.iter().chain(&slot.superseded) {
+            armed.token.cancel();
+            signalled = true;
         }
+        signalled
     }
 
     /// Signal the request its caller named `owner`, and nothing else: a cancel
@@ -16674,6 +16682,59 @@ mod tests {
         drop(writer);
         tokio::time::sleep(Duration::from_millis(50)).await;
         assert!(log.requests().is_empty(), "{:?}", log.requests());
+    }
+
+    /// A listing armed while an earlier one still ran took the slot and
+    /// dropped the earlier one's token: with the earlier listing stalled on
+    /// the connection and a writer queued behind it, the newer listing waited
+    /// for its pin and Cancel stopped only that one. The stalled listing kept
+    /// its pin and the writer timed out. Cancel reaches both now: the pin is
+    /// released and the writer gets in.
+    #[tokio::test]
+    async fn a_cancel_reaches_the_stalled_listing_a_newer_one_superseded() {
+        let (wanderer, _log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        let state = ProviderState::new();
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        let listing_cancel = ListingCancelState::new();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        let (pinned_tx, pinned_rx) = tokio::sync::oneshot::channel();
+        let stalled = run_cancellable_listing(&listing_cancel, async {
+            let _target = state.pin_gui_target(Some(epoch)).await?;
+            let _ = pinned_tx.send(());
+            std::future::pending::<Result<(), String>>().await
+        });
+        let queued = async {
+            pinned_rx.await.expect("the stalled listing holds its pin");
+            // Polled in this order: the writer queues first, so the newer
+            // listing's pin waits behind it.
+            let writer = async {
+                state
+                    .transfer_owner_write(Duration::from_secs(2))
+                    .await
+                    .map(drop)
+            };
+            // Ends only through Cancel, as the stalled one.
+            let waiting = run_cancellable_listing(&listing_cancel, async {
+                let _target = state.pin_gui_target(Some(epoch)).await?;
+                std::future::pending::<Result<(), String>>().await
+            });
+            let cancel = async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                listing_cancel.cancel()
+            };
+            tokio::join!(writer, waiting, cancel)
+        };
+        let ended = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(stalled, queued)
+        })
+        .await;
+        let (stalled, (writer, waiting, signalled)) =
+            ended.expect("the stalled listing never ended: Cancel did not reach it");
+        assert!(signalled);
+        assert_eq!(stalled.unwrap_err(), LISTING_CANCELLED);
+        assert!(writer.is_ok(), "{writer:?}");
+        assert_eq!(waiting.unwrap_err(), LISTING_CANCELLED);
+        assert!(!listing_cancel.cancel(), "nothing is left to cancel");
     }
 
     /// Every request a tab can send after the connection was closed, relative

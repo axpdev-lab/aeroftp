@@ -4144,20 +4144,11 @@ fn partition_row_exists(
     .map_err(|e| format!("Read credential row: {e}"))
 }
 
-/// Best-effort removal of one in-scope secret from `user_id`'s partition. No DEK
-/// is needed (DELETE by key); errors are swallowed because the vault delete is
-/// the part that matters during the dual-write rollout. This is the partition
-/// half of an explicit user delete, never a mass purge (that is MUV-6).
-fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
-    if muv3_credential_type(credential_id).is_none() {
-        return;
-    }
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-}
-
-/// Like [`unmirror_credential_for_user_best_effort`] but without the prefix
-/// classifier gate. For explicitly-typed call-sites (OAuth/Jottacloud, MUV-4)
-/// that already know the key is in scope.
+/// Best-effort removal of one secret from `user_id`'s partition, whatever its
+/// key. No DEK is needed (DELETE by key); errors are swallowed because the
+/// vault delete is the part that matters during the dual-write rollout. This
+/// is the partition half of an explicit user delete, never a mass purge (that
+/// is MUV-6).
 pub fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
     if let Ok(conn) = open_or_init_cli() {
         let _ = delete_user_credential_for(&conn, user_id, credential_id);
@@ -4634,16 +4625,7 @@ pub fn delete_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<(), String> {
-    delete_credential_dual_as(store, active_user_for_delete(credential_id), credential_id)
-}
-
-/// The account a GUI delete removes the mirror from, read when the request
-/// arrives; `None` for keys that are never mirrored.
-pub fn active_user_for_delete(credential_id: &str) -> Option<i64> {
-    muv3_credential_type(credential_id)
-        .is_some()
-        .then(active_user_id_quiet)
-        .flatten()
+    delete_credential_dual_as(store, active_user_id_quiet(), credential_id)
 }
 
 /// [`delete_active_credential_dual`] for `user_id`, the account active when
@@ -4657,30 +4639,34 @@ pub fn delete_credential_dual_as(
         store,
         credential_id,
         || user_id,
-        |user_id| unmirror_credential_for_user_best_effort(user_id, credential_id),
+        |user_id| unmirror_credential_for_user_best_effort_any(user_id, credential_id),
     )
 }
 
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
-/// passed in: `active_user` runs before the vault delete.
-fn delete_credential_dual_with(
+/// passed in: `active_user` runs before the vault delete. The account it gives
+/// (`None`: the account active then, read once) owns the deletion whatever the
+/// key: its partition copy goes, and so does a Jottacloud rotation kept for
+/// it. Both copies go inside [`delete_refresh_chain`], so no connection begins
+/// between them and reads the one left.
+///
+/// [`delete_refresh_chain`]: crate::providers::jottacloud::delete_refresh_chain
+pub(crate) fn delete_credential_dual_with(
     store: &CredentialStore,
     credential_id: &str,
     active_user: impl FnOnce() -> Option<i64>,
     unmirror: impl FnOnce(i64),
 ) -> Result<(), String> {
-    let user_id = muv3_credential_type(credential_id)
-        .is_some()
-        .then(active_user)
-        .flatten();
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    crate::providers::jottacloud::forget_pending_rotation(user_id, credential_id);
-    if let Some(user_id) = user_id {
-        unmirror(user_id);
-    }
-    Ok(())
+    let user_id = active_user().or_else(active_user_id_quiet);
+    crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+        if let Some(user_id) = user_id {
+            unmirror(user_id);
+        }
+        Ok(())
+    })
 }
 
 /// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
@@ -4690,12 +4676,13 @@ pub fn delete_credential_for_user_dual(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    crate::providers::jottacloud::forget_pending_rotation(Some(user_id), credential_id);
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-    Ok(())
+    crate::providers::jottacloud::delete_refresh_chain(Some(user_id), credential_id, || {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+        Ok(())
+    })
 }
 
 // --- MUV-4: OAuth / Jottacloud token cutover (explicit-type dual-write) ------

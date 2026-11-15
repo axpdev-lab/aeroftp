@@ -16874,7 +16874,13 @@ async fn get_remote_files_recursive_with_progress(
         Ok((files, completeness))
     }
     .await;
-    let returned = ftp_manager.return_to_folder(&original_path).await;
+    // A session that could not go back was closed: the compare fails closed
+    // on it, as on any scan it cannot trust, instead of dropping to the flat
+    // fallback over the panels' listings.
+    let returned = ftp_manager
+        .return_to_folder(&original_path)
+        .await
+        .map_err(|e| anyhow::anyhow!("{SCAN_INCOMPLETE_MARKER}: {e}"));
     walked_then_returned(scanned, returned)
 }
 
@@ -22066,10 +22072,12 @@ async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(
     only_main_window(webview.label(), "delete_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    // Dual-delete. Removes from the vault and, for the prefix-classified keys
-    // (`server_*`, `ai_apikey_*`), best-effort from the active user's partition.
-    // Not a mass purge (that is MUV-6). The account is the one active now.
-    let user_id = user_partitions::active_user_for_delete(&account);
+    // Dual-delete. Removes from the vault and, best-effort, the active user's
+    // partition copy, which readers prefer to the vault. Not a mass purge
+    // (that is MUV-6). The account is the one active now, whatever the key:
+    // the call-sites that mirror with an explicit type (OAuth, Jottacloud)
+    // are not prefix-classified, and a copy left behind is read first.
+    let user_id = user_partitions::active_user_id_quiet();
     tauri::async_runtime::spawn_blocking(move || {
         user_partitions::delete_credential_dual_as(&store, user_id, &account)
     })
@@ -22108,7 +22116,8 @@ async fn purge_profile_secrets(
         |key| {
             match user_id {
                 Some(user) => user_partitions::delete_credential_for_user_dual(&store, user, key),
-                // No account: the vault delete alone, as `delete_credential`.
+                // No account: the delete reads the account active when it
+                // runs, and finds none unless one was activated meanwhile.
                 None => user_partitions::delete_credential_dual_as(&store, None, key),
             }
             .is_ok()
@@ -31684,6 +31693,11 @@ mod legacy_ftp_walk_tests {
             let closed = outcome
                 .as_ref()
                 .is_err_and(|error| error.contains("connection was closed"));
+            // The compare's scan must fail closed (no flat fallback, no plan).
+            let fails_closed = walk != "sync scan"
+                || outcome
+                    .as_ref()
+                    .is_err_and(|error| error.contains(SCAN_INCOMPLETE_MARKER));
             let connected = session.is_connected();
             let deleted = session.remove("a.txt").await.is_ok()
                 || log
@@ -31691,9 +31705,9 @@ mod legacy_ftp_walk_tests {
                     .unwrap()
                     .iter()
                     .any(|line| line.starts_with("DELE"));
-            if !closed || connected || deleted {
+            if !closed || !fails_closed || connected || deleted {
                 wrong.push(format!(
-                    "{walk}: {outcome:?}, still connected {connected}, delete reached the server {deleted}"
+                    "{walk}: {outcome:?}, fails closed {fails_closed}, still connected {connected}, delete reached the server {deleted}"
                 ));
             }
         }
