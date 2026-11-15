@@ -705,16 +705,6 @@ fn collect_existing_skip_names(
         .collect()
 }
 
-fn normalize_selected_blocks(selected_blocks: Option<&[String]>) -> Option<HashSet<String>> {
-    selected_blocks.map(|items| {
-        items
-            .iter()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    })
-}
-
 /// Preview what a configuration template would import against `current` without
 /// touching the vault or profile partition.
 pub fn preview_template_with_current(
@@ -731,7 +721,6 @@ pub fn preview_template_with_current(
         &loaded.source_label,
         &secret_policy,
         &existing_skip,
-        None,
     )?;
     let planned = build_plan(
         &eval,
@@ -823,7 +812,6 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
 
     let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
     let relax_policy = RelaxationPolicy::Keep(options.keep_relaxed.clone());
-    let selected_set = normalize_selected_blocks(options.selected_blocks.as_deref());
     let existing_skip = if options.existing == ExistingProfileMode::Skip {
         user_partitions::cli_read_active_profiles_at_revision(store, user)
             .ok()
@@ -838,7 +826,6 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
         &loaded.source_label,
         &secret_policy,
         &existing_skip,
-        selected_set.as_ref(),
     )?;
 
     apply_eval_with_slots(
@@ -861,7 +848,13 @@ fn apply_eval_with_slots<S: SecretSlots>(
     relax_policy: &RelaxationPolicy,
     options: &TemplateApplyOptions,
 ) -> Result<TemplateImportResult, String> {
-    let selected_set = normalize_selected_blocks(options.selected_blocks.as_deref());
+    let selected_set: Option<HashSet<String>> = options.selected_blocks.as_ref().map(|items| {
+        items
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    });
 
     let mut replanned = false;
     loop {
@@ -3408,11 +3401,11 @@ remote = base:docs
     }
 
     #[test]
-    fn crypt_resolves_skipped_or_deselected_base_secret_form() {
+    fn crypt_resolves_skipped_base_secret_form() {
         let env = TestVaultEnv::new();
         let crypt_pw = crate::rclone_import::obscure_password("vault-inner-pw").unwrap();
 
-        // Scenario A: `[base]` already saved and skipped via ExistingProfileMode::Skip.
+        // `[base]` already saved and skipped via ExistingProfileMode::Skip.
         let seed_tpl = "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\n";
         let seed = apply_template_for_user(
             &env.store,
@@ -3504,40 +3497,6 @@ remote = base:docs
         assert_eq!(
             vault_pw.as_deref().map(|z| z.as_str()),
             Some("CryptInheritedSecret!")
-        );
-
-        // Scenario B: `[base2]` deselected via `selected_blocks = ["vault2"]` with obscured base pass.
-        let obscured = crate::rclone_import::obscure_password("ObscuredCryptBase!").unwrap();
-        let tpl2 = format!(
-            "[base2]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = {obscured}\n\n\
-             [vault2]\ntype = crypt\nremote = base2:enc\npassword = {crypt_pw}\n"
-        );
-        let mut vault2_only = std::collections::HashMap::new();
-        vault2_only.insert("vault2".to_string(), TemplateSecretForm::Obscured);
-        let applied_desel = apply_template_for_user(
-            &env.store,
-            env.user_id,
-            &TemplateInput::Text { content: tpl2 },
-            &TemplateApplyOptions {
-                existing: ExistingProfileMode::Skip,
-                selected_blocks: Some(vec!["vault2".to_string()]),
-                secret_forms: vault2_only,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert_eq!(applied_desel.skipped_unselected, vec!["base2"]);
-        assert_eq!(applied_desel.applied.len(), 1);
-        let vault2_id = applied_desel.applied[0].profile_id.clone();
-        let vault2_pw = user_partitions::resolve_credential_for_user(
-            &env.store,
-            env.user_id,
-            &format!("server_{vault2_id}"),
-        )
-        .unwrap();
-        assert_eq!(
-            vault2_pw.as_deref().map(|z| z.as_str()),
-            Some("ObscuredCryptBase!")
         );
     }
 }

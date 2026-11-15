@@ -3149,10 +3149,9 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     })
 }
 
-/// Evaluate raw INI configuration template text into AeroFTP profile drafts,
-/// line-numbered syntax diagnostics, and explicit-choice secret metadata without
-/// guessing or touching disk / vault.
-pub fn evaluate_template_text(
+/// [`evaluate_template_text_with_skipped`] with no block skipped, for tests.
+#[cfg(test)]
+pub(crate) fn evaluate_template_text(
     content: &str,
     base_dir: Option<&Path>,
     source_label: &str,
@@ -3165,22 +3164,21 @@ pub fn evaluate_template_text(
         source_label,
         secret_policy,
         &empty_skipped,
-        None,
     )
 }
 
-/// Internal variant of [`evaluate_template_text`] that knows which template
-/// blocks are omitted from import (`existing_skip_names` matched under Skip
-/// mode or absent from `selected_blocks`) so `crypt` wrappers can resolve a
-/// skipped base block's secret via their own explicit choice while imported
-/// base blocks keep requiring an explicit choice on the base itself.
+/// Evaluate raw INI configuration template text into AeroFTP profile drafts,
+/// line-numbered syntax diagnostics, and explicit-choice secret metadata without
+/// guessing or touching disk / vault. `existing_skip_names` are the blocks
+/// skipped because a profile of that name exists (Skip mode): a `crypt`
+/// wrapper over one resolves that base's secret form through its own explicit
+/// choice, while an imported base keeps requiring a choice on the base itself.
 pub(crate) fn evaluate_template_text_with_skipped(
     content: &str,
     base_dir: Option<&Path>,
     source_label: &str,
     secret_policy: &TemplateSecretPolicy,
     existing_skip_names: &HashSet<String>,
-    selected_blocks: Option<&HashSet<String>>,
 ) -> Result<TemplateEngineOutput, String> {
     let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize;
     if content.len() > cap {
@@ -3308,11 +3306,8 @@ pub(crate) fn evaluate_template_text_with_skipped(
             chain
         };
 
-    let is_ancestor_omitted = |ancestor: &str| -> bool {
-        let trimmed = ancestor.trim();
-        existing_skip_names.contains(trimmed)
-            || selected_blocks.is_some_and(|sel| !sel.contains(trimmed))
-    };
+    let is_ancestor_omitted =
+        |ancestor: &str| -> bool { existing_skip_names.contains(ancestor.trim()) };
 
     let mut alias_derived_forms: HashMap<String, TemplateSecretForm> = HashMap::new();
     for name in &ordered_names {
