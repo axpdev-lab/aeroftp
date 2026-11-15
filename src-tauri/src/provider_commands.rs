@@ -2159,12 +2159,15 @@ pub async fn cancel_connection(
     Ok(())
 }
 
-/// Disconnect from the current provider
+/// Disconnect from the current provider. With `expected_generation` (what
+/// [`provider_connection_generation`] answered), only the connection of that
+/// generation is ended: a later connect owns the slot and is left alone.
 #[tauri::command]
 pub async fn provider_disconnect(
     app: tauri::AppHandle,
     state: State<'_, ProviderState>,
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
     // LT1: this command runs on the async runtime (off the GTK main thread).
     // The teardown below is pure provider/session state + peer emit: it must
@@ -2174,7 +2177,7 @@ pub async fn provider_disconnect(
     // open_extract_window / rebuild_menu / aeroshare_notify for the
     // run_on_main_thread discipline on the remaining GTK sites.
     //
-    provider_disconnect_inner(&state, move |namespace| async move {
+    provider_disconnect_inner(&state, expected_generation, move |namespace| async move {
         peer_runtime.standby(&app, &namespace).await;
     })
     .await
@@ -2184,16 +2187,30 @@ pub async fn provider_disconnect(
 /// namespace when the connection is a peer drive.
 async fn provider_disconnect_inner<F, Fut>(
     state: &ProviderState,
+    expected_generation: Option<u64>,
     standby_peer: F,
 ) -> Result<(), String>
 where
     F: FnOnce(String) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    let owns_the_slot = || {
+        expected_generation
+            .is_none_or(|expected| state.connection_generation.load(Ordering::SeqCst) == expected)
+    };
+    // Another connection's: not even its storage reads are cancelled.
+    if !owns_the_slot() {
+        return Ok(());
+    }
     // #958: a stalled storage read holds the provider lock this teardown
     // needs, so cancel it before waiting for anything.
     state.cancel_storage_reads();
     let _connection_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
+    // A connect installs under this same guard: checked again now that none
+    // can land before the teardown below.
+    if !owns_the_slot() {
+        return Ok(());
+    }
     // Issue #233: wait for any in-flight DAG transfer to drain before
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead
@@ -19908,7 +19925,7 @@ mod tests {
         let state = stall_state(StallProvider::default());
         let disconnected = assert_teardown_cancels_storage_reads(
             &state,
-            provider_disconnect_inner(&state, |_| async {}),
+            provider_disconnect_inner(&state, None, |_| async {}),
         )
         .await;
         disconnected.unwrap();
@@ -22534,6 +22551,80 @@ mod connect_install_cancel_tests {
         assert!(!b_gone.load(Ordering::SeqCst));
         // Nothing is held after the refusal.
         assert!(state.transfer_owner_gate.try_write().is_ok());
+    }
+
+    /// A teardown dispatched for the connection its caller saw lands after a
+    /// later connect installed its own: it names an older generation, so the
+    /// later connection keeps the slot.
+    #[tokio::test]
+    async fn a_disconnect_naming_an_earlier_generation_leaves_the_later_connect_in_the_slot() {
+        let state = ProviderState::new();
+        let (a, _) = tagged("A");
+        install_connected_provider(&state, Box::new(a), Some("A".into()), None)
+            .await
+            .unwrap();
+        let seen_by_a = state.connection_generation.load(Ordering::SeqCst);
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        provider_disconnect_inner(&state, Some(seen_by_a), |_| async {})
+            .await
+            .unwrap();
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("B")
+        );
+        // Naming B's own generation ends B, as a disconnect without one does.
+        let seen_by_b = state.connection_generation.load(Ordering::SeqCst);
+        provider_disconnect_inner(&state, Some(seen_by_b), |_| async {})
+            .await
+            .unwrap();
+        assert_eq!(in_slot(&state).await, None);
+        assert!(b_gone.load(Ordering::SeqCst));
+    }
+
+    /// The same teardown when it passed its first check and then waits for the
+    /// transfer-owner guard while a later connect, queued ahead of it, takes
+    /// the guard and installs: checked again under the guard, it leaves the
+    /// later connection in the slot.
+    #[tokio::test]
+    async fn a_disconnect_waiting_for_the_guard_leaves_a_connect_installed_ahead_of_it() {
+        let state = Arc::new(ProviderState::new());
+        let (a, _) = tagged("A");
+        install_connected_provider(&state, Box::new(a), Some("A".into()), None)
+            .await
+            .unwrap();
+        let seen_by_a = state.connection_generation.load(Ordering::SeqCst);
+        let transfer = state.transfer_owner_gate.read().await;
+        let (b, b_gone) = tagged("B");
+        let installing = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                install_connected_provider(&state, Box::new(b), Some("B".into()), None).await
+            })
+        };
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        let disconnecting = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                provider_disconnect_inner(&state, Some(seen_by_a), |_| async {}).await
+            })
+        };
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        // A's disconnect is queued behind B's install, its first check passed.
+        assert!(!disconnecting.is_finished());
+        drop(transfer);
+        installing.await.unwrap().unwrap();
+        disconnecting.await.unwrap().unwrap();
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
     }
 
     /// A cancel that lands after the store is too late: the installed

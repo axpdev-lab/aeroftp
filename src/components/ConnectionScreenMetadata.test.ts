@@ -1093,6 +1093,7 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
         const ctx = {
             confirmBackendConnection: live.confirmBackendConnection,
             remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED',
+            stillCurrent: () => undefined,
             invoke: vi.fn(async () => undefined),
             isProvider,
             protocol: isProvider ? 'webdav' : 'ftp',
@@ -1528,15 +1529,15 @@ describe('Reviewed ownership of a connect', () => {
         expect(refs.backendUncertainRef.current).toBe(true);
     });
 
-    /** App's AeroCloud connect for A, opened at `phaseVersion` 0, whose
-     *  host-key check and teardown each wait until the test releases them;
-     *  `connectB` is B's connect as App records it: a newer phase, B's own
-     *  replacement, and B's tab confirmed. */
-    async function aeroCloudRace(isProvider: boolean) {
-        const refs = freshRefs();
-        const accounting = await accountingOn(refs);
+    /** A backend as the Rust side keeps it: one provider slot and one legacy
+     *  FTP session, each with the generation its connect and disconnect move,
+     *  and a disconnect that ends only the generation it names. `hold` keeps
+     *  a disconnect (or A's host-key check) waiting until the test releases it. */
+    function fakeBackend(hold: string[]) {
+        const backend = { provider: 'old' as string | null, providerGeneration: 1, ftp: 'old' as string | null, ftpGeneration: 1 };
         const gates: Record<string, { reached: Promise<void>; release: () => void }> = {};
         const gate = (name: string) => {
+            if (!hold.includes(name)) return async () => undefined;
             let reach!: () => void;
             let release!: () => void;
             const reached = new Promise<void>(resolve => { reach = resolve; });
@@ -1544,64 +1545,173 @@ describe('Reviewed ownership of a connect', () => {
             gates[name] = { reached, release };
             return async () => { reach(); await released; };
         };
+        const providerTeardown = gate('provider_disconnect');
+        const ftpTeardown = gate('disconnect_ftp');
         const hostKey = gate('hostKey');
-        const teardown = gate('teardown');
-        const invoke = vi.fn(async (command: string) => {
-            if (command === 'provider_disconnect') await teardown();
+        const owns = (expected: number | undefined, live: number) => expected === undefined || expected === live;
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'provider_connection_generation') return backend.providerGeneration;
+            if (command === 'ftp_connection_generation') return backend.ftpGeneration;
+            if (command === 'provider_disconnect') {
+                await providerTeardown();
+                if (owns(args?.expectedGeneration, backend.providerGeneration)) { backend.provider = null; backend.providerGeneration += 1; }
+            }
+            if (command === 'disconnect_ftp') {
+                await ftpTeardown();
+                if (owns(args?.expectedGeneration, backend.ftpGeneration)) { backend.ftp = null; backend.ftpGeneration += 1; }
+            }
             return undefined;
         });
+        return { backend, gates, invoke, hostKey };
+    }
+
+    /** B's connect for real on that backend: its click opens a newer phase,
+     *  it replaces the backend (provider or FTP, moving that generation),
+     *  selects its own tab and confirms it, as App records a connect. */
+    function connectB(
+        refs: ReturnType<typeof freshRefs>,
+        accounting: { replacingBackend: () => () => void; confirmBackendConnection: () => void },
+        fake: ReturnType<typeof fakeBackend>,
+        ui: { activeSessionId: string | null },
+        kind: 'provider' | 'ftp',
+    ) {
+        refs.remoteConnectPhaseVersionRef.current += 1;
+        const endB = accounting.replacingBackend();
+        if (kind === 'provider') { fake.backend.provider = 'B'; fake.backend.providerGeneration += 1; }
+        else { fake.backend.ftp = 'B'; fake.backend.ftpGeneration += 1; }
+        endB();
+        ui.activeSessionId = 'B-tab';
+        accounting.confirmBackendConnection();
+    }
+
+    /** App's AeroCloud connect for A, opened at phase 0, with the click's own
+     *  phase check, on the fake backend. */
+    async function aeroCloudRace(isProvider: boolean, hold: string[], keyAccepted = true) {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend(hold);
         const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
-        const connect = await runAppSlice(appBetween('const connectToCloudServer = async', '\n      };\n'), {
-            ...refs, ...accounting, runConnect, invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp', phaseVersion: 0,
+        const source = appBetween('    const stillCurrent = () => {', '    };\n') + appBetween('const connectToCloudServer = async', '\n      };\n');
+        const connect = await runAppSlice(source, {
+            ...refs, ...accounting, runConnect, invoke: fake.invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp', phaseVersion: 0,
             CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
             cloudServer: { id: 'cloud', providerId: null, host: 'nas.example.test', port: 22, username: 'u', options: {} },
             cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
             resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
             loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false,
-            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await hostKey(); return true; },
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await fake.hostKey(); return keyAccepted; },
         }, 'connectToCloudServer');
-        const connectB = () => {
-            refs.remoteConnectPhaseVersionRef.current += 1;
-            accounting.replacingBackend()();
-            accounting.confirmBackendConnection();
-        };
-        return { refs, gates, invoke, runConnect, connect, connectB };
+        const ui = { activeSessionId: 'old-tab' as string | null };
+        return { refs, fake, runConnect, connect, ui, connectB: (kind: 'provider' | 'ftp') => connectB(refs, accounting, fake, ui, kind) };
     }
 
     it("stops A's AeroCloud open before its teardown when B connects during an earlier await", async () => {
-        const race = await aeroCloudRace(true);
+        const race = await aeroCloudRace(true, ['hostKey']);
         const a = race.connect();
-        await race.gates.hostKey.reached;
-        race.connectB();
-        race.gates.hostKey.release();
+        await race.fake.gates.hostKey.reached;
+        race.connectB('provider');
+        race.fake.gates.hostKey.release();
         await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
-        expect(race.invoke).not.toHaveBeenCalledWith('provider_disconnect');
+        expect(race.fake.invoke).not.toHaveBeenCalledWith('provider_disconnect', expect.anything());
         expect(race.runConnect).not.toHaveBeenCalled();
-        // B's confirmed tab keeps the backend: one confirmation, not uncertain.
+        // B's backend and tab are B's; B's confirmed tab keeps the backend.
+        expect(race.fake.backend.provider).toBe('B');
+        expect(race.ui.activeSessionId).toBe('B-tab');
         expect(race.refs.backendConfirmationsRef.current).toBe(1);
         expect(race.refs.backendUncertainRef.current).toBe(false);
     });
 
-    it.each([['a provider', true], ['an FTP server', false]])("stops A's AeroCloud open to %s before its replacement when B connects during the teardown", async (_label, isProvider) => {
-        const race = await aeroCloudRace(isProvider);
+    it("reports A's refused host key as superseded when B connected while A asked, so A restores nothing over B", async () => {
+        const race = await aeroCloudRace(true, ['hostKey'], false);
         const a = race.connect();
-        if (isProvider) race.gates.hostKey.release();
-        await race.gates.teardown.reached;
-        race.connectB();
-        race.gates.teardown.release();
+        await race.fake.gates.hostKey.reached;
+        race.connectB('provider');
+        race.fake.gates.hostKey.release();
+        // A cancel would make the callers restore A's previous tab over B's.
+        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
+        expect(race.fake.backend.provider).toBe('B');
+    });
+
+    it.each([
+        ['a provider', true, 'provider_disconnect', 'provider'],
+        ['an FTP server', false, 'disconnect_ftp', 'ftp'],
+    ] as const)("leaves B's backend connected when B connects while A's teardown of %s is in flight", async (_label, isProvider, teardown, kind) => {
+        const race = await aeroCloudRace(isProvider, [teardown]);
+        const a = race.connect();
+        await race.fake.gates[teardown].reached;
+        // A's disconnect is already dispatched, naming the session A saw.
+        expect(race.fake.invoke).toHaveBeenCalledWith(teardown, { expectedGeneration: 1 });
+        race.connectB(kind);
+        race.fake.gates[teardown].release();
         await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
         expect(race.runConnect).not.toHaveBeenCalled();
+        // The late disconnect named an older session: B's is still there.
+        expect(kind === 'provider' ? race.fake.backend.provider : race.fake.backend.ftp).toBe('B');
+        expect(race.ui.activeSessionId).toBe('B-tab');
         expect(race.refs.backendConfirmationsRef.current).toBe(1);
         expect(race.refs.backendUncertainRef.current).toBe(false);
     });
 
-    it.each([['superseded', 'CONNECT_SUPERSEDED', 1], ['refused', 'refused', 0]])("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, settled) => {
+    it("leaves B's tab and backend alone when B connects while A's same-server open waits for its credentials", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const ui = { activeSessionId: 'old-tab' as string | null };
+        let releaseCredential!: () => void;
+        let reachCredential!: () => void;
+        const credentialReached = new Promise<void>(resolve => { reachCredential = resolve; });
+        const credentialReleased = new Promise<void>(resolve => { releaseCredential = resolve; });
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas' };
+            if (command === 'get_credential') { reachCredential(); await credentialReleased; return 'p'; }
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        const setSessions = vi.fn();
+        const setConnectionParams = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, remoteConnectPhaseRef: { current: false },
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} }],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            // The tab live at A's click is the cloud's own server: the same-server branch.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => true, normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId: (id: string | null) => { ui.activeSessionId = id; },
+            setSessions, setConnectionParams, remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify: { error: vi.fn(), success: vi.fn() },
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const a = handleCloudTabClick();
+        await credentialReached;
+        connectB(refs, accounting, fake, ui, 'provider');
+        releaseCredential();
+        await a;
+        // A's view of the connection is from before B: it changes nothing of B's.
+        expect(ui.activeSessionId).toBe('B-tab');
+        expect(setSessions).not.toHaveBeenCalled();
+        expect(setConnectionParams).not.toHaveBeenCalled();
+        expect(invoke).not.toHaveBeenCalledWith('provider_list_files', expect.anything());
+        expect(invoke).not.toHaveBeenCalledWith('trigger_cloud_sync');
+        expect(fake.backend.provider).toBe('B');
+        expect(refs.backendConfirmationsRef.current).toBe(1);
+        expect(refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([['superseded', 'CONNECT_SUPERSEDED', 0, 1], ['refused after a newer connect began', 'refused', 1, 1], ['refused', 'refused', 0, 0]])("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, phase, settled) => {
         // App's own SCENARIO 2 block, from the log row it opens to the first
         // step after the open.
         const updateEntry = vi.fn();
         const setIsConnected = vi.fn();
         const block = appBetween("      const logId = humanLog.logStart('CONNECT'", '      setIsConnected(true);');
-        const open = await runAppSlice(`const open = async () => {\n${block}\n};`, {
+        const supersededBy = appBetween('    const supersededBy = ', 'remoteConnectPhaseVersionRef.current;\n');
+        const open = await runAppSlice(`${supersededBy}const open = async () => {\n${block}\n};`, {
+            phaseVersion: 0, remoteConnectPhaseVersionRef: { current: phase },
             humanLog: { logStart: () => 'cloud-log', updateEntry }, cloudConfig: { server_profile: 'nas' }, protocolLabel: 'SFTP',
             showToastNotifications: false, setIsConnected,
             connectToCloudServer: async () => { throw new Error(failure); },

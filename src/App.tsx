@@ -9949,6 +9949,15 @@ const App: React.FC = () => {
     // on its listing has no usable session to fall back to either.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'connect';
+    // A connect that started after this click owns the workspace: past every
+    // await this open stops, before it touches a tab, a panel or the backend.
+    const stillCurrent = () => {
+      if (phaseVersion !== remoteConnectPhaseVersionRef.current) throw new Error(CONNECT_SUPERSEDED_MARKER);
+    };
+    // Any failure of this open once a newer connect began (a refused key, a
+    // failed connect or listing) is that connect's business, not this one's.
+    const supersededBy = (error: unknown) =>
+      isConnectSupersededError(error) || phaseVersion !== remoteConnectPhaseVersionRef.current;
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -9958,6 +9967,7 @@ const App: React.FC = () => {
         server_profile: string;
         protocol_type?: string;
       }>('get_cloud_config');
+      stillCurrent();
 
       logger.debug('Cloud config:', cloudConfig);
 
@@ -9968,6 +9978,7 @@ const App: React.FC = () => {
 
       // Get saved servers from vault (with localStorage fallback)
       const savedServers = await loadSavedServerProfiles();
+      stillCurrent();
       if (!savedServers || savedServers.length === 0) {
         notify.error(t('toast.noSavedServers'), t('toast.saveServerFirst'));
         setShowCloudPanel(true);
@@ -10010,20 +10021,25 @@ const App: React.FC = () => {
           if (storedFilenKey) cloudFilenApiKey = storedFilenKey;
         } catch { /* no stored Filen API key for this profile */ }
       }
+      // The connection state read below (isConnected, the live params, the
+      // active tab) is this click's: valid only while no newer connect began.
+      stillCurrent();
 
       // Helper: connect to cloud server using the correct protocol. It ends
       // the current connection itself, after the host-key check: a refused
       // key leaves that connection live for the callers to restore.
       const connectToCloudServer = async (): Promise<void> => {
-        // A connect that started after this open (`phaseVersion`, taken at
-        // the click) owns the workspace: this open stops before its teardown,
-        // its replacement and its landing.
-        const stillCurrent = () => {
-          if (phaseVersion !== remoteConnectPhaseVersionRef.current) throw new Error(CONNECT_SUPERSEDED_MARKER);
-        };
+        // A newer connect stops this open before its teardown, its
+        // replacement and its landing (`stillCurrent`, from the click).
+        // Ends only the sessions this open saw (their generations, read here
+        // while it is still current): a newer connect that lands meanwhile,
+        // provider or FTP, keeps its own.
         const endCurrentConnection = async () => {
-          try { await invoke('provider_disconnect'); } catch { }
-          try { await invoke('disconnect_ftp'); } catch { }
+          const providerGeneration = await invoke<number>('provider_connection_generation');
+          const ftpGeneration = await invoke<number>('ftp_connection_generation');
+          stillCurrent();
+          try { await invoke('provider_disconnect', { expectedGeneration: providerGeneration }); } catch { }
+          try { await invoke('disconnect_ftp', { expectedGeneration: ftpGeneration }); } catch { }
         };
         if (isProvider) {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
@@ -10067,6 +10083,7 @@ const App: React.FC = () => {
           // the callers restore the previous session or reopen the cloud panel.
           if (isSshProtocol(protocol)) {
             const accepted = await checkSftpHostKey(providerParams.server, providerParams.port);
+            stillCurrent();
             if (!accepted) throw new Error(CONNECT_CANCELLED_MARKER);
           }
           stillCurrent();
@@ -10105,6 +10122,7 @@ const App: React.FC = () => {
             () => invoke<{ files: any[]; current_path: string }>('provider_list_files', { path: folder || null }),
             listingReason(folder),
           );
+          stillCurrent();
           const files = response.files.map((f: any) => ({
             name: f.name, path: f.path || f.name, size: f.size, is_dir: f.is_dir,
             modified: f.modified, permissions: f.permissions || null,
@@ -10116,6 +10134,7 @@ const App: React.FC = () => {
             () => invoke<FileListResponse>('change_directory', { path: folder }),
             listingReason(folder),
           );
+          stillCurrent();
           setRemoteFiles(response.files);
           setCurrentRemotePath(response.current_path);
         }
@@ -10185,7 +10204,7 @@ const App: React.FC = () => {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
             // Superseded by a newer connect: nothing of its workspace is touched.
-            if (isConnectSupersededError(connError)) return;
+            if (supersededBy(connError)) return;
             // W3.1: a user cancel skips the error toast but still restores the
             // previous session (runConnect already toasted the cancellation).
             if (!isConnectCancelledError(connError)) {
@@ -10224,6 +10243,7 @@ const App: React.FC = () => {
         try {
           await navigateToRemoteFolder(cloudConfig.remote_folder);
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+          stillCurrent();
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           setCloudRemoteFolder(cloudConfig.remote_folder);
@@ -10232,6 +10252,8 @@ const App: React.FC = () => {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
+          // Superseded during the listing: the newer connect owns the panels.
+          if (supersededBy(navError)) return;
           // A cancelled listing already tore the session down: no error toast,
           // and no cloud sync to trigger on a connection that no longer exists.
           if (isListingCancelled(navError)) return;
@@ -10256,7 +10278,7 @@ const App: React.FC = () => {
       try {
         await connectToCloudServer();
       } catch (error) {
-        if (isConnectSupersededError(error)) humanLog.updateEntry(logId, { status: 'cancelled' });
+        if (supersededBy(error)) humanLog.updateEntry(logId, { status: 'cancelled' });
         throw error;
       }
       setIsConnected(true);
@@ -10270,6 +10292,7 @@ const App: React.FC = () => {
       // Navigate to cloud folders
       await navigateToRemoteFolder(cloudConfig.remote_folder);
       const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
+      stillCurrent();
       setLocalFiles(cloudLocalFilesData);
       setCurrentLocalPath(cloudConfig.local_folder);
       setCloudRemoteFolder(cloudConfig.remote_folder);
@@ -10290,7 +10313,7 @@ const App: React.FC = () => {
 
     } catch (error) {
       // Superseded by a newer connect: that one owns the workspace.
-      if (isConnectSupersededError(error)) return;
+      if (supersededBy(error)) return;
       // W3.1: user-cancelled AeroCloud connect. Reopen the cloud panel so the
       // user can retry, but skip the error toast (runConnect already toasted).
       if (isConnectCancelledError(error)) {

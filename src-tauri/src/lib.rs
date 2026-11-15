@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -1584,6 +1584,10 @@ pub async fn throttle_transfer(
 // Shared application state
 pub(crate) struct AppState {
     pub(crate) ftp_manager: Mutex<FtpManager>,
+    /// The legacy FTP session's generation: `connect_ftp` and `disconnect_ftp`
+    /// move it while they hold `ftp_manager`, so a teardown that read it can
+    /// end only the session it saw.
+    ftp_connection_generation: AtomicU64,
     pub(crate) cancel_flag: Arc<AtomicBool>,
     cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
@@ -1593,6 +1597,7 @@ impl AppState {
     fn new() -> Self {
         Self {
             ftp_manager: Mutex::new(FtpManager::new()),
+            ftp_connection_generation: AtomicU64::new(0),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
@@ -3490,14 +3495,14 @@ async fn connect_ftp(
 ) -> Result<(), String> {
     panic_safe::catch(
         "connect_ftp",
-        connect_ftp_inner(state, cancel_registry, params),
+        connect_ftp_inner(&state, &cancel_registry, params),
     )
     .await
 }
 
 async fn connect_ftp_inner(
-    state: State<'_, AppState>,
-    cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
+    state: &AppState,
+    cancel_registry: &provider_commands::ConnectionCancelRegistry,
     params: ConnectionParams,
 ) -> Result<(), String> {
     info!("Connecting to FTP server: {}", params.server);
@@ -3513,10 +3518,15 @@ async fn connect_ftp_inner(
         .map(|key| (key, cancel_registry.register(key)));
     let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
     let _cancel_guard = registration.map(|(key, (id, _))| {
-        provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string(), id)
+        provider_commands::ConnectTokenGuard::new(cancel_registry, key.to_string(), id)
     });
 
     let mut ftp_manager = state.ftp_manager.lock().await;
+    // A new session from here on, whatever the outcome: the one before it
+    // is replaced.
+    state
+        .ftp_connection_generation
+        .fetch_add(1, Ordering::SeqCst);
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
     let do_connect = async {
@@ -3554,9 +3564,34 @@ async fn connect_ftp_inner(
     }
 }
 
+/// The legacy FTP session's generation, for a later `disconnect_ftp` that
+/// must end only this session.
 #[tauri::command]
-async fn disconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
+async fn ftp_connection_generation(state: State<'_, AppState>) -> Result<u64, String> {
+    Ok(state.ftp_connection_generation.load(Ordering::SeqCst))
+}
+
+/// Disconnect the legacy FTP session. With `expected_generation` (what
+/// `ftp_connection_generation` answered), only that session is ended: a later
+/// `connect_ftp` owns the manager and is left alone.
+#[tauri::command]
+async fn disconnect_ftp(
+    state: State<'_, AppState>,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    disconnect_ftp_inner(&state, expected_generation).await
+}
+
+async fn disconnect_ftp_inner(
+    state: &AppState,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
     let mut ftp_manager = state.ftp_manager.lock().await;
+    let generation = &state.ftp_connection_generation;
+    if expected_generation.is_some_and(|expected| generation.load(Ordering::SeqCst) != expected) {
+        return Ok(());
+    }
+    generation.fetch_add(1, Ordering::SeqCst);
     ftp_manager
         .disconnect()
         .await
@@ -4579,6 +4614,84 @@ mod parse_remote_mtime_tests {
         assert_eq!(parse_remote_mtime("yesterday"), None);
         assert_eq!(parse_remote_mtime("?"), None);
         assert_eq!(parse_remote_mtime(""), None);
+    }
+}
+
+#[cfg(test)]
+mod legacy_ftp_generation_tests {
+    use super::*;
+
+    /// A local FTP server that logs anyone in and answers every other
+    /// command, one session per accepted socket.
+    async fn ftp_server() -> String {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let reply = match line.split_whitespace().next().unwrap_or("") {
+                            "USER" => "331 password please\r\n",
+                            "PASS" => "230 logged in\r\n",
+                            "PWD" => "257 \"/\" is the current directory\r\n",
+                            "QUIT" => "221 bye\r\n",
+                            _ => "200 ok\r\n",
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        addr
+    }
+
+    fn params(server: &str) -> ConnectionParams {
+        ConnectionParams {
+            server: server.to_string(),
+            username: "u".to_string(),
+            password: "p".to_string(),
+            connect_token: None,
+            trust_pasv_address: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_disconnect_naming_an_earlier_session_leaves_the_later_connect_connected() {
+        let state = AppState::new();
+        let registry = provider_commands::ConnectionCancelRegistry::default();
+        let server = ftp_server().await;
+        connect_ftp_inner(&state, &registry, params(&server))
+            .await
+            .unwrap();
+        // A reads the session it means to end; B connects before A's
+        // disconnect runs.
+        let seen_by_a = state.ftp_connection_generation.load(Ordering::SeqCst);
+        connect_ftp_inner(&state, &registry, params(&server))
+            .await
+            .unwrap();
+        disconnect_ftp_inner(&state, Some(seen_by_a)).await.unwrap();
+        assert!(
+            state.ftp_manager.lock().await.is_connected(),
+            "B's session survives A's late disconnect"
+        );
+        // A disconnect that names B's session ends it, as one without a
+        // generation does.
+        let seen_by_b = state.ftp_connection_generation.load(Ordering::SeqCst);
+        disconnect_ftp_inner(&state, Some(seen_by_b)).await.unwrap();
+        assert!(!state.ftp_manager.lock().await.is_connected());
+        connect_ftp_inner(&state, &registry, params(&server))
+            .await
+            .unwrap();
+        disconnect_ftp_inner(&state, None).await.unwrap();
+        assert!(!state.ftp_manager.lock().await.is_connected());
     }
 }
 
@@ -22509,6 +22622,7 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
+            ftp_connection_generation,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
