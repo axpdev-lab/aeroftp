@@ -1880,6 +1880,32 @@ pub struct OpenDriveTrashActionItem {
 
 // ============ Tauri Commands ============
 
+/// What a successful [`provider_connect`] answers; the page reads these
+/// names. `warnings`: what the provider reported while it connected
+/// ([`crate::providers::report_warning`], for example a GitHub working
+/// branch an earlier version made), this connect's own and no other's: the
+/// process queue is shared by every connection and transfer, so the page
+/// never drains it (CodeRabbit 4573911765).
+#[derive(Debug, serde::Serialize)]
+pub struct ProviderConnected {
+    pub message: String,
+    pub warnings: Vec<String>,
+}
+
+/// Run a connect in a warning scope of its own
+/// ([`crate::providers::CallWarnings`]) and answer what it reported with
+/// it. A failed connect answers its error; what it reported goes with it.
+async fn connected_with_warnings(
+    connect: impl std::future::Future<Output = Result<String, String>>,
+) -> Result<ProviderConnected, String> {
+    let warnings = crate::providers::CallWarnings::default();
+    let message = warnings.scope(connect).await?;
+    Ok(ProviderConnected {
+        message,
+        warnings: warnings.take(),
+    })
+}
+
 /// Connect to a storage provider using the specified protocol.
 ///
 /// IPC panic safety net: the real work runs in [`provider_connect_inner`],
@@ -1893,10 +1919,16 @@ pub async fn provider_connect(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
-) -> Result<String, String> {
+) -> Result<ProviderConnected, String> {
     crate::panic_safe::catch(
         "provider_connect",
-        provider_connect_inner(app, state, cancel_registry, peer_runtime, params),
+        connected_with_warnings(provider_connect_inner(
+            app,
+            state,
+            cancel_registry,
+            peer_runtime,
+            params,
+        )),
     )
     .await
 }
@@ -14932,6 +14964,46 @@ pub(crate) fn bound_compare_rows(
 
 #[cfg(test)]
 mod tests {
+    /// CodeRabbit 4573911765: a connect answers the warnings it reported,
+    /// under the names the page reads, and only those: one reported outside
+    /// it stays in the process queue, a later connect answers none of the
+    /// earlier one's, and nothing it reported is left in the queue.
+    #[tokio::test]
+    async fn a_connect_answers_its_own_warnings_once() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
+        let _ = crate::providers::take_warnings();
+        crate::providers::report_warning("another connection's".to_string());
+        let connected = super::connected_with_warnings(async {
+            crate::providers::report_warning("this connection's".to_string());
+            Ok("Connected to x via github".to_string())
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(&connected).unwrap(),
+            serde_json::json!({
+                "message": "Connected to x via github",
+                "warnings": ["this connection's"],
+            })
+        );
+        assert_eq!(
+            crate::providers::take_warnings(),
+            vec!["another connection's".to_string()]
+        );
+        let again = super::connected_with_warnings(async { Ok("again".to_string()) })
+            .await
+            .unwrap();
+        assert!(again.warnings.is_empty(), "{again:?}");
+        let failed = super::connected_with_warnings(async {
+            crate::providers::report_warning("a failed connect's".to_string());
+            Err::<String, _>("Connection failed".to_string())
+        })
+        .await;
+        assert_eq!(failed.unwrap_err(), "Connection failed");
+        assert!(crate::providers::take_warnings().is_empty());
+    }
+
     use super::*;
 
     /// The editor's remote read is bound to the connection it was opened on:

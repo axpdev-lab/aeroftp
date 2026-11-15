@@ -2704,6 +2704,8 @@ mod tests {
 
     #[test]
     fn segmented_notices_exclude_error_details_and_cancellation() {
+        // The process-wide warning queue is one for every test of the run.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.blocking_lock();
         use super::SegmentedDownloadError;
         let _ = crate::providers::take_warnings();
         let error = SegmentedDownloadError::unavailable(

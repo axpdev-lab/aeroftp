@@ -320,6 +320,23 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.provider_type()
     }
 
+    /// The wrapped session's poison (see the crypt overlay).
+    fn target_poison(&self) -> Option<std::sync::Arc<std::sync::atomic::AtomicBool>> {
+        self.inner.target_poison()
+    }
+
+    /// The wrapped session's account and namespace (CodeRabbit 4575254547):
+    /// compression changes what the files hold, never which account, mount
+    /// or branch they are on. Without them a wrapped session had no sync
+    /// identity at all.
+    fn account_email(&self) -> Option<String> {
+        self.inner.account_email()
+    }
+
+    fn sync_namespace_identity(&self) -> Option<String> {
+        self.inner.sync_namespace_identity()
+    }
+
     fn manages_upload_retries(&self) -> bool {
         self.inner.manages_upload_retries()
     }
@@ -598,6 +615,34 @@ impl StorageProvider for CompressOverlayProvider {
 
 #[cfg(test)]
 mod tests {
+
+    /// CodeRabbit 4575254547: the overlay answers the wrapped session's
+    /// account and namespace identity, so a GitHub session on `main` and one
+    /// on its working branch stay two sync targets when their files are
+    /// compressed.
+    #[test]
+    fn the_overlay_forwards_the_wrapped_sessions_namespace_identity() {
+        let (on_main, on_branch) =
+            crate::providers::github::GitHubProvider::on_main_and_on_its_working_branch_for_test();
+        let expected = [
+            on_main.sync_namespace_identity(),
+            on_branch.sync_namespace_identity(),
+        ];
+        assert!(expected.iter().all(Option::is_some));
+        let wrapped = [
+            CompressOverlayProvider::new(Box::new(on_main), 3),
+            CompressOverlayProvider::new(Box::new(on_branch), 3),
+        ];
+        for (overlay, inner) in wrapped.iter().zip(&expected) {
+            assert_eq!(&overlay.sync_namespace_identity(), inner);
+            assert_eq!(overlay.account_email().as_deref(), Some("alice"));
+        }
+        assert_ne!(
+            wrapped[0].sync_namespace_identity(),
+            wrapped[1].sync_namespace_identity(),
+            "main and its working branch are two trees"
+        );
+    }
 
     /// The in-memory decode trusted the header's plain length: a frame whose
     /// header declares more than the in-memory limit is refused before any

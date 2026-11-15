@@ -15,6 +15,7 @@ import DRAG from '../hooks/useDragAndDrop.ts?raw';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, local, remote } from '../components/appTransfers.testkit';
 import { QueuedTargetChangedError } from './queuedTarget';
 import { oauthLoginKey } from './oauthLogins';
+import { isTargetChangedRefusal } from './targetChanged';
 import { connectionNumberOf, isSameConnection, savedProfileIdOf } from './liveConnection';
 import { isFourSharedProvider, isOAuthProvider } from '../types';
 
@@ -320,7 +321,8 @@ describe('a queued transfer', () => {
             changedMessage: () => 'toast.openedOnAnotherServer',
         };
         const { code } = await transformWithOxc(source, 'read-for-editor.ts');
-        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+        const readForEditor = new Function('isTargetChangedRefusal', 'useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            isTargetChangedRefusal, 
             (fn: unknown) => fn, invoke, remoteTarget);
         ctx.remoteConnectPhaseRef.current = 'switch';
         await expect(readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
@@ -438,7 +440,8 @@ describe('a queued transfer', () => {
             changedMessage: () => 'toast.openedOnAnotherServer',
         };
         const { code } = await transformWithOxc(source, 'read-for-editor.ts');
-        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+        const readForEditor = new Function('isTargetChangedRefusal', 'useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            isTargetChangedRefusal, 
             (fn: unknown) => fn, invoke, remoteTarget);
         await expect(readForEditor('/srv/a.txt', true)).rejects.toThrow('toast.openedOnAnotherServer');
         expect(invoke).not.toHaveBeenCalledWith('preview_remote_file', expect.anything());
@@ -708,7 +711,8 @@ describe('the editor\'s save of a remote file', () => {
         const target = { params: { server: 'a.example' }, profileId: 'p1', overlay: null };
         const remoteTarget = { snapshot: () => target, changedSince: changed, changedMessage: () => 'toast.openedOnAnotherServer' };
         const { code } = await transformWithOxc(source, 'read-for-editor.ts');
-        const readForEditor = new Function('useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+        const readForEditor = new Function('isTargetChangedRefusal', 'useLatestCallback', 'invoke', 'remoteTarget', `${code}; return readForEditor;`)(
+            isTargetChangedRefusal, 
             (fn: unknown) => fn, invoke, remoteTarget);
         return { readForEditor, invoke, target };
     };

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet -- AI-assisted (see AI-TRANSPARENCY.md)
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { transformWithOxc } from 'vite';
 import { parseSync } from 'rolldown/experimental';
 import APP from '../App.tsx?raw';
+import { isTargetChangedRefusal } from './targetChanged';
 
 /**
  * Wiring guard for the Permissions dialog (#1144 review). `provider_chmod`
@@ -174,5 +176,70 @@ describe('Permissions dialog session binding', () => {
       expect(keys, 'the Permissions dialog opens without the session it belongs to').toContain('sessionId');
       expect(keys, 'the Permissions dialog opens without the connection generation it belongs to').toContain('generation');
     }
+  });
+
+  /**
+   * The save itself, as App.tsx has it, with the IPC and the window mocked
+   * (Greptile on #1572): what the user sees for each answer of the backend.
+   */
+  describe('what the backend answers to the change', () => {
+    const save = async (answer: () => unknown) => {
+      expect(found.chmodCalls).toHaveLength(1);
+      const { fn } = found.chmodCalls[0];
+      const { code } = await transformWithOxc(`const onSave = ${APP.slice(fn.start, fn.end)};`, 'permissions-save.ts');
+      const context = {
+        permissionsDialog: { visible: true, openId: 1, sessionId: 's1', generation: 7, file: { name: 'a.txt', path: '/srv/a.txt' } },
+        permissionsSavingRef: { current: false },
+        backendServesLiveTab: () => true,
+        activeSessionId: 's1',
+        setPermissionsDialog: vi.fn(),
+        notify: { error: vi.fn(), success: vi.fn() },
+        t: (key: string) => key,
+        invoke: vi.fn(async (command: string) => {
+          if (command !== 'provider_chmod') throw new Error(`Unexpected IPC: ${command}`);
+          return answer();
+        }),
+        loadRemoteFiles: vi.fn(),
+        isTargetChangedRefusal,
+      };
+      const onSave = new Function(...Object.keys(context), `${code}; return onSave;`)(...Object.values(context)) as (mode: string) => Promise<void>;
+      await onSave('644');
+      expect(context.invoke).toHaveBeenCalledWith('provider_chmod', { path: '/srv/a.txt', mode: '644', generation: 7 });
+      expect(context.permissionsSavingRef.current).toBe(false);
+      return context;
+    };
+    const refusal = 'CONNECTION_CHANGED: the connection changed since the permissions were read; nothing was changed';
+
+    it.each([
+      ['as the backend words it', refusal],
+      ['behind the words of the operation', `chmod failed: ${refusal}`],
+      ['behind two wrappers', `Error: chmod failed: ${refusal}`],
+      ['thrown as an Error', new Error(refusal)],
+    ])('closes the dialog and says the session changed for a refusal %s', async (_label, thrown) => {
+      const c = await save(() => { throw thrown; });
+      expect(c.setPermissionsDialog.mock.calls).toEqual([[null]]);
+      expect(c.notify.error.mock.calls).toEqual([['common.failed', 'toast.permissionsSessionChanged']]);
+      expect(c.notify.success).not.toHaveBeenCalled();
+      expect(c.loadRemoteFiles).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an ordinary failure', 'Permission denied'],
+      ['a failure about a file named after the marker', 'chmod failed: Permission denied on /srv/CONNECTION_CHANGED: notes.txt'],
+    ])('keeps the dialog open and shows the error for %s', async (_label, thrown) => {
+      const c = await save(() => { throw thrown; });
+      expect(c.setPermissionsDialog).not.toHaveBeenCalled();
+      expect(c.notify.error.mock.calls).toEqual([['common.failed', thrown]]);
+      expect(c.notify.success).not.toHaveBeenCalled();
+      expect(c.loadRemoteFiles).not.toHaveBeenCalled();
+    });
+
+    it('closes the dialog, confirms and reloads the listing when the change is applied', async () => {
+      const c = await save(() => undefined);
+      expect(c.setPermissionsDialog.mock.calls).toEqual([[null]]);
+      expect(c.notify.error).not.toHaveBeenCalled();
+      expect(c.notify.success).toHaveBeenCalledTimes(1);
+      expect(c.loadRemoteFiles).toHaveBeenCalledWith(undefined, true);
+    });
   });
 });
