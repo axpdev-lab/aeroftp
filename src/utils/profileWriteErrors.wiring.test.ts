@@ -432,7 +432,7 @@ describe('saved profile write rejection in production handlers', () => {
         const f = fixture();
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
         // The token of the sign-in swap that afterBackendSwap reports on.
-        f.context.latestBackendSwapToken = () => 1;
+        f.context.latestSettledBackendSwapToken = () => 1;
         const marker = mode === '4shared'
             ? 'onConnected={afterBackendSwap(async (handOff, displayName: string) => {'
             : 'onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {';

@@ -49,7 +49,7 @@ describe('ConnectionScreen edit sessions', () => {
         expect(wrapped).toHaveLength(handlers.length);
         expect(bodyOf('afterBackendSwap')).toContain("window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }))");
         // The report names the swap it is about, taken before the handler runs.
-        expect(bodyOf('afterBackendSwap')).toMatch(/const token = latestBackendSwapToken\(\);\s+let handedOff = false;/);
+        expect(bodyOf('afterBackendSwap')).toMatch(/const token = latestSettledBackendSwapToken\(\);\s+let handedOff = false;/);
         // Neither sign-in can start while the form would refuse its connect.
         expect(source.match(/disabled=\{remotePathEscapesOverlay \|\| overlaySaveBlocked\}\n\s+(provider=|rightColumn=)/g) ?? []).toHaveLength(2);
     });
@@ -69,7 +69,7 @@ describe('ConnectionScreen edit sessions', () => {
         for (const [before, command] of [['let oauthResult:', "invoke('oauth2_connect'"], ["invoke<boolean>('fourshared_has_tokens'", "invoke('fourshared_connect'"]]) {
             const from = resume.indexOf(before);
             expect(from, before).toBeGreaterThan(-1);
-            expect(resume.slice(from, resume.indexOf(command, from)), command).toContain('takeOverActiveSession();');
+            expect(resume.slice(from, resume.indexOf(command, from)), command).toContain('backendUncertainRef.current = true;\n        takeOverActiveSession();');
         }
     });
 

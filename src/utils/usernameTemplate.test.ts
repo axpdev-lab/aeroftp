@@ -228,7 +228,9 @@ describe('the start folder of a connect', () => {
                 expect(beforePark.includes(exit), `line ${line}: ${exit} before the OAuth park`).toBe(false);
             }
         });
-        const branchStart = /if \(isOAuth\) \{|const logId = [^;\n]*humanLog\.logStart\('CONNECT'/g;
+        // The provider branch starts at `if (isProvider) {`: its reuse of a live
+        // session comes before its log entry, and must not skip the check.
+        const branchStart = /if \(isOAuth\) \{|if \(isProvider\) \{|const logId = [^;\n]*humanLog\.logStart\('CONNECT'/g;
         const starts = [...appSource.matchAll(branchStart)].map(m => m.index!);
         for (const [k, call] of calls.entries()) {
             const line = appSource.slice(0, call).split('\n').length;

@@ -40,10 +40,14 @@ export interface BackendSwapDetail {
 }
 
 let lastBackendSwapToken = 0;
+let lastSettledBackendSwapToken = 0;
 
-/** The token of the latest sign-in swap, which the form's report on that
- *  sign-in carries (`aeroftp-sign-in-abandoned`). */
-export const latestBackendSwapToken = (): number => lastBackendSwapToken;
+/** The token of the sign-in swap that settled last, the one whose provider
+ *  the backend holds. The form reads it when its `onConnected` starts, which
+ *  runs in the same task as that settle (no IPC reply can come between), so
+ *  its report (`aeroftp-sign-in-handoff`, `aeroftp-sign-in-abandoned`) names
+ *  its own sign-in even when another one is still running. */
+export const latestSettledBackendSwapToken = (): number => lastSettledBackendSwapToken;
 
 /** Runs a sign-in's invoke that replaces the backend's provider
  *  (`oauth2_connect`, `fourshared_connect`). App is told first, in the same
@@ -53,8 +57,10 @@ export const latestBackendSwapToken = (): number => lastBackendSwapToken;
  *  account. */
 export function swapBackend<T>(run: () => Promise<T>): Promise<T> {
   const token = ++lastBackendSwapToken;
-  const tell = (phase: BackendSwapDetail['phase']) =>
+  const tell = (phase: BackendSwapDetail['phase']) => {
+    if (phase === 'settled') lastSettledBackendSwapToken = token;
     window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
+  };
   tell('start');
   let swap: Promise<T>;
   try {

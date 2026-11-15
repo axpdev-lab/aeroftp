@@ -10,7 +10,7 @@ import { presetConnectionOptions, connectionProfileDefaults } from '../providers
 import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
-import { latestBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
+import { latestSettledBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -1100,17 +1100,22 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // A sign-in component (OAuthConnect, FourSharedConnect) has already swapped
     // the backend when its onConnected runs (`swapBackend`, which put the live
-    // tab aside first). Every exit that does not hand the connection to App (an
-    // overlay gate, a failed profile read or save, a throw) reports it with
-    // that swap's token, and App puts aside a tab opened while the swap ran,
-    // whose backend the swap replaced; a tab opened after it, or a report on
-    // an older sign-in, is left alone. App's connect parks first,
-    // synchronously, so once the hand-off is called the tab is already parked.
+    // tab aside first). The swap it reports on is the one that settled last
+    // (`latestSettledBackendSwapToken`, read here, in the task of that settle).
+    // The hand-off asks App first: a sign-in whose swap was overtaken by a
+    // later one, or by a connect, no longer owns the backend and is refused.
+    // Every exit that does not hand the connection to App (an overlay gate, a
+    // failed profile read or save, a throw, a refused hand-off) reports it, and
+    // App puts aside a tab opened while the swap ran. App's connect parks
+    // first, synchronously, so once the hand-off is called the tab is parked.
     const afterBackendSwap = <A extends unknown[]>(handler: (handOff: (params?: ConnectionParams) => void, ...args: A) => Promise<void>) =>
         async (...args: A) => {
-            const token = latestBackendSwapToken();
+            const token = latestSettledBackendSwapToken();
             let handedOff = false;
             const handOff = (params?: ConnectionParams) => {
+                const request = { token, accepted: true };
+                window.dispatchEvent(new CustomEvent('aeroftp-sign-in-handoff', { detail: request }));
+                if (!request.accepted) return;
                 handedOff = true;
                 onConnect(params);
             };

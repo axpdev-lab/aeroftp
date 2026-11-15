@@ -8235,35 +8235,55 @@ const App: React.FC = () => {
   }, []);
 
   // A sign-in in the connection form (OAuthConnect, FourSharedConnect) swaps
-  // the backend before the form decides (`swapBackend`). The live tab is put
-  // aside before the swap, so the transfer queue cannot start on it over the
-  // new account. When the form then stops short of handing the connect over
-  // (a gate, a failed save, a throw), it reports that sign-in, and a tab
-  // opened while the swap ran, whose backend the swap replaced, is put aside
-  // too. A report on an older sign-in, or one that comes after another
-  // connect began, is left alone: that connect owns the backend now.
-  const backendSwapRef = useRef<{ token: number; settledAtPhase: number | null } | null>(null);
+  // the backend before the form decides (`swapBackend`). The backend holds the
+  // provider of whichever swap settles last, so the live tab is put aside both
+  // before a swap and when it settles: a tab connected while the swap ran had
+  // its backend replaced. Until a connect confirms a tab again, nothing is
+  // bound to the backend: it is marked uncertain, which `backendServesLiveTab`
+  // reads synchronously, so the transfer queue and the direct actions cannot
+  // reach the new account before React commits the park.
+  // The form's report names its own sign-in. A hand-off is accepted only from
+  // the sign-in that settled last with no connect since (another sign-in or a
+  // connect has the backend now: it is refused and says so); an abandoned one
+  // puts aside a tab opened while it ran, and a report on an older sign-in, or
+  // one that comes after another connect began, is left alone.
+  const backendSwapRef = useRef<{ token: number; settledAtPhase: number } | null>(null);
+  const refuseStaleHandoff = useLatestCallback(() => {
+    notify.error(t('connection.connectionFailed'), t('toast.remoteTargetChanged'));
+  });
   useEffect(() => {
+    const ownsBackend = (token: number | undefined) => {
+      const last = backendSwapRef.current;
+      return !!last && last.token === token && last.settledAtPhase === remoteConnectPhaseVersionRef.current;
+    };
     const swap = (event: Event) => {
       const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
-      if (phase === 'start') {
-        backendSwapRef.current = { token, settledAtPhase: null };
-        takeOverActiveSession();
-      } else if (backendSwapRef.current?.token === token) {
+      if (phase === 'settled') {
         backendSwapRef.current = { token, settledAtPhase: remoteConnectPhaseVersionRef.current };
       }
+      // Nothing is bound to the backend until a connect or a switch confirms
+      // a tab again (`confirmBackendConnection`). Set synchronously, so a
+      // queued write cannot pass `backendServesLiveTab` before React commits
+      // the park: this runs after an await, and `isConnected` reads true until
+      // then.
+      backendUncertainRef.current = true;
+      takeOverActiveSession();
+    };
+    const handoff = (event: Event) => {
+      const request = (event as CustomEvent<{ token: number; accepted: boolean }>).detail;
+      if (ownsBackend(request.token)) return;
+      request.accepted = false;
+      refuseStaleHandoff();
     };
     const abandoned = (event: Event) => {
-      const last = backendSwapRef.current;
-      const token = (event as CustomEvent<{ token?: number }>).detail?.token;
-      if (last && last.token === token && last.settledAtPhase === remoteConnectPhaseVersionRef.current) {
-        parkActiveSession();
-      }
+      if (ownsBackend((event as CustomEvent<{ token?: number }>).detail?.token)) parkActiveSession();
     };
     window.addEventListener('aeroftp-backend-swap', swap);
+    window.addEventListener('aeroftp-sign-in-handoff', handoff);
     window.addEventListener('aeroftp-sign-in-abandoned', abandoned);
     return () => {
       window.removeEventListener('aeroftp-backend-swap', swap);
+      window.removeEventListener('aeroftp-sign-in-handoff', handoff);
       window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
     };
   }, []);
@@ -8522,6 +8542,16 @@ const App: React.FC = () => {
         return;
       }
 
+      // A start folder the user name cannot fill is refused before anything
+      // changes, a reused session included (connectStartFolder).
+      let providerStartFolder: string | null;
+      try {
+        providerStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
+      } catch (error) {
+        notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+        return;
+      }
+
       // #128-C: re-entering an account that is still connected in the backend
       // must not tear the session down and force a fresh 2FA/TOTP login. The 🏠
       // Home button (handleNewTabFromSavedServer) caches the active tab WITHOUT
@@ -8625,8 +8655,6 @@ const App: React.FC = () => {
       const logId = opts?.existingLogId ?? humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
       try {
-        // Refused before any state change or request (connectStartFolder).
-        const providerStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
         // SEC-P1-06: TOFU host key check for SFTP and SCP (one known_hosts),
         // asked before the current connection ends, so a refused key leaves
         // it as it was.
@@ -11642,7 +11670,9 @@ const App: React.FC = () => {
         let oauthResult: { display_name?: string; account_email?: string | null };
         // The connect below replaces the backend's provider: the live tab is
         // put aside first, as every other connect does, so it is never left
-        // live over this account while the resume waits.
+        // live over this account while the resume waits; marked uncertain at
+        // once, so no queued write passes before React commits the park.
+        backendUncertainRef.current = true;
         takeOverActiveSession();
         try {
           oauthResult = await invoke('oauth2_connect', { params: baseParams });
@@ -11701,6 +11731,7 @@ const App: React.FC = () => {
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
         if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
         // As for OAuth above: the tab is put aside before the backend leaves it.
+        backendUncertainRef.current = true;
         takeOverActiveSession();
         try {
           await invoke('fourshared_connect', { params });
