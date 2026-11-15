@@ -3,6 +3,7 @@
 
 import { connectionProtocol } from '../providers/connectionManifest';
 import type { ConnectionParams } from '../types';
+import { webdavConnectBasePath } from './profileSecurity';
 
 /** The arguments of `provider_probe_alive` for the tab whose connection is
  *  `params`: the account it expects in the backend's single provider slot.
@@ -28,8 +29,9 @@ const effectivePort = (params: ConnectionParams, protocol: string) =>
     params.port || connectionProtocol(protocol)?.defaultPort || null;
 
 /** Whether an open tab without a saved profile, `tab`, is the target a
- *  connect asks for, `wanted`: same user, server, effective port, and S3
- *  bucket, endpoint and region.
+ *  connect asks for, `wanted`: same user, server, effective port, S3
+ *  bucket, endpoint and region, and WebDAV base path (the connect places the
+ *  URL under it, `webdavConnectBasePath`).
  *  Only then may the connect reuse that tab's live session (#128-C). */
 export const sameQuickConnectTarget = (tab: ConnectionParams, wanted: ConnectionParams, protocol: string): boolean =>
     (tab.username || '') === (wanted.username || '')
@@ -37,4 +39,5 @@ export const sameQuickConnectTarget = (tab: ConnectionParams, wanted: Connection
     && effectivePort(tab, protocol) === effectivePort(wanted, protocol)
     && (tab.options?.bucket || '') === (wanted.options?.bucket || '')
     && (tab.options?.endpoint || '') === (wanted.options?.endpoint || '')
-    && (tab.options?.region || '') === (wanted.options?.region || '');
+    && (tab.options?.region || '') === (wanted.options?.region || '')
+    && (webdavConnectBasePath(protocol, tab.options) || '') === (webdavConnectBasePath(protocol, wanted.options) || '');

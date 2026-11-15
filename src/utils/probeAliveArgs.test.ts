@@ -54,6 +54,15 @@ describe('sameQuickConnectTarget', () => {
         expect(sameQuickConnectTarget(tab, { ...tab, server: 'other.example.com' }, 'ftp')).toBe(false);
     });
 
+    it('tells two WebDAV base paths on one server and user apart', () => {
+        const dav = { ...tab, server: 'dav.example.com', options: { basePath: '/dav/alice' } };
+        expect(sameQuickConnectTarget(dav, { ...dav, options: { basePath: '/dav/bob' } }, 'webdav')).toBe(false);
+        expect(sameQuickConnectTarget(dav, { ...dav, options: {} }, 'webdav')).toBe(false);
+        expect(sameQuickConnectTarget(dav, { ...dav, options: { basePath: '/dav/alice' } }, 'webdav')).toBe(true);
+        // Another protocol never reads the WebDAV base path.
+        expect(sameQuickConnectTarget(dav, { ...dav, options: { basePath: '/other' } }, 'ftp')).toBe(true);
+    });
+
     it('sends the S3 bucket, endpoint and region to the probe', () => {
         const args = probeAliveArgs({ server: '', username: 'k', password: '', options: { bucket: 'photos', endpoint: 'https://minio.example:9000', region: 'eu-west-1' } }, 's3');
         expect([args.bucket, args.endpoint, args.region]).toEqual(['photos', 'https://minio.example:9000', 'eu-west-1']);
