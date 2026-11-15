@@ -20,6 +20,7 @@ import { normCryptScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import { loginRelativeForm, loginRelativeProtocol, normalizeOverlayAnchor } from '../utils/overlayScope';
 import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
 import { locationProblem } from '../utils/syncNavigationPath';
+import { REDACTION_PATTERNS } from '../utils/redactSensitive';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
 import { AeroCloudMaturityBadge, isAeroCloudProtocol, useAeroCloudCaveat } from './AeroCloudProtocols';
@@ -52,6 +53,14 @@ export function profileRoot(profile: ServerProfile): string {
  * app anchors an opened overlay the same way, so AeroCloud stays inside the
  * encrypted folder.
  */
+// The log redaction's rule for a password in a URL (`https://u:***@host`).
+const URL_PASSWORD = REDACTION_PATTERNS.find(({ pattern }) => pattern.source.includes(':\\/\\/'))!;
+
+/** A folder label as shown: no URL password, no query (a signed URL's token). */
+function shownFolderLabel(label: string): string {
+    return label.split('?')[0].replace(URL_PASSWORD.pattern, URL_PASSWORD.replacement);
+}
+
 export function aeroCloudBase(profile: ServerProfile): string {
     // A folder with a `.`, `..` or empty step comes back as written, so the
     // wizard names it and refuses it (`aeroCloudFolderNotPlain`): normalized,
@@ -174,6 +183,8 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
 
     const compatible = useMemo(() => (profiles ?? []).filter(p => isAeroCloudProtocol(p.protocol)), [profiles]);
     const hiddenCount = (profiles?.length ?? 0) - compatible.length;
+    // The rail shows each profile's folder: without a password or a signed token.
+    const listed = useMemo(() => compatible.map(p => p.initialPath ? { ...p, initialPath: shownFolderLabel(p.initialPath) } : p), [compatible]);
 
     const selectLocalFolder = async () => {
         const selected = await pickFile({ directory: true, multiple: false, title: t('cloud.localFolder') });
@@ -319,9 +330,9 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                         <p className="text-sm text-gray-500 dark:text-gray-400">{t('cloud.selectProfileDesc')}</p>
                         <ProfileRail
                             title={t('cloud.serverProfile')}
-                            profiles={compatible}
+                            profiles={listed}
                             selected={profile}
-                            onSelect={setProfile}
+                            onSelect={(shown) => setProfile(compatible.find(p => p.id === shown.id) ?? null)}
                             emptyMessage={t('cloud.noProfilesTitle')}
                             noMatchMessage={t('cloud.noProfileMatch')}
                             searchPlaceholder={t('cloud.searchProfiles')}
@@ -337,8 +348,8 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                         <div className={profile ? '' : 'opacity-50'}>
                             <label className="block text-sm font-medium text-gray-900 dark:text-white mb-1">{t('cloud.remoteFolder')}</label>
                             <div className="flex items-stretch font-mono text-sm">
-                                <span className="flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 max-w-[55%] truncate" title={rootLabel}>
-                                    {rootLabel}
+                                <span className="flex items-center px-3 rounded-l-lg border border-r-0 border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 max-w-[55%] truncate" title={shownFolderLabel(rootLabel)}>
+                                    {shownFolderLabel(rootLabel)}
                                 </span>
                                 <input type="text" value={subfolder} onChange={(e) => setSubfolder(e.target.value)} disabled={!profile}
                                     placeholder={t('cloud.remoteSubfolderPlaceholder')} aria-label={t('cloud.remoteFolder')}
@@ -396,7 +407,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                 </div>
                             </div>
                             <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Folder size={14} className="shrink-0" /> {t('cloud.localFolder')}: <code className="truncate text-xs">{localFolder}</code></p>
-                            <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Server size={14} className="shrink-0" /> {t('cloud.remoteFolder')}: <code className="truncate text-xs">{remoteLabel}</code></p>
+                            <p className="flex items-center gap-2 text-gray-600 dark:text-gray-300"><Server size={14} className="shrink-0" /> {t('cloud.remoteFolder')}: <code className="truncate text-xs">{shownFolderLabel(remoteLabel)}</code></p>
                         </div>
                         {error && (
                             <div className="flex items-start gap-2 rounded-lg bg-red-50 dark:bg-red-900/30 p-3 text-sm text-red-700 dark:text-red-300">

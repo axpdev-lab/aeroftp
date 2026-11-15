@@ -128,3 +128,22 @@ it('names no folder in the not-plain alert, so a password in the profile path is
     expect(alert?.textContent).not.toContain('pa55word');
     expect(button('common.next')!.disabled).toBe(true);
 });
+
+it('shows a profile folder with no password or signed token anywhere in the wizard', async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    for (const initialPath of ['https://alice:pa55word@example.com//data', 'https://alice:pa55word@example.com/data?sig=s3cret']) {
+        mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 443, username: 'u', protocol: 'webdav', initialPath }];
+        mocks.invoke.mockImplementation(async (command: string) => command === 'get_default_cloud_folder' ? '/home/u/AeroCloud' : null);
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudSetupWizard onComplete={vi.fn()} onCancel={vi.fn()} />));
+        const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.includes(label));
+        await React.act(async () => button('common.next')!.click());
+        await React.act(async () => button('nas')!.click());
+        // The plain folder goes on to the summary, which names it again.
+        if (!button('common.next')!.disabled) await React.act(async () => button('common.next')!.click());
+        expect(host.innerHTML).toContain('example.com');
+        expect(host.innerHTML).not.toContain('pa55word');
+        expect(host.innerHTML).not.toContain('s3cret');
+        await React.act(async () => root!.unmount()); host.remove(); root = undefined;
+    }
+});
