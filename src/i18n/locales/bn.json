@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "কনফিগারেশন টেমপ্লেটসমূহ",
             "templateLogImported": "কনফিগারেশন টেমপ্লেট আমদানি হয়েছে: {imported}টি আমদানি, {skipped}টি এড়ানো হয়েছে, {invalid}টি অবৈধ",
             "templateLogBlocks": "ব্লকসমূহ: {blocks}",
-            "templateDuplicateInTemplate": "টেমপ্লেটে অনুলিপি"
+            "templateDuplicateInTemplate": "টেমপ্লেটে অনুলিপি",
+            "templateSelectProfile": "{name} আমদানি করুন"
         },
         "devtools": {
             "title": "AeroTools",

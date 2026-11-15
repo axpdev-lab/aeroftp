@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Templat Konfigurasi",
             "templateLogImported": "Templat konfigurasi diimpor: {imported} diimpor, {skipped} dilewati, {invalid} tidak valid",
             "templateLogBlocks": "Blok: {blocks}",
-            "templateDuplicateInTemplate": "duplikat dalam templat"
+            "templateDuplicateInTemplate": "duplikat dalam templat",
+            "templateSelectProfile": "Impor {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurationsvorlagen",
             "templateLogImported": "Konfigurationsvorlage importiert: {imported} importiert, {skipped} übersprungen, {invalid} ungültig",
             "templateLogBlocks": "Blöcke: {blocks}",
-            "templateDuplicateInTemplate": "Duplikat in Vorlage"
+            "templateDuplicateInTemplate": "Duplikat in Vorlage",
+            "templateSelectProfile": "{name} importieren"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Yapılandırma Şablonları",
             "templateLogImported": "Yapılandırma şablonu içe aktarıldı: {imported} içe aktarıldı, {skipped} atlandı, {invalid} geçersiz",
             "templateLogBlocks": "Bloklar: {blocks}",
-            "templateDuplicateInTemplate": "şablonda yinelenen"
+            "templateDuplicateInTemplate": "şablonda yinelenen",
+            "templateSelectProfile": "{name} öğesini içe aktar"
         },
         "devtools": {
             "title": "AeroTools",

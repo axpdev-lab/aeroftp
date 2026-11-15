@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "ពុម្ពការកំណត់រចនាសម្ព័ន្ធ",
             "templateLogImported": "បាននាំចូលពុម្ពការកំណត់រចនាសម្ព័ន្ធ៖ {imported} បាននាំចូល, {skipped} បានរំលង, {invalid} មិនត្រឹមត្រូវ",
             "templateLogBlocks": "ប្លុក៖ {blocks}",
-            "templateDuplicateInTemplate": "ស្ទួននៅក្នុងពុម្ព"
+            "templateDuplicateInTemplate": "ស្ទួននៅក្នុងពុម្ព",
+            "templateSelectProfile": "នាំចូល {name}"
         },
         "devtools": {
             "title": "AeroTools",

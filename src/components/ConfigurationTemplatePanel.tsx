@@ -732,6 +732,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                                     checked={checked}
                                                     disabled={row.action === 'skip'}
                                                     onChange={() => toggleBlockSelected(row.blockName)}
+                                                    aria-label={t('settings.templateSelectProfile', { name: row.targetName })}
                                                 />
                                                 <div className="w-5 h-5 flex items-center justify-center flex-shrink-0">
                                                     {Logo ? <Logo size={18} /> : <Server size={16} className="text-gray-400" />}

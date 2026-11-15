@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Կարգավորման ձևանմուշներ",
             "templateLogImported": "Կարգավորման ձևանմուշը ներմուծվել է՝ {imported} ներմուծված, {skipped} բաց թողնված, {invalid} անվավեր",
             "templateLogBlocks": "Բլոկներ՝ {blocks}",
-            "templateDuplicateInTemplate": "կրկնօրինակ ձևանմուշում"
+            "templateDuplicateInTemplate": "կրկնօրինակ ձևանմուշում",
+            "templateSelectProfile": "Ներմուծել {name}"
         },
         "devtools": {
             "title": "AeroTools",

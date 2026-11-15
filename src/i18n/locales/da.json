@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurationsskabeloner",
             "templateLogImported": "Konfigurationsskabelon importeret: {imported} importeret, {skipped} sprunget over, {invalid} ugyldige",
             "templateLogBlocks": "Blokke: {blocks}",
-            "templateDuplicateInTemplate": "duplikat i skabelonen"
+            "templateDuplicateInTemplate": "duplikat i skabelonen",
+            "templateSelectProfile": "Importér {name}"
         },
         "devtools": {
             "title": "AeroTools",

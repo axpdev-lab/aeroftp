@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "構成テンプレート",
             "templateLogImported": "構成テンプレートをインポートしました: {imported} 件インポート、{skipped} 件スキップ、{invalid} 件無効",
             "templateLogBlocks": "ブロック: {blocks}",
-            "templateDuplicateInTemplate": "テンプレート内で重複"
+            "templateDuplicateInTemplate": "テンプレート内で重複",
+            "templateSelectProfile": "{name} をインポート"
         },
         "devtools": {
             "title": "AeroTools",

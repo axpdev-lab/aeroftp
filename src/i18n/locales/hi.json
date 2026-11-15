@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "कॉन्फ़िगरेशन टेम्प्लेट्स",
             "templateLogImported": "कॉन्फ़िगरेशन टेम्प्लेट आयात किया गया: {imported} आयात किए गए, {skipped} छोड़े गए, {invalid} अमान्य",
             "templateLogBlocks": "ब्लॉक: {blocks}",
-            "templateDuplicateInTemplate": "टेम्प्लेट में डुप्लिकेट"
+            "templateDuplicateInTemplate": "टेम्प्लेट में डुप्लिकेट",
+            "templateSelectProfile": "{name} आयात करें"
         },
         "devtools": {
             "title": "AeroTools",

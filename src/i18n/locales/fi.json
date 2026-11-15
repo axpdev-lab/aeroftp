@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Määritysmallit",
             "templateLogImported": "Määritysmalli tuotu: {imported} tuotu, {skipped} ohitettu, {invalid} virheellistä",
             "templateLogBlocks": "Lohkot: {blocks}",
-            "templateDuplicateInTemplate": "kaksoiskappale mallissa"
+            "templateDuplicateInTemplate": "kaksoiskappale mallissa",
+            "templateSelectProfile": "Tuo {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigūracijos šablonai",
             "templateLogImported": "Konfigūracijos šablonas importuotas: {imported} importuota, {skipped} praleista, {invalid} netinkamų",
             "templateLogBlocks": "Blokai: {blocks}",
-            "templateDuplicateInTemplate": "dublikatas šablone"
+            "templateDuplicateInTemplate": "dublikatas šablone",
+            "templateSelectProfile": "Importuoti {name}"
         },
         "devtools": {
             "title": "AeroTools",

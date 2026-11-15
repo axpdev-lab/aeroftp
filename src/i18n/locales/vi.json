@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Các mẫu cấu hình",
             "templateLogImported": "Đã nhập mẫu cấu hình: {imported} đã nhập, {skipped} đã bỏ qua, {invalid} không hợp lệ",
             "templateLogBlocks": "Các khối: {blocks}",
-            "templateDuplicateInTemplate": "trùng lặp trong mẫu"
+            "templateDuplicateInTemplate": "trùng lặp trong mẫu",
+            "templateSelectProfile": "Nhập {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurācijas veidnes",
             "templateLogImported": "Konfigurācijas veidne importēta: {imported} importēti, {skipped} izlaisti, {invalid} nederīgi",
             "templateLogBlocks": "Bloki: {blocks}",
-            "templateDuplicateInTemplate": "dublikāts veidnē"
+            "templateDuplicateInTemplate": "dublikāts veidnē",
+            "templateSelectProfile": "Importēt {name}"
         },
         "devtools": {
             "title": "AeroTools",

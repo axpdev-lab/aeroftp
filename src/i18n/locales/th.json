@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "เทมเพลตการกำหนดค่า",
             "templateLogImported": "นำเข้าเทมเพลตการกำหนดค่าแล้ว: นำเข้า {imported}, ข้าม {skipped}, ไม่ถูกต้อง {invalid}",
             "templateLogBlocks": "บล็อก: {blocks}",
-            "templateDuplicateInTemplate": "ซ้ำกันในเทมเพลต"
+            "templateDuplicateInTemplate": "ซ้ำกันในเทมเพลต",
+            "templateSelectProfile": "นำเข้า {name}"
         },
         "devtools": {
             "title": "AeroTools",

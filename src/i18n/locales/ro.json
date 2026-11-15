@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Șabloane de configurare",
             "templateLogImported": "Șablon de configurare importat: {imported} importate, {skipped} omise, {invalid} nevalide",
             "templateLogBlocks": "Blocuri: {blocks}",
-            "templateDuplicateInTemplate": "duplicat în șablon"
+            "templateDuplicateInTemplate": "duplicat în șablon",
+            "templateSelectProfile": "Importă {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Seadistusmallid",
             "templateLogImported": "Seadistusmall imporditud: {imported} imporditud, {skipped} vahele jäetud, {invalid} vigast",
             "templateLogBlocks": "Plokid: {blocks}",
-            "templateDuplicateInTemplate": "duplikaat mallis"
+            "templateDuplicateInTemplate": "duplikaat mallis",
+            "templateSelectProfile": "Impordi {name}"
         },
         "devtools": {
             "title": "AeroTools",

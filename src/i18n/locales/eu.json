@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurazio-txantiloiak",
             "templateLogImported": "Konfigurazio-txantiloia inportatu da: {imported} inportatuta, {skipped} saltatuta, {invalid} baliogabe",
             "templateLogBlocks": "Blokeak: {blocks}",
-            "templateDuplicateInTemplate": "bikoiztua txantiloian"
+            "templateDuplicateInTemplate": "bikoiztua txantiloian",
+            "templateSelectProfile": "Inportatu {name}"
         },
         "devtools": {
             "title": "AeroTools",

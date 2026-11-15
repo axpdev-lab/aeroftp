@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Πρότυπα διαμόρφωσης",
             "templateLogImported": "Το πρότυπο διαμόρφωσης εισήχθη: {imported} εισήχθησαν, {skipped} παραλείφθηκαν, {invalid} μη έγκυρα",
             "templateLogBlocks": "Μπλοκ: {blocks}",
-            "templateDuplicateInTemplate": "διπλότυπο στο πρότυπο"
+            "templateDuplicateInTemplate": "διπλότυπο στο πρότυπο",
+            "templateSelectProfile": "Εισαγωγή {name}"
         },
         "devtools": {
             "title": "AeroTools",

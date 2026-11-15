@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Stillingasniðmát",
             "templateLogImported": "Stillingasniðmát flutt inn: {imported} flutt inn, {skipped} sleppt, {invalid} ógild",
             "templateLogBlocks": "Blokkir: {blocks}",
-            "templateDuplicateInTemplate": "tvítekning í sniðmáti"
+            "templateDuplicateInTemplate": "tvítekning í sniðmáti",
+            "templateSelectProfile": "Flytja inn {name}"
         },
         "devtools": {
             "title": "AeroTools",

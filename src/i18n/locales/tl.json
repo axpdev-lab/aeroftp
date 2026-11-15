@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Mga Template ng Configuration",
             "templateLogImported": "Na-import ang template ng configuration: {imported} na-import, {skipped} nilaktawan, {invalid} hindi wasto",
             "templateLogBlocks": "Mga Bloke: {blocks}",
-            "templateDuplicateInTemplate": "doble sa template"
+            "templateDuplicateInTemplate": "doble sa template",
+            "templateSelectProfile": "I-import ang {name}"
         },
         "devtools": {
             "title": "AeroTools",

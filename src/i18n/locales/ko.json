@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "구성 템플릿",
             "templateLogImported": "구성 템플릿을 가져왔습니다: {imported}개 가져옴, {skipped}개 건너뜀, {invalid}개 잘못됨",
             "templateLogBlocks": "블록: {blocks}",
-            "templateDuplicateInTemplate": "템플릿 내 중복"
+            "templateDuplicateInTemplate": "템플릿 내 중복",
+            "templateSelectProfile": "{name} 가져오기"
         },
         "devtools": {
             "title": "AeroTools",

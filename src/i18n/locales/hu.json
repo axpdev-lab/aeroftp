@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurációs sablonok",
             "templateLogImported": "Konfigurációs sablon importálva: {imported} importálva, {skipped} kihagyva, {invalid} érvénytelen",
             "templateLogBlocks": "Blokkok: {blocks}",
-            "templateDuplicateInTemplate": "duplikátum a sablonban"
+            "templateDuplicateInTemplate": "duplikátum a sablonban",
+            "templateSelectProfile": "{name} importálása"
         },
         "devtools": {
             "title": "AeroTools",

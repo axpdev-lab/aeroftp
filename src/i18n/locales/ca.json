@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Plantilles de configuració",
             "templateLogImported": "Plantilla de configuració importada: {imported} importats, {skipped} omesos, {invalid} no vàlids",
             "templateLogBlocks": "Blocs: {blocks}",
-            "templateDuplicateInTemplate": "duplicat a la plantilla"
+            "templateDuplicateInTemplate": "duplicat a la plantilla",
+            "templateSelectProfile": "Importa {name}"
         },
         "devtools": {
             "title": "AeroTools",

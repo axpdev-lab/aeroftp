@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Шаблони конфігурації",
             "templateLogImported": "Шаблон конфігурації імпортовано: {imported} імпортовано, {skipped} пропущено, {invalid} недійсних",
             "templateLogBlocks": "Блоки: {blocks}",
-            "templateDuplicateInTemplate": "дублікат у шаблоні"
+            "templateDuplicateInTemplate": "дублікат у шаблоні",
+            "templateSelectProfile": "Імпортувати {name}"
         },
         "devtools": {
             "title": "AeroTools",

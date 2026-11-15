@@ -1920,7 +1920,8 @@
             "templatePickFilterName": "Modelli di configurazione",
             "templateLogImported": "Modello di configurazione importato: {imported} importati, {skipped} saltati, {invalid} non validi",
             "templateLogBlocks": "Blocchi: {blocks}",
-            "templateDuplicateInTemplate": "duplicato nel modello"
+            "templateDuplicateInTemplate": "duplicato nel modello",
+            "templateSelectProfile": "Importa {name}"
         },
         "appearance": {
             "patternCross": "Croce",

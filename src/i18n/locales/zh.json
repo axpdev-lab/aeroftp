@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "配置模板",
             "templateLogImported": "已导入配置模板：已导入 {imported} 个，已跳过 {skipped} 个，无效 {invalid} 个",
             "templateLogBlocks": "区块：{blocks}",
-            "templateDuplicateInTemplate": "模板中重复"
+            "templateDuplicateInTemplate": "模板中重复",
+            "templateSelectProfile": "导入 {name}"
         },
         "devtools": {
             "title": "AeroTools",

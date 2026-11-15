@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Predlošci konfiguracije",
             "templateLogImported": "Predložak konfiguracije uvezen: {imported} uvezeno, {skipped} preskočeno, {invalid} nevažećih",
             "templateLogBlocks": "Blokovi: {blocks}",
-            "templateDuplicateInTemplate": "duplikat u predlošku"
+            "templateDuplicateInTemplate": "duplikat u predlošku",
+            "templateSelectProfile": "Uvezi {name}"
         },
         "devtools": {
             "title": "AeroTools",

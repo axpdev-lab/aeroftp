@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Configuratiesjablonen",
             "templateLogImported": "Configuratiesjabloon geïmporteerd: {imported} geïmporteerd, {skipped} overgeslagen, {invalid} ongeldig",
             "templateLogBlocks": "Blokken: {blocks}",
-            "templateDuplicateInTemplate": "duplicaat in sjabloon"
+            "templateDuplicateInTemplate": "duplicaat in sjabloon",
+            "templateSelectProfile": "{name} importeren"
         },
         "devtools": {
             "title": "AeroTools",

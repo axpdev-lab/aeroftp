@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Szablony konfiguracji",
             "templateLogImported": "Zaimportowano szablon konfiguracji: {imported} zaimportowano, {skipped} pominięto, {invalid} nieprawidłowych",
             "templateLogBlocks": "Bloki: {blocks}",
-            "templateDuplicateInTemplate": "duplikat w szablonie"
+            "templateDuplicateInTemplate": "duplikat w szablonie",
+            "templateSelectProfile": "Importuj {name}"
         },
         "devtools": {
             "title": "AeroTools",

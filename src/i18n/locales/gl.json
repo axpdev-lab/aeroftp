@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Modelos de configuración",
             "templateLogImported": "Modelo de configuración importado: {imported} importados, {skipped} omitidos, {invalid} non válidos",
             "templateLogBlocks": "Bloques: {blocks}",
-            "templateDuplicateInTemplate": "duplicado no modelo"
+            "templateDuplicateInTemplate": "duplicado no modelo",
+            "templateSelectProfile": "Importar {name}"
         },
         "devtools": {
             "title": "AeroTools",

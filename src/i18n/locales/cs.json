@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurační šablony",
             "templateLogImported": "Konfigurační šablona importována: {imported} importováno, {skipped} přeskočeno, {invalid} neplatných",
             "templateLogBlocks": "Bloky: {blocks}",
-            "templateDuplicateInTemplate": "duplikát v šabloně"
+            "templateDuplicateInTemplate": "duplikát v šabloně",
+            "templateSelectProfile": "Importovat {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -4124,6 +4124,7 @@
             "templateFoundSummary": "{count} profile(s) ready ({selected} selected)",
             "templateSelectAll": "Select all",
             "templateSelectNone": "None",
+            "templateSelectProfile": "Import {name}",
             "templateActionAdd": "Add",
             "templateActionRename": "Rename",
             "templateActionReplace": "Replace",

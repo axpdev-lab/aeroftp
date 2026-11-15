@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "კონფიგურაციის შაბლონები",
             "templateLogImported": "კონფიგურაციის შაბლონი იმპორტირებულია: {imported} იმპორტირებული, {skipped} გამოტოვებული, {invalid} არასწორი",
             "templateLogBlocks": "ბლოკები: {blocks}",
-            "templateDuplicateInTemplate": "დუბლიკატი შაბლონში"
+            "templateDuplicateInTemplate": "დუბლიკატი შაბლონში",
+            "templateSelectProfile": "{name}-ის იმპორტი"
         },
         "devtools": {
             "title": "AeroTools",

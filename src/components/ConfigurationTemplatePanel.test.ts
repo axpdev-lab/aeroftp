@@ -853,6 +853,20 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(host.querySelector<HTMLInputElement>('[data-testid="import-security-keep-0:verifyCert"]')!.checked).toBe(false);
     });
 
+    it('names each profile checkbox by the profile it imports', async () => {
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') return report([{ name: 'alpha' }, { name: 'beta' }]);
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[alpha]\n[beta]\n');
+        // The test translator renders `key:params`: the label names the target.
+        const names = ['alpha', 'beta'].map(name =>
+            host.querySelector(`[role="checkbox"][aria-label="settings.templateSelectProfile:${name}"]`));
+        expect(names.every(Boolean)).toBe(true);
+        expect(names[0]).not.toBe(names[1]);
+    });
+
     it('does not let an earlier import close the dialog while a later one is pending', async () => {
         let imports = 0;
         vi.mocked(invoke).mockImplementation(async (cmd) => {

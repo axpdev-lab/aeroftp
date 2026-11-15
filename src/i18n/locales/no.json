@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Konfigurasjonsmaler",
             "templateLogImported": "Konfigurasjonsmal importert: {imported} importert, {skipped} hoppet over, {invalid} ugyldige",
             "templateLogBlocks": "Blokker: {blocks}",
-            "templateDuplicateInTemplate": "duplikat i malen"
+            "templateDuplicateInTemplate": "duplikat i malen",
+            "templateSelectProfile": "Importer {name}"
         },
         "devtools": {
             "title": "AeroTools",

@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Violezo vya Usanidi",
             "templateLogImported": "Kiolezo cha usanidi kimeletwa: {imported} vimeletwa, {skipped} vimerukwa, {invalid} si sahihi",
             "templateLogBlocks": "Vitalu: {blocks}",
-            "templateDuplicateInTemplate": "nakala rudufu katika kiolezo"
+            "templateDuplicateInTemplate": "nakala rudufu katika kiolezo",
+            "templateSelectProfile": "Leta {name}"
         },
         "devtools": {
             "title": "AeroTools",

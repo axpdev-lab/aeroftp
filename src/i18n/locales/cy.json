@@ -1435,7 +1435,8 @@
             "templatePickFilterName": "Templedi Ffurfweddu",
             "templateLogImported": "Templed ffurfweddu wedi'i fewnforio: {imported} wedi'u mewnforio, {skipped} wedi'u hepgor, {invalid} yn annilys",
             "templateLogBlocks": "Blociau: {blocks}",
-            "templateDuplicateInTemplate": "dyblyg yn y templed"
+            "templateDuplicateInTemplate": "dyblyg yn y templed",
+            "templateSelectProfile": "Mewnforio {name}"
         },
         "devtools": {
             "title": "AeroTools",
