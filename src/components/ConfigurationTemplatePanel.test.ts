@@ -867,6 +867,24 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(names[0]).not.toBe(names[1]);
     });
 
+    it('does not close the panel when the source changes before the first import resolves', async () => {
+        let resolveImport!: (value: unknown) => void;
+        vi.mocked(invoke).mockImplementation(async (cmd) => {
+            if (cmd === 'preview_configuration_template') return report([{ name: 'alpha' }]);
+            if (cmd === 'import_configuration_template') return new Promise(resolve => { resolveImport = resolve; });
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        const onClose = await renderPanel();
+        await type('[alpha]\n');
+        await act(async () => { host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click(); });
+        // The source changes while the first import is still pending.
+        await type('[alpha]\nport = 8443\n');
+        await act(async () => { resolveImport(importResult); });
+        await flush();
+        await act(async () => { vi.advanceTimersByTime(3000); });
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('does not let an earlier import close the dialog while a later one is pending', async () => {
         let imports = 0;
         vi.mocked(invoke).mockImplementation(async (cmd) => {

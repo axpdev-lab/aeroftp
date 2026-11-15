@@ -215,6 +215,9 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
     // the previews that follow (a secret form, a mode change).
     const selectionInitializedRef = useRef(false);
     const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Bumped whenever the template source changes: an import that started on
+    // an earlier source never closes the panel that now holds another one.
+    const sourceGenerationRef = useRef(0);
     const lastDebouncedTextRef = useRef<string>('');
 
     useEffect(() => {
@@ -244,6 +247,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
 
     // An earlier import's pending close never ends a later source's work.
     useEffect(() => {
+        sourceGenerationRef.current += 1;
         cancelPendingClose();
     }, [textContent, filePath, sourceTab, cancelPendingClose]);
 
@@ -406,6 +410,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
     const handleImport = async () => {
         if (!currentInput || !preview || activeSelectedCount === 0 || missingSecretFormCount > 0 || importing) return;
         cancelPendingClose();
+        const importGeneration = sourceGenerationRef.current;
         setImporting(true);
         setError(null);
         setSuccess(null);
@@ -472,7 +477,9 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                 setWarningNote(`${msg}. ${notices.join(' ')}`);
             } else {
                 setSuccess(msg);
-                closeTimerRef.current = setTimeout(() => onClose(), 1400);
+                if (sourceGenerationRef.current === importGeneration) {
+                    closeTimerRef.current = setTimeout(() => onClose(), 1400);
+                }
             }
         } catch (err) {
             setError(String(err));
