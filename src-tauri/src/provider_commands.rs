@@ -2888,22 +2888,41 @@ fn webdav_connect_target(
     url::Url::parse(&format!("{}/{}", base.trim_end_matches('/'), tail)).ok()
 }
 
+/// The scheme a WebDAV host writes itself, as the connect reads it
+/// (`webdav`/`dav` are `http`, `webdavs`/`davs` are `https`). `None` when the
+/// host writes none: its scheme then also depends on a TLS choice a tab does
+/// not carry, so it cannot tell two targets apart.
+fn written_webdav_scheme(host: &str) -> Option<&'static str> {
+    match endpoint_of(host).scheme.as_deref() {
+        Some("http" | "webdav" | "dav") => Some("http"),
+        Some("https" | "webdavs" | "davs") => Some("https"),
+        _ => None,
+    }
+}
+
 /// Whether two WebDAV connect targets are the same collection: the same path
-/// and query, and, where `compare_host`, the same host and port (a port
-/// written in the URL wins, as in the connect).
+/// and query, and, where `compare_host`, the same host and port, and the same
+/// scheme where both hosts write one (`written_schemes`). The port is each
+/// URL's own, as the request uses it: the one written in the URL, else the
+/// scheme's default (the connect writes a non-default configured port into
+/// the URL, and a host with its own scheme keeps that scheme's).
 fn same_webdav_target(
     expected: &url::Url,
     actual: &url::Url,
-    port: u16,
-    actual_port: u16,
+    written_schemes: (Option<&str>, Option<&str>),
     compare_host: bool,
 ) -> bool {
     let path = |url: &url::Url| url.path().trim_end_matches('/').to_string();
+    let schemes_agree = match written_schemes {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
     path(expected) == path(actual)
         && expected.query() == actual.query()
         && (!compare_host
-            || (expected.host_str() == actual.host_str()
-                && expected.port().unwrap_or(port) == actual.port().unwrap_or(actual_port)))
+            || (schemes_agree
+                && expected.host_str() == actual.host_str()
+                && expected.port_or_known_default() == actual.port_or_known_default()))
 }
 
 /// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
@@ -3040,8 +3059,10 @@ fn slot_matches_identity(
             (Some(exp), Some(act)) => same_webdav_target(
                 &exp,
                 &act,
-                port,
-                config.effective_port(),
+                (
+                    exp_host.and_then(written_webdav_scheme),
+                    act_host.and_then(written_webdav_scheme),
+                ),
                 exp_host.is_some() && act_host.is_some(),
             ),
             _ => false,
@@ -19493,6 +19514,60 @@ mod tests {
             .await
         );
         assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+    }
+
+    /// Two profile-less WebDAV tabs on the same host, path and configured port,
+    /// one `http://` and one `https://`, are two servers: the request of each
+    /// goes to its own scheme's port, so a switch must not reuse the other's
+    /// connection.
+    #[tokio::test(start_paused = true)]
+    async fn profileless_webdav_tabs_that_differ_only_by_scheme_are_not_the_same_target() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("http://dav.example.test/dav", 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(probe_alive_inner(&state, &tab("http://dav.example.test/dav"), timeout).await);
+        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+        // Only a written scheme tells targets apart: a scheme-less host's also
+        // depends on a TLS choice the tab does not carry.
+        let mut https_slot = probe_config("dav.example.test/dav", 8443, "u");
+        https_slot.provider_type = ProviderType::WebDav;
+        https_slot
+            .extra
+            .insert("tls_mode".to_string(), "http".to_string());
+        assert!(slot_matches_identity(
+            &https_slot,
+            None,
+            &ProbeIdentity {
+                protocol: Some("webdav"),
+                ..probe_for("http://dav.example.test:8443/dav", 8443, "u", None)
+            }
+        ));
+    }
+
+    /// A tab whose URL writes the default port, with a different separate
+    /// port, requests that written port: a live slot on the separate port is
+    /// another server.
+    #[tokio::test(start_paused = true)]
+    async fn a_written_default_port_is_the_port_compared_not_the_separate_one() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("https://dav.example.test:8443/dav", 8443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 8443, "u", None)
+        };
+        assert!(probe_alive_inner(&state, &tab("https://dav.example.test:8443/dav"), timeout).await);
+        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test:443/dav"), timeout).await);
     }
 
     /// A host written with `/./` takes the base path, as the connect does: two
