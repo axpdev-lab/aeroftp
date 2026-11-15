@@ -1312,6 +1312,161 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
     });
 });
 
+/** App's code from `from` to `to`, run with every free name it reads taken
+ *  from `overrides`, else from the globals, else a stub made on first read (a
+ *  `{ current: 0 }` for a ref, a spy otherwise). */
+async function runAppSlice(source: string, overrides: Record<string, unknown>, result: string) {
+    const { code } = await transformWithOxc(source, 'app-slice.ts');
+    const made = new Map<string | symbol, unknown>();
+    const scope = new Proxy(overrides, {
+        has: (target, key) => typeof key === 'string' && (key in target || !(key in globalThis)),
+        get: (target, key) => {
+            if (key === Symbol.unscopables) return undefined;
+            if (key in target) return target[key as string];
+            if (key in globalThis) return (globalThis as Record<string | symbol, unknown>)[key];
+            if (!made.has(key)) made.set(key, String(key).endsWith('Ref') ? { current: 0 } : vi.fn(async () => undefined));
+            return made.get(key);
+        },
+        set: (target, key, value) => { target[key as string] = value; return true; },
+    });
+    return new Function('__scope', `with (__scope) { ${code}\n return ${result}; }`)(scope);
+}
+const appBetween = (from: string, to: string) => {
+    const start = APP.indexOf(from);
+    expect(start, from).toBeGreaterThan(-1);
+    const end = APP.indexOf(to, start);
+    expect(end, to).toBeGreaterThan(start);
+    return APP.slice(start, end + to.length);
+};
+const connectScope = () => ({ assert: () => undefined, step: <T,>(fn: () => T) => fn(), cancellable: <T,>(_c: unknown, fn: () => T) => fn() });
+
+describe('Bot-named runs of the backend replacement checks', () => {
+    /** App's real switchSession for an FTP tab whose liveness probe fails, so
+     *  the switch reconnects through `runConnect('connect_ftp')`, which ends
+     *  its own replacement. `replaceAfterRefresh` ends another one during the
+     *  listing that follows the refresh. */
+    async function ftpSwitch(replaceAfterRefresh: boolean) {
+        const seq = { current: 3 };
+        const confirmBackendConnection = vi.fn();
+        const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() };
+        const activityLog = { updateEntry: vi.fn(), log: vi.fn() };
+        const target = {
+            id: 'ftp-tab', serverName: 'ftp.example.test', status: 'cached', remotePath: '/pub', localPath: '/home/me',
+            remoteFiles: [], localFiles: [], connectionParams: { protocol: 'ftp', server: 'ftp.example.test', username: 'u', password: '' },
+        };
+        const invoke = vi.fn(async (command: string) => {
+            if (command === 'provider_probe_alive') return false;
+            if (command === 'list_files') {
+                if (replaceAfterRefresh) seq.current += 1;
+                return { files: [], current_path: '/pub' };
+            }
+            if (command === 'get_local_files') return [];
+            return undefined;
+        });
+        const runConnect = vi.fn(async () => { seq.current += 1; });
+        const source = appBetween('  const switchSession = async (', '\n  };\n');
+        const switchSession = await runAppSlice(source, {
+            sessions: [target], activeSessionId: 'other-tab', backendReplacementSeqRef: seq, confirmBackendConnection,
+            logger, activityLog, invoke, runConnect, remoteFiles: [], localFiles: [],
+            isSshProtocol: () => false, isOAuthProvider: () => false, isFourSharedProvider: () => false, usesProviderApi: () => false,
+            probeAliveArgs: () => ({}), loadedOptionOn: () => false, isListingCancelled: () => false, isConnectCancelledError: () => false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), t: (key: string) => key, humanLog: { logRaw: () => 'log' },
+        }, 'switchSession');
+        await switchSession('ftp-tab', connectScope());
+        return { confirmBackendConnection, logger, activityLog, runConnect };
+    }
+
+    it('completes an FTP switch whose liveness probe fails without remoteTargetChanged', async () => {
+        const { confirmBackendConnection, logger, activityLog, runConnect } = await ftpSwitch(false);
+        expect(runConnect).toHaveBeenCalledWith('connect_ftp', expect.anything(), expect.anything());
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(confirmBackendConnection).toHaveBeenCalledOnce();
+        expect(activityLog.updateEntry).toHaveBeenLastCalledWith('log', expect.objectContaining({ status: 'success' }));
+    });
+
+    it('still fails the FTP switch for a separate replacement after the refresh', async () => {
+        const { confirmBackendConnection, logger, activityLog } = await ftpSwitch(true);
+        expect(logger.error).toHaveBeenCalledWith('Reconnect error:', new Error('toast.remoteTargetChanged'));
+        expect(confirmBackendConnection).not.toHaveBeenCalled();
+        expect(activityLog.updateEntry).toHaveBeenLastCalledWith('log', expect.objectContaining({ status: 'error' }));
+    });
+
+    it("pauses A's profile lookup, opens a device, and A never becomes live", async () => {
+        // App's own replacement accounting, shared by A's createSession and the
+        // device open.
+        const refs = {
+            backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            backendConfirmationsRef: { current: 5 }, backendReplacementSeqRef: { current: 2 },
+        };
+        const accounting = await runAppSlice(
+            appBetween('  const backendMark = (): BackendMark => ({', '\n  const remoteConnectPhaseVersionRef = useRef(0);'),
+            { ...refs, useRef: (current: unknown) => ({ current }) },
+            '{ confirmBackendConnection, replacingBackend, backendMark }',
+        );
+        const deviceInvoke = vi.fn(async (command: string) => {
+            if (command === 'mtp_open_device') return { deviceId: 'phone', displayName: 'Phone' };
+            if (command === 'provider_list_files') return { files: [], current_path: '/' };
+            if (command === 'get_local_files') return [];
+            return undefined;
+        });
+        // App's real device open: the callback useCallback wraps.
+        const { code: deviceCode } = await transformWithOxc(
+            `const openDevice = ${appBetween('  const openMtpSessionFromLiveDevice = useCallback(', '\n  }, [').replace('  const openMtpSessionFromLiveDevice = useCallback(', '').replace(/\n  \}, \[$/, '\n  }')};`,
+            'device-open.ts');
+        const deviceScope = { ...refs, ...accounting, invoke: deviceInvoke, t: (key: string) => key, findGvfsMtpMount: () => null,
+            localFiles: [], remoteFiles: [], currentLocalPath: '/home/me', notify: { info: vi.fn(), error: vi.fn() } };
+        const open = await runAppSlice(deviceCode, deviceScope, 'openDevice');
+        expect(deviceInvoke).not.toHaveBeenCalled();
+
+        const createStart = APP.indexOf('  const createSession = async (');
+        const createSource = APP.slice(createStart, APP.indexOf('\n  };\n', createStart) + '\n  };'.length);
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const createSession = await runAppSlice(createSource, {
+            ...refs, ...accounting, setActiveSessionId, setSessions, remoteFiles: [], localFiles: [],
+            notify: { error: vi.fn() }, t: (key: string) => key,
+            loadSavedServerProfiles: async () => {
+                // The device opens while A reads the saved profiles.
+                await open({ deviceId: 'phone', displayName: 'Phone' }, undefined, connectScope());
+                return [];
+            },
+        }, 'createSession');
+        // A read its mark as its own connect returned.
+        const mark = accounting.backendMark();
+        expect(mark).toEqual({ replacements: 2, confirmations: 5 });
+        const outcome = await createSession('A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, mark);
+        expect(deviceInvoke).toHaveBeenCalledWith('mtp_open_device', expect.anything());
+        expect(outcome).toBe('stale');
+        const added = setSessions.mock.calls.map(([update]) => update([])).flat() as { serverId?: string; status: string; id: string }[];
+        const tabA = added.find(tab => tab.serverId === 'A');
+        expect(tabA?.status).toBe('cached');
+        expect(setActiveSessionId).not.toHaveBeenCalledWith(tabA?.id);
+    });
+
+    it.each([
+        ['the OAuth connect', 'oauthReplacedAt,', 'fetchStorageQuota(protocol, effectiveParams, { newConnection: true });'],
+        ['the provider connect', 'providerReplacedAt,', 'fetchStorageQuota(protocol, sessionParams, { newConnection: true });'],
+    ])("does not persist backend B's metadata onto saved profile A after %s is refused as stale", async (_name, mark, quota) => {
+        // From the caller's createSession to its quota fetch, which writes the
+        // connection's quota onto the saved profile (`persistQuotaToProfile`).
+        const at = APP.indexOf(mark);
+        const from = APP.lastIndexOf('if (await createSession(', at);
+        const source = `const tail = async () => {\n${APP.slice(from, APP.indexOf(quota, at) + quota.length)}\n};`;
+        const fetchStorageQuota = vi.fn();
+        const markSessionOverlayKind = vi.fn();
+        const setPendingOverlayUnlock = vi.fn();
+        const tail = await runAppSlice(source, {
+            createSession: async () => 'stale', fetchStorageQuota, markSessionOverlayKind, setPendingOverlayUnlock,
+            overlayHint: { kind: 'aerocrypt', anchor: '/vault', opensOutside: false }, overlaySavedId: 'profile-A',
+            shouldAutoUnlockOverlayOnConnect: () => true, getEnabledProfileOverlay: async () => ({}),
+        }, 'tail');
+        await tail();
+        expect(fetchStorageQuota).not.toHaveBeenCalled();
+        expect(markSessionOverlayKind).not.toHaveBeenCalled();
+        expect(setPendingOverlayUnlock).not.toHaveBeenCalled();
+    });
+});
+
 describe('Every invoke that installs a provider in the backend slot', () => {
     it('is counted as a replacement, for every command the backend lists', () => {
         // The backend's own list of the commands that install into the slot
