@@ -536,7 +536,8 @@ where
 /// put back what another writer saved since, so every other save merges
 /// ([`with_cloud_config_mut`], [`save_settings_edit`]) or resets
 /// ([`save_cloud_config_unchecked`]).
-#[cfg(test)]
+// Only the Linux save tests in `lib.rs` call it.
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
     let _lock = SettingsFileLock::acquire_with(&CONFIG_WRITE_LOCK, &get_config_path())?;
     save_cloud_config_unlocked(config)
@@ -552,7 +553,8 @@ pub fn save_cloud_config_unchecked(config: &CloudConfig) -> Result<(), String> {
     save_cloud_config_unlocked_at_force(config, &path)
 }
 
-#[cfg(test)]
+// Only the Linux save tests in `lib.rs` call it.
+#[cfg(all(test, target_os = "linux"))]
 fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
     save_cloud_config_unlocked_at(config, &get_config_path())
 }

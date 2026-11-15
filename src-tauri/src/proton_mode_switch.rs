@@ -491,9 +491,9 @@ pub(crate) trait SwitchTargets {
         pairs: &CloudPairsConfig,
     ) -> Result<(), CloudStoreError>;
     /// Puts back `cloud` and `pairs`, the files before a switch that wrote
-    /// `written`, over the files as they are now: the settings by the merge
-    /// of [`Self::store_cloud`], the pairs by [`put_back_pair_folders`], so a
-    /// pair added since the switch wrote is kept.
+    /// `written`, over the files as they are now: the settings by
+    /// [`put_back_settings_folder`], the pairs by [`put_back_pair_folders`],
+    /// so an edit or a pair made since the switch wrote is kept.
     fn put_back_cloud(
         &mut self,
         written: (&CloudConfig, &CloudPairsConfig),
@@ -508,6 +508,139 @@ pub(crate) trait SwitchTargets {
         to: ProtonMode,
         initial_path: Option<&str>,
     ) -> Result<(), ProfileStoreError>;
+    /// Holds the syncs of the folders a failed switch could not put back,
+    /// until they are repaired: see [`refuse_an_unrepaired_folder`].
+    fn hold_syncs(&mut self, left: &UnrepairedSwitch) -> Result<(), String>;
+}
+
+/// Puts back over `stored` the settings folder the switch changed from
+/// `original` to `written`, and only that, while it still holds the folder
+/// the switch wrote for the same target: every other field, and a folder or
+/// a target changed since, stay as stored.
+fn put_back_settings_folder(
+    stored: &mut CloudConfig,
+    written: &CloudConfig,
+    original: &CloudConfig,
+) {
+    let target = |config: &CloudConfig| {
+        (
+            config.server_profile_id.clone(),
+            config.server_profile.clone(),
+            config.local_folder.clone(),
+            config.protocol_type.clone(),
+            config.connection_params.clone(),
+        )
+    };
+    if written.remote_folder != original.remote_folder
+        && stored.remote_folder == written.remote_folder
+        && target(stored) == target(written)
+    {
+        stored.remote_folder = original.remote_folder.clone();
+    }
+}
+
+/// The AeroCloud folders a failed switch left spelled for `to` while the
+/// profile stays in the other mode. No sync runs on them until the profile
+/// is in `to` mode or the folder is set again.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct UnrepairedSwitch {
+    pub profile_id: String,
+    pub profile_name: String,
+    pub to: ProtonMode,
+    /// The settings folder and the pair folders as the switch wrote them.
+    pub folders: Vec<String>,
+}
+
+/// Where the held switches are kept, next to the AeroCloud settings: a
+/// restart, the app or the CLI, holds them the same.
+pub(crate) fn unrepaired_path() -> PathBuf {
+    crate::cloud_config::get_config_path().with_file_name("proton_switch_unrepaired.json")
+}
+
+static UNREPAIRED_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Reads, edits and writes the held switches under the lock of their file;
+/// an empty list removes the file. A file that cannot be read is an error,
+/// so a sync is never let through on a record it could not read.
+fn with_unrepaired_at<T>(
+    path: &Path,
+    edit: impl FnOnce(&mut Vec<UnrepairedSwitch>) -> T,
+) -> Result<T, String> {
+    let _lock = crate::cloud_config::SettingsFileLock::acquire_with(&UNREPAIRED_WRITE_LOCK, path)?;
+    let mut held: Vec<UnrepairedSwitch> = match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map_err(|e| format!("the Proton Drive switch record is unreadable: {e}"))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+        Err(e) => return Err(format!("the Proton Drive switch record is unreadable: {e}")),
+    };
+    let before = held.clone();
+    let out = edit(&mut held);
+    if held != before {
+        if held.is_empty() {
+            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        } else {
+            let bytes = serde_json::to_vec_pretty(&held).map_err(|e| e.to_string())?;
+            crate::sync::atomic_write(path, &bytes).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(out)
+}
+
+/// Drops from `held` the switches whose profile is now in their mode
+/// (`mode_of` answers the saved profile's mode), and answers why `config`
+/// may not sync: its folder is one a held switch left behind.
+fn unrepaired_refusal(
+    held: &mut Vec<UnrepairedSwitch>,
+    config: &CloudConfig,
+    mode_of: impl Fn(&str) -> Option<ProtonMode>,
+) -> Option<String> {
+    held.retain(|left| mode_of(&left.profile_id) != Some(left.to));
+    held.iter()
+        .find(|left| {
+            bound_config(config, &left.profile_id, &left.profile_name)
+                && left.folders.contains(&config.remote_folder)
+        })
+        .map(|left| {
+            let from = match left.to {
+                ProtonMode::Native => ProtonMode::Cli,
+                ProtonMode::Cli => ProtonMode::Native,
+            };
+            format!(
+                "AeroCloud sync held: a Proton Drive mode switch of {} could not put the folder {} back, which {} mode spells while the profile stays in {} mode; switch the profile to {} mode or set the AeroCloud folder again",
+                left.profile_name,
+                config.remote_folder,
+                left.to.label(),
+                from.label(),
+                left.to.label()
+            )
+        })
+}
+
+/// Refuses a sync of `config` while its folder is one a failed switch left
+/// spelled for the other mode, and forgets the switches already repaired.
+/// Every AeroCloud connection asks it before connecting.
+pub(crate) fn refuse_an_unrepaired_folder(
+    config: &CloudConfig,
+    store: &crate::credential_store::CredentialStore,
+) -> Result<(), String> {
+    let path = unrepaired_path();
+    if !path.exists() {
+        return Ok(());
+    }
+    // The profiles the connection selects from; a list that cannot be read
+    // repairs nothing.
+    let profiles =
+        crate::user_partitions::mcp_list_active_server_profiles(store).unwrap_or_default();
+    let mode_of = |id: &str| {
+        profiles
+            .iter()
+            .find(|profile| field(profile, "id") == id)
+            .map(ProtonMode::of_profile)
+    };
+    match with_unrepaired_at(&path, |held| unrepaired_refusal(held, config, mode_of))? {
+        Some(refusal) => Err(refusal),
+        None => Ok(()),
+    }
 }
 
 /// Puts back over `stored` the remote folder of each pair the switch changed
@@ -529,6 +662,69 @@ fn put_back_pair_folders(
             pair.remote_path = was.remote_path.clone();
         }
     }
+}
+
+/// [`SwitchTargets::store_cloud`] on the AeroCloud files.
+fn store_cloud_files(
+    read_as: (&CloudConfig, &CloudPairsConfig),
+    cloud: &CloudConfig,
+    pairs: &CloudPairsConfig,
+) -> Result<(), CloudStoreError> {
+    // Each file is merged with the file as it is at the write, under its
+    // write lock, by the rule of the settings and the pair editor: what
+    // it gained since the switch read it and the switch did not change
+    // (a folder a sync placed meanwhile) stays as stored. A file that
+    // cannot be read is not written at all, so the rollback can never
+    // save a default over the user's file.
+    crate::cloud_config::with_cloud_config_mut(|stored| {
+        *stored = crate::cloud_config::settings_save(stored, read_as.0, cloud.clone())?;
+        Ok(())
+    })
+    .map_err(CloudStoreError::NotSaved)?;
+    if let Err(e) = crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
+        *stored = crate::cloud_pairs::pairs_save(stored, read_as.1, pairs.clone())?;
+        Ok(())
+    }) {
+        // The settings folder goes back while it is the one this write
+        // made: what changed in them since is kept, and a put back that
+        // cannot be made is said, never taken for one that was.
+        return Err(
+            match crate::cloud_config::with_cloud_config_mut(|stored| {
+                put_back_settings_folder(stored, cloud, read_as.0);
+                Ok(())
+            }) {
+                Ok(()) => CloudStoreError::NotSaved(e),
+                Err(back) => CloudStoreError::SettingsOnly(format!(
+                    "{e}; the settings could not be put back: {back}"
+                )),
+            },
+        );
+    }
+    Ok(())
+}
+
+/// [`SwitchTargets::put_back_cloud`] on the AeroCloud files. The pairs go
+/// first: a failure there leaves both files as the switch wrote them, which
+/// name the same folders.
+fn put_back_cloud_files(
+    written: (&CloudConfig, &CloudPairsConfig),
+    cloud: &CloudConfig,
+    pairs: &CloudPairsConfig,
+) -> Result<(), CloudStoreError> {
+    crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
+        put_back_pair_folders(stored, written.1, pairs);
+        Ok(())
+    })
+    .map_err(CloudStoreError::NotSaved)?;
+    crate::cloud_config::with_cloud_config_mut(|stored| {
+        put_back_settings_folder(stored, written.0, cloud);
+        Ok(())
+    })
+    .map_err(|e| {
+        CloudStoreError::SettingsOnly(format!(
+            "the pairs were put back and the settings were not: {e}"
+        ))
+    })
 }
 
 /// Why [`SwitchTargets::store_cloud`] did not finish.
@@ -712,10 +908,36 @@ pub(crate) fn apply_in(
             to.label()
         )
     };
+    // What a failed put back leaves, held from syncing until repaired.
+    let unrepaired = UnrepairedSwitch {
+        profile_id: id.clone(),
+        profile_name: name.clone(),
+        to,
+        folders: std::iter::once((&cloud.remote_folder, &new_cloud.remote_folder))
+            .chain(
+                pairs
+                    .pairs
+                    .iter()
+                    .zip(&new_pairs.pairs)
+                    .map(|(was, wrote)| (&was.remote_path, &wrote.remote_path)),
+            )
+            .filter(|(was, wrote)| was != wrote)
+            .map(|(_, wrote)| wrote.clone())
+            .collect(),
+    };
+    let hold = |targets: &mut dyn SwitchTargets, what: String| match targets.hold_syncs(&unrepaired)
+    {
+        Ok(()) => format!("{what}; its syncs are held until then"),
+        Err(e) => format!("{what}; its syncs could NOT be held ({e}), do not sync before"),
+    };
     if cloud_changed {
         if let Err(e) = targets.store_cloud((cloud, pairs), &new_cloud, &new_pairs) {
-            let cloud = matches!(e, CloudStoreError::SettingsOnly(_))
-                .then(|| cloud_left("the AeroCloud settings were updated and its pairs were not"));
+            let cloud = matches!(e, CloudStoreError::SettingsOnly(_)).then(|| {
+                hold(
+                    targets,
+                    cloud_left("the AeroCloud settings were updated and its pairs were not"),
+                )
+            });
             let left = left_behind(roll_back(&written), cloud);
             return Err(format!("AeroCloud not updated, {left}: {e}"));
         }
@@ -736,10 +958,13 @@ pub(crate) fn apply_in(
             // AeroCloud is put back over the files as they are now: a pair
             // added since is kept, and a put back that fails is said.
             let cloud = if cloud_changed {
-                targets
-                    .put_back_cloud((&new_cloud, &new_pairs), cloud, pairs)
-                    .err()
-                    .map(|back| cloud_left(&format!("AeroCloud could not be put back ({back})")))
+                match targets.put_back_cloud((&new_cloud, &new_pairs), cloud, pairs) {
+                    Ok(()) => None,
+                    Err(back) => Some(hold(
+                        targets,
+                        cloud_left(&format!("AeroCloud could not be put back ({back})")),
+                    )),
+                }
             } else {
                 None
             };
@@ -846,37 +1071,7 @@ impl SwitchTargets for DiskTargets<'_> {
         cloud: &CloudConfig,
         pairs: &CloudPairsConfig,
     ) -> Result<(), CloudStoreError> {
-        // Each file is merged with the file as it is at the write, under its
-        // write lock, by the rule of the settings and the pair editor: what
-        // it gained since the switch read it and the switch did not change
-        // (a folder a sync placed meanwhile) stays as stored. A file that
-        // cannot be read is not written at all, so the rollback can never
-        // save a default over the user's file.
-        crate::cloud_config::with_cloud_config_mut(|stored| {
-            *stored = crate::cloud_config::settings_save(stored, read_as.0, cloud.clone())?;
-            Ok(())
-        })
-        .map_err(CloudStoreError::NotSaved)?;
-        if let Err(e) = crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
-            *stored = crate::cloud_pairs::pairs_save(stored, read_as.1, pairs.clone())?;
-            Ok(())
-        }) {
-            // The settings go back by the same merge: what changed in them
-            // since this write is kept, and a put back that cannot be made
-            // is said, never taken for one that was.
-            return Err(
-                match crate::cloud_config::with_cloud_config_mut(|stored| {
-                    *stored = crate::cloud_config::settings_save(stored, cloud, read_as.0.clone())?;
-                    Ok(())
-                }) {
-                    Ok(()) => CloudStoreError::NotSaved(e),
-                    Err(back) => CloudStoreError::SettingsOnly(format!(
-                        "{e}; the settings could not be put back: {back}"
-                    )),
-                },
-            );
-        }
-        Ok(())
+        store_cloud_files(read_as, cloud, pairs)
     }
 
     fn put_back_cloud(
@@ -885,21 +1080,13 @@ impl SwitchTargets for DiskTargets<'_> {
         cloud: &CloudConfig,
         pairs: &CloudPairsConfig,
     ) -> Result<(), CloudStoreError> {
-        // The pairs first: a failure there leaves both files as the switch
-        // wrote them, which name the same folders.
-        crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
-            put_back_pair_folders(stored, written.1, pairs);
-            Ok(())
-        })
-        .map_err(CloudStoreError::NotSaved)?;
-        crate::cloud_config::with_cloud_config_mut(|stored| {
-            *stored = crate::cloud_config::settings_save(stored, written.0, cloud.clone())?;
-            Ok(())
-        })
-        .map_err(|e| {
-            CloudStoreError::SettingsOnly(format!(
-                "the pairs were put back and the settings were not: {e}"
-            ))
+        put_back_cloud_files(written, cloud, pairs)
+    }
+
+    fn hold_syncs(&mut self, left: &UnrepairedSwitch) -> Result<(), String> {
+        with_unrepaired_at(&unrepaired_path(), |held| {
+            held.retain(|other| other.profile_id != left.profile_id);
+            held.push(left.clone());
         })
     }
 
@@ -1337,6 +1524,13 @@ mod tests {
         pair_added_meanwhile: Option<crate::cloud_pairs::CloudPathPair>,
         /// Every AeroCloud write fails so.
         cloud_refusal: Option<CloudStoreError>,
+        /// Made on the stored settings right after the forward AeroCloud
+        /// write, as the settings view saves while the switch runs.
+        settings_edited_meanwhile: Option<fn(&mut CloudConfig)>,
+        /// The syncs held by [`SwitchTargets::hold_syncs`].
+        held: Vec<UnrepairedSwitch>,
+        /// [`SwitchTargets::hold_syncs`] fails.
+        refuse_hold: bool,
         /// Made read-only at the AeroCloud write: a history file written
         /// there before cannot be removed again (Unix permissions).
         #[cfg_attr(not(unix), allow(dead_code))]
@@ -1361,7 +1555,11 @@ mod tests {
             }
             let mut pairs = pairs.clone();
             pairs.pairs.extend(self.pair_added_meanwhile.take());
-            self.cloud = Some((cloud.clone(), pairs));
+            let mut cloud = cloud.clone();
+            if let Some(edit) = self.settings_edited_meanwhile.take() {
+                edit(&mut cloud);
+            }
+            self.cloud = Some((cloud, pairs));
             Ok(())
         }
         fn put_back_cloud(
@@ -1374,9 +1572,17 @@ mod tests {
             if self.refuse_cloud_restore {
                 return Err(CloudStoreError::NotSaved("disk full".to_string()));
             }
-            let (_, mut stored) = self.cloud.clone().unwrap_or_default();
+            let (mut settings, mut stored) = self.cloud.clone().unwrap_or_default();
             put_back_pair_folders(&mut stored, written.1, pairs);
-            self.cloud = Some((cloud.clone(), stored));
+            put_back_settings_folder(&mut settings, written.0, cloud);
+            self.cloud = Some((settings, stored));
+            Ok(())
+        }
+        fn hold_syncs(&mut self, left: &UnrepairedSwitch) -> Result<(), String> {
+            if self.refuse_hold {
+                return Err("disk full".to_string());
+            }
+            self.held.push(left.clone());
             Ok(())
         }
         fn store_profile(
@@ -2125,6 +2331,230 @@ mod tests {
             [("moved", "/my-files/docs"), ("added", "/srv/new")]
         );
         assert_eq!(memory.cloud_writes, 2);
+    }
+
+    /// A settings edit saved while the switch runs is kept by its rollback:
+    /// the folder goes back only while it is the one the switch wrote, and
+    /// every other field stays as stored.
+    #[test]
+    fn a_rollback_keeps_a_settings_edit_made_while_the_switch_runs() {
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        type Edit = fn(&mut CloudConfig);
+        let edits: [(Edit, &str); 2] = [
+            (
+                |c| {
+                    c.remote_folder = "/elsewhere".to_string();
+                    c.sync_interval_secs = 60;
+                },
+                "/elsewhere",
+            ),
+            (|c| c.sync_interval_secs = 60, "/my-files/cloud"),
+        ];
+        for (edit, folder) in edits {
+            let f = fixture();
+            let mut memory = Memory {
+                fail_profile: true,
+                settings_edited_meanwhile: Some(edit),
+                ..Memory::default()
+            };
+            let err = apply_in(
+                &f.dirs,
+                &profile(ProtonMode::Cli, "/my-files/docs"),
+                ProtonMode::Native,
+                &cloud,
+                &CloudPairsConfig::default(),
+                None,
+                &mut memory,
+            )
+            .unwrap_err();
+            assert!(err.contains("nothing was changed"), "{err}");
+            let (settings, _) = memory.cloud.unwrap();
+            assert_eq!(settings.remote_folder, folder);
+            assert_eq!(settings.sync_interval_secs, 60);
+        }
+    }
+
+    /// The same on the AeroCloud files, which the app and the CLI put back.
+    /// Linux only: the settings folder follows `XDG_CONFIG_HOME` there.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_files_put_back_keep_a_settings_edit_made_while_the_switch_runs() {
+        let _env = crate::test_env::lock();
+        let data = tempfile::tempdir().unwrap();
+        let prev = std::env::var_os("XDG_CONFIG_HOME");
+        std::env::set_var("XDG_CONFIG_HOME", data.path());
+        let original = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            ..CloudConfig::default()
+        };
+        let written = CloudConfig {
+            remote_folder: "/cloud".to_string(),
+            ..original.clone()
+        };
+        let mut kept = Vec::new();
+        for edit in ["/elsewhere", "/cloud"] {
+            crate::cloud_config::with_cloud_config_mut(|stored| {
+                *stored = CloudConfig {
+                    remote_folder: edit.to_string(),
+                    sync_interval_secs: 60,
+                    ..written.clone()
+                };
+                Ok(())
+            })
+            .unwrap();
+            put_back_cloud_files(
+                (&written, &CloudPairsConfig::default()),
+                &original,
+                &CloudPairsConfig::default(),
+            )
+            .unwrap();
+            let stored = crate::cloud_config::load_cloud_config();
+            kept.push((stored.remote_folder, stored.sync_interval_secs));
+        }
+        // A pairs file changed since the switch read it refuses the pairs
+        // write; the settings folder this write made goes back.
+        crate::cloud_config::with_cloud_config_mut(|stored| {
+            *stored = original.clone();
+            Ok(())
+        })
+        .unwrap();
+        let changed = CloudPairsConfig {
+            pairs: vec![crate::cloud_pairs::CloudPathPair::from_legacy(&original)],
+            ..CloudPairsConfig::default()
+        };
+        crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
+            *stored = changed.clone();
+            Ok(())
+        })
+        .unwrap();
+        let refused = store_cloud_files(
+            (&original, &CloudPairsConfig::default()),
+            &written,
+            &CloudPairsConfig::default(),
+        );
+        let back = crate::cloud_config::load_cloud_config().remote_folder;
+        match prev {
+            Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        assert!(
+            matches!(refused, Err(CloudStoreError::NotSaved(_))),
+            "{refused:?}"
+        );
+        assert_eq!(back, "/my-files/cloud");
+        assert_eq!(
+            kept,
+            [
+                ("/elsewhere".to_string(), 60),
+                ("/my-files/cloud".to_string(), 60)
+            ]
+        );
+    }
+
+    /// A switch whose rollback fails holds the syncs of the folders it left
+    /// spelled for the new mode, and says so; they sync again once the
+    /// profile is in that mode or the folder is set again.
+    #[test]
+    fn a_failed_rollback_holds_its_syncs_until_repaired() {
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        let moved = crate::cloud_pairs::CloudPathPair {
+            id: "moved".to_string(),
+            remote_path: "/my-files/docs".to_string(),
+            ..crate::cloud_pairs::CloudPathPair::from_legacy(&CloudConfig {
+                server_profile: "Proton".to_string(),
+                ..CloudConfig::default()
+            })
+        };
+        let pairs = CloudPairsConfig {
+            pairs: vec![moved.clone()],
+            ..CloudPairsConfig::default()
+        };
+        let run = |memory: &mut Memory| {
+            apply_in(
+                &fixture().dirs,
+                &profile(ProtonMode::Cli, "/my-files/docs"),
+                ProtonMode::Native,
+                &cloud,
+                &pairs,
+                None,
+                memory,
+            )
+            .unwrap_err()
+        };
+        let mut memory = Memory {
+            fail_profile: true,
+            refuse_cloud_restore: true,
+            ..Memory::default()
+        };
+        let err = run(&mut memory);
+        assert!(err.contains("its syncs are held until then"), "{err}");
+        let held = UnrepairedSwitch {
+            profile_id: "p1".to_string(),
+            profile_name: "Proton".to_string(),
+            to: ProtonMode::Native,
+            folders: vec!["/cloud".to_string(), "/docs".to_string()],
+        };
+        assert_eq!(memory.held, std::slice::from_ref(&held));
+
+        let pair_config = crate::cloud_pairs::CloudPathPair {
+            remote_path: "/docs".to_string(),
+            ..moved.clone()
+        }
+        .to_cloud_config();
+        let settings = CloudConfig {
+            remote_folder: "/cloud".to_string(),
+            ..cloud.clone()
+        };
+        let still_cli = |_: &str| Some(ProtonMode::Cli);
+        for config in [&settings, &pair_config] {
+            let mut list = vec![held.clone()];
+            let refusal = unrepaired_refusal(&mut list, config, still_cli).unwrap();
+            assert!(
+                refusal.contains("switch the profile to native mode"),
+                "{refusal}"
+            );
+            assert_eq!(list, std::slice::from_ref(&held));
+        }
+        // The folder set again, another profile: not held.
+        for config in [
+            CloudConfig {
+                remote_folder: "/my-files/cloud".to_string(),
+                ..settings.clone()
+            },
+            CloudConfig {
+                server_profile_id: Some("p2".to_string()),
+                ..settings.clone()
+            },
+        ] {
+            let mut list = vec![held.clone()];
+            assert_eq!(unrepaired_refusal(&mut list, &config, still_cli), None);
+        }
+        // The profile now in native mode: repaired, and forgotten.
+        let mut list = vec![held.clone()];
+        let native = |_: &str| Some(ProtonMode::Native);
+        assert_eq!(unrepaired_refusal(&mut list, &settings, native), None);
+        assert!(list.is_empty());
+
+        // A hold that cannot be written is said.
+        let mut memory = Memory {
+            fail_profile: true,
+            refuse_cloud_restore: true,
+            refuse_hold: true,
+            ..Memory::default()
+        };
+        let err = run(&mut memory);
+        assert!(err.contains("its syncs could NOT be held"), "{err}");
     }
 
     #[test]

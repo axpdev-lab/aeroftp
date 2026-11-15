@@ -340,14 +340,16 @@ const TARGET_BOUND: [&str; 2] = ["remote_path", "last_sync"];
 /// Save pairs config (atomic + lock protected). For tests only, as
 /// [`crate::cloud_config`]'s whole-file save: every other write merges
 /// ([`with_cloud_pairs_mut`]).
-#[cfg(test)]
+// Only the Linux save tests in `lib.rs` call it.
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> {
     let _lock =
         crate::cloud_config::SettingsFileLock::acquire_with(&PAIRS_WRITE_LOCK, &get_pairs_path())?;
     save_cloud_pairs_config_unlocked(config)
 }
 
-#[cfg(test)]
+// Only the Linux save tests in `lib.rs` call it.
+#[cfg(all(test, target_os = "linux"))]
 fn save_cloud_pairs_config_unlocked(config: &CloudPairsConfig) -> Result<(), String> {
     save_cloud_pairs_config_unlocked_at(config, &get_pairs_path())
 }

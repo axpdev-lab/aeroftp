@@ -20,7 +20,6 @@ import { normCryptScope, resolveUsernameTemplate } from '../utils/cryptScope';
 import { loginRelativeForm, loginRelativeProtocol, normalizeOverlayAnchor } from '../utils/overlayScope';
 import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
 import { locationProblem } from '../utils/syncNavigationPath';
-import { REDACTION_PATTERNS } from '../utils/redactSensitive';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
 import { AeroCloudMaturityBadge, isAeroCloudProtocol, useAeroCloudCaveat } from './AeroCloudProtocols';
@@ -53,12 +52,15 @@ export function profileRoot(profile: ServerProfile): string {
  * app anchors an opened overlay the same way, so AeroCloud stays inside the
  * encrypted folder.
  */
-// The log redaction's rule for a password in a URL (`https://u:***@host`).
-const URL_PASSWORD = REDACTION_PATTERNS.find(({ pattern }) => pattern.source.includes(':\\/\\/'))!;
-
-/** A folder label as shown: no URL password, no query (a signed URL's token). */
+/**
+ * A folder label as shown. A folder written as a URL shows its scheme and
+ * host only: its user part, path, query or fragment can carry a password or
+ * a token that no rule recognises. Any other folder is shown as written, a
+ * `?` in a name included.
+ */
 function shownFolderLabel(label: string): string {
-    return label.split('?')[0].replace(URL_PASSWORD.pattern, URL_PASSWORD.replacement);
+    const url = /^([a-z][a-z0-9+.-]*:\/\/)(?:[^@/?#]*@)?([^/?#]*)/i.exec(label);
+    return url ? `${url[1]}${url[2]}/…` : label;
 }
 
 export function aeroCloudBase(profile: ServerProfile): string {

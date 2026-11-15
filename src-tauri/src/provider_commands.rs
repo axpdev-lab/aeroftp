@@ -535,12 +535,22 @@ impl ProviderState {
     /// pinned transfer of the old connection never applies again. `slot` is
     /// the content of [`Self::provider`], whose lock the caller holds.
     async fn clear_slot(&self, slot: &mut Option<Box<dyn StorageProvider>>) {
+        *self.config.lock().await = None;
+        self.clear_slot_now(slot);
+    }
+
+    /// [`Self::clear_slot`] without waiting: for a drop, which cannot await.
+    /// The saved connect parameters go only when nobody holds them; with the
+    /// slot empty, no request uses them, and a connect replaces them.
+    fn clear_slot_now(&self, slot: &mut Option<Box<dyn StorageProvider>>) {
         *slot = None;
         *self
             .connected_profile_id
             .lock()
             .unwrap_or_else(|e| e.into_inner()) = None;
-        *self.config.lock().await = None;
+        if let Ok(mut config) = self.config.try_lock() {
+            *config = None;
+        }
         self.active_crypt_overlay.store(false, Ordering::SeqCst);
         self.overlay_wrapped.store(false, Ordering::SeqCst);
         self.invalidate_overlay_key_cache();
@@ -1116,7 +1126,20 @@ async fn try_silent_reconnect(
     emit_session_event(events, SessionEventKind::Reconnecting, "");
     tracing::warn!("Provider session lost; attempting silent reconnect");
 
+    // From the redial until the folder is entered again the session may
+    // stand in another folder. A request cancelled meanwhile drops this
+    // future: the guard then closes the connection as a failed restore does,
+    // so no later request reaches that folder.
+    let mut pending = RestorePending {
+        state,
+        slot: Some(slot),
+    };
+    let Some(provider) = pending.provider() else {
+        pending.disarm();
+        return Err(state.not_connected());
+    };
     if let Err(e) = provider.connect().await {
+        pending.disarm();
         emit_session_event(events, SessionEventKind::ReconnectFailed, e.to_string());
         return Err(format!("Failed to reconnect: {}", e));
     }
@@ -1142,6 +1165,7 @@ async fn try_silent_reconnect(
         }
         None => false,
     };
+    let slot = pending.disarm();
     if restored {
         return Ok(());
     }
@@ -1152,6 +1176,37 @@ async fn try_silent_reconnect(
     state.mark_folder_lost();
     emit_session_event(events, SessionEventKind::Closed, FOLDER_LOST_REFUSAL);
     Err(FOLDER_LOST_REFUSAL.to_string())
+}
+
+/// The slot of a silent reconnect between its redial and its folder
+/// restore, closed when dropped before [`Self::disarm`]: see
+/// [`try_silent_reconnect`].
+struct RestorePending<'a> {
+    state: &'a ProviderState,
+    slot: Option<&'a mut Option<Box<dyn StorageProvider>>>,
+}
+
+impl<'a> RestorePending<'a> {
+    fn provider(&mut self) -> Option<&mut Box<dyn StorageProvider>> {
+        self.slot.as_deref_mut().and_then(Option::as_mut)
+    }
+
+    /// The restore ran to its end: the caller keeps or closes the session.
+    fn disarm(mut self) -> &'a mut Option<Box<dyn StorageProvider>> {
+        self.slot.take().expect("a restore is disarmed once")
+    }
+}
+
+impl Drop for RestorePending<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot.take() {
+            tracing::warn!(
+                "Silent reconnect cancelled before its folder was restored; connection closed"
+            );
+            self.state.clear_slot_now(slot);
+            self.state.mark_folder_lost();
+        }
+    }
 }
 
 // ============ Request/Response Types ============
@@ -15099,6 +15154,9 @@ mod tests {
         reports_folder: bool,
         /// The first download waits here: (it started, let it finish).
         hold: Option<Arc<(Notify, Notify)>>,
+        /// The first `cd` to an absolute folder (a reconnect's restore)
+        /// signals here, then never returns.
+        restore_waits: Option<Arc<Notify>>,
     }
 
     impl Wanderer {
@@ -15112,6 +15170,7 @@ mod tests {
                     gone: Some(folder.to_string()),
                     reports_folder: true,
                     hold: None,
+                    restore_waits: None,
                 },
                 log,
             )
@@ -15164,6 +15223,12 @@ mod tests {
         async fn cd(&mut self, path: &str) -> Result<(), ProviderError> {
             self.log.note(format!("cd {path} in {}", self.cwd));
             self.lost()?;
+            if path.starts_with('/') {
+                if let Some(started) = self.restore_waits.take() {
+                    started.notify_one();
+                    std::future::pending::<()>().await;
+                }
+            }
             if self.gone.as_deref() == Some(path) {
                 return Err(ProviderError::NotFound(path.to_string()));
             }
@@ -15342,6 +15407,49 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// Finding 5 again: a request cancelled while its silent reconnect
+    /// restores the folder drops the reconnect between the redial, which
+    /// stands in another folder, and the restore. The connection is closed
+    /// as a failed restore closes it, so a later relative request is refused
+    /// and never reaches the provider at the wrong folder.
+    #[tokio::test]
+    async fn a_reconnect_cancelled_during_its_restore_closes_the_connection() {
+        let state = ProviderState::new();
+        let (mut wanderer, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        wanderer.gone = None;
+        let restoring = Arc::new(Notify::new());
+        wanderer.restore_waits = Some(restoring.clone());
+        *state.provider.lock().await = Some(Box::new(wanderer));
+        *state.connected_profile_id.lock().unwrap() = Some("p1".to_string());
+        let opened_on = state.connection_generation.load(Ordering::SeqCst);
+        log.dead.store(true, Ordering::SeqCst);
+
+        let events = RecordedEvents::default();
+        let listing = provider_list_files_inner(&events, &state, Some("docs".to_string()));
+        tokio::select! {
+            _ = listing => panic!("the restore was meant to wait"),
+            _ = restoring.notified() => {}
+        }
+        // The listing is dropped here, in the middle of its restore.
+
+        assert!(
+            state.provider.lock().await.is_none(),
+            "the session in the other folder was kept"
+        );
+        assert!(state.connected_profile_id.lock().unwrap().is_none());
+        assert!(state.connection_generation.load(Ordering::SeqCst) > opened_on);
+        assert!(state.folder_lost());
+        let reached = log.requests();
+        assert_eq!(
+            reached.last().map(String::as_str),
+            Some("cd /work in /home/u")
+        );
+
+        every_request_is_refused(&state, &events).await;
+        assert_eq!(log.dials.load(Ordering::SeqCst), 1, "a request redialled");
+        assert_eq!(log.requests(), reached, "a request reached the provider");
     }
 
     /// The way out is a connect, which installs a new generation and clears

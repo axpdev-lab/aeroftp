@@ -7,7 +7,8 @@ import { CloudPairsEditor } from './CloudPairsEditor';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), profiles: vi.fn(async () => [] as unknown[]) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
-vi.mock('../i18n', () => ({ useTranslation: () => (key: string) => key }));
+// The values a message carries are rendered after its key, so a test sees them.
+vi.mock('../i18n', () => ({ useTranslation: () => (key: string, values?: Record<string, unknown>) => values ? `${key} ${Object.values(values).join(' ')}` : key }));
 vi.mock('../utils/serverProfileStore', () => ({ loadSavedServerProfiles: () => mocks.profiles() }));
 
 let root: Root | undefined;
@@ -25,7 +26,7 @@ describe('CloudPairsEditor after a failed load', () => {
         host = document.createElement('div'); document.body.append(host); root = createRoot(host);
         await React.act(async () => root!.render(<CloudPairsEditor isOpen onClose={vi.fn()} />));
 
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed Error: permission denied');
         expect(host.textContent).not.toContain('cloud.pairsEmpty');
         // An unknown pair list is not an empty one: no legacy import offer.
         expect(host.textContent).not.toContain('cloud.importLegacy');
@@ -69,7 +70,7 @@ describe('CloudPairsEditor after a failed load', () => {
         await React.act(async () => failRead());
         if (failAdd) await React.act(async () => failAdd!());
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('add_cloud_pair');
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed Error: permission denied');
         // No editable pair from an unconfirmed list.
         expect(host.querySelector('button[title="cloud.disable"]')).toBeNull();
         expect(host.querySelector('input')).toBeNull();
@@ -123,10 +124,10 @@ describe('CloudPairsEditor after a failed load', () => {
         await render(true);
         await render(false);
         await render(true);
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed Error: permission denied');
 
         await React.act(async () => finishFirst({ pairs: [{ id: 'stale', local_folder: '/stale', remote_folder: '/r', server_profile: 'nas', enabled: true }], parallel_pairs: false }));
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.settingsLoadFailed Error: permission denied');
         expect(host.innerHTML).not.toContain('/stale');
         const save = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'common.save')!;
         expect(save.disabled).toBe(true);
@@ -206,6 +207,30 @@ describe('CloudPairsEditor saves', () => {
         expect(host.querySelector('button[title="cloud.enable"]')).not.toBeNull();
     });
 
+    it('keeps the folder as written when the profile changes while a toggle saves', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        mocks.profiles.mockImplementation(async () => [
+            { id: 'srv_nas', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol: 'sftp' },
+            { id: 'srv_other', name: 'other', host: 'other.example', port: 22, username: 'u', protocol: 'sftp' },
+        ]);
+        let release!: () => void;
+        mocks.invoke.mockImplementation((command: string, args?: { config: { pairs: Array<Record<string, unknown>> } }) => {
+            if (command === 'get_cloud_pairs_config') return Promise.resolve({ pairs: [READ], parallel_pairs: false });
+            if (command === 'save_cloud_pairs_config_cmd') return new Promise(resolve => { release = () => resolve({ pairs: args!.config.pairs.map(pair => ({ ...pair, remote_path: '/home/a/docs' })), parallel_pairs: false }); });
+            return Promise.resolve(undefined);
+        });
+        const { values } = await open();
+        await React.act(async () => (host.querySelector('button[title="cloud.disable"]') as HTMLButtonElement).click());
+        const profile = Array.from(host.querySelectorAll('select')).find(select => select.value === 'nas')!;
+        await React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(profile, 'other');
+            profile.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        await React.act(async () => release());
+        expect(values()).toContain('docs');
+        expect(values()).not.toContain('/home/a/docs');
+    });
+
     it('rolls back only the toggle when its save fails, keeping a field typed meanwhile', async () => {
         (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
         let fail!: () => void;
@@ -234,7 +259,7 @@ describe('CloudPairsEditor saves', () => {
         await type(nameInput(), 'Mine');
         const save = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'common.save')!;
         await React.act(async () => save.click());
-        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.saveFailed');
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.saveFailed Error: The AeroCloud folder pairs changed since this list was opened: open it again');
         expect(onClose).not.toHaveBeenCalled();
         expect(values()).toContain('Mine');
     });

@@ -4221,6 +4221,10 @@ async fn open_aerocloud_connection(
             .to_string()
     })?;
 
+    // A folder a failed Proton Drive mode switch left spelled for the other
+    // mode is not synced until it is repaired.
+    crate::proton_mode_switch::refuse_an_unrepaired_folder(config, store)?;
+
     // The protocol the saved profile speaks, as the placement check reads it.
     cloud_provider_factory::apply_saved_profile_protocol(store, config);
     let opened = cloud_provider_factory::create_cloud_connection(config)
@@ -4273,7 +4277,40 @@ async fn compose_aerocloud_connection(
         }
         config.remote_folder = placed;
     }
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    let composed = wrap_aerocloud_connection(
+        provider,
+        opened.overlay_binding,
+        opened.profile_id,
+        config,
+        store,
+    )
+    .await;
+    // A connect that fails after a placement for this run only gives the
+    // config back with the saved folder: the caller files the failure under
+    // the key the scheduler reads the saved entry by.
+    if composed.is_err() {
+        if let Some(saved) = &saved_folder {
+            config.remote_folder = saved.clone();
+        }
+    }
+    let provider = composed?;
+    Ok(ConnectedCloudProvider {
+        provider,
+        identity: opened.identity,
+        endpoint: opened.endpoint,
+        saved_folder,
+    })
+}
+
+/// The overlays of [`compose_aerocloud_connection`], on the folder placed.
+async fn wrap_aerocloud_connection(
+    mut provider: Box<dyn StorageProvider>,
+    overlay_binding: serde_json::Value,
+    profile_id: Option<String>,
+    config: &CloudConfig,
+    store: &credential_store::CredentialStore,
+) -> Result<Box<dyn StorageProvider>, String> {
+    if cloud_provider_factory::current_overlay_binding(config, store)? != overlay_binding {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
     }
@@ -4282,8 +4319,7 @@ async fn compose_aerocloud_connection(
     // second resolution of the name, which could pick a homonym.
     provider = crypt_overlay_provider::build_aerocloud_overlay_stack(
         provider,
-        opened
-            .profile_id
+        profile_id
             .as_deref()
             .or(config.server_profile_id.as_deref()),
         &config.server_profile,
@@ -4306,18 +4342,13 @@ async fn compose_aerocloud_connection(
             config.compress_level,
         ));
     }
-    if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
+    if cloud_provider_factory::current_overlay_binding(config, store)? != overlay_binding {
         let _ = provider.disconnect().await;
         return Err(
             "Profile encryption binding changed during overlay composition; retry the cycle".into(),
         );
     }
-    Ok(ConnectedCloudProvider {
-        provider,
-        identity: opened.identity,
-        endpoint: opened.endpoint,
-        saved_folder,
-    })
+    Ok(provider)
 }
 
 /// Refuse a sync whose remote folder sits outside the resolved crypt overlay
@@ -9381,6 +9412,98 @@ mod baseline_tests {
                 drop(ledger);
                 drop(composed);
             }
+        });
+    }
+
+    /// A connect that places the folder for this run only and then fails
+    /// (here the compression level, checked after the placement) files the
+    /// failure under the key the scheduler reads the saved entry by: a
+    /// recovery requested under it is seen as still pending there.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_run_only_placement_that_fails_afterwards_keeps_the_saved_key() {
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_l", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            let mut config = aerocloud_config(local.path(), "~/docs", "srv_l");
+            config.compress_enabled = true;
+            config.compress_level = 99;
+            let stored = config.clone();
+            cloud_config::with_cloud_config_mut(move |disk| {
+                *disk = stored;
+                Ok(())
+            })
+            .unwrap();
+            let read_by = crate::cloud_scan_schedule::pair_key(&cloud_config::load_cloud_config());
+            crate::cloud_scan_schedule::ledger().request_full_scan(&read_by, "a discarded plan");
+            crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(true);
+            let failed = run_pair_full_cycle(config, Some(&store), None).await;
+            crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(false);
+            let failed = failed.expect_err("an invalid compression level connected");
+            assert_eq!(cloud_config::load_cloud_config().remote_folder, "~/docs");
+            assert_eq!(failed.placed_key, read_by);
+            let now = std::time::Instant::now();
+            assert!(crate::cloud_scan_schedule::ledger().pending_full_scan_due(&read_by, now));
+        });
+    }
+
+    /// A folder a failed Proton Drive mode switch left spelled for the other
+    /// mode is not synced: the cycle is refused before it connects. Once the
+    /// profile is in that mode, the hold is forgotten and the cycle connects.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_folder_a_failed_mode_switch_left_is_not_synced_until_repaired() {
+        use crate::proton_mode_switch::{ProtonMode, SwitchTargets, UnrepairedSwitch};
+        with_scratch_index(async {
+            let ftp = scripted_ftp_server("/home/u").await;
+            let (_vault_dir, store, _guard) = open_test_vault();
+            seed_ftp_profile(&store, "srv_h", ftp.port, None);
+            let local = tempfile::tempdir().unwrap();
+            let mut config = aerocloud_config(local.path(), "/docs", "srv_h");
+            // Refused right after the connect, so a cycle let through ends there.
+            config.compress_enabled = true;
+            config.compress_level = 99;
+            crate::proton_mode_switch::DiskTargets {
+                store: &store,
+                user_id: None,
+            }
+            .hold_syncs(&UnrepairedSwitch {
+                profile_id: "srv_h".to_string(),
+                profile_name: "nas".to_string(),
+                to: ProtonMode::Native,
+                folders: vec!["/docs".to_string()],
+            })
+            .unwrap();
+
+            crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(true);
+            let held = run_pair_full_cycle(config.clone(), Some(&store), None).await;
+            let held = held.expect_err("a held folder synced").message;
+            assert!(held.contains("AeroCloud sync held"), "{held}");
+            assert!(crate::proton_mode_switch::unrepaired_path().exists());
+
+            // The profile switched to native mode, in the list the connection reads.
+            let user = crate::user_partitions::cli_get_active_user(&store)
+                .unwrap()
+                .expect("the vault has an active user")
+                .id;
+            crate::user_partitions::cli_update_server_profiles_for_user(
+                &store,
+                user,
+                |profiles: &mut Vec<serde_json::Value>| {
+                    profiles[0]["options"]["proton_mode"] = serde_json::json!("native");
+                    true
+                },
+            )
+            .unwrap();
+            let after = run_pair_full_cycle(config, Some(&store), None).await;
+            crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(false);
+            let after = after
+                .expect_err("an invalid compression level synced")
+                .message;
+            assert!(!after.contains("AeroCloud sync held"), "{after}");
+            assert!(!crate::proton_mode_switch::unrepaired_path().exists());
         });
     }
 

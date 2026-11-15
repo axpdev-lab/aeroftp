@@ -79,7 +79,9 @@ function normalizePair(pair: CloudPathPair): CloudPathPair {
  * The draft after a reply to a request sent with `sent`: the reply's pairs,
  * with every field the user changed in the draft since the request was sent
  * kept as typed. A pair the reply dropped goes; a pair added to the draft
- * meanwhile stays.
+ * meanwhile stays. A pair moved to another target meanwhile (profile, local
+ * folder, protocol or connection parameters) keeps the draft's folder: the
+ * folder in the reply was placed for the old target.
  */
 export function rebaseDraft(draft: CloudPathPair[], sent: CloudPathPair[], stored: CloudPathPair[]): CloudPathPair[] {
     const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -93,6 +95,8 @@ export function rebaseDraft(draft: CloudPathPair[], sent: CloudPathPair[], store
             const typed = (mine as unknown as Record<string, unknown>)[key];
             if (!same(typed, (asSent as unknown as Record<string, unknown>)[key])) merged[key] = typed;
         }
+        const target = (p: CloudPathPair) => [p.server_profile, p.local_path, p.protocol_type, p.connection_params];
+        if (!same(target(mine), target(asSent))) merged.remote_path = mine.remote_path;
         return merged as unknown as CloudPathPair;
     });
     const addedMeanwhile = draft.filter(p => !byId(sent, p.id) && !byId(stored, p.id));
