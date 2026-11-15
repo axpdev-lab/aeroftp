@@ -108,6 +108,8 @@ describe('sameQuickConnectTarget', () => {
         expect(cmdStart).toBeGreaterThan(-1);
         expect(cmdEnd).toBeGreaterThan(cmdStart);
         expect(PROVIDER_COMMANDS.slice(cmdStart, cmdEnd)).toMatch(/\bbase_path:\s*Option<String>/);
-        expect(PROVIDER_COMMANDS).toContain('effective_webdav_base_path');
+        // The tab's base path reaches the target the connect itself builds.
+        expect(PROVIDER_COMMANDS).toContain('fn webdav_connect_target(');
+        expect(PROVIDER_COMMANDS).toMatch(/webdav_connect_target\(\s*exp_host[^;]*expected\.base_path,/);
     });
 });
