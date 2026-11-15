@@ -187,7 +187,7 @@ impl DeltaSyncResult {
 /// surface, never silently retry. Single source of truth for the split is
 /// `rsync_over_ssh::is_transient_native_envelope`.
 fn hard_rejection_result(msg: &str) -> DeltaSyncResult {
-    if crate::rsync_over_ssh::is_transient_native_envelope(&msg.to_ascii_lowercase()) {
+    if crate::rsync_over_ssh::is_transient_native_envelope(msg) {
         tracing::warn!(
             "delta transport drop: {}: falling back to the classic path",
             msg
@@ -280,7 +280,7 @@ impl Drop for DeltaSessionKey {
 fn refusal_in(error: &RsyncError) -> Option<&str> {
     match error {
         RsyncError::HardRejection(msg)
-            if !crate::rsync_over_ssh::is_transient_native_envelope(&msg.to_ascii_lowercase()) =>
+            if !crate::rsync_over_ssh::is_transient_native_envelope(msg) =>
         {
             Some(msg)
         }
@@ -1859,6 +1859,133 @@ mod tests {
         assert!(refusal.contains("<redacted>"), "{refusal}");
         assert!(!refusal.contains("alice"), "{refusal}");
         assert!(!refusal.contains("id_ed25519"), "{refusal}");
+    }
+
+    /// CodeRabbit 4577134047: a login refusal whose detail holds a transient
+    /// kind is a refusal on every path that reads it (the gate, the batch
+    /// open, a cached transfer, the past-TTL rule), and a transport drop
+    /// whose detail names a refusal kind is a drop on each of them.
+    #[tokio::test]
+    async fn a_refusal_is_read_by_its_kind_not_by_its_detail() {
+        use crate::delta_transport::{DeltaBatch, DeltaTransport};
+        use async_trait::async_trait;
+
+        const HOSTILE_REFUSAL: &str = "native hard rejection (PinnedLoginRefused): the server refused the key alice(TransportFailure) logged in with";
+        const HOSTILE_DROP: &str =
+            "native fallback (TransportFailure): the banner says (PinnedLoginRefused): go away";
+        struct Says(&'static str);
+        #[async_trait]
+        impl DeltaTransport for Says {
+            fn name(&self) -> &'static str {
+                "says"
+            }
+            async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                Err(RsyncError::HardRejection(self.0.into()))
+            }
+            async fn probe_local(&self) -> Result<(), RsyncError> {
+                Ok(())
+            }
+            async fn download(&self, _r: &str, _l: &Path) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn upload(&self, _l: &Path, _r: &str) -> Result<RsyncStats, RsyncError> {
+                Err(RsyncError::RemoteNotAvailable)
+            }
+            async fn begin_batch(&self) -> Result<Box<dyn DeltaBatch>, RsyncError> {
+                Err(RsyncError::HardRejection(self.0.into()))
+            }
+        }
+        async fn upload(transport: &Says, key: &str) -> DeltaSyncResult {
+            transfer_with_delta(
+                transport,
+                SyncDirection::Upload,
+                Path::new("/tmp/ug"),
+                "/r/ug",
+                key,
+                None,
+            )
+            .await
+            .expect("a typed result")
+        }
+
+        let _cache_guard = PROBE_CACHE_TEST_GUARD.lock().await;
+        for (case, message, refusal) in [
+            ("refusal", HOSTILE_REFUSAL, true),
+            ("drop", HOSTILE_DROP, false),
+        ] {
+            let transport = Says(message);
+            // The gate.
+            let gate =
+                check_delta_eligibility_with_transport(&transport, &format!("test-ug-gate-{case}"))
+                    .await;
+            assert_eq!(gate.hard_error.is_some(), refusal, "{case}: {gate:?}");
+            // The batch open, then a transfer reading what it stored.
+            let key = format!("test-ug-batch-{case}");
+            let opened = open_delta_batch_with_transport(&transport, &key).await;
+            assert_eq!(opened.is_err(), refusal, "{case}");
+            if refusal {
+                let r = upload(&transport, &key).await;
+                assert!(r.fallback_reason.is_none(), "{case}: no fallback");
+                assert!(
+                    r.hard_error
+                        .as_deref()
+                        .is_some_and(|e| e.contains("PinnedLoginRefused")),
+                    "{case}: {r:?}"
+                );
+            } else {
+                assert!(matches!(opened, Ok(None)), "{case}");
+            }
+            // A fresh transfer of its own.
+            let r = upload(&transport, &format!("test-ug-transfer-{case}")).await;
+            assert_eq!(r.hard_error.is_some(), refusal, "{case}: {r:?}");
+            assert_eq!(r.fallback_reason.is_some(), !refusal, "{case}: {r:?}");
+            // The past-TTL rule: the stored verdict, expired, against a probe
+            // that finds delta unavailable.
+            let key = format!("test-ug-ttl-{case}");
+            probe_cache().insert(
+                key.clone(),
+                CacheEntry {
+                    capability: Err(RsyncError::HardRejection(message.into())),
+                    cached_at: Instant::now()
+                        .checked_sub(CACHE_TTL_ERR + Duration::from_secs(1))
+                        .expect("an instant 30 minutes back"),
+                },
+            );
+            struct Unavailable;
+            #[async_trait]
+            impl DeltaTransport for Unavailable {
+                fn name(&self) -> &'static str {
+                    "unavailable"
+                }
+                async fn probe_remote(&self) -> Result<RsyncCapability, RsyncError> {
+                    Err(RsyncError::RemoteNotAvailable)
+                }
+                async fn probe_local(&self) -> Result<(), RsyncError> {
+                    Ok(())
+                }
+                async fn download(&self, _r: &str, _l: &Path) -> Result<RsyncStats, RsyncError> {
+                    Err(RsyncError::RemoteNotAvailable)
+                }
+                async fn upload(&self, _l: &Path, _r: &str) -> Result<RsyncStats, RsyncError> {
+                    Err(RsyncError::RemoteNotAvailable)
+                }
+            }
+            let r = transfer_with_delta(
+                &Unavailable,
+                SyncDirection::Upload,
+                Path::new("/tmp/ug"),
+                "/r/ug",
+                &key,
+                None,
+            )
+            .await
+            .expect("a typed result");
+            assert_eq!(
+                r.hard_error.is_some(),
+                refusal,
+                "{case} past its TTL: {r:?}"
+            );
+        }
     }
 
     /// CodeRabbit 4575991598, the cache's half: for one session a soft
