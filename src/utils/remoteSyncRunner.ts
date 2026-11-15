@@ -28,7 +28,108 @@ import type {
     SyncIndex,
     SyncIndexEntry,
     SyncEcStatus,
+    DeltaEligibilityProbeResult,
 } from '../types';
+
+/**
+ * What the sync-start gate does with the delta probe's verdict (C2): a hard
+ * refusal stops the run before any write and offers no "continue without
+ * delta" (a transfer would only meet the same refusal, after folders were
+ * made and deletes done); an eligible session, or a profile that turned the
+ * question off, launches; otherwise the user is asked.
+ */
+export const deltaGateDecision = (
+    verdict: Pick<DeltaEligibilityProbeResult, 'eligible' | 'hard_error'>,
+    skipPrompt: boolean,
+): 'stop' | 'launch' | 'ask' =>
+    verdict.hard_error ? 'stop' : verdict.eligible || skipPrompt ? 'launch' : 'ask';
+
+/** What the sync-start gate needs (D2). */
+export interface DeltaGateDeps {
+    /** `provider_connection_generation`, read by the caller at the start of
+     *  the user's action, before the run's plan was built and before any
+     *  wait such as a canary approval (Q5, E1). */
+    requested: Promise<number>;
+    /** The same read, now. It moves on every connect, disconnect and tab
+     *  switch. */
+    generation: () => Promise<number>;
+    /** Whether the action's connection was an SFTP session, the only one
+     *  probed for delta. Any other run is still checked against the
+     *  generation before it launches (E3). */
+    probeDelta: boolean;
+    /** Whether the question about continuing without delta is off: the
+     *  saved profile turned it off, or the session has no saved profile (an
+     *  ad-hoc connection, which has no place to keep the answer). A failed
+     *  answer (the saved profiles unreadable) skips it too, for the same
+     *  reason; the probe and a hard refusal still apply. */
+    skipPrompt: () => Promise<boolean>;
+    /** `sftp_probe_delta_eligibility`. */
+    probe: () => Promise<DeltaEligibilityProbeResult>;
+    launch: () => void;
+    /** A refusal the run must not go past. */
+    refuse: (message: string) => void;
+    /** The probe command itself failed: stop, and ask to try again. */
+    failed: (error: unknown) => void;
+    /** The connection changed since the request: the existing notice. */
+    changed: () => void;
+    ask: (verdict: DeltaEligibilityProbeResult, onContinue: () => void) => void;
+}
+
+/**
+ * The sync-start gate (D2). The probe waits on the network and the question
+ * on the user; the run's plan belongs to the connection of the request.
+ * Every way out checks the generation read at the request against the
+ * current one first: before the question (Q7), before every launch, in the
+ * question's Continue, and on the error path. A changed connection launches
+ * nothing. A probe that failed launches nothing either (fail closed): the
+ * refusal it might have carried is unknown. Every run passes through it, of
+ * any protocol: one whose action saw no SFTP session is not probed, and is
+ * launched only after the same generation check (E3). The run itself
+ * carrying the generation to the backend is #1561's target binding (Q6).
+ */
+export async function runDeltaGate(deps: DeltaGateDeps): Promise<void> {
+    let requested: number;
+    try {
+        requested = await deps.requested;
+    } catch {
+        deps.changed();
+        return;
+    }
+    const sameConnection = async (): Promise<boolean> =>
+        (await deps.generation().catch(() => undefined)) === requested;
+    if (!deps.probeDelta) {
+        // E3: no probe, the same check before the launch.
+        if (await sameConnection()) deps.launch();
+        else deps.changed();
+        return;
+    }
+    let skip = false;
+    let verdict: DeltaEligibilityProbeResult;
+    try {
+        skip = await deps.skipPrompt().catch(() => true);
+        verdict = await deps.probe();
+    } catch (error) {
+        if (!(await sameConnection())) deps.changed();
+        else deps.failed(error);
+        return;
+    }
+    if (!(await sameConnection())) {
+        deps.changed();
+        return;
+    }
+    const decision = deltaGateDecision(verdict, skip);
+    if (decision === 'stop') {
+        deps.refuse(verdict.hard_error ?? '');
+        return;
+    }
+    if (decision === 'launch') {
+        deps.launch();
+        return;
+    }
+    deps.ask(verdict, () => {
+        void sameConnection().then((same) => (same ? deps.launch() : deps.changed()));
+    });
+}
 
 /** Per-file lifecycle status emitted to the caller for live UI updates. */
 export type SyncRunFileStatus =
