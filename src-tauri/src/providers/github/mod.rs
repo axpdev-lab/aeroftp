@@ -282,6 +282,23 @@ struct WorkingBranchAnchor {
     /// with it (the comparison answered 404). That holds while the anchor
     /// stands, so each is compared once per session, not once per window.
     settled: std::collections::HashSet<String>,
+    /// What the session's last completed check knew of the base's tip
+    /// ([`AnchoredBase`]).
+    base: AnchoredBase,
+}
+
+/// The base's tip as the session's last completed branch check saw it.
+/// Every merge of a pull request moves the base, so a base still at that
+/// tip says nothing was merged since, at no cost: the comparison with the
+/// base already names it (`base_commit`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AnchoredBase {
+    /// No check of this anchor has completed yet.
+    First,
+    /// The tip at the last completed check.
+    Known(String),
+    /// A check completed with an answer that named no base tip.
+    Unknown,
 }
 
 impl std::fmt::Debug for GitHubProvider {
@@ -816,6 +833,7 @@ impl GitHubProvider {
                         branch: branch.clone(),
                         tip: tip.clone(),
                         settled: Default::default(),
+                        base: AnchoredBase::First,
                     });
                     Some(tip)
                 }
@@ -859,6 +877,27 @@ impl GitHubProvider {
             .filter(|anchor| anchor.branch == branch)
         {
             anchor.settled.insert(head.to_string());
+        }
+    }
+
+    /// The base as the last completed check of `branch`'s anchor saw it.
+    fn anchored_base(&self, branch: &str) -> Option<AnchoredBase> {
+        self.branch_anchor
+            .as_ref()
+            .filter(|anchor| anchor.branch == branch)
+            .map(|anchor| anchor.base.clone())
+    }
+
+    /// Records the base a check of `branch` saw, at the end of that check
+    /// (nothing is awaited after it): a check cancelled before it ends leaves
+    /// the base it had, and the next one looks again.
+    fn record_anchor_base(&mut self, branch: &str, base: Option<String>) {
+        if let Some(anchor) = self
+            .branch_anchor
+            .as_mut()
+            .filter(|anchor| anchor.branch == branch)
+        {
+            anchor.base = base.map_or(AnchoredBase::Unknown, AnchoredBase::Known);
         }
     }
 
@@ -959,6 +998,18 @@ impl GitHubProvider {
     /// per session. Without an anchor (the walk that picks a branch at
     /// connect, the legacy report) the rule is the one above, so a branch
     /// merged before and written since is reused.
+    ///
+    /// A branch only ahead of the base is checked the same way, with an
+    /// anchor: a pull request merged in the session and the base then merged
+    /// into the branch leave it ahead and not behind. The merged pull
+    /// requests are looked at only when the base moved since the last
+    /// completed check (every merge moves it; the comparison names its tip,
+    /// [`AnchoredBase`]) or its tip is unknown, so a session with an open
+    /// pull request pays nothing more while the base stands still. The one
+    /// case that signal does not cover is not this rule's: a pull request
+    /// merged before the session's first check, with the base merged into the
+    /// branch before it too. That merge is no write of the session; the walk
+    /// at connect decided the branch, as it decides any branch merged before.
     async fn classify_working_branch(
         &mut self,
         base: &str,
@@ -970,14 +1021,34 @@ impl GitHubProvider {
         let Some(compare) = self.compare_with(base, branch).await? else {
             return Ok(WorkingBranchState::Missing);
         };
+        let base_now = compare.base_commit.as_ref().map(|base| base.sha.clone());
         if compare.ahead_by == 0 {
-            return Ok(if compare.behind_by == 0 {
-                WorkingBranchState::NotAhead
-            } else {
-                WorkingBranchState::Behind
-            });
+            if compare.behind_by == 0 {
+                self.record_anchor_base(branch, base_now);
+                return Ok(WorkingBranchState::NotAhead);
+            }
+            return Ok(WorkingBranchState::Behind);
         }
         if compare.behind_by == 0 {
+            // Ahead only. Without an anchor (the walk) that is pending work.
+            // With one, a pull request merged in this session and the base
+            // merged into the branch since read the same way (CodeRabbit
+            // review 5907590915): the merged pull requests are looked at,
+            // unless the base has not moved since the last completed check
+            // (nothing can have been merged), or this is the anchor's first
+            // check (no merge after the anchor yet).
+            let Some(anchor) = anchor else {
+                return Ok(WorkingBranchState::Pending);
+            };
+            let quiet = match (self.anchored_base(branch), &base_now) {
+                (Some(AnchoredBase::First), Some(_)) => true,
+                (Some(AnchoredBase::Known(seen)), Some(now)) => seen == *now,
+                _ => false,
+            };
+            if !quiet && self.merged_in_session(branch, Some(anchor), None).await? {
+                return Ok(WorkingBranchState::Merged);
+            }
+            self.record_anchor_base(branch, base_now);
             return Ok(WorkingBranchState::Pending);
         }
         let tip = self
@@ -987,8 +1058,24 @@ impl GitHubProvider {
             .map_err(ProviderError::from)?
             .commit
             .sha;
-        // Every page (S2 a): a merged pull request on a later page is as
-        // merged as one on the first. A page shorter than asked is the last.
+        if self.merged_in_session(branch, anchor, Some(&tip)).await? {
+            return Ok(WorkingBranchState::Merged);
+        }
+        self.record_anchor_base(branch, base_now);
+        Ok(WorkingBranchState::Pending)
+    }
+
+    /// Whether a pull request from `branch` into the base was merged with
+    /// `tip` as its head (when given), or, with the session's `anchor`, with
+    /// a head that descends from it. Every page (S2 a): a merged pull request
+    /// on a later page is as merged as one on the first. A page shorter than
+    /// asked is the last.
+    async fn merged_in_session(
+        &mut self,
+        branch: &str,
+        anchor: Option<&str>,
+        tip: Option<&str>,
+    ) -> Result<bool, ProviderError> {
         const PER_PAGE: usize = 100;
         for page in 1.. {
             let url = format!(
@@ -1003,8 +1090,8 @@ impl GitHubProvider {
                 .await
                 .map_err(ProviderError::from)?;
             for pr in pulls.iter().filter(|pr| pr.merged_at.is_some()) {
-                if pr.head.sha == tip {
-                    return Ok(WorkingBranchState::Merged);
+                if tip == Some(pr.head.sha.as_str()) {
+                    return Ok(true);
                 }
                 let Some(anchor) = anchor else {
                     continue;
@@ -1013,9 +1100,7 @@ impl GitHubProvider {
                     continue;
                 }
                 match self.compare_with(anchor, &pr.head.sha).await? {
-                    Some(compare) if compare.behind_by == 0 => {
-                        return Ok(WorkingBranchState::Merged);
-                    }
+                    Some(compare) if compare.behind_by == 0 => return Ok(true),
                     _ => self.settle_with_anchor(branch, &pr.head.sha),
                 }
             }
@@ -1023,7 +1108,7 @@ impl GitHubProvider {
                 break;
             }
         }
-        Ok(WorkingBranchState::Pending)
+        Ok(false)
     }
 
     /// The candidate working branches that exist: one
@@ -3631,7 +3716,7 @@ mod tests {
                             return if exists {
                                 reply(
                                     200,
-                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind, "base_commit": {"sha": "base"}}),
                                 )
                             } else {
                                 reply(404, not_found)
@@ -3809,7 +3894,7 @@ mod tests {
                             let (ahead, behind) = if merged { (3, 2) } else { (1, 0) };
                             return reply(
                                 200,
-                                serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                                serde_json::json!({"ahead_by": ahead, "behind_by": behind, "base_commit": {"sha": if merged { "squashed" } else { "base" }}}),
                             );
                         }
                         if path.ends_with(&format!("/branches/{own}")) {
@@ -4213,6 +4298,240 @@ mod tests {
             server.abort();
         }
 
+        /// CodeRabbit review 5907590915 (additional comment, 947-948): a branch
+        /// only ahead of the base is no proof that nothing was merged in the
+        /// session. Merged at the tip of an in-window write, one more write in
+        /// the window, then the base merged into the branch (ahead, not
+        /// behind): the first write after the window is refused with nothing
+        /// sent. The cost, by request counts: a branch ahead with a base that
+        /// stands still asks for no pull requests, window after window; a
+        /// base that moved with nothing merged from the branch costs one page
+        /// of pull requests and then nothing; an answer that names no base
+        /// tip takes the lookup every time, never the quiet path; a check
+        /// cancelled during the lookup leaves the base as it was, so the next
+        /// check looks again; and a head settled earlier costs no comparison
+        /// when the base moves again.
+        #[tokio::test]
+        async fn a_merge_the_base_was_merged_back_over_is_refused_after_the_window() {
+            use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+            use std::sync::Mutex;
+
+            #[derive(Default)]
+            struct Repo {
+                chain: Vec<String>,
+                merged_heads: Vec<String>,
+                base_tip: String,
+                behind: u64,
+                /// Answer the comparison with the base without its tip.
+                old_shape: bool,
+                stall_pulls: bool,
+            }
+            #[derive(Default)]
+            struct Count {
+                puts: AtomicUsize,
+                pulls: AtomicUsize,
+                base_compares: AtomicUsize,
+                anchor_compares: AtomicUsize,
+            }
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let repo = Arc::new(Mutex::new(Repo {
+                chain: vec!["p0".into(), "c1".into()],
+                base_tip: "b0".into(),
+                ..Repo::default()
+            }));
+            let count = Arc::new(Count::default());
+            let state = (repo.clone(), count.clone(), own.clone());
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let (repo, count, own) = state.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        let is_pulls = method == axum::http::Method::GET && path.ends_with("/pulls");
+                        if is_pulls {
+                            count.pulls.fetch_add(1, SeqCst);
+                            if repo.lock().unwrap().stall_pulls {
+                                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                            }
+                        }
+                        let mut r = repo.lock().unwrap();
+                        if let Some((_, range)) = path.split_once("/compare/") {
+                            let (from, to) = range.split_once("...").unwrap();
+                            if from == "main" {
+                                count.base_compares.fetch_add(1, SeqCst);
+                                let mut answer =
+                                    serde_json::json!({"ahead_by": 1, "behind_by": r.behind});
+                                if !r.old_shape {
+                                    answer["base_commit"] = serde_json::json!({"sha": r.base_tip});
+                                }
+                                return reply(200, answer);
+                            }
+                            count.anchor_compares.fetch_add(1, SeqCst);
+                            let at = |sha: &str| r.chain.iter().position(|c| c == sha);
+                            return match (at(from), at(to)) {
+                                (Some(a), Some(h)) => reply(
+                                    200,
+                                    serde_json::json!({
+                                        "ahead_by": h.saturating_sub(a),
+                                        "behind_by": a.saturating_sub(h)
+                                    }),
+                                ),
+                                _ => reply(404, serde_json::json!({"message": "Not Found"})),
+                            };
+                        }
+                        if path.ends_with(&format!("/branches/{own}")) {
+                            return reply(
+                                200,
+                                serde_json::json!({
+                                    "name": own, "protected": false,
+                                    "commit": {"sha": r.chain.last().unwrap()}
+                                }),
+                            );
+                        }
+                        if is_pulls {
+                            let pulls: Vec<_> = r
+                                .merged_heads
+                                .iter()
+                                .map(|head| {
+                                    serde_json::json!({
+                                        "number": 1, "title": "t", "state": "closed",
+                                        "html_url": "u", "created_at": "c", "mergeable": null,
+                                        "merged_at": "2026-11-01T00:00:00Z",
+                                        "head": {"ref": own, "sha": head},
+                                        "base": {"ref": "main", "sha": "b"},
+                                        "user": {"login": "alice", "email": null, "name": null},
+                                    })
+                                })
+                                .collect();
+                            return reply(200, serde_json::json!(pulls));
+                        }
+                        if method == axum::http::Method::PUT {
+                            let next = format!("c{}", r.chain.len());
+                            r.chain.push(next.clone());
+                            count.puts.fetch_add(1, SeqCst);
+                            return reply(
+                                200,
+                                serde_json::json!({"content": {"sha": "abc"}, "commit": {"sha": next}}),
+                            );
+                        }
+                        reply(404, serde_json::json!({"message": "Not Found"}))
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let session = || {
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                    branch: own.clone(),
+                };
+                provider
+            };
+            fn age(provider: &mut GitHubProvider) {
+                provider.last_branch_check = provider.last_branch_check.map(|at| {
+                    at.checked_sub(BRANCH_CHECK_WINDOW + std::time::Duration::from_secs(1))
+                        .unwrap()
+                });
+            }
+            let (_dir, file) = a_file();
+            let pulls = || count.pulls.load(SeqCst);
+            let puts = || count.puts.load(SeqCst);
+            let anchor_compares = || count.anchor_compares.load(SeqCst);
+
+            // The base stands still: windows of writes, no pull request asked.
+            let mut steady = session();
+            for window in 0..3 {
+                steady
+                    .upload(&file, &format!("/s{window}.txt"), None)
+                    .await
+                    .unwrap();
+                age(&mut steady);
+            }
+            assert_eq!(count.base_compares.load(SeqCst), 3, "one check per window");
+            assert_eq!(pulls(), 0, "a base that stands still needs no lookup");
+            // The base moves, nothing of the branch merged (the pre-session
+            // merge at p0 is settled): one page, one comparison, then quiet.
+            repo.lock().unwrap().merged_heads = vec!["p0".into()];
+            repo.lock().unwrap().base_tip = "b1".into();
+            steady.upload(&file, "/m1.txt", None).await.unwrap();
+            assert_eq!((pulls(), anchor_compares()), (1, 1));
+            age(&mut steady);
+            steady.upload(&file, "/m2.txt", None).await.unwrap();
+            assert_eq!(pulls(), 1, "quiet again once the move was looked behind");
+            // Moved again: one page, and the settled head costs no comparison.
+            repo.lock().unwrap().base_tip = "b2".into();
+            age(&mut steady);
+            steady.upload(&file, "/m3.txt", None).await.unwrap();
+            assert_eq!((pulls(), anchor_compares()), (2, 1));
+            // A lookup cancelled: the base it had not recorded is looked behind
+            // again by the next check, which then goes quiet.
+            repo.lock().unwrap().base_tip = "b3".into();
+            repo.lock().unwrap().stall_pulls = true;
+            age(&mut steady);
+            let cancelled = tokio::time::timeout(
+                std::time::Duration::from_millis(300),
+                steady.upload(&file, "/cancelled.txt", None),
+            )
+            .await;
+            assert!(cancelled.is_err());
+            repo.lock().unwrap().stall_pulls = false;
+            steady
+                .upload(&file, "/after-cancel.txt", None)
+                .await
+                .unwrap();
+            assert_eq!(pulls(), 4, "the cancelled lookup and the one after it");
+            age(&mut steady);
+            steady.upload(&file, "/quiet.txt", None).await.unwrap();
+            assert_eq!(pulls(), 4);
+            // An answer that names no base tip: the lookup every window.
+            repo.lock().unwrap().old_shape = true;
+            for window in 0..2 {
+                age(&mut steady);
+                steady
+                    .upload(&file, &format!("/old{window}.txt"), None)
+                    .await
+                    .unwrap();
+            }
+            assert_eq!(pulls(), 6, "never the quiet path without a base tip");
+            assert!(!steady.poison.load(SeqCst));
+            repo.lock().unwrap().old_shape = false;
+
+            // The defect: merged at the tip of an in-window write, one more
+            // write, then the base merged into the branch: ahead, not behind.
+            let mut session = session();
+            session.upload(&file, "/w1.txt", None).await.unwrap();
+            {
+                let mut r = repo.lock().unwrap();
+                let merged_at = r.chain.last().cloned().unwrap();
+                r.merged_heads.push(merged_at);
+                r.base_tip = "squash".into();
+                r.behind = 1;
+            }
+            session.upload(&file, "/w2.txt", None).await.unwrap();
+            {
+                let mut r = repo.lock().unwrap();
+                r.chain.push("merge-of-main".into());
+                r.base_tip = "squash".into();
+                r.behind = 0;
+            }
+            age(&mut session);
+            let sent = puts();
+            assert!(matches!(
+                session.upload(&file, "/w3.txt", None).await,
+                Err(ProviderError::TargetChanged)
+            ));
+            assert_eq!(puts(), sent, "nothing written after the window");
+            server.abort();
+        }
+
         /// CodeRabbit 4576777951 and Greptile 4576738872: a branch check that
         /// is cancelled (Stop, a timeout dropping the write) keeps the
         /// session's anchor. Merged at the tip of an in-window write, one more
@@ -4473,7 +4792,10 @@ mod tests {
                             };
                             if path.contains("/compare/") {
                                 compares.fetch_add(1, SeqCst);
-                                return json(200, r#"{"ahead_by": 1, "behind_by": 0}"#.into());
+                                return json(
+                                    200,
+                                    r#"{"ahead_by": 1, "behind_by": 0, "base_commit": {"sha": "base"}}"#.into(),
+                                );
                             }
                             if method == axum::http::Method::PUT && path.contains("/contents/") {
                                 return match answer.swap(0, SeqCst) {
@@ -4523,6 +4845,7 @@ mod tests {
                     branch: own.clone(),
                     tip: TIP.to_string(),
                     settled: Default::default(),
+                    base: AnchoredBase::First,
                 });
                 let (_dir, file) = a_file();
                 let first = provider.upload(&file, "/a.txt", None).await;
@@ -5242,7 +5565,7 @@ mod tests {
                                 let (ahead, behind) = legacy_state.unwrap();
                                 return reply(
                                     200,
-                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind}),
+                                    serde_json::json!({"ahead_by": ahead, "behind_by": behind, "base_commit": {"sha": "base"}}),
                                 );
                             }
                             if path.contains("/git/matching-refs/heads/") {
@@ -6571,7 +6894,7 @@ mod tests {
         // The branch content is read from when no working branch is active.
         "content_branch",
         // Pull requests into the base, the merged one looked up by name.
-        "classify_working_branch",
+        "merged_in_session",
         "create_pull_request",
         "ensure_pull_request",
         // The working branch's name, and the base it is compared with at

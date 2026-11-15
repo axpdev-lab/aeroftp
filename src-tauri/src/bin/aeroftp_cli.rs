@@ -57111,6 +57111,56 @@ mod sync_delta_login_order_tests {
         );
     }
 
+    /// U-F: a delta login refused once the run has started (a leg's own
+    /// open, or the batch's reconnect inside it) ends the run after that
+    /// leg: each leg's stop stands after the leg and before every later step
+    /// that writes (its own classic stream, the conflict renames, the other
+    /// leg, the renames, the deletes, the empty-folder cleanup, the bisync
+    /// snapshot), and each leg's refusals raise it.
+    #[test]
+    fn a_delta_login_refused_mid_run_ends_the_cli_sync_after_its_leg() {
+        let body = cmd_sync_body();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("{needle} is in cmd_sync"))
+        };
+        let after = |from: usize, needle: &str| {
+            from + body[from..]
+                .find(needle)
+                .unwrap_or_else(|| panic!("{needle} after {from}"))
+        };
+        let stop = "if let Some(refusal) = login_refused.take() {";
+        let upload_leg = at("AerorsyncBatch engaged: 1 SSH session for");
+        let upload_stop = after(upload_leg, stop);
+        let download_leg = at("AerorsyncBatch engaged: 1 SSH session, {} download(s)");
+        let download_stop = after(download_leg, stop);
+        assert!(body[upload_stop..].starts_with(stop));
+        for (leg, stop_at) in [(upload_leg, upload_stop), (download_leg, download_stop)] {
+            let raised_by_reconnect = after(leg, "login_refused = Some(hard.clone());");
+            let raised_by_open = after(leg, "login_refused = Some(refusal);");
+            assert!(raised_by_reconnect < stop_at && raised_by_open < stop_at);
+            let returns = body[stop_at..].find("return refused_login_stats(").unwrap();
+            let block_ends = body[stop_at..].find('}').unwrap();
+            assert!(returns < block_ends, "the stop returns");
+        }
+        assert!(
+            upload_stop < at("if !leftover_upload_jobs.is_empty() {"),
+            "before the classic uploads"
+        );
+        assert!(upload_stop < at("// Execute conflict renames first"));
+        assert!(upload_stop < download_leg);
+        for later in [
+            "// PD-CLI-CONV-D: converge the sync download",
+            "// Execute renames (--track-renames)",
+            "for path in &to_delete_remote {",
+            "for path in &to_delete_local {",
+            "for dir in &orphan_dirs {",
+            "// Save bisync snapshot after successful sync",
+        ] {
+            assert!(download_stop < at(later), "{later}");
+        }
+    }
+
     #[test]
     fn a_refused_delta_login_exits_with_the_authentication_code() {
         assert_eq!(
@@ -57123,6 +57173,43 @@ mod sync_delta_login_order_tests {
             provider_error_to_exit_code(&ProviderError::HostKeyRejected("x".into())),
             6
         );
+    }
+}
+
+/// How a `sync` run ends when its delta login is refused once the run has
+/// started (`login_refused` in [`cmd_sync`]): the refusal is printed (the
+/// JSON form an error, never an ok summary), the connection closed, and the
+/// exit is the authentication code, the batch-open refusal's, with the counts
+/// of what the run moved before it.
+#[cfg(feature = "aerorsync")]
+async fn refused_login_stats(
+    provider: &mut dyn StorageProvider,
+    format: OutputFormat,
+    quiet: bool,
+    refusal: &str,
+    uploaded: u32,
+    downloaded: u32,
+    errors: &[String],
+) -> SyncCycleStats {
+    let code =
+        provider_error_to_exit_code(&ProviderError::AuthenticationFailed(refusal.to_string()));
+    if !quiet && matches!(format, OutputFormat::Text) {
+        for error in errors {
+            eprintln!("  {error}");
+        }
+    }
+    print_error(
+        format,
+        &format!("sync stopped, the delta login was refused: {refusal}"),
+        code,
+    );
+    let _ = provider.disconnect().await;
+    SyncCycleStats {
+        exit_code: code,
+        uploaded,
+        downloaded,
+        error_count: errors.len() as u32,
+        ..Default::default()
     }
 }
 
@@ -58505,6 +58592,14 @@ async fn cmd_sync(
     // Both bindings are mutated only inside the `aerorsync` feature
     // gate below; when the feature is off they stay at their initial
     // values and look immutable to clippy.
+    // CodeRabbit review 5907590915 (U-F): a delta login refused once the run
+    // has started (a leg's own open, or the batch's reconnect inside a leg)
+    // ends the run there: the leg's remaining files are reported refused, and
+    // no later step (the classic stream, the conflict renames, the other leg,
+    // the renames, the deletes, the empty-folder cleanup, the bisync
+    // snapshot) runs.
+    #[cfg(feature = "aerorsync")]
+    let mut login_refused: Option<String> = None;
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
     let mut used_batch_for_uploads = false;
     #[cfg_attr(not(feature = "aerorsync"), allow(unused_mut))]
@@ -58528,6 +58623,10 @@ async fn cmd_sync(
                 }
                 let mut pending: Vec<(String, String, String, u64)> = Vec::new();
                 for (rel, local_path_s, remote_path, _size) in leftover_upload_jobs.drain(..) {
+                    if let Some(refusal) = &login_refused {
+                        errors.push(format!("upload {rel}: refused: {refusal}"));
+                        continue;
+                    }
                     if cancelled.load(Ordering::Relaxed) {
                         errors.push(format!("upload {}: cancelled", rel));
                         continue;
@@ -58544,6 +58643,9 @@ async fn cmd_sync(
                         uploaded += 1;
                     } else if let Some(hard) = res.hard_error.as_ref() {
                         errors.push(format!("upload {}: hard rejection: {}", rel, hard));
+                        if ftp_client_gui_lib::rsync_over_ssh::is_login_refusal(hard) {
+                            login_refused = Some(hard.clone());
+                        }
                     } else {
                         // Soft fallback (TooSmall, NoopBatch, etc.):
                         // re-queue for the classic stream below so the
@@ -58577,6 +58679,7 @@ async fn cmd_sync(
                 for (rel, _, _, _) in leftover_upload_jobs.drain(..) {
                     errors.push(format!("upload {rel}: refused: {refusal}"));
                 }
+                login_refused = Some(refusal);
             }
             Ok(None) => {
                 if !quiet {
@@ -58601,6 +58704,19 @@ async fn cmd_sync(
         }
     }
 
+    #[cfg(feature = "aerorsync")]
+    if let Some(refusal) = login_refused.take() {
+        return refused_login_stats(
+            provider.as_mut(),
+            format,
+            quiet,
+            &refusal,
+            uploaded,
+            0,
+            &errors,
+        )
+        .await;
+    }
     if !leftover_upload_jobs.is_empty() {
         let _ = used_batch_for_uploads; // already logged above; flag retained for follow-up reporting
 
@@ -58916,6 +59032,10 @@ async fn cmd_sync(
                     // nothing.
                     let mut queued = std::mem::take(&mut leftover_download_jobs).into_iter();
                     while let Some((rel, local_path_s, remote_path, size)) = queued.next() {
+                        if let Some(refusal) = &login_refused {
+                            errors.push(format!("download {rel}: refused: {refusal}"));
+                            continue;
+                        }
                         if cancelled.load(Ordering::Relaxed) {
                             errors.push(format!("download {}: cancelled", rel));
                             continue;
@@ -58971,6 +59091,9 @@ async fn cmd_sync(
                             session_transfer_add(moved);
                         } else if let Some(hard) = res.hard_error.as_ref() {
                             errors.push(format!("download {}: hard rejection: {}", rel, hard));
+                            if ftp_client_gui_lib::rsync_over_ssh::is_login_refusal(hard) {
+                                login_refused = Some(hard.clone());
+                            }
                         } else {
                             // Soft fallback (TooSmall, NoopBatch, a transport
                             // that opted out): re-queue for the classic stream
@@ -59003,6 +59126,7 @@ async fn cmd_sync(
                     for (rel, _, _, _) in leftover_download_jobs.drain(..) {
                         errors.push(format!("download {rel}: refused: {refusal}"));
                     }
+                    login_refused = Some(refusal);
                 }
                 Ok(None) => {
                     if !quiet {
@@ -59022,6 +59146,19 @@ async fn cmd_sync(
                 leftover_download_jobs.len()
             );
         }
+    }
+    #[cfg(feature = "aerorsync")]
+    if let Some(refusal) = login_refused.take() {
+        return refused_login_stats(
+            provider.as_mut(),
+            format,
+            quiet,
+            &refusal,
+            uploaded,
+            downloaded,
+            &errors,
+        )
+        .await;
     }
     #[cfg(feature = "aerorsync")]
     let download_jobs = leftover_download_jobs;
