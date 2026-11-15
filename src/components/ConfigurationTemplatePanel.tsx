@@ -422,9 +422,15 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                     .filter(r => keptRelaxed.has(relaxationIdentity(sec, r)))
                     .map(r => ({ fileIndex: sec.fileIndex, key: r.key })),
             );
+            const activeSecretBlocks = new Set([
+                ...preview.secretChoiceBlocks,
+                ...preview.rows
+                    .filter(r => r.action !== 'skip' && r.hasSecretInput)
+                    .map(r => r.blockName),
+            ]);
             const activeSecretForms = Object.fromEntries(
                 Object.entries(secretForms).filter(([blockName]) =>
-                    preview.secretChoiceBlocks.includes(blockName),
+                    activeSecretBlocks.has(blockName),
                 ),
             );
             const result = await invoke<TemplateImportResult>('import_configuration_template', {

@@ -909,4 +909,56 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(imports).toBe(2);
         expect(onClose).not.toHaveBeenCalled();
     });
+
+    it('keeps resolved secretForms for import after preview drops answered blocks from secretChoiceBlocks', async () => {
+        let importedSecretForms: Record<string, string> | undefined;
+        vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+            if (cmd === 'preview_configuration_template') {
+                const payload = args as { options: { secretForms?: Record<string, string> } };
+                const alphaForm = (payload.options.secretForms?.alpha ?? null) as 'clear' | 'obscured' | null;
+                return {
+                    rows: [
+                        {
+                            fileIndex: 0, blockName: 'alpha', targetName: 'alpha', startLine: 1,
+                            protocol: 'sftp', providerId: null, host: 'alpha.example.test', port: 22, username: 'alice',
+                            hasCredential: alphaForm !== null, hasSecretInput: true, looksObscured: false,
+                            secretForm: alphaForm, needsSecretFormChoice: alphaForm === null,
+                            existingMatchId: null, existingMatchName: null, action: 'add',
+                            duplicateInTemplate: false,
+                            secretDisposition: alphaForm !== null ? 'newCredential' : 'none',
+                            secretNote: null,
+                        },
+                    ],
+                    skipped: [], warnings: [], parseIssues: [], security: [],
+                    // Real backend removes answered blocks from secretChoiceBlocks once resolved.
+                    secretChoiceBlocks: alphaForm === null ? ['alpha'] : [],
+                    totalBlocks: 1, capped: false, sourceLabel: 'paste',
+                    digestSha256: 'digest-alpha', planDigestSha256: 'plan-alpha',
+                };
+            }
+            if (cmd === 'import_configuration_template') {
+                const payload = args as { options: { secretForms?: Record<string, string> } };
+                importedSecretForms = payload.options.secretForms;
+                return importResult;
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+
+        await renderPanel();
+        await type('[alpha]\ntype = sftp\nhost = alpha.example.test\nuser = alice\npass = PlainPw!\n');
+
+        const clearRadio = host.querySelector<HTMLInputElement>(
+            '[data-testid="template-secret-choice-alpha"] input[type="radio"]',
+        )!;
+        await act(async () => { clearRadio.click(); });
+        await flush();
+
+        // Updated preview now has secretChoiceBlocks: [], yet Clear choice must still be sent on import.
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click();
+        });
+        await flush();
+
+        expect(importedSecretForms).toEqual({ alpha: 'clear' });
+    });
 });

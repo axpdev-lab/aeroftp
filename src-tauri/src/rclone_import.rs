@@ -375,8 +375,7 @@ pub(crate) fn parse_ini_sections_with_spans(content: &str) -> IniSpanParseResult
                     line: line_num,
                     block_name: None,
                     message: format!(
-                        "Key '{}' on line {} appears outside any [name] block and was ignored.",
-                        raw_key.trim(),
+                        "Key-value entry on line {} appears outside any [name] block and was ignored.",
                         line_num
                     ),
                 });
@@ -3159,6 +3158,30 @@ pub fn evaluate_template_text(
     source_label: &str,
     secret_policy: &TemplateSecretPolicy,
 ) -> Result<TemplateEngineOutput, String> {
+    let empty_skipped = HashSet::new();
+    evaluate_template_text_with_skipped(
+        content,
+        base_dir,
+        source_label,
+        secret_policy,
+        &empty_skipped,
+        None,
+    )
+}
+
+/// Internal variant of [`evaluate_template_text`] that knows which template
+/// blocks are omitted from import (`existing_skip_names` matched under Skip
+/// mode or absent from `selected_blocks`) so `crypt` wrappers can resolve a
+/// skipped base block's secret via their own explicit choice while imported
+/// base blocks keep requiring an explicit choice on the base itself.
+pub(crate) fn evaluate_template_text_with_skipped(
+    content: &str,
+    base_dir: Option<&Path>,
+    source_label: &str,
+    secret_policy: &TemplateSecretPolicy,
+    existing_skip_names: &HashSet<String>,
+    selected_blocks: Option<&HashSet<String>>,
+) -> Result<TemplateEngineOutput, String> {
     let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize;
     if content.len() > cap {
         return Err(format!(
@@ -3285,6 +3308,12 @@ pub fn evaluate_template_text(
             chain
         };
 
+    let is_ancestor_omitted = |ancestor: &str| -> bool {
+        let trimmed = ancestor.trim();
+        existing_skip_names.contains(trimmed)
+            || selected_blocks.is_some_and(|sel| !sel.contains(trimmed))
+    };
+
     let mut alias_derived_forms: HashMap<String, TemplateSecretForm> = HashMap::new();
     for name in &ordered_names {
         let Some(remote) = sections.get(name) else {
@@ -3294,25 +3323,28 @@ pub fn evaluate_template_text(
             .get("type")
             .map(|t| t.trim().to_ascii_lowercase())
             .unwrap_or_default();
-        if rtype != "alias" {
+        if !matches!(rtype.as_str(), "alias" | "crypt") {
             continue;
         }
-        let Some(alias_form) = secret_policy.form_for(name) else {
+        let Some(wrapper_form) = secret_policy.form_for(name) else {
             continue;
         };
         for ancestor in wrapper_ancestors(&sections, name) {
+            if rtype == "crypt" && !is_ancestor_omitted(&ancestor) {
+                continue;
+            }
             if own_secret_blocks
                 .get(&ancestor)
                 .is_some_and(|m| m.chosen_form.is_none())
             {
                 if let Some(&prev) = alias_derived_forms.get(&ancestor) {
-                    if prev != alias_form {
+                    if prev != wrapper_form {
                         return Err(format!(
                             "Conflicting secret forms selected across wrappers for block '{ancestor}'."
                         ));
                     }
                 } else {
-                    alias_derived_forms.insert(ancestor, alias_form);
+                    alias_derived_forms.insert(ancestor, wrapper_form);
                 }
             }
         }
@@ -3354,10 +3386,22 @@ pub fn evaluate_template_text(
             .get("type")
             .map(|t| t.trim().to_ascii_lowercase())
             .unwrap_or_default();
+        let wrapper_form = secret_policy.form_for(name);
         if matches!(rtype.as_str(), "alias" | "crypt") {
             for ancestor in wrapper_ancestors(&sections, name) {
                 if let Some(meta) = own_secret_blocks.get(&ancestor) {
-                    chain_metas.push(meta.clone());
+                    if meta.chosen_form.is_none()
+                        && rtype == "crypt"
+                        && is_ancestor_omitted(&ancestor)
+                        && wrapper_form.is_some()
+                    {
+                        chain_metas.push(TemplateSecretBlockMeta {
+                            looks_obscured: meta.looks_obscured,
+                            chosen_form: wrapper_form,
+                        });
+                    } else {
+                        chain_metas.push(meta.clone());
+                    }
                 }
             }
         }
@@ -3367,7 +3411,7 @@ pub fn evaluate_template_text(
                 if chain_metas.iter().all(|m| m.chosen_form.is_some()) {
                     chain_metas[0].chosen_form
                 } else {
-                    secret_policy.form_for(name)
+                    wrapper_form
                 }
             } else if chain_metas.iter().any(|m| m.chosen_form.is_none()) {
                 None
@@ -13682,5 +13726,37 @@ host = sftp://u:TopSecret99@sftp.example.test
                 "composed URL for {name} doubled basePath: {composed}"
             );
         }
+    }
+
+    #[test]
+    fn orphan_key_value_diagnostic_does_not_leak_url_password_in_preview() {
+        let orphan_tpl = "\
+https://alice:OrphanSecret99@example.test/dav?q=1
+[ok]
+type = webdav
+url = https://dav.example.test/files
+";
+        let parsed = parse_ini_sections_with_spans(orphan_tpl);
+        assert!(
+            parsed
+                .issues
+                .iter()
+                .any(|i| i.line == 1 && i.block_name.is_none()),
+            "orphan line outside [name] must emit a parse issue: {:?}",
+            parsed.issues
+        );
+        let preview = crate::template_import::preview_template_with_current(
+            &crate::template_import::TemplateInput::Text {
+                content: orphan_tpl.to_string(),
+            },
+            &crate::template_import::TemplatePreviewOptions::default(),
+            &[],
+        )
+        .unwrap();
+        let preview_json = serde_json::to_string(&preview).unwrap();
+        assert!(
+            !preview_json.contains("OrphanSecret99"),
+            "orphan diagnostic leaked URL password in serialized preview:\n{preview_json}"
+        );
     }
 }

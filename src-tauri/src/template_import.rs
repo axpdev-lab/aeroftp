@@ -28,7 +28,7 @@ use crate::profile_security::{
     make_parts_safe, new_relaxations, security_relaxations_of, KeptRelaxation, RelaxationPolicy,
 };
 use crate::rclone_import::{
-    evaluate_template_text, IniParseIssue, TemplateBlockWarning, TemplateEngineOutput,
+    evaluate_template_text_with_skipped, IniParseIssue, TemplateBlockWarning, TemplateEngineOutput,
     TemplateSecretForm, TemplateSecretPolicy, TemplateSkippedBlock,
 };
 use crate::user_partitions;
@@ -687,6 +687,34 @@ fn compute_plan_digest_sha256(
     canonical_json_sha256(&payload)
 }
 
+fn collect_existing_skip_names(
+    existing: ExistingProfileMode,
+    current: &[Value],
+) -> HashSet<String> {
+    if existing != ExistingProfileMode::Skip {
+        return HashSet::new();
+    }
+    current
+        .iter()
+        .filter_map(|p| {
+            p.get("name")
+                .and_then(Value::as_str)
+                .map(|s| s.trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn normalize_selected_blocks(selected_blocks: Option<&[String]>) -> Option<HashSet<String>> {
+    selected_blocks.map(|items| {
+        items
+            .iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect()
+    })
+}
+
 /// Preview what a configuration template would import against `current` without
 /// touching the vault or profile partition.
 pub fn preview_template_with_current(
@@ -696,11 +724,14 @@ pub fn preview_template_with_current(
 ) -> Result<TemplatePreviewReport, String> {
     let loaded = load_template_input(input)?;
     let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
-    let eval = evaluate_template_text(
+    let existing_skip = collect_existing_skip_names(options.existing, current);
+    let eval = evaluate_template_text_with_skipped(
         &loaded.content,
         loaded.base_dir.as_deref(),
         &loaded.source_label,
         &secret_policy,
+        &existing_skip,
+        None,
     )?;
     let planned = build_plan(
         &eval,
@@ -792,11 +823,22 @@ pub(crate) fn apply_template_with_slots<S: SecretSlots>(
 
     let secret_policy = build_secret_policy(options.default_secret_form, &options.secret_forms);
     let relax_policy = RelaxationPolicy::Keep(options.keep_relaxed.clone());
-    let eval = evaluate_template_text(
+    let selected_set = normalize_selected_blocks(options.selected_blocks.as_deref());
+    let existing_skip = if options.existing == ExistingProfileMode::Skip {
+        user_partitions::cli_read_active_profiles_at_revision(store, user)
+            .ok()
+            .map(|(current, _)| collect_existing_skip_names(options.existing, &current))
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    };
+    let eval = evaluate_template_text_with_skipped(
         &loaded.content,
         loaded.base_dir.as_deref(),
         &loaded.source_label,
         &secret_policy,
+        &existing_skip,
+        selected_set.as_ref(),
     )?;
 
     apply_eval_with_slots(
@@ -819,13 +861,7 @@ fn apply_eval_with_slots<S: SecretSlots>(
     relax_policy: &RelaxationPolicy,
     options: &TemplateApplyOptions,
 ) -> Result<TemplateImportResult, String> {
-    let selected_set: Option<HashSet<String>> = options.selected_blocks.as_ref().map(|items| {
-        items
-            .iter()
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
-    });
+    let selected_set = normalize_selected_blocks(options.selected_blocks.as_deref());
 
     let mut replanned = false;
     loop {
@@ -1127,6 +1163,7 @@ pub async fn import_configuration_template(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rclone_import::evaluate_template_text;
     use tempfile::TempDir;
 
     struct TestVaultEnv {
@@ -3368,5 +3405,139 @@ remote = base:docs
         )
         .unwrap();
         assert_eq!(cred.as_deref().map(|z| z.as_str()), Some("plain-secret"));
+    }
+
+    #[test]
+    fn crypt_resolves_skipped_or_deselected_base_secret_form() {
+        let env = TestVaultEnv::new();
+        let crypt_pw = crate::rclone_import::obscure_password("vault-inner-pw").unwrap();
+
+        // Scenario A: `[base]` already saved and skipped via ExistingProfileMode::Skip.
+        let seed_tpl = "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\n";
+        let seed = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &TemplateInput::Text {
+                content: seed_tpl.to_string(),
+            },
+            &TemplateApplyOptions::default(),
+        )
+        .unwrap();
+        let base_id = seed.applied[0].profile_id.clone();
+        env.store
+            .store(&format!("server_{base_id}"), "ExistingBasePw!")
+            .unwrap();
+
+        let tpl = format!(
+            "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = CryptInheritedSecret!\n\n\
+             [vault]\ntype = crypt\nremote = base:enc\npassword = {crypt_pw}\n"
+        );
+        let input = TemplateInput::Text {
+            content: tpl.clone(),
+        };
+        let (current, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+
+        let preview1 = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert_eq!(preview1.rows[0].block_name, "base");
+        assert_eq!(preview1.rows[0].action, TemplatePlannedAction::Skip);
+        assert_eq!(preview1.rows[1].block_name, "vault");
+        assert_eq!(preview1.rows[1].action, TemplatePlannedAction::Add);
+        assert!(preview1.rows[1].needs_secret_form_choice);
+        assert_eq!(preview1.secret_choice_blocks, vec!["vault"]);
+
+        let mut vault_only = std::collections::HashMap::new();
+        vault_only.insert("vault".to_string(), TemplateSecretForm::Clear);
+        let preview2 = preview_template_with_current(
+            &input,
+            &TemplatePreviewOptions {
+                existing: ExistingProfileMode::Skip,
+                secret_forms: vault_only.clone(),
+                ..Default::default()
+            },
+            &current,
+        )
+        .unwrap();
+        assert!(
+            preview2.secret_choice_blocks.is_empty(),
+            "vault choice must resolve skipped-base crypt: {:?}",
+            preview2.secret_choice_blocks
+        );
+        assert!(!preview2.rows[1].needs_secret_form_choice);
+        assert_eq!(
+            preview2.rows[1].secret_form,
+            Some(TemplateSecretForm::Clear)
+        );
+        assert!(preview2.rows[1].has_credential);
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Skip,
+                secret_forms: vault_only,
+                expected_digest_sha256: Some(preview2.digest_sha256),
+                expected_plan_digest_sha256: Some(preview2.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.skipped_existing, vec!["base"]);
+        assert_eq!(applied.applied.len(), 1);
+        assert_eq!(applied.applied[0].target_name, "vault");
+        let vault_id = applied.applied[0].profile_id.clone();
+        let vault_pw = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{vault_id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            vault_pw.as_deref().map(|z| z.as_str()),
+            Some("CryptInheritedSecret!")
+        );
+
+        // Scenario B: `[base2]` deselected via `selected_blocks = ["vault2"]` with obscured base pass.
+        let obscured = crate::rclone_import::obscure_password("ObscuredCryptBase!").unwrap();
+        let tpl2 = format!(
+            "[base2]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = {obscured}\n\n\
+             [vault2]\ntype = crypt\nremote = base2:enc\npassword = {crypt_pw}\n"
+        );
+        let mut vault2_only = std::collections::HashMap::new();
+        vault2_only.insert("vault2".to_string(), TemplateSecretForm::Obscured);
+        let applied_desel = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &TemplateInput::Text { content: tpl2 },
+            &TemplateApplyOptions {
+                existing: ExistingProfileMode::Skip,
+                selected_blocks: Some(vec!["vault2".to_string()]),
+                secret_forms: vault2_only,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied_desel.skipped_unselected, vec!["base2"]);
+        assert_eq!(applied_desel.applied.len(), 1);
+        let vault2_id = applied_desel.applied[0].profile_id.clone();
+        let vault2_pw = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{vault2_id}"),
+        )
+        .unwrap();
+        assert_eq!(
+            vault2_pw.as_deref().map(|z| z.as_str()),
+            Some("ObscuredCryptBase!")
+        );
     }
 }
