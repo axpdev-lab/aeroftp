@@ -91,6 +91,20 @@ pub fn classify_fallback(err: &AerorsyncError, committed: bool) -> FallbackVerdi
         // has to see the native path refused.
         AerorsyncErrorKind::HostKeyRejected => FallbackVerdict::HardError,
 
+        // Security: the key handed over is not the one the session logged
+        // in with. Nothing was offered; a classic wrapper would read a key
+        // path itself, which is exactly what the pin rules out.
+        AerorsyncErrorKind::PinnedKeyMismatch => FallbackVerdict::HardError,
+        // Security: the session logged in with a password; a delta login by
+        // any other method (`none` above all) could reach another account
+        // or root.
+        AerorsyncErrorKind::PinnedPasswordMismatch => FallbackVerdict::HardError,
+        // Security (X1): the server refused, on the delta login, the
+        // credential the session logged in with. The account, the key or
+        // the server's rules changed since; a classic write on the first
+        // connection would go on as if they had not.
+        AerorsyncErrorKind::PinnedLoginRefused => FallbackVerdict::HardError,
+
         // Protocol / internal consistency: hard errors. These indicate
         // a bug in the prototype (or a malformed remote): silently
         // retrying would mask the issue.
@@ -142,6 +156,9 @@ mod tests {
             AerorsyncErrorKind::RemoteError,
             AerorsyncErrorKind::UnexpectedMessage,
             AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
         ];
         for kind in kinds {
@@ -167,6 +184,30 @@ mod tests {
                 "pre-commit {kind:?} must attempt classic fallback"
             );
         }
+    }
+
+    #[test]
+    fn pre_commit_pinned_password_mismatch_is_hard_error_never_fallback() {
+        assert_eq!(
+            matrix_row(AerorsyncErrorKind::PinnedPasswordMismatch, false),
+            FallbackVerdict::HardError,
+        );
+    }
+
+    #[test]
+    fn pre_commit_pinned_login_refused_is_hard_error_never_fallback() {
+        assert_eq!(
+            matrix_row(AerorsyncErrorKind::PinnedLoginRefused, false),
+            FallbackVerdict::HardError
+        );
+    }
+
+    #[test]
+    fn pre_commit_pinned_key_mismatch_is_hard_error_never_fallback() {
+        assert_eq!(
+            matrix_row(AerorsyncErrorKind::PinnedKeyMismatch, false),
+            FallbackVerdict::HardError,
+        );
     }
 
     #[test]
@@ -221,6 +262,9 @@ mod tests {
             AerorsyncErrorKind::UnexpectedMessage,
             AerorsyncErrorKind::Cancelled,
             AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
             AerorsyncErrorKind::Internal,
         ];
         for kind in all {
