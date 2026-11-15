@@ -199,6 +199,9 @@ describe('redactCredentials', () => {
         ['signature', 'signature=abc123 mismatch', `signature=${M} mismatch`],
         ['sig query parameter', 'GET https://h/b?sv=1&sig=abc123&se=2 403', `GET https://h/b?sv=1&sig=${M}&se=2 403`],
         ['X-Amz-Signature', 'GET https://s3/b?X-Amz-Date=1&X-Amz-Signature=abc123 403', `GET https://s3/b?X-Amz-Date=1&X-Amz-Signature=${M} 403`],
+        // CodeRabbit 4576777948: the `&` written as an escape in a JSON string.
+        ['sig behind an escaped ampersand in JSON', '{"url":"https://host/path?sv=1\\u0026sig=abc123"}', `{"url":"https://host/path?sv=1\\u0026sig=${M}"}`],
+        ['sig behind an escaped ampersand after a prefix', 'PUT failed: {"url":"https://host/path?sv=1\\u0026sig=abc123"}', `PUT failed: {"url":"https://host/path?sv=1\\u0026sig=${M}"}`],
         ['X-Amz-Credential', 'GET https://s3/b?X-Amz-Credential=AKIA%2F1&X-Amz-Date=1 403', `GET https://s3/b?X-Amz-Credential=${M}&X-Amz-Date=1 403`],
         ['X-Amz-Security-Token', 'X-Amz-Security-Token=st123 expired', `X-Amz-Security-Token=${M} expired`],
         ['URL userinfo with a password', 'connect ftp://bob:hunter2@ftp.example.com:21/srv failed', `connect ftp://${M}@ftp.example.com:21/srv failed`],
