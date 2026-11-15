@@ -6693,8 +6693,16 @@ mod tests {
                             .path_and_query()
                             .map(|pq| pq.as_str().to_string())
                             .unwrap_or_default();
-                        record.lock().unwrap().push(raw);
-                        axum::http::StatusCode::MULTI_STATUS
+                        record.lock().unwrap().push(raw.clone());
+                        // A collection, so the connect succeeds and a listing
+                        // follows through `build_url`.
+                        let body = format!(
+                            "<?xml version=\"1.0\"?><d:multistatus xmlns:d=\"DAV:\"><d:response>\
+                             <d:href>{raw}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/>\
+                             </d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+                             </d:response></d:multistatus>"
+                        );
+                        (axum::http::StatusCode::MULTI_STATUS, body)
                     }
                 },
             ));
@@ -6713,11 +6721,22 @@ mod tests {
             };
             let dav = WebDavConfig::from_provider_config(&config).expect("config");
             let mut provider = WebDavProvider::new(dav).expect("provider");
-            let _ = provider.connect().await;
+            provider
+                .connect()
+                .await
+                .unwrap_or_else(|e| panic!("{user}: {e}"));
+            // A request built by `build_url`, not the probe's own URL: the
+            // account segment stays encoded once there too.
+            let _ = provider.list("docs").await;
             server.abort();
             let seen = seen.lock().unwrap().clone();
             assert!(!seen.is_empty(), "{user}: no request reached the server");
             assert_eq!(seen[0], wire_path, "{user}: {seen:?}");
+            let listing = format!("{wire_path}docs");
+            assert!(
+                seen.iter().skip(1).any(|path| path.starts_with(&listing)),
+                "{user}: no listing under {listing}: {seen:?}"
+            );
         }
     }
 
