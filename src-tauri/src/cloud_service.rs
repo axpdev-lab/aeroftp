@@ -9481,6 +9481,10 @@ mod baseline_tests {
             let held = run_pair_full_cycle(config.clone(), Some(&store), None).await;
             let held = held.expect_err("a held folder synced").message;
             assert!(held.contains("AeroCloud sync held"), "{held}");
+            assert!(
+                !held.contains("/docs"),
+                "the refusal names the folder: {held}"
+            );
             assert!(crate::proton_mode_switch::unrepaired_path().exists());
 
             // The profile switched to native mode, in the list the connection reads.

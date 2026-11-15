@@ -576,12 +576,18 @@ fn with_unrepaired_at<T>(
     let before = held.clone();
     let out = edit(&mut held);
     if held != before {
-        if held.is_empty() {
-            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        let written = if held.is_empty() {
+            std::fs::remove_file(path).map_err(|e| e.to_string())
         } else {
-            let bytes = serde_json::to_vec_pretty(&held).map_err(|e| e.to_string())?;
-            crate::sync::atomic_write(path, &bytes).map_err(|e| e.to_string())?;
-        }
+            serde_json::to_vec_pretty(&held)
+                .map_err(|e| e.to_string())
+                .and_then(|bytes| crate::sync::atomic_write(path, &bytes))
+        };
+        // The cause names the file's path: logged, never put in a message.
+        written.map_err(|e| {
+            tracing::warn!("Proton Drive switch record not written: {e}");
+            "the Proton Drive switch record could not be written".to_string()
+        })?;
     }
     Ok(out)
 }
@@ -606,9 +612,8 @@ fn unrepaired_refusal(
                 ProtonMode::Cli => ProtonMode::Native,
             };
             format!(
-                "AeroCloud sync held: a Proton Drive mode switch of {} could not put the folder {} back, which {} mode spells while the profile stays in {} mode; switch the profile to {} mode or set the AeroCloud folder again",
+                "AeroCloud sync held: a Proton Drive mode switch of {} could not put this folder back, which {} mode spells while the profile stays in {} mode; switch the profile to {} mode or set the AeroCloud folder again",
                 left.profile_name,
-                config.remote_folder,
                 left.to.label(),
                 from.label(),
                 left.to.label()
@@ -2524,6 +2529,8 @@ mod tests {
                 refusal.contains("switch the profile to native mode"),
                 "{refusal}"
             );
+            // A refusal names the problem, never the folder.
+            assert!(!refusal.contains(&config.remote_folder), "{refusal}");
             assert_eq!(list, std::slice::from_ref(&held));
         }
         // The folder set again, another profile: not held.
