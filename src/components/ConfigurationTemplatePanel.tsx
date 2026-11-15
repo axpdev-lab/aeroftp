@@ -69,7 +69,14 @@ export interface TemplatePreviewRow {
     secretDisposition: SecretDisposition;
     secretNote: string | null;
     duplicateInTemplate: boolean;
+    /** A base that is not imported whose secret form an imported wrapper needs. */
+    secretChoiceInherited: boolean;
 }
+
+/** The rows whose secret form the user chooses: an imported row with a secret,
+ *  and a base that is not imported but an imported wrapper inherits. */
+const showsSecretChoice = (row: TemplatePreviewRow): boolean =>
+    row.hasSecretInput && (row.action !== 'skip' || row.secretChoiceInherited);
 
 export interface TemplatePreviewReport {
     rows: TemplatePreviewRow[];
@@ -424,9 +431,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
             );
             const activeSecretBlocks = new Set([
                 ...preview.secretChoiceBlocks,
-                ...preview.rows
-                    .filter(r => r.action !== 'skip' && r.hasSecretInput)
-                    .map(r => r.blockName),
+                ...preview.rows.filter(showsSecretChoice).map(r => r.blockName),
             ]);
             const activeSecretForms = Object.fromEntries(
                 Object.entries(secretForms).filter(([blockName]) =>
@@ -775,7 +780,7 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
                                                     </span>
                                                 </div>
                                             </div>
-                                            {row.hasSecretInput && row.action !== 'skip' && (
+                                            {showsSecretChoice(row) && (
                                                 <div
                                                     data-testid={`template-secret-choice-${row.blockName}`}
                                                     className="ml-7 mt-1 p-2 rounded bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-700"
