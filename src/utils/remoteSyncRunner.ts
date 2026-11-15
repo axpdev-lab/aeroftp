@@ -604,16 +604,26 @@ const beginRunLease = async (
  *  classification tag a runner command's message ends with. */
 const errorText = (error: unknown): string => withoutErrorTag(String(error));
 
-const classifyRunError = async (invoke: RemoteSyncDeps['invoke'], rawError: string, filePath: string): Promise<SyncErrorInfo> => {
+/** `classified` is false when the classifier itself failed: nothing then
+ *  says what became of the write, so a caller treats it as uncertain. */
+const classifyRunError = async (
+    invoke: RemoteSyncDeps['invoke'],
+    rawError: string,
+    filePath: string,
+): Promise<{ info: SyncErrorInfo; classified: boolean }> => {
+    let classified = true;
     const info = await invoke<SyncErrorInfo>('classify_transfer_error', { rawError, filePath })
-        .catch(() => ({
-            kind: 'unknown' as SyncErrorKind,
-            // Fixed text: never the raw provider message.
-            message: 'Transfer failed; compare again before retrying',
-            retryable: false,
-            file_path: filePath,
-        }));
-    return { ...info, message: withoutErrorTag(info.message) };
+        .catch(() => {
+            classified = false;
+            return {
+                kind: 'unknown' as SyncErrorKind,
+                // Fixed text: never the raw provider message.
+                message: 'Transfer failed; compare again before retrying',
+                retryable: false,
+                file_path: filePath,
+            };
+        });
+    return { info: { ...info, message: withoutErrorTag(info.message) }, classified };
 };
 
 /** Files sent in one `provider_sync_transfer_bulk` call at most. */
@@ -855,8 +865,10 @@ const runSync = async (
                 } });
                 const rawMsg = (err as { toString?: () => string })?.toString?.()
                     || 'Unknown error';
-                const errorInfo = await classifyRunError(invoke, rawMsg, filePath);
-                if (errorInfo.kind === 'timeout' || errorInfo.kind === 'network') writeUncertain = true;
+                const { info: errorInfo, classified } = await classifyRunError(invoke, rawMsg, filePath);
+                // An error the classifier could not read says nothing of the
+                // write either: uncertain, like a timeout (CodeRabbit on #1561).
+                if (!classified || errorInfo.kind === 'timeout' || errorInfo.kind === 'network') writeUncertain = true;
 
                 if (errorInfo.retryable && attempt < maxAttempts) {
                     setStatus(filePath, 'retrying');
@@ -1395,7 +1407,7 @@ const runSync = async (
         if (result.status === 'failed') journal.resume_safe = false;
         const rawError = result.status === 'target_changed' ? BULK_TARGET_CHANGED
             : result.status === 'failed' ? result.message : 'Not sent';
-        const error = await classifyRunError(invoke, rawError, filePath);
+        const { info: error } = await classifyRunError(invoke, rawError, filePath);
         return { success: false, attempts: 1, error };
     };
 

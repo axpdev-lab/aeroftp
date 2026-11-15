@@ -440,8 +440,10 @@ pub(crate) fn connecting_config(
 
 /// The endpoint a direct-auth connection for `reads` is built for, from
 /// [`connecting_config`] through the reads [`create_via_factory`] makes, for
-/// a test that compares it with the saved entries without connecting.
-#[cfg(test)]
+/// a test that compares it with the saved entries without connecting. Its
+/// one caller runs on Linux only (its scratch config moves the data root
+/// through `XDG_CONFIG_HOME`), so it is built there only.
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn connecting_endpoint(
     store: &credential_store::CredentialStore,
     config: &CloudConfig,
@@ -1492,15 +1494,24 @@ mod tests {
     }
 
     /// The recheck sits between the reads and the first byte to a host: after
-    /// `profile_creds` and before `ProviderFactory::create`, so no provider is
-    /// built, let alone connected, with credentials read across a switch.
+    /// `direct_provider_config`, which reads the profile and its credentials
+    /// for the captured account, and before `ProviderFactory::create`, so no
+    /// provider is built, let alone connected, with credentials read across a
+    /// switch.
     #[test]
     fn the_recheck_comes_before_the_provider_is_built() {
         let source = include_str!("cloud_provider_factory.rs");
-        let body = &source[source.find("async fn create_via_factory(").unwrap()..];
-        let body = &body[..body.find("\n}\n").unwrap()];
+        let body_of = |signature: &str| {
+            let body = &source[source.find(signature).unwrap()..];
+            &body[..body.find("\n}\n").unwrap()]
+        };
+        // Both reads are the builder's settings, read for `account`.
+        let settings = body_of("fn direct_provider_config(");
+        assert!(settings.contains("saved_profile(store, config, account)?"));
+        assert!(settings.contains("profile_creds(store, profile, account)?"));
+        let body = body_of("async fn create_via_factory(");
         let read = body
-            .find("profile_creds(&store, profile, account)")
+            .find("direct_provider_config(&store, config, provider_type, account)")
             .unwrap();
         let recheck = body.find("recheck_connecting_account().await").unwrap();
         let create = body

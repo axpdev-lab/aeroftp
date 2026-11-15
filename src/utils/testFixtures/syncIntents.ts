@@ -2,6 +2,11 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 import type { RemoteSyncDeps } from '../remoteSyncRunner';
 const fixtures = new WeakMap<RemoteSyncDeps['invoke'], ReturnType<typeof createIntentFixture>>();
+// The page nonce bound to the window, as the backend keeps one binding per
+// window and a new bind replaces the previous document's (`bind_page`,
+// `owns_page`). The runner binds once per document (its module), so the
+// binding is shared by every fixture of a test file, which runs in one window.
+let boundPageNonce: string | null = null;
 export function createIntentFixture() {
     const generations = new Map<string,string>();
     const leases = new Map<string, string>();
@@ -12,12 +17,15 @@ export function createIntentFixture() {
         return async <T,>(cmd: string, args?: Record<string,unknown>): Promise<T> => {
             if (cmd === 'sync_run_page_bind_cmd') {
                 bindArgs.push({ ...args });
+                if (typeof args?.pageNonce === 'string' && args.pageNonce) boundPageNonce = args.pageNonce;
                 return undefined as T;
             }
             if (cmd === 'sync_run_lease_begin_cmd') {
                 beginArgs.push({ ...args });
-                // As natively: a begin that names no page nonce is refused.
-                if (typeof args?.pageNonce !== 'string' || !args.pageNonce) throw new Error('SYNC_RUN_PAGE_REPLACED');
+                // As natively (`acquire_at` asks `owns_page` first): a begin
+                // whose page nonce is not the window's current binding (never
+                // bound, or replaced by a later bind) is refused.
+                if (typeof args?.pageNonce !== 'string' || args.pageNonce !== boundPageNonce) throw new Error('SYNC_RUN_PAGE_REPLACED');
                 const pair = JSON.stringify([args!.localPath, args!.remotePath]);
                 if (leases.has(pair)) throw new Error('SYNC_RUN_BUSY');
                 const token = `run-lease-${++sequence}`;

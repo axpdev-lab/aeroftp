@@ -439,6 +439,23 @@ export interface FileBatchDispatcher {
  * user acts, not inside the runner, so a Stop pressed during this run still
  * keeps the files after it from starting.
  */
+/**
+ * The dispatch check of a queue row's Start or Retry, which is a new gesture
+ * of the user's: it takes the Stop count when the gesture starts, so a Stop of
+ * the batch made before it does not cancel it, and a Stop during it still
+ * does. Runs `onTarget` first, as the batch's own check does.
+ */
+export function dispatchGuardForGesture(
+    onTarget: () => void,
+    stopCount: { current: number },
+): () => void {
+    const stops = stopCount.current;
+    return () => {
+        onTarget();
+        if (stopCount.current !== stops) throw new Error('Transfer cancelled');
+    };
+}
+
 export function rearmedOnUserAction(
     cancel: { batchCancelled: { current: boolean }; cancelLevel: { current: number } },
     callback: () => void,

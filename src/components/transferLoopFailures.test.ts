@@ -10,6 +10,7 @@ import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import app from '../App.tsx?raw';
 import { DEFAULT_CONFIG, useCircuitBreaker } from '../hooks/useCircuitBreaker';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, folder, local, remote, type Options } from './appTransfers.testkit';
+import { dispatchGuardForGesture } from './transferQueueActions';
 
 // The circuit breaker keeps its state in refs: outside React, one call of the
 // hook is one breaker.
@@ -63,7 +64,7 @@ async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<t
     batchCancelledRef: f.batchCancelledRef, stopCountRef: f.stopCountRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
-    withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { f.retryCallbacksRef.current.set(id, cb); },
+    dispatchGuardForGesture, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { f.retryCallbacksRef.current.set(id, cb); },
     // App's own target checks and file batch, over the fixture's live
     // connection, which a test can switch while the picker is open.
     ...f.targetChecks,
@@ -295,6 +296,52 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     await f.retryAllFailedItems();
     expect(attempts(f, UPLOAD)).toBe(2);
     expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  // A Stop counts as well as setting the flag (cancelTransfer). A row's Retry
+  // after it is a new gesture of the user's, which the earlier Stop of its
+  // batch must not cancel.
+  it.each(['upload', 'download'] as const)('a Retry after a real Stop of its batch sends the file again (%s)', async direction => {
+    const fail = (_command: string, call: number) => (call === 1 ? 'No such file or directory' : undefined);
+    let f: ReturnType<typeof fixture>;
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: breaker(), fail });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    expect(attempts(f, command)).toBe(1);
+    f.stopCountRef.current += 1;
+    f.batchCancelledRef.current = true;
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(attempts(f, command)).toBe(2);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  // A Stop that lands during the Retry's own await (here its overwrite
+  // question), before the native dispatch, still cancels that Retry.
+  it('a Stop during a Retry, before its dispatch, sends nothing', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [remote('up.txt')] }, breaker: breaker(), policy: 'overwrite',
+      fail: (_command, call) => (call === 1 ? 'No such file or directory' : undefined),
+    });
+    await f.drop([local('up.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+    f.checkOverwrite.mockImplementation(async () => {
+      f.stopCountRef.current += 1;
+      f.batchCancelledRef.current = true;
+      return { action: 'overwrite', destinationExists: true };
+    });
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(f.checkOverwrite).toHaveBeenCalled();
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
   });
 
   it('a Stop during Retry All Failed retries no further row', async () => {

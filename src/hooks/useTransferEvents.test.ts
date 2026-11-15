@@ -17,7 +17,11 @@ vi.mock('@tauri-apps/api/event', () => ({
         return Promise.resolve(() => undefined);
     },
 }));
-vi.mock('../components/Transfer/TransferToastContainer', () => ({ dispatchTransferToast: () => undefined }));
+// The toast states the hook dispatches, for the lane checks.
+const toastStates = vi.hoisted(() => [] as Array<{ lanes?: Array<{ id: string; state: string }> } | null>);
+vi.mock('../components/Transfer/TransferToastContainer', () => ({
+    dispatchTransferToast: (state: { lanes?: Array<{ id: string; state: string }> } | null) => { toastStates.push(state); },
+}));
 
 type Options = Parameters<typeof useTransferEvents>[0];
 
@@ -141,6 +145,112 @@ describe('cross-profile terminal events', () => {
         await emit({ ...transfer, event_type: 'complete' });
         expect(options.activityLog.updateEntry).toHaveBeenCalledTimes(1);
     });
+});
+
+// CodeRabbit on #1561: a folder child's own id (`<folder>-<n>`) holds
+// `-folder-`, so its skip after its own file_start was read as the folder's:
+// the row settled by its path key, but its bare mapping and its toast lane
+// stayed active. A started folder's child is one file's skip.
+it('ends a started folder child\'s mapping and lane when its file is skipped', async () => {
+    let items = [
+        { id: 'folder', filename: 'docs', path: '/docs', size: 0, type: 'upload', status: 'pending' },
+        { id: 'child', filename: 'a.txt', path: '/docs/a.txt', size: 1, type: 'upload', status: 'pending' },
+    ] as TransferItem[];
+    const queue = Object.assign(queueWith({ id: 'folder', filename: 'docs', status: 'pending' }), {
+        completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+        updateFolderProgress: vi.fn(), setProgress: vi.fn(),
+    });
+    Object.defineProperty(queue, 'items', { get: () => items });
+    const { controls } = await mount(queue);
+    const folderProgress = { transfer_id: 'ul-folder-9', filename: 'docs', total: 1, transferred: 0, percentage: 0, speed_bps: 0, eta_seconds: 0, total_files: 1 };
+    await emit({ event_type: 'start', transfer_id: 'ul-folder-9', filename: 'docs', path: '/docs', direction: 'upload', progress: folderProgress });
+    const child = { transfer_id: 'ul-folder-9-0', filename: 'a.txt', path: '/docs/a.txt', direction: 'upload' };
+    await emit({ ...child, event_type: 'file_start' });
+    await emit({ ...child, event_type: 'file_skip', message: 'Destination already exists' });
+    expect(items.find(item => item.id === 'child')?.status).toBe('completed');
+    expect(items.find(item => item.id === 'folder')?.status).not.toBe('completed');
+    // Its lane ends with it.
+    const withLanes = toastStates.filter(state => state?.lanes);
+    const lane = withLanes[withLanes.length - 1]?.lanes?.find((entry: { id: string }) => entry.id === 'ul-folder-9-0');
+    expect(lane?.state).toBe('completed');
+    // Its mapping went with it: a late progress of that id reaches no row.
+    await emit({ ...child, event_type: 'progress', progress: { transfer_id: 'ul-folder-9-0', filename: 'a.txt', total: 1, transferred: 1, percentage: 100, speed_bps: 1, eta_seconds: 0 } });
+    expect(queue.setProgress).not.toHaveBeenCalledWith('child', expect.anything(), expect.anything());
+    expect(controls.singleFileTransferIds.current.has('ul-folder-9-0')).toBe(false);
+    // Nor does it make the skipped file's lane active again.
+    const after = toastStates.filter(state => state?.lanes);
+    expect(after[after.length - 1]?.lanes?.find((entry: { id: string }) => entry.id === 'ul-folder-9-0')?.state).toBe('completed');
+});
+
+// CodeRabbit CLI on the round: every skipped child is terminal now, so the
+// terminal set must stay bounded across skip-heavy batches.
+it('keeps the terminal ids bounded across skip-heavy batches', async () => {
+    let rows = 0;
+    const queue = Object.assign(queueWith({ id: 'q', filename: 'x', status: 'pending' }), {
+        setProgress: vi.fn(), completeTransfer: vi.fn(), addItem: vi.fn(() => `row-${++rows}`),
+    });
+    const { controls } = await mount(queue);
+    for (const run of [1, 2, 3]) {
+        const folder = `ul-folder-b${run}`;
+        await emit({ event_type: 'start', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload' });
+        for (let index = 0; index < 300; index++) {
+            const child = { transfer_id: `${folder}-${index}`, filename: `f${index}`, path: `/docs/f${index}`, direction: 'upload' };
+            await emit({ ...child, event_type: 'file_start' });
+            await emit({ ...child, event_type: 'file_skip', message: 'Destination already exists' });
+        }
+        await emit({ event_type: 'complete', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload' });
+    }
+    expect(controls.completedTransferIds.current.size).toBeLessThanOrEqual(500);
+    // The latest skipped file is still terminal for a late progress.
+    expect(controls.completedTransferIds.current.has('ul-folder-b3-299')).toBe(true);
+});
+
+// CodeRabbit CLI on the round: past the bound, an early skipped child of a
+// folder still running leaves the terminal set; its late progress must still
+// not show it transferring again.
+it('keeps an evicted skipped child terminal while its folder runs', async () => {
+    let rows = 0;
+    const queue = Object.assign(queueWith({ id: 'q', filename: 'x', status: 'pending' }), {
+        setProgress: vi.fn(), completeTransfer: vi.fn(), addItem: vi.fn(() => `row-${++rows}`),
+    });
+    const { controls } = await mount(queue);
+    const folder = 'ul-folder-big';
+    const folderProgress = { transfer_id: folder, filename: 'docs', total: 600, transferred: 0, percentage: 0, speed_bps: 0, eta_seconds: 0, total_files: 600 };
+    await emit({ event_type: 'start', transfer_id: folder, filename: 'docs', path: '/docs', direction: 'upload', progress: folderProgress });
+    for (let index = 0; index < 600; index++) {
+        const child = { transfer_id: `${folder}-${index}`, filename: `f${index}`, path: `/docs/f${index}`, direction: 'upload' };
+        await emit({ ...child, event_type: 'file_start' });
+        await emit({ ...child, event_type: 'file_skip', message: 'Destination already exists' });
+    }
+    expect(controls.completedTransferIds.current.has(`${folder}-0`)).toBe(false);
+    await emit({ event_type: 'progress', transfer_id: `${folder}-0`, filename: 'f0', path: '/docs/f0', direction: 'upload', progress: { transfer_id: `${folder}-0`, filename: 'f0', total: 1, transferred: 1, percentage: 100, speed_bps: 1, eta_seconds: 0 } });
+    const withLanes = toastStates.filter(state => state?.lanes);
+    const lane = withLanes[withLanes.length - 1]?.lanes?.find((entry: { id: string }) => entry.id === `${folder}-0`);
+    expect(lane?.state ?? 'gone').not.toBe('active');
+    expect(queue.setProgress).not.toHaveBeenCalled();
+});
+
+// CodeRabbit on #1561: every registered batch child stayed classified as a
+// single file for the App's lifetime, started or not.
+it('keeps no single-file classification of settled batches, started or not', async () => {
+    let items = [
+        { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+        { id: 'q2', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'pending' },
+    ] as TransferItem[];
+    const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+        completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+    });
+    Object.defineProperty(queue, 'items', { get: () => items });
+    const { controls } = await mount(queue);
+    for (const run of [1, 2, 3]) {
+        const batchId = `ul-files-${run}`;
+        controls.registerFileBatchRows(batchId, ['q1', 'q2']);
+        await emit({ event_type: 'file_start', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        await emit({ event_type: 'file_complete', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        // `${batchId}-1` never starts; the batch's end retires it too.
+        await emit({ event_type: 'complete', transfer_id: batchId, filename: 'batch', direction: 'upload' });
+    }
+    expect(controls.singleFileTransferIds.current.size).toBe(0);
 });
 
 it('settles the active row and activity when the server skips an occupied upload', async () => {

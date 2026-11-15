@@ -231,7 +231,7 @@ import { MountManagerDialog } from './components/MountManagerDialog';
 import { SettingsPanel } from './components/SettingsPanel';
 import { StatusBar } from './components/StatusBar';
 import { TransferQueue, useTransferQueue } from './components/TransferQueue';
-import { createFileBatchDispatcher, rearmedOnUserAction } from './components/transferQueueActions';
+import { createFileBatchDispatcher, dispatchGuardForGesture, rearmedOnUserAction } from './components/transferQueueActions';
 import { useCircuitBreaker } from './hooks/useCircuitBreaker';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey, withoutErrorTag } from './utils/transferErrorClassifier';
 import {
@@ -12618,12 +12618,16 @@ const App: React.FC = () => {
     // resets and an earlier Stop leaves set (K3).
     const stops = stopCountRef.current;
     const stoppedSinceStart = () => stopCountRef.current !== stops;
+    // The plan's one target, taken here before any await: every entry, the
+    // batch and the per-entry ones alike, is checked against it, and the plan
+    // stops at the first entry its server refuses. A fresh snapshot per entry
+    // let an entry after a switch take the new server (CodeRabbit on #1561).
+    const planTarget = snapshotQueuedTarget();
+    const onPlanTarget = queuedTargetGuard(planTarget);
+    const planRetargeted = () => queuedTargetProblem(planTarget) !== null;
     const planDispatch = () => {
-      const onTarget = queuedTargetGuard(snapshotQueuedTarget());
-      return () => {
-        onTarget();
-        if (stoppedSinceStart()) throw new Error('Transfer cancelled');
-      };
+      onPlanTarget();
+      if (stoppedSinceStart()) throw new Error('Transfer cancelled');
     };
     const { plan, sourceLocalPanelId } = pendingUnifiedTransferPlan;
     setUnifiedTransferExecuting(true);
@@ -12777,6 +12781,12 @@ const App: React.FC = () => {
           );
           return;
         }
+        let planEpoch: number;
+        try { planEpoch = await captureGuiTarget(onPlanTarget); }
+        catch (error) { notify.error(t('toast.uploadFailed') || 'Upload failed', String(error)); return; }
+        // A Stop while the epoch was read ends the plan here: the batch below
+        // takes its own Stop count and would start despite it.
+        if (stoppedSinceStart()) return;
         let ok = 0;
         let failed = 0;
         // Issue #591: plain files go out as one parallel batch; folders and a
@@ -12787,17 +12797,19 @@ const App: React.FC = () => {
           const outcome = await runFileBatch(
             'upload',
             planBatch.map(entry => ({ name: entry.name, sourcePath: entry.path, size: entry.size || 0, modified: null })),
-            currentRemotePath,
-            { allowStaging: false },
+            // The plan's own folder: the panel can have moved since the plan
+            // was made, or while its epoch was read.
+            plan.destination.path,
+            { allowStaging: false, queuedTarget: planTarget, targetEpoch: planEpoch },
           );
           ok += outcome.completed;
           failed += outcome.failed;
           planStopped = outcome.aborted || batchCancelledRef.current;
         }
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
-          if (stoppedSinceStart()) break;
+          if (stoppedSinceStart() || planRetargeted()) break;
           try {
-            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size, false, undefined, undefined, 'notify', undefined, planDispatch())) ok += 1;
+            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size, false, undefined, plan.destination.path, 'notify', undefined, planDispatch, planEpoch)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!stoppedSinceStart()) {
@@ -12829,6 +12841,12 @@ const App: React.FC = () => {
           );
           return;
         }
+        let planEpoch: number;
+        try { planEpoch = await captureGuiTarget(onPlanTarget); }
+        catch (error) { notify.error(t('toast.downloadFailed') || 'Download failed', String(error)); return; }
+        // A Stop while the epoch was read ends the plan here: the batch below
+        // takes its own Stop count and would start despite it.
+        if (stoppedSinceStart()) return;
         let ok = 0;
         let failed = 0;
         // Issue #591: plain files go out as one parallel batch; folders and a
@@ -12841,16 +12859,16 @@ const App: React.FC = () => {
             'download',
             planBatch.map(entry => ({ name: entry.name, sourcePath: entry.path, size: entry.size || 0, modified: listedModified(entry.path) })),
             plan.destination.path,
-            { allowStaging: false },
+            { allowStaging: false, queuedTarget: planTarget, targetEpoch: planEpoch },
           );
           ok += outcome.completed;
           failed += outcome.failed;
           planStopped = outcome.aborted || batchCancelledRef.current;
         }
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
-          if (stoppedSinceStart()) break;
+          if (stoppedSinceStart() || planRetargeted()) break;
           try {
-            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size, false, 'notify', undefined, planDispatch())) ok += 1;
+            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size, false, 'notify', undefined, planDispatch, planEpoch)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!stoppedSinceStart()) {
@@ -14061,8 +14079,10 @@ const App: React.FC = () => {
           const ok = sourceIsRemote
             // Remote → Local: download into the paste target panel path (not always panel 1)
             ? await downloadFile(file.path, file.name, targetDir, file.is_dir, undefined, false, 'throw', undefined, onPasteDispatch, expectedGuiTarget)
-            // Local → Remote: upload each file using stored path (not current listing)
-            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, undefined, 'throw', undefined, onPasteDispatch, expectedGuiTarget);
+            // Local → Remote: upload each file using stored path (not current listing),
+            // into the folder this Paste named, as the batch path does: the panel
+            // can be elsewhere by now, or the Paste named a folder row of it.
+            : await uploadFile(file.path, file.name, file.is_dir, undefined, false, undefined, targetDir, 'throw', undefined, onPasteDispatch, expectedGuiTarget);
           if (ok) landed.push(file);
         } catch (e) {
           if (e instanceof QueuedTargetChangedError || isTargetChangedRefusal(e)) {
@@ -14911,9 +14931,11 @@ const App: React.FC = () => {
             is_folder: !!file?.is_dir,
           });
           registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
+            // A Start or Retry is the user's own gesture: its Stop count, not the batch's.
+            const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
             transferQueue.startTransfer(id);
             try {
-              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onQueuedDispatch);
+              await uploadFile(filePath, fileName, file?.is_dir || false, file?.size || undefined, false, batchCommitMessage, remoteDir, 'throw', undefined, onRowDispatch);
               transferQueue.completeTransfer(id);
             } catch (error) {
               // Stopped during this Retry: the file reads as cancelled and the
@@ -15266,9 +15288,11 @@ const App: React.FC = () => {
           is_folder: false,
         });
         registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
+          // A Start or Retry is the user's own gesture: its Stop count, not the batch's.
+          const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
           transferQueue.startTransfer(id);
           try {
-            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onQueuedDispatch);
+            await uploadFile(filePath, fileName, false, undefined, true, undefined, remoteDir, 'throw', undefined, onRowDispatch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the
@@ -15507,9 +15531,11 @@ const App: React.FC = () => {
           is_folder: !!file.is_dir,
         });
         registerTransferCallback(id, boundToQueuedServer(queuedTarget, id, async () => {
+          // A Start or Retry is the user's own gesture: its Stop count, not the batch's.
+          const onRowDispatch = dispatchGuardForGesture(onQueuedTarget, stopCountRef);
           transferQueue.startTransfer(id);
           try {
-            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onQueuedDispatch);
+            await downloadFile(file.path, file.name, frozenLocalPath, file.is_dir, file.size || undefined, false, 'throw', undefined, onRowDispatch);
             transferQueue.completeTransfer(id);
           } catch (error) {
             // Stopped during this Retry: the file reads as cancelled and the

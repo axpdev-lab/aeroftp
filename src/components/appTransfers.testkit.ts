@@ -24,6 +24,7 @@ import { isTargetChangedRefusal } from '../utils/targetChanged';
 import {
   cancelTransfer as cancelTransferRow,
   createFileBatchDispatcher,
+  dispatchGuardForGesture,
   rearmedOnUserAction,
   retryAllFailed as retryAllFailedRows,
   updateTransferStatus,
@@ -269,7 +270,7 @@ export function fixture(options: Options = {}) {
       config: { maxRetriesPerFile: 0 }, getRetryDelay: () => 0,
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
-    retryCallbacksRef, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), holdFileCompletions: () => () => undefined, withTransferRun,
+    retryCallbacksRef, dispatchGuardForGesture, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), holdFileCompletions: () => () => undefined, withTransferRun,
     QueuedTargetChangedError,
     remoteConnectPhaseRef: { current: false as false | 'connect' | 'switch' },
     backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },

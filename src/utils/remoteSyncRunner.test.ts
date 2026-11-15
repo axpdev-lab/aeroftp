@@ -1309,6 +1309,39 @@ describe('remoteSyncRunner: journal kept on failures', () => {
         }
     });
 
+    // CodeRabbit on #1561: the fixture refuses a lease begin whose page nonce
+    // no bind established, as `acquire_at` does natively (`owns_page`), so a
+    // runner that skipped the bind or used another document's nonce fails.
+    it('the intent fixture refuses a begin on an unbound, foreign or replaced page nonce', async () => {
+        const wrapped = createIntentFixture().wrap(async () => undefined as never);
+        const begin = (pageNonce: string, localPath: string) =>
+            wrapped<string>('sync_run_lease_begin_cmd', { localPath, remotePath: '/remote', pageNonce });
+        await expect(begin('never-bound-page', '/local/a')).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        await wrapped('sync_run_page_bind_cmd', { pageNonce: 'bound-page' });
+        await expect(begin('another-document', '/local/b')).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        await expect(begin('bound-page', '/local/c')).resolves.toMatch(/^run-lease-/);
+        // One binding per window: a later document's bind replaces it, and the
+        // earlier document's nonce no longer owns the page.
+        await wrapped('sync_run_page_bind_cmd', { pageNonce: 'replacing-page' });
+        await expect(begin('bound-page', '/local/d')).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        await expect(begin('replacing-page', '/local/e')).resolves.toMatch(/^run-lease-/);
+    });
+
+    // CodeRabbit on #1561: a failure the classifier cannot read (its command
+    // rejected) says nothing of the write either. The journal then requires a
+    // comparison before Resume, as after a timeout, never `resume_safe`.
+    it('requires a comparison before Resume when the failure cannot be classified', async () => {
+        const { invoke, calls } = makeInvoke({
+            upload_file: () => { throw new Error('the reply did not come back'); },
+            classify_transfer_error: () => { throw new Error('classifier unavailable'); },
+        });
+        const report = await runRemoteSync([file('a.txt', 'upload')], noDirs, baseConfig(), {}, noWaitDeps(invoke));
+        expect(report.errors).toHaveLength(1);
+        const saved = lastSavedJournal(calls);
+        expect(saved?.entries[0]?.status).toBe('failed');
+        expect(saved?.resume_safe).toBe(false);
+    });
+
     it('keeps the journal resumable when one file succeeds and another fails', async () => {
         const { invoke, calls } = makeInvoke({
             upload_file: (_args, idx) => {

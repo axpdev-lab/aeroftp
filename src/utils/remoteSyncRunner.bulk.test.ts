@@ -604,6 +604,8 @@ describe('sync intent fixture', () => {
         // With the pair's lease the same request is served.
         // A begin names its page nonce; one that names none is refused.
         await expect(invoke('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r' })).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        // Bound first, as natively: a begin needs the page its nonce names.
+        await invoke('sync_run_page_bind_cmd', { pageNonce: 'page-test' });
         const lease = await invoke<string>('sync_run_lease_begin_cmd', { localPath: '/l', remotePath: '/r', pageNonce: 'page-test' });
         await expect(invoke('sync_intent_begin_cmd', { localPath: '/l', remotePath: '/r', paths: ['a.txt'], syncRunLease: lease }))
             .resolves.toHaveLength(1);

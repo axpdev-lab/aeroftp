@@ -110,6 +110,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
   // id: only those may be found by it (a folder's or a batch's bare id is
   // the whole folder's or batch's row, never one of its files).
   const singleFileTransferIds = useRef<Set<string>>(new Set());
+  // The folder commands and file batches that sent their `start`: an id
+  // `<one of them>-<n>` is then one child file's own transfer.
+  const startedAggregateIds = useRef<Set<string>>(new Set());
   const completionHolds = useRef(new Set<string>());
   const transferIdToLogId = useRef<Map<string, string>>(new Map());
   const pendingFileLogIds = useRef<Map<string, string>>(new Map());
@@ -188,6 +191,16 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       return null;
     };
 
+    // A transfer that ended: its late progress is ignored. Bounded: past 500,
+    // only the latest 250 stay, whatever path ended them (a completed
+    // transfer, a skipped file), so skip-heavy batches cannot grow it.
+    const markTransferTerminal = (transferId: string) => {
+      completedTransferIds.current.add(transferId);
+      if (completedTransferIds.current.size > 500) {
+        completedTransferIds.current = new Set([...completedTransferIds.current].slice(-250));
+      }
+    };
+
     const completeQueueRow = (id: string) => {
       if (!completionHolds.current.has(id)) optRef.current.transferQueue.completeTransfer(id);
     };
@@ -203,6 +216,14 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           queueIds.add(queueId);
           transferIdToQueueId.current.delete(key);
         }
+      }
+      // The transfer's single-file classification ends with it, and so does
+      // that of the children a batch registered (`<id>-<n>`), started or not:
+      // otherwise every batch child stays classified for the App's lifetime.
+      singleFileTransferIds.current.delete(transferId);
+      startedAggregateIds.current.delete(transferId);
+      for (const id of singleFileTransferIds.current) {
+        if (id.startsWith(`${transferId}-`)) singleFileTransferIds.current.delete(id);
       }
 
       if (markQueueItem) {
@@ -524,6 +545,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // a row for many files; every other `start` is one file's.
         if (data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-')) {
           singleFileTransferIds.current.delete(data.transfer_id);
+          startedAggregateIds.current.add(data.transfer_id);
         } else {
           singleFileTransferIds.current.add(data.transfer_id);
         }
@@ -642,6 +664,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
+        singleFileTransferIds.current.delete(data.transfer_id);
         const existingLane = toastLanesRef.current.get(data.transfer_id);
         if (existingLane) {
           toastLanesRef.current.set(data.transfer_id, {
@@ -681,6 +704,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           transferIdToQueueId.current.delete(trackedQueue.key);
         }
         transferIdToQueueId.current.delete(data.transfer_id);
+        singleFileTransferIds.current.delete(data.transfer_id);
         const existingLane = toastLanesRef.current.get(data.transfer_id);
         if (existingLane) {
           toastLanesRef.current.set(data.transfer_id, {
@@ -702,8 +726,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // batch child's own id (`ul-files-…-<index>`) holds `-files-` too, but
         // registerFileBatchRows marked it a single file's: its row is found
         // by that bare id, also before its file_start (U8).
+        // A child's own id (`<started folder or batch>-<n>`) is one file's
+        // too: its skip ends its own mapping and lane, as a file's does.
+        const startedChild = [...startedAggregateIds.current].some(id => data.transfer_id.startsWith(`${id}-`));
         const aggregate = (data.transfer_id.includes('-folder-') || data.transfer_id.includes('-files-'))
-          && !singleFileTransferIds.current.has(data.transfer_id);
+          && !singleFileTransferIds.current.has(data.transfer_id) && !startedChild;
         const findSkipped = <T,>(map: Map<string, T>) => {
           if (!aggregate) return findTrackedEntry(map, data.transfer_id, data.path, data.filename);
           const key = `${data.transfer_id}:${data.path || data.filename || ''}`;
@@ -735,6 +762,9 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Only a single file's skip ends its own mapping and toast.
         if (!aggregate) {
           transferIdToQueueId.current.delete(data.transfer_id);
+          singleFileTransferIds.current.delete(data.transfer_id);
+          // Terminal: a late progress of this id must not make its lane active again.
+          markTransferTerminal(data.transfer_id);
           const existingLane = toastLanesRef.current.get(data.transfer_id);
           if (existingLane) {
             toastLanesRef.current.set(data.transfer_id, { ...existingLane, percentage: 100, speed_bps: 0, eta_seconds: 0, state: 'completed' });
@@ -748,8 +778,13 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
           clearTimeout(clearToastTimer.current);
           clearToastTimer.current = null;
         }
-        // Ignore late progress events for already-completed transfers (race condition fix)
-          if (!completedTransferIds.current.has(data.transfer_id)) {
+        // Ignore late progress events for already-completed transfers (race condition fix).
+        // A child of a started folder or batch whose own mapping is gone (it
+        // ended or was skipped) is retired as well, whether or not the bounded
+        // terminal set still holds its id: its file_start maps it again.
+        const retiredChild = !transferIdToQueueId.current.has(data.transfer_id)
+          && [...startedAggregateIds.current].some(id => data.transfer_id.startsWith(`${id}-`));
+          if (!completedTransferIds.current.has(data.transfer_id) && !retiredChild) {
             // Track file-level speed regardless of throttle
             if (!data.progress.total_files && data.progress.speed_bps > 0) {
               lastFileSpeedRef.current = data.progress.speed_bps;
@@ -818,16 +853,7 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
         // Dismiss scanning toast when transfer completes and reset streaming scan state
         streamingScanActive.current = false;
         optRef.current.onScanningUpdate?.({ active: false, folderName: '', message: '', operation: 'download' });
-        completedTransferIds.current.add(data.transfer_id);
-        // Prevent unbounded growth: trim oldest entries when exceeding cap
-        if (completedTransferIds.current.size > 500) {
-          const iter = completedTransferIds.current.values();
-          for (let i = 0; i < 250; i++) iter.next();
-          // Keep only the last 250 entries
-          const keep = new Set<string>();
-          for (const v of iter) keep.add(v);
-          completedTransferIds.current = keep;
-        }
+        markTransferTerminal(data.transfer_id);
         // Debounce toast dismiss: wait 500ms before clearing to prevent flicker
         // between consecutive file transfers. If a new progress event arrives first,
         // the timer is cancelled and the toast stays visible.
@@ -1128,5 +1154,5 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     return () => { ids.forEach(id => completionHolds.current.delete(id)); };
   }, []);
 
-  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions };
+  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions, singleFileTransferIds, completedTransferIds };
 }
