@@ -76,6 +76,32 @@ fn adopt_memory_record(
     Ok(Some(adopted))
 }
 
+/// Replace the memory record a refresh read (`observed`, from `key`) with the
+/// refreshed `json`, only while it is unchanged. A profile read that adopted
+/// the singleton during the refresh moved it verbatim
+/// ([`adopt_memory_record`]): the refreshed tokens go where it moved, so a
+/// provider that retires the previous refresh token leaves no profile holding
+/// it. Any other change keeps the record and refuses the refresh.
+fn replace_memory_record(
+    map: &mut HashMap<String, String>,
+    key: &str,
+    observed: &str,
+    json: &str,
+) -> bool {
+    let at = if map.get(key).is_some_and(|raw| raw == observed) {
+        Some(key.to_owned())
+    } else {
+        map.iter()
+            .find(|(_, raw)| raw.as_str() == observed)
+            .map(|(moved, _)| moved.clone())
+    };
+    let Some(at) = at else {
+        return false;
+    };
+    map.insert(at, json.to_owned());
+    true
+}
+
 /// Configured OAuth2 client with auth and token endpoints set (v5 typestates)
 type ConfiguredClient =
     BasicClient<EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>;
@@ -1736,11 +1762,7 @@ impl OAuth2Manager {
                             let Some(map) = cache.as_mut() else {
                                 return Ok(false);
                             };
-                            if !map.get(key).is_some_and(|raw| raw == observed.raw.as_str()) {
-                                return Ok(false);
-                            }
-                            map.insert(key.clone(), json.to_string());
-                            Ok(true)
+                            Ok(replace_memory_record(map, key, &observed.raw, &json))
                         }
                         _ => Ok(false),
                     }
@@ -2829,6 +2851,38 @@ mod tests {
             adopt_memory_record(cache.as_mut().unwrap(), &legacy, &legacy, false, |_| Ok(()))
                 .unwrap();
         assert_eq!(in_place.as_deref().map(String::as_str), Some("corrupt"));
+    }
+
+    /// CodeRabbit on #1561: a singleton refresh that overlaps a profile read
+    /// adopting the same memory record stores its rotated tokens where the
+    /// record moved, instead of failing and leaving the profile with the
+    /// retired refresh token. A changed record still refuses the refresh.
+    #[test]
+    fn a_refresh_overlapping_an_adoption_lands_on_the_adopted_record() {
+        let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
+        let account = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
+        let mut map = HashMap::from([(legacy.clone(), "before".to_string())]);
+        // The refresh read `before` from the singleton; then the profile read
+        // adopted it.
+        adopt_memory_record(&mut map, &account, &legacy, true, |_| Ok(())).unwrap();
+        assert!(replace_memory_record(
+            &mut map, &legacy, "before", "rotated"
+        ));
+        assert_eq!(map.get(&account).map(String::as_str), Some("rotated"));
+        assert!(
+            !map.contains_key(&legacy),
+            "not written back to the singleton"
+        );
+        // In place, as before.
+        assert!(replace_memory_record(
+            &mut map, &account, "rotated", "again"
+        ));
+        assert_eq!(map.get(&account).map(String::as_str), Some("again"));
+        // A record changed since the read (a new sign-in) refuses the refresh.
+        assert!(!replace_memory_record(
+            &mut map, &account, "rotated", "late"
+        ));
+        assert_eq!(map.get(&account).map(String::as_str), Some("again"));
     }
 
     #[test]

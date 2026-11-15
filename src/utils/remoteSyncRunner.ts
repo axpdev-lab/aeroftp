@@ -2151,6 +2151,10 @@ const runSync = async (
                 ...(config.profileId ? { profile_id: config.profileId } : {}),
                 files: mergedFiles,
                 ...(Object.keys(spellings).length > 0 ? { remote_spellings: spellings } : {}),
+                // The read point of `existing`: the backend checks this save
+                // from it, so a run with no transfer cannot restore a baseline
+                // another publisher removed after the read.
+                ...(existing?.read_seq != null ? { read_seq: existing.read_seq } : {}),
             };
             await invoke('save_sync_index_cmd', { index, intentTokens: journal.entries.filter(entry => entry.status === 'completed' && entry.intent_token).map(entry => entry.intent_token!) });
         } catch {

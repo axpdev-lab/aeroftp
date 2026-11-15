@@ -1100,6 +1100,8 @@ export interface SyncIndex {
   files: Record<string, SyncIndexEntry>;
   /** Remote spelling of a local key, only when the two strings differ. */
   remote_spellings?: Record<string, string>;
+  /** The intent clock when the backend read this index: a save carries it back, and is refused when a path it still holds was retired after that read. */
+  read_seq?: number | null;
 }
 
 // ============ Sync Phase 2: Reliability Types ============

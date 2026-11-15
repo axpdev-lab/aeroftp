@@ -3399,6 +3399,13 @@ pub struct SyncIndex {
     /// binds an index to a target ([`bind_index_to_target`]).
     #[serde(skip)]
     pub history_only_keys: std::collections::HashSet<String>,
+    /// The intent clock when this index was read
+    /// ([`load_index_with_intents_in`]): a save of it is refused when a path
+    /// it still holds was retired by another publisher after that read, also
+    /// for a publisher with no token ([`refuse_a_stale_publication`]). It
+    /// crosses IPC so the page's save carries it back; never written to disk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_seq: Option<i64>,
 }
 
 impl SyncIndex {
@@ -3418,6 +3425,7 @@ impl SyncIndex {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         }
     }
 }
@@ -3570,6 +3578,9 @@ fn load_index_with_intents_in(
     // Pending new files have no baseline yet, but still need visible recovery.
     let has_pending = !pending.is_empty();
     fence_index(&mut index, &pending);
+    // Read in the transaction that read the file: a retirement published
+    // after this read has a later tick.
+    index.read_seq = Some(current_intent_tick(&tx)?);
     tx.commit().map_err(|error| error.to_string())?;
     Ok((existed || has_pending).then_some(index))
 }
@@ -4043,6 +4054,18 @@ fn quarantine_every_baseline(
 
 /// The next tick of the pair-independent clock that orders a begin against a
 /// retirement (see [`refuse_a_stale_publication`]).
+/// The intent clock's current tick, without advancing it; 0 before the
+/// first tick.
+fn current_intent_tick(db: &rusqlite::Connection) -> Result<i64, String> {
+    use rusqlite::OptionalExtension;
+    db.query_row("SELECT seq FROM intent_clock WHERE id=0", [], |row| {
+        row.get(0)
+    })
+    .optional()
+    .map(|seq| seq.unwrap_or(0))
+    .map_err(|e| e.to_string())
+}
+
 fn next_intent_tick(db: &rusqlite::Connection) -> Result<i64, String> {
     db.execute(
         "INSERT INTO intent_clock(id,seq) VALUES(0,1) ON CONFLICT(id) DO UPDATE SET seq=seq+1",
@@ -4062,7 +4085,9 @@ fn next_intent_tick(db: &rusqlite::Connection) -> Result<i64, String> {
 /// does, the publisher read the index before that publication, and its whole
 /// index would restore a baseline the other writer removed (a deleted file,
 /// whose remote-only replacement would then be deleted as previously synced).
-/// The save is refused; the run compares again. Tokens begun before this clock
+/// The save is refused; the run compares again. An index whose load recorded
+/// its read point ([`SyncIndex::read_seq`]) is checked from that point, so a
+/// publisher with no token is checked too. Tokens begun before this clock
 /// existed have no tick, and are not checked.
 fn refuse_a_stale_publication(
     db: &rusqlite::Connection,
@@ -4073,8 +4098,10 @@ fn refuse_a_stale_publication(
     completed: &std::collections::HashSet<String>,
 ) -> Result<(), String> {
     use rusqlite::OptionalExtension;
+    // The point the publisher read its index at: the read itself when the
+    // load recorded it, else its earliest begin.
     let mut earliest: Option<i64> = None;
-    for token in tokens {
+    for token in tokens.iter().filter(|_| index.read_seq.is_none()) {
         let begun: Option<i64> = db
             .query_row(
                 "SELECT seq FROM intent_begun WHERE pair=?1 AND token=?2",
@@ -4087,7 +4114,7 @@ fn refuse_a_stale_publication(
             earliest = Some(earliest.map_or(begun, |e| e.min(begun)));
         }
     }
-    let Some(earliest) = earliest else {
+    let Some(earliest) = index.read_seq.or(earliest) else {
         return Ok(());
     };
     let stored_keys: std::collections::HashSet<String> = stored
@@ -4269,7 +4296,9 @@ fn save_index_with_trust_in(
             .map(|stored| stored.history_only_keys.clone())
             .unwrap_or_default();
     }
-    let index = retire_unproven_baselines(&index, stored.as_ref(), &completed);
+    let mut index = retire_unproven_baselines(&index, stored.as_ref(), &completed);
+    // A read point describes one reader's copy, never the stored file.
+    index.read_seq = None;
     let data = serde_json::to_vec(&index).map_err(|e| e.to_string())?;
     atomic_write(path, &data)?;
     let retired = if tokens.is_empty() {
@@ -4283,12 +4312,18 @@ fn save_index_with_trust_in(
             rusqlite::params![pair, token],
         )
         .map_err(|e| e.to_string())?;
-        tx.execute(
-            "DELETE FROM intent_begun WHERE token=?1",
-            rusqlite::params![token],
-        )
-        .map_err(|e| e.to_string())?;
     }
+    // A completed token keeps its begin tick while its intent row still
+    // accepts it: a repeated save of the same snapshot is checked as the
+    // first was. Ticks of tokens no row holds any more (a newer begin or a
+    // quarantine replaced them) are dropped, so the table stays bounded by
+    // the intent rows.
+    tx.execute(
+        "DELETE FROM intent_begun WHERE pair=?1
+         AND token NOT IN (SELECT token FROM intents WHERE pair=?1)",
+        rusqlite::params![pair],
+    )
+    .map_err(|e| e.to_string())?;
     for path in &completed {
         tx.execute(
             "INSERT INTO intent_retired(pair,path,seq) VALUES(?1,?2,?3)
@@ -11477,6 +11512,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         index.files.insert(
             format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
@@ -11519,6 +11555,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         // Sizes differ so "which one survived" is observable.
         index.files.insert(
@@ -11635,6 +11672,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -11717,6 +11755,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         index.files.insert(
             "sub\\b.txt".to_string(),
@@ -11762,6 +11801,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         index.files.insert(
             format!("sub{}b.txt", std::path::MAIN_SEPARATOR),
@@ -11895,6 +11935,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         // A key that a rewrite would change, so "untouched" is observable.
         index.files.insert(
@@ -11931,6 +11972,7 @@ mod tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         index.files.insert(
             "file.txt".to_string(),
@@ -14567,6 +14609,66 @@ mod sync_intent_tests {
         let stored = read_sync_index_file(&path).unwrap().unwrap();
         assert!(stored.files.contains_key("x"));
         assert!(!stored.files.contains_key("y"));
+    }
+
+    /// CodeRabbit on #1561: a save already accepted keeps its check. A
+    /// publishes `x` from a snapshot that still holds `y`; B then deletes `y`
+    /// and publishes; A repeating its accepted save is refused, so `y` is not
+    /// restored. Also a publisher with no token: an index read before B's
+    /// publication is refused from its read point.
+    #[test]
+    fn a_repeated_or_tokenless_stale_save_restores_no_deleted_baseline() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.json");
+        let mut conn = intent_connection_in(&dir.path().join("intents.db")).unwrap();
+        let entry = SyncIndexEntry {
+            size: 4,
+            modified: None,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let pair = index_filename("/local", "/remote");
+        let mut with_y = SyncIndex::new("/local".into(), "/remote".into());
+        with_y.files.insert("y".into(), entry.clone());
+        save_index_with_intents_in(&mut conn, &path, &with_y, &[]).unwrap();
+
+        // A: its transfer of `x`, then a save from a snapshot holding `y`.
+        let a_tokens = begin_intents_in(&mut conn, &pair, &["x".into()]).unwrap();
+        let mut a_index = with_y.clone();
+        a_index.files.insert("x".into(), entry.clone());
+        save_index_with_intents_in(&mut conn, &path, &a_index, &a_tokens).unwrap();
+        // C, with no token: its index is read now, while `y` is stored.
+        let c_index =
+            load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || Ok(None))
+                .unwrap()
+                .unwrap();
+        assert!(
+            c_index.read_seq.is_some(),
+            "the load records its read point"
+        );
+        // B deletes `y` and publishes.
+        let b_tokens = begin_intents_in(&mut conn, &pair, &["y".into()]).unwrap();
+        let mut without_y = a_index.clone();
+        without_y.files.remove("y");
+        save_index_with_intents_in(&mut conn, &path, &without_y, &b_tokens).unwrap();
+
+        for (who, stale, tokens) in [("A again", &a_index, &a_tokens), ("C", &c_index, &vec![])] {
+            let refused = save_index_with_intents_in(&mut conn, &path, stale, tokens);
+            assert!(
+                matches!(&refused, Err(message) if message.contains("compare again")),
+                "{who}: {refused:?}"
+            );
+            let stored = read_sync_index_file(&path).unwrap().unwrap();
+            assert!(!stored.files.contains_key("y"), "{who}: `y` stays gone");
+            assert!(stored.read_seq.is_none(), "a read point is never stored");
+        }
+        // C reads again, after B: its save publishes.
+        let fresh = load_index_with_intents_in(&mut conn, &path, "/local", "/remote", || Ok(None))
+            .unwrap()
+            .unwrap();
+        save_index_with_intents_in(&mut conn, &path, &fresh, &[]).unwrap();
+        let stored = std::fs::read_to_string(&path).unwrap();
+        assert!(!stored.contains("read_seq"), "{stored}");
     }
 
     #[test]

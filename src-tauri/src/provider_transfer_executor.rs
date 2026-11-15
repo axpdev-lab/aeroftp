@@ -4702,6 +4702,9 @@ mod tests {
     #[tokio::test]
     async fn a_typed_clone_refusal_keeps_its_kind_on_the_segmented_path() {
         use crate::providers::ProviderError;
+        // The refused clone reports the fallback notice: held for the whole
+        // test, so another test's exact queue assertion never sees it.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
         let mut provider = FlakyDownloadProvider::fail_first(0);
         provider.ranges = Some(ScriptedRanges {
             started: Arc::new(tokio::sync::Notify::new()),

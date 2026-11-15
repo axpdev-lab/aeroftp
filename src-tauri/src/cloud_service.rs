@@ -1518,6 +1518,7 @@ impl CloudService {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -1567,6 +1568,7 @@ impl CloudService {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         });
         // The prior index was migrated when it was loaded, and the keys the
         // migration could not vouch for are not saved with it: written back
@@ -4898,6 +4900,7 @@ mod baseline_tests {
                 pending_recovery_keys: Default::default(),
                 target_identity: None,
                 history_only_keys: Default::default(),
+                read_seq: None,
             };
             let row = cmp(
                 SyncStatus::Identical,
@@ -6275,6 +6278,7 @@ mod baseline_tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
@@ -6654,6 +6658,7 @@ mod baseline_tests {
                 pending_recovery_keys: Default::default(),
                 target_identity: None,
                 history_only_keys: Default::default(),
+                read_seq: None,
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
@@ -12565,6 +12570,7 @@ mod baseline_tests {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
+            read_seq: None,
         };
         let gone = CloudService::gone_on_both(
             &config,
@@ -13011,6 +13017,7 @@ mod secval_b_tests {
                             pending_recovery_keys: Default::default(),
                             target_identity: None,
                             history_only_keys: Default::default(),
+                            read_seq: None,
                         })
                         .unwrap();
                         let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)
