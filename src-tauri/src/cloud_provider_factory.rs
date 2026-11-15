@@ -204,7 +204,7 @@ fn overlay_identity(binding: &serde_json::Value) -> serde_json::Value {
     if binding.get("enabled").and_then(serde_json::Value::as_bool) != Some(true) {
         return serde_json::Value::Null;
     }
-    serde_json::json!({
+    let mut identity = serde_json::json!({
         "enabled":true,
         "kind": binding.get("kind").and_then(serde_json::Value::as_str).unwrap_or(crate::crypt_overlay_provider::DEFAULT_OVERLAY_KIND),
         "remoteScope":binding.get("remoteScope").and_then(serde_json::Value::as_str).unwrap_or(""),
@@ -212,7 +212,16 @@ fn overlay_identity(binding: &serde_json::Value) -> serde_json::Value {
         "directoryNameEncryption":binding.get("directoryNameEncryption").and_then(serde_json::Value::as_bool).unwrap_or(true),
         "withHeader":binding.get("withHeader").and_then(serde_json::Value::as_bool).unwrap_or(false),
         "useDefaultSalt":binding.get("useDefaultSalt").and_then(serde_json::Value::as_bool).unwrap_or(false),
-    })
+    });
+    // Only where the identity's root does not already hold the overlay's
+    // folder (`identity_overlay_binding`): every other identity stays as it was.
+    if let Some(anchor) = binding
+        .get(IDENTITY_ANCHOR_KEY)
+        .and_then(serde_json::Value::as_str)
+    {
+        identity["anchor"] = serde_json::Value::String(anchor.to_string());
+    }
+    identity
 }
 
 fn overlay_binding(profile: Option<&serde_json::Value>) -> serde_json::Value {
@@ -220,6 +229,41 @@ fn overlay_binding(profile: Option<&serde_json::Value>) -> serde_json::Value {
         .and_then(|profile| profile.get("aeroCryptOverlay"))
         .cloned()
         .unwrap_or(serde_json::Value::Null)
+}
+
+/// Key of the overlay's anchor in the binding the identity is built from
+/// (never in the binding the overlay is built with).
+const IDENTITY_ANCHOR_KEY: &str = "identityAnchor";
+
+/// The overlay binding as the identity reads it. With no `remoteScope` the
+/// overlay sits at the starting folder as written (`profile_overlay_scope`),
+/// edge spaces included, while an identity whose remote folder does not
+/// depend on the root keeps the root trimmed (`identity_root`): `/reports `
+/// and `/reports` were one identity for two encrypted folders. Only there,
+/// the anchor joins the identity, so every profile whose two spellings agree
+/// keeps its identity, and only an overlay profile with a padded root gets a
+/// new one, once.
+fn identity_overlay_binding(
+    profile: Option<&serde_json::Value>,
+    remote_folder: &str,
+    binding: &serde_json::Value,
+) -> serde_json::Value {
+    let mut binding = binding.clone();
+    let Some(profile) = profile else {
+        return binding;
+    };
+    let enabled = binding.get("enabled").and_then(serde_json::Value::as_bool) == Some(true);
+    let scoped = binding
+        .get("remoteScope")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|scope| !scope.is_empty());
+    if enabled && !scoped && remote_folder_is_root_independent(remote_folder, profile) {
+        let anchor = crate::crypt_overlay_provider::profile_overlay_scope(profile);
+        if anchor.trim() != anchor {
+            binding[IDENTITY_ANCHOR_KEY] = serde_json::Value::String(anchor);
+        }
+    }
+    binding
 }
 
 /// Recheck overlay selection around composition so a profile edit cannot mix a new binding with an old connection.
@@ -706,7 +750,7 @@ async fn create_via_factory(
     }
     let identity = resolved_target_identity(
         &provider_config,
-        &binding,
+        &identity_overlay_binding(profile.as_ref(), &config.remote_folder, &binding),
         provider
             .sync_namespace_identity()
             .or_else(|| provider.account_email())
@@ -789,7 +833,15 @@ async fn open_yandex_oauth(
         .sync_namespace_identity()
         .or_else(|| provider.account_email())
         .filter(|account| !account.trim().is_empty())
-        .map(|account| yandex_identity(profile_id, identity_root.as_deref(), &account, &binding));
+        .map(|account| {
+            let identity_binding = identity_overlay_binding(profile, remote_folder, &binding);
+            yandex_identity(
+                profile_id,
+                identity_root.as_deref(),
+                &account,
+                &identity_binding,
+            )
+        });
     Ok(OpenedCloudProvider {
         provider: Box::new(provider),
         identity,
@@ -1001,6 +1053,11 @@ async fn create_fourshared(config: &CloudConfig) -> Result<OpenedCloudProvider, 
 mod tests {
     use super::*;
     use crate::providers::{ProviderError, RemoteEntry};
+
+    /// The identity main computes for an unpadded overlay profile
+    /// (`a_padded_overlay_root_gets_its_own_identity_and_no_other_changes`).
+    const MAIN_PLAIN_OVERLAY_IDENTITY: &str =
+        "b508e9171a954fd9671fc8f22109b84c99ad38842d735dd62e79c27c58e84fd3";
 
     #[test]
     fn receipt_identity_follows_resolved_target_even_when_profile_labels_do_not_change() {
@@ -1625,6 +1682,72 @@ mod tests {
             1
         );
         assert!(!body.contains("enter_profile_root("), "{body}");
+    }
+
+    /// With no `remoteScope` the overlay sits at the starting folder as
+    /// written, while the identity of an absolute remote folder keeps the root
+    /// trimmed: `/reports ` and `/reports` were one identity for two encrypted
+    /// folders. The anchor joins the identity only there, so an unpadded
+    /// profile keeps main's identity byte for byte, and only a padded-root
+    /// overlay profile gets a new one.
+    #[test]
+    fn a_padded_overlay_root_gets_its_own_identity_and_no_other_changes() {
+        let profile = |initial: &str, overlay: serde_json::Value| {
+            serde_json::json!({
+                "protocol": "sftp", "host": "nas.example.test", "username": "u",
+                "initialPath": initial, "aeroCryptOverlay": overlay,
+            })
+        };
+        let overlay = serde_json::json!({ "enabled": true, "kind": "rclone-crypt" });
+        let config = |profile: &serde_json::Value| ProviderConfig {
+            name: "p".into(),
+            provider_type: ProviderType::Sftp,
+            host: "nas.example.test".into(),
+            port: Some(22),
+            username: Some("u".into()),
+            password: None,
+            initial_path: Some(identity_root(profile, "/cloud/").unwrap()),
+            extra: HashMap::new(),
+        };
+        // As the factory builds it now, and as main built it (the binding alone).
+        let now = |profile: &serde_json::Value| {
+            let binding = overlay_binding(Some(profile));
+            resolved_target_identity(
+                &config(profile),
+                &identity_overlay_binding(Some(profile), "/cloud/", &binding),
+                Some("acct"),
+            )
+            .unwrap()
+        };
+        let main = |profile: &serde_json::Value| {
+            resolved_target_identity(
+                &config(profile),
+                &overlay_binding(Some(profile)),
+                Some("acct"),
+            )
+            .unwrap()
+        };
+
+        let plain = profile("/reports", overlay.clone());
+        assert_eq!(now(&plain), main(&plain));
+        assert_eq!(now(&plain), MAIN_PLAIN_OVERLAY_IDENTITY);
+        // No overlay, or a scope of its own: unchanged whatever the padding.
+        for unchanged in [
+            profile("/reports ", serde_json::Value::Null),
+            profile(
+                "/reports ",
+                serde_json::json!({ "enabled": true, "remoteScope": "/crypt" }),
+            ),
+        ] {
+            assert_eq!(now(&unchanged), main(&unchanged), "{unchanged}");
+        }
+        // Padded roots: a new identity each, never shared with another folder.
+        let identities: Vec<String> = ["/reports", "/reports ", " /reports", "/reports  "]
+            .into_iter()
+            .map(|initial| now(&profile(initial, overlay.clone())))
+            .collect();
+        let distinct: std::collections::HashSet<&String> = identities.iter().collect();
+        assert_eq!(distinct.len(), identities.len(), "{identities:?}");
     }
 
     /// The identity follows the data path. With an absolute remote folder
