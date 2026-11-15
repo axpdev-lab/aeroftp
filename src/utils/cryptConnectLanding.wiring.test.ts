@@ -286,17 +286,17 @@ describe('crypt overlay deferred connect unlock', () => {
         await expect(hintFor(undefined, '~/docs', '~/docs', null)).resolves.toMatchObject({ anchor: null, opensOutside: false, loginFolder: null });
         // Nothing under the login folder asks the session for it.
         await expect(hintFor(undefined, '/', '/Crypt', null)).resolves.toMatchObject({ anchor: '/Crypt', loginFolder: null });
-        // #1523 Greptile: SFTP and SCP open a relative Remote Path under the
-        // login folder, and an empty Overlays Path is that folder. Read from
-        // the root it was `/docs`, the opening fell outside and the connect
-        // skipped the unlock.
-        for (const protocol of ['sftp', 'scp']) {
+        // #1523 Greptile, extended by #202: SFTP, SCP, FTP and FTPS open a
+        // relative Remote Path under the login folder, and an empty Overlays
+        // Path is that folder. Read from the root it was `/docs`, the opening
+        // fell outside and the connect skipped the unlock.
+        for (const protocol of ['sftp', 'scp', 'ftp', 'ftps']) {
             await expect(hintFor('/home/alice/docs', 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false, loginFolder: '/home/alice' });
             await expect(hintFor(undefined, 'docs', '', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs', opensOutside: false });
             await expect(hintFor('/home/alice/docs', 'docs', 'docs/sub', '/home/alice', protocol)).resolves.toMatchObject({ anchor: '/home/alice/docs/sub', opensOutside: true });
         }
         // Elsewhere a relative folder keeps its meaning, and no login folder is asked.
-        await expect(hintFor('/docs', 'docs', '', null, 'ftp')).resolves.toMatchObject({ anchor: 'docs', opensOutside: false, loginFolder: null });
+        await expect(hintFor('/docs', 'docs', '', null, 'webdav')).resolves.toMatchObject({ anchor: 'docs', opensOutside: false, loginFolder: null });
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, oauthInitialPath)');
         expect(app).toContain('getProfileOverlayHint(overlaySavedId, startFolder)');
         expect(app).toContain('serverInitialPath: initialPathOverride ?? cachedInitialPath');

@@ -6,7 +6,7 @@
 // through saved profiles, so there is no connection form here: a user without
 // a compatible profile is sent to My Servers before the wizard starts.
 
-import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
+import { hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,8 +17,10 @@ import {
 import { ServerProfile, getServerCryptOverlay } from '../types';
 import { useTranslation } from '../i18n';
 import { pickFile } from '../utils/pickPath';
-import { normCryptScope } from '../utils/cryptScope';
+import { normCryptScope, resolveUsernameTemplate } from '../utils/cryptScope';
+import { loginRelativeForm, loginRelativeProtocol, normalizeOverlayAnchor } from '../utils/overlayScope';
 import { loadSavedServerProfilesStrict } from '../utils/serverProfileStore';
+import { locationProblem } from '../utils/syncNavigationPath';
 import { Checkbox } from './ui/Checkbox';
 import { ProfileIcon, ProfileRail } from './common/ProfileRail';
 import { AeroCloudMaturityBadge, isAeroCloudProtocol, useAeroCloudCaveat } from './AeroCloudProtocols';
@@ -34,12 +36,13 @@ const PRIMARY_BUTTON_CLASS = 'px-4 py-2 text-sm rounded-lg bg-blue-500 hover:bg-
  * `{username}` template some WebDAV presets keep in that path resolved.
  */
 export function profileRoot(profile: ServerProfile): string {
-    // The same expansion as the backend's (`expand_username_in_path`), with
-    // the folder used as written (#1449) as the overlay anchor reads it: a
-    // trimmed root sat outside its own encrypted folder. Only a blank folder
-    // means the server root.
-    const base = expandUsernameInPath(profile.initialPath || '', profile.username).replace(/\/+$/, '');
-    if (!base.trim()) return '';
+    // The user name goes in as the backend's `profile_root` inserts it
+    // (`username-template-cases.json` pins both). No trim, as the backend:
+    // a space is part of the folder name, so `"/var/www "` is a different
+    // folder than `"/var/www"`. Only an all-blank path is the server root.
+    const base = (resolveUsernameTemplate(profile.initialPath, profile.username) || '')
+        .replace(/\/+$/, '');
+    if (base.trim() === '') return '';
     return base.startsWith('/') ? base : `/${base}`;
 }
 
@@ -50,10 +53,65 @@ export function profileRoot(profile: ServerProfile): string {
  * app anchors an opened overlay the same way, so AeroCloud stays inside the
  * encrypted folder.
  */
+/**
+ * A folder label as shown. A folder written as a URL shows its scheme only:
+ * a folder is no URL by contract, so no rule can tell its host from a user
+ * part, path, query or fragment that carries a password or a token, and
+ * none of it is shown. Any other folder is shown as written, a `?` in a name
+ * included. A `~/` prefix is kept and the rest shown by the same rule.
+ */
+function shownFolderLabel(label: string): string {
+    // A folder saved in login-relative form is shown by the same rule after
+    // its `~/`.
+    if (label.startsWith('~/')) return `~/${shownFolderLabel(label.slice(2))}`;
+    const scheme = /^[a-z][a-z0-9+.-]*:\/\//i.exec(label)?.[0];
+    return scheme ? `${scheme}…` : label;
+}
+
+/**
+ * The profile with its folders as shown ([`shownFolderLabel`]), for the
+ * labels composed from them: masked before the `~/` prefix or any
+ * normalization is added, which a URL would no longer start or keep its
+ * `//` under. Display only: the folder saved is built from the profile.
+ */
+function withShownFolders(profile: ServerProfile): ServerProfile {
+    const overlay = profile.aeroCryptOverlay;
+    return {
+        ...profile,
+        initialPath: profile.initialPath && shownFolderLabel(profile.initialPath),
+        ...(overlay?.remoteScope ? { aeroCryptOverlay: { ...overlay, remoteScope: shownFolderLabel(overlay.remoteScope) } } : {}),
+    };
+}
+
 export function aeroCloudBase(profile: ServerProfile): string {
-    // The overlay folder fills `{username}` as the backend's overlay scope does.
+    // A folder with a `.`, `..` or empty step comes back as written, so the
+    // wizard names it and refuses it (`aeroCloudFolderNotPlain`): normalized,
+    // `/srv/../data` read as `/data`, a folder the profile never named.
+    const written = baseAsWritten(profile);
+    if (locationProblem(written)) return loginRelativeForm(written, profile.protocol);
+    if (loginRelativeProtocol(profile.protocol)) {
+        // On SFTP, SCP, FTP and FTPS a relative folder opens under the login
+        // folder, which only the connected session knows: the base stays in
+        // `~/...` form and the backend places and saves the absolute folder
+        // on the first connect. An absolute base comes back normalized.
+        const scope = getServerCryptOverlay(profile)
+            ? normalizeOverlayAnchor(loginRelativeForm(
+                resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username),
+                profile.protocol,
+            ))
+            : '';
+        if (scope) return scope;
+        const initial = resolveUsernameTemplate(profile.initialPath, profile.username);
+        // The same rule as `profileRoot` and the backend's `profile_root`:
+        // an all-blank starting folder is the server root, not a folder
+        // named by its spaces.
+        if (!initial || initial.trim() === '') return '';
+        return normalizeOverlayAnchor(loginRelativeForm(initial, profile.protocol));
+    }
+    // The overlay folder takes the user name as the starting folder does, as
+    // the backend's `profile_overlay_scope` fills it.
     const scope = getServerCryptOverlay(profile)
-        ? normCryptScope(expandUsernameInPath(profile.aeroCryptOverlay?.remoteScope || '', profile.username))
+        ? normCryptScope(resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username))
         : '';
     return scope || profileRoot(profile);
 }
@@ -67,6 +125,42 @@ export function aeroCloudRemoteFolder(profile: ServerProfile, subfolder: string)
     const sub = subfolder.trim().replace(/^\/+|\/+$/g, '');
     const base = aeroCloudBase(profile);
     return sub ? `${base}/${sub}/` : `${base}/`;
+}
+
+/**
+ * The text the base comes from, before any normalization: the overlay
+ * folder when it names one, else the starting folder, with the user name
+ * filled in. A `/` overlay folder names none, as `aeroCloudBase` reads it.
+ */
+function baseAsWritten(profile: ServerProfile): string {
+    const scope = getServerCryptOverlay(profile)
+        ? resolveUsernameTemplate(profile.aeroCryptOverlay?.remoteScope, profile.username) || ''
+        : '';
+    if (locationProblem(scope)) return scope;
+    const named = scope && (loginRelativeProtocol(profile.protocol)
+        ? normalizeOverlayAnchor(loginRelativeForm(scope, profile.protocol))
+        : normCryptScope(scope));
+    return named ? scope : resolveUsernameTemplate(profile.initialPath, profile.username) || '';
+}
+
+/**
+ * Whether the remote folder the wizard would save is not plain: its
+ * sub-folder or its base, as written, has a `.`, `..` or empty step
+ * (`locationProblem`, the rule of the backend's `util::path_location`). The
+ * backend refuses such a folder on every save, on every protocol, so the
+ * wizard refuses it first and names it as written: `~/docs/../shared` is
+ * never read as `~/shared`, nor `/srv/../data` as `/data`.
+ */
+export function aeroCloudFolderNotPlain(profile: ServerProfile, subfolder: string): boolean {
+    // The sub-folder is read before its outer separators are stripped: one
+    // leading or trailing `/` is no step, but `a//` or `//a` has an empty one,
+    // which stripping would hide and the saved folder would never show. The
+    // folder they compose is read too, as the backend reads the one saved: a
+    // `\` the stripping keeps (`\cloud` on `/data`) joins into `/data/\cloud/`,
+    // whose empty step neither part shows alone.
+    return !!locationProblem(subfolder.trim())
+        || !!locationProblem(aeroCloudBase(profile))
+        || !!locationProblem(aeroCloudRemoteFolder(profile, subfolder));
 }
 
 const STEPS = ['cloud.stepFolder', 'cloud.stepServer', 'cloud.stepSettings'] as const;
@@ -111,6 +205,8 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
 
     const compatible = useMemo(() => (profiles ?? []).filter(p => isAeroCloudProtocol(p.protocol)), [profiles]);
     const hiddenCount = (profiles?.length ?? 0) - compatible.length;
+    // The rail shows each profile's folder: without a password or a signed token.
+    const listed = useMemo(() => compatible.map(p => p.initialPath ? { ...p, initialPath: shownFolderLabel(p.initialPath) } : p), [compatible]);
 
     const selectLocalFolder = async () => {
         const selected = await pickFile({ directory: true, multiple: false, title: t('cloud.localFolder') });
@@ -120,12 +216,16 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
     // A base the user name cannot fill still holds the placeholder: shown as a
     // refusal and never saved, as the backend refuses it before any request.
     const unresolvedBase = !!profile && hasUnresolvedUsernameTemplate(aeroCloudBase(profile));
-    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !unresolvedBase;
-    const rootLabel = `${profile && !unresolvedBase ? aeroCloudBase(profile) : ''}/`;
-    const remoteLabel = `${rootLabel}${subfolder.trim().replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
+    const rootLabel = `${profile && !unresolvedBase ? aeroCloudBase(withShownFolders(profile)) : ''}/`;
+    // A sub-folder refused for an empty step is named as written: stripped,
+    // `a//` would read `.../a/`, a folder with nothing wrong in it.
+    const sub = subfolder.trim();
+    const remoteLabel = `${rootLabel}${locationProblem(sub) ? sub : sub.replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
+    const notPlain = !!profile && aeroCloudFolderNotPlain(profile, subfolder);
+    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !notPlain && !unresolvedBase;
 
     const handleComplete = async () => {
-        if (!profile) return;
+        if (!profile || aeroCloudFolderNotPlain(profile, subfolder)) return;
         if (unresolvedBase) {
             setError(t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED }));
             return;
@@ -259,9 +359,9 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                         <p className="text-sm text-gray-500 dark:text-gray-400">{t('cloud.selectProfileDesc')}</p>
                         <ProfileRail
                             title={t('cloud.serverProfile')}
-                            profiles={compatible}
+                            profiles={listed}
                             selected={profile}
-                            onSelect={setProfile}
+                            onSelect={(shown) => setProfile(compatible.find(p => p.id === shown.id) ?? null)}
                             emptyMessage={t('cloud.noProfilesTitle')}
                             noMatchMessage={t('cloud.noProfileMatch')}
                             searchPlaceholder={t('cloud.searchProfiles')}
@@ -285,6 +385,11 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     className={`${INPUT_CLASS} rounded-l-none font-mono min-w-0`} />
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>
+                            {notPlain && (
+                                <p role="alert" className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400 mt-1">
+                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderNotPlain')}</span>
+                                </p>
+                            )}
                             {unresolvedBase && (
                                 <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">
                                     {t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED })}
@@ -358,7 +463,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} disabled={saving || unresolvedBase} className={PRIMARY_BUTTON_CLASS}>
+                        <button onClick={handleComplete} disabled={saving || notPlain || unresolvedBase} className={PRIMARY_BUTTON_CLASS}>
                             {saving ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>
