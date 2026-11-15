@@ -1065,6 +1065,12 @@ mod tests {
     const MAIN_PLAIN_OVERLAY_IDENTITY: &str =
         "b508e9171a954fd9671fc8f22109b84c99ad38842d735dd62e79c27c58e84fd3";
 
+    /// The identity main computes for a WebDAV profile rooted at `/reports`
+    /// with the remote folder `/`
+    /// (`an_unpadded_webdav_slash_profile_keeps_main_identity`).
+    const MAIN_WEBDAV_SLASH_IDENTITY: &str =
+        "efe9a1aa8d565ac4bdeafb6efdde59d63fbeeee230e7de4577ae3baf5c0c87f6";
+
     #[test]
     fn receipt_identity_follows_resolved_target_even_when_profile_labels_do_not_change() {
         let original = ProviderConfig {
@@ -1563,6 +1569,35 @@ mod tests {
         // Two folders, two identities; the unpadded one keeps main's form.
         assert_eq!(identity("/reports"), "/reports");
         assert_eq!(identity("/reports "), "/reports ");
+    }
+
+    /// WebDAV's `/` follows the root now (`SLASH_IS_THE_STARTING_FOLDER`).
+    /// A root without edge spaces keeps the identity main computed (main
+    /// identified every profile by its trimmed root, which is this root), so
+    /// no existing WebDAV index re-scans; only a padded root gets a new one.
+    #[test]
+    fn an_unpadded_webdav_slash_profile_keeps_main_identity() {
+        let identity = |initial: &str| {
+            let profile = serde_json::json!({
+                "protocol": "webdav", "host": "dav.example.test", "username": "u",
+                "initialPath": initial,
+            });
+            let config = ProviderConfig {
+                name: "p".into(),
+                provider_type: ProviderType::WebDav,
+                host: "dav.example.test".into(),
+                port: Some(443),
+                username: Some("u".into()),
+                password: None,
+                initial_path: Some(identity_root(&profile, "/").unwrap()),
+                extra: HashMap::new(),
+            };
+            resolved_target_identity(&config, &overlay_binding(Some(&profile)), Some("acct"))
+                .unwrap()
+        };
+        assert_eq!(identity("/reports"), MAIN_WEBDAV_SLASH_IDENTITY);
+        assert_ne!(identity("/reports "), MAIN_WEBDAV_SLASH_IDENTITY);
+        assert_ne!(identity(" /reports"), MAIN_WEBDAV_SLASH_IDENTITY);
     }
 
     #[test]
