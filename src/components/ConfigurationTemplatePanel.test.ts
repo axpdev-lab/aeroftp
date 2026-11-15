@@ -1016,4 +1016,51 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         await flush();
         expect(importedSecretForms).toEqual({ base: 'obscured', vault: 'clear' });
     });
+
+    it('forwards the answer of a deselected base to the import of the crypt over it', async () => {
+        let imported: { secretForms?: Record<string, string>; selectedBlocks?: string[] } | undefined;
+        const row = (blockName: string, form: string | null) => ({
+            fileIndex: 0, blockName, targetName: blockName, startLine: 1,
+            protocol: 'sftp', providerId: null, host: 'nas.example.test', port: 22, username: 'alice',
+            hasCredential: form !== null, hasSecretInput: true, looksObscured: blockName === 'base',
+            secretForm: form, needsSecretFormChoice: form === null,
+            existingMatchId: null, existingMatchName: null, action: 'add', duplicateInTemplate: false,
+            secretDisposition: 'none', secretNote: null, secretChoiceInherited: false,
+        });
+        vi.mocked(invoke).mockImplementation(async (cmd, args) => {
+            if (cmd === 'preview_configuration_template') {
+                const forms = (args as { options: { secretForms?: Record<string, string> } }).options.secretForms ?? {};
+                return {
+                    rows: [row('base', forms.base ?? null), row('vault', forms.vault ?? null)],
+                    skipped: [], warnings: [], parseIssues: [], security: [],
+                    secretChoiceBlocks: ['base', 'vault'].filter(name => !forms[name]),
+                    totalBlocks: 2, capped: false, sourceLabel: 'paste',
+                    digestSha256: 'digest', planDigestSha256: 'plan',
+                };
+            }
+            if (cmd === 'import_configuration_template') {
+                imported = (args as { options: typeof imported }).options;
+                return importResult;
+            }
+            throw new Error(`unexpected command: ${cmd}`);
+        });
+        await renderPanel();
+        await type('[base]\ntype = sftp\n\n[vault]\ntype = crypt\nremote = base:enc\n');
+        // The base is not imported (deselected), but the crypt's login needs its form.
+        await act(async () => {
+            host.querySelector<HTMLElement>('[role="checkbox"][aria-label="settings.templateSelectProfile:base"]')!.click();
+        });
+        await flush();
+        const choice = (name: string) => host.querySelectorAll<HTMLInputElement>(`[data-testid="template-secret-choice-${name}"] input[type="radio"]`);
+        await act(async () => { choice('base')[1].click(); });
+        await flush();
+        await act(async () => { choice('vault')[0].click(); });
+        await flush();
+        await act(async () => {
+            host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!.click();
+        });
+        await flush();
+        expect(imported?.selectedBlocks).toEqual(['vault']);
+        expect(imported?.secretForms).toEqual({ base: 'obscured', vault: 'clear' });
+    });
 });
