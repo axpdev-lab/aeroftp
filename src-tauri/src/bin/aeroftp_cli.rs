@@ -42715,8 +42715,8 @@ fn format_template_apply_text(
         let blk = issue
             .block_name
             .as_deref()
-            .map(|b| format!(" [{}] ", sanitize_filename(b)))
-            .unwrap_or_else(|| " ".to_string());
+            .map(|b| format!(" [{}]", sanitize_filename(b)))
+            .unwrap_or_default();
         stdout_buf.push_str(&format!(
             "  ! Line {}{}: {}\n",
             issue.line,
@@ -42724,15 +42724,10 @@ fn format_template_apply_text(
             sanitize_filename(&issue.message)
         ));
     }
-    if !res.oauth_apps_kept.is_empty() {
-        let kept: Vec<String> = res
-            .oauth_apps_kept
-            .iter()
-            .map(|app| sanitize_filename(app))
-            .collect();
-        stdout_buf.push_str(&format!(
-            "  Note: kept existing OAuth app credential(s) for {}.\n",
-            kept.join(", ")
+    for name in &res.oauth_apps_kept {
+        let safe_name = sanitize_filename(name);
+        stderr_buf.push_str(&format!(
+            "Warning: \"{safe_name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, so sign this profile in again if it stops connecting.\n"
         ));
     }
     for skipped in &res.skipped_invalid {
@@ -42743,10 +42738,10 @@ fn format_template_apply_text(
             sanitize_filename(&skipped.reason)
         ));
     }
-    for failure in &res.shared_secrets_failed {
+    for name in &res.shared_secrets_failed {
+        let safe_name = sanitize_filename(name);
         stderr_buf.push_str(&format!(
-            "Shared secret failed: {}\n",
-            sanitize_filename(failure)
+            "Warning: \"{safe_name}\" was imported, but a shared secret or session of the file could not be stored. Sign this profile in again.\n"
         ));
     }
     (stdout_buf, stderr_buf)
@@ -87092,28 +87087,120 @@ mod tests {
                 message: "Malformed key value line on line 7".to_string(),
             }],
             security: Vec::new(),
-            oauth_apps_kept: vec!["onedrive".to_string()],
-            shared_secrets_failed: vec!["oauth_google_client_id: vault write denied".to_string()],
+            oauth_apps_kept: vec!["Work OneDrive".to_string(), "Personal Drive".to_string()],
+            shared_secrets_failed: vec!["Team Box".to_string(), "Archive Storage".to_string()],
             stored: Vec::new(),
             digest_sha256: "d".to_string(),
         };
         let (stdout_text, stderr_text) = format_template_apply_text(&fake_res);
+        assert!(
+            stdout_text.contains("Line 7 [alpha]: Malformed key value line on line 7"),
+            "missing parse issue in text output:\n{stdout_text}"
+        );
+        for profile in [
+            "Work OneDrive",
+            "Personal Drive",
+            "Team Box",
+            "Archive Storage",
+        ] {
+            let line = stderr_text
+                .lines()
+                .find(|l| l.contains(profile))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing recovery warning line for `{profile}` in stderr:\n{stderr_text}"
+                    )
+                });
+            assert!(
+                line.contains("Warning:")
+                    && line
+                        .to_ascii_lowercase()
+                        .contains("sign this profile in again"),
+                "warning line for `{profile}` must ask the user to sign in again: {line}"
+            );
+        }
         let combined = format!("{stdout_text}\n{stderr_text}");
-        assert!(
-            combined.contains("Malformed key value line on line 7"),
-            "missing parse issue in text output:\n{combined}"
-        );
-        assert!(
-            combined.contains("onedrive"),
-            "missing oauth_apps_kept in text output:\n{combined}"
-        );
-        assert!(
-            combined.contains("oauth_google_client_id: vault write denied"),
-            "missing shared_secrets_failed in text output:\nstdout:\n{stdout_text}\nstderr:\n{stderr_text}"
-        );
         assert!(
             !combined.to_lowercase().contains("rclone"),
             "public template text must not mention rclone:\n{combined}"
+        );
+    }
+
+    #[test]
+    fn cloudinary_cli_clear_import_keeps_api_key_verbatim() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CLOUDINARY_CLEAR_CHILD";
+        // Canonical 22-char base64url shape matching a 16-byte rclone IV.
+        let canonical_22 = "AAAAAAAAAAAAAAAAAAAAAA";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    Some(TemplateSecretFormArg::Clear),
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(code, 0, "CLI Clear template apply must succeed");
+
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active CLI test user");
+                let (profiles, _) =
+                    ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                        &store, active.id,
+                    )
+                    .unwrap();
+                let saved = profiles
+                    .iter()
+                    .find(|p| p.get("name").and_then(serde_json::Value::as_str) == Some("cl"))
+                    .expect("imported Cloudinary profile");
+                assert_eq!(
+                    saved.get("username").and_then(serde_json::Value::as_str),
+                    Some(canonical_22),
+                    "CLI Clear import must keep Cloudinary api_key verbatim"
+                );
+                let id = saved
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("profile id");
+                let secret = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("server_{id}"),
+                )
+                .unwrap();
+                assert_eq!(secret.as_deref().map(|z| z.as_str()), Some("plain-secret"));
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("cloudinary.conf");
+        std::fs::write(
+            &file,
+            format!(
+                "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = {canonical_22}\napi_secret = plain-secret\n"
+            ),
+        )
+        .unwrap();
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin_within(
+            "tests::cloudinary_cli_clear_import_keeps_api_key_verbatim",
+            &[
+                (CHILD, file.to_str().unwrap()),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+                ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
+                ("HOME", cfg_dir.to_str().unwrap()),
+            ],
+            std::time::Duration::from_secs(30),
         );
     }
 

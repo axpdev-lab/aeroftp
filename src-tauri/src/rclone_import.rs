@@ -13467,20 +13467,27 @@ password = PlainCryptNotObscured
     fn cloudinary_api_key_is_never_treated_as_obscured_secret_unlike_filen_api_key() {
         // Cloudinary's `api_key` is a plain account username; even when it has
         // canonical 22-char base64url length it must neither trigger
-        // secret-form prompting nor be stripped on default evaluation.
+        // secret-form prompting nor be stripped on default or Clear evaluation.
         let canonical_22 = obscure_password("").unwrap();
         let cfg = format!(
             "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = {canonical_22}\napi_secret = plain-secret\n"
         );
-        let out = evaluate_template_text(&cfg, None, "cl-test", &TemplateSecretPolicy::default())
-            .unwrap();
-        assert!(
-            !out.secret_blocks.contains_key("cl"),
-            "cloudinary must not enter secret_blocks: {:?}",
-            out.secret_blocks
-        );
-        assert_eq!(out.servers.len(), 1, "{:?}", out.skipped);
-        assert_eq!(out.servers[0].username, canonical_22);
+        for policy in [
+            TemplateSecretPolicy::default(),
+            TemplateSecretPolicy {
+                default_form: Some(TemplateSecretForm::Clear),
+                ..Default::default()
+            },
+        ] {
+            let out = evaluate_template_text(&cfg, None, "cl-test", &policy).unwrap();
+            assert!(
+                !out.secret_blocks.contains_key("cl"),
+                "cloudinary must not enter secret_blocks: {:?}",
+                out.secret_blocks
+            );
+            assert_eq!(out.servers.len(), 1, "{:?}", out.skipped);
+            assert_eq!(out.servers[0].username, canonical_22);
+        }
 
         // Contrast with Filen: `api_key` IS an obscured-capable secret field.
         let filen_key = obscure_password("filen-cli-secret").unwrap();
@@ -13577,6 +13584,25 @@ host = sftp://u:TopSecret99@sftp.example.test
                 "secret leaked in diagnostics/JSON:\n{serialized}"
             );
         }
+
+        for default_secret_form in [None, Some(TemplateSecretForm::Clear)] {
+            let preview = crate::template_import::preview_template_with_current(
+                &crate::template_import::TemplateInput::Text {
+                    content: cfg.to_string(),
+                },
+                &crate::template_import::TemplatePreviewOptions {
+                    default_secret_form,
+                    ..Default::default()
+                },
+                &[],
+            )
+            .unwrap();
+            let preview_json = serde_json::to_string(&preview).unwrap();
+            assert!(
+                !preview_json.contains("TopSecret99"),
+                "secret leaked in serialized preview report:\n{preview_json}"
+            );
+        }
     }
 
     #[test]
@@ -13585,14 +13611,18 @@ host = sftp://u:TopSecret99@sftp.example.test
             percent_decode_userinfo_lossless("%C3%A9%FF%FF%E2%82%AC%80abc%ff"),
             "é%FF%FF€%80abc%ff"
         );
-        let huge = "%FF".repeat(120_000);
+        let huge = "%FF".repeat(200_000);
+        let url = format!("https://alice:{huge}@dav.example.test/files");
         let started = std::time::Instant::now();
         let decoded = percent_decode_userinfo_lossless(&huge);
+        let parts = parse_webdav_url_parts(&url);
         let elapsed = started.elapsed();
         assert_eq!(decoded.len(), huge.len());
+        assert_eq!(parts.userinfo_user.as_deref(), Some("alice"));
+        assert_eq!(parts.userinfo_pass.as_deref(), Some(huge.as_str()));
         assert!(
-            elapsed < std::time::Duration::from_millis(500),
-            "quadratic slowdown on %FF run: {:?}",
+            elapsed < std::time::Duration::from_secs(5),
+            "quadratic slowdown on %FF run through parse_webdav_url_parts: {:?}",
             elapsed
         );
     }

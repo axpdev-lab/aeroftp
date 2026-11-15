@@ -2468,6 +2468,9 @@ user = alice
         user_partitions::cli_replace_server_profiles_for_user(&env.store, other_id, &seed_json)
             .unwrap();
         let oauth_key = "oauth_google_srv_oauth_1";
+        env.store
+            .store(oauth_key, "{\"access_token\":\"orig-tok\"}")
+            .unwrap();
         user_partitions::store_imported_credential_for_user(
             &env.store,
             other_id,
@@ -2546,13 +2549,20 @@ pass = FailOnThisWrite!
         .unwrap_err();
         assert!(err.contains("oauth_fourshared_srv_oauth_1"), "{err}");
 
-        let restored =
-            user_partitions::resolve_credential_for_user(&env.store, other_id, oauth_key)
-                .expect("resolve credential after rollback");
+        let conn = user_partitions::open_or_init_cli().unwrap();
+        let root_key = zeroize::Zeroizing::new(env.store.derive_user_partition_wrapping_key());
+        let restored_partition =
+            user_partitions::get_user_credential_for(&conn, &root_key, other_id, oauth_key)
+                .expect("read partition copy after rollback");
         assert_eq!(
-            restored.as_deref().map(|s| s.as_str()),
+            restored_partition.as_deref().map(|s| s.as_str()),
             Some("{\"access_token\":\"orig-tok\"}"),
             "partition OAuth token must be restored on reset rollback"
+        );
+        assert_eq!(
+            env.store.get(oauth_key).ok().as_deref(),
+            Some("{\"access_token\":\"orig-tok\"}"),
+            "vault OAuth token copy must be restored separately on reset rollback"
         );
     }
 
@@ -2963,6 +2973,7 @@ user = alice
         assert!(err.contains("could not be cleared"), "{err}");
 
         let conn = user_partitions::open_or_init_cli().unwrap();
+        let root_key = zeroize::Zeroizing::new(env.store.derive_user_partition_wrapping_key());
         let types: HashMap<String, String> =
             user_partitions::list_user_credential_ids_for(&conn, env.user_id)
                 .unwrap()
@@ -2974,10 +2985,11 @@ user = alice
                 Some(expected_val.as_str()),
                 "vault secret not rolled back for {key}"
             );
-            let resolved =
-                user_partitions::resolve_credential_for_user(&env.store, env.user_id, key).unwrap();
+            let partition_copy =
+                user_partitions::get_user_credential_for(&conn, &root_key, env.user_id, key)
+                    .unwrap();
             assert_eq!(
-                resolved.as_deref().map(|z| z.as_str()),
+                partition_copy.as_deref().map(|z| z.as_str()),
                 Some(expected_val.as_str()),
                 "partition secret not rolled back for {key}"
             );
@@ -3308,5 +3320,53 @@ remote = base:docs
             work2_pw.as_deref().map(|z| z.as_str()),
             Some("ObscuredAliasPw!")
         );
+    }
+
+    #[test]
+    fn cloudinary_default_gui_preview_and_clear_import_preserve_api_key() {
+        let env = TestVaultEnv::new();
+        let canonical_22 = crate::rclone_import::obscure_password("").unwrap();
+        let tpl = format!(
+            "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = {canonical_22}\napi_secret = plain-secret\n"
+        );
+        let input = TemplateInput::Text { content: tpl };
+        let preview =
+            preview_template_with_current(&input, &TemplatePreviewOptions::default(), &[]).unwrap();
+        assert_eq!(preview.rows.len(), 1);
+        assert_eq!(preview.rows[0].action, TemplatePlannedAction::Add);
+        assert!(!preview.rows[0].needs_secret_form_choice);
+        assert!(preview.secret_choice_blocks.is_empty());
+
+        let applied = apply_template_for_user(
+            &env.store,
+            env.user_id,
+            &input,
+            &TemplateApplyOptions {
+                default_secret_form: Some(TemplateSecretForm::Clear),
+                expected_digest_sha256: Some(preview.digest_sha256),
+                expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(applied.applied.len(), 1);
+        let id = applied.applied[0].profile_id.clone();
+        let (profiles, _) =
+            user_partitions::cli_read_active_profiles_at_revision(&env.store, env.user_id).unwrap();
+        let saved = profiles
+            .iter()
+            .find(|p| p.get("id").and_then(Value::as_str) == Some(id.as_str()))
+            .unwrap();
+        assert_eq!(
+            saved.get("username").and_then(Value::as_str),
+            Some(canonical_22.as_str())
+        );
+        let cred = user_partitions::resolve_credential_for_user(
+            &env.store,
+            env.user_id,
+            &format!("server_{id}"),
+        )
+        .unwrap();
+        assert_eq!(cred.as_deref().map(|z| z.as_str()), Some("plain-secret"));
     }
 }
