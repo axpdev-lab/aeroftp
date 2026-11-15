@@ -96,6 +96,10 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   // and the share link use the name it lists: a read of the same saved
   // target keeps that name, a read of anything else drops it.
   const openedFolder = useRef<{ savedFolder: string; localFolder: string; profileId: string; listedFolder: string } | null>(null);
+  // The target of the read applied last (profile, saved and local folder):
+  // an open of another target does not inherit that read's pause state,
+  // name, last sync, sharing base or protocol.
+  const appliedTarget = useRef<{ profileId: string | null; remoteFolder: string; localFolder: string } | null>(null);
 
   // The identity is set in these functions only, each from one source, and
   // each sets every field it owns: a field the source does not provide is
@@ -108,6 +112,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
       && opened.localFolder === (config.local_folder || '')
       && opened.profileId === profileId;
     if (!sameTarget) openedFolder.current = null;
+    appliedTarget.current = { profileId, remoteFolder: config.remote_folder || '', localFolder: config.local_folder || '' };
     setIsCloudActive(config.enabled);
     setIsCloudPaused(Boolean(config.paused));
     setCloudServerName(config.cloud_name || config.server_profile || '');
@@ -122,6 +127,7 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   const applyNoConfig = () => {
     latestRead.current += 1;
     openedFolder.current = null;
+    appliedTarget.current = null;
     setIsCloudActive(false);
     setIsCloudPaused(false);
     setCloudServerName('');
@@ -143,6 +149,17 @@ export function useCloudSync(options: UseCloudSyncOptions) {
   // the profile it connected with, then the file read again.
   const adoptOpenedCloudFolder = (opened: { remoteFolder: string; savedFolder: string; localFolder: string; profileId: string }) => {
     openedFolder.current = { savedFolder: opened.savedFolder, localFolder: opened.localFolder, profileId: opened.profileId, listedFolder: opened.remoteFolder };
+    const applied = appliedTarget.current;
+    if (!applied || applied.profileId !== opened.profileId || applied.remoteFolder !== opened.savedFolder || applied.localFolder !== opened.localFolder) {
+      // Another target than the read applied last: what that read said
+      // about its own target is not this one's, until the reread lands.
+      appliedTarget.current = null;
+      setIsCloudPaused(false);
+      setCloudServerName('');
+      setCloudLastSync(null);
+      setCloudPublicUrlBase('');
+      setCloudProtocolType('ftp');
+    }
     setCloudRemoteFolder(opened.remoteFolder);
     setCloudLocalFolder(opened.localFolder);
     setCloudProfileId(opened.profileId);

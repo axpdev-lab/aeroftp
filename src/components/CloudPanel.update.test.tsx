@@ -1216,6 +1216,28 @@ describe('the AeroCloud identity is set by one function per source', () => {
         expect(seen!.cloudRemoteFolder).toBe('/home/u/docs');
     });
 
+    it('never shows what the read applied before said about another opened target', async () => {
+        await mountProbe();
+        const readA = at('/home/u/docs', { public_url_base: 'https://a.example/', last_sync: '2026-11-14T00:00:00Z', cloud_name: 'A', paused: true, protocol_type: 'sftp' });
+        await answer(0, readA);
+        expect(seen!.cloudPublicUrlBase).toBe('https://a.example/');
+        // The same target keeps them while the reread is pending.
+        await React.act(async () => seen!.adoptOpenedCloudFolder({ remoteFolder: '/home/u/docs', savedFolder: '/home/u/docs', localFolder: '/l', profileId: 'srv_a' }));
+        const ofA = () => [seen!.cloudPublicUrlBase, seen!.cloudLastSync, seen!.cloudServerName, seen!.isCloudPaused, seen!.cloudProtocolType];
+        expect(ofA()).toEqual(['https://a.example/', '2026-11-14T00:00:00Z', 'A', true, 'sftp']);
+        for (const [what, opened] of [
+            ['another profile', { remoteFolder: '/b', savedFolder: '/b', localFolder: '/l', profileId: 'srv_b' }],
+            ['another saved folder', { remoteFolder: '/b', savedFolder: '/b', localFolder: '/l', profileId: 'srv_a' }],
+            ['another local folder', { remoteFolder: '/home/u/docs', savedFolder: '/home/u/docs', localFolder: '/m', profileId: 'srv_a' }],
+        ] as const) {
+            await answer(reads.length - 1, readA);
+            expect(seen!.cloudPublicUrlBase, `${what}: A applied again`).toBe('https://a.example/');
+            await React.act(async () => seen!.adoptOpenedCloudFolder(opened));
+            // The reread is still pending: nothing of A's read is shown with B.
+            expect([seen!.cloudProfileId, ...ofA()], what).toEqual([opened.profileId, '', null, '', false, 'ftp']);
+        }
+    });
+
     it('keeps the name the server listed while the file still names the folder that was opened', async () => {
         await mountProbe();
         await answer(0, at('/home/u/docs'));
@@ -1340,6 +1362,7 @@ describe('every reply applied belongs to the operation that asked', () => {
     ]));
 
     it('the AeroCloud settings tab', () => expectEveryAwaitGuarded('SettingsAeroCloudTab', settingsTabSource, [
+        ['await work();', null, 'the operation it runs checks its own token'],
         ["const cfg = await invoke<CloudConfig | null>('get_cloud_config');", TAB_ASKED],
         ["const st = await invoke<CloudSyncStatus>('get_cloud_status')", null, 'the status shown, which no configuration reply replaces'],
         ['const updatedConfig = (await saveCloudSettings(', TAB_ASKED],
@@ -1440,5 +1463,73 @@ describe('every AeroCloud settings save carries the configuration it was edited 
         refusal = 'The AeroCloud configuration changed since these settings were opened';
         await React.act(async () => save().click());
         expect(host.querySelector('[role="alert"]')?.textContent).toContain('common.saveFailed');
+    });
+
+    // Each configuration operation of the tab installs the file it gets back
+    // and takes the reply token: one started while another is pending is not
+    // run, so the first one's reply is never dropped, and the second runs
+    // after it on what the first installed.
+    type Op = 'pause' | 'resume' | 'save';
+    it.each([
+        ['pause', 'save'], ['save', 'pause'], ['resume', 'save'], ['save', 'save'], ['pause', 'resume'],
+    ] as [Op, Op][])('in the settings tab: %s pending, then %s, runs one at a time', async (first, second) => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        const disk = {
+            enabled: true, cloud_name: 'c', local_folder: '/local', remote_folder: '/docs', server_profile: 'nas',
+            sync_interval_secs: 300, sync_on_change: true, sync_on_startup: false, exclude_patterns: [] as string[],
+            conflict_strategy: 'ask_user', public_url_base: null, protocol_type: 'sftp', last_sync: null,
+            paused: first === 'resume',
+        };
+        const COMMAND: Record<Op, string> = { pause: 'pause_aerocloud', resume: 'resume_aerocloud', save: 'save_cloud_config_cmd' };
+        const asked: string[] = [];
+        const replies: { command: string; settle: (fail: boolean) => void }[] = [];
+        mocks.invoke.mockImplementation((command: string, args?: Record<string, unknown>) => {
+            if (command === 'get_cloud_config') return Promise.resolve({ ...disk });
+            if (command === 'get_cloud_status') return Promise.resolve({ state: 'idle' });
+            if (!Object.values(COMMAND).includes(command)) return Promise.resolve(null);
+            asked.push(command);
+            return new Promise((resolve, reject) => replies.push({
+                command,
+                settle: fail => {
+                    if (fail) { reject(new Error('refused')); return; }
+                    if (command === 'pause_aerocloud') disk.paused = true;
+                    if (command === 'resume_aerocloud') disk.paused = false;
+                    resolve(command === 'save_cloud_config_cmd' ? { ...(args as { config: typeof disk }).config, paused: disk.paused } : { ...disk });
+                },
+            }));
+        });
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<SettingsAeroCloudTab onClose={vi.fn()} />));
+        const toggle = () => [...host.querySelectorAll('button')].find(b => ['cloud.pause', 'cloud.resume'].includes(b.getAttribute('title') ?? ''))!;
+        const save = () => [...host.querySelectorAll('button')].find(b => ['common.save', 'common.saved'].includes(b.textContent?.trim() ?? ''))!;
+        const button = (op: Op) => op === 'save' ? save() : toggle();
+        const settle = async (fail: boolean) => React.act(async () => { replies.shift()!.settle(fail); await Promise.resolve(); await Promise.resolve(); });
+
+        // Both clicks land before React renders the disabled state, as a
+        // double click does: the second is refused by the handler.
+        await React.act(async () => { button(first).click(); button(second).click(); });
+        expect(asked, `${second} ran while ${first} was pending`).toEqual([COMMAND[first]]);
+        expect(button(second).disabled, `${second} while ${first} is pending`).toBe(true);
+        // The first succeeds and is applied; the second, run after it, fails.
+        await settle(false);
+        const pausedAfterFirst = disk.paused;
+        expect(toggle().getAttribute('title'), `${first} applied`).toBe(pausedAfterFirst ? 'cloud.resume' : 'cloud.pause');
+        expect(button(second).disabled).toBe(false);
+        await React.act(async () => button(second).click());
+        expect(asked).toEqual([COMMAND[first], COMMAND[second]]);
+        await settle(true);
+        expect(toggle().getAttribute('title'), `${first}'s result kept after ${second} failed`).toBe(pausedAfterFirst ? 'cloud.resume' : 'cloud.pause');
+        expect(button(first).disabled).toBe(false);
+    });
+
+    it('in the settings tab: no operation can start while the file is being read', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let answer!: (config: unknown) => void;
+        mocks.invoke.mockImplementation((command: string) => command === 'get_cloud_config' ? new Promise(resolve => { answer = resolve; }) : Promise.resolve(null));
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<SettingsAeroCloudTab onClose={vi.fn()} />));
+        expect(host.querySelectorAll('button').length, 'a button while the read is pending').toBe(0);
+        await React.act(async () => { answer({ enabled: true, local_folder: '/local', remote_folder: '/docs', server_profile: 'nas', sync_interval_secs: 300, exclude_patterns: [] }); await Promise.resolve(); });
+        expect(host.querySelectorAll('button').length).toBeGreaterThan(0);
     });
 });

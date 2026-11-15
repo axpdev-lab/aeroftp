@@ -9762,6 +9762,9 @@ const App: React.FC = () => {
     const connectionAtEntry = quotaConnectionRef.current;
     const ownsPhase = () => phaseVersion === remoteConnectPhaseVersionRef.current
       && connectionAtEntry === quotaConnectionRef.current;
+    // The connection this open made when none was on screen (scenario 2):
+    // a failure after it leaves no row or folder of it actionable.
+    let connectedHere = false;
     try {
       // Get cloud config to know which server profile and folders
       const cloudConfig = await invoke<{
@@ -10037,6 +10040,16 @@ const App: React.FC = () => {
             setLoading(true);
             await connectToCloudServer();
             if (!ownsPhase()) return;
+            // The rows on screen are the previous server's (kept in its cached
+            // tab): none may stay actionable on this connection while the
+            // AeroCloud folder lists, nor after a listing that fails. The
+            // workspace waits for that listing, as every connect that parks
+            // the session it replaces does (parkActiveSession).
+            setRemoteFiles([]);
+            setSelectedRemoteFiles(new Set());
+            setRemoteSearchResults(null);
+            setRemoteSearchQuery('');
+            setIsConnected(false);
             setConnectionParams(connParams);
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           } catch (connError) {
@@ -10093,6 +10106,7 @@ const App: React.FC = () => {
           setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           if (!owner.owns()) return;
+          if (!isSameServer) setIsConnected(true);
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
@@ -10112,6 +10126,9 @@ const App: React.FC = () => {
           // folder the session is not in.
           setIsSyncNavigation(navigationBefore.on);
           setSyncBasePaths(navigationBefore.base);
+          // On a connection this open made, nothing was listed: the workspace
+          // stays disconnected, and the user opens a connection again.
+          if (!isSameServer) setShowConnectionScreen(true);
           return;
         }
 
@@ -10127,9 +10144,15 @@ const App: React.FC = () => {
         toast.info(t('toast.connecting'), t('toast.connectingTo', { server: cloudConfig.server_profile }));
       }
 
-      // connectToCloudServer ends any stale connection first.
+      // connectToCloudServer ends any stale connection first. No row is
+      // shown for it until the AeroCloud folder lists.
+      setRemoteFiles([]);
+      setSelectedRemoteFiles(new Set());
+      setRemoteSearchResults(null);
+      setRemoteSearchQuery('');
       await connectToCloudServer();
       if (!ownsPhase()) return;
+      connectedHere = true;
       setIsConnected(true);
       setShowRemotePanel(true);
       setShowLocalPreview(false);
@@ -10164,6 +10187,13 @@ const App: React.FC = () => {
       // An open that lost its phase reports nothing over the operation that
       // took it: no cloud panel, no failure toast.
       if (!ownsPhase()) return;
+      // The connection this open made listed nothing: no row and no folder
+      // of it is actionable, the workspace is disconnected.
+      if (connectedHere) {
+        setIsConnected(false);
+        setRemoteFiles([]);
+        setShowConnectionScreen(true);
+      }
       // W3.1: user-cancelled AeroCloud connect. Reopen the cloud panel so the
       // user can retry, but skip the error toast (runConnect already toasted).
       if (isConnectCancelledError(error)) {

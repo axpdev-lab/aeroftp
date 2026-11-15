@@ -62,6 +62,24 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
   // save, Pause or Resume): a reply is applied only while its operation is
   // still the latest, so a slower one never puts back an older file.
   const configOperation = useRef(0);
+  // One of those at a time once the tab is loaded: a save, Pause or Resume
+  // started while another is pending is not run (its button is disabled),
+  // so no reply is dropped because a later operation took the token, and
+  // none installs an older file over a newer one. The load is never pending
+  // alongside them: the tab shows its spinner until the load is done.
+  const operationBusy = useRef(false);
+  const [operationPending, setOperationPending] = useState(false);
+  const runAlone = useCallback(async (work: () => Promise<void>) => {
+    if (operationBusy.current) return;
+    operationBusy.current = true;
+    setOperationPending(true);
+    try {
+      await work();
+    } finally {
+      operationBusy.current = false;
+      setOperationPending(false);
+    }
+  }, []);
   const [status, setStatus] = useState<CloudSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -93,7 +111,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     load();
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => runAlone(async () => {
     if (!config || !readAs) return;
     const asked = ++configOperation.current;
     setSaving(true);
@@ -125,7 +143,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     } finally {
       setSaving(false);
     }
-  }, [config, readAs, excludeText]);
+  }), [config, readAs, excludeText, runAlone]);
 
   const handleTriggerSync = useCallback(async () => {
     setSyncing(true);
@@ -142,7 +160,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
 
   // Toggle acts as Pause/Resume: preserves config on OFF. Use CloudPanel's
   // Disable button to fully remove the configuration.
-  const handleTogglePaused = useCallback(async (running: boolean) => {
+  const handleTogglePaused = useCallback((running: boolean) => runAlone(async () => {
     const asked = ++configOperation.current;
     try {
       const cmd = running ? 'resume_aerocloud' : 'pause_aerocloud';
@@ -153,7 +171,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
     } catch (e) {
       console.error('Failed to toggle AeroCloud pause:', e);
     }
-  }, []);
+  }), [runAlone]);
 
   if (loading) {
     return (
@@ -209,6 +227,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
           {/* Pause / Resume toggle. ON = running, OFF = paused (config retained). */}
           <button
             onClick={() => handleTogglePaused(isPaused)}
+            disabled={operationPending}
             title={isPaused ? (t('cloud.resume') || 'Resume') : (t('cloud.pause') || 'Pause')}
             className={`relative w-10 h-5 rounded-full transition-colors ${!isPaused ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-600'}`}
           >
@@ -479,7 +498,7 @@ export const SettingsAeroCloudTab: React.FC<SettingsAeroCloudTabProps> = ({
         )}
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || operationPending}
           className="w-full py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 transition-colors flex items-center justify-center gap-2"
         >
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <CheckCircle2 size={14} /> : null}

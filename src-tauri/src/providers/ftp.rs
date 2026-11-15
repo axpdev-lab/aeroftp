@@ -235,6 +235,15 @@ pub struct FtpProvider {
     /// new `connect` starts over. Set only by
     /// [`Self::restore_working_directory`].
     folder_lost: bool,
+    /// The folder a redial owes the caller: set before the redial's
+    /// `connect` overwrites `current_path` with the login folder, cleared once
+    /// the session stands in that folder again or is closed as
+    /// [`Self::folder_lost`]. A redial cancelled in between (a dropped
+    /// future during its `CWD` or `PWD`) leaves it set; the cancel also marks
+    /// the session [`Self::abandoned_command`], so the next command redials,
+    /// and that redial restores this folder, whatever `current_path` says,
+    /// instead of the login folder. An explicit `disconnect` forgets it.
+    owed_folder: Option<String>,
     /// The server answered `REST` with 502 or 504: it cannot restart a
     /// transfer at all. Learnt once and kept for the session, because
     /// suppaftp 12.2.1 sends `REST` only after PASV, so every further attempt
@@ -326,6 +335,7 @@ impl FtpProvider {
             multi_thread_cutoff: FTP_MULTI_THREAD_CUTOFF_DEFAULT,
             has_dialled: false,
             folder_lost: false,
+            owed_folder: None,
             restart_unsupported: false,
             abandoned_command: Arc::default(),
             login_folder: None,
@@ -399,7 +409,8 @@ impl FtpProvider {
         // file in another directory while `current_path` said otherwise. Put
         // it back where the session was, as `redial_if_a_reply_is_pending`
         // does.
-        let previous_path = self.has_dialled.then(|| self.current_path.clone());
+        let previous_path = self.has_dialled.then(|| self.folder_to_restore());
+        self.owed_folder = previous_path.clone();
         self.config = spec;
         self.connect().await?;
         match previous_path {
@@ -815,8 +826,9 @@ impl FtpProvider {
             path,
             err
         );
-        let previous_path = self.current_path.clone();
+        let previous_path = self.folder_to_restore();
         let _ = self.disconnect().await;
+        self.owed_folder = Some(previous_path.clone());
         self.connect().await?;
         self.restore_working_directory(&previous_path).await
     }
@@ -1743,6 +1755,9 @@ impl FtpProvider {
         let reported = self.stream_mut()?.pwd().await;
         match folder_entered(reported, Some(path)) {
             Ok(folder) => {
+                // The caller's folder now: nothing a cancelled redial owed
+                // is restored over it.
+                self.owed_folder = None;
                 self.current_path = folder;
                 Ok(())
             }
@@ -1770,6 +1785,7 @@ impl FtpProvider {
         let reported = stream.pwd().await;
         match folder_entered(reported, None) {
             Ok(folder) => {
+                self.owed_folder = None;
                 self.current_path = folder;
                 Ok(())
             }
@@ -1789,12 +1805,17 @@ impl FtpProvider {
             .clone()
             .ok_or(ProviderError::NotConnected)?;
         self.config = spec;
+        // Owed until the target is entered: cancelled after `connect`, the
+        // next command redials to the lost folder and is closed back into
+        // this state, instead of running in the login folder.
+        self.owed_folder = Some(lost.clone());
         self.connect().await?;
         let stream = self.stream_mut()?;
         let entered = match stream.cwd(target).await {
             Ok(()) => folder_entered(stream.pwd().await, Some(target)),
             Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
         };
+        self.owed_folder = None;
         match entered {
             Ok(folder) => {
                 self.current_path = folder;
@@ -2073,6 +2094,7 @@ impl StorageProvider for FtpProvider {
     /// where the QUIT used to cost the user the whole budget after a Cancel.
     async fn disconnect(&mut self) -> Result<(), ProviderError> {
         const GOODBYE_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
+        self.owed_folder = None;
         let abandoned = self.abandoned_command.swap(false, Ordering::Relaxed);
         if let Some(mut stream) = self.stream.take() {
             if abandoned {
@@ -4132,7 +4154,8 @@ impl FtpProvider {
                 "FTP session held an unread reply at the start of a new command; redialing instead of misattributing it"
             );
         }
-        let previous_path = self.current_path.clone();
+        let previous_path = self.folder_to_restore();
+        self.owed_folder = Some(previous_path.clone());
         self.stream = None;
         let spec = self
             .connection_spec
@@ -4141,6 +4164,14 @@ impl FtpProvider {
         self.config = spec;
         self.connect().await?;
         self.restore_working_directory(&previous_path).await
+    }
+
+    /// The folder a redial returns to: the one a cancelled redial still
+    /// owes, else the recorded one.
+    fn folder_to_restore(&self) -> String {
+        self.owed_folder
+            .clone()
+            .unwrap_or_else(|| self.current_path.clone())
     }
 
     /// Whether the control connection is encrypted: a TLS mode was asked for
@@ -4454,6 +4485,7 @@ impl FtpProvider {
     /// [`Self::abandoned_command`] like a dropped listing.
     async fn restore_working_directory(&mut self, previous: &str) -> Result<(), ProviderError> {
         if previous == self.current_path {
+            self.owed_folder = None;
             return Ok(());
         }
         let guard = AbandonGuard::arm(&self.abandoned_command);
@@ -4466,6 +4498,7 @@ impl FtpProvider {
             Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
         };
         guard.disarm();
+        self.owed_folder = None;
         match entered {
             Ok(folder) => {
                 self.current_path = folder;
@@ -8426,6 +8459,17 @@ mod rename_contract_tests {
                     })
                 };
             let reply = match cmd.as_str() {
+                "USER" if {
+                    // `!stall USER` in the files: this login is never
+                    // answered, once.
+                    let mut held = files.lock().unwrap();
+                    let before = held.len();
+                    held.retain(|f| f != "!stall USER");
+                    held.len() != before
+                } =>
+                {
+                    continue;
+                }
                 "USER" => "331 password please\r\n".to_string(),
                 "PASS" => "230 logged in\r\n".to_string(),
                 "FEAT" if quirks.listing_denied || quirks.list_only => {
@@ -8451,6 +8495,19 @@ mod rename_contract_tests {
                     } else {
                         format!("{}/{argument}", cwd.trim_end_matches('/'))
                     };
+                    // A test that holds `!stall CWD <folder>` in the files
+                    // gets that CWD unanswered, once, as from a server that
+                    // stopped answering.
+                    let stall = format!("!stall CWD {target}");
+                    let stalled = {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != &stall);
+                        held.len() != before
+                    };
+                    if stalled {
+                        continue;
+                    }
                     let is_dir = target == "/"
                         || files
                             .lock()
@@ -8636,6 +8693,21 @@ mod rename_contract_tests {
         quirks: Quirks,
         initial_path: Option<&str>,
     ) -> (FtpProvider, Arc<Mutex<Vec<String>>>) {
+        let (provider, log, _) = provider_on_server_holding(files, quirks, initial_path).await;
+        (provider, log)
+    }
+
+    /// `provider_on_server_full`, with the server's files as well, for a test
+    /// that changes them while the session runs.
+    async fn provider_on_server_holding(
+        files: &[&str],
+        quirks: Quirks,
+        initial_path: Option<&str>,
+    ) -> (
+        FtpProvider,
+        Arc<Mutex<Vec<String>>>,
+        Arc<Mutex<Vec<String>>>,
+    ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let files = Arc::new(Mutex::new(
@@ -8643,6 +8715,7 @@ mod rename_contract_tests {
         ));
         let log: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&log);
+        let held = Arc::clone(&files);
         tokio::spawn(async move {
             while let Ok((stream, _)) = listener.accept().await {
                 tokio::spawn(serve_connection(
@@ -8667,7 +8740,7 @@ mod rename_contract_tests {
             .connect()
             .await
             .expect("connect to the scripted server");
-        (provider, log)
+        (provider, log, held)
     }
 
     /// The post-login `PWD` is the login folder: a relative `initial_path`
@@ -9297,6 +9370,211 @@ mod rename_contract_tests {
             );
             assert!(!sent.contains(&"CWD /d".to_string()), "{route}: {sent:?}");
         }
+    }
+
+    /// A redial cancelled while it returned to the session's folder (the
+    /// caller dropped the transfer during that `CWD`) had already let
+    /// `connect` record the login folder: the next relative upload redialled
+    /// "back" to the login folder and stored there. The folder stays owed
+    /// until the session stands in it, so the next upload returns to `/d`
+    /// first and stores there.
+    #[tokio::test]
+    async fn a_redial_cancelled_on_its_way_back_still_owes_the_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) =
+            provider_on_server_holding(&["/d/b.txt"], quirks, None).await;
+        provider.cd("/d").await.expect("cd");
+        provider.stream = None;
+        files.lock().unwrap().push("!stall CWD /d".to_string());
+        log.lock().unwrap().clear();
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.upload(local, "x.txt", None),
+        )
+        .await;
+        assert!(
+            cancelled.is_err(),
+            "the way back was answered: {cancelled:?}"
+        );
+        assert!(
+            log.lock().unwrap().contains(&"CWD /d".to_string()),
+            "the cancel did not land on the way back: {:?}",
+            log.lock().unwrap()
+        );
+        provider
+            .upload(local, "x.txt", None)
+            .await
+            .expect("the upload after the cancel");
+        let sent = log.lock().unwrap().clone();
+        let stored = sent.iter().position(|c| c == "STOR x.txt").expect("a STOR");
+        assert_eq!(
+            sent[..stored].iter().rev().find(|c| c.starts_with("CWD")),
+            Some(&"CWD /d".to_string()),
+            "{sent:?}"
+        );
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/d/x.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/x.txt".to_string()), "{held:?}");
+        assert_eq!(provider.current_path, "/d");
+
+        // Once the session stands in its folder nothing is owed: a later
+        // redial returns to the folder recorded since.
+        provider.cd("/").await.expect("cd /");
+        provider.stream = None;
+        provider
+            .upload(local, "y.txt", None)
+            .await
+            .expect("an upload after a later drop");
+        assert!(files.lock().unwrap().contains(&"/y.txt".to_string()));
+
+        // An explicit disconnect forgets what a cancelled redial owed: the
+        // session that connects next records its own folder.
+        provider.cd("/d").await.expect("cd /d");
+        provider.stream = None;
+        files.lock().unwrap().push("!stall CWD /d".to_string());
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.upload(local, "z.txt", None),
+        )
+        .await;
+        assert!(
+            cancelled.is_err(),
+            "the way back was answered: {cancelled:?}"
+        );
+        provider.disconnect().await.expect("disconnect");
+        provider.connect().await.expect("connect");
+        provider.stream = None;
+        provider
+            .upload(local, "z.txt", None)
+            .await
+            .expect("an upload after the reconnect");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/z.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/d/z.txt".to_string()), "{held:?}");
+    }
+
+    /// The other cancels of a redial. During its `connect` (the login never
+    /// answered): the folder is still recorded and still owed, and the next
+    /// upload stores there. Two in a row on the way back: the second redial
+    /// restores the folder the first owed, not the login folder the first
+    /// left recorded. And a `cd` that succeeds is the caller's folder: a
+    /// folder owed before it is not restored over it.
+    #[tokio::test]
+    async fn every_cancelled_redial_still_returns_to_the_folder_the_caller_chose() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _log, files) =
+            provider_on_server_holding(&["/d/b.txt", "/e/c.txt"], quirks, None).await;
+        async fn cancel(provider: &mut FtpProvider, local: &str) -> bool {
+            let upload = provider.upload(local, "a.txt", None);
+            tokio::time::timeout(std::time::Duration::from_millis(500), upload)
+                .await
+                .is_err()
+        }
+        provider.cd("/d").await.expect("cd");
+
+        // During the redial's connect.
+        provider.stream = None;
+        files.lock().unwrap().push("!stall USER".to_string());
+        assert!(cancel(&mut provider, local).await, "the login was answered");
+        assert_eq!(provider.current_path, "/d");
+        provider
+            .upload(local, "x1.txt", None)
+            .await
+            .expect("an upload after a cancelled connect");
+        assert!(files.lock().unwrap().contains(&"/d/x1.txt".to_string()));
+
+        // Two in a row on the way back.
+        provider.stream = None;
+        for _ in 0..2 {
+            files.lock().unwrap().push("!stall CWD /d".to_string());
+            assert!(
+                cancel(&mut provider, local).await,
+                "the way back was answered"
+            );
+        }
+        provider
+            .upload(local, "x2.txt", None)
+            .await
+            .expect("an upload after two cancels");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/d/x2.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/x2.txt".to_string()), "{held:?}");
+
+        // A cd that succeeds while a folder is owed.
+        provider.owed_folder = Some("/d".to_string());
+        provider.cd("/e").await.expect("cd /e");
+        provider.stream = None;
+        provider
+            .upload(local, "x3.txt", None)
+            .await
+            .expect("an upload after the cd");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/e/x3.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/d/x3.txt".to_string()), "{held:?}");
+    }
+
+    /// The way out of a lost folder, cancelled after its `connect` and
+    /// before its `CWD` was answered, left a session in the login folder
+    /// that no longer counted as lost: a relative upload stored there. The
+    /// lost folder stays owed until the target is entered, so that upload
+    /// is closed back into the lost state and stores nothing, and the next
+    /// `cd` to an absolute folder still gets out.
+    #[tokio::test]
+    async fn a_way_out_cancelled_before_its_folder_leaves_the_folder_lost() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) =
+            provider_on_server_holding(&["/d/b.txt", "/e/c.txt"], quirks, None).await;
+        provider.cd("/d").await.expect("cd");
+        provider.delete("/d/b.txt").await.expect("delete");
+        provider.stream = None;
+        assert!(provider.upload(local, "x.txt", None).await.is_err());
+        assert!(!provider.is_connected(), "the restore left a session");
+        files.lock().unwrap().push("!stall CWD /e".to_string());
+        let cancelled =
+            tokio::time::timeout(std::time::Duration::from_millis(500), provider.cd("/e")).await;
+        assert!(
+            cancelled.is_err(),
+            "the way out was answered: {cancelled:?}"
+        );
+        log.lock().unwrap().clear();
+        let outcome = tokio::time::timeout(
+            std::time::Duration::from_secs(10),
+            provider.upload(local, "x.txt", None),
+        )
+        .await
+        .expect("the upload answers");
+        assert!(outcome.is_err(), "{outcome:?}");
+        let sent = log.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("STOR")), "{sent:?}");
+        assert!(!files.lock().unwrap().contains(&"/x.txt".to_string()));
+        assert!(!provider.is_connected(), "the session was kept");
+        assert_eq!(provider.current_path, "/d");
+        provider.cd("/e").await.expect("the way out");
+        assert_eq!(provider.current_path, "/e");
     }
 
     #[tokio::test]

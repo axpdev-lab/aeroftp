@@ -9,6 +9,7 @@ import { loadedCertificateCheck, loadedOption, loadedOptionOn, makeSafe } from '
 import { CONNECT_CANCELLED_MARKER, isConnectCancelledError } from './connectCancel';
 import { isSshProtocol } from '../types';
 import { AEROCLOUD_OPEN_SUPERSEDED } from './liveConnection';
+import { LOCAL, REMOTE, fixture } from '../components/appTransfers.testkit';
 
 const start = app.indexOf('const connectToCloudServer = async');
 const end = app.indexOf('// Helper: navigate to remote folder', start);
@@ -482,6 +483,50 @@ it.each([
   expect(invoke.mock.calls.map(([command]) => command)).not.toContain('trigger_cloud_sync');
 });
 
+it.each([
+  ['replaces the server on screen', { isConnected: true, isSameConnection: () => false, sessions: [{ id: 'tab-a', status: 'connected' }] }],
+  ['connects with none on screen', { isConnected: false, activeSessionId: null }],
+] as const)('leaves no row of another server actionable when an AeroCloud open that %s cannot list', async (_how, start) => {
+  const rowOfA = { name: 'old.txt', path: '/srv-a/old.txt', size: 1, is_dir: false, modified: null, permissions: null };
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'get_cloud_config') return CLOUD_CONFIG;
+    if (command === 'provider_change_dir') throw new Error('550 listing refused');
+    if (command === 'get_local_files') return [];
+    return '';
+  });
+  const runConnect = vi.fn(async () => undefined);
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, runConnect, remoteFiles: [rowOfA], remoteSearchResults: [rowOfA], ...start });
+  await handleCloudTabClick();
+  expect(invoke).toHaveBeenCalledWith('provider_change_dir', { path: '/cloud' });
+  const order = (name: string) => spy(name).mock.invocationCallOrder;
+  const listedAt = invoke.mock.invocationCallOrder[invoke.mock.calls.findIndex(([command]) => command === 'provider_change_dir')];
+  // Cleared before the folder lists, and nothing put back after.
+  expect(spy('setRemoteFiles').mock.calls.every(([files]) => Array.isArray(files) && files.length === 0)).toBe(true);
+  expect(Math.min(...order('setRemoteFiles'))).toBeLessThan(listedAt);
+  expect(Math.min(...order('setRemoteSearchResults'))).toBeLessThan(listedAt);
+  expect(spy('setRemoteSearchResults')).toHaveBeenLastCalledWith(null);
+  expect(spy('setSelectedRemoteFiles')).toHaveBeenLastCalledWith(new Set());
+  // The workspace is disconnected: no remote action, no drop target.
+  expect(spy('setIsConnected')).toHaveBeenLastCalledWith(false);
+  expect(spy('setShowConnectionScreen')).toHaveBeenLastCalledWith(true);
+  expect(invoke.mock.calls.map(([command]) => command)).not.toContain('trigger_cloud_sync');
+});
+
+it('shows the connection again once the AeroCloud folder of a replacing open has listed', async () => {
+  const listing = { files: [{ name: 'a.txt', path: '/cloud/a.txt', size: 1, is_dir: false, modified: null, permissions: null }], current_path: '/cloud', display_current_path: '/cloud', breadcrumb_labels: {} };
+  const invoke = vi.fn(async (command: string) => {
+    if (command === 'get_cloud_config') return CLOUD_CONFIG;
+    if (command === 'provider_change_dir') return listing;
+    if (command === 'get_local_files') return [];
+    return '';
+  });
+  const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, runConnect: vi.fn(async () => undefined), isSameConnection: () => false, sessions: [{ id: 'tab-a', status: 'connected' }] });
+  await handleCloudTabClick();
+  expect(spy('setIsConnected')).toHaveBeenLastCalledWith(true);
+  expect(spy('setRemoteFiles')).toHaveBeenLastCalledWith(listing.files);
+  expect(Math.max(...spy('setIsConnected').mock.invocationCallOrder)).toBeGreaterThan(Math.max(...spy('setRemoteFiles').mock.invocationCallOrder));
+});
+
 it('shows the folder the server returned when a kept session enters the AeroCloud folder from a subfolder', async () => {
   // An unlocked overlay session at /cloud/sub is kept, and the open enters /cloud.
   const listing = { files: [{ name: 'a.txt', path: '/cloud/a.txt', size: 1, is_dir: false, modified: null, permissions: null }], current_path: '/cloud', display_current_path: '/cloud', breadcrumb_labels: { '/cloud': 'cloud' } };
@@ -544,8 +589,41 @@ it.each([
     const key = name === 'setRemoteFiles' ? 'remoteFiles' : 'remoteSearchResults';
     (state as Record<string, unknown>)[key] = typeof value === 'function' ? value(state[key]) : value;
   }
-  expect(shownRemoteRows(state.remoteFiles, state.remoteSearchResults, query, rows => rows, 'name', 'asc').map(r => r.path)).toEqual(paths);
+  const rows = shownRemoteRows(state.remoteFiles, state.remoteSearchResults, query, rows => rows, 'name', 'asc');
+  // The buttons' own handlers on those rows: App's downloadFile (the row's
+  // download, `downloadFile(file.path, file.name, currentLocalPath, false)`)
+  // and deleteRemoteFile (`deleteRemoteFile(path, isDir)`), with the IPC
+  // mocked. Every path they send is the AeroCloud folder's.
+  expect(app).toContain('await downloadFile(file.path, file.name, currentLocalPath, false);');
+  const transfers = fixture({ folders: { [REMOTE]: [] } });
+  for (const shown of rows) await transfers.downloadFile(shown.path, shown.name, LOCAL, false);
+  const deletes = await appDelete();
+  for (const shown of rows) deletes.deleteRemoteFile(shown.path, false);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const sent = [...transfers.invoke.mock.calls, ...deletes.invoke.mock.calls]
+    .filter(([command]) => command === 'provider_download_file' || command === 'provider_delete_file');
+  expect(sent.length, 'one download and one delete per row').toBe(rows.length * 2);
+  const named = JSON.stringify(sent);
+  expect(named, 'a download or delete sent a path of the search shown before').not.toContain('/other/');
+  for (const path of paths) expect(named).toContain(path);
+  expect(rows.map(r => r.path)).toEqual(paths);
 });
+
+/** App's own `deleteRemoteFile`, with the IPC, the guard and the dialogs mocked. */
+async function appDelete() {
+  const source = app.slice(app.indexOf('  const deleteRemoteFile = ('), app.indexOf('\n  const renameFile = ('));
+  const { code } = await transformWithOxc(source, 'delete.ts');
+  const invoke = vi.fn(async () => undefined);
+  const context: Record<string, unknown> = {
+    remoteActionGuard: () => () => {}, invoke, notify: { success: vi.fn(), error: vi.fn() }, t: (key: string) => key,
+    liveConnectionParams: { protocol: 'webdav' }, gitHubRepoInfo: null, setGitHubCommitDialog: vi.fn(),
+    humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
+    usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
+    setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+  };
+  const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context)) as (path: string, isDir: boolean) => void;
+  return { deleteRemoteFile, invoke };
+}
 
 it.each([
   ['the "+" new tab', 'newTab'],
