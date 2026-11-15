@@ -19534,6 +19534,23 @@ mod tests {
         };
         assert!(probe_alive_inner(&state, &tab("http://dav.example.test/dav"), timeout).await);
         assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+        // The same written port on both: only the scheme tells them apart.
+        let mut port_slot = probe_config("http://dav.example.test:8443/dav", 8443, "u");
+        port_slot.provider_type = ProviderType::WebDav;
+        let written_port_tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 8443, "u", None)
+        };
+        assert!(slot_matches_identity(
+            &port_slot,
+            None,
+            &written_port_tab("http://dav.example.test:8443/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &port_slot,
+            None,
+            &written_port_tab("https://dav.example.test:8443/dav")
+        ));
         // Only a written scheme tells targets apart: a scheme-less host's also
         // depends on a TLS choice the tab does not carry.
         let mut https_slot = probe_config("dav.example.test/dav", 8443, "u");
@@ -19566,8 +19583,12 @@ mod tests {
             protocol: Some("webdav"),
             ..probe_for(host, 8443, "u", None)
         };
-        assert!(probe_alive_inner(&state, &tab("https://dav.example.test:8443/dav"), timeout).await);
-        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test:443/dav"), timeout).await);
+        assert!(
+            probe_alive_inner(&state, &tab("https://dav.example.test:8443/dav"), timeout).await
+        );
+        assert!(
+            !probe_alive_inner(&state, &tab("https://dav.example.test:443/dav"), timeout).await
+        );
     }
 
     /// A host written with `/./` takes the base path, as the connect does: two
