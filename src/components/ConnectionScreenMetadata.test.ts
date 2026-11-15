@@ -1092,7 +1092,7 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
         const runConnect = vi.fn(async () => { live.replacingBackend()(); });
         const ctx = {
             confirmBackendConnection: live.confirmBackendConnection,
-            remoteConnectPhaseVersionRef: { current: 0 },
+            remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED',
             invoke: vi.fn(async () => undefined),
             isProvider,
             protocol: isProvider ? 'webdav' : 'ftp',
@@ -1325,7 +1325,7 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         // confirm with no await after their connect: nothing else would.
         // confirm with no await after their connect, and only while no newer
         // connect owns the workspace.
-        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+if \((remoteConnectPhaseVersionRef\.current === cloudPhase|phaseVersion === remoteConnectPhaseVersionRef\.current)\) confirmBackendConnection\(\);/g)?.length).toBe(3);
+        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+(stillCurrent\(\);\n\s+confirmBackendConnection\(\);|if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);)/g)?.length).toBe(3);
     });
 });
 
@@ -1528,56 +1528,89 @@ describe('Reviewed ownership of a connect', () => {
         expect(refs.backendUncertainRef.current).toBe(true);
     });
 
-    it.each([['a provider', true], ['an FTP server', false]])("keeps the backend uncertain when B confirms before A's AeroCloud connect to %s returns", async (_label, isProvider) => {
+    /** App's AeroCloud connect for A, opened at `phaseVersion` 0, whose
+     *  host-key check and teardown each wait until the test releases them;
+     *  `connectB` is B's connect as App records it: a newer phase, B's own
+     *  replacement, and B's tab confirmed. */
+    async function aeroCloudRace(isProvider: boolean) {
         const refs = freshRefs();
         const accounting = await accountingOn(refs);
-        const runConnect = vi.fn(async () => {
-            const endA = accounting.replacingBackend();
-            refs.remoteConnectPhaseVersionRef.current += 1;
-            accounting.confirmBackendConnection();
-            endA();
-        });
-        const connect = await runAppSlice(appBetween('const connectToCloudServer = async', '\n      };\n'), {
-            ...refs, ...accounting, runConnect, isProvider, protocol: isProvider ? 'webdav' : 'ftp',
-            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
-            cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
-            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
-            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false, isSshProtocol: () => false,
-        }, 'connectToCloudServer');
-        await connect();
-        expect(runConnect).toHaveBeenCalledOnce();
-        expect(refs.backendUncertainRef.current).toBe(true);
-    });
-
-    it.each([['a provider', true], ['an FTP server', false]])("does not confirm A's AeroCloud connect to %s when B starts while A's teardown is paused", async (_label, isProvider) => {
-        const refs = freshRefs();
-        const accounting = await accountingOn(refs);
-        let resumeTeardown!: () => void;
-        let teardownStarted!: () => void;
-        const paused = new Promise<void>(resolve => { teardownStarted = resolve; });
+        const gates: Record<string, { reached: Promise<void>; release: () => void }> = {};
+        const gate = (name: string) => {
+            let reach!: () => void;
+            let release!: () => void;
+            const reached = new Promise<void>(resolve => { reach = resolve; });
+            const released = new Promise<void>(resolve => { release = resolve; });
+            gates[name] = { reached, release };
+            return async () => { reach(); await released; };
+        };
+        const hostKey = gate('hostKey');
+        const teardown = gate('teardown');
         const invoke = vi.fn(async (command: string) => {
-            if (command === 'provider_disconnect') {
-                teardownStarted();
-                await new Promise<void>(resolve => { resumeTeardown = resolve; });
-            }
+            if (command === 'provider_disconnect') await teardown();
             return undefined;
         });
         const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
         const connect = await runAppSlice(appBetween('const connectToCloudServer = async', '\n      };\n'), {
-            ...refs, ...accounting, runConnect, invoke, isProvider, protocol: isProvider ? 'webdav' : 'ftp',
-            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
+            ...refs, ...accounting, runConnect, invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp', phaseVersion: 0,
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            cloudServer: { id: 'cloud', providerId: null, host: 'nas.example.test', port: 22, username: 'u', options: {} },
             cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
             resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
-            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false, isSshProtocol: () => false,
+            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false,
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await hostKey(); return true; },
         }, 'connectToCloudServer');
-        const a = connect();
-        await paused;
-        // B starts while A's teardown is paused.
-        refs.remoteConnectPhaseVersionRef.current += 1;
-        resumeTeardown();
-        await a;
-        expect(runConnect).toHaveBeenCalledOnce();
-        expect(refs.backendConfirmationsRef.current).toBe(0);
+        const connectB = () => {
+            refs.remoteConnectPhaseVersionRef.current += 1;
+            accounting.replacingBackend()();
+            accounting.confirmBackendConnection();
+        };
+        return { refs, gates, invoke, runConnect, connect, connectB };
+    }
+
+    it("stops A's AeroCloud open before its teardown when B connects during an earlier await", async () => {
+        const race = await aeroCloudRace(true);
+        const a = race.connect();
+        await race.gates.hostKey.reached;
+        race.connectB();
+        race.gates.hostKey.release();
+        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
+        expect(race.invoke).not.toHaveBeenCalledWith('provider_disconnect');
+        expect(race.runConnect).not.toHaveBeenCalled();
+        // B's confirmed tab keeps the backend: one confirmation, not uncertain.
+        expect(race.refs.backendConfirmationsRef.current).toBe(1);
+        expect(race.refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([['a provider', true], ['an FTP server', false]])("stops A's AeroCloud open to %s before its replacement when B connects during the teardown", async (_label, isProvider) => {
+        const race = await aeroCloudRace(isProvider);
+        const a = race.connect();
+        if (isProvider) race.gates.hostKey.release();
+        await race.gates.teardown.reached;
+        race.connectB();
+        race.gates.teardown.release();
+        await expect(a).rejects.toThrow('CONNECT_SUPERSEDED');
+        expect(race.runConnect).not.toHaveBeenCalled();
+        expect(race.refs.backendConfirmationsRef.current).toBe(1);
+        expect(race.refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([['superseded', 'CONNECT_SUPERSEDED', 1], ['refused', 'refused', 0]])("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, settled) => {
+        // App's own SCENARIO 2 block, from the log row it opens to the first
+        // step after the open.
+        const updateEntry = vi.fn();
+        const setIsConnected = vi.fn();
+        const block = appBetween("      const logId = humanLog.logStart('CONNECT'", '      setIsConnected(true);');
+        const open = await runAppSlice(`const open = async () => {\n${block}\n};`, {
+            humanLog: { logStart: () => 'cloud-log', updateEntry }, cloudConfig: { server_profile: 'nas' }, protocolLabel: 'SFTP',
+            showToastNotifications: false, setIsConnected,
+            connectToCloudServer: async () => { throw new Error(failure); },
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+        }, 'open');
+        await expect(open()).rejects.toThrow(failure);
+        expect(updateEntry).toHaveBeenCalledTimes(settled);
+        if (settled) expect(updateEntry).toHaveBeenCalledWith('cloud-log', { status: 'cancelled' });
+        expect(setIsConnected).not.toHaveBeenCalled();
     });
 
     it("hands A the receipt of its own replacement when B's ends between A's end and A's continuation", async () => {

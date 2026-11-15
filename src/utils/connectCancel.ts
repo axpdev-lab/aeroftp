@@ -16,6 +16,17 @@ export function isConnectCancelledError(error: unknown): boolean {
   return String(error) === CONNECT_CANCELLED_MARKER;
 }
 
+// A connect that a newer connect superseded while it ran: it stops where it
+// is, before any teardown, replacement or landing, and touches nothing of the
+// connect that owns the workspace now (no toast, no session restored).
+export const CONNECT_SUPERSEDED_MARKER = 'CONNECT_SUPERSEDED';
+
+export function isConnectSupersededError(error: unknown): boolean {
+  if (error == null) return false;
+  if (error instanceof Error) return error.message === CONNECT_SUPERSEDED_MARKER;
+  return String(error) === CONNECT_SUPERSEDED_MARKER;
+}
+
 // IPC panic safety net (v4.1.3): a panicking Tauri command never answers its
 // invoke, so the connect promise would hang forever. `cancellableConnect` races
 // the connect against a hard-timeout deadline that rejects with this marker.

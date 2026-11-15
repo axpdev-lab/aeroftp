@@ -371,8 +371,8 @@ describe('a queued transfer', () => {
             /\} else \{\n\s+confirmBackendConnection\(\);\n\s+\}\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
             // The AeroCloud open (both arms) and a GitHub branch switch, right
             // after their connect, while no newer connect owns the workspace.
-            /await runConnect\('provider_connect', providerParams\);\n(\s+\/\/[^\n]*\n)*\s+if \(remoteConnectPhaseVersionRef\.current === cloudPhase\) confirmBackendConnection\(\);\n\s+\} else \{/,
-            /await runConnect\('connect_ftp', ftpParams\);\n\s+if \(remoteConnectPhaseVersionRef\.current === cloudPhase\) confirmBackendConnection\(\);/,
+            /await runConnect\('provider_connect', providerParams\);\n(\s+\/\/[^\n]*\n)*\s+stillCurrent\(\);\n\s+confirmBackendConnection\(\);\n\s+\} else \{/,
+            /await runConnect\('connect_ftp', ftpParams\);\n\s+stillCurrent\(\);\n\s+confirmBackendConnection\(\);/,
             /await runConnect\('provider_connect', providerParams\);\n(\s+\/\/[^\n]*\n)*\s+if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);\n\s+const response = await withRemoteListSpinner/,
             /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
             /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
