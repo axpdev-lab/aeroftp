@@ -2810,12 +2810,10 @@ fn crypt_export_remote_target(
     // A space at the start is part of a folder name (`nas: docs` opens
     // ` docs`), as in `apply_rclone_start_folder`; trimmed, the alias of
     // `~/ docs` became `docs` and no longer held a scope inside it.
-    let trim = |p: &str| {
-        p.trim_end()
-            .trim_start_matches('/')
-            .trim_end_matches('/')
-            .to_string()
-    };
+    // Nor is a space at the end trimmed: a filled `{username}` can end the
+    // folder in one, and trimmed it named another folder; the refusal of an
+    // edge space (`crypt_section`) has to see it.
+    let trim = |p: &str| p.trim_start_matches('/').trim_end_matches('/').to_string();
     let target = |name: &str, path: &str| {
         if path.is_empty() {
             format!("{name}:")
@@ -12307,5 +12305,52 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
                 .any(|l| l.starts_with("remote = ") && l.ends_with(":Photos")),
             "{conf}"
         );
+    }
+
+    /// A crypt scope is checked for an edge space as filled, like the start
+    /// folder above: `/dav/{username}/vault/{username}` ends in `}`, and filled
+    /// with `alice ` it ends in a space. Trimmed, the crypt wrapped
+    /// `/vault/alice`, another folder, where none of the encrypted files are.
+    #[test]
+    fn a_crypt_scope_is_checked_for_an_edge_space_after_the_fill() {
+        let lc = |name: &str, username: &str| RcloneExportServer {
+            id: format!("lc-{name}"),
+            name: name.into(),
+            host: "".into(),
+            port: 443,
+            username: username.into(),
+            protocol: Some("webdav".into()),
+            options: Some(serde_json::json!({
+                "rcloneCryptEnabled": true,
+                "rcloneCryptPassword": "pw",
+                "rcloneCryptOverlayScope": "/dav/{username}/vault/{username}",
+            })),
+            provider_id: Some("lifetimecloud".into()),
+        };
+        let servers = [lc("lc space", "alice "), lc("lc plain", "alice")];
+        let (outcome, conf) = export_to_string(&servers, "lc-crypt-space-export");
+        let refused: Vec<(&str, &str)> = outcome
+            .skipped
+            .iter()
+            .map(|skip| (skip.name.as_str(), skip.reason.as_str()))
+            .collect();
+        assert_eq!(refused.len(), 1, "{refused:?}\n{conf}");
+        assert_eq!(refused[0].0, "lc space", "{conf}");
+        assert!(
+            refused[0].1.ends_with(
+                ":/vault/alice ', whose name ends in a space, which rclone's config cannot hold"
+            ),
+            "{refused:?}"
+        );
+        assert!(!conf.contains("lc space:/vault/alice\n"), "{conf}");
+        let (notes, _) = notes_and_body(&conf, "lc space");
+        assert!(
+            notes
+                .join("\n")
+                .contains("# crypt overlay for 'lc space' not written"),
+            "{conf}"
+        );
+        // The same template filled without a space wraps its folder.
+        assert_eq!(crypt_remotes(&conf), ["lc plain:/vault/alice"], "{conf}");
     }
 }
