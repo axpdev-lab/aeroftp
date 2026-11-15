@@ -1729,6 +1729,66 @@ describe('Reviewed ownership of a connect', () => {
         expect(notify.info).not.toHaveBeenCalled();
     });
 
+    it("keeps B in the slot when A times out, B connects and is confirmed, then A's connect returns", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A backend with one slot that honours cancel_connection: a connect
+        // cancelled while it waited is refused at its install.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        let aReturned!: () => void;
+        const aDone = new Promise<void>(resolve => { aReturned = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (server === 'A') {
+                    reachA();
+                    await aReleased;
+                    try {
+                        if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                        backend.slot = server;
+                    } finally { aReturned(); }
+                    return undefined;
+                }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            // A short hard timeout, so the test times A out for real.
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 20,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect }');
+        vi.useRealTimers();
+        // A waits inside provider_connect until its hard timeout gives it up.
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        expect(await a).toContain('toast.connectTimedOut');
+        expect(invoke).toHaveBeenCalledWith('cancel_connection', { token: 'token-1' });
+        // B connects and its tab is confirmed.
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        accounting.confirmBackendConnection();
+        expect(backend.slot).toBe('B');
+        // A's connect returns late: its install is refused, B stays.
+        releaseA();
+        await aDone;
+        expect(backend.slot).toBe('B');
+    });
+
     it("stops A's AeroCloud open before its teardown when B connects during an earlier await", async () => {
         const race = await aeroCloudRace(true, ['hostKey']);
         const a = race.connect();
@@ -1923,6 +1983,46 @@ describe('Reviewed ownership of a connect', () => {
             loadSavedServerProfiles: async () => [],
         }, 'createSession');
         expect(await createSession('A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, receipt.mark)).toBe('stale');
+    });
+    it("does not confirm or activate A when sign-in B settles during A's profile read", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backendSwapRef = { current: null as { token: number; settledAtPhase: number } | null };
+        const takeOverActiveSession = vi.fn();
+        // App's own sign-in swap listener: a form's sign-in replaces the
+        // backend from its start to its settle.
+        const swap = await runAppSlice(
+            appBetween('    const swapsInFlight = new Map<number, () => void>();', "    window.addEventListener('aeroftp-backend-swap', swap);"),
+            { ...refs, ...accounting, backendSwapRef, takeOverActiveSession },
+            'swap',
+        ) as (event: Event) => void;
+        const signIn = (phase: 'start' | 'settled') => swap(new CustomEvent('aeroftp-backend-swap', { detail: { token: 7, phase } }));
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const notify = { error: vi.fn() };
+        const confirmBackendConnection = vi.fn(accounting.confirmBackendConnection);
+        // App's own createSession for connection A.
+        const createSession = await runAppSlice(appBetween('  const createSession = async (', '\n  };\n'), {
+            ...refs, confirmBackendConnection, setActiveSessionId, setSessions, notify, t: (key: string) => key,
+            remoteFiles: [], localFiles: [],
+            loadSavedServerProfiles: async () => {
+                // Sign-in B starts and settles while A reads the saved profiles.
+                signIn('start');
+                signIn('settled');
+                return [];
+            },
+        }, 'createSession');
+        // A's connect returned: the mark it takes then.
+        const aConnectedAt = accounting.backendMark();
+        const outcome = await createSession('Server A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, aConnectedAt);
+        expect(takeOverActiveSession).toHaveBeenCalled();
+        expect(outcome).toBe('stale');
+        expect(confirmBackendConnection).not.toHaveBeenCalled();
+        expect(setActiveSessionId).not.toHaveBeenCalled();
+        expect(refs.backendUncertainRef.current).toBe(true);
+        expect(notify.error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
+        const added = setSessions.mock.calls[0][0]([]) as { status: string }[];
+        expect(added[0].status).toBe('cached');
     });
 });
 
