@@ -9455,7 +9455,7 @@ mod baseline_tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn a_folder_a_failed_mode_switch_left_is_not_synced_until_repaired() {
-        use crate::proton_mode_switch::{ProtonMode, SwitchTargets, UnrepairedSwitch};
+        use crate::proton_mode_switch::{HeldFolder, ProtonMode, SwitchTargets, UnrepairedSwitch};
         with_scratch_index(async {
             let ftp = scripted_ftp_server("/home/u").await;
             let (_vault_dir, store, _guard) = open_test_vault();
@@ -9473,7 +9473,10 @@ mod baseline_tests {
                 profile_id: "srv_h".to_string(),
                 profile_name: "nas".to_string(),
                 to: ProtonMode::Native,
-                folders: vec!["/docs".to_string()],
+                folders: vec![HeldFolder {
+                    pair: None,
+                    folder: "/docs".to_string(),
+                }],
             })
             .unwrap();
 

@@ -147,9 +147,25 @@ it('shows a profile folder written as a URL by its host only, anywhere in the wi
 
 it('shows a URL folder of a login-relative profile by its host only, saved with or without ~/, in the list, the root label and its title', async () => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-    // Written as a URL, and saved already in `~/` form.
-    const written = ['https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g', '~/https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g'];
-    for (const [protocol, initialPath] of (['sftp', 'ftp'] as const).flatMap(p => written.map(w => [p, w] as const))) {
+    // Written as a URL, and saved already in `~/` form: a password with
+    // `@` keeps its user part to the last `@`, and one with a `/`, which no
+    // parser reads as a user part, shows the scheme only, whether the rest
+    // parses as a host and port or does not parse.
+    const url = 'https://alice:pa55word@example.com/T0KEN-opaque/data?sig=s3cret#fr4g';
+    const atInPassword = 'https://alice:pa55@w0rd@example.com/T0KEN-opaque/data';
+    const slashInPassword = 'https://alice:pa55/w0rd@example.com/T0KEN-opaque/data';
+    const slashInDigitPassword = 'https://alice:5512/w0rd@example.com/T0KEN-opaque/data';
+    const written: [string, string][] = [
+        [url, '~/https://example.com/…/'],
+        [`~/${url}`, '~/https://example.com/…/'],
+        [atInPassword, '~/https://example.com/…/'],
+        [`~/${atInPassword}`, '~/https://example.com/…/'],
+        [slashInPassword, '~/https://…/'],
+        [`~/${slashInPassword}`, '~/https://…/'],
+        [slashInDigitPassword, '~/https://…/'],
+        [`~/${slashInDigitPassword}`, '~/https://…/'],
+    ];
+    for (const [protocol, [initialPath, shown]] of (['sftp', 'ftp'] as const).flatMap(p => written.map(w => [p, w] as const))) {
         mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 22, username: 'u', protocol, initialPath }];
         mocks.invoke.mockImplementation(async (command: string) => command === 'get_default_cloud_folder' ? '/home/u/AeroCloud' : null);
         host = document.createElement('div'); document.body.append(host); root = createRoot(host);
@@ -160,10 +176,10 @@ it('shows a URL folder of a login-relative profile by its host only, saved with 
         // The folder opens under the login folder: the label carries `~/`.
         const label = [...host.querySelectorAll('span[title]')].find(s => s.getAttribute('title')?.startsWith('~/'));
         const name = `${protocol} ${initialPath}`;
-        expect(label?.getAttribute('title'), name).toBe('~/https://example.com/…/');
-        expect(label?.textContent?.trim(), name).toBe('~/https://example.com/…/');
+        expect(label?.getAttribute('title'), name).toBe(shown);
+        expect(label?.textContent?.trim(), name).toBe(shown);
         // The profile list, the label and its title alike.
-        for (const secret of ['pa55word', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, name).not.toContain(secret);
+        for (const secret of ['alice', 'pa55', '5512', 'w0rd', 'T0KEN-opaque', 's3cret', 'fr4g']) expect(host.innerHTML, name).not.toContain(secret);
         await React.act(async () => root!.unmount()); host.remove(); root = undefined;
     }
 });
