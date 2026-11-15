@@ -9351,11 +9351,18 @@ pub(crate) fn copy_into_place(
 /// created at `to` after an absence check is refused with `AlreadyExists`,
 /// never replaced. A filesystem without the native no-replace rename gets a
 /// hard link, which refuses an existing name the same way, and then the
-/// temporary is removed.
+/// temporary is removed. One with neither (exFAT, FAT and SMB on macOS, a
+/// FUSE mount whose server has neither) gets [`rename_if_absent`], the
+/// strongest publication it allows: the plain rename such a copy always
+/// had, right after its own absence check.
 #[cfg(not(windows))]
 fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    let unsupported = NEITHER_NO_REPLACE_NOR_LINK.with(std::cell::Cell::get);
+    #[cfg(not(test))]
+    let unsupported = false;
     #[cfg(target_os = "linux")]
-    {
+    if !unsupported {
         use std::os::unix::ffi::OsStrExt;
         let source = std::ffi::CString::new(temp.as_os_str().as_bytes())?;
         let target = std::ffi::CString::new(to.as_os_str().as_bytes())?;
@@ -9378,7 +9385,7 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
         }
     }
     #[cfg(target_os = "macos")]
-    {
+    if !unsupported {
         use std::os::unix::ffi::OsStrExt;
         let source = std::ffi::CString::new(temp.as_os_str().as_bytes())?;
         let target = std::ffi::CString::new(to.as_os_str().as_bytes())?;
@@ -9393,11 +9400,40 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
             return Err(error);
         }
     }
-    std::fs::hard_link(temp, to)?;
-    if std::fs::remove_file(temp).is_err() {
-        warn!("Copy published, but its temporary name could not be removed");
+    let linked = if unsupported {
+        Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+    } else {
+        std::fs::hard_link(temp, to)
+    };
+    match linked {
+        Ok(()) => {
+            if std::fs::remove_file(temp).is_err() {
+                warn!("Copy published, but its temporary name could not be removed");
+            }
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
+        Err(_) => rename_if_absent(temp, to),
     }
-    Ok(())
+}
+
+/// Rename `temp` to `to` when nothing is at `to` as it starts: the
+/// publication of a filesystem that refuses both atomic steps of
+/// [`rename_no_replace`].
+#[cfg(not(windows))]
+fn rename_if_absent(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::symlink_metadata(to) {
+        Ok(_) => Err(std::io::Error::from(std::io::ErrorKind::AlreadyExists)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => std::fs::rename(temp, to),
+        Err(e) => Err(e),
+    }
+}
+
+#[cfg(all(test, not(windows)))]
+thread_local! {
+    /// The filesystem under the test has neither a no-replace rename nor
+    /// hard links.
+    static NEITHER_NO_REPLACE_NOR_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// [`rename_no_replace`] on Windows: `MoveFileExW` without
@@ -9776,6 +9812,41 @@ mod native_local_copy_tests {
         let (copied, names, contents) = copy_while_the_destination_appears(LocalPublish::Replace);
         assert_eq!(copied, "Ok(())");
         assert_eq!(contents, b"ours");
+        assert_eq!(names, ["copy.txt"]);
+    }
+
+    /// A filesystem with neither a no-replace rename nor hard links refused
+    /// every `overwrite=false` copy, which its plain rename used to publish.
+    /// There the publication checks the name is free and renames at once:
+    /// the copy publishes, and a destination created before that step is
+    /// still kept.
+    #[cfg(not(windows))]
+    #[test]
+    fn a_copy_that_must_not_overwrite_publishes_where_neither_atomic_step_exists() {
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("copy.txt");
+        let probe = tempfile::NamedTempFile::new().unwrap();
+        let permissions = probe.as_file().metadata().unwrap().permissions();
+        let published = copy_into_place(
+            &mut &b"ours"[..],
+            permissions,
+            &to,
+            &AtomicBool::new(false),
+            LocalPublish::NoReplace,
+        );
+        let names: Vec<String> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        let raced = copy_while_the_destination_appears(LocalPublish::NoReplace);
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
+        assert!(published.is_ok(), "{published:?}");
+        assert_eq!(std::fs::read(&to).unwrap(), b"ours");
+        assert_eq!(names, ["copy.txt"]);
+        let (copied, names, contents) = raced;
+        assert!(copied.contains(DEST_EXISTS_MARKER), "{copied}");
+        assert_eq!(contents, b"theirs");
         assert_eq!(names, ["copy.txt"]);
     }
 
