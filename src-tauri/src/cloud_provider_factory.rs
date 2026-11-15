@@ -361,9 +361,62 @@ fn identity_root(profile: &serde_json::Value, remote_folder: &str) -> Result<Str
 /// [`crate::providers::sftp::resolve_remote_path`]). A blank folder is the
 /// root itself and any other relative one is opened under it.
 fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::Value) -> bool {
+    let protocol = profile
+        .get("protocol")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    if remote_folder == "/" && SLASH_IS_THE_STARTING_FOLDER.contains(&protocol) {
+        return false;
+    }
     remote_folder.starts_with('/')
         || (is_ssh_profile(profile)
             && crate::crypt_overlay_provider::is_login_relative_scope(remote_folder))
+}
+
+/// The protocols whose `/` is the profile's starting folder rather than the
+/// top of the server, container or bucket. On S3 the starting folder is the
+/// bucket prefix (`S3Config::prefix` is `initial_path`) and `/` reads that
+/// prefix (`S3Provider::prefix_of`), so a remote folder of `/` follows the
+/// root. Azure Blob reads `/` as the container root (`AzureProvider::cd`),
+/// Swift as the container root (`SwiftProvider::cd` joins an absolute path as
+/// given), B2 as the bucket root (`B2Provider::resolved_path`), and every
+/// other provider as the server or account root. Pinned by
+/// `a_slash_remote_folder_follows_the_root_only_where_slash_is_the_starting_folder`.
+const SLASH_IS_THE_STARTING_FOLDER: &[&str] = &["s3"];
+
+/// Whether the profile root still has to be entered once the provider has
+/// connected, given where it stands (`pwd`). One owner per connect: a
+/// provider that honours `initial_path` (FTP, SFTP, WebDAV, S3, most native
+/// providers) already stands in the root, and entering a relative root again
+/// stepped into it twice (`/home/u/ /reports/ /reports`); a provider that
+/// ignores it (Filen opens at the account root) still stands at its top.
+fn root_still_to_enter(root: &str, here: &str) -> bool {
+    if root.trim().is_empty() || root == "/" {
+        return false;
+    }
+    let bare = |p: &str| -> String {
+        if p.len() > 1 {
+            p.trim_end_matches('/').to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    if root.starts_with('/') {
+        return bare(here) != bare(root);
+    }
+    let here = bare(here);
+    here.is_empty() || here == "/"
+}
+
+/// Enter the profile root after the connect, unless the provider already
+/// stands in it (`root_still_to_enter`).
+async fn enter_root_once(provider: &mut dyn StorageProvider, root: &str) -> Result<(), String> {
+    let here = provider.pwd().await.unwrap_or_default();
+    if root_still_to_enter(root, &here) {
+        enter_profile_root(provider, Some(root)).await
+    } else {
+        Ok(())
+    }
 }
 
 fn is_ssh_profile(profile: &serde_json::Value) -> bool {
@@ -618,7 +671,7 @@ async fn create_via_factory(
     // root), so the root is entered explicitly, as the CLI does before it wraps
     // a crypt overlay: the overlay unlocks where the provider stands.
     if let Some(root) = &root {
-        enter_profile_root(&mut *provider, Some(root)).await?;
+        enter_root_once(&mut *provider, root).await?;
     }
 
     // Config identity is immutable here; authenticated identity further isolates API accounts.
@@ -1260,6 +1313,156 @@ mod tests {
 
     fn root_ok(profile: serde_json::Value) -> String {
         profile_root(&profile).expect("a resolvable root")
+    }
+
+    #[test]
+    fn a_slash_remote_folder_follows_the_root_only_where_slash_is_the_starting_folder() {
+        let before =
+            |protocol: &str| serde_json::json!({ "protocol": protocol, "initialPath": "/reports" });
+        let after = |protocol: &str| serde_json::json!({ "protocol": protocol, "initialPath": "/reports " });
+        // S3: `/` is the bucket prefix the root names, so a padded root is
+        // another prefix and another identity; an unpadded one keeps main's.
+        assert_ne!(
+            identity_root(&before("s3"), "/").unwrap(),
+            identity_root(&after("s3"), "/").unwrap()
+        );
+        assert_eq!(identity_root(&before("s3"), "/").unwrap(), "/reports");
+        assert!(!remote_folder_is_root_independent("/", &before("s3")));
+        // An absolute folder below `/` names its own prefix on S3 too.
+        assert!(remote_folder_is_root_independent("/cloud/", &before("s3")));
+        // `/` is the container, bucket or server root everywhere else.
+        for protocol in [
+            "azure",
+            "swift",
+            "backblaze",
+            "ftp",
+            "webdav",
+            "sftp",
+            "googledrive",
+        ] {
+            assert!(
+                remote_folder_is_root_independent("/", &before(protocol)),
+                "{protocol}"
+            );
+            assert_eq!(
+                identity_root(&before(protocol), "/").unwrap(),
+                identity_root(&after(protocol), "/").unwrap(),
+                "{protocol}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_root_is_entered_once_whoever_opened_it() {
+        // (root, where the provider stands after connect, enter?)
+        let cases = [
+            // An absolute root: entered unless the provider already stands in it.
+            ("/reports", "/reports", false),
+            ("/reports/", "/reports", false),
+            ("/reports ", "/reports ", false),
+            ("/reports", "/", true),
+            ("/reports", "/home/u", true),
+            // A relative root: the provider placed it at connect unless it
+            // ignores initial_path and still stands at its top.
+            (" /reports", "/home/u/ /reports", false),
+            ("~/docs", "/home/u/docs", false),
+            ("docs", "/", true),
+            ("docs", "", true),
+            // Nothing to enter.
+            ("/", "/home/u", false),
+            ("  ", "/", false),
+        ];
+        for (root, here, enter) in cases {
+            assert_eq!(
+                root_still_to_enter(root, here),
+                enter,
+                "{root:?} at {here:?}"
+            );
+        }
+    }
+
+    /// An FTP profile whose root is relative (a leading space) is entered
+    /// with ONE CWD: the provider's connect places it, the factory path does
+    /// not enter it again.
+    #[tokio::test]
+    async fn an_ftp_relative_root_gets_one_cwd() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let cwds = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = cwds.clone();
+        tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let (read, mut write) = socket.into_split();
+            let mut lines = BufReader::new(read).lines();
+            let mut cwd = "/home/u".to_string();
+            write.write_all(b"220 ready\r\n").await.unwrap();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let (verb, arg) = line.split_once(' ').unwrap_or((line.as_str(), ""));
+                let reply = match verb.to_ascii_uppercase().as_str() {
+                    "USER" => "331 password\r\n".to_string(),
+                    "PASS" => "230 logged in\r\n".to_string(),
+                    "CWD" => {
+                        seen.lock().unwrap().push(arg.to_string());
+                        cwd = if arg.starts_with('/') {
+                            arg.to_string()
+                        } else {
+                            format!("{cwd}/{arg}")
+                        };
+                        "250 ok\r\n".to_string()
+                    }
+                    "PWD" => format!("257 \"{cwd}\"\r\n"),
+                    "FEAT" => "211-Features:\r\n211 End\r\n".to_string(),
+                    "QUIT" => {
+                        let _ = write.write_all(b"221 bye\r\n").await;
+                        break;
+                    }
+                    _ => "200 ok\r\n".to_string(),
+                };
+                if write.write_all(reply.as_bytes()).await.is_err() {
+                    break;
+                }
+            }
+        });
+        let profile = serde_json::json!({ "protocol": "ftp", "initialPath": " /reports" });
+        let root = profile_root(&profile).unwrap();
+        let config = ProviderConfig {
+            name: "relative".into(),
+            provider_type: ProviderType::Ftp,
+            host: "127.0.0.1".into(),
+            port: Some(port),
+            username: Some("u".into()),
+            password: Some("p".into()),
+            initial_path: Some(root.clone()),
+            extra: HashMap::new(),
+        };
+        // Bounded: a reply the client does not expect must fail the test,
+        // not hang the suite.
+        let here = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            let mut provider = crate::providers::ProviderFactory::create(&config).unwrap();
+            provider.connect().await.unwrap();
+            enter_root_once(&mut *provider, &root).await.unwrap();
+            provider.pwd().await.unwrap()
+        })
+        .await
+        .expect("the FTP exchange finished");
+        assert_eq!(*cwds.lock().unwrap(), vec![" /reports".to_string()]);
+        assert_eq!(here, "/home/u/ /reports");
+    }
+
+    /// The factory connect enters the root through `enter_root_once`, the
+    /// check the FTP test above runs, and never unconditionally.
+    #[test]
+    fn the_factory_connect_enters_the_root_once() {
+        let source = include_str!("cloud_provider_factory.rs");
+        let start = source.find("async fn create_via_factory(").unwrap();
+        let body = &source[start..start + source[start..].find("\n}\n").unwrap()];
+        assert_eq!(
+            body.matches("enter_root_once(&mut *provider, root)")
+                .count(),
+            1
+        );
+        assert!(!body.contains("enter_profile_root("), "{body}");
     }
 
     /// The identity follows the data path. With an absolute remote folder
