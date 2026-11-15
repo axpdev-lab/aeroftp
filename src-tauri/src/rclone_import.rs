@@ -2884,6 +2884,7 @@ pub struct TemplateEngineOutput {
     pub warnings: Vec<TemplateBlockWarning>,
     pub parse_issues: Vec<IniParseIssue>,
     pub secret_blocks: HashMap<String, TemplateSecretBlockMeta>,
+    pub crypt_secret_ancestors: HashMap<String, Vec<String>>,
     pub block_start_lines: HashMap<String, usize>,
     pub total_blocks: usize,
     pub source_label: String,
@@ -3172,36 +3173,14 @@ pub fn import_rclone(config_path: &Path) -> Result<RcloneImportResult, String> {
     })
 }
 
-/// [`evaluate_template_text_with_skipped`] with no block skipped, for tests.
-#[cfg(test)]
+/// Evaluate raw INI configuration template text into AeroFTP profile drafts,
+/// line-numbered syntax diagnostics, and explicit-choice secret metadata without
+/// guessing or touching disk / vault.
 pub(crate) fn evaluate_template_text(
     content: &str,
     base_dir: Option<&Path>,
     source_label: &str,
     secret_policy: &TemplateSecretPolicy,
-) -> Result<TemplateEngineOutput, String> {
-    let empty_skipped = HashSet::new();
-    evaluate_template_text_with_skipped(
-        content,
-        base_dir,
-        source_label,
-        secret_policy,
-        &empty_skipped,
-    )
-}
-
-/// Evaluate raw INI configuration template text into AeroFTP profile drafts,
-/// line-numbered syntax diagnostics, and explicit-choice secret metadata without
-/// guessing or touching disk / vault. `existing_skip_names` are the blocks
-/// skipped because a profile of that name exists (Skip mode): a `crypt`
-/// wrapper over one resolves that base's secret form through its own explicit
-/// choice, while an imported base keeps requiring a choice on the base itself.
-pub(crate) fn evaluate_template_text_with_skipped(
-    content: &str,
-    base_dir: Option<&Path>,
-    source_label: &str,
-    secret_policy: &TemplateSecretPolicy,
-    existing_skip_names: &HashSet<String>,
 ) -> Result<TemplateEngineOutput, String> {
     let cap = crate::bridge_shared::MAX_IMPORT_FILE_BYTES as usize;
     if content.len() > cap {
@@ -3296,7 +3275,8 @@ pub(crate) fn evaluate_template_text_with_skipped(
 
     // Collect wrapper chains and allow an `alias` answer to satisfy an unchosen
     // inherited base block when the base itself has no direct policy choice (e.g.
-    // because the base is skipped or deselected).
+    // because the base is skipped). `crypt` wrappers do not infer a skipped
+    // base's form because `crypt` carries its own separate password.
     let wrapper_ancestors =
         |sections: &HashMap<String, RcloneRemote>, start_name: &str| -> Vec<String> {
             let mut chain = Vec::new();
@@ -3329,9 +3309,6 @@ pub(crate) fn evaluate_template_text_with_skipped(
             chain
         };
 
-    let is_ancestor_omitted =
-        |ancestor: &str| -> bool { existing_skip_names.contains(ancestor.trim()) };
-
     let mut alias_derived_forms: HashMap<String, TemplateSecretForm> = HashMap::new();
     for name in &ordered_names {
         let Some(remote) = sections.get(name) else {
@@ -3341,16 +3318,13 @@ pub(crate) fn evaluate_template_text_with_skipped(
             .get("type")
             .map(|t| t.trim().to_ascii_lowercase())
             .unwrap_or_default();
-        if !matches!(rtype.as_str(), "alias" | "crypt") {
+        if rtype != "alias" {
             continue;
         }
         let Some(wrapper_form) = secret_policy.form_for(name) else {
             continue;
         };
         for ancestor in wrapper_ancestors(&sections, name) {
-            if rtype == "crypt" && !is_ancestor_omitted(&ancestor) {
-                continue;
-            }
             if own_secret_blocks
                 .get(&ancestor)
                 .is_some_and(|m| m.chosen_form.is_none())
@@ -3394,7 +3368,9 @@ pub(crate) fn evaluate_template_text_with_skipped(
 
     // Propagate wrapped base (and intermediate wrapper) secret-form metadata
     // onto `alias` and `crypt` blocks so preview and apply enforce secret-form
-    // choices uniformly along wrapper chains.
+    // choices uniformly along wrapper chains, and record each `crypt` block's
+    // secret-carrying ancestors for preview inheritance reporting.
+    let mut crypt_secret_ancestors: HashMap<String, Vec<String>> = HashMap::new();
     for (name, remote) in &sections {
         let mut chain_metas: Vec<TemplateSecretBlockMeta> = Vec::new();
         if let Some(own) = own_secret_blocks.get(name) {
@@ -3406,21 +3382,17 @@ pub(crate) fn evaluate_template_text_with_skipped(
             .unwrap_or_default();
         let wrapper_form = secret_policy.form_for(name);
         if matches!(rtype.as_str(), "alias" | "crypt") {
+            let mut crypt_inherited = Vec::new();
             for ancestor in wrapper_ancestors(&sections, name) {
                 if let Some(meta) = own_secret_blocks.get(&ancestor) {
-                    if meta.chosen_form.is_none()
-                        && rtype == "crypt"
-                        && is_ancestor_omitted(&ancestor)
-                        && wrapper_form.is_some()
-                    {
-                        chain_metas.push(TemplateSecretBlockMeta {
-                            looks_obscured: meta.looks_obscured,
-                            chosen_form: wrapper_form,
-                        });
-                    } else {
-                        chain_metas.push(meta.clone());
+                    chain_metas.push(meta.clone());
+                    if rtype == "crypt" {
+                        crypt_inherited.push(ancestor);
                     }
                 }
+            }
+            if rtype == "crypt" && !crypt_inherited.is_empty() {
+                crypt_secret_ancestors.insert(name.clone(), crypt_inherited);
             }
         }
         if !chain_metas.is_empty() {
@@ -3484,6 +3456,7 @@ pub(crate) fn evaluate_template_text_with_skipped(
         warnings,
         parse_issues: parsed.issues,
         secret_blocks,
+        crypt_secret_ancestors,
         block_start_lines,
         total_blocks: outcome.total_remotes,
         source_label: source_label.to_string(),
