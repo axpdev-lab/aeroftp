@@ -420,13 +420,19 @@ fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::
 /// The protocols whose `/` is the profile's starting folder rather than the
 /// top of the server, container or bucket. On S3 the starting folder is the
 /// bucket prefix (`S3Config::prefix` is `initial_path`) and `/` reads that
-/// prefix (`S3Provider::prefix_of`), so a remote folder of `/` follows the
-/// root. Azure Blob reads `/` as the container root (`AzureProvider::cd`),
-/// Swift as the container root (`SwiftProvider::cd` joins an absolute path as
-/// given), B2 as the bucket root (`B2Provider::resolved_path`), and every
-/// other provider as the server or account root. Pinned by
-/// `a_slash_remote_folder_follows_the_root_only_where_slash_is_the_starting_folder`.
-const SLASH_IS_THE_STARTING_FOLDER: &[&str] = &["s3"];
+/// prefix (`S3Provider::prefix_of`). On WebDAV the connect keeps the starting
+/// folder, as written, as its server root (`WebDavProvider::connect`), and
+/// `cd("/")` and `list("/")` both go there. On both, a remote folder of `/`
+/// follows the root. Azure Blob reads `/` as the container root
+/// (`AzureProvider::cd`), Swift as the container root (`SwiftProvider::cd`
+/// joins an absolute path as given), B2 as the bucket root (`b2_key` of the
+/// absolute path), Cloudinary and ImageKit as their top (`resolve_path`
+/// keeps an absolute path), FTP, FTPS, SFTP and SCP as the server's `/`, and
+/// every other provider as the account root (its connect only enters the
+/// starting folder). Pinned by
+/// `a_slash_remote_folder_follows_the_root_only_where_slash_is_the_starting_folder`
+/// and, on the wire, `a_webdav_slash_lists_the_root_the_identity_names`.
+const SLASH_IS_THE_STARTING_FOLDER: &[&str] = &["s3", "webdav"];
 
 /// What is left to do with the profile root once the provider has connected,
 /// given where it stands (`pwd`).
@@ -1412,14 +1418,25 @@ mod tests {
         assert!(!remote_folder_is_root_independent("/", &before("s3")));
         // An absolute folder below `/` names its own prefix on S3 too.
         assert!(remote_folder_is_root_independent("/cloud/", &before("s3")));
+        // WebDAV: `/` is the server root the connect keeps, the starting
+        // folder as written.
+        assert_ne!(
+            identity_root(&before("webdav"), "/").unwrap(),
+            identity_root(&after("webdav"), "/").unwrap()
+        );
+        assert_eq!(identity_root(&before("webdav"), "/").unwrap(), "/reports");
+        assert!(!remote_folder_is_root_independent("/", &before("webdav")));
         // `/` is the container, bucket or server root everywhere else.
         for protocol in [
             "azure",
             "swift",
             "backblaze",
             "ftp",
-            "webdav",
+            "ftps",
             "sftp",
+            "scp",
+            "cloudinary",
+            "imagekit",
             "googledrive",
         ] {
             assert!(
@@ -1432,6 +1449,120 @@ mod tests {
                 "{protocol}"
             );
         }
+    }
+
+    /// What a WebDAV `/` lists, on the wire: the connect keeps the starting
+    /// folder as its server root, so two roots that differ by one space list
+    /// two folders, and their identities differ with them.
+    #[tokio::test]
+    async fn a_webdav_slash_lists_the_root_the_identity_names() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        // A WebDAV server where every path is a folder; it records the path
+        // of each PROPFIND.
+        async fn dav_server() -> (String, std::sync::Arc<std::sync::Mutex<Vec<String>>>) {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let url = format!("http://{}", listener.local_addr().unwrap());
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            let paths = seen.clone();
+            tokio::spawn(async move {
+                while let Ok((mut stream, _)) = listener.accept().await {
+                    let paths = paths.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            let mut request = Vec::new();
+                            let mut block = [0u8; 4096];
+                            let end = loop {
+                                match stream.read(&mut block).await {
+                                    Ok(0) | Err(_) => return,
+                                    Ok(n) => request.extend_from_slice(&block[..n]),
+                                }
+                                if let Some(i) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                                    break i + 4;
+                                }
+                            };
+                            let head = String::from_utf8_lossy(&request[..end]).to_string();
+                            let length = head
+                                .lines()
+                                .find_map(|l| {
+                                    let (k, v) = l.split_once(':')?;
+                                    k.eq_ignore_ascii_case("content-length")
+                                        .then(|| v.trim().parse::<usize>().unwrap())
+                                })
+                                .unwrap_or(0);
+                            while request.len() < end + length {
+                                match stream.read(&mut block).await {
+                                    Ok(0) | Err(_) => return,
+                                    Ok(n) => request.extend_from_slice(&block[..n]),
+                                }
+                            }
+                            let mut words = head.split_whitespace();
+                            let method = words.next().unwrap_or("").to_string();
+                            let path = words.next().unwrap_or("/").to_string();
+                            let reply = if method == "PROPFIND" {
+                                paths.lock().unwrap().push(path.clone());
+                                let body = format!(
+                                    "<?xml version=\"1.0\"?><d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>{path}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"
+                                );
+                                format!("HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\n\r\n{}", body.len(), body)
+                            } else {
+                                "HTTP/1.1 405 Method Not Allowed\r\nContent-Length: 0\r\n\r\n"
+                                    .to_string()
+                            };
+                            if stream.write_all(reply.as_bytes()).await.is_err() {
+                                return;
+                            }
+                        }
+                    });
+                }
+            });
+            (url, seen)
+        }
+        // The profile's root entered as the factory enters it, then the
+        // config's remote folder `/`: the folder that `/` lists, and the path
+        // of the last PROPFIND, the listing of `/`.
+        async fn slash_on_webdav(initial: &str) -> (String, String) {
+            let (url, seen) = dav_server().await;
+            let profile = serde_json::json!({ "protocol": "webdav", "initialPath": initial });
+            let root = profile_root(&profile).unwrap();
+            let config = ProviderConfig {
+                name: "dav".into(),
+                provider_type: ProviderType::WebDav,
+                host: url,
+                port: None,
+                username: Some("u".into()),
+                password: Some("p".into()),
+                initial_path: Some(root.clone()),
+                extra: HashMap::new(),
+            };
+            tokio::time::timeout(std::time::Duration::from_secs(20), async {
+                let mut provider = crate::providers::ProviderFactory::create(&config).unwrap();
+                provider.connect().await.unwrap();
+                enter_root_once(&mut *provider, &root).await.unwrap();
+                provider.cd("/").await.unwrap();
+                let here = provider.pwd().await.unwrap();
+                provider.list("/").await.unwrap();
+                let listed = seen.lock().unwrap().last().cloned().unwrap();
+                (here, listed)
+            })
+            .await
+            .expect("the WebDAV exchange finished")
+        }
+        let (plain_here, plain_listed) = slash_on_webdav("/reports").await;
+        let (padded_here, padded_listed) = slash_on_webdav("/reports ").await;
+        assert_eq!(plain_here, "/reports");
+        assert_eq!(padded_here, "/reports ");
+        assert_ne!(plain_listed, padded_listed);
+        assert!(plain_listed.starts_with("/reports"), "{plain_listed}");
+        let identity = |initial: &str| {
+            identity_root(
+                &serde_json::json!({ "protocol": "webdav", "initialPath": initial }),
+                "/",
+            )
+            .unwrap()
+        };
+        // Two folders, two identities; the unpadded one keeps main's form.
+        assert_eq!(identity("/reports"), "/reports");
+        assert_eq!(identity("/reports "), "/reports ");
     }
 
     #[test]
