@@ -125,7 +125,7 @@ describe('a queued transfer', () => {
             isConnected: true,
             remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
-            activeSessionId: 'A', aeroVaultOverlaySession: null,
+            activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null },
             liveConnectionParams: session.connectionParams,
             isSameConnection,
             savedProfileIdOf,
@@ -161,7 +161,7 @@ describe('a queued transfer', () => {
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
@@ -183,7 +183,7 @@ describe('a queued transfer', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
@@ -732,11 +732,58 @@ describe('a local file uploaded into another folder of a vault overlay', () => {
         expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedOverlayChanged' });
     });
 
+    // CodeRabbit CLI on the last delta of #1561: round 3 left the save checks
+    // on the full target, so a provider file opened before a vault was opened
+    // could no longer be saved.
+    it('saves a remote file opened before a vault was opened, on the provider', async () => {
+        const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] } });
+        const file = { name: 'a.txt', path: `${REMOTE}/a.txt`, isRemote: true, target: f.snapshotQueuedTarget() };
+        f.switchVault('vault-opened-since');
+        await f.saveDevToolsFile('edited', file as never);
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'save_remote_file')).toHaveLength(1);
+        expect(f.notify.error).not.toHaveBeenCalled();
+    });
+
+    // CodeRabbit CLI on the last delta of #1561: a vault opened while a
+    // plaintext upload waited for its target. The upload's continuation can
+    // run before React commits the new session, so the check read the session
+    // from state and let the upload through. It now reads App's ref, which
+    // the set updates at once.
+    it('refuses a plaintext upload when a vault opens before React commits it', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] } });
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            if (command === 'provider_gui_target_epoch') await held;
+            return answer(command, args);
+        });
+        // App's own setter and change handler, with React's commit left out:
+        // the state setter records the value and renders nothing.
+        const source = between(APP, '  const aeroVaultSessionRef = useRef', '\n  const ')
+            + '\n' + between(APP, '  const setAeroVaultOverlaySession = useCallback(', '\n  const [showCryptomatorBrowser')
+            + '\n' + between(APP, '  const handleAeroVaultOverlaySessionChange = useCallback(', '\n  const clearAeroVaultOverlaySession');
+        const { code } = await transformWithOxc(source, 'vault-set.ts');
+        const ctx = { useRef: () => f.aeroVaultSessionRef, useCallback: <T,>(fn: T) => fn, setAeroVaultOverlaySessionState: vi.fn(), activeSessionId: 'A', setSessions: vi.fn() };
+        const change = new Function(...Object.keys(ctx), `${code}; return handleAeroVaultOverlaySessionChange;`)(...Object.values(ctx)) as (session: { sessionId: string } | null) => void;
+        const dropping = f.drop([local('up.txt')], false, REMOTE, 'local');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        change({ sessionId: 'vault-opened-meanwhile' });
+        expect(ctx.setAeroVaultOverlaySessionState).toHaveBeenCalledWith({ sessionId: 'vault-opened-meanwhile' });
+        release();
+        await dropping;
+        expect(f.invoke.mock.calls.filter(([command]) => /upload|aerovault_overlay_add_file/.test(command))).toEqual([]);
+    });
+
     // The editor reads and saves through the provider, never a vault session:
     // its target leaves the vault out, so a vault opened meanwhile refuses
     // no save of a provider file.
-    it('the editor\'s remote target leaves the vault session out', () => {
-        expect(APP_CODE).toContain('changedSince: (target: QueuedTarget) => queuedTargetProblem({ ...target, aeroVault: aeroVaultOverlaySession?.sessionId ?? null }) !== null,');
+    it('the editor\'s remote target leaves the vault session out, in its read and both save checks', () => {
+        expect(APP_CODE).toContain('const editorTargetProblem = (target: QueuedTarget) =>\n    queuedTargetProblem({ ...target, aeroVault: aeroVaultSessionRef.current?.sessionId ?? null });');
+        expect(APP_CODE).toContain('changedSince: (target: QueuedTarget) => editorTargetProblem(target) !== null,');
+        const save = between(APP_CODE, 'const saveDevToolsFile = useLatestCallback(', "await invoke('save_remote_file'");
+        expect(save.match(/editorTargetProblem\(file\.target\)/g)).toHaveLength(2);
+        expect(save).not.toContain('queuedTargetProblem(');
     });
 
     // A Paste reaches the vault upload in the folder its listing can read,
@@ -1175,7 +1222,7 @@ describe('a direct remote action', () => {
         const ctx = {
             useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, liveConnectionParams: session.connectionParams,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
             isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
@@ -1247,7 +1294,7 @@ describe('a delete that asks for a commit message', () => {
             gitHubRepoInfo: { branch: 'main', writeModeKind: 'direct', workingBranch: null },
             setGitHubCommitDialog: (value: { onCommit: (message: string) => void } | null) => { if (value) dialog.onCommit = value.onCommit; },
             humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
-            usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
+            usesProviderApi: () => true, aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, confirmBeforeDelete: false,
             setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
             deleteGesturesRef: { current: [] }, isDeletionCancelled,
         };

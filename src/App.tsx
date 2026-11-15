@@ -1352,7 +1352,18 @@ const App: React.FC = () => {
   // meanwhile) sees a mismatched token and discards its result.
   const aeroSyncCompareSeqRef = useRef(0);
   const [showVaultPanel, setShowVaultPanel] = useState<false | { mode?: 'home' | 'create' | 'open'; containerKind?: 'vault' | 'zip'; path?: string; files?: string[]; folderPath?: string; outputDir?: string }>(false);
-  const [aeroVaultOverlaySession, setAeroVaultOverlaySession] = useState<AeroVaultOverlaySession | null>(null);
+  const [aeroVaultOverlaySession, setAeroVaultOverlaySessionState] = useState<AeroVaultOverlaySession | null>(null);
+  // The vault session as last set, before React commits it. A transfer whose
+  // awaited epoch resolves after a vault opened, and before the render, read
+  // the previous session from state: its target check let it through and it
+  // went out without the vault. Target checks and the transfer routing read
+  // this, which every set updates at once.
+  const aeroVaultSessionRef = useRef<AeroVaultOverlaySession | null>(null);
+  const setAeroVaultOverlaySession = useCallback((next: SetStateAction<AeroVaultOverlaySession | null>) => {
+    const value = typeof next === 'function' ? next(aeroVaultSessionRef.current) : next;
+    aeroVaultSessionRef.current = value;
+    setAeroVaultOverlaySessionState(value);
+  }, []);
   const [showCryptomatorBrowser, setShowCryptomatorBrowser] = useState<false | { initialVaultPath?: string }>(false);
   const [showRcloneCryptUnlock, setShowRcloneCryptUnlock] = useState<CryptUnlockTarget | null>(null);
   const [rcloneCryptVaultId, setRcloneCryptVaultId] = useState<string | null>(null);
@@ -2869,10 +2880,7 @@ const App: React.FC = () => {
     toast,
     remoteTarget: {
       snapshot: () => snapshotQueuedTarget(),
-      // The editor reads and saves through the provider itself
-      // (`preview_remote_file`, `save_remote_file`), never through an
-      // AeroVault session: another vault opened meanwhile changes nothing.
-      changedSince: (target: QueuedTarget) => queuedTargetProblem({ ...target, aeroVault: aeroVaultOverlaySession?.sessionId ?? null }) !== null,
+      changedSince: (target: QueuedTarget) => editorTargetProblem(target) !== null,
       changedMessage: () => t('toast.openedOnAnotherServer'),
     },
   });
@@ -11236,7 +11244,7 @@ const App: React.FC = () => {
     // Check if we're using a Provider (protocol of the live connection)
     const protocol = liveConnectionParams.protocol;
     const isProvider = usesProviderApi(protocol);
-    const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+    const isAeroVaultOverlay = !!aeroVaultSessionRef.current?.sessionId;
     // True only when the file or folder actually landed: a "cut" paste deletes
     // the source on this answer, so a skip, a cancel or an error must say no.
     let completed = false;
@@ -11343,7 +11351,7 @@ const App: React.FC = () => {
           const remoteModified = remoteFileInfo?.modified || undefined;
           if (isAeroVaultOverlay) {
             await invoke<string>('aerovault_overlay_extract_entry', {
-              sessionId: aeroVaultOverlaySession?.sessionId,
+              sessionId: aeroVaultSessionRef.current?.sessionId,
               entryPath: remoteFilePath,
               outputPath: localFilePath,
             });
@@ -11435,7 +11443,7 @@ const App: React.FC = () => {
       // Check if we're using a Provider (protocol of the live connection)
       const protocol = liveConnectionParams.protocol;
       const isProvider = usesProviderApi(protocol);
-      const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+      const isAeroVaultOverlay = !!aeroVaultSessionRef.current?.sessionId;
       if (ownership && (!isProvider || isAeroVaultOverlay)) throw new Error('Operation not supported: restored profile transport');
       const isGitHubRepoMode = (protocol === 'github' && !currentRemotePath.startsWith('/.github-releases')) || protocol === 'gitlab';
       // Path construction base: restore path overrides the live panel cwd.
@@ -11585,7 +11593,7 @@ const App: React.FC = () => {
 
         if (isAeroVaultOverlay) {
           await invoke<string>('aerovault_overlay_add_file', {
-            sessionId: aeroVaultOverlaySession?.sessionId,
+            sessionId: aeroVaultSessionRef.current?.sessionId,
             localPlaintextPath: localFilePath,
             remotePlainName: targetName,
             remoteDir: remoteBase,
@@ -11823,7 +11831,7 @@ const App: React.FC = () => {
     connection: connectionNumberOf(liveConnectionParams),
     oauthLogins: oauthLoginCount(oauthLoginKey(liveConnectionParams.protocol, liveProfileId())),
     overlay: liveOverlay(),
-    aeroVault: aeroVaultOverlaySession?.sessionId ?? null,
+    aeroVault: aeroVaultSessionRef.current?.sessionId ?? null,
   }));
 
   /** A queued transfer's Start or Retry, bound to the server it was queued
@@ -11913,9 +11921,15 @@ const App: React.FC = () => {
     if (liveOverlay() !== queuedFor.overlay) return 'transfer.queuedOverlayChanged';
     // Another AeroVault opened on the same connection: the server and its
     // epoch are unchanged, so the vault session is what refuses the write.
-    if ((aeroVaultOverlaySession?.sessionId ?? null) !== queuedFor.aeroVault) return 'transfer.queuedOverlayChanged';
+    if ((aeroVaultSessionRef.current?.sessionId ?? null) !== queuedFor.aeroVault) return 'transfer.queuedOverlayChanged';
     return null;
   });
+
+  /** The editor's target check: it reads and saves through the provider itself
+   *  (`preview_remote_file`, `save_remote_file`), never through an AeroVault
+   *  session, so a vault opened or closed since changes nothing for it. */
+  const editorTargetProblem = (target: QueuedTarget) =>
+    queuedTargetProblem({ ...target, aeroVault: aeroVaultSessionRef.current?.sessionId ?? null });
 
   /** The check a batch runs right before each write, after every await: a
    *  check at the start alone left the overwrite question, the destination
@@ -11947,7 +11961,7 @@ const App: React.FC = () => {
       notify.error(t('toast.saveFailed'), t('toast.saveOnAnotherServer'));
       throw new QueuedTargetChangedError(t('toast.saveOnAnotherServer'));
     };
-    if (file.isRemote && (!file.target || queuedTargetProblem(file.target))) refuse();
+    if (file.isRemote && (!file.target || editorTargetProblem(file.target))) refuse();
     const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
     try {
       if (file.isRemote) {
@@ -11957,7 +11971,7 @@ const App: React.FC = () => {
         // at save time, not at open, so a reconnect to the same server in
         // between does not refuse the save.
         const expectedGeneration = await invoke<number>('provider_connection_generation');
-        if (!file.target || queuedTargetProblem(file.target)) refuse();
+        if (!file.target || editorTargetProblem(file.target)) refuse();
         try {
           await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
         } catch (error) {

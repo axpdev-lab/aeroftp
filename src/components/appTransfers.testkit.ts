@@ -263,6 +263,9 @@ export function fixture(options: Options = {}) {
     },
   });
   const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
+  // The AeroVault session in React state, and App's ref of it, which every set
+  // updates at once, before the render commits the state.
+  const vaultSession: { sessionId: string } | null = options.vaultOverlay ? { sessionId: 'vault-session' } : null;
   const context = {
     // Outside a render a latest-value callback is the function itself.
     useLatestCallback: <T,>(fn: T) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null },
@@ -274,7 +277,7 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: options.vaultOverlay ? { sessionId: 'vault-session' } : null, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
+    liveConnectionParams, aeroVaultOverlaySession: vaultSession, aeroVaultSessionRef: { current: vaultSession }, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
     humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef: { current: 0 },
@@ -337,10 +340,11 @@ export function fixture(options: Options = {}) {
   /** The user opens another AeroVault on the same connection: the server and
    *  its epoch stay, the vault session changes. */
   const switchVault = (sessionId = 'vault-session-b') => {
-    (context.aeroVaultOverlaySession as { sessionId: string }).sessionId = sessionId;
+    if (vaultSession) vaultSession.sessionId = sessionId;
+    else context.aeroVaultSessionRef.current = { sessionId };
   };
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { hardStop, nativeCancel, switchVault, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { hardStop, nativeCancel, switchVault, aeroVaultSessionRef: context.aeroVaultSessionRef, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

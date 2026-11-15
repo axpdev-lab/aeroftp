@@ -93,7 +93,7 @@ export function fixture(options: { hold?: { holdFileCompletions: (ids: readonly 
     isLiveOnProfile: options.ownsProfile ?? (() => true),
     sessions: [{ id: 'A', connectionParams: { protocol } }], activeSessionId: 'A', connectionParams: { protocol },
     liveConnectionParams: { protocol },
-    usesProviderApi, aeroVaultOverlaySession: null, currentRemotePath: '/panel',
+    usesProviderApi, aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, currentRemotePath: '/panel',
     localFiles: direction === 'upload' ? [file('a.bin', 100)] : panel,
     // The rows shown, which a nested row of a flattened search is found in.
     sortedLocalFiles: options.nested ?? [],
