@@ -23754,3 +23754,69 @@ mod connect_install_cancel_tests {
         assert_eq!(PROVIDER_SLOT_INSTALLERS.len(), 5);
     }
 }
+
+#[cfg(test)]
+mod fourshared_attempt_key_tests {
+    use super::*;
+    use crate::credential_store::CredentialStore;
+
+    /// Two connection forms sign in one after the other, each under its own
+    /// attempt key, then the first one connects: it reads its own account's
+    /// token, never the second form's (CodeRabbit on #1565). A form that saves
+    /// onto an existing profile moves its token there.
+    #[test]
+    fn a_4shared_connect_reads_the_token_of_its_own_sign_in() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("fourshared-attempt-test").unwrap();
+        CredentialStore::unlock_with_master("fourshared-attempt-test", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        // Sign-in A, then sign-in B, then connect A.
+        store_fourshared_tokens("srv_attempt_a", "token-a", "secret-a").unwrap();
+        store_fourshared_tokens("srv_attempt_b", "token-b", "secret-b").unwrap();
+        let pair = |token: &str, secret: &str| (token.to_string(), secret.to_string());
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_a").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_b").unwrap(),
+            pair("token-b", "secret-b")
+        );
+
+        // A saves onto an existing profile: its token moves there, B's stays.
+        fourshared_adopt_tokens_inner("srv_attempt_a", "kept").unwrap();
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        assert!(load_fourshared_tokens("srv_attempt_a").is_err());
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_b").unwrap(),
+            pair("token-b", "secret-b")
+        );
+        // No token under the attempt key: nothing to move, nothing changes.
+        fourshared_adopt_tokens_inner("srv_attempt_a", "kept").unwrap();
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
+
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(value) = previous_passphrase {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+}
