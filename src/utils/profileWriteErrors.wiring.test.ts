@@ -433,6 +433,10 @@ describe('saved profile write rejection in production handlers', () => {
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
         // The token of the sign-in swap that afterBackendSwap reports on.
         f.context.latestSettledBackendSwapToken = () => 1;
+        // 4shared signs in under a per-attempt profile id, renewed after a save.
+        f.context.fourSharedTokenProfileId = 'fourshared-attempt';
+        f.context.setPendingFourSharedProfileId = vi.fn();
+        f.context.newFourSharedProfileId = () => 'fourshared-next';
         const marker = mode === '4shared'
             ? 'onConnected={afterBackendSwap(async (handOff, displayName: string) => {'
             : 'onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {';

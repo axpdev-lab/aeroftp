@@ -4099,8 +4099,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : isFourSharedProvider(protocol) ? (
                             <FourSharedConnect
-                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 tokenProfileId={fourSharedTokenProfileId}
+                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {

@@ -15730,7 +15730,7 @@ mod tests {
         );
 
         let (fresh, fresh_log) = Wanderer::in_folder(ProviderType::Sftp, "/home/u");
-        install_connected_provider(&state, Box::new(fresh), Some("p1".to_string()))
+        install_connected_provider(&state, Box::new(fresh), Some("p1".to_string()), None)
             .await
             .unwrap();
         assert!(!state.folder_lost(), "a connect left the mark");
