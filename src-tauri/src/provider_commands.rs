@@ -2854,33 +2854,56 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
     }
 }
 
-/// Normalize the effective WebDAV base collection path for a tab or slot config.
-/// Returns `None` if a `{username}` placeholder is present and cannot be safely expanded.
-fn effective_webdav_base_path(
+/// The root URL a WebDAV connection with these settings requests, built by
+/// the connect's own construction (`WebDavConfig::from_provider_config`:
+/// scheme, base path, `{username}`), then the root listing's `/` placed before
+/// any `?query` or `#fragment` as `WebDavProvider::build_url` does, and parsed,
+/// which normalizes it (`/./`, case). Parsed whole, a base path's trailing
+/// space would be trimmed; before the `/` it is part of the collection's name.
+/// `None` when the connect would refuse the settings.
+fn webdav_connect_target(
     host: &str,
-    base_path: Option<&str>,
+    port: Option<u16>,
     username: Option<&str>,
-) -> Option<String> {
-    let host_ep = endpoint_of(host);
-    let raw = if !host_ep.path.trim().trim_matches('/').is_empty() {
-        host_ep.path.trim_matches('/')
-    } else {
-        base_path
-            .map(|s| s.trim_matches('/'))
-            .filter(|s| !s.trim().is_empty())
-            .unwrap_or("")
+    base_path: Option<&str>,
+) -> Option<url::Url> {
+    let mut extra = HashMap::new();
+    if let Some(base_path) = base_path {
+        extra.insert("base_path".to_string(), base_path.to_string());
+    }
+    let config = ProviderConfig {
+        name: String::new(),
+        provider_type: ProviderType::WebDav,
+        host: host.to_string(),
+        port,
+        username: username.map(str::to_string),
+        password: None,
+        initial_path: None,
+        extra,
     };
-    if raw.is_empty() {
-        return Some(String::new());
-    }
-    if raw.contains("{username}") {
-        let user = username.unwrap_or("");
-        let expanded =
-            crate::providers::types::expand_username_in_url(&format!("/{raw}"), user).ok()?;
-        Some(expanded.trim_matches('/').to_string())
-    } else {
-        Some(raw.to_string())
-    }
+    let webdav = crate::providers::types::WebDavConfig::from_provider_config(&config).ok()?;
+    let (base, tail) = webdav
+        .url
+        .split_at(webdav.url.find(['?', '#']).unwrap_or(webdav.url.len()));
+    url::Url::parse(&format!("{}/{}", base.trim_end_matches('/'), tail)).ok()
+}
+
+/// Whether two WebDAV connect targets are the same collection: the same path
+/// and query, and, where `compare_host`, the same host and port (a port
+/// written in the URL wins, as in the connect).
+fn same_webdav_target(
+    expected: &url::Url,
+    actual: &url::Url,
+    port: u16,
+    actual_port: u16,
+    compare_host: bool,
+) -> bool {
+    let path = |url: &url::Url| url.path().trim_end_matches('/').to_string();
+    path(expected) == path(actual)
+        && expected.query() == actual.query()
+        && (!compare_host
+            || (expected.host_str() == actual.host_str()
+                && expected.port().unwrap_or(port) == actual.port().unwrap_or(actual_port)))
 }
 
 /// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
@@ -2996,30 +3019,46 @@ fn slot_matches_identity(
         .get("base_path")
         .or_else(|| config.extra.get("basePath"))
         .map(String::as_str);
-    let webdav_base_matches = |exp_host: &str, act_host: &str| -> bool {
-        if !is_webdav {
-            return true;
-        }
-        match (
-            effective_webdav_base_path(exp_host, expected.base_path, expected.username),
-            effective_webdav_base_path(act_host, slot_base_path, config.username.as_deref()),
-        ) {
-            (Some(exp), Some(act)) => exp == act,
+    // WebDAV: both sides as the connect builds their URL, path and query
+    // included (the query can select the collection). A side without a host
+    // compares its collection only.
+    let webdav_matches = |exp_host: Option<&str>, act_host: Option<&str>| -> bool {
+        const NO_HOST: &str = "webdav.invalid";
+        let expected_target = webdav_connect_target(
+            exp_host.unwrap_or(NO_HOST),
+            expected.port.filter(|port| *port != 0),
+            expected.username,
+            expected.base_path,
+        );
+        let actual_target = webdav_connect_target(
+            act_host.unwrap_or(NO_HOST),
+            config.port,
+            config.username.as_deref(),
+            slot_base_path,
+        );
+        match (expected_target, actual_target) {
+            (Some(exp), Some(act)) => same_webdav_target(
+                &exp,
+                &act,
+                port,
+                config.effective_port(),
+                exp_host.is_some() && act_host.is_some(),
+            ),
             _ => false,
         }
     };
     let endpoint_matches = |host: &str, actual: &str| {
-        if !same_endpoint_with_path(
+        if is_webdav {
+            return webdav_matches(Some(host), Some(actual));
+        }
+        same_endpoint_with_path(
             host,
             actual,
             port,
             config.effective_port(),
             url_port_wins,
-            !is_webdav,
-        ) {
-            return false;
-        }
-        webdav_base_matches(host, actual)
+            true,
+        )
     };
     let endpoint_counts = fixed_api_host(config.provider_type).is_none();
     let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
@@ -3032,7 +3071,7 @@ fn slot_matches_identity(
                 && (!endpoint_counts
                     || match (host, actual_host) {
                         (Some(host), Some(actual)) => endpoint_matches(host, actual),
-                        _ => webdav_base_matches(host.unwrap_or(""), actual_host.unwrap_or("")),
+                        _ => !is_webdav || webdav_matches(host, actual_host),
                     })
         }
         // One side is a saved profile and the other is not: not the same.
@@ -3044,7 +3083,7 @@ fn slot_matches_identity(
             !endpoint_counts
                 || match (host, actual_host) {
                     (Some(host), Some(actual)) => endpoint_matches(host, actual),
-                    (None, None) => webdav_base_matches("", ""),
+                    (None, None) => !is_webdav || webdav_matches(None, None),
                     _ => false,
                 }
         }
@@ -19422,6 +19461,70 @@ mod tests {
         assert_eq!(waited, timeout);
     }
 
+    /// The WebDAV query can select the collection: two profile-less tabs
+    /// that differ only by their query are not the same live target, and the
+    /// same query is.
+    #[tokio::test(start_paused = true)]
+    async fn profileless_webdav_tabs_that_differ_only_by_query_are_not_the_same_target() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("https://dav.example.test/dav?tenant=alice", 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(
+            probe_alive_inner(
+                &state,
+                &tab("https://dav.example.test/dav?tenant=alice"),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab("https://dav.example.test/dav?tenant=bob"),
+                timeout
+            )
+            .await
+        );
+        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+    }
+
+    /// A host written with `/./` takes the base path, as the connect does: two
+    /// base paths on it are two targets, and the probe's target is the
+    /// connect's.
+    #[tokio::test(start_paused = true)]
+    async fn a_dot_segment_host_takes_the_base_path_as_the_connect_does() {
+        let timeout = Duration::from_secs(5);
+        let host = "https://dav.example.test/./";
+        let mut slot_cfg = probe_config(host, 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        slot_cfg
+            .extra
+            .insert("base_path".to_string(), "/dav/bob/".to_string());
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg.clone());
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |base_path: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            base_path: Some(base_path),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(!probe_alive_inner(&state, &tab("/dav/alice/"), timeout).await);
+        assert!(probe_alive_inner(&state, &tab("/dav/bob/"), timeout).await);
+        // The probe's target is the URL the connect builds for the slot.
+        let connect =
+            crate::providers::types::WebDavConfig::from_provider_config(&slot_cfg).unwrap();
+        let probe = webdav_connect_target(host, Some(443), Some("u"), Some("/dav/bob/")).unwrap();
+        assert_eq!(probe, url::Url::parse(&connect.url).unwrap());
+        assert_eq!(probe.path().trim_end_matches('/'), "/dav/bob");
+    }
+
     #[tokio::test(start_paused = true)]
     async fn two_profileless_webdav_tabs_with_different_base_paths_are_not_the_same_live_target() {
         let timeout = Duration::from_secs(5);
@@ -19550,7 +19653,9 @@ mod tests {
             provider_cmds.contains("extra.insert(\"base_path\".to_string(), base_path.clone());")
         );
         assert!(provider_cmds.contains("pub async fn provider_probe_alive("));
-        assert!(provider_cmds.contains("effective_webdav_base_path"));
+        assert!(provider_cmds.contains("fn webdav_connect_target("));
+        assert!(provider_cmds
+            .contains("crate::providers::types::WebDavConfig::from_provider_config(&config)"));
 
         // Shared profile loader normalizes `basePath` -> `base_path`.
         let mut normalized = std::collections::HashMap::new();
