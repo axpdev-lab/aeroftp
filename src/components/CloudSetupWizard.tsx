@@ -347,7 +347,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{t('cloud.remoteFolderDesc')}</p>
                             {notPlain && (
                                 <p role="alert" className="flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400 mt-1">
-                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderNotPlain', { folder: remoteLabel })}</span>
+                                    <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderNotPlain')}</span>
                                 </p>
                             )}
                         </div>

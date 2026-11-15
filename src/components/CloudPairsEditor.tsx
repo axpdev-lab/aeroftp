@@ -75,6 +75,30 @@ function normalizePair(pair: CloudPathPair): CloudPathPair {
     };
 }
 
+/**
+ * The draft after a reply to a request sent with `sent`: the reply's pairs,
+ * with every field the user changed in the draft since the request was sent
+ * kept as typed. A pair the reply dropped goes; a pair added to the draft
+ * meanwhile stays.
+ */
+export function rebaseDraft(draft: CloudPathPair[], sent: CloudPathPair[], stored: CloudPathPair[]): CloudPathPair[] {
+    const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+    const byId = (list: CloudPathPair[], id: string) => list.find(p => p.id === id);
+    const rebased = stored.map(reply => {
+        const mine = byId(draft, reply.id);
+        const asSent = byId(sent, reply.id);
+        if (!mine || !asSent) return reply;
+        const merged: Record<string, unknown> = { ...reply };
+        for (const key of new Set([...Object.keys(mine), ...Object.keys(asSent)])) {
+            const typed = (mine as unknown as Record<string, unknown>)[key];
+            if (!same(typed, (asSent as unknown as Record<string, unknown>)[key])) merged[key] = typed;
+        }
+        return merged as unknown as CloudPathPair;
+    });
+    const addedMeanwhile = draft.filter(p => !byId(sent, p.id) && !byId(stored, p.id));
+    return [...rebased, ...addedMeanwhile];
+}
+
 export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onClose }) => {
     const t = useTranslation();
     const [pairs, setPairs] = useState<CloudPathPair[]>([]);
@@ -86,6 +110,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     // file's content, so no full save may be written over it.
     const [loadError, setLoadError] = useState<string | null>(null);
     const [persistedPairs, setPersistedPairs] = useState<CloudPathPair[]>([]);
+    const [saveError, setSaveError] = useState<string | null>(null);
     // A save already sent goes on after a close, and pair edits not yet saved would be lost by one: the backdrop
     // is inert in both cases and the X asks first (Discussion #1527).
     const pairsChanged = !loading && JSON.stringify(pairs) !== JSON.stringify(persistedPairs);
@@ -110,6 +135,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     useEffect(() => {
         if (!isOpen) return;
         setLoading(true);
+        setSaveError(null);
         // A load from an earlier opening may finish after a later one: only
         // the latest load writes the editor's state.
         const asked = ++opening.current;
@@ -188,11 +214,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         };
 
         const asked = opening.current;
+        const sent = pairs;
         requests.begin(newPair.id);
         try {
             const updated = await invoke<CloudPairsConfig>('add_cloud_pair', { pair: newPair });
             if (asked !== opening.current) return;
-            setPairs(updated.pairs || []);
+            setPairs(current => rebaseDraft(current, sent, updated.pairs || []));
             setPersistedPairs(updated.pairs || []);
             // Clear legacy hint after first real add
             if (legacyConfig) setLegacyConfig(null);
@@ -208,11 +235,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
 
     const handleRemove = async (pairId: string) => {
         const asked = opening.current;
+        const sent = pairs;
         requests.begin(pairId);
         try {
             const updated = await invoke<CloudPairsConfig>('remove_cloud_pair', { pairId });
             if (asked !== opening.current) return;
-            setPairs(updated.pairs || []);
+            setPairs(current => rebaseDraft(current, sent, updated.pairs || []));
             setPersistedPairs(updated.pairs || []);
         } catch (e) {
             logger.error('[CloudPairsEditor] remove_cloud_pair failed:', e);
@@ -224,7 +252,6 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
     };
 
     const handleToggle = async (pairId: string) => {
-        const previous = pairs;
         const updated = pairs.map(p =>
             p.id === pairId ? { ...p, enabled: !p.enabled } : p
         );
@@ -241,12 +268,15 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             });
             if (asked !== opening.current) return;
             const stored = (saved.pairs || []).map(normalizePair);
-            setPairs(stored);
+            // Fields typed while the save ran stay as typed.
+            setPairs(current => rebaseDraft(current, updated, stored));
             setPersistedPairs(stored);
         } catch (e) {
             logger.error('[CloudPairsEditor] toggle save failed, rolling back:', e);
             if (asked !== opening.current) return;
-            setPairs(previous);
+            // Only the toggle goes back: fields typed meanwhile stay.
+            const toggled = updated.find(p => p.id === pairId)?.enabled;
+            setPairs(current => current.map(p => p.id === pairId && p.enabled === toggled ? { ...p, enabled: !toggled } : p));
         } finally {
             requests.end(pairId);
         }
@@ -296,6 +326,7 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
         if (requests.count > 0) return;
         const asked = opening.current;
         setSaving(true);
+        setSaveError(null);
         try {
             await invoke('save_cloud_pairs_config_cmd', {
                 config: { pairs, parallel_pairs: false },
@@ -305,7 +336,9 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
             onClose();
         } catch (e) {
             logger.error('[CloudPairsEditor] save failed:', e);
-            // keep open so user can retry
+            // Kept open with the draft, and the reason shown: a list that
+            // moved since it was opened is not saved by clicking again.
+            if (asked === opening.current) setSaveError(String(e));
         } finally {
             setSaving(false);
         }
@@ -379,6 +412,12 @@ export const CloudPairsEditor: React.FC<CloudPairsEditorProps> = ({ isOpen, onCl
                 {loadError && (
                     <div role="alert" className="mx-5 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300 break-words">
                         {t('common.settingsLoadFailed', { error: loadError })}
+                    </div>
+                )}
+
+                {saveError && (
+                    <div role="alert" className="mx-5 mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded text-xs text-red-700 dark:text-red-300 break-words">
+                        {t('common.saveFailed', { error: saveError })}
                     </div>
                 )}
 

@@ -237,9 +237,7 @@ pub fn with_cloud_pairs_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudPairsConfig) -> Result<T, String>,
 {
-    let _lock = PAIRS_WRITE_LOCK
-        .lock()
-        .map_err(|_| "Pairs write lock poisoned".to_string())?;
+    let _lock = crate::cloud_config::SettingsFileLock::acquire_with(&PAIRS_WRITE_LOCK, path)?;
     let mut config = load_cloud_pairs_config_strict_at(path)?;
     let before = serde_json::to_value(&config).ok();
     let out = f(&mut config)?;
@@ -265,6 +263,11 @@ where
 /// folder (`docs` saved as `/home/u/docs`), the time of the last sync, a
 /// toggle made from the CLI. A field the edit changed is the edit's, the
 /// remote folder included: a folder the user wrote replaces the placed one.
+/// The folder a sync placed and the time of its last sync belong to the
+/// target they were written for: an edit that moves a pair to another target
+/// (profile, local folder, protocol or connection parameters) inherits
+/// neither, so its folder is placed again on the new connection and it has
+/// not synced there yet.
 /// Pairs added or removed by the edit are added or removed. When the list
 /// itself moved since the read (a pair added or removed elsewhere, or a
 /// pair's profile, local folder, protocol or connection parameters changed),
@@ -274,20 +277,17 @@ pub fn pairs_save(
     read_as: &CloudPairsConfig,
     mut draft: CloudPairsConfig,
 ) -> Result<CloudPairsConfig, String> {
+    let target = |pair: &CloudPathPair| {
+        (
+            pair.id.clone(),
+            pair.server_profile.clone(),
+            pair.local_path.clone(),
+            pair.protocol_type.clone(),
+            pair.connection_params.to_string(),
+        )
+    };
     let setup = |config: &CloudPairsConfig| {
-        let mut pairs: Vec<_> = config
-            .pairs
-            .iter()
-            .map(|pair| {
-                (
-                    pair.id.clone(),
-                    pair.server_profile.clone(),
-                    pair.local_path.clone(),
-                    pair.protocol_type.clone(),
-                    pair.connection_params.to_string(),
-                )
-            })
-            .collect();
+        let mut pairs: Vec<_> = config.pairs.iter().map(target).collect();
         pairs.sort();
         pairs
     };
@@ -305,6 +305,10 @@ pub fn pairs_save(
         ) else {
             continue;
         };
+        let moved = target(read) != target(pair);
+        if moved {
+            pair.last_sync = None;
+        }
         let (Ok(read), Ok(now), Ok(mut edited)) = (
             serde_json::to_value(read),
             serde_json::to_value(now),
@@ -314,6 +318,9 @@ pub fn pairs_save(
         };
         if let Some(fields) = edited.as_object_mut() {
             for (name, value) in fields.iter_mut() {
+                if moved && TARGET_BOUND.contains(&name.as_str()) {
+                    continue;
+                }
                 if read.get(name) == Some(value) {
                     if let Some(kept) = now.get(name) {
                         *value = kept.clone();
@@ -326,14 +333,21 @@ pub fn pairs_save(
     Ok(draft)
 }
 
-/// Save pairs config (atomic + lock protected).
-pub fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> {
-    let _lock = PAIRS_WRITE_LOCK
-        .lock()
-        .map_err(|_| "Pairs write lock poisoned".to_string())?;
+/// The fields of a pair a sync writes for its target: [`pairs_save`] never
+/// carries them over to another target.
+const TARGET_BOUND: [&str; 2] = ["remote_path", "last_sync"];
+
+/// Save pairs config (atomic + lock protected). For tests only, as
+/// [`crate::cloud_config`]'s whole-file save: every other write merges
+/// ([`with_cloud_pairs_mut`]).
+#[cfg(test)]
+pub(crate) fn save_cloud_pairs_config(config: &CloudPairsConfig) -> Result<(), String> {
+    let _lock =
+        crate::cloud_config::SettingsFileLock::acquire_with(&PAIRS_WRITE_LOCK, &get_pairs_path())?;
     save_cloud_pairs_config_unlocked(config)
 }
 
+#[cfg(test)]
 fn save_cloud_pairs_config_unlocked(config: &CloudPairsConfig) -> Result<(), String> {
     save_cloud_pairs_config_unlocked_at(config, &get_pairs_path())
 }
@@ -583,9 +597,11 @@ mod tests {
             !ran,
             "closure must not run on an unreadable pairs file: {err}"
         );
+        // The lock beside the file is the first to meet the closed folder:
+        // the refusal says so, with the system's cause.
         assert!(
-            err.contains("Failed to read"),
-            "not refused for the read: {err}"
+            err.contains("Permission denied"),
+            "not refused for the folder: {err}"
         );
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
@@ -695,5 +711,57 @@ mod tests {
         let c = p.to_cloud_config();
         assert!(c.compress_enabled);
         assert_eq!(c.compress_level, 11);
+    }
+
+    /// A sync placed pair `a`'s `docs` as `/home/a/docs` on profile `nas`
+    /// after the editor read it. A draft that moves `a` to another target
+    /// without touching its folder keeps `docs`, to be placed again on the
+    /// new connection, and has not synced there; a draft on the same target
+    /// keeps the placed folder and the last sync.
+    #[test]
+    fn a_pair_moved_to_another_target_inherits_nothing_its_old_target_wrote() {
+        let synced = Utc::now();
+        // The read already carries a sync of the old target, so a draft that
+        // moves keeps it unless the save clears it.
+        let read = CloudPathPair {
+            id: "a".to_string(),
+            remote_path: "docs".to_string(),
+            local_path: "/sync/a".into(),
+            last_sync: Some(synced - chrono::Duration::hours(1)),
+            ..CloudPathPair::from_legacy(&crate::cloud_config::CloudConfig {
+                server_profile: "nas".to_string(),
+                protocol_type: "sftp".to_string(),
+                ..Default::default()
+            })
+        };
+        let list = |pair: CloudPathPair| CloudPairsConfig {
+            pairs: vec![pair],
+            ..Default::default()
+        };
+        let read_as = list(read.clone());
+        let stored = list(CloudPathPair {
+            remote_path: "/home/a/docs".to_string(),
+            last_sync: Some(synced),
+            ..read.clone()
+        });
+        let moves: [fn(&mut CloudPathPair); 4] = [
+            |pair| pair.server_profile = "other".to_string(),
+            |pair| pair.local_path = "/sync/elsewhere".into(),
+            |pair| pair.protocol_type = "ftp".to_string(),
+            |pair| pair.connection_params = serde_json::json!({ "port": 2222 }),
+        ];
+        for (at, moved) in moves.iter().enumerate() {
+            let mut draft = read.clone();
+            moved(&mut draft);
+            let saved = pairs_save(&stored, &read_as, list(draft)).unwrap();
+            assert_eq!(saved.pairs[0].remote_path, "docs", "move {at}");
+            assert_eq!(saved.pairs[0].last_sync, None, "move {at}");
+        }
+        let mut same = read.clone();
+        same.update_only = !same.update_only;
+        let saved = pairs_save(&stored, &read_as, list(same.clone())).unwrap();
+        assert_eq!(saved.pairs[0].remote_path, "/home/a/docs");
+        assert_eq!(saved.pairs[0].last_sync, Some(synced));
+        assert_eq!(saved.pairs[0].update_only, same.update_only);
     }
 }

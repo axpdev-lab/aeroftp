@@ -923,3 +923,63 @@ describe('the AeroCloud folder change on a session kept at /other', () => {
     expect((given.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledWith('connection.connectionFailed', expect.stringContaining('Permission denied'));
   });
 });
+
+it('leaves the tab disconnected with one message when the backend closed a connection it could not return to its folder', async () => {
+  const from = app.indexOf("listen<{ kind: string; detail?: string }>('provider-session', (event) => {");
+  const to = app.indexOf('        if (cancelled) fn();', from);
+  if (from < 0 || to < 0) throw new Error('Missing provider-session listener');
+  const handler = app.slice(app.indexOf('(event) =>', from), app.lastIndexOf('});', to) + 1);
+  const { code: listener } = await transformWithOxc(`const handler = ${handler};`, 'provider-session.ts');
+  for (const kind of ['closed', 'reconnect-failed']) {
+    const notify = { info: vi.fn(() => 'pending'), success: vi.fn(), error: vi.fn() };
+    const setIsConnected = vi.fn();
+    const removeToast = vi.fn();
+    const context = { notify, setIsConnected, removeToast, t: (key: string) => key, wentOnOverScpAfter: () => false, wentOnOverScpRef: { current: false } };
+    const run = new Function(...Object.keys(context), `let pendingId = null; ${listener}\nhandler({ payload: { kind: 'reconnecting' } }); handler({ payload: { kind: '${kind}', detail: 'x' } });`);
+    run(...Object.values(context));
+    expect(notify.error, kind).toHaveBeenCalledTimes(1);
+    expect(notify.error).toHaveBeenCalledWith('reconnect.toastTitle', 'reconnect.reconnectFailed');
+    expect(removeToast).toHaveBeenCalledWith('pending');
+    expect(setIsConnected.mock.calls, kind).toEqual(kind === 'closed' ? [[false]] : []);
+  }
+});
+
+it('sends every legacy FTP path as a folder the tab means, never one the server resolves against its own folder', async () => {
+  // A reconnect inside a legacy download opens the new session in the login
+  // folder while the tab keeps showing its own, so a relative path ('..',
+  // '.', a bare name) would land elsewhere. Every legacy call that names a
+  // remote path is pinned here with the origin of its argument: a new call or
+  // a changed argument fails until its origin is checked again.
+  const legacy = 'change_directory|create_remote_folder|delete_remote_file|download_file|download_folder|rename_remote_file|save_remote_file|upload_file|upload_folder|chmod_remote_file';
+  const calls = [...app.matchAll(new RegExp(`invoke(?:<[^>]*>)?\\('(${legacy})'(?:,\\s*(\\{.*?\\}))?\\)`, 'g'))].map(m => `${m[1]} ${m[2] ?? ''}`);
+  expect(calls).toEqual([
+    'change_directory { path: savedPath }', // a saved session folder, only when it starts with '/'
+    'change_directory { path: folder }', // the AeroCloud folder placed by the connection builder
+    'change_directory { path: legacyPath }', // the Up / navigation target, resolved below
+    'change_directory { path: newRemotePath }', // the sync base joined with a '/'-led tail
+    'create_remote_folder { path: syncNavDialog.targetPath }',
+    'change_directory { path: syncNavDialog.targetPath }',
+    'download_folder { params }', // remote_path from the listing entry
+    'download_file { params }', // remote_path from the listing entry
+    'upload_folder { params }', // remote_path joined onto the folder the tab shows
+    'upload_file { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams }',
+    'save_remote_file { path: file.path, content, expectedGeneration }',
+    'delete_remote_file { path: file.path }',
+    'rename_remote_file { from: file.path, to: destPath }',
+    'delete_remote_file { path: file.path, isDir: file.is_dir }',
+    'delete_remote_file { path, isDir }',
+    'rename_remote_file { from: path, to: newPath }',
+    'rename_remote_file { from: path, to: newPath }',
+    'rename_remote_file { from: oldPath, to: newPath }',
+    'create_remote_folder { path }', // currentRemotePath joined with the new name
+  ]);
+  expect(calls.join('\n')).not.toMatch(/['"`]\.{1,2}['"`]|path: ['"`][^/]/);
+
+  // The navigation target the legacy branch sends.
+  const resolver = app.slice(app.indexOf('const normDisplayPath = '), app.indexOf('/**', app.indexOf('const resolveTargetDisplayPath = (')));
+  const { code: resolverCode } = await transformWithOxc(resolver, 'legacy-path.ts');
+  const resolve = new Function(`${resolverCode}\nreturn resolveTargetDisplayPath;`)() as (current: string, path: string) => string;
+  expect(app).toContain("const legacyPath = currentRemotePath.startsWith('/') ? resolveTargetDisplayPath(currentRemotePath, path) : path;");
+  expect(['..', '.', 'docs', '/work/docs'].map(path => resolve('/work', path))).toEqual(['/', '/work', '/work/docs', '/work/docs']);
+  expect(resolve('/home/u/work', '..')).toBe('/home/u');
+});

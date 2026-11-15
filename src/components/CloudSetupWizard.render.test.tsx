@@ -26,9 +26,9 @@ it('refuses a starting folder with `..` under the login folder with a clear erro
     await React.act(async () => button('common.next')!.click());
     await React.act(async () => button('nas')!.click());
     const alert = host.querySelector('[role="alert"]');
-    // The folder is named as it would be saved, `..` included: never collapsed.
-    expect(alert?.textContent).toContain('cloud.remoteFolderNotPlain');
-    expect(alert?.textContent).toContain('~/docs/../shared/cloud/');
+    // The alert says why and names no folder: a profile path may carry a
+    // password or a token.
+    expect(alert?.textContent?.trim()).toBe('cloud.remoteFolderNotPlain');
     expect(button('common.next')!.disabled).toBe(true);
     expect(mocks.invoke).not.toHaveBeenCalledWith('setup_aerocloud', expect.anything());
     // A sub-folder cannot step out either; a plain one clears the error.
@@ -58,12 +58,11 @@ it('refuses a sub-folder that is not plain on a plain starting folder, and lets 
         Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
         input.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    // Repeated outer separators are empty steps too: refused, and named as
-    // written, not stripped into a plain `~/docs/a/`.
+    // Repeated outer separators are empty steps too: refused, not stripped
+    // into a plain `~/docs/a/`.
     for (const sub of ['../escape', './cloud', 'a//cloud', 'a//', '//a', '/a//']) {
         await type(sub);
-        expect(host.querySelector('[role="alert"]')?.textContent, sub).toContain('cloud.remoteFolderNotPlain');
-        expect(host.querySelector('[role="alert"]')?.textContent, sub).toContain(sub);
+        expect(host.querySelector('[role="alert"]')?.textContent?.trim(), sub).toBe('cloud.remoteFolderNotPlain');
         expect(button('common.next')!.disabled, sub).toBe(true);
     }
     // One leading or trailing separator is no step.
@@ -112,4 +111,20 @@ it('lets a starting folder without `..` through', async () => {
     await React.act(async () => button('nas')!.click());
     expect(host.querySelector('[role="alert"]')).toBeNull();
     expect(button('common.next')!.disabled).toBe(false);
+});
+
+it('names no folder in the not-plain alert, so a password in the profile path is never shown there', async () => {
+    (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+    // An empty step after the scheme: not plain.
+    mocks.profiles = [{ id: 'srv_1', name: 'nas', host: 'nas.example', port: 443, username: 'u', protocol: 'webdav', initialPath: 'https://alice:pa55word@example.com//data' }];
+    mocks.invoke.mockImplementation(async (command: string) => command === 'get_default_cloud_folder' ? '/home/u/AeroCloud' : null);
+    host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+    await React.act(async () => root!.render(<CloudSetupWizard onComplete={vi.fn()} onCancel={vi.fn()} />));
+    const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.includes(label));
+    await React.act(async () => button('common.next')!.click());
+    await React.act(async () => button('nas')!.click());
+    const alert = host.querySelector('[role="alert"]');
+    expect(alert?.textContent?.trim()).toBe('cloud.remoteFolderNotPlain');
+    expect(alert?.textContent).not.toContain('pa55word');
+    expect(button('common.next')!.disabled).toBe(true);
 });

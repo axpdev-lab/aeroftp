@@ -15783,16 +15783,20 @@ fn aerocloud_print_sync_result(
 /// Toggle `enabled` on the persisted AeroCloud config (`aerocloud enable|disable`).
 fn aerocloud_set_enabled(enabled: bool, format: OutputFormat) -> i32 {
     use ftp_client_gui_lib::cloud_config;
-    let mut config = match cloud_config::load_cloud_config_strict() {
+    let read_as = match cloud_config::load_cloud_config_strict() {
         Ok(config) => config,
         Err(e) => {
             print_error(format, &e, 11);
             return 11;
         }
     };
+    let mut config = read_as.clone();
     config.enabled = enabled;
-    match cloud_config::save_cloud_config(&config) {
-        Ok(()) => {
+    // Merged with the file as it is at the write, as the settings view saves:
+    // what the app saved since this read stays. A write refused because
+    // another AeroFTP process is saving exits with 11, nothing written.
+    match cloud_config::save_settings_edit(config, &read_as) {
+        Ok(_) => {
             if matches!(format, OutputFormat::Json) {
                 print_json(&serde_json::json!({ "status": "ok", "enabled": enabled }));
             } else {
@@ -15957,13 +15961,14 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 }
             }
 
-            let mut config = match cloud_config::load_cloud_config_strict() {
+            let read_as = match cloud_config::load_cloud_config_strict() {
                 Ok(config) => config,
                 Err(e) => {
                     print_error(format, &e, 11);
                     return 11;
                 }
             };
+            let mut config = read_as.clone();
             let saved_folder = config.remote_folder.clone();
             let mut changed = false;
             if let Some(local) = local {
@@ -16071,9 +16076,12 @@ async fn cmd_aerocloud(cli: &Cli, command: &AeroCloudCommands, format: OutputFor
                 print_error(format, &e, 5);
                 return 5;
             }
-            match cloud_config::save_cloud_config(&config) {
-                Ok(()) => {
-                    aerocloud_print_show(&config, format);
+            // Merged with the file as it is at the write, as the settings
+            // view saves; a write refused because another AeroFTP process is
+            // saving exits with 11, nothing written.
+            match cloud_config::save_settings_edit(config, &read_as) {
+                Ok(saved) => {
+                    aerocloud_print_show(&saved, format);
                     0
                 }
                 Err(e) => {

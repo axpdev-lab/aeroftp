@@ -3707,12 +3707,12 @@ pub async fn sync_one_config(
     if !dry_run {
         // "Sync now" is a full scan: the background scheduler counts it, so
         // a provider's floor between two scans spans it too. It is recorded
-        // under the key of the folder this connect opened, which a `~/...`
-        // folder placed (and its ledger state moved) here changed.
-        crate::cloud_scan_schedule::ledger().record_full_scan(
-            &crate::cloud_scan_schedule::pair_key(&config),
-            std::time::Instant::now(),
-        );
+        // under the key the scheduler reads the entry by after this
+        // connect: the placed folder's when a `~/...` folder was placed and
+        // saved here (its ledger state moved with it), the saved one's when
+        // the placement is for this run only.
+        crate::cloud_scan_schedule::ledger()
+            .record_full_scan(&opened.scheduler_key(&config), std::time::Instant::now());
     }
     sync_opened_config(config, opened, app, dry_run).await
 }
@@ -3723,13 +3723,14 @@ async fn sync_opened_config(
     app: Option<AppHandle>,
     dry_run: bool,
 ) -> Result<SyncOperationResult, String> {
+    let scheduler_key = opened.scheduler_key(&config);
     let mut provider = opened.provider;
     // A manual "Sync now" connects here, not through the background cycle, so
     // it is the one that must tell the scheduler what the provider said about
     // scanning. Without it the floor (Tigris, Fastly: 30 minutes) is not known
     // when the first scan of a pair is a manual one, and a short configured
     // interval could scan again at once.
-    remember_scan_traits(&config, &*provider);
+    crate::cloud_scan_schedule::ledger().learn(&scheduler_key, ProviderScanTraits::of(&*provider));
 
     // NOTE: explicit cd/mkdir that used to sit between wrap and service here
     // (and in the old inner) has been removed: build_sync_plan_with_provider
@@ -3774,6 +3775,26 @@ pub(crate) struct ConnectedCloudProvider {
     identity: Option<String>,
     /// [`cloud_provider_factory::OpenedCloudProvider::endpoint`].
     endpoint: Option<String>,
+    /// The remote folder the saved settings still hold when this connect
+    /// placed the folder for its run only (nothing saved): the scheduler
+    /// reads the entry under that folder's key next time.
+    saved_folder: Option<String>,
+}
+
+impl ConnectedCloudProvider {
+    /// The key the scheduler keeps `config`'s entry under after this
+    /// connect: the placed folder's when the placement was saved (the scan
+    /// ledger moved with it), the saved folder's when it was for this run
+    /// only. A scan recorded or requested under any other key is never read.
+    fn scheduler_key(&self, config: &CloudConfig) -> String {
+        match &self.saved_folder {
+            Some(folder) => crate::cloud_scan_schedule::pair_key(&CloudConfig {
+                remote_folder: folder.clone(),
+                ..config.clone()
+            }),
+            None => crate::cloud_scan_schedule::pair_key(config),
+        }
+    }
 }
 
 /// A profile id as `select_aerocloud_profile` reads it: blank means none.
@@ -3971,6 +3992,21 @@ pub(crate) async fn anchor_login_relative_remote_folder(
     store: Option<&credential_store::CredentialStore>,
     endpoint: Option<&str>,
 ) -> Result<Option<String>, String> {
+    anchor_and_save_login_relative_remote_folder(provider, config, resolution, store, endpoint)
+        .await
+        .map(|placed| placed.map(|(folder, _)| folder))
+}
+
+/// [`anchor_login_relative_remote_folder`], with whether the placed folder
+/// is for this run only: `true` when the saved entry still names the `~`
+/// form under its key, so the scheduler reads it there next time.
+async fn anchor_and_save_login_relative_remote_folder(
+    provider: &mut dyn StorageProvider,
+    config: &CloudConfig,
+    resolution: &ProfileResolution,
+    store: Option<&credential_store::CredentialStore>,
+    endpoint: Option<&str>,
+) -> Result<Option<(String, bool)>, String> {
     let Some(placed) = place_login_relative_remote_folder(provider, config).await? else {
         return Ok(None);
     };
@@ -4006,7 +4042,7 @@ pub(crate) async fn anchor_login_relative_remote_folder(
             "AeroCloud: the profile list cannot be locked on this filesystem: the placed \
              remote folder is used for this run only"
         );
-        return Ok(Some(placed));
+        return Ok(Some((placed, true)));
     }
     let resolution = &resolution;
     // Each entry, read now, must still connect to the endpoint the session
@@ -4142,7 +4178,11 @@ pub(crate) async fn anchor_login_relative_remote_folder(
             ledger.moved(&from, &to);
         }
     }
-    Ok(Some(placed))
+    // Nothing written while an entry still syncs under the `~` key (its
+    // settings no longer reach this endpoint): the placement was for this run
+    // only. Nothing written because an earlier connect placed it: the files
+    // already name the placed folder.
+    Ok(Some((placed, !persisted && key_still_used)))
 }
 
 /// Preserve the identity of the exact factory connection through the validated overlay stack.
@@ -4213,7 +4253,7 @@ async fn compose_aerocloud_connection(
     let remote_folder = if persist_placement {
         let resolution =
             ProfileResolution::for_connection(Some(store), config, opened.profile_id.clone())?;
-        anchor_login_relative_remote_folder(
+        anchor_and_save_login_relative_remote_folder(
             &mut *provider,
             config,
             &resolution,
@@ -4222,9 +4262,15 @@ async fn compose_aerocloud_connection(
         )
         .await?
     } else {
-        place_login_relative_remote_folder(&mut *provider, config).await?
+        place_login_relative_remote_folder(&mut *provider, config)
+            .await?
+            .map(|placed| (placed, false))
     };
-    if let Some(placed) = remote_folder {
+    let mut saved_folder = None;
+    if let Some((placed, run_only)) = remote_folder {
+        if run_only {
+            saved_folder = Some(config.remote_folder.clone());
+        }
         config.remote_folder = placed;
     }
     if cloud_provider_factory::current_overlay_binding(config, store)? != opened.overlay_binding {
@@ -4270,6 +4316,7 @@ async fn compose_aerocloud_connection(
         provider,
         identity: opened.identity,
         endpoint: opened.endpoint,
+        saved_folder,
     })
 }
 
@@ -4416,7 +4463,7 @@ pub async fn run_pair_full_cycle(
             ));
         }
     };
-    let placed_key = crate::cloud_scan_schedule::pair_key(&config);
+    let placed_key = opened.scheduler_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();
@@ -7377,6 +7424,7 @@ mod baseline_tests {
                 }),
                 identity: None,
                 endpoint: None,
+                saved_folder: None,
             };
             sync_opened_config(config, opened, None, true)
                 .await
@@ -8626,7 +8674,7 @@ mod baseline_tests {
                         Some(crate::user_partitions::PROFILE_LIST_BUSY)
                     );
                 }));
-                let placed = anchor_login_relative_remote_folder(
+                let placed = anchor_and_save_login_relative_remote_folder(
                     &mut login(),
                     &config,
                     &resolution,
@@ -8635,7 +8683,14 @@ mod baseline_tests {
                 )
                 .await
                 .unwrap();
-                assert_eq!(placed.as_deref(), Some("/home/u/docs"), "moved {moved}");
+                // Nothing written while the entries keep the `~` form under
+                // this key: the placement was for this run only, and the
+                // scheduler goes on reading the `~` key.
+                assert_eq!(
+                    placed,
+                    Some(("/home/u/docs".to_string(), moved)),
+                    "moved {moved}"
+                );
                 assert!(BEFORE_PLACEMENT_LOCK.lock().unwrap().is_none());
                 assert!(BETWEEN_PLACEMENT_READ_AND_WRITE.lock().unwrap().is_none());
                 let expected = if moved { "~/docs" } else { "/home/u/docs" };
@@ -9297,16 +9352,34 @@ mod baseline_tests {
                 let composed =
                     compose_aerocloud_connection(opened, &mut config, &store, true).await;
                 crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(false);
-                drop(composed.unwrap());
+                let composed = composed.unwrap();
                 assert_eq!(
                     config.remote_folder, "/home/u/docs",
                     "locks {locks}: this run"
                 );
+                let saved = cloud_config::load_cloud_config();
                 assert_eq!(
-                    cloud_config::load_cloud_config().remote_folder,
+                    saved.remote_folder,
                     if locks { "/home/u/docs" } else { "~/docs" },
                     "locks {locks}: saved config"
                 );
+                // The run reports the key the scheduler reads the saved
+                // entry by: a recovery requested and answered under it is
+                // seen there, never left pending under another key.
+                let read_by = crate::cloud_scan_schedule::pair_key(&saved);
+                let reported = composed.scheduler_key(&config);
+                assert_eq!(reported, read_by, "locks {locks}");
+                let now = std::time::Instant::now();
+                let mut ledger = crate::cloud_scan_schedule::ledger();
+                ledger.request_full_scan(&reported, "a discarded plan");
+                assert!(ledger.pending_full_scan_due(&read_by, now), "locks {locks}");
+                ledger.record_full_scan(&reported, now);
+                assert!(
+                    !ledger.pending_full_scan_due(&read_by, now),
+                    "locks {locks}"
+                );
+                drop(ledger);
+                drop(composed);
             }
         });
     }

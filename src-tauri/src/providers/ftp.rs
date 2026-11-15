@@ -1749,10 +1749,12 @@ impl FtpProvider {
     async fn cd_command(&mut self, path: &str) -> Result<(), ProviderError> {
         if self.folder_lost && self.stream.is_none() {
             if !path.starts_with('/') {
-                return Err(ProviderError::InvalidPath(format!(
-                    "{path}: the session's folder {} could not be entered again, so a relative folder names nothing; enter an absolute folder",
-                    self.current_path
-                )));
+                // No folder in the text: a path may carry a password or a
+                // token.
+                return Err(ProviderError::InvalidPath(
+                    "the session's folder could not be entered again, so a relative folder names nothing; enter an absolute folder"
+                        .to_string(),
+                ));
             }
             return self.enter_from_a_lost_folder(path).await;
         }
@@ -1784,6 +1786,14 @@ impl FtpProvider {
     async fn cd_up_command(&mut self) -> Result<(), ProviderError> {
         if self.folder_lost && self.stream.is_none() {
             let lost = self.current_path.trim_end_matches('/');
+            // A relative folder (`docs`) does not say what its parent is:
+            // `/` is a guess, not the folder above it.
+            if !names_one_folder(lost) {
+                return Err(ProviderError::InvalidPath(
+                    "the session's folder is unknown: change to an absolute folder to go on"
+                        .to_string(),
+                ));
+            }
             let parent = match lost.rfind('/') {
                 Some(0) | None => "/".to_string(),
                 Some(at) => lost[..at].to_string(),
@@ -1880,7 +1890,7 @@ impl FtpProvider {
                 self.stream = None;
                 self.folder_lost = true;
                 ProviderError::ServerError(format!(
-                    "{failure}; returning to {recorded} failed too ({e}): the session's folder is unknown, so it was closed"
+                    "{failure}; returning to the recorded folder failed too ({e}): the session's folder is unknown, so it was closed"
                 ))
             }
         }
@@ -6429,11 +6439,10 @@ mod tests {
             ),
             "a transfer dialled the folder that could not be entered"
         );
-        // `try_silent_reconnect` reads the folder to return to with `pwd`.
+        // `try_silent_reconnect` reads the folder to return to with `pwd`,
+        // and closes a session that reports none.
         let restored = provider.pwd().await.is_ok();
         assert!(!restored, "a folder was reported for the closed session");
-        assert!(crate::provider_commands::replay_after_reconnect(restored, "docs").is_err());
-        assert!(crate::provider_commands::replay_after_reconnect(restored, "/home/u/docs").is_ok());
         assert_eq!(
             log.lock().unwrap().len(),
             commands,
@@ -9684,6 +9693,37 @@ mod rename_contract_tests {
         );
         provider.cd("/home/u").await.expect("the way out");
         assert_eq!(provider.current_path, "home/u");
+    }
+
+    /// A single-step relative folder (`docs`) has no known parent: Up from
+    /// it when it is lost opens no session at the server root, and the
+    /// refusal names no folder.
+    #[tokio::test]
+    async fn up_from_a_lost_single_step_relative_folder_enters_nothing() {
+        let quirks = Quirks {
+            login_dir: Some("/docs"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, _files) =
+            provider_on_server_holding(&["/docs/a/b.txt", "!refuse PWD in /docs/a"], quirks, None)
+                .await;
+        assert_eq!(provider.current_path, "docs");
+        let refused = provider.cd("a").await.unwrap_err().to_string();
+        assert!(!provider.is_connected(), "the session was kept");
+        assert!(!refused.contains("docs"), "{refused}");
+        log.lock().unwrap().clear();
+        let up = provider.cd_up().await.unwrap_err().to_string();
+        assert!(!up.contains("docs"), "{up}");
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "a session was opened for a guessed parent: {:?}",
+            log.lock().unwrap()
+        );
+        let relative = provider.cd("x").await.unwrap_err().to_string();
+        assert!(!relative.contains("docs"), "{relative}");
+        assert_eq!(provider.current_path, "docs");
     }
 
     /// Every redial returns to the folder it left only when that folder

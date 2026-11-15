@@ -358,8 +358,11 @@ mod tests {
                 < place.find("resolve_home_scope(").unwrap()
         );
         let lib = FILES[0].1;
+        assert!(body(lib, "save_cloud_config_cmd_blocking").contains("save_settings_edit("));
+        assert!(
+            body(FILES[2].1, "save_settings_edit_at").contains("refuse_an_unusable_remote_folder(")
+        );
         for name in [
-            "save_cloud_config_cmd_blocking",
             "save_cloud_pairs_config_cmd_blocking",
             "add_cloud_pair_blocking",
         ] {

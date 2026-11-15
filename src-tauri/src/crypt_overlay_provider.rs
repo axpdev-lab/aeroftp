@@ -559,12 +559,27 @@ pub struct CryptOverlayProvider {
     /// alias pass through as before.
     scope_alias: Option<String>,
     /// A `cd` into the anchor whose report could not be read, or read as no
-    /// usable name for the anchor. Every later call that takes or returns a
+    /// usable name for the anchor, or a `cd` whose outcome is unknown while
+    /// such a report was missing. Every later call that takes or returns a
     /// path asks again first and fails while the answer is missing or
     /// unusable, so a path under the server's name for the anchor is never
-    /// mapped as outside it. A `cd` to an absolute path or a new connection
-    /// replaces it.
-    alias_pending: Option<String>,
+    /// mapped as outside it. A `cd` that completes or a new connection
+    /// replaces it. The only field a cancelled or failed await can leave set:
+    /// `scope_alias` is written only from an answer read whole, and the rest
+    /// is fixed for the session.
+    alias_pending: Option<AliasPending>,
+}
+
+/// What [`CryptOverlayProvider::alias_pending`] waits for.
+#[derive(Debug, Clone, PartialEq)]
+enum AliasPending {
+    /// The answer to a `cd` to this wire path, the anchor or below it: the
+    /// next report of where the session is answers that request.
+    Probe(String),
+    /// A `cd` sent while a probe was waiting did not complete: the session
+    /// is where that probe left it or where the new `cd` went, and a report
+    /// cannot tell which. No report answers it; a `cd` that completes does.
+    Unknown,
 }
 
 /// An error of the same kind as `error`, for each item of a batch that one
@@ -704,7 +719,7 @@ impl CryptOverlayProvider {
         if self.below_scope(wire).is_none() {
             return;
         }
-        self.alias_pending = Some(wire.to_string());
+        self.alias_pending = Some(AliasPending::Probe(wire.to_string()));
         if let Ok(reported) = self.inner.pwd().await {
             let _ = self.note_reported_cwd(&reported);
         }
@@ -726,18 +741,27 @@ impl CryptOverlayProvider {
     /// into the anchor is still waiting for that answer, learn from it, or
     /// fail when it names no usable alias.
     fn note_reported_cwd(&mut self, reported: &str) -> Result<(), ProviderError> {
-        let Some(wire) = self.alias_pending.take() else {
-            return Ok(());
+        let wire = match self.alias_pending.take() {
+            None => return Ok(()),
+            Some(AliasPending::Probe(wire)) => wire,
+            Some(AliasPending::Unknown) => {
+                self.alias_pending = Some(AliasPending::Unknown);
+                return Err(ProviderError::InvalidPath(
+                    "a change of folder did not complete, so where the session is cannot be told from the server's report; open a folder by its full path"
+                        .to_string(),
+                ));
+            }
         };
         if self.learn_scope_alias_from(&wire, reported) {
             return Ok(());
         }
-        // The server's reply stays out of the message, which crosses IPC
-        // and the logs: only our own path is named.
-        let error = ProviderError::InvalidPath(format!(
-            "the server names the encrypted folder {wire} in a way that cannot be told apart from folders outside it; open a folder by its full path"
-        ));
-        self.alias_pending = Some(wire);
+        // No path in the message, which crosses IPC and the logs: neither
+        // the server's reply nor the folder (a path may carry a password).
+        let error = ProviderError::InvalidPath(
+            "the server names the encrypted folder in a way that cannot be told apart from folders outside it; open a folder by its full path"
+                .to_string(),
+        );
+        self.alias_pending = Some(AliasPending::Probe(wire));
         Err(error)
     }
 
@@ -790,10 +814,10 @@ impl CryptOverlayProvider {
     ) -> Result<String, ProviderError> {
         let plain = self.unalias(plain);
         if kind == AccessKind::Write && self.write_may_land_in_the_anchor(&plain) {
-            return Err(ProviderError::InvalidPath(format!(
-                "refusing a plaintext write to {plain}: the server may read it as a path in the encrypted folder {}; write it by the folder's exact name",
-                self.scope
-            )));
+            return Err(ProviderError::InvalidPath(
+                "refusing a plaintext write: the server may read its path as one in the encrypted folder; write it by the folder's exact name"
+                    .to_string(),
+            ));
         }
         encode_plain_target(&self.keys, &self.scope, &plain, is_dir_leaf, kind)
             .map_err(ProviderError::InvalidPath)
@@ -1380,14 +1404,19 @@ impl StorageProvider for CryptOverlayProvider {
             self.settle_scope_alias().await?;
         }
         let enc = self.map(path, true, AccessKind::Read)?;
-        // Pending before the server is asked: a `cd` into the anchor that is
-        // cancelled after the server moved never reaches learn_scope_alias,
-        // and the next path call must still ask where the session landed
-        // instead of reading the anchor's other name as a folder outside it.
-        // A refused `cd` moved nothing and leaves the state as it was.
+        // Pending before the server is asked, and for this request: a `cd`
+        // into the anchor that is cancelled after the server moved never
+        // reaches learn_scope_alias, and the next path call must still ask
+        // where the session landed instead of reading the anchor's other name
+        // as a folder outside it. While an earlier probe waits, a `cd`
+        // cancelled midway leaves the session in one of two folders that no
+        // report tells apart: unknown, not the earlier probe's answer. A
+        // refused `cd` moved nothing and leaves the state as it was.
         let before = self.alias_pending.clone();
-        if self.below_scope(&enc).is_some() {
-            self.alias_pending = Some(enc.clone());
+        if before.is_some() {
+            self.alias_pending = Some(AliasPending::Unknown);
+        } else if self.below_scope(&enc).is_some() {
+            self.alias_pending = Some(AliasPending::Probe(enc.clone()));
         }
         if let Err(e) = self.inner.cd(&enc).await {
             self.alias_pending = before;
@@ -7289,12 +7318,14 @@ pub(crate) mod tests {
                 Some(&b"never in clear"[..]),
                 "{label}"
             );
-            // The refusal names our own path and never the server's reply.
+            // The refusal names no path: neither the folder nor the
+            // server's reply.
             let mut p = overlay(keys.clone());
             mem_of(&mut p).reports_as = Some(("/home/u/docs", "/home/u/docs/server-said-zq"));
             p.cd("/home/u/docs").await.unwrap();
             let error = p.list(".").await.unwrap_err().to_string();
-            assert!(error.contains("/home/u/docs"), "{label}: {error}");
+            assert!(error.contains("encrypted folder"), "{label}: {error}");
+            assert!(!error.contains("/home/u/docs"), "{label}: {error}");
             assert!(!error.contains("server-said-zq"), "{label}: {error}");
 
             let _ = tokio::fs::remove_dir_all(&dir).await;
@@ -7351,6 +7382,67 @@ pub(crate) mod tests {
             let mut p = CryptOverlayProvider::new(Box::new(mem), keys, "/home/u/docs");
             assert!(p.cd("/home/u/docs").await.is_err(), "{label}");
             assert!(p.alias_pending.is_none(), "{label}");
+        }
+    }
+
+    /// A probe left waiting by a `cd` into the anchor whose report failed,
+    /// then a `cd` outside cancelled after the server moved: the session is
+    /// in the anchor or outside, and the server's report cannot say which.
+    /// It is not read as the anchor's other name: `pwd` fails, and a delete
+    /// built from the outside folder never reaches the anchor's object. A
+    /// `cd` that completes ends it.
+    #[tokio::test]
+    async fn a_cancelled_cd_outside_never_answers_an_earlier_anchor_probe() {
+        fn mem_of(p: &mut CryptOverlayProvider) -> &mut MemProvider {
+            p.inner.as_any_mut().downcast_mut::<MemProvider>().unwrap()
+        }
+        for (label, keys) in both_kinds() {
+            let mut mem = MemProvider::new();
+            mem.seed_raw_dir("/home/u/docs");
+            mem.seed_raw_dir("/srv/other");
+            mem.seed_raw_file("/srv/other/secret.txt", b"outside");
+            let mut p = CryptOverlayProvider::new(Box::new(mem), keys.clone(), "/home/u/docs");
+            let dir = std::env::temp_dir().join(format!("crypt_outside_{}", uuid::Uuid::new_v4()));
+            tokio::fs::create_dir_all(&dir).await.unwrap();
+            let local = dir.join("secret.txt");
+            tokio::fs::write(&local, b"inside").await.unwrap();
+            p.upload(local.to_str().unwrap(), "/home/u/docs/secret.txt", None)
+                .await
+                .unwrap();
+            let _ = tokio::fs::remove_dir_all(&dir).await;
+            let anchored = |mem: &MemProvider| {
+                mem.raw_paths()
+                    .into_iter()
+                    .filter(|k| k.starts_with("/home/u/docs/"))
+                    .count()
+            };
+            assert_eq!(anchored(mem_of(&mut p)), 1, "{label}");
+
+            mem_of(&mut p).pwd_failures = 1;
+            p.cd("/home/u/docs").await.unwrap();
+            assert!(p.alias_pending.is_some(), "{label}");
+            mem_of(&mut p).cd_hangs_after_moving = true;
+            let cancelled =
+                tokio::time::timeout(std::time::Duration::from_millis(50), p.cd("/srv/other"))
+                    .await;
+            assert!(cancelled.is_err(), "{label}");
+            assert_eq!(*mem_of(&mut p).cwd.lock().unwrap(), "/srv/other");
+            mem_of(&mut p).cd_hangs_after_moving = false;
+
+            let unknown = p.pwd().await.unwrap_err().to_string();
+            assert!(!unknown.contains("/srv/other"), "{label}: {unknown}");
+            assert!(p.scope_alias.is_none(), "{label}");
+            assert!(p.delete("secret.txt").await.is_err(), "{label}");
+            assert!(p.delete("/srv/other/secret.txt").await.is_err(), "{label}");
+            assert_eq!(anchored(mem_of(&mut p)), 1, "{label}");
+            assert!(mem_of(&mut p).raw_bytes("/srv/other/secret.txt").is_some());
+
+            p.cd("/srv/other").await.unwrap();
+            assert_eq!(p.pwd().await.unwrap(), "/srv/other", "{label}");
+            p.delete("/srv/other/secret.txt").await.unwrap();
+            let mem = mem_of(&mut p);
+            assert_eq!(mem.raw_bytes("/srv/other/secret.txt"), None, "{label}");
+            assert_eq!(anchored(mem), 1, "{label}");
         }
     }
 

@@ -1207,7 +1207,7 @@ pub async fn run_pair_incremental_cycle(
             ));
         }
     };
-    let placed_key = crate::cloud_scan_schedule::pair_key(&config);
+    let placed_key = opened.scheduler_key(&config);
     let mut provider = opened.provider;
     let traits = ProviderScanTraits::of(&*provider);
     let mut svc = CloudService::new();

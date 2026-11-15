@@ -158,4 +158,84 @@ describe('CloudPairsEditor saves', () => {
         expect(remote).toContain('/home/u/docs');
         expect(remote).not.toContain('docs');
     });
+
+    const READ = { id: 'a', name: 'A', local_path: '/l', remote_path: 'docs', enabled: true, server_profile: 'nas', protocol_type: 'sftp', connection_params: {}, sync_direction: 'bidirectional', compress_enabled: false, compress_level: 3 };
+    const open = async (onClose = vi.fn()) => {
+        host = document.createElement('div'); document.body.append(host); root = createRoot(host);
+        await React.act(async () => root!.render(<CloudPairsEditor isOpen onClose={onClose} />));
+        const nameInput = () => Array.from(host.querySelectorAll('input')).find(input => input.value === 'A' || input.value === 'Mine')!;
+        const type = (input: HTMLInputElement, value: string) => React.act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        return { nameInput, type, values: () => Array.from(host.querySelectorAll('input')).map(input => input.value) };
+    };
+
+    it('keeps a field typed while a toggle saves, and takes the rest from the list saved', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let release!: () => void;
+        mocks.invoke.mockImplementation((command: string, args?: { config: { pairs: Array<Record<string, unknown>> } }) => {
+            if (command === 'get_cloud_pairs_config') return Promise.resolve({ pairs: [READ], parallel_pairs: false });
+            if (command === 'save_cloud_pairs_config_cmd') return new Promise(resolve => { release = () => resolve({ pairs: args!.config.pairs.map(pair => ({ ...pair, remote_path: '/home/u/docs' })), parallel_pairs: false }); });
+            return Promise.resolve(undefined);
+        });
+        const { nameInput, type, values } = await open();
+        await React.act(async () => (host.querySelector('button[title="cloud.disable"]') as HTMLButtonElement).click());
+        await type(nameInput(), 'Mine');
+        await React.act(async () => release());
+        expect(values()).toContain('Mine');
+        expect(values()).toContain('/home/u/docs');
+        expect(host.querySelector('button[title="cloud.enable"]')).not.toBeNull();
+    });
+
+    it('keeps a remote folder typed while a toggle saves, over the folder its reply carries', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let release!: () => void;
+        mocks.invoke.mockImplementation((command: string, args?: { config: { pairs: Array<Record<string, unknown>> } }) => {
+            if (command === 'get_cloud_pairs_config') return Promise.resolve({ pairs: [READ], parallel_pairs: false });
+            if (command === 'save_cloud_pairs_config_cmd') return new Promise(resolve => { release = () => resolve({ pairs: args!.config.pairs.map(pair => ({ ...pair, remote_path: '/home/u/docs' })), parallel_pairs: false }); });
+            return Promise.resolve(undefined);
+        });
+        const { type, values } = await open();
+        await React.act(async () => (host.querySelector('button[title="cloud.disable"]') as HTMLButtonElement).click());
+        const folder = Array.from(host.querySelectorAll('input')).find(input => input.value === 'docs')!;
+        await type(folder, 'photos');
+        await React.act(async () => release());
+        expect(values()).toContain('photos');
+        expect(values()).not.toContain('/home/u/docs');
+        expect(host.querySelector('button[title="cloud.enable"]')).not.toBeNull();
+    });
+
+    it('rolls back only the toggle when its save fails, keeping a field typed meanwhile', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        let fail!: () => void;
+        mocks.invoke.mockImplementation((command: string) => {
+            if (command === 'get_cloud_pairs_config') return Promise.resolve({ pairs: [READ], parallel_pairs: false });
+            if (command === 'save_cloud_pairs_config_cmd') return new Promise((_, reject) => { fail = () => reject(new Error('disk full')); });
+            return Promise.resolve(undefined);
+        });
+        const { nameInput, type, values } = await open();
+        await React.act(async () => (host.querySelector('button[title="cloud.disable"]') as HTMLButtonElement).click());
+        await type(nameInput(), 'Mine');
+        await React.act(async () => fail());
+        expect(values()).toContain('Mine');
+        expect(host.querySelector('button[title="cloud.disable"]')).not.toBeNull();
+    });
+
+    it('shows a refused save and keeps the editor open with the draft', async () => {
+        (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+        mocks.invoke.mockImplementation(async (command: string) => {
+            if (command === 'get_cloud_pairs_config') return { pairs: [READ], parallel_pairs: false };
+            if (command === 'save_cloud_pairs_config_cmd') throw new Error('The AeroCloud folder pairs changed since this list was opened: open it again');
+            return undefined;
+        });
+        const onClose = vi.fn();
+        const { nameInput, type, values } = await open(onClose);
+        await type(nameInput(), 'Mine');
+        const save = Array.from(host.querySelectorAll('button')).find(button => button.textContent === 'common.save')!;
+        await React.act(async () => save.click());
+        expect(host.querySelector('[role="alert"]')?.textContent).toBe('common.saveFailed');
+        expect(onClose).not.toHaveBeenCalled();
+        expect(values()).toContain('Mine');
+    });
 });

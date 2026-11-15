@@ -14,6 +14,109 @@ use std::sync::{LazyLock, Mutex};
 /// Serializes concurrent writes to the cloud config file
 static CONFIG_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
+/// Refusal of a write while another AeroFTP process (the app, the CLI) is
+/// saving the same AeroCloud settings file. Names no path.
+pub const AEROCLOUD_SETTINGS_BUSY: &str =
+    "Another AeroFTP process is saving the AeroCloud settings; nothing was saved, try again";
+
+/// Refusal of a writer that takes the lock of an AeroCloud settings file
+/// while this thread holds one already: see [`SettingsFileLock`].
+pub(crate) const SETTINGS_LOCK_ORDER: &str =
+    "An AeroCloud settings file was locked while another was held; nothing was saved";
+
+thread_local! {
+    /// Whether this thread holds a [`SettingsFileLock`].
+    static HOLDS_A_SETTINGS_FILE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// The lock every read-modify-write and every whole-file save of an AeroCloud
+/// settings file (`cloud_config.json`, `cloud_pairs.json`) takes next to the
+/// process lock: the GUI and the CLI are separate processes, and the process
+/// lock orders neither against the other. It is the
+/// [`ProfileListLock`](crate::user_partitions::ProfileListLock) of the file
+/// itself (`cloud_config.write-lock`), with its wait, its refusal and its
+/// filesystems without file locks, where the write goes on as it did before
+/// the lock existed.
+///
+/// One order, for every process: the profile-list lock first, then at most
+/// one settings file lock, and nothing else while that is held. A settings
+/// file lock is a leaf: its holder reads, merges and writes one file and
+/// takes no other lock, so no two processes can wait on each other. A second
+/// settings file lock in the same thread is refused ([`SETTINGS_LOCK_ORDER`]);
+/// a source check pins the rest (no profile-list lock, no other settings
+/// write, no await inside a mutation).
+///
+/// Held only by synchronous code: the guard is not `Send`, so no spawned
+/// future can hold it across an await. What releases it: the guard's drop at the
+/// end of the write, the unwinding of a panic (the same drop), the drop of a
+/// future cancelled while it held one, and on process death the system,
+/// which closes the file and the lock with it.
+pub(crate) struct SettingsFileLock {
+    _held: crate::user_partitions::ProfileListLock,
+    /// Not `Send`: the thread mark is cleared on the thread that set it.
+    _this_thread: std::marker::PhantomData<*const ()>,
+}
+
+/// The two locks of one settings write. The file lock is released first,
+/// so the next writer of this process finds it free when it gets the
+/// process lock.
+pub(crate) struct SettingsWriteLock<'a> {
+    _file: SettingsFileLock,
+    _process: std::sync::MutexGuard<'a, ()>,
+}
+
+impl SettingsFileLock {
+    /// The process lock of the file, then its file lock: the order of every
+    /// writer of both files. A thread that holds one already is refused
+    /// before it waits on either.
+    pub(crate) fn acquire_with<'a>(
+        process: &'a Mutex<()>,
+        path: &Path,
+    ) -> Result<SettingsWriteLock<'a>, String> {
+        refuse_a_second_settings_lock()?;
+        let process = process
+            .lock()
+            .map_err(|_| "AeroCloud settings write lock poisoned".to_string())?;
+        Ok(SettingsWriteLock {
+            _file: Self::acquire(path)?,
+            _process: process,
+        })
+    }
+
+    fn acquire(path: &Path) -> Result<Self, String> {
+        refuse_a_second_settings_lock()?;
+        let held =
+            crate::user_partitions::ProfileListLock::acquire_for_path(path).map_err(|e| {
+                if e == crate::user_partitions::PROFILE_LIST_BUSY {
+                    AEROCLOUD_SETTINGS_BUSY.to_string()
+                } else {
+                    // The lock's own words name the profile list; the cause after
+                    // them is the system's, which names no path.
+                    let cause = e.split_once(": ").map_or(e.as_str(), |(_, cause)| cause);
+                    format!("Failed to lock the AeroCloud settings; nothing was saved: {cause}")
+                }
+            })?;
+        HOLDS_A_SETTINGS_FILE.set(true);
+        Ok(Self {
+            _held: held,
+            _this_thread: std::marker::PhantomData,
+        })
+    }
+}
+
+fn refuse_a_second_settings_lock() -> Result<(), String> {
+    if HOLDS_A_SETTINGS_FILE.get() {
+        return Err(SETTINGS_LOCK_ORDER.to_string());
+    }
+    Ok(())
+}
+
+impl Drop for SettingsFileLock {
+    fn drop(&mut self) {
+        HOLDS_A_SETTINGS_FILE.set(false);
+    }
+}
+
 /// Cloud sync configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CloudConfig {
@@ -313,10 +416,9 @@ fn load_cloud_config_strict_at(path: &Path) -> Result<CloudConfig, String> {
     })
 }
 
-/// Strict load at the real config path: callers that read-then-save outside
-/// [`with_cloud_config_mut`] (CLI commands, one-shot tools) use this so an
-/// unreadable file is an error instead of an empty config that a later save
-/// would write over the user's data.
+/// Strict load at the real config path: callers that read before they save
+/// (the CLI commands, which save through [`save_settings_edit`]) use this so
+/// an unreadable file is an error instead of an empty config.
 pub fn load_cloud_config_strict() -> Result<CloudConfig, String> {
     load_cloud_config_strict_at(&get_config_path())
 }
@@ -332,9 +434,7 @@ pub fn with_cloud_config_mut_at<F, T>(path: &Path, f: F) -> Result<T, String>
 where
     F: FnOnce(&mut CloudConfig) -> Result<T, String>,
 {
-    let _lock = CONFIG_WRITE_LOCK
-        .lock()
-        .map_err(|_| "Config write lock poisoned".to_string())?;
+    let _lock = SettingsFileLock::acquire_with(&CONFIG_WRITE_LOCK, path)?;
     let mut config = load_cloud_config_strict_at(path)?;
     let before = serde_json::to_value(&config).ok();
     let out = f(&mut config)?;
@@ -350,7 +450,10 @@ where
 /// now, from `draft`, the settings the user edited after reading them as
 /// `read_as`. What the file gained since that read and the user did not
 /// edit stays as stored: the remote folder a sync placed under the login
-/// folder, the time of the last sync, the pause. When the setup itself moved
+/// folder, the time of the last sync, the pause. The placed folder and the
+/// last sync belong to the target they were written for: a draft that moves
+/// to another target (profile, local folder, protocol or connection
+/// parameters) inherits neither. When the setup itself moved
 /// (AeroCloud enabled or disabled, another profile, local folder, protocol
 /// or connection parameters), the draft belongs to a configuration that was
 /// replaced, and the save is refused.
@@ -376,12 +479,49 @@ pub fn settings_save(
                 .to_string(),
         );
     }
-    if draft.remote_folder == read_as.remote_folder {
-        draft.remote_folder = stored.remote_folder.clone();
+    let target = |config: &CloudConfig| {
+        let (_, profile_id, profile, local, protocol, params) = setup(config);
+        (profile_id, profile, local, protocol, params)
+    };
+    if target(&draft) == target(read_as) {
+        if draft.remote_folder == read_as.remote_folder {
+            draft.remote_folder = stored.remote_folder.clone();
+        }
+        draft.last_sync = stored.last_sync;
+    } else {
+        draft.last_sync = None;
     }
-    draft.last_sync = stored.last_sync;
     draft.paused = stored.paused;
     Ok(draft)
+}
+
+/// Saves `config`, the settings edited from `read_as` (the configuration
+/// read before the edit), and returns the configuration saved: the file is
+/// read, merged by [`settings_save`] and written under its locks, so what
+/// another writer (the app, the CLI, a placement) saved meanwhile is never
+/// lost. The settings view and the CLI save through it.
+pub fn save_settings_edit(
+    config: CloudConfig,
+    read_as: &CloudConfig,
+) -> Result<CloudConfig, String> {
+    save_settings_edit_at(&get_config_path(), config, read_as)
+}
+
+fn save_settings_edit_at(
+    path: &Path,
+    config: CloudConfig,
+    read_as: &CloudConfig,
+) -> Result<CloudConfig, String> {
+    with_cloud_config_mut_at(path, |stored| {
+        let saved = settings_save(stored, read_as, config)?;
+        // A folder kept as saved (another setting edited) follows the saved rule.
+        refuse_an_unusable_remote_folder(
+            &saved.remote_folder,
+            Some(stored.remote_folder.as_str()),
+        )?;
+        *stored = saved.clone();
+        Ok(saved)
+    })
 }
 
 pub fn with_cloud_config_mut<F, T>(f: F) -> Result<T, String>
@@ -391,11 +531,14 @@ where
     with_cloud_config_mut_at(&get_config_path(), f)
 }
 
-/// Save cloud configuration to disk (serialized via write lock, atomic temp+rename)
-pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
-    let _lock = CONFIG_WRITE_LOCK
-        .lock()
-        .map_err(|_| "Config write lock poisoned".to_string())?;
+/// Save cloud configuration to disk (serialized via write lock, atomic temp+rename).
+/// For tests only: a whole-file save of a configuration read earlier would
+/// put back what another writer saved since, so every other save merges
+/// ([`with_cloud_config_mut`], [`save_settings_edit`]) or resets
+/// ([`save_cloud_config_unchecked`]).
+#[cfg(test)]
+pub(crate) fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
+    let _lock = SettingsFileLock::acquire_with(&CONFIG_WRITE_LOCK, &get_config_path())?;
     save_cloud_config_unlocked(config)
 }
 
@@ -404,12 +547,12 @@ pub fn save_cloud_config(config: &CloudConfig) -> Result<(), String> {
 /// (`setup_aerocloud`) and `disable_aerocloud`. Every other save goes through
 /// [`save_cloud_config`], which refuses to destroy a file it cannot read.
 pub fn save_cloud_config_unchecked(config: &CloudConfig) -> Result<(), String> {
-    let _lock = CONFIG_WRITE_LOCK
-        .lock()
-        .map_err(|_| "Config write lock poisoned".to_string())?;
-    save_cloud_config_unlocked_at_force(config, &get_config_path())
+    let path = get_config_path();
+    let _lock = SettingsFileLock::acquire_with(&CONFIG_WRITE_LOCK, &path)?;
+    save_cloud_config_unlocked_at_force(config, &path)
 }
 
+#[cfg(test)]
 fn save_cloud_config_unlocked(config: &CloudConfig) -> Result<(), String> {
     save_cloud_config_unlocked_at(config, &get_config_path())
 }
@@ -783,7 +926,12 @@ mod tests {
         })
         .unwrap_err();
         assert!(!ran, "closure must not run on an unreadable config: {err}");
-        assert!(err.contains("read"), "not refused for the read: {err}");
+        // The lock beside the file is the first to meet the closed folder:
+        // the refusal says so, with the system's cause.
+        assert!(
+            err.contains("Permission denied"),
+            "not refused for the folder: {err}"
+        );
         std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
     }
@@ -962,5 +1110,315 @@ mod tests {
         let parsed: CloudConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.watcher_debounce_ms, 3000);
         assert_eq!(parsed.watcher_cooldown_secs, 0);
+    }
+
+    /// The same rule as a pair's: a settings draft that moves AeroCloud to
+    /// another target keeps its own folder and has not synced there; on the
+    /// same target the placed folder and the last sync stay.
+    #[test]
+    fn a_settings_draft_moved_to_another_target_inherits_nothing_its_old_target_wrote() {
+        let synced = chrono::Utc::now();
+        // The read already carries a sync of the old target, so a draft that
+        // moves keeps it unless the save clears it.
+        let read_as = CloudConfig {
+            enabled: true,
+            server_profile_id: Some("srv_a".to_string()),
+            server_profile: "nas".to_string(),
+            protocol_type: "sftp".to_string(),
+            remote_folder: "~/docs".to_string(),
+            local_folder: "/sync".into(),
+            last_sync: Some(synced - chrono::Duration::hours(1)),
+            ..Default::default()
+        };
+        let stored = CloudConfig {
+            remote_folder: "/home/a/docs".to_string(),
+            last_sync: Some(synced),
+            ..read_as.clone()
+        };
+        let moves: [fn(&mut CloudConfig); 5] = [
+            |c| c.server_profile_id = Some("srv_b".to_string()),
+            |c| c.server_profile = "other".to_string(),
+            |c| c.local_folder = "/elsewhere".into(),
+            |c| c.protocol_type = "ftp".to_string(),
+            |c| c.connection_params = serde_json::json!({ "port": 2222 }),
+        ];
+        for (at, moved) in moves.iter().enumerate() {
+            let mut draft = read_as.clone();
+            moved(&mut draft);
+            let saved = settings_save(&stored, &read_as, draft).unwrap();
+            assert_eq!(saved.remote_folder, "~/docs", "move {at}");
+            assert_eq!(saved.last_sync, None, "move {at}");
+        }
+        let mut same = read_as.clone();
+        same.paused = !same.paused;
+        let saved = settings_save(&stored, &read_as, same).unwrap();
+        assert_eq!(saved.remote_folder, "/home/a/docs");
+        assert_eq!(saved.last_sync, Some(synced));
+    }
+
+    /// Another process holding the lock of a settings file (here a second
+    /// open file, which the system orders as it orders another process)
+    /// makes every writer of that file wait, then refuse with words that
+    /// name no path, and the file keeps its bytes. Once it is free, the same
+    /// write goes through.
+    #[test]
+    fn a_settings_write_waits_for_another_process_then_refuses_and_writes_nothing() {
+        let data = tempfile::tempdir().unwrap();
+        let config = data.path().join("cloud_config.json");
+        let pairs = data.path().join("cloud_pairs.json");
+        std::fs::write(
+            &config,
+            serde_json::to_vec(&CloudConfig::default()).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&pairs, br#"{"pairs": []}"#).unwrap();
+        let held = |file: &Path| {
+            let lock = std::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(file.with_extension("write-lock"))
+                .unwrap();
+            lock.lock().unwrap();
+            lock
+        };
+        type Write<'a> = Box<dyn Fn() -> Result<(), String> + 'a>;
+        let writes: [(&str, &Path, Write); 3] = [
+            (
+                "config",
+                &config,
+                Box::new(|| {
+                    with_cloud_config_mut_at(&config, |c| {
+                        c.enabled = true;
+                        Ok(())
+                    })
+                }),
+            ),
+            (
+                "settings edit",
+                &config,
+                Box::new(|| {
+                    let read_as = load_cloud_config_strict_at(&config)?;
+                    let edit = CloudConfig {
+                        enabled: true,
+                        ..read_as.clone()
+                    };
+                    save_settings_edit_at(&config, edit, &read_as).map(|_| ())
+                }),
+            ),
+            (
+                "pairs",
+                &pairs,
+                Box::new(|| {
+                    crate::cloud_pairs::with_cloud_pairs_mut_at(&pairs, |p| {
+                        p.parallel_pairs = true;
+                        Ok(())
+                    })
+                }),
+            ),
+        ];
+        for (name, file, write) in &writes {
+            let before = std::fs::read(file).unwrap();
+            let other = held(file);
+            let started = std::time::Instant::now();
+            let err = write().unwrap_err();
+            assert_eq!(err, AEROCLOUD_SETTINGS_BUSY, "{name}");
+            assert!(
+                started.elapsed() >= std::time::Duration::from_millis(250),
+                "{name}"
+            );
+            assert!(!err.contains(data.path().to_str().unwrap()), "{name}");
+            assert_eq!(std::fs::read(file).unwrap(), before, "{name}");
+            drop(other);
+            write().unwrap();
+            assert_ne!(std::fs::read(file).unwrap(), before, "{name}");
+            std::fs::write(file, &before).unwrap();
+        }
+    }
+
+    /// The CLI saves an edit as the settings view does: what another writer
+    /// saved between its read and its write (a placed folder, a sync time)
+    /// stays, and only what the command changed is written. The merge holds
+    /// without file locks, so it is not the lock that keeps the placement.
+    #[test]
+    fn a_command_edit_keeps_what_another_writer_saved_after_its_read() {
+        let data = tempfile::tempdir().unwrap();
+        let config = data.path().join("cloud_config.json");
+        crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(true);
+        let read_as = CloudConfig {
+            server_profile: "nas".to_string(),
+            remote_folder: "~/docs".to_string(),
+            local_folder: "/sync".into(),
+            ..Default::default()
+        };
+        save_cloud_config_unlocked_at(&read_as, &config).unwrap();
+        let synced = chrono::Utc::now();
+        with_cloud_config_mut_at(&config, |stored| {
+            stored.remote_folder = "/home/u/docs".to_string();
+            stored.last_sync = Some(synced);
+            Ok(())
+        })
+        .unwrap();
+        let edit = CloudConfig {
+            enabled: true,
+            ..read_as.clone()
+        };
+        let saved = save_settings_edit_at(&config, edit, &read_as);
+        crate::user_partitions::NO_FILE_LOCKS_IN_TEST.set(false);
+        let saved = saved.unwrap();
+        let stored = load_cloud_config_strict_at(&config).unwrap();
+        for c in [&saved, &stored] {
+            assert!(c.enabled);
+            assert_eq!(c.remote_folder, "/home/u/docs");
+            assert_eq!(c.last_sync, Some(synced));
+        }
+    }
+
+    /// A settings file lock is a leaf. A thread that holds one is refused a
+    /// second, the config's or the pairs', before it waits on either, so it
+    /// can never wait on another process while holding one; the mark goes
+    /// with the guard, also when a panic unwinds it.
+    #[test]
+    fn a_settings_lock_is_never_taken_while_one_is_held() {
+        let data = tempfile::tempdir().unwrap();
+        let config = data.path().join("cloud_config.json");
+        let pairs = data.path().join("cloud_pairs.json");
+        save_cloud_config_unlocked_at(&CloudConfig::default(), &config).unwrap();
+        std::fs::write(&pairs, br#"{"pairs": []}"#).unwrap();
+        let pairs_before = std::fs::read(&pairs).unwrap();
+        // Called through a value, as a helper would be: the source check
+        // below sees only the closure's own text.
+        let into_pairs = || crate::cloud_pairs::with_cloud_pairs_mut_at(&pairs, |_| Ok(()));
+        let into_config = || with_cloud_config_mut_at(&config, |_| Ok(()));
+        // Each the other's. The same file again is refused the same way; it
+        // is left out so that a guard that stopped refusing fails this test
+        // instead of hanging it on the process lock.
+        let nested = with_cloud_config_mut_at(&config, |c| {
+            c.enabled = true;
+            Ok(into_pairs())
+        })
+        .unwrap();
+        assert_eq!(nested.unwrap_err(), SETTINGS_LOCK_ORDER);
+        assert_eq!(std::fs::read(&pairs).unwrap(), pairs_before);
+        let nested =
+            crate::cloud_pairs::with_cloud_pairs_mut_at(&pairs, |_| Ok(into_config())).unwrap();
+        assert_eq!(nested.unwrap_err(), SETTINGS_LOCK_ORDER);
+        // Released at the end of each write: the next one goes through.
+        into_pairs().unwrap();
+        into_config().unwrap();
+        let unwound = std::panic::catch_unwind(|| {
+            let _held = SettingsFileLock::acquire(&config).unwrap();
+            panic!("a holder that panics");
+        });
+        assert!(unwound.is_err());
+        assert!(!HOLDS_A_SETTINGS_FILE.get());
+        let other = std::fs::File::open(config.with_extension("write-lock")).unwrap();
+        other.try_lock().unwrap();
+    }
+
+    /// A future dropped while it holds a settings file lock (a cancelled
+    /// command) releases it with the guard: the file lock of its open file
+    /// goes with the file, and the thread mark with the drop.
+    #[test]
+    fn a_future_dropped_while_it_holds_a_settings_lock_releases_it() {
+        let data = tempfile::tempdir().unwrap();
+        let config = data.path().join("cloud_config.json");
+        let lock_file = config.with_extension("write-lock");
+        let mut holder = Box::pin(async {
+            let _held = SettingsFileLock::acquire(&config).unwrap();
+            std::future::pending::<()>().await;
+        });
+        let mut cx = std::task::Context::from_waker(std::task::Waker::noop());
+        assert!(std::future::Future::poll(holder.as_mut(), &mut cx).is_pending());
+        assert!(HOLDS_A_SETTINGS_FILE.get());
+        let other = std::fs::File::open(&lock_file).unwrap();
+        assert!(matches!(
+            other.try_lock(),
+            Err(std::fs::TryLockError::WouldBlock)
+        ));
+        drop(holder);
+        assert!(!HOLDS_A_SETTINGS_FILE.get());
+        other.try_lock().unwrap();
+    }
+
+    /// The order every process follows, checked on the source: no mutation
+    /// of a settings file (the closure given to `with_cloud_config_mut` or
+    /// `with_cloud_pairs_mut`, anywhere in the crate, tests included) takes
+    /// the profile-list lock, writes a settings file, or awaits. The
+    /// profile-list lock is therefore always taken before a settings lock,
+    /// and a settings lock never waits on anything but its own file.
+    #[test]
+    fn no_settings_mutation_takes_another_lock_or_awaits() {
+        fn rust_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    out.push(path);
+                }
+            }
+        }
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let calls = [
+            "with_cloud_config_mut(",
+            "with_cloud_config_mut_at(",
+            "with_cloud_pairs_mut(",
+            "with_cloud_pairs_mut_at(",
+        ];
+        let forbidden = [
+            "ProfileListLock",
+            "SettingsFileLock",
+            "with_cloud_config_mut",
+            "with_cloud_pairs_mut",
+            "save_cloud_config",
+            "save_cloud_pairs_config",
+            "save_settings_edit",
+            ".await",
+            "block_on",
+        ];
+        let mut mutations = 0;
+        let mut offenders = Vec::new();
+        for file in files {
+            let code = std::fs::read_to_string(&file).unwrap();
+            for call in calls {
+                for (at, _) in code.match_indices(call) {
+                    // A definition, a longer name, or this test's own list.
+                    if code[..at].ends_with("fn ")
+                        || code[..at]
+                            .ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '"')
+                    {
+                        continue;
+                    }
+                    let open = at + call.len();
+                    let mut depth = 1;
+                    let mut end = open;
+                    for (i, c) in code[open..].char_indices() {
+                        match c {
+                            '(' => depth += 1,
+                            ')' => depth -= 1,
+                            _ => {}
+                        }
+                        if depth == 0 {
+                            end = open + i;
+                            break;
+                        }
+                    }
+                    assert!(end > open, "{}: unbalanced call", file.display());
+                    let body = &code[open..end];
+                    mutations += 1;
+                    for word in forbidden {
+                        if body.contains(word) {
+                            let line = code[..at].lines().count();
+                            offenders.push(format!("{}:{line} {word}", file.display()));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(mutations > 40, "{mutations}");
+        assert!(offenders.is_empty(), "{offenders:#?}");
     }
 }

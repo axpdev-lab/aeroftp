@@ -489,7 +489,17 @@ pub(crate) trait SwitchTargets {
         read_as: (&CloudConfig, &CloudPairsConfig),
         cloud: &CloudConfig,
         pairs: &CloudPairsConfig,
-    ) -> Result<(), String>;
+    ) -> Result<(), CloudStoreError>;
+    /// Puts back `cloud` and `pairs`, the files before a switch that wrote
+    /// `written`, over the files as they are now: the settings by the merge
+    /// of [`Self::store_cloud`], the pairs by [`put_back_pair_folders`], so a
+    /// pair added since the switch wrote is kept.
+    fn put_back_cloud(
+        &mut self,
+        written: (&CloudConfig, &CloudPairsConfig),
+        cloud: &CloudConfig,
+        pairs: &CloudPairsConfig,
+    ) -> Result<(), CloudStoreError>;
     /// Sets the mode and, when given, the initial folder on the stored
     /// profile, leaving every other field as the store holds it now.
     fn store_profile(
@@ -498,6 +508,65 @@ pub(crate) trait SwitchTargets {
         to: ProtonMode,
         initial_path: Option<&str>,
     ) -> Result<(), ProfileStoreError>;
+}
+
+/// Puts back over `stored` the remote folder of each pair the switch changed
+/// from `original` to `written`, and only that: a pair added since, a
+/// folder changed since and every other field stay as stored.
+fn put_back_pair_folders(
+    stored: &mut CloudPairsConfig,
+    written: &CloudPairsConfig,
+    original: &CloudPairsConfig,
+) {
+    for pair in &mut stored.pairs {
+        let (Some(wrote), Some(was)) = (
+            written.pairs.iter().find(|p| p.id == pair.id),
+            original.pairs.iter().find(|p| p.id == pair.id),
+        ) else {
+            continue;
+        };
+        if wrote.remote_path != was.remote_path && pair.remote_path == wrote.remote_path {
+            pair.remote_path = was.remote_path.clone();
+        }
+    }
+}
+
+/// Why [`SwitchTargets::store_cloud`] did not finish.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CloudStoreError {
+    /// Neither file was changed: nothing was written, or what was written
+    /// has been put back.
+    NotSaved(String),
+    /// The settings were written and the pairs were not, and the settings
+    /// could not be put back: the two files name different folders.
+    SettingsOnly(String),
+}
+
+impl std::fmt::Display for CloudStoreError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotSaved(e) | Self::SettingsOnly(e) => f.write_str(e),
+        }
+    }
+}
+
+/// What a failed switch left behind, said after its error: "nothing was
+/// changed" only when every write was put back.
+fn left_behind(history_not_put_back: usize, cloud: Option<String>) -> String {
+    let mut left = Vec::new();
+    if let Some(cloud) = cloud {
+        left.push(cloud);
+    }
+    if history_not_put_back > 0 {
+        left.push(format!(
+            "{history_not_put_back} sync history file(s) could not be put back"
+        ));
+    }
+    if left.is_empty() {
+        "nothing was changed".to_string()
+    } else {
+        format!("NOT everything was put back: {}", left.join("; "))
+    }
 }
 
 /// Why [`SwitchTargets::store_profile`] did not finish.
@@ -583,24 +652,33 @@ pub(crate) fn apply_in(
     }
     let new_paths: HashSet<PathBuf> = writes.iter().map(|(path, _)| path.clone()).collect();
 
+    // Puts the written history files back; answers how many could not be.
     let roll_back = |written: &[PathBuf]| {
-        for path in written {
-            match originals.get(path) {
-                Some(bytes) => {
-                    let _ = crate::sync::atomic_write(path, bytes);
+        written
+            .iter()
+            .filter(|path| {
+                let put_back = match originals.get(*path) {
+                    Some(bytes) => {
+                        crate::sync::atomic_write(path, bytes).map_err(|e| e.to_string())
+                    }
+                    None => std::fs::remove_file(path).map_err(|e| e.to_string()),
+                };
+                if let Err(e) = &put_back {
+                    tracing::warn!(
+                        "proton mode switch: sync history {} not put back: {e}",
+                        path.display()
+                    );
                 }
-                None => {
-                    let _ = std::fs::remove_file(path);
-                }
-            }
-        }
+                put_back.is_err()
+            })
+            .count()
     };
 
     let mut written = Vec::new();
     for (path, bytes) in &writes {
         if let Err(e) = crate::sync::atomic_write(path, bytes) {
-            roll_back(&written);
-            return Err(format!("sync history not moved, nothing was changed: {e}"));
+            let left = left_behind(roll_back(&written), None);
+            return Err(format!("sync history not moved, {left}: {e}"));
         }
         written.push(path.clone());
     }
@@ -625,10 +703,21 @@ pub(crate) fn apply_in(
             pair.remote_path = target;
         }
     }
+    // The AeroCloud state a failed switch leaves, for its error.
+    let cloud_left = |what: &str| {
+        format!(
+            "{what}: AeroCloud names its folders as {} mode spells them while the profile stays in {} mode; switch the profile to {} mode or set the AeroCloud folder again before the next sync",
+            to.label(),
+            from.label(),
+            to.label()
+        )
+    };
     if cloud_changed {
         if let Err(e) = targets.store_cloud((cloud, pairs), &new_cloud, &new_pairs) {
-            roll_back(&written);
-            return Err(format!("AeroCloud not updated, nothing was changed: {e}"));
+            let cloud = matches!(e, CloudStoreError::SettingsOnly(_))
+                .then(|| cloud_left("the AeroCloud settings were updated and its pairs were not"));
+            let left = left_behind(roll_back(&written), cloud);
+            return Err(format!("AeroCloud not updated, {left}: {e}"));
         }
     }
 
@@ -644,11 +733,18 @@ pub(crate) fn apply_in(
     match targets.store_profile(&id, to, initial.as_deref()) {
         Ok(()) => {}
         Err(ProfileStoreError::NotSaved(e)) => {
-            if cloud_changed {
-                let _ = targets.store_cloud((&new_cloud, &new_pairs), cloud, pairs);
-            }
-            roll_back(&written);
-            return Err(format!("profile not saved, nothing was changed: {e}"));
+            // AeroCloud is put back over the files as they are now: a pair
+            // added since is kept, and a put back that fails is said.
+            let cloud = if cloud_changed {
+                targets
+                    .put_back_cloud((&new_cloud, &new_pairs), cloud, pairs)
+                    .err()
+                    .map(|back| cloud_left(&format!("AeroCloud could not be put back ({back})")))
+            } else {
+                None
+            };
+            let left = left_behind(roll_back(&written), cloud);
+            return Err(format!("profile not saved, {left}: {e}"));
         }
         Err(ProfileStoreError::Switched(e)) => switched_anyway = Some(e),
     }
@@ -749,26 +845,62 @@ impl SwitchTargets for DiskTargets<'_> {
         read_as: (&CloudConfig, &CloudPairsConfig),
         cloud: &CloudConfig,
         pairs: &CloudPairsConfig,
-    ) -> Result<(), String> {
+    ) -> Result<(), CloudStoreError> {
         // Each file is merged with the file as it is at the write, under its
         // write lock, by the rule of the settings and the pair editor: what
         // it gained since the switch read it and the switch did not change
         // (a folder a sync placed meanwhile) stays as stored. A file that
         // cannot be read is not written at all, so the rollback can never
         // save a default over the user's file.
-        let previous = crate::cloud_config::with_cloud_config_mut(|stored| {
-            let previous = stored.clone();
+        crate::cloud_config::with_cloud_config_mut(|stored| {
             *stored = crate::cloud_config::settings_save(stored, read_as.0, cloud.clone())?;
-            Ok(previous)
-        })?;
+            Ok(())
+        })
+        .map_err(CloudStoreError::NotSaved)?;
         if let Err(e) = crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
             *stored = crate::cloud_pairs::pairs_save(stored, read_as.1, pairs.clone())?;
             Ok(())
         }) {
-            let _ = crate::cloud_config::save_cloud_config(&previous);
-            return Err(e);
+            // The settings go back by the same merge: what changed in them
+            // since this write is kept, and a put back that cannot be made
+            // is said, never taken for one that was.
+            return Err(
+                match crate::cloud_config::with_cloud_config_mut(|stored| {
+                    *stored = crate::cloud_config::settings_save(stored, cloud, read_as.0.clone())?;
+                    Ok(())
+                }) {
+                    Ok(()) => CloudStoreError::NotSaved(e),
+                    Err(back) => CloudStoreError::SettingsOnly(format!(
+                        "{e}; the settings could not be put back: {back}"
+                    )),
+                },
+            );
         }
         Ok(())
+    }
+
+    fn put_back_cloud(
+        &mut self,
+        written: (&CloudConfig, &CloudPairsConfig),
+        cloud: &CloudConfig,
+        pairs: &CloudPairsConfig,
+    ) -> Result<(), CloudStoreError> {
+        // The pairs first: a failure there leaves both files as the switch
+        // wrote them, which name the same folders.
+        crate::cloud_pairs::with_cloud_pairs_mut(|stored| {
+            put_back_pair_folders(stored, written.1, pairs);
+            Ok(())
+        })
+        .map_err(CloudStoreError::NotSaved)?;
+        crate::cloud_config::with_cloud_config_mut(|stored| {
+            *stored = crate::cloud_config::settings_save(stored, written.0, cloud.clone())?;
+            Ok(())
+        })
+        .map_err(|e| {
+            CloudStoreError::SettingsOnly(format!(
+                "the pairs were put back and the settings were not: {e}"
+            ))
+        })
     }
 
     fn store_profile(
@@ -1197,6 +1329,18 @@ mod tests {
         fail_mirror: bool,
         /// Every partition write after the first fails.
         fail_restore: bool,
+        cloud_writes: usize,
+        /// The AeroCloud put back fails (a disk that filled up meanwhile).
+        refuse_cloud_restore: bool,
+        /// Added to the stored pairs right after the forward AeroCloud write,
+        /// as the app or the CLI adds a pair while the switch runs.
+        pair_added_meanwhile: Option<crate::cloud_pairs::CloudPathPair>,
+        /// Every AeroCloud write fails so.
+        cloud_refusal: Option<CloudStoreError>,
+        /// Made read-only at the AeroCloud write: a history file written
+        /// there before cannot be removed again (Unix permissions).
+        #[cfg_attr(not(unix), allow(dead_code))]
+        lock_dir_on_cloud: Option<PathBuf>,
     }
 
     impl SwitchTargets for Memory {
@@ -1205,8 +1349,34 @@ mod tests {
             _read_as: (&CloudConfig, &CloudPairsConfig),
             cloud: &CloudConfig,
             pairs: &CloudPairsConfig,
-        ) -> Result<(), String> {
-            self.cloud = Some((cloud.clone(), pairs.clone()));
+        ) -> Result<(), CloudStoreError> {
+            self.cloud_writes += 1;
+            #[cfg(unix)]
+            if let Some(dir) = &self.lock_dir_on_cloud {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+            }
+            if let Some(refused) = self.cloud_refusal.clone() {
+                return Err(refused);
+            }
+            let mut pairs = pairs.clone();
+            pairs.pairs.extend(self.pair_added_meanwhile.take());
+            self.cloud = Some((cloud.clone(), pairs));
+            Ok(())
+        }
+        fn put_back_cloud(
+            &mut self,
+            written: (&CloudConfig, &CloudPairsConfig),
+            cloud: &CloudConfig,
+            pairs: &CloudPairsConfig,
+        ) -> Result<(), CloudStoreError> {
+            self.cloud_writes += 1;
+            if self.refuse_cloud_restore {
+                return Err(CloudStoreError::NotSaved("disk full".to_string()));
+            }
+            let (_, mut stored) = self.cloud.clone().unwrap_or_default();
+            put_back_pair_folders(&mut stored, written.1, pairs);
+            self.cloud = Some((cloud.clone(), stored));
             Ok(())
         }
         fn store_profile(
@@ -1894,5 +2064,155 @@ mod tests {
                 "/my-files/docs"
             ))
             .exists());
+    }
+
+    /// A switch that fails after AeroCloud was written says what is left
+    /// when it cannot put everything back: never "nothing was changed".
+    /// The AeroCloud put back failed, the settings written without the
+    /// pairs, a history file that
+    /// cannot be removed again: each is said, and a put back that worked
+    /// still says nothing was changed.
+    /// A pair added between the switch's AeroCloud write and a rollback
+    /// (the profile not saved) is kept, and the switch's own folders are put
+    /// back: the settings' and the pair's it moved.
+    #[test]
+    fn a_pair_added_while_a_switch_runs_is_kept_by_its_rollback() {
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        let pair = |id: &str, profile: &str, remote: &str| crate::cloud_pairs::CloudPathPair {
+            id: id.to_string(),
+            remote_path: remote.to_string(),
+            ..crate::cloud_pairs::CloudPathPair::from_legacy(&CloudConfig {
+                server_profile: profile.to_string(),
+                ..CloudConfig::default()
+            })
+        };
+        let pairs = CloudPairsConfig {
+            pairs: vec![pair("moved", "Proton", "/my-files/docs")],
+            ..CloudPairsConfig::default()
+        };
+        let f = fixture();
+        let mut memory = Memory {
+            fail_profile: true,
+            pair_added_meanwhile: Some(pair("added", "nas", "/srv/new")),
+            ..Memory::default()
+        };
+        let err = apply_in(
+            &f.dirs,
+            &profile(ProtonMode::Cli, "/my-files/docs"),
+            ProtonMode::Native,
+            &cloud,
+            &pairs,
+            None,
+            &mut memory,
+        )
+        .unwrap_err();
+        assert!(err.contains("profile not saved"), "{err}");
+        assert!(err.contains("nothing was changed"), "{err}");
+        let (settings, stored) = memory.cloud.unwrap();
+        assert_eq!(settings.remote_folder, "/my-files/cloud");
+        let folders: Vec<_> = stored
+            .pairs
+            .iter()
+            .map(|p| (p.id.as_str(), p.remote_path.as_str()))
+            .collect();
+        assert_eq!(
+            folders,
+            [("moved", "/my-files/docs"), ("added", "/srv/new")]
+        );
+        assert_eq!(memory.cloud_writes, 2);
+    }
+
+    #[test]
+    fn a_switch_that_cannot_put_everything_back_says_what_is_left() {
+        let cloud = CloudConfig {
+            remote_folder: "/my-files/cloud".to_string(),
+            server_profile: "Proton".to_string(),
+            server_profile_id: Some("p1".to_string()),
+            ..CloudConfig::default()
+        };
+        let original = profile(ProtonMode::Cli, "/my-files/docs");
+        let run = |memory: &mut Memory, f: &Fixture| {
+            apply_in(
+                &f.dirs,
+                &original,
+                ProtonMode::Native,
+                &cloud,
+                &CloudPairsConfig::default(),
+                None,
+                memory,
+            )
+            .unwrap_err()
+        };
+
+        // Put back as it was: nothing was changed.
+        let f = fixture();
+        let mut memory = Memory {
+            fail_profile: true,
+            ..Memory::default()
+        };
+        let err = run(&mut memory, &f);
+        assert!(err.contains("nothing was changed"), "{err}");
+
+        // The profile not saved and the AeroCloud put back refused.
+        let f = fixture();
+        let mut memory = Memory {
+            fail_profile: true,
+            refuse_cloud_restore: true,
+            ..Memory::default()
+        };
+        let err = run(&mut memory, &f);
+        assert!(!err.contains("nothing was changed"), "{err}");
+        assert!(err.contains("AeroCloud could not be put back"), "{err}");
+        assert!(err.contains("switch the profile to native mode"), "{err}");
+        assert_eq!(memory.cloud.unwrap().0.remote_folder, "/cloud");
+
+        // The settings written and the pairs not, the settings not put back.
+        let f = fixture();
+        let mut memory = Memory {
+            cloud_refusal: Some(CloudStoreError::SettingsOnly("pairs refused".to_string())),
+            ..Memory::default()
+        };
+        let err = run(&mut memory, &f);
+        assert!(!err.contains("nothing was changed"), "{err}");
+        assert!(
+            err.contains("settings were updated and its pairs were not"),
+            "{err}"
+        );
+        assert!(memory.profile.is_none());
+
+        // A history file written before the AeroCloud write cannot be
+        // removed again.
+        #[cfg(unix)]
+        {
+            let f = fixture();
+            write_index(
+                &f.dirs,
+                "/home/u/docs",
+                "/my-files/docs",
+                Some("p1"),
+                "a.txt",
+            );
+            let mut memory = Memory {
+                cloud_refusal: Some(CloudStoreError::NotSaved("disk full".to_string())),
+                lock_dir_on_cloud: Some(f.dirs.index.clone()),
+                ..Memory::default()
+            };
+            let err = run(&mut memory, &f);
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&f.dirs.index, std::fs::Permissions::from_mode(0o755))
+                    .unwrap();
+            }
+            assert!(!err.contains("nothing was changed"), "{err}");
+            assert!(
+                err.contains("1 sync history file(s) could not be put back"),
+                "{err}"
+            );
+        }
     }
 }

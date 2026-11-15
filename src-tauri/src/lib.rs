@@ -360,6 +360,101 @@ mod remote_share_link_tests {
     }
 }
 
+#[cfg(test)]
+mod legacy_reconnect_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    /// A server whose sessions open in `/home/u`; the first one can enter
+    /// `/work`, later ones only when `back` is set. Returns its address and
+    /// the number of sessions it accepted.
+    async fn server(back: bool) -> (String, Arc<AtomicUsize>) {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        let sessions = Arc::new(AtomicUsize::new(0));
+        let accepted = sessions.clone();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                let index = accepted.fetch_add(1, Ordering::SeqCst);
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    let mut cwd = "/home/u".to_string();
+                    write.write_all(b"220 ready\r\n").await.unwrap();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let mut words = line.splitn(2, ' ');
+                        let verb = words.next().unwrap_or("").to_string();
+                        let arg = words.next().unwrap_or("").trim().to_string();
+                        let reply = match verb.as_str() {
+                            "USER" => "331 password please\r\n".to_string(),
+                            "PASS" => "230 logged in\r\n".to_string(),
+                            "PWD" => format!("257 \"{cwd}\"\r\n"),
+                            "CWD" if arg == "/work" && (index == 0 || back) => {
+                                cwd = arg;
+                                "250 ok\r\n".to_string()
+                            }
+                            "CWD" => "550 no such folder\r\n".to_string(),
+                            "QUIT" => {
+                                let _ = write.write_all(b"221 bye\r\n").await;
+                                return;
+                            }
+                            _ => "200 ok\r\n".to_string(),
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        (addr, sessions)
+    }
+
+    /// Round 11: the legacy reconnect (keep-alive, circuit breaker) opened a
+    /// new session in the login folder while the tab kept showing the old
+    /// one. It returns to the folder, or closes the session when it cannot,
+    /// so no later request runs in a folder the tab does not show and the
+    /// next reconnect fails, which leaves the tab disconnected.
+    #[tokio::test]
+    async fn a_legacy_reconnect_returns_to_its_folder_or_closes_the_session() {
+        for back in [true, false] {
+            let (addr, sessions) = server(back).await;
+            let mut ftp = FtpManager::new();
+            ftp.connect(&addr).await.unwrap();
+            ftp.login("u", "p").await.unwrap();
+            ftp.change_dir("/work").await.unwrap();
+
+            let reconnected = reconnect_ftp_in_folder(&mut ftp).await;
+            assert_eq!(sessions.load(Ordering::SeqCst), 2, "back: {back}");
+            if back {
+                reconnected.expect("the folder opens again");
+                assert_eq!(ftp.current_path(), "/work");
+                assert!(ftp.is_connected());
+            } else {
+                let refused = reconnected.unwrap_err();
+                assert!(refused.contains("connection was closed"), "{refused}");
+                assert!(
+                    !refused.contains("/work") && !refused.contains("/home/u"),
+                    "{refused}"
+                );
+                assert!(
+                    !ftp.is_connected(),
+                    "the session in the login folder was kept"
+                );
+                assert!(ftp.list_files().await.is_err());
+                assert!(reconnect_ftp_in_folder(&mut ftp).await.is_err());
+                assert_eq!(
+                    sessions.load(Ordering::SeqCst),
+                    2,
+                    "a closed session redialled"
+                );
+            }
+        }
+    }
+}
+
 #[cfg(all(test, target_os = "linux"))]
 mod parent_step_save_tests {
     use super::*;
@@ -4095,11 +4190,33 @@ async fn ftp_noop(state: State<'_, AppState>) -> Result<(), String> {
 async fn reconnect_ftp(state: State<'_, AppState>) -> Result<(), String> {
     info!("Attempting FTP reconnection");
     let mut ftp_manager = state.ftp_manager.lock().await;
+    reconnect_ftp_in_folder(&mut ftp_manager).await?;
+    info!("FTP reconnection successful");
+    Ok(())
+}
+
+/// Reconnect the legacy session and return it to the folder it was in. The
+/// new session opens in the login folder, which is not the one the tab
+/// shows; when the folder cannot be opened again the session is closed
+/// rather than kept there, so the keep-alive that asked for the reconnect
+/// leaves the tab disconnected.
+async fn reconnect_ftp_in_folder(ftp_manager: &mut FtpManager) -> Result<(), String> {
+    let folder = ftp_manager.current_path();
     ftp_manager
         .reconnect()
         .await
         .map_err(|e| format!("Reconnection failed: {}", e))?;
-    info!("FTP reconnection successful");
+    if ftp_manager.current_path() == folder {
+        return Ok(());
+    }
+    if let Err(e) = ftp_manager.change_dir(&folder).await {
+        warn!("FTP reconnected, but the previous folder could not be opened again: {e}");
+        let _ = ftp_manager.disconnect().await;
+        return Err(
+            "Reconnected, but the folder could not be opened again; the connection was closed, reconnect to continue"
+                .to_string(),
+        );
+    }
     Ok(())
 }
 
@@ -16733,23 +16850,13 @@ async fn save_cloud_config_cmd(
 }
 
 /// The body of `save_cloud_config_cmd`, kept synchronous and run on the
-/// blocking pool. The file is read, merged and written under the config
-/// write lock, so a placement written meanwhile is never lost; a file that
-/// cannot be read is an error and is not rewritten.
+/// blocking pool ([`cloud_config::save_settings_edit`]): a file that cannot
+/// be read is an error and is not rewritten.
 fn save_cloud_config_cmd_blocking(
     config: CloudConfig,
     read_as: CloudConfig,
 ) -> Result<CloudConfig, String> {
-    cloud_config::with_cloud_config_mut(|stored| {
-        let saved = cloud_config::settings_save(stored, &read_as, config)?;
-        // A folder kept as saved (another setting edited) follows the saved rule.
-        cloud_config::refuse_an_unusable_remote_folder(
-            &saved.remote_folder,
-            Some(stored.remote_folder.as_str()),
-        )?;
-        *stored = saved.clone();
-        Ok(saved)
-    })
+    cloud_config::save_settings_edit(config, &read_as)
 }
 
 // AeroCloud Pairs (Task 4 GUI): CRUD on the separate cloud_pairs.json store.

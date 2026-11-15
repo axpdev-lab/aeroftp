@@ -6076,8 +6076,9 @@ const App: React.FC = () => {
 
   // T-AUTO-RECONNECT-IDLE: surface silent reconnect lifecycle as a toast
   // so the user gets feedback that the click that hit a dead session
-  // was recovered automatically. Backend emits four phases: lost,
-  // reconnecting, reconnected, reconnect-failed.
+  // was recovered automatically. Backend emits five phases: lost,
+  // reconnecting, reconnected, reconnect-failed, and closed when the
+  // reconnect could not open the session's folder again.
   useEffect(() => {
     let unlistenFn: (() => void) | null = null;
     let cancelled = false;
@@ -6092,10 +6093,14 @@ const App: React.FC = () => {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.success(t('reconnect.toastTitle'), t('reconnect.reconnected'));
-          } else if (kind === 'reconnect-failed') {
+          } else if (kind === 'reconnect-failed' || kind === 'closed') {
             if (pendingId) removeToast(pendingId);
             pendingId = null;
             notify.error(t('reconnect.toastTitle'), t('reconnect.reconnectFailed'));
+            // 'closed': the reconnect could not open the folder again, so the
+            // backend closed the connection and holds no provider; the tab is
+            // disconnected, as after an FTP keep-alive whose reconnect fails.
+            if (kind === 'closed') setIsConnected(false);
           }
           // Properties and Copy URL follow the transport: a full connect
           // and a silent reconnect can each land on SCP or SFTP.
@@ -10361,8 +10366,13 @@ const App: React.FC = () => {
         response = await invoke('provider_change_dir', { path: providerNavPath, ...(reactivatedOverlayGeneration !== undefined ? { expectedGeneration: reactivatedOverlayGeneration } : {}) });
         if (reactivatedOverlayForNav && navId === remoteNavCounter.current) settleNavigationOverlayLog('success');
       } else {
-        // Use FTP API
-        response = await invoke('change_directory', { path });
+        // Use FTP API. The server resolves a relative path against its own
+        // folder, which after a reconnect inside a download is the login
+        // folder and not the one this tab shows: send the folder the tab
+        // means. A server reporting folders without a leading slash keeps
+        // the path as asked.
+        const legacyPath = currentRemotePath.startsWith('/') ? resolveTargetDisplayPath(currentRemotePath, path) : path;
+        response = await invoke('change_directory', { path: legacyPath });
       }
       // Discard response if a newer navigation was initiated while we awaited
       if (navId !== remoteNavCounter.current) return null;
