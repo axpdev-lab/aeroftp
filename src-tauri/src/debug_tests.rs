@@ -276,6 +276,9 @@ enum Replacement {
     Email(&'static str),
     /// The userinfo of a URL, masked by [`redact_url_userinfo`].
     UrlUserinfo,
+    /// The values of the signed-URL parameters, in the text and in every
+    /// decoded view of it ([`signed_query_spans`]).
+    SignedQuery,
     /// Every IPv4 address except the loopback and unspecified ones, which the
     /// log keeps for local debugging. The `regex` crate has no look-around, so
     /// the exception is decided on the match, not in the pattern.
@@ -396,6 +399,11 @@ const REDACTION_RULES: &[(&str, Replacement)] = &[
         r#"(?i)([?&;](?:key|sig))=[^&\s"'<>]+"#,
         Replacement::Text("$1=***REDACTED***"),
     ),
+    // The same values where the text hides the parameter from the two
+    // patterns above: inside a JSON string the `&` before `sig=` can be
+    // written `\u0026`, so every decoded view is scanned too; the pattern
+    // only names the rule (`signed_query_spans`).
+    (r"=", Replacement::SignedQuery),
     (r"\b(?:\d{1,3}\.){3}\d{1,3}\b", Replacement::Ipv4),
     (r"/home/[A-Za-z0-9._-]+", Replacement::Identity("/home/***")),
     (
@@ -584,7 +592,40 @@ fn userinfo_spans(text: &str) -> Vec<(usize, usize)> {
         depth: 0,
         limit: DECODE_WORK_PER_BYTE * text.len() + 4096,
     };
-    userinfo_spans_within(text, &mut budget)
+    userinfo_spans_within(text, &mut budget, false)
+}
+
+/// The values of the signed-URL parameters, in the text and in every
+/// decoded view of it, mapped back onto the raw text: the walk and the
+/// bound are the userinfo scan's (`userinfo_spans_within` with `signed`).
+fn signed_query_spans(text: &str) -> Vec<(usize, usize)> {
+    let mut budget = DecodeBudget {
+        work: 0,
+        depth: 0,
+        limit: DECODE_WORK_PER_BYTE * text.len() + 4096,
+    };
+    userinfo_spans_within(text, &mut budget, true)
+}
+
+/// The values of the signed-URL parameters in `text` as written (no
+/// decoding): the signature of a presigned or SAS URL, and `key` or `sig`
+/// as a query parameter. The label stays; the span is the value. The TS
+/// twin's `signedQueryValues`.
+fn signed_query_values(text: &str) -> Vec<(usize, usize)> {
+    static VALUES: std::sync::LazyLock<[regex::Regex; 2]> = std::sync::LazyLock::new(|| {
+        [
+            regex::Regex::new(
+                r#"(?i)\b(?:X-Amz-(?:Signature|Credential|Security-Token)|signature)=([^&\s"'<>]+)"#,
+            )
+            .expect("signed query rule"),
+            regex::Regex::new(r#"(?i)[?&;](?:key|sig)=([^&\s"'<>]+)"#).expect("signed query rule"),
+        ]
+    });
+    VALUES
+        .iter()
+        .flat_map(|re| re.captures_iter(text))
+        .filter_map(|caps| caps.get(1).map(|value| (value.start(), value.end())))
+        .collect()
 }
 
 /// The bound on decoding (R1), the TS twin's: the levels decoded inside
@@ -623,6 +664,7 @@ impl DecodeBudget {
 fn deeper(
     budget: &mut DecodeBudget,
     length: usize,
+    signed: bool,
     decode: impl FnOnce() -> Option<(String, Vec<usize>)>,
 ) -> Option<Vec<(usize, usize)>> {
     if budget.past(length) {
@@ -633,7 +675,7 @@ fn deeper(
         return Some(Vec::new());
     };
     budget.depth += 1;
-    let spans = userinfo_spans_within(&decoded, budget)
+    let spans = userinfo_spans_within(&decoded, budget, signed)
         .into_iter()
         .map(|(a, b)| (raw[a], raw[b]))
         .collect();
@@ -641,7 +683,11 @@ fn deeper(
     Some(spans)
 }
 
-fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, usize)> {
+fn userinfo_spans_within(
+    text: &str,
+    budget: &mut DecodeBudget,
+    signed: bool,
+) -> Vec<(usize, usize)> {
     let bytes = text.as_bytes();
     budget.work += 2 * text.len();
     let json = serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok();
@@ -652,7 +698,7 @@ fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, u
         // comma, single quotes) is also scanned decoded, as one string body,
         // by these same rules, and the spans are mapped back; the raw scan
         // below still runs, so decoding never masks less.
-        match deeper(budget, text.len(), || decode_body(text)) {
+        match deeper(budget, text.len(), signed, || decode_body(text)) {
             Some(found) => spans.extend(found),
             // Past the bound with an escape still to decode: all of it.
             None if decode_body(text).is_some() => return vec![(0, text.len())],
@@ -672,7 +718,7 @@ fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, u
                 // too, so decoding never masks less (an escaped newline ends
                 // the decoded authority, not the raw one).
                 let from = i + 1;
-                match deeper(budget, end - from, || {
+                match deeper(budget, end - from, signed, || {
                     Some(decode_string_token(text, from, end))
                 }) {
                     Some(found) => spans.extend(found),
@@ -683,7 +729,7 @@ fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, u
             i += 1;
             continue;
         }
-        if &bytes[i..i + 3] != b"://" {
+        if signed || &bytes[i..i + 3] != b"://" {
             i += 1;
             continue;
         }
@@ -714,6 +760,9 @@ fn userinfo_spans_within(text: &str, budget: &mut DecodeBudget) -> Vec<(usize, u
         };
         spans.push((authority, at));
         i = at + 1;
+    }
+    if signed {
+        spans.extend(signed_query_values(text));
     }
     spans
 }
@@ -886,6 +935,15 @@ fn redact_with(s: &str, rules: &[(regex::Regex, Replacement)]) -> String {
                     replacement: "***REDACTED***".to_string(),
                     at: None,
                     userinfo: true,
+                }))
+            }
+            Replacement::SignedQuery => {
+                credentials.extend(signed_query_spans(s).into_iter().map(|(start, end)| Span {
+                    start,
+                    end,
+                    replacement: "***REDACTED***".to_string(),
+                    at: None,
+                    userinfo: false,
                 }))
             }
             Replacement::Identity(text) => identity.extend(pattern_spans(re, s, text)),
@@ -1269,9 +1327,16 @@ mod tests {
             limit: usize::MAX,
         };
         let past = chain(super::MAX_DECODE_DEPTH + 10);
-        assert!(super::userinfo_spans_within(&past, &mut unlimited()).contains(&(0, past.len())));
+        // The signed-query scan walks the same levels under the same bound.
+        for signed in [false, true] {
+            assert!(
+                super::userinfo_spans_within(&past, &mut unlimited(), signed)
+                    .contains(&(0, past.len())),
+                "signed: {signed}"
+            );
+        }
         let below = chain(super::MAX_DECODE_DEPTH - 2);
-        let spans = super::userinfo_spans_within(&below, &mut unlimited());
+        let spans = super::userinfo_spans_within(&below, &mut unlimited(), false);
         assert!(!spans.is_empty());
         for (a, b) in spans {
             assert_eq!(&below[a..b], "bob:hunter2");

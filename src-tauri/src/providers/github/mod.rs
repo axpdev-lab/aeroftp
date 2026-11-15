@@ -799,22 +799,33 @@ impl GitHubProvider {
         }
         let branch = branch.clone();
         let base = self.active_branch().to_string();
-        let mut anchor = match self.branch_anchor.take() {
-            Some(anchor) if anchor.branch == branch => Some(anchor),
-            _ => self
-                .branch_tip(&branch)
-                .await?
-                .map(|tip| WorkingBranchAnchor {
-                    branch: branch.clone(),
-                    tip,
-                    settled: Default::default(),
-                }),
+        // The anchor never leaves `self` while this check waits on GitHub
+        // (CodeRabbit 4576777951, Greptile 4576738872): a check that is
+        // cancelled (Stop, a timeout dropping the write) leaves the anchor as
+        // it was, and the retry compares with the same tip. What a cancelled
+        // check may lose is only the heads it settled (one more comparison
+        // later), never the tip. The first check reads the tip before the
+        // session's first write there, because no write runs before a check
+        // completes: a check cancelled before the anchor is stored leaves
+        // none, and the next one reads the tip again, still before any write.
+        let anchor = match &self.branch_anchor {
+            Some(anchor) if anchor.branch == branch => Some(anchor.tip.clone()),
+            _ => match self.branch_tip(&branch).await? {
+                Some(tip) => {
+                    self.branch_anchor = Some(WorkingBranchAnchor {
+                        branch: branch.clone(),
+                        tip: tip.clone(),
+                        settled: Default::default(),
+                    });
+                    Some(tip)
+                }
+                None => None,
+            },
         };
-        let state = self
-            .classify_working_branch(&base, &branch, anchor.as_mut())
-            .await;
-        self.branch_anchor = anchor;
-        match state? {
+        match self
+            .classify_working_branch(&base, &branch, anchor.as_deref())
+            .await?
+        {
             WorkingBranchState::Pending | WorkingBranchState::NotAhead => {
                 self.last_branch_check = Some(std::time::Instant::now());
                 Ok(())
@@ -827,6 +838,27 @@ impl GitHubProvider {
                 self.poison.store(true, std::sync::atomic::Ordering::SeqCst);
                 Err(ProviderError::TargetChanged)
             }
+        }
+    }
+
+    /// Whether `head` was already found, with the anchor of `branch`, not to
+    /// descend from it ([`WorkingBranchAnchor::settled`]).
+    fn anchor_settled(&self, branch: &str, head: &str) -> bool {
+        self.branch_anchor
+            .as_ref()
+            .is_some_and(|anchor| anchor.branch == branch && anchor.settled.contains(head))
+    }
+
+    /// Records, in the provider's own anchor of `branch`, that `head` does
+    /// not descend from it: kept as soon as it is learned, so a check
+    /// cancelled later keeps what it settled up to there.
+    fn settle_with_anchor(&mut self, branch: &str, head: &str) {
+        if let Some(anchor) = self
+            .branch_anchor
+            .as_mut()
+            .filter(|anchor| anchor.branch == branch)
+        {
+            anchor.settled.insert(head.to_string());
         }
     }
 
@@ -908,7 +940,8 @@ impl GitHubProvider {
     /// pending. Only a 404 says the branch is not there; any other answer of
     /// any lookup is an error, never a guess.
     ///
-    /// With the writing session's `anchor` ([`WorkingBranchAnchor`]), new
+    /// With the writing session's `anchor` (the tip of its
+    /// [`WorkingBranchAnchor`]), new
     /// commits after the merge are pending only when the merge came before
     /// the session: a merged pull request whose head descends from the
     /// anchor's tip (or is it) was merged while the session was open, and
@@ -930,7 +963,7 @@ impl GitHubProvider {
         &mut self,
         base: &str,
         branch: &str,
-        mut anchor: Option<&mut WorkingBranchAnchor>,
+        anchor: Option<&str>,
     ) -> Result<WorkingBranchState, ProviderError> {
         // `base` is a branch name or a tip SHA (S3b); the pull requests are
         // always looked up against the base's name.
@@ -973,19 +1006,17 @@ impl GitHubProvider {
                 if pr.head.sha == tip {
                     return Ok(WorkingBranchState::Merged);
                 }
-                let Some(anchor) = anchor.as_deref_mut() else {
+                let Some(anchor) = anchor else {
                     continue;
                 };
-                if anchor.settled.contains(&pr.head.sha) {
+                if self.anchor_settled(branch, &pr.head.sha) {
                     continue;
                 }
-                match self.compare_with(&anchor.tip, &pr.head.sha).await? {
+                match self.compare_with(anchor, &pr.head.sha).await? {
                     Some(compare) if compare.behind_by == 0 => {
                         return Ok(WorkingBranchState::Merged);
                     }
-                    _ => {
-                        anchor.settled.insert(pr.head.sha.clone());
-                    }
+                    _ => self.settle_with_anchor(branch, &pr.head.sha),
                 }
             }
             if pulls.len() < PER_PAGE {
@@ -4179,6 +4210,233 @@ mod tests {
                 Err(ProviderError::TargetChanged)
             ));
             assert_eq!(puts.load(SeqCst), before);
+            server.abort();
+        }
+
+        /// CodeRabbit 4576777951 and Greptile 4576738872: a branch check that
+        /// is cancelled (Stop, a timeout dropping the write) keeps the
+        /// session's anchor. Merged at the tip of an in-window write, one more
+        /// in-window write, then the first write after the window is cancelled
+        /// while its check waits on GitHub, at each wait it has (the compare
+        /// with the base, the tip, the pull requests, the compare with the
+        /// anchor): nothing is sent, the anchor is the one taken before the
+        /// session's first write, and the retry on the same provider is
+        /// refused with nothing sent. The first check cancelled too: before
+        /// the anchor is read (no anchor is left, and the next check reads it
+        /// before the session's first write), and after it is read (it
+        /// stands): either way the merge later in the session is refused.
+        #[tokio::test]
+        async fn a_cancelled_branch_check_keeps_the_sessions_anchor() {
+            use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+            use std::sync::Mutex;
+
+            #[derive(Default)]
+            struct Repo {
+                chain: Vec<String>,
+                merged_heads: Vec<String>,
+                /// The request kind that stalls (never answers in time).
+                stall: Option<&'static str>,
+            }
+            let own = GitHubProvider::workflow_branch_name("alice", "main");
+            let repo = Arc::new(Mutex::new(Repo {
+                chain: vec!["c0".into()],
+                ..Repo::default()
+            }));
+            let puts = Arc::new(AtomicUsize::new(0));
+            let state = (repo.clone(), puts.clone(), own.clone());
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |method: axum::http::Method, uri: axum::http::Uri| {
+                    let (repo, puts, own) = state.clone();
+                    async move {
+                        use axum::response::IntoResponse;
+                        let path = urlencoding::decode(uri.path()).unwrap().into_owned();
+                        let reply = |status: u16, json: serde_json::Value| {
+                            (
+                                axum::http::StatusCode::from_u16(status).unwrap(),
+                                axum::Json(json),
+                            )
+                                .into_response()
+                        };
+                        let kind = match path.split_once("/compare/") {
+                            Some((_, range)) if range.starts_with("main...") => "base compare",
+                            Some(_) => "anchor compare",
+                            None if path.ends_with(&format!("/branches/{own}")) => "tip",
+                            None if method == axum::http::Method::GET && path.ends_with("/pulls") => {
+                                "pulls"
+                            }
+                            None if method == axum::http::Method::PUT => "put",
+                            None => "other",
+                        };
+                        let stalls = repo.lock().unwrap().stall == Some(kind);
+                        if stalls {
+                            tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        }
+                        let mut r = repo.lock().unwrap();
+                        let at = |chain: &[String], sha: &str| chain.iter().position(|c| c == sha);
+                        match kind {
+                            "base compare" => {
+                                let behind = u64::from(!r.merged_heads.is_empty());
+                                reply(200, serde_json::json!({"ahead_by": 1, "behind_by": behind}))
+                            }
+                            "anchor compare" => {
+                                let (_, range) = path.split_once("/compare/").unwrap();
+                                let (from, to) = range.split_once("...").unwrap();
+                                match (at(&r.chain, from), at(&r.chain, to)) {
+                                    (Some(a), Some(h)) => reply(
+                                        200,
+                                        serde_json::json!({
+                                            "ahead_by": h.saturating_sub(a),
+                                            "behind_by": a.saturating_sub(h)
+                                        }),
+                                    ),
+                                    _ => reply(404, serde_json::json!({"message": "Not Found"})),
+                                }
+                            }
+                            "tip" => reply(
+                                200,
+                                serde_json::json!({
+                                    "name": own, "protected": false,
+                                    "commit": {"sha": r.chain.last().unwrap()}
+                                }),
+                            ),
+                            "pulls" => {
+                                let pulls: Vec<_> = r
+                                    .merged_heads
+                                    .iter()
+                                    .map(|head| {
+                                        serde_json::json!({
+                                            "number": 1, "title": "t", "state": "closed",
+                                            "html_url": "u", "created_at": "c", "mergeable": null,
+                                            "merged_at": "2026-11-01T00:00:00Z",
+                                            "head": {"ref": own, "sha": head},
+                                            "base": {"ref": "main", "sha": "b"},
+                                            "user": {"login": "alice", "email": null, "name": null},
+                                        })
+                                    })
+                                    .collect();
+                                reply(200, serde_json::json!(pulls))
+                            }
+                            "put" => {
+                                let next = format!("c{}", r.chain.len());
+                                r.chain.push(next.clone());
+                                puts.fetch_add(1, SeqCst);
+                                reply(
+                                    200,
+                                    serde_json::json!({"content": {"sha": "abc"}, "commit": {"sha": next}}),
+                                )
+                            }
+                            _ => reply(404, serde_json::json!({"message": "Not Found"})),
+                        }
+                    }
+                },
+            ));
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let session = || {
+                let mut provider = GitHubProvider::protected_for_test(format!("http://{addr}"));
+                provider.write_mode = GitHubWriteMode::BranchWorkflow {
+                    branch: own.clone(),
+                };
+                provider
+            };
+            fn age(provider: &mut GitHubProvider) {
+                provider.last_branch_check = provider.last_branch_check.map(|at| {
+                    at.checked_sub(BRANCH_CHECK_WINDOW + std::time::Duration::from_secs(1))
+                        .unwrap()
+                });
+            }
+            fn tip(repo: &Mutex<Repo>) -> String {
+                repo.lock().unwrap().chain.last().cloned().unwrap()
+            }
+            fn stall(repo: &Mutex<Repo>, kind: Option<&'static str>) {
+                repo.lock().unwrap().stall = kind;
+            }
+            fn anchored(provider: &GitHubProvider) -> Option<String> {
+                provider
+                    .branch_anchor
+                    .as_ref()
+                    .map(|anchor| anchor.tip.clone())
+            }
+            async fn cancelled(provider: &mut GitHubProvider, file: &str, name: &str) {
+                let attempt = tokio::time::timeout(
+                    std::time::Duration::from_millis(300),
+                    provider.upload(file, name, None),
+                )
+                .await;
+                assert!(attempt.is_err(), "{name}: the write was cancelled");
+            }
+            // A session's write, a merge at its tip, one more write in the
+            // window, then the window ends: the check that follows.
+            async fn merged_in_window(
+                provider: &mut GitHubProvider,
+                file: &str,
+                repo: &Mutex<Repo>,
+            ) {
+                provider.upload(file, "/w1.txt", None).await.unwrap();
+                let merged_at = tip(repo);
+                repo.lock().unwrap().merged_heads.push(merged_at);
+                provider.upload(file, "/w2.txt", None).await.unwrap();
+                age(provider);
+            }
+            let (_dir, file) = a_file();
+
+            for kind in ["base compare", "tip", "pulls", "anchor compare"] {
+                repo.lock().unwrap().merged_heads.clear();
+                let mut provider = session();
+                let start = tip(&repo);
+                merged_in_window(&mut provider, &file, &repo).await;
+                let sent = puts.load(SeqCst);
+                stall(&repo, Some(kind));
+                cancelled(&mut provider, &file, &format!("/{kind} cancelled.txt")).await;
+                stall(&repo, None);
+                assert_eq!(puts.load(SeqCst), sent, "{kind}: nothing sent");
+                assert_eq!(
+                    anchored(&provider),
+                    Some(start),
+                    "{kind}: the anchor stands"
+                );
+                assert!(
+                    matches!(
+                        provider.upload(&file, "/retry.txt", None).await,
+                        Err(ProviderError::TargetChanged)
+                    ),
+                    "{kind}: the retry is refused"
+                );
+                assert_eq!(puts.load(SeqCst), sent, "{kind}: nothing sent on the retry");
+            }
+
+            // The first check cancelled, before and after it reads the tip.
+            for kind in ["tip", "base compare"] {
+                repo.lock().unwrap().merged_heads.clear();
+                let mut provider = session();
+                let start = tip(&repo);
+                stall(&repo, Some(kind));
+                cancelled(&mut provider, &file, &format!("/first {kind}.txt")).await;
+                stall(&repo, None);
+                let read_already = kind == "base compare";
+                assert_eq!(
+                    anchored(&provider),
+                    read_already.then(|| start.clone()),
+                    "{kind}: the anchor of the first check"
+                );
+                merged_in_window(&mut provider, &file, &repo).await;
+                assert_eq!(
+                    anchored(&provider),
+                    Some(start),
+                    "{kind}: read before any write"
+                );
+                let sent = puts.load(SeqCst);
+                assert!(matches!(
+                    provider.upload(&file, "/after.txt", None).await,
+                    Err(ProviderError::TargetChanged)
+                ));
+                assert_eq!(
+                    puts.load(SeqCst),
+                    sent,
+                    "{kind}: nothing sent after the window"
+                );
+            }
             server.abort();
         }
 

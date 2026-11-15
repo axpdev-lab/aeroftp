@@ -822,5 +822,35 @@
     "input": "the object key=report.txt was kept and sig=nal is a word",
     "expected": "the object key=report.txt was kept and sig=nal is a word",
     "group": "signed-url"
+  },
+  {
+    "name": "signed url: the ampersand escaped in a JSON string",
+    "input": "{\"url\":\"https://host.example.test/path?sv=1\\u0026sig=abc123\"}",
+    "expected": "{\"url\":\"https://host.example.test/path?sv=1\\u0026sig=***REDACTED***\"}",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: the ampersand escaped in a JSON string after a prefix",
+    "input": "log: {\"url\":\"https://host.example.test/path?sv=1\\u0026sig=abc123\"}",
+    "expected": "log: {\"url\":\"https://host.example.test/path?sv=1\\u0026sig=***REDACTED***\"}",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: the parameter name escaped in a JSON string",
+    "input": "{\"url\":\"https://host.example.test/path?\\u0073ig=abc123&x=1\"}",
+    "expected": "{\"url\":\"https://host.example.test/path?\\u0073ig=***REDACTED***&x=1\"}",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: a document serialized inside a JSON string",
+    "input": "{\"log\":\"{\\\"url\\\":\\\"https://host.example.test/p?sv=1\\\\u0026sig=abc123\\\"}\"}",
+    "expected": "{\"log\":\"{\\\"url\\\":\\\"https://host.example.test/p?sv=1\\\\u0026sig=***REDACTED***\\\"}\"}",
+    "group": "signed-url"
+  },
+  {
+    "name": "signed url: an S3 signature behind an escaped ampersand",
+    "input": "{\"u\":\"https://s3.example.test/b/o?X-Amz-Expires=60\\u0026X-Amz-Signature=abcdef0123\"}",
+    "expected": "{\"u\":\"https://s3.example.test/b/o?X-Amz-Expires=60\\u0026X-Amz-Signature=***REDACTED***\"}",
+    "group": "signed-url"
   }
 ]

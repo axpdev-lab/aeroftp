@@ -315,9 +315,34 @@ interface DecodeBudget { work: number; depth: number; readonly limit: number }
 const pastTheBound = (budget: DecodeBudget, length: number): boolean =>
     budget.depth >= MAX_DECODE_DEPTH || budget.work + length > budget.limit;
 
+/** The values of the signed-URL parameters in `text` as written (no
+ *  decoding): the signature of a presigned or SAS URL, and `key` or `sig`
+ *  as a query parameter (after `?`, `&`, or the `;` of `&amp;`). The label
+ *  stays; the span is the value. */
+const SIGNED_QUERY_VALUES: ReadonlyArray<RegExp> = [
+    /\b(?:X-Amz-(?:Signature|Credential|Security-Token)|signature)=([^&\s"'<>]+)/gi,
+    /[?&;](?:key|sig)=([^&\s"'<>]+)/gi,
+];
+const signedQueryValues = (text: string): Array<[number, number]> => {
+    const spans: Array<[number, number]> = [];
+    for (const pattern of SIGNED_QUERY_VALUES) {
+        for (const match of text.matchAll(pattern)) {
+            const end = (match.index ?? 0) + match[0].length;
+            spans.push([end - match[1].length, end]);
+        }
+    }
+    return spans;
+};
+
+/** The spans of one credential scan, on the text and on every decoded view
+ *  of it, mapped back onto the raw characters: the userinfo of every URL, or
+ *  with `signed` the values of the signed-URL parameters (the `&` before
+ *  `sig=` can be written `\u0026` inside a JSON string, where no rule on the
+ *  raw text finds it). Both scans walk the same levels under the same bound. */
 const userinfoSpans = (
     text: string,
     budget: DecodeBudget = { work: 0, depth: 0, limit: decodeWorkLimit(text.length) },
+    signed = false,
 ): Array<[number, number]> => {
     budget.work += 2 * text.length;
     const json = isJsonDocument(text);
@@ -331,7 +356,7 @@ const userinfoSpans = (
         if (!level) return true;
         const [decoded, raw] = level;
         budget.depth += 1;
-        for (const [a, b] of userinfoSpans(decoded, budget)) spans.push([raw[a], raw[b]]);
+        for (const [a, b] of userinfoSpans(decoded, budget, signed)) spans.push([raw[a], raw[b]]);
         budget.depth -= 1;
         return true;
     };
@@ -365,7 +390,7 @@ const userinfoSpans = (
             i += 1;
             continue;
         }
-        if (code !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
+        if (signed || code !== 58 || text.charCodeAt(i + 1) !== 47 || text.charCodeAt(i + 2) !== 47) {
             i += 1;
             continue;
         }
@@ -389,8 +414,13 @@ const userinfoSpans = (
         spans.push([authority, lastAt]);
         i = lastAt + 1;
     }
+    if (signed) for (const span of signedQueryValues(text)) spans.push(span);
     return spans;
 };
+
+/** The values of the signed-URL parameters, in the text and in every
+ *  decoded view of it (`userinfoSpans`). */
+const signedQuerySpans = (text: string): Array<[number, number]> => userinfoSpans(text, undefined, true);
 
 /** The userinfo spans under a work limit of the caller's: for the tests,
  *  which pin the depth bound alone with `Infinity`. */
@@ -517,6 +547,11 @@ const CREDENTIAL_PATTERNS: ReadonlyArray<RedactionRule> = [
     // text stays.
     { pattern: /\b(X-Amz-(?:Signature|Credential|Security-Token)|signature)=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
     { pattern: /([?&;](?:key|sig))=[^&\s"'<>]+/gi, replacement: '$1=***REDACTED***' },
+    // The same values where the text hides the parameter from the two
+    // patterns above: inside a JSON string the `&` before `sig=` can be
+    // written `\u0026`, so every decoded view is scanned too and the value
+    // found there is masked where it is written (`signedQuerySpans`).
+    { spans: signedQuerySpans, replacement: '***REDACTED***' },
 ];
 
 export const REDACTION_PATTERNS: ReadonlyArray<RedactionRule> = [

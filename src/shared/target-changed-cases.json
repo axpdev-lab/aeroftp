@@ -1,35 +1,105 @@
 {
-    "_readme": "One table for the two readers of a changed-target refusal: is_target_changed_text (src-tauri/src/providers/types.rs) and isTargetChangedRefusal (src/utils/targetChanged.ts). A case is the rendered error, the caller's file path when it has one, and whether the text is the refusal.",
+    "_readme": "One table for the two readers of a changed-target refusal: is_target_changed_text (src-tauri/src/providers/types.rs) and isTargetChangedRefusal (src/utils/targetChanged.ts). A case is the rendered error and whether it is the refusal. The position of the marker decides: where the text starts or behind wrappers only. The two rows whose text opens with a relative path named after the marker are read as the refusal on purpose: no path is taken out of the text, so a file named after the refusal's own first words cannot remove them.",
     "cases": [
-        { "text": "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "  CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "download failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "delete failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "Transfer failed: upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "refusal": true },
-        { "text": "Error: CONNECTION_CHANGED: the restored transfer connection changed; nothing was transferred", "refusal": true },
-        { "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "a", "refusal": true },
-        { "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "upload", "refusal": true },
-        { "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed (CONNECTION_CHANGED: notes.txt)", "path": "CONNECTION_CHANGED: notes.txt", "refusal": true },
-        { "text": "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "CONNECTION_CHANGED:", "refusal": true },
-        { "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "CONNECTION_CHANGED:", "refusal": true },
-        { "text": "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "/srv/CONNECTION_CHANGED:", "refusal": true },
-        { "text": "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again", "path": "/srv/CONNECTION_CHANGED:/notes.txt", "refusal": true },
-        { "text": "Connection reset while uploading /srv/CONNECTION_CHANGED:", "path": "/srv/CONNECTION_CHANGED:", "refusal": false },
-        { "text": "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt", "path": "/home/user/sync/file.txt", "refusal": false },
-        { "text": "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt", "refusal": false },
-        { "text": "upload failed: Connection reset while uploading /remote/CONNECTION_CHANGED: archive/file.txt", "path": "/home/user/sync/file.txt", "refusal": false },
-        { "text": "Connection reset while reading CONNECTION_CHANGED: notes.txt", "path": "CONNECTION_CHANGED: notes.txt", "refusal": false },
-        { "text": "Connection reset while reading CONNECTION_CHANGED: notes.txt", "refusal": false },
-        { "text": "upload failed: CONNECTION_CHANGED: archive/file.txt: connection reset", "path": "/home/user/CONNECTION_CHANGED: archive/file.txt", "refusal": false },
-        { "text": "upload failed: CONNECTION_CHANGED: archive\\file.txt: connection reset", "path": "C:\\sync\\CONNECTION_CHANGED: archive\\file.txt", "refusal": false },
-        { "text": "Failed to write \"CONNECTION_CHANGED: notes.txt\": permission denied", "refusal": false },
-        { "text": "550 /pub/CONNECTION_CHANGED: x: No such file", "refusal": false },
-        { "text": "upload failed: 550 CONNECTION_CHANGED: no such file", "refusal": false },
-        { "text": "CONNECTION_CHANGED: The connection changed; reconnect and compare again [sync-error:auth:false]", "refusal": true },
-        { "text": "CONNECTION_CHANGED: the sync target changed; reconnect and compare again", "refusal": true },
-        { "text": "the connection changed", "refusal": false },
-        { "text": "CONNECTION_CHANGED", "refusal": false },
-        { "text": "", "refusal": false }
+        {
+            "text": "CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "  CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "download failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "delete failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "Transfer failed: upload failed: CONNECTION_CHANGED: the account or the write target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "Error: CONNECTION_CHANGED: the restored transfer connection changed; nothing was transferred",
+            "refusal": true
+        },
+        {
+            "text": "chmod failed: CONNECTION_CHANGED: the connection changed since the permissions were read; nothing was changed",
+            "refusal": true
+        },
+        {
+            "text": "upload failed: CONNECTION_CHANGED: the account or the write target changed (CONNECTION_CHANGED: notes.txt)",
+            "refusal": true
+        },
+        {
+            "text": "Connection reset while uploading /CONNECTION_CHANGED: archive/file.txt",
+            "refusal": false
+        },
+        {
+            "text": "upload failed: Connection reset while uploading /remote/CONNECTION_CHANGED: archive/file.txt",
+            "refusal": false
+        },
+        {
+            "text": "Connection reset while reading CONNECTION_CHANGED: notes.txt",
+            "refusal": false
+        },
+        {
+            "text": "Connection reset while uploading /srv/CONNECTION_CHANGED:",
+            "refusal": false
+        },
+        {
+            "text": "Failed to write \"CONNECTION_CHANGED: notes.txt\": permission denied",
+            "refusal": false
+        },
+        {
+            "text": "550 /pub/CONNECTION_CHANGED: x: No such file",
+            "refusal": false
+        },
+        {
+            "text": "upload failed: 550 CONNECTION_CHANGED: no such file",
+            "refusal": false
+        },
+        {
+            "text": "upload failed: /srv/CONNECTION_CHANGED: the account: permission denied",
+            "refusal": false
+        },
+        {
+            "text": "upload failed: CONNECTION_CHANGED: archive/file.txt: connection reset",
+            "refusal": true
+        },
+        {
+            "text": "upload failed: CONNECTION_CHANGED: archive\\file.txt: connection reset",
+            "refusal": true
+        },
+        {
+            "text": "CONNECTION_CHANGED: The connection changed; reconnect and compare again [sync-error:auth:false]",
+            "refusal": true
+        },
+        {
+            "text": "CONNECTION_CHANGED: the sync target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
+            "text": "the connection changed",
+            "refusal": false
+        },
+        {
+            "text": "CONNECTION_CHANGED",
+            "refusal": false
+        },
+        {
+            "text": "upload failed: CONNECTION_CHANGED",
+            "refusal": false
+        },
+        {
+            "text": "",
+            "refusal": false
+        }
     ]
 }

@@ -12,21 +12,17 @@ const WRAPPERS_ONLY = /^\s*(?:[A-Za-z0-9 ]+: )*$/;
  * Twin of `is_target_changed_text` (src-tauri/src/providers/types.rs); both
  * run src/shared/target-changed-cases.json.
  *
- * The marker counts where the message starts, or behind wrappers only
- * (`upload failed: CONNECTION_CHANGED: ...`). A marker later in the text is
- * part of something the error names, such as a remote path, and is not the
- * refusal. The caller's own path, and each of its components that holds the
- * marker, is taken out first, so a file named after the marker is not read
- * as the refusal either. A path or component that is the marker and nothing
- * else is left in: taking it out would take the refusal's first word with it.
+ * The position of the marker decides, and nothing else: it counts where the
+ * message starts, or behind wrappers only (`upload failed:
+ * CONNECTION_CHANGED: ...`). A marker later in the text is part of something
+ * the error names, such as a remote path, and is not the refusal. No path is
+ * taken out of the text first: a file can be named after the marker or after
+ * the first words of the refusal, and removing it removed the refusal's own
+ * start. A marker that stands where a refusal starts is read as the refusal
+ * whatever the file is called.
  */
-export const isTargetChangedRefusal = (error: unknown, filePath?: string | null): boolean => {
-    let text = String(error);
-    if (filePath) {
-        for (const part of [filePath, ...filePath.split(/[\\/]/)]) {
-            if (part.includes(TARGET_CHANGED_MARKER) && part.trim() !== TARGET_CHANGED_MARKER) text = text.split(part).join('');
-        }
-    }
+export const isTargetChangedRefusal = (error: unknown): boolean => {
+    const text = String(error);
     const at = text.indexOf(TARGET_CHANGED_MARKER);
     return at >= 0 && WRAPPERS_ONLY.test(text.slice(0, at));
 };
