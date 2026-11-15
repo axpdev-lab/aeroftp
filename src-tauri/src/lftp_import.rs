@@ -81,6 +81,17 @@ fn url_encode(s: &str) -> String {
     out
 }
 
+/// A folder path for an lftp URL: each segment percent-encoded
+/// ([`url_encode`]), the slashes between them kept. The importer decodes the
+/// path whole (`url_decode`), so a folder named `a%2Fb` or `a b` comes back as
+/// itself and not as another folder.
+fn url_encode_path(path: &str) -> String {
+    path.split('/')
+        .map(url_encode)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 // ============ Bookmark URL parsing ============
 
 struct MappedProfile {
@@ -178,13 +189,14 @@ fn parse_bookmark_url(url: &str) -> Option<MappedProfile> {
         host
     };
 
+    // The folder as written (#1449): its spaces are part of its name, and the
+    // exporter writes them encoded, so nothing here trims them.
     let initial_path = {
         let p = url_decode(path_part);
-        let trimmed = p.trim();
-        if trimmed.is_empty() || trimmed == "/" {
+        if p.is_empty() || p == "/" {
             None
         } else {
-            Some(trimmed.to_string())
+            Some(p)
         }
     };
 
@@ -513,10 +525,15 @@ pub fn export_lftp(
         if let Some(ep) = &endpoint {
             // WebDAV: the URL's own authority and path, then the start folder.
             url.push_str(&ep.authority());
+            // The endpoint's own path is already a URL path (`/my%20dav` is the
+            // folder `my dav`): written as it is, while the folder, a decoded
+            // name, is encoded. The importer decodes the whole path once into
+            // one decoded start folder, which the WebDAV connect encodes again
+            // when it requests it.
             url.push_str(&ep.path);
             url.push('/');
             if let Some(path) = start {
-                url.push_str(path.trim_start_matches('/'));
+                url.push_str(&url_encode_path(path.trim_start_matches('/')));
             }
         } else {
             url.push_str(&server.host);
@@ -538,7 +555,7 @@ pub fn export_lftp(
                 if !path.starts_with('/') {
                     url.push('/');
                 }
-                url.push_str(path);
+                url.push_str(&url_encode_path(path));
             }
         }
 
@@ -672,6 +689,149 @@ mystery gopher://old.example.com/0/
             .find(|s| s.name == "broken-line")
             .unwrap();
         assert!(malformed.reason.contains("no scheme"));
+    }
+
+    /// The start folder is written percent-encoded per segment, the slashes
+    /// kept, and the importer decodes it: a folder whose name holds `%2F`,
+    /// `%25`, a space or `#`, or starts or ends in a space, reopens as itself,
+    /// on FTP and on WebDAV.
+    #[test]
+    fn a_start_folder_round_trips_through_its_percent_encoding() {
+        for folder in ["/a%2Fb/50% off/c d#1", "/ docs ", "/docs /x"] {
+            let server = |id: &str, protocol: &str, host: &str| LftpExportServer {
+                id: id.to_string(),
+                name: id.to_string(),
+                host: host.to_string(),
+                port: 0,
+                username: "u".to_string(),
+                protocol: Some(protocol.to_string()),
+                options: None,
+                provider_id: None,
+                initial_path: Some(folder.to_string()),
+            };
+            let servers = vec![
+                server("ftp-box", "ftp", "ftp.example.com"),
+                server("dav-box", "webdav", "https://dav.example.com/dav"),
+            ];
+            let tmp = std::env::temp_dir().join(format!(
+                "aeroftp-test-lftp-folder-{}.bookmarks",
+                crate::bridge_shared::uuid_v4()
+            ));
+            let exported = export_lftp(&servers, &HashMap::new(), &tmp).expect("should export");
+            assert_eq!(exported.exported, 2, "{:?}", exported.skipped);
+            let written = std::fs::read_to_string(&tmp).unwrap();
+            let result = import_lftp(&tmp).expect("should reimport");
+            std::fs::remove_file(&tmp).ok();
+            // No raw space in a URL: each bookmark line is `name url`.
+            assert!(
+                written
+                    .lines()
+                    .filter(|l| !l.starts_with('#'))
+                    .all(|l| l.matches(' ').count() == 1),
+                "{written}"
+            );
+            let ftp = result.servers.iter().find(|s| s.name == "ftp-box").unwrap();
+            assert_eq!(ftp.initial_path.as_deref(), Some(folder), "{written}");
+            // The WebDAV endpoint path (`/dav`) and the folder come back as one
+            // path, as written.
+            let dav = result.servers.iter().find(|s| s.name == "dav-box").unwrap();
+            assert_eq!(
+                dav.initial_path.as_deref(),
+                Some(format!("/dav{folder}").as_str()),
+                "{written}"
+            );
+        }
+    }
+
+    /// The bookmark reopens the same resource: the URL the WebDAV connect
+    /// requests for the imported profile's start folder is the one it
+    /// requests for the exported profile's, for endpoints whose own path
+    /// holds escapes and folders whose names hold them. A segment that itself
+    /// holds a slash (`/a%2Fb`) cannot survive: the bookmark is one path
+    /// string, decoded whole, with no way to mark a slash inside a segment.
+    #[test]
+    fn a_webdav_bookmark_reopens_the_same_resource() {
+        let request = |host: &str, port: u16, initial: Option<&str>| {
+            crate::providers::WebDavProvider::start_folder_request_url(
+                &crate::providers::ProviderConfig {
+                    name: "dav".into(),
+                    provider_type: crate::providers::ProviderType::WebDav,
+                    host: host.into(),
+                    port: (port != 0).then_some(port),
+                    username: Some("u".into()),
+                    password: None,
+                    initial_path: initial.map(str::to_string),
+                    extra: HashMap::new(),
+                },
+            )
+        };
+        let reopened = |base: &str, folder: &str| {
+            let server = LftpExportServer {
+                id: "dav".to_string(),
+                name: "dav".to_string(),
+                host: format!("https://dav.example.com{base}"),
+                port: 0,
+                username: "u".to_string(),
+                protocol: Some("webdav".to_string()),
+                options: None,
+                provider_id: None,
+                initial_path: Some(folder.to_string()),
+            };
+            let tmp = std::env::temp_dir().join(format!(
+                "aeroftp-test-lftp-endpoint-{}.bookmarks",
+                crate::bridge_shared::uuid_v4()
+            ));
+            let exported = export_lftp(&[server], &HashMap::new(), &tmp).expect("should export");
+            assert_eq!(
+                exported.exported, 1,
+                "{base} {folder}: {:?}",
+                exported.skipped
+            );
+            let written = std::fs::read_to_string(&tmp).unwrap();
+            let result = import_lftp(&tmp).expect("should reimport");
+            std::fs::remove_file(&tmp).ok();
+            let dav = &result.servers[0];
+            (
+                request(&format!("https://dav.example.com{base}"), 0, Some(folder)),
+                request(&dav.host, dav.port as u16, dav.initial_path.as_deref()),
+                written,
+            )
+        };
+        for base in ["/dav", "/my%20dav", "/50%25"] {
+            for folder in ["/a%2Fb/50% off/c d#1", "/ docs ", "/docs /x"] {
+                let (original, back, written) = reopened(base, folder);
+                assert_eq!(back, original, "{base} {folder}: {written}");
+            }
+        }
+        // The limit: a slash inside a segment of the endpoint's own path.
+        let (original, back, written) = reopened("/a%2Fb", "/docs");
+        assert_ne!(back, original, "{written}");
+        assert!(back.ends_with("/a/b/docs"), "{back}");
+    }
+
+    /// Raw whitespace around a bookmark line is not part of its URL: trailing
+    /// spaces and a CRLF ending never reach the start folder, while spaces
+    /// written encoded stay.
+    #[test]
+    fn raw_whitespace_around_a_bookmark_never_reaches_the_folder() {
+        for (content, folder) in [
+            ("nas ftp://u@ftp.example.com/docs   \n", "/docs"),
+            ("nas ftp://u@ftp.example.com/docs\r\n", "/docs"),
+            ("nas ftp://u@ftp.example.com/%20docs%20\r\n", "/ docs "),
+        ] {
+            let tmp = std::env::temp_dir().join(format!(
+                "aeroftp-test-lftp-raw-space-{}.bookmarks",
+                crate::bridge_shared::uuid_v4()
+            ));
+            std::fs::write(&tmp, content).unwrap();
+            let result = import_lftp(&tmp).expect("should import");
+            std::fs::remove_file(&tmp).ok();
+            assert_eq!(
+                result.servers[0].initial_path.as_deref(),
+                Some(folder),
+                "{content:?}"
+            );
+        }
     }
 
     #[test]

@@ -1130,6 +1130,15 @@ impl WebDavProvider {
         }
     }
 
+    /// The URL a profile's start folder is requested at (`build_url` of its
+    /// `initial_path`, before any connect-time root), for the bridge tests
+    /// that check a bookmark reopens the same resource.
+    #[cfg(test)]
+    pub(crate) fn start_folder_request_url(config: &crate::providers::ProviderConfig) -> String {
+        let provider = Self::new(WebDavConfig::from_provider_config(config).unwrap()).unwrap();
+        provider.build_url(provider.config.initial_path.as_deref().unwrap_or("/"))
+    }
+
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
         // Issue #264: in single-file mode every operation targets the
