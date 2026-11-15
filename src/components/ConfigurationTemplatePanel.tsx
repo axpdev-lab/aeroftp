@@ -481,11 +481,11 @@ export const ConfigurationTemplatePanel: React.FC<Props> = ({
             const msg = t('settings.templateImportSuccess', { count: result.applied.length });
             if (notices.length > 0) {
                 setWarningNote(`${msg}. ${notices.join(' ')}`);
-            } else {
+            } else if (sourceGenerationRef.current === importGeneration) {
+                // A success would disable Import: only for the source imported,
+                // never over a newer one the user is working on.
                 setSuccess(msg);
-                if (sourceGenerationRef.current === importGeneration) {
-                    closeTimerRef.current = setTimeout(() => onClose(), 1400);
-                }
+                closeTimerRef.current = setTimeout(() => onClose(), 1400);
             }
         } catch (err) {
             setError(String(err));

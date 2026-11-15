@@ -867,11 +867,15 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         expect(names[0]).not.toBe(names[1]);
     });
 
-    it('does not close the panel when the source changes before the first import resolves', async () => {
+    it('does not close the panel when the source changes before the first import resolves, and imports the new source', async () => {
         let resolveImport!: (value: unknown) => void;
+        let imports = 0;
         vi.mocked(invoke).mockImplementation(async (cmd) => {
             if (cmd === 'preview_configuration_template') return report([{ name: 'alpha' }]);
-            if (cmd === 'import_configuration_template') return new Promise(resolve => { resolveImport = resolve; });
+            if (cmd === 'import_configuration_template') {
+                imports += 1;
+                return new Promise(resolve => { resolveImport = resolve; });
+            }
             throw new Error(`unexpected command: ${cmd}`);
         });
         const onClose = await renderPanel();
@@ -883,6 +887,12 @@ describe('ConfigurationTemplatePanel review state across previews', () => {
         await flush();
         await act(async () => { vi.advanceTimersByTime(3000); });
         expect(onClose).not.toHaveBeenCalled();
+        // The old import's success does not hold Import shut over the new source.
+        const submit = host.querySelector<HTMLButtonElement>('[data-testid="template-import-submit"]')!;
+        expect(submit.disabled).toBe(false);
+        await act(async () => { submit.click(); });
+        await flush();
+        expect(imports).toBe(2);
     });
 
     it('does not let an earlier import close the dialog while a later one is pending', async () => {
