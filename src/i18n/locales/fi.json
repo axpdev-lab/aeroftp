@@ -4796,7 +4796,7 @@
                     "saveFailed": "Kuvan tallentaminen epäonnistui",
                     "lossless": "Haviodon",
                     "lossy": "Haviollinen",
-                    "losslessHint": "Palautuva: pikselit sailyvat tarkalleen, kun tallennetaan haviottomaan muotoon",
+                    "losslessHint": "Palautuva: pikselit säilyvät tarkalleen, kun tallennetaan häviöttömään muotoon",
                     "lossyHint": "Muuttaa pikseleita: muutosta ei voi perua tarkalleen",
                     "formatLosslessNote": "Haviotonmuoto: pikselit tallennetaan tarkalleen. Yllaolevat haviolliset muokkaukset muuttavat silti kuvaa.",
                     "formatLossyNote": "Häviöllinen muoto: uudelleenkoodaus hylkää osan kuvatiedoista, myös häviöttömät muokkaukset.",
