@@ -3141,12 +3141,15 @@ fn proton_session_of(server: &RcloneExportServer) -> Option<[(&'static str, Stri
 /// keys stay bucket-relative (the way AeroFTP writes them). A crypt overlay
 /// on that profile must wrap the alias, not the raw s3 remote: wrapping
 /// `minio:/vault` makes rclone look for a bucket named `vault`.
+/// The bucket as written: rclone keeps a space after the colon of an alias
+/// (`remote = s3r: media` opens ` media`), and one at the end leaves the alias
+/// out (`write_bucket_alias`). Trimmed, a leading space named another bucket.
+/// A blank one is no bucket.
 fn s3_pinned_bucket(options: Option<&serde_json::Value>) -> Option<&str> {
     options
         .and_then(|o| o.get("bucket"))
         .and_then(|v| v.as_str())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.trim().is_empty())
 }
 
 /// Write the `alias` remote that opens `remote_name` inside `bucket` (an S3
@@ -3532,7 +3535,9 @@ const USER_NAME_BACKENDS: &[&str] = &[
     "swift",
     "webdav",
 ];
-const HOST_BACKENDS: &[&str] = &["ftp", "ftps", "koofr", "pcloud", "s3", "sftp", "webdav"];
+const HOST_BACKENDS: &[&str] = &[
+    "ftp", "ftps", "koofr", "pcloud", "s3", "sftp", "swift", "webdav",
+];
 
 /// Option values the export copies into the config as written. The bucket is
 /// not here: it is written after the colon of an alias (`lead: media`, which
@@ -3550,7 +3555,13 @@ const EXPORTED_OPTION_VALUES: &[(&str, &str)] = &[
     ("private_key_path", "key file path"),
     ("basePath", "base path"),
     ("filen_api_key", "API key"),
+    ("imagekit_public_key", "public key"),
 ];
+
+/// Option values only some backends write as a value of their own: a
+/// Cloudinary profile's bucket is its cloud name (`cloud_name =`), not a
+/// bucket after the colon of an alias.
+const BACKEND_OPTION_VALUES: &[(&str, &str, &str)] = &[("cloudinary", "bucket", "cloud name")];
 
 /// Why a profile cannot be exported because a value that names its account,
 /// its server or its credential starts or ends in a space. rclone reads a
@@ -3575,6 +3586,13 @@ fn edge_space_problem(
         for (key, what) in EXPORTED_OPTION_VALUES {
             if let Some(value) = options.get(*key).and_then(|v| v.as_str()) {
                 values.push((what, value));
+            }
+        }
+        for (backend, key, what) in BACKEND_OPTION_VALUES {
+            if *backend == proto {
+                if let Some(value) = options.get(*key).and_then(|v| v.as_str()) {
+                    values.push((what, value));
+                }
             }
         }
     }
@@ -4586,19 +4604,24 @@ pub fn export_rclone(
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
                 if let Some(opts) = options {
-                    if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
+                    if let Some(container) = opts
+                        .get("bucket")
+                        .and_then(|v| v.as_str())
+                        .filter(|c| c.trim() == *c)
+                    {
                         // rclone's azureblob backend has no `container` key and
                         // ignores it; it stays for this importer, and the alias
-                        // below is what rclone opens.
+                        // below is what rclone opens. One with an edge space
+                        // cannot be held here: the alias carries it alone.
                         body.push_str(&format!("container = {}\n", container));
                     }
                 }
                 // Containers are addressed like S3 buckets (`remote:container`).
+                // As written, like `s3_pinned_bucket`.
                 if let Some(container) = options
                     .and_then(|o| o.get("bucket"))
                     .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|c| !c.is_empty())
+                    .filter(|c| !c.trim().is_empty())
                     .map(str::to_string)
                 {
                     match write_bucket_alias(
@@ -4664,8 +4687,13 @@ pub fn export_rclone(
                     if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
                         body.push_str(&format!("region = {}\n", region));
                     }
-                    if let Some(container) = opts.get("bucket").and_then(|v| v.as_str()) {
-                        // rclone's swift backend has no `container` key either.
+                    if let Some(container) = opts
+                        .get("bucket")
+                        .and_then(|v| v.as_str())
+                        .filter(|c| c.trim() == *c)
+                    {
+                        // rclone's swift backend has no `container` key either;
+                        // one with an edge space is carried by the alias alone.
                         body.push_str(&format!("container = {}\n", container));
                     }
                 }
@@ -4828,11 +4856,11 @@ pub fn export_rclone(
                     // application key can't forge a second [section].
                     body.push_str(&format!("key = {}\n", ini_value(pw)));
                 }
+                // As written, like `s3_pinned_bucket`.
                 if let Some(bucket) = options
                     .and_then(|o| o.get("bucket"))
                     .and_then(|v| v.as_str())
-                    .map(str::trim)
-                    .filter(|b| !b.is_empty())
+                    .filter(|b| !b.trim().is_empty())
                 {
                     match write_bucket_alias(
                         &mut names,
@@ -12722,5 +12750,113 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
         assert_eq!(remote.get("user").map(String::as_str), Some("alice"));
         let pass = remote.get("pass").expect("pass written");
         assert_eq!(reveal_canonical_rclone(pass).unwrap(), " pw ");
+    }
+
+    /// Every value the export may write keeps its edge spaces or refuses the
+    /// profile, for every protocol the rclone gate lets through, so a backend
+    /// added later cannot write a trimmed twin unnoticed. Driven only by the
+    /// gate (`bridge_supported_protocols`) and by the option keys the export's
+    /// own code reads, never by the refusal's lists: the user name, the host,
+    /// the secret and each option in turn carry a unique token with a space on
+    /// one side. Either the profile is refused, or no `key = value` line has a
+    /// value that starts or ends in a space, and the token never appears
+    /// without the space it was given.
+    #[test]
+    fn no_exported_value_is_a_trimmed_twin_of_the_profile_value() {
+        let code_of = |src: &str| {
+            src.split("#[cfg(test)]\nmod tests")
+                .next()
+                .unwrap()
+                .to_string()
+        };
+        let code = [
+            code_of(include_str!("rclone_import.rs")),
+            code_of(include_str!("bridge_shared.rs")),
+            code_of(include_str!("profile_loader.rs")),
+        ]
+        .concat();
+        let mut keys: Vec<String> = code
+            .match_indices("get(\"")
+            .filter_map(|(at, _)| {
+                let rest = &code[at + 5..];
+                let end = rest.find('"')?;
+                let key = &rest[..end];
+                key.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    .then(|| key.to_string())
+            })
+            .collect();
+        keys.sort();
+        keys.dedup();
+        assert!(
+            keys.iter().any(|k| k == "region") && keys.len() > 20,
+            "{keys:?}"
+        );
+
+        const TOKEN: &str = "edgevalue7";
+        let base_options = |proto: &str| -> serde_json::Value {
+            match proto {
+                "proton" => serde_json::json!({
+                    "proton_mode": "native",
+                    PROTON_SESSION_OPTION: r#"{"uid":"u","access_token":"a","refresh_token":"r","key_password":"k"}"#,
+                }),
+                "zohoworkdrive" => {
+                    serde_json::json!({ "region": "us", "root_folder_id": "abc123" })
+                }
+                "cloudinary" => serde_json::json!({ "bucket": "demo-cloud" }),
+                "imagekit" => serde_json::json!({ "imagekit_public_key": "public_x" }),
+                "s3" => serde_json::json!({ "bucket": "media" }),
+                _ => serde_json::json!({}),
+            }
+        };
+        let mut checked = 0;
+        let mut twins: Vec<String> = Vec::new();
+        for proto in crate::bridge_shared::bridge_supported_protocols("rclone") {
+            let mut fields: Vec<String> = vec!["user name".into(), "host".into(), "secret".into()];
+            fields.extend(keys.iter().map(|k| format!("option {k}")));
+            for field in &fields {
+                for given in [format!(" {TOKEN}"), format!("{TOKEN} ")] {
+                    let mut server = export_server("remote", proto, Some(base_options(proto)));
+                    if *proto == "webdav" {
+                        server.host = "https://dav.example.test/dav/".into();
+                    }
+                    let mut password = "pw".to_string();
+                    match field.as_str() {
+                        "user name" => server.username = given.clone(),
+                        "host" => server.host = given.clone(),
+                        "secret" => password = given.clone(),
+                        option => {
+                            let key = option.trim_start_matches("option ");
+                            server.options.as_mut().unwrap()[key] =
+                                serde_json::Value::String(given.clone());
+                        }
+                    }
+                    let (outcome, conf) = export_with_passwords(
+                        &[server],
+                        &[("remote", password.as_str())],
+                        "trim-twin",
+                    );
+                    checked += 1;
+                    if outcome.exported == 0 {
+                        continue;
+                    }
+                    for line in conf.lines().filter(|l| !l.starts_with('#')) {
+                        let Some((_, value)) = line.split_once(" = ") else {
+                            continue;
+                        };
+                        if value.trim() != value {
+                            twins.push(format!("{proto} {field} {given:?}: `{line}` keeps an edge space rclone drops"));
+                        } else if value.contains(TOKEN) && !value.contains(given.as_str()) {
+                            twins.push(format!(
+                                "{proto} {field} {given:?}: `{line}` is the trimmed twin"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        twins.dedup();
+        assert!(twins.is_empty(), "{}", twins.join("\n"));
+        assert!(checked > 100, "{checked}");
     }
 }
