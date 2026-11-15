@@ -4438,7 +4438,8 @@ mod tests {
             }
         }
 
-        let logins: [(&str, fn() -> RsyncError); 2] = [
+        type Login = fn() -> RsyncError;
+        let logins: [(&str, Login); 2] = [
             ("refused", || {
                 RsyncError::HardRejection(
                     "native hard rejection (PinnedLoginRefused): the server refused the key".into(),

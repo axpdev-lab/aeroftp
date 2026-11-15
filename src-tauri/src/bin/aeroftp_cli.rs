@@ -57061,9 +57061,14 @@ mod sync_delta_login_order_tests {
 
     fn cmd_sync_body() -> &'static str {
         let source = include_str!("aeroftp_cli.rs");
-        let start = source.find("async fn cmd_sync(").expect("cmd_sync");
+        // At the start of a line: the definition, never this test's own
+        // needles (written with an escaped newline, so no line starts with
+        // them).
+        let start = source.find("\nasync fn cmd_sync(").expect("cmd_sync");
         let end = start + source[start..].find("\n}\n").expect("cmd_sync's end");
-        &source[start..end]
+        let body = &source[start..end];
+        assert!(!body.contains("mod sync_delta_login_order_tests"));
+        body
     }
 
     #[test]

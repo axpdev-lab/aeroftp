@@ -144,39 +144,6 @@ fn batch_login_failed(
     Ok(Box::new(crate::delta_transport::NoopBatch::new()))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind};
-
-    /// CodeRabbit 4575991598: a batch login that ends with a login refusal
-    /// is the hard rejection the probe would give, naming its kind; every
-    /// other kind degrades to the single-shot path. The four refusals are
-    /// named here, not read back from `refuses_the_login`.
-    #[test]
-    fn a_refused_batch_login_is_a_hard_rejection_and_nothing_else_is() {
-        const REFUSALS: [AerorsyncErrorKind; 4] = [
-            AerorsyncErrorKind::HostKeyRejected,
-            AerorsyncErrorKind::PinnedKeyMismatch,
-            AerorsyncErrorKind::PinnedPasswordMismatch,
-            AerorsyncErrorKind::PinnedLoginRefused,
-        ];
-        for kind in AerorsyncErrorKind::ALL {
-            let outcome = batch_login_failed(AerorsyncError::new(kind, "login detail"));
-            match outcome {
-                Err(RsyncError::HardRejection(msg)) if REFUSALS.contains(&kind) => {
-                    assert!(msg.contains(&format!("({kind:?})")), "{kind:?}: {msg}");
-                }
-                Ok(batch) if !REFUSALS.contains(&kind) => {
-                    assert!(batch.is_noop(), "{kind:?}");
-                }
-                Err(other) => panic!("{kind:?} gave {other:?}"),
-                Ok(_) => panic!("{kind:?} gave a batch"),
-            }
-        }
-    }
-}
-
 #[async_trait]
 impl DeltaBatch for AerorsyncBatch {
     async fn upload(
@@ -213,5 +180,38 @@ impl DeltaBatch for AerorsyncBatch {
             session_count: totals.session_count,
             partial: totals.partial,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::aerorsync::types::{AerorsyncError, AerorsyncErrorKind};
+
+    /// CodeRabbit 4575991598: a batch login that ends with a login refusal
+    /// is the hard rejection the probe would give, naming its kind; every
+    /// other kind degrades to the single-shot path. The four refusals are
+    /// named here, not read back from `refuses_the_login`.
+    #[test]
+    fn a_refused_batch_login_is_a_hard_rejection_and_nothing_else_is() {
+        const REFUSALS: [AerorsyncErrorKind; 4] = [
+            AerorsyncErrorKind::HostKeyRejected,
+            AerorsyncErrorKind::PinnedKeyMismatch,
+            AerorsyncErrorKind::PinnedPasswordMismatch,
+            AerorsyncErrorKind::PinnedLoginRefused,
+        ];
+        for kind in AerorsyncErrorKind::ALL {
+            let outcome = batch_login_failed(AerorsyncError::new(kind, "login detail"));
+            match outcome {
+                Err(RsyncError::HardRejection(msg)) if REFUSALS.contains(&kind) => {
+                    assert!(msg.contains(&format!("({kind:?})")), "{kind:?}: {msg}");
+                }
+                Ok(batch) if !REFUSALS.contains(&kind) => {
+                    assert!(batch.is_noop(), "{kind:?}");
+                }
+                Err(other) => panic!("{kind:?} gave {other:?}"),
+                Ok(_) => panic!("{kind:?} gave a batch"),
+            }
+        }
     }
 }
