@@ -226,7 +226,13 @@ type MountManagerOpenOptions = {
  * false also means a skip, which completes the row, and the circuit breaker
  * and the per-file retry only see a failure that is thrown.
  */
-type TransferErrorMode = 'notify' | 'throw';
+// 'notify' reports a failure and returns false; 'throw' throws it. A plan's
+// loop uses 'notify-stop-on-target': it reports as 'notify', but a refusal of
+// the target (the caller's check, or the backend's for a stale epoch) is
+// thrown, as QueuedTargetChangedError, so the loop stops at that entry.
+type TransferErrorMode = 'notify' | 'throw' | 'notify-stop-on-target';
+const throwsTransferError = (mode: TransferErrorMode, error: unknown): boolean =>
+  mode === 'throw' || (mode === 'notify-stop-on-target' && (error instanceof QueuedTargetChangedError || isTargetChangedRefusal(error)));
 
 import { SessionTabs } from './components/SessionTabs';
 import { PermissionsDialog } from './components/PermissionsDialog';
@@ -11425,7 +11431,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logError('DOWNLOAD', { filename: fileName }, logId);
-      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
+      if (throwsTransferError(onError, error)) throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       // Don't spam toasts when batch was cancelled: one summary toast is enough
       if (!batchCancelledRef.current) {
         notify.error(t('toast.downloadFailed'), String(error));
@@ -11606,7 +11612,7 @@ const App: React.FC = () => {
             workingBranch: gitHubRepoInfo.workingBranch || undefined,
             onCommit: (message: string) => {
               setGitHubCommitDialog(null);
-              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError, ownership, checkTarget, expectedGuiTarget);
+              void uploadFile(localFilePath, fileName, isDir, fileSize, _skipConflictCheck, message, explicitRemoteDir, onError === 'notify-stop-on-target' ? 'notify' : onError, ownership, checkTarget, expectedGuiTarget);
             },
           });
           // Deferred to the commit dialog: not uploaded yet.
@@ -11669,7 +11675,7 @@ const App: React.FC = () => {
         }
       }
       humanLog.logRaw('activity.upload_error', 'UPLOAD', { filename: fileName }, 'error');
-      if (onError === 'throw') throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
+      if (throwsTransferError(onError, error)) throw isTargetChangedRefusal(error) ? new QueuedTargetChangedError(String(error)) : error;
       if (!batchCancelledRef.current) {
         notify.error(t('toast.uploadFailed'), String(error));
       }
@@ -12918,12 +12924,16 @@ const App: React.FC = () => {
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
           if (stoppedSinceStart() || planRetargeted()) break;
           try {
-            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size, false, undefined, plan.destination.path, 'notify', undefined, planDispatch, planEpoch)) ok += 1;
+            if (await uploadFile(entry.path, entry.name, entry.is_dir, entry.size, false, undefined, plan.destination.path, 'notify-stop-on-target', undefined, planDispatch, planEpoch)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!stoppedSinceStart()) {
               notify.error(t('toast.uploadFailed') || 'Upload failed', `${entry.name}: ${String(e)}`);
             }
+            // The plan's target refused this entry, here or in the backend
+            // (a stale epoch, as after a reconnect, while the panel still
+            // shows the plan's server): no later entry starts.
+            if (e instanceof QueuedTargetChangedError) break;
           }
         }
         setPendingUnifiedTransferPlan(null);
@@ -12977,12 +12987,16 @@ const App: React.FC = () => {
         for (const entry of planStopped ? [] : planBatch.length > 0 ? planRest : entries) {
           if (stoppedSinceStart() || planRetargeted()) break;
           try {
-            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size, false, 'notify', undefined, planDispatch, planEpoch)) ok += 1;
+            if (await downloadFile(entry.path, entry.name, plan.destination.path, entry.is_dir, entry.size, false, 'notify-stop-on-target', undefined, planDispatch, planEpoch)) ok += 1;
           } catch (e) {
             failed += 1;
             if (!stoppedSinceStart()) {
               notify.error(t('toast.downloadFailed') || 'Download failed', `${entry.name}: ${String(e)}`);
             }
+            // The plan's target refused this entry, here or in the backend
+            // (a stale epoch, as after a reconnect, while the panel still
+            // shows the plan's server): no later entry starts.
+            if (e instanceof QueuedTargetChangedError) break;
           }
         }
         setPendingUnifiedTransferPlan(null);

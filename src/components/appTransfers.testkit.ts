@@ -48,6 +48,13 @@ function closure(name: string, endMarker: string) {
   if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
   return app.slice(start, end);
 }
+/** App's module-level `const name = ...;`, through its closing `;`. */
+function topLevel(name: string) {
+  const start = app.indexOf(`\nconst ${name} =`);
+  const end = app.indexOf(';\n', start + 1);
+  if (start < 0 || end < 0) throw new Error(`Missing App constant: ${name}`);
+  return app.slice(start, end + 1);
+}
 // App's own list of the account-key options, read from its source.
 // Interactive OAuth logins, as App's counter sees them; a test can add one.
 const ACCOUNT_KEY_OPTIONS = new Function(`return ${app.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
@@ -57,7 +64,8 @@ const dropEnd = app.indexOf('\n  });', dropStart);
 if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
 
 const { code } = await transformWithOxc(
-  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  topLevel('throwsTransferError')
+  + closure('captureGuiTarget', '\n  const getOverwriteDestination =')
   + closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
   + closure('liveOverlay', '\n  const connectSavedProfileForResume')
   + closure('downloadFile', '\n  const uploadFile =')
@@ -69,7 +77,7 @@ const { code } = await transformWithOxc(
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
   + closure('formatClipboardFileCount', '\n  /**')
   + closure('clipboardCut', '\n  // openDevToolsPreview, openUniversalPreview')
-  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, prepareGuiTarget, resolveGuiTarget, rearmNativeCancelForRow, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch } };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, prepareGuiTarget, resolveGuiTarget, rearmNativeCancelForRow, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch, QueuedTargetChangedError } };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(

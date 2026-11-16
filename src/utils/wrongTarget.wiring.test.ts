@@ -931,6 +931,48 @@ describe('a transfer plan whose server changes during its first entry', () => {
         expect(f.written()).toEqual([]);
     });
 
+    // CodeRabbit 4579437713 on #1561 (its reply of 11-16): the backend can
+    // refuse the plan's epoch while the panel still shows the plan's server
+    // (a reconnect to the same server). 'notify' turned that refusal into a
+    // false return, and the loop went on to the next entry. The refusal now
+    // reaches the loop, which stops at that entry.
+    it.each(['upload', 'download'] as const)('starts no later entry once the backend refuses the plan\'s epoch while the target still matches (%s)', async direction => {
+        const names = ['a.txt', 'b.txt', 'c.txt'];
+        const single = direction === 'upload' ? 'provider_upload_file' : 'provider_download_file';
+        const f = fixture({
+            // Only the source lists the files: none is skipped as already there.
+            folders: direction === 'upload' ? { [LOCAL]: names.map(n => local(n)) } : { [REMOTE]: names.map(n => remote(n)) },
+            fail: (command, call) => command === single && call === 1 ? 'CONNECTION_CHANGED: the connection changed since this transfer was started' : undefined,
+        });
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const plan = direction === 'upload'
+            ? { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } }
+            : { pairKind: 'remote-local', mode: 'copy', source: { kind: 'remote', path: REMOTE }, destination: { kind: 'local', path: LOCAL, panelId: 'local' } };
+        const from = direction === 'upload' ? LOCAL : REMOTE;
+        const staged = await stagedPlan(f, {
+            sourceLocalPanelId: 'local', plan,
+            transferEntries: names.map(n => ({ path: `${from}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: staged,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile, remoteFiles: [],
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles, loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(),
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        // The frontend target is the plan's own throughout: only the backend refuses.
+        const queuedTargetProblem = f.targetChecks.queuedTargetProblem as (target: unknown) => string | null;
+        expect(queuedTargetProblem(staged.queuedTarget)).toBeNull();
+        await execute();
+        expect(queuedTargetProblem(staged.queuedTarget)).toBeNull();
+        expect(f.invoke.mock.calls.filter(([command]) => command === single)).toHaveLength(1);
+        expect(f.notify.error).toHaveBeenCalledTimes(1);
+    });
+
     // CodeRabbit CLI on the round: the plan's uploads went to the folder the
     // panel stood in when they ran, which can differ from the plan's own
     // destination (the panel moved after the plan was made, or during its

@@ -25,8 +25,16 @@ function closure(name: string, endMarker: string) {
   if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
   return app.slice(start, end);
 }
+/** App's module-level `const name = ...;`, through its closing `;`. */
+function topLevel(name: string) {
+  const start = app.indexOf(`\nconst ${name} =`);
+  const end = app.indexOf(';\n', start + 1);
+  if (start < 0 || end < 0) throw new Error(`Missing App constant: ${name}`);
+  return app.slice(start, end + 1);
+}
 const { code } = await transformWithOxc(
-  closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  topLevel('throwsTransferError')
+  + closure('captureGuiTarget', '\n  const getOverwriteDestination =')
   + (app.includes('const getOverwriteDestination =') ? closure('getOverwriteDestination', '\n  // Helper: check folder overwrite') : '')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  // The retry of an item restored from the journal')
