@@ -3962,17 +3962,19 @@ pub(crate) fn try_unmirror_active_credential(
 /// `Ok(None)` is a confirmed absence: no account.
 pub(crate) fn active_user_id_for_write() -> Result<Option<i64>, String> {
     #[cfg(test)]
-    if ACCOUNT_LOOKUP_FAILS.with(std::cell::Cell::get) {
+    if ACCOUNT_LOOKUP_FAILS.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("Active account lookup: refused".to_string());
     }
     active_user_id(&open_or_init_cli()?)
 }
 
+/// The active account cannot be read (an unopenable partition DB), on every
+/// thread: a connection reads it on the runtime's. Set only inside an
+/// isolated child (`isolated_account_fixture::in_isolated_child`), whose
+/// process runs that one test.
 #[cfg(test)]
-thread_local! {
-    /// The active account cannot be read (an unopenable partition DB).
-    pub(crate) static ACCOUNT_LOOKUP_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
+pub(crate) static ACCOUNT_LOOKUP_FAILS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Save a secret of `profile_id` for the accounts that hold that profile, whichever
 /// is active: another account's token must not land in the active one's partition.

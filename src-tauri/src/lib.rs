@@ -9288,13 +9288,13 @@ pub(crate) mod held_local_copy {
 /// hold `open` itself, before the check or a Stop could run. The handle
 /// reads normally once it is known to be a file.
 fn open_regular_file(
-    path: &std::path::Path,
+    path: impl AsRef<std::path::Path>,
 ) -> std::io::Result<(std::fs::File, std::fs::Metadata)> {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
-    let file = options.open(path)?;
+    let file = options.open(path.as_ref())?;
     let metadata = file.metadata()?;
     if !metadata.is_file() {
         return Err(std::io::Error::other("the source is not a regular file"));
@@ -9312,6 +9312,13 @@ fn open_regular_file(
         }
     }
     Ok((file, metadata))
+}
+
+/// [`open_regular_file`] for a reader that needs only the handle: an archive,
+/// a compress input, a file to hash. Each is a path the user or a synced tree
+/// gives, where a FIFO held the operation inside `open`.
+fn open_regular(path: impl AsRef<std::path::Path>) -> std::io::Result<std::fs::File> {
+    open_regular_file(path).map(|(file, _)| file)
 }
 
 fn local_copy_failed(e: std::io::Error) -> crate::sync::IpcError {
@@ -10081,41 +10088,6 @@ mod native_local_copy_tests {
         assert_eq!(after, 0o644, "{after:o}");
     }
 
-    /// A FIFO with no writer held the copy inside `open`, before the check
-    /// that refuses it and before any Stop could be seen. It is refused at
-    /// once now.
-    #[cfg(unix)]
-    #[test]
-    fn a_fifo_source_is_refused_without_waiting_for_a_writer() {
-        use std::os::unix::ffi::OsStrExt;
-        let dir = tempfile::tempdir().unwrap();
-        let fifo = dir.path().join("pipe");
-        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
-        // SAFETY: a NUL-terminated path that lives for the call.
-        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
-        let to = dir.path().join("copy");
-        let (sent, received) = std::sync::mpsc::channel();
-        let (from, target) = (fifo.clone(), to.clone());
-        let worker = std::thread::spawn(move || {
-            let copied = copy_file_cancellable(
-                &from,
-                &target,
-                &AtomicBool::new(false),
-                LocalPublish::Replace,
-            );
-            let _ = sent.send(format!("{copied:?}"));
-        });
-        let copied = received.recv_timeout(std::time::Duration::from_secs(5));
-        if copied.is_err() {
-            // The copy waits in `open`: a writer lets it go, so the test ends.
-            drop(std::fs::OpenOptions::new().write(true).open(&fifo));
-        }
-        worker.join().unwrap();
-        let copied = copied.expect("the copy waited for a writer to open the FIFO");
-        assert!(copied.contains("not a regular file"), "{copied}");
-        assert!(!to.exists());
-    }
-
     /// Where neither atomic step exists, another writer puts its own bytes at
     /// the name at the moment the copy would publish (a placeholder claimed
     /// there was filled, then renamed over). Those bytes survive, and the
@@ -10794,9 +10766,14 @@ async fn calculate_checksum(path: String, algorithm: String) -> Result<String, S
     use sha2::{Digest, Sha256};
     use tokio::io::AsyncReadExt;
 
-    let mut file = tokio::fs::File::open(&path)
-        .await
-        .map_err(|e| format!("Failed to open file: {}", e))?;
+    let opened = {
+        let path = path.clone();
+        tokio::task::spawn_blocking(move || open_regular(&path))
+            .await
+            .map_err(|e| format!("Failed to open file: {}", e))?
+    };
+    let mut file =
+        tokio::fs::File::from_std(opened.map_err(|e| format!("Failed to open file: {}", e))?);
 
     match algorithm.to_lowercase().as_str() {
         "md5" => {
@@ -11014,7 +10991,7 @@ fn zip_large_should_store(path: &std::path::Path, level: i64) -> Result<bool, St
     if level <= 0 {
         return Ok(true);
     }
-    let mut f = std::fs::File::open(path).map_err(|e| format!("Failed to open file: {}", e))?;
+    let mut f = open_regular(path).map_err(|e| format!("Failed to open file: {}", e))?;
     let mut sample = vec![0u8; ZIP_STORE_SAMPLE_BYTES];
     let n = f
         .read(&mut sample)
@@ -11043,8 +11020,7 @@ fn add_zip_file_entry(
     let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
 
     if file_size < ZIP_STORE_TRIAL_CAP {
-        let mut f =
-            std::fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let mut f = open_regular(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let mut buffer = Vec::new();
         f.read_to_end(&mut buffer)
             .map_err(|e| format!("Failed to read file: {}", e))?;
@@ -11076,8 +11052,7 @@ fn add_zip_file_entry(
                 .map_err(|e| format!("Failed to add file to ZIP: {}", e))?;
         }
         archive_source::authorize_file(file_path, policy)?;
-        let f =
-            std::fs::File::open(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
+        let f = open_regular(file_path).map_err(|e| format!("Failed to open file: {}", e))?;
         let mut reader = crate::archive_progress::ProgressReader::new(f, progress);
         std::io::copy(&mut reader, zip).map_err(|e| format!("Failed to write to ZIP: {}", e))?;
     }
@@ -11173,7 +11148,7 @@ fn read_region_append(path: &std::path::Path, offset: u64, len: usize, buf: &mut
     if len == 0 {
         return;
     }
-    if let Ok(mut f) = std::fs::File::open(path) {
+    if let Ok(mut f) = open_regular(path) {
         if f.seek(SeekFrom::Start(offset)).is_ok() {
             let _ = f.take(len as u64).read_to_end(buf);
         }
@@ -11502,13 +11477,12 @@ async fn extract_archive(
     validate_path(&archive_path)?;
     validate_path(&output_dir)?;
 
-    use std::fs::File;
     use zip::ZipArchive;
 
     // Wrap password in SecretString for zeroization on drop
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
-    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = open_regular(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
     let mut archive =
         ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
@@ -11630,7 +11604,6 @@ async fn compress_7z_impl(
     access: ArchiveAccess<'_>,
 ) -> Result<String, String> {
     use sevenz_rust2::*;
-    use std::fs::File;
     use std::path::Path;
     use walkdir::WalkDir;
 
@@ -11781,7 +11754,7 @@ async fn compress_7z_impl(
         for (archive_name, full_path) in &entries {
             let source_path = Path::new(full_path);
             archive_source::authorize_file(source_path, access.policy)?;
-            let file = File::open(source_path)
+            let file = open_regular(source_path)
                 .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
             zentries.push(ArchiveEntry::from_path(source_path, archive_name.clone()));
             readers.push(SourceReader::new(
@@ -11802,7 +11775,7 @@ async fn compress_7z_impl(
             let entry = ArchiveEntry::from_path(source_path, archive_name.clone());
 
             // Open the source and count bytes as the 7z writer pulls them through.
-            let file = File::open(source_path)
+            let file = open_regular(source_path)
                 .map_err(|e| format!("Failed to open file '{}': {}", archive_name, e))?;
             let reader = crate::archive_progress::ProgressReader::new(file, &mut progress);
 
@@ -12065,6 +12038,9 @@ where
 #[cfg(test)]
 mod archive_publication_tests;
 
+#[cfg(test)]
+mod fifo_source_tests;
+
 /// An I/O error on the extraction destination (creating, writing or renaming
 /// the output), told apart from an error reading the archive. It reads as the
 /// error it wraps.
@@ -12199,7 +12175,6 @@ async fn extract_7z(
     create_subfolder: bool,
 ) -> Result<String, String> {
     use sevenz_rust2::*;
-    use std::fs::File;
     use std::io::BufReader;
     use std::path::Path;
 
@@ -12219,7 +12194,7 @@ async fn extract_7z(
     let secret_password: Option<SecretString> = password.map(SecretString::from);
 
     let file =
-        File::open(&archive_path).map_err(|e| format!("Failed to open 7z archive: {}", e))?;
+        open_regular(&archive_path).map_err(|e| format!("Failed to open 7z archive: {}", e))?;
     let reader = BufReader::new(file);
 
     let pwd = secret_password
@@ -12276,10 +12251,9 @@ async fn extract_7z(
 #[tauri::command]
 async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
     use sevenz_rust2::*;
-    use std::fs::File;
     use std::io::BufReader;
 
-    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = open_regular(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
     let reader = BufReader::new(file);
 
@@ -12332,10 +12306,9 @@ async fn is_7z_encrypted(archive_path: String) -> Result<bool, String> {
 /// Check if a ZIP archive is password protected (AES or ZipCrypto)
 #[tauri::command]
 async fn is_zip_encrypted(archive_path: String) -> Result<bool, String> {
-    use std::fs::File;
     use zip::ZipArchive;
 
-    let file = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = open_regular(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
 
     let mut archive =
         ZipArchive::new(file).map_err(|e| format!("Failed to read archive: {}", e))?;
@@ -12418,7 +12391,7 @@ async fn detect_archive_meta(archive_path: String, kind: String) -> Result<Archi
 /// archives where the seek offsets are cheap or use 32-bit sentinels.
 fn detect_zip_meta(path: &str) -> Result<ArchiveMeta, String> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut f = open_regular(path).map_err(|e| format!("open: {e}"))?;
     let flen = f.metadata().map_err(|e| format!("stat: {e}"))?.len();
     if flen < 22 {
         return Err("too small for ZIP".to_string());
@@ -12603,7 +12576,7 @@ fn zip_aes_inner_method(data: &[u8], start: usize, len: usize) -> Option<u16> {
 /// 7z encryption is AES-256 by format.
 fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
     use std::io::{Read, Seek, SeekFrom};
-    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut f = open_regular(path).map_err(|e| format!("open: {e}"))?;
     let mut start = [0u8; 32];
     f.read_exact(&mut start).map_err(|e| format!("read: {e}"))?;
     const SIG: [u8; 6] = [0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C];
@@ -12656,7 +12629,7 @@ fn detect_7z_meta(path: &str) -> Result<ArchiveMeta, String> {
 /// badge) rather than guessing.
 fn detect_7z_compression(path: &str) -> Option<String> {
     use sevenz_rust2::{Archive, Password};
-    let mut f = std::fs::File::open(path).ok()?;
+    let mut f = open_regular(path).ok()?;
     let archive = Archive::read(&mut f, &Password::empty()).ok()?;
     let mut saw_store = false;
     for block in &archive.blocks {
@@ -12701,7 +12674,7 @@ fn sevenz_method_label(m: sevenz_rust2::EncoderMethod) -> Option<String> {
 /// AES-128. The caller only opens this for an already-encrypted archive.
 fn detect_rar_cipher(path: &str) -> Result<String, String> {
     use std::io::Read;
-    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut f = open_regular(path).map_err(|e| format!("open: {e}"))?;
     let mut sig = [0u8; 8];
     f.read_exact(&mut sig).map_err(|e| format!("read: {e}"))?;
     const RAR5: [u8; 7] = [0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x01];
@@ -12735,7 +12708,7 @@ fn rar_method_label(method: u32) -> String {
 /// AES-256, RAR4 = AES-128.
 fn rar_signature_cipher(path: &str) -> Result<Option<String>, String> {
     use std::io::Read;
-    let mut f = std::fs::File::open(path).map_err(|e| format!("open: {e}"))?;
+    let mut f = open_regular(path).map_err(|e| format!("open: {e}"))?;
     let mut sig = [0u8; 8];
     if f.read_exact(&mut sig).is_err() {
         return Ok(None);
@@ -12866,8 +12839,7 @@ fn tar_append_file<W: std::io::Write>(
     policy: Option<&archive_source::SourcePolicy<'_>>,
 ) -> Result<(), String> {
     archive_source::authorize_file(abs_path, policy)?;
-    let file =
-        std::fs::File::open(abs_path).map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
+    let file = open_regular(abs_path).map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
     let meta = file
         .metadata()
         .map_err(|e| format!("Failed to add {}: {}", rel_path, e))?;
@@ -13101,7 +13073,6 @@ async fn compress_single_impl(
     compression_level: Option<i64>,
     app: Option<tauri::AppHandle>,
 ) -> Result<String, String> {
-    use std::fs::File;
     use std::path::Path;
 
     let src = Path::new(&input_path);
@@ -13122,7 +13093,7 @@ async fn compress_single_impl(
     let out = temp
         .create_file()
         .map_err(|e| format!("Failed to create archive: {}", e))?;
-    let infile = File::open(src).map_err(|e| format!("Failed to open input: {}", e))?;
+    let infile = open_regular(src).map_err(|e| format!("Failed to open input: {}", e))?;
     // Count bytes as the encoder pulls them through the source (uncompressed payload).
     let mut reader = crate::archive_progress::ProgressReader::new(infile, &mut progress);
 
@@ -13200,7 +13171,6 @@ async fn extract_single_impl(
     create_subfolder: bool,
     kind: Option<String>,
 ) -> Result<String, String> {
-    use std::fs::File;
     use std::path::Path;
 
     let codec = match kind {
@@ -13245,7 +13215,8 @@ async fn extract_single_impl(
     let cap = compressed_len
         .saturating_mul(SINGLE_STREAM_MAX_RATIO)
         .max(SINGLE_STREAM_ABS_FLOOR);
-    let infile = File::open(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let infile =
+        open_regular(&archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let mut reader = whole_file_decoder(&codec, infile)
         .ok_or_else(|| format!("Unrecognized single-stream format: {}", codec))?;
     let over_cap =
@@ -13282,8 +13253,7 @@ fn tar_reader_for(
     archive_path: &str,
     kind: Option<&str>,
 ) -> Result<Box<dyn std::io::Read>, String> {
-    let file =
-        std::fs::File::open(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
+    let file = open_regular(archive_path).map_err(|e| format!("Failed to open archive: {}", e))?;
     let pick = match kind {
         Some(k) => k.to_string(),
         None => {
@@ -16893,7 +16863,13 @@ async fn compute_sha256(path: &std::path::Path) -> Option<String> {
     use sha2::{Digest, Sha256};
     use tokio::io::AsyncReadExt;
 
-    let mut file = tokio::fs::File::open(path).await.ok()?;
+    let opened = {
+        let path = path.to_path_buf();
+        tokio::task::spawn_blocking(move || open_regular(&path))
+            .await
+            .ok()?
+    };
+    let mut file = tokio::fs::File::from_std(opened.ok()?);
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 65_536];
     loop {
