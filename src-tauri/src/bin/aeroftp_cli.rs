@@ -87513,7 +87513,6 @@ mod tests {
             root.path(),
             "tests::import_template_reports_when_vault_profiles_unreadable",
             &[(CHILD, "1")],
-            std::time::Duration::from_secs(15),
         );
     }
 
@@ -87764,7 +87763,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::cloudinary_cli_clear_import_keeps_api_key_verbatim",
             &[
                 (CHILD, file.to_str().unwrap()),
@@ -87772,27 +87771,26 @@ mod tests {
                 ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
                 ("HOME", cfg_dir.to_str().unwrap()),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 
-    fn assert_child_finishes_with_open_stdin_within(
-        test_name: &str,
-        envs: &[(&str, &str)],
-        timeout: std::time::Duration,
-    ) {
+    /// How long a child may run before it counts as blocked on its open stdin.
+    /// It detects a hang, not a slow run: a child waiting on a pipe that is
+    /// never closed never finishes, so any bound catches it, and the bound only
+    /// has to stay clear of a slow run. One child takes about 5s alone and 9s
+    /// beside eleven others on 24 cores; on a 4-vCPU CI runner, inside the
+    /// whole suite, 15s was exceeded by a child that was not blocked (main
+    /// 3c475248c, Build run 43822610680).
+    const CHILD_HANG_BOUND: std::time::Duration = std::time::Duration::from_secs(180);
+
+    fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
         let root = crate::isolated_cli::root();
-        assert_child_finishes_in(root.path(), test_name, envs, timeout);
+        assert_child_finishes_in(root.path(), test_name, envs);
     }
 
-    /// [`assert_child_finishes_with_open_stdin_within`] in a private root the
-    /// caller made (and may have prepared, as a broken data root).
-    fn assert_child_finishes_in(
-        root: &std::path::Path,
-        test_name: &str,
-        envs: &[(&str, &str)],
-        timeout: std::time::Duration,
-    ) {
+    /// [`assert_child_finishes_with_open_stdin`] in a private root the caller
+    /// made (and may have prepared, as a broken data root).
+    fn assert_child_finishes_in(root: &std::path::Path, test_name: &str, envs: &[(&str, &str)]) {
         // Its own executable beside a portable.marker: the child's data root is
         // inside `root`, whatever the platform does with HOME and XDG variables.
         let mut cmd = crate::isolated_cli::command(&std::env::current_exe().unwrap(), root);
@@ -87806,7 +87804,7 @@ mod tests {
         }
         let mut child = cmd.spawn().expect("spawn child with open stdin pipe");
         let open_stdin = child.stdin.take().expect("piped stdin");
-        let deadline = std::time::Instant::now() + timeout;
+        let deadline = std::time::Instant::now() + CHILD_HANG_BOUND;
         let status = loop {
             if let Some(status) = child.try_wait().expect("poll child") {
                 break status;
@@ -87848,14 +87846,6 @@ mod tests {
             "the child resolves {} outside its private root {}",
             data.display(),
             std::path::Path::new(&root).display()
-        );
-    }
-
-    fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
-        assert_child_finishes_with_open_stdin_within(
-            test_name,
-            envs,
-            std::time::Duration::from_secs(15),
         );
     }
 
@@ -87966,7 +87956,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::import_template_refusals_exit_with_config_error_code_5",
             &[
                 (CHILD, file.to_str().unwrap()),
@@ -87975,7 +87965,6 @@ mod tests {
                 ("HOME", cfg_dir.to_str().unwrap()),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 
@@ -88128,7 +88117,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::crypt_over_skipped_base_cli_secret_form_for_mixed_case",
             &[
                 (CHILD, tpl_file.to_str().unwrap()),
@@ -88138,7 +88127,6 @@ mod tests {
                 ("HOME", cfg_dir.to_str().unwrap()),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 
