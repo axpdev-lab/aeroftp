@@ -1428,6 +1428,11 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["await runConnect('connect_ftp', ftpParams);", null, 'the connect ends: both callers check right after it'],
         ['const response = await listing;', 'if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);'],
         ['const response = await listing;', 'if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);'],
+        // The reuse of the live backend: the generations read before and
+        // after the cancels of the connects it supersedes.
+        ['const generationsBefore = await backendGenerations();', PHASE],
+        ['await supersedeOlderConnects(phaseVersion);', null, 'the cancels reached the backend: the phase is checked after the read that follows'],
+        ['const generationsAfter = await backendGenerations();', PHASE],
         ['await connectToCloudServer();', PHASE],
         // openAeroCloudFolder checks its owner, phase included, after the
         // listing and throws (the folder open above).

@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} sunucusunda SFTP yok, bu yüzden AeroFTP aynı bağlantıda SCP kullanıyor.",
             "saveOnAnotherServer": "Kaydedilmedi: bu dosya şu anda etkin olmayan bir sunucudan, hesaptan veya şifreli katmandan açıldı. Sekmesine geri dönün, ardından yeniden kaydedin.",
             "openedOnAnotherServer": "Açılmadı: dosya okunurken sunucu değişti. Tekrar açın.",
-            "remoteTargetChanged": "Hiçbir şey değiştirilmedi: sunucu, hesap veya şifreli katman işlem başladığından beri değişti ya da hâlâ yeniden bağlanıyor. Geçerli bağlantıda tekrar deneyin."
+            "remoteTargetChanged": "Hiçbir şey değiştirilmedi: sunucu, hesap veya şifreli katman işlem başladığından beri değişti ya da hâlâ yeniden bağlanıyor. Geçerli bağlantıda tekrar deneyin.",
+            "connectEarlierNotStopped": "Önceki bir bağlantı denemesi durdurulamadı ve hâlâ çalışıyor, bu nedenle bu bağlantı başlatılmadı. Sona erdiğinde tekrar deneyin."
         },
         "about": {
             "tagline": "FTP'den fazlası. Tam bir geliştirici araç seti.",

@@ -202,7 +202,7 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(relativeSyncSegments('/usr/home/u/docs', '~/docs')).toBeNull();
   // Both AeroCloud entries take that folder for the lock, the badges and the share link.
   const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
-  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*if \(!owner\.owns\(\)\) return;\s*setSyncBasePaths\(\{ remote: listedFolder,/);
+  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !reusesLiveServer, owner\);\s*if \(!owner\.owns\(\)\) return;\s*setSyncBasePaths\(\{ remote: listedFolder,/);
   expect(lock).toContain('adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
   const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
   expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);');
@@ -279,7 +279,8 @@ it('keeps the session on screen only for the pinned profile and a folder that na
   expect(kept).toContain('liveSavedServerId(sessions, activeSessionId, liveConnectionParams),');
   expect(kept).toContain('cloudServer.id,');
   expect(kept).toContain('cloudConfig.remote_folder,');
-  expect(kept).toContain('openCloudRemoteFolder(isProvider && !isSameServer, owner)');
+  expect(kept).toContain('let reusesLiveServer = isSameServer;');
+  expect(kept).toContain('openCloudRemoteFolder(isProvider && !reusesLiveServer, owner)');
 });
 
 it('drops a folder open that finishes after another connection took the session', async () => {

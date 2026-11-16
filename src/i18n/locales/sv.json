@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning.",
             "saveOnAnotherServer": "Inte sparad: den här filen öppnades från en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och spara igen.",
             "openedOnAnotherServer": "Inte öppnad: servern ändrades medan filen lästes. Öppna den igen.",
-            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen."
+            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen.",
+            "connectEarlierNotStopped": "Ett tidigare anslutningsförsök kunde inte stoppas och pågår fortfarande, så den här anslutningen startades inte. Försök igen när det har avslutats."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",

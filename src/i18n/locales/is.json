@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu.",
             "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur.",
             "openedOnAnotherServer": "Ekki opnað: þjóninum var breytt meðan skráin var lesin. Opnaðu hana aftur.",
-            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu."
+            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu.",
+            "connectEarlierNotStopped": "Ekki tókst að stöðva fyrri tengingartilraun og hún er enn í gangi, því var þessi tenging ekki ræst. Reyndu aftur þegar henni lýkur."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",

@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} nemá SFTP, proto AeroFTP používá SCP na stejném připojení.",
             "saveOnAnotherServer": "Neuloženo: tento soubor byl otevřen ze serveru, účtu nebo šifrované vrstvy, která teď není aktivní. Vraťte se na její kartu a uložte jej znovu.",
             "openedOnAnotherServer": "Neotevřeno: server se změnil během čtení souboru. Otevřete ho znovu.",
-            "remoteTargetChanged": "Nic se nezměnilo: server, účet nebo šifrovaná vrstva se od zahájení akce změnily, nebo se stále znovu připojují. Zkuste to znovu na aktuálním připojení."
+            "remoteTargetChanged": "Nic se nezměnilo: server, účet nebo šifrovaná vrstva se od zahájení akce změnily, nebo se stále znovu připojují. Zkuste to znovu na aktuálním připojení.",
+            "connectEarlierNotStopped": "Předchozí pokus o připojení se nepodařilo zastavit a stále běží, proto se toto připojení nespustilo. Zkuste to znovu, až skončí."
         },
         "about": {
             "tagline": "Více než FTP. Kompletní sada nástrojů pro vývojáře.",

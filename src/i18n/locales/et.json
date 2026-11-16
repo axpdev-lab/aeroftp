@@ -1819,7 +1819,8 @@
             "scpModeBody": "Serveril {host} pole SFTP-d, seega kasutab AeroFTP sama ühenduse kaudu SCP-d.",
             "saveOnAnotherServer": "Pole salvestatud: see fail avati serverist, kontolt või krüpteeritud kihilt, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja salvestage uuesti.",
             "openedOnAnotherServer": "Avamata: server muutus faili lugemise ajal. Ava see uuesti.",
-            "remoteTargetChanged": "Midagi ei muudetud: server, konto või krüptitud kiht on pärast toimingu algust muutunud või ühendub veel uuesti. Proovige uuesti praeguse ühenduse kaudu."
+            "remoteTargetChanged": "Midagi ei muudetud: server, konto või krüptitud kiht on pärast toimingu algust muutunud või ühendub veel uuesti. Proovige uuesti praeguse ühenduse kaudu.",
+            "connectEarlierNotStopped": "Varasemat ühendumiskatset ei õnnestunud peatada ja see on endiselt käimas, seega seda ühendust ei alustatud. Proovige uuesti, kui see on lõppenud."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",

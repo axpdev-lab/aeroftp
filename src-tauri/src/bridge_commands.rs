@@ -619,8 +619,9 @@ pub fn materialize_imported_crypt_overlay(
 /// profile's user name, as the connect opens them
 /// (`bridge_shared::export_start_folder`). Done here, once, for every source:
 /// a writer that copied the stored path wrote a literal `{username}` folder
-/// into its file. An `Err` is the reason the profile is skipped.
-fn with_filled_start_folders(entry: &Value) -> Result<Value, String> {
+/// into its file. An `Err` is the reason the profile is skipped. The CLI
+/// export fills its profiles with it too (`collect_export_scaffold`).
+pub fn with_filled_start_folders(entry: &Value) -> Result<Value, String> {
     let username = entry
         .get("username")
         .and_then(|v| v.as_str())

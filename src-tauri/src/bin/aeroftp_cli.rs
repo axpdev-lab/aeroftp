@@ -43546,6 +43546,69 @@ fn collect_export_scaffold(
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
 ) -> Result<ExportCollected, String> {
+    collect_export_scaffold_with(
+        servers_json,
+        selectors,
+        source,
+        supported_protocols,
+        oauth_protocols,
+        |id, protocol| export_vault_secret(store, id, protocol),
+    )
+}
+
+/// The secret a profile is exported with, from the active user's partition
+/// with fallback to the legacy vault (MUV-3); empty when none is stored.
+fn export_vault_secret(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    id: &str,
+    protocol: &str,
+) -> String {
+    if id.is_empty() {
+        String::new()
+    } else if protocol == "jottacloud" {
+        // Jotta authenticates via its OIDC refresh blob ({refresh_token,
+        // token_endpoint, username}), not a `server_<id>` password. The
+        // provider persists it under the per-profile key
+        // `jottacloud_refresh_<id>` when a profile id is set, or the
+        // singleton `jottacloud_refresh` otherwise (see
+        // `JottacloudProvider::refresh_token_account`). Try per-profile
+        // first, then fall back to the singleton, so export_rclone can
+        // rebuild the rclone `token` line from it.
+        let uid = active_credential_user_id(store);
+        read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
+            .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
+            .unwrap_or_default()
+    } else {
+        match read_server_cred(
+            store,
+            active_credential_user_id(store),
+            &format!("server_{}", id),
+        ) {
+            Some(stored) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
+                    v.get("password")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or(stored.trim_matches('"'))
+                        .to_string()
+                } else {
+                    stored
+                }
+            }
+            None => String::new(),
+        }
+    }
+}
+
+/// [`collect_export_scaffold`] with each profile's secret read by
+/// `secret_for(id, protocol)`.
+fn collect_export_scaffold_with(
+    servers_json: &serde_json::Value,
+    selectors: Option<&[String]>,
+    source: &str,
+    supported_protocols: &[&str],
+    oauth_protocols: &[&str],
+    secret_for: impl Fn(&str, &str) -> String,
+) -> Result<ExportCollected, String> {
     let arr = servers_json
         .as_array()
         .ok_or_else(|| "vault profiles payload is not an array".to_string())?;
@@ -43593,47 +43656,9 @@ fn collect_export_scaffold(
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let options = entry.get("options").cloned();
-        let initial_path = entry
-            .get("initialPath")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
         let overlay = entry.get("aeroCryptOverlay").cloned();
 
-        // MUV-3: active user's partition with fallback to the legacy vault.
-        let secret = if id.is_empty() {
-            String::new()
-        } else if protocol == "jottacloud" {
-            // Jotta authenticates via its OIDC refresh blob ({refresh_token,
-            // token_endpoint, username}), not a `server_<id>` password. The
-            // provider persists it under the per-profile key
-            // `jottacloud_refresh_<id>` when a profile id is set, or the
-            // singleton `jottacloud_refresh` otherwise (see
-            // `JottacloudProvider::refresh_token_account`). Try per-profile
-            // first, then fall back to the singleton, so export_rclone can
-            // rebuild the rclone `token` line from it.
-            let uid = active_credential_user_id(store);
-            read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
-                .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
-                .unwrap_or_default()
-        } else {
-            match read_server_cred(
-                store,
-                active_credential_user_id(store),
-                &format!("server_{}", id),
-            ) {
-                Some(stored) => {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
-                        v.get("password")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or(stored.trim_matches('"'))
-                            .to_string()
-                    } else {
-                        stored
-                    }
-                }
-                None => String::new(),
-            }
-        };
+        let secret = secret_for(id, &protocol);
 
         let proto_supported = supported_protocols.contains(&protocol.as_str());
         let proto_oauth = oauth_protocols.contains(&protocol.as_str());
@@ -43661,6 +43686,21 @@ fn collect_export_scaffold(
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
         }
+        // The start folder (and an exported overlay's scope) as the profile
+        // opens it, filled by the fill the GUI export uses: every CLI writer
+        // reads the scaffold, so none writes a literal `{username}` folder.
+        let filled = match ftp_client_gui_lib::bridge_commands::with_filled_start_folders(entry) {
+            Ok(filled) => filled,
+            Err(reason) => {
+                out.skipped.push((name.to_string(), reason));
+                continue;
+            }
+        };
+        let options = filled.get("options").cloned();
+        let initial_path = filled
+            .get("initialPath")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
 
         // By id, the key the secret was read under: by name, two profiles of
         // one name both went out with the second one's secret.
@@ -45610,6 +45650,82 @@ mod export_vault_secret_tests {
         assert!(export_needs_vault_secret("sftp", None));
         assert!(export_needs_vault_secret("ftp", None));
         assert!(export_needs_vault_secret("s3", Some(&native)));
+    }
+}
+
+#[cfg(test)]
+mod export_start_folder_tests {
+    use super::collect_export_scaffold_with;
+    use ftp_client_gui_lib::lftp_import::{export_lftp, LftpExportServer};
+
+    fn profile(username: &str) -> serde_json::Value {
+        serde_json::json!([{
+            "id": "p1", "name": "backup", "protocol": "sftp", "host": "sftp.example.test",
+            "port": 22, "username": username, "initialPath": "/home/{username}/backup",
+            "options": { "initial_path": "/home/{username}/backup" }
+        }])
+    }
+
+    /// Greptile 4583669529: the CLI export reads its profiles through the
+    /// scaffold and calls the writers directly, so the fill the GUI export
+    /// runs never reached it: an lftp export of `/home/{username}/backup`
+    /// wrote the placeholder, percent-encoded, as its start folder.
+    #[test]
+    fn a_cli_lftp_export_writes_the_start_folder_the_profile_opens() {
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("lftp");
+        let collected = collect_export_scaffold_with(
+            &profile("alice"),
+            None,
+            "lftp",
+            supported,
+            &[],
+            |_, _| "pw".to_string(),
+        )
+        .unwrap();
+        let p = &collected.profiles[0];
+        assert_eq!(p.initial_path.as_deref(), Some("/home/alice/backup"));
+        assert_eq!(
+            p.options.as_ref().and_then(|o| o["initial_path"].as_str()),
+            Some("/home/alice/backup")
+        );
+
+        // Through the lftp writer, as `cmd_export_bridge` maps the scaffold.
+        let servers: Vec<LftpExportServer> = collected
+            .profiles
+            .iter()
+            .map(|p| LftpExportServer {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                host: p.host.clone(),
+                port: p.port,
+                username: p.username.clone(),
+                protocol: Some(p.protocol.clone()),
+                options: p.options.clone(),
+                provider_id: p.provider_id.clone(),
+                initial_path: p.initial_path.clone(),
+            })
+            .collect();
+        let dir = tempfile::TempDir::new().unwrap();
+        let out = dir.path().join("bookmarks");
+        export_lftp(&servers, &collected.passwords, &out).unwrap();
+        let written = std::fs::read_to_string(&out).unwrap();
+        assert!(written.contains("/home/alice/backup"), "{written}");
+        assert!(!written.contains("username"), "{written}");
+    }
+
+    /// A user name the fill refuses (it would change the folder's depth)
+    /// skips the profile with the reason, as the GUI export does.
+    #[test]
+    fn a_cli_export_skips_a_profile_whose_user_name_cannot_fill_its_folder() {
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("lftp");
+        let collected =
+            collect_export_scaffold_with(&profile("a/b"), None, "lftp", supported, &[], |_, _| {
+                "pw".to_string()
+            })
+            .unwrap();
+        assert!(collected.profiles.is_empty());
+        assert_eq!(collected.skipped.len(), 1);
+        assert_eq!(collected.skipped[0].0, "backup");
     }
 }
 

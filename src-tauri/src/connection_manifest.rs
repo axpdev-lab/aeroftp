@@ -91,10 +91,19 @@ const USERNAME_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROL
     .add(b'|')
     .add(b'}');
 
+/// [`USERNAME_SEGMENT`] for a user name that fills a value in the query: also
+/// every character that would end the value or the parameter, or read as a
+/// space (`&`, `+`, `;`, `=`), so `alice&mode=other` stays one value.
+const USERNAME_QUERY_VALUE: &percent_encoding::AsciiSet =
+    &USERNAME_SEGMENT.add(b'&').add(b'+').add(b';').add(b'=');
+
 /// Fill the `{username}` placeholder of a server URL with the user name,
 /// exactly as stored (never trimmed: the login sends it that way). In a path,
-/// a query or the userinfo it goes in as one percent-encoded segment, so a
-/// `/` stays inside its segment (`a/b` is `a%2Fb`). In the host name it goes
+/// the userinfo or the fragment it goes in as one percent-encoded segment, so
+/// a `/` stays inside its segment (`a/b` is `a%2Fb`). In the query it goes in
+/// as one value, also encoded for `&`, `+`, `;` and `=`, so it cannot add or
+/// change a parameter (`alice&mode=other` is `alice%26mode%3Dother`). In the
+/// host name it goes
 /// in as written, and only a name that is a valid host label is accepted.
 /// A template without the placeholder is returned unchanged. A blank user
 /// name, one of `.` or `..`, or one holding `\` or a control character is an
@@ -136,8 +145,24 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
         .rfind('@')
         .map_or(rest_at, |at| rest_at + at + 1);
     let host = &template[host_at..authority_end];
+    // After the authority: the path, then the query from its `?` to the
+    // fragment's `#` (a `?` inside the fragment starts no query).
+    let tail = &template[authority_end..];
+    let fragment_at = tail.find('#').unwrap_or(tail.len());
+    let query_at = tail[..fragment_at].find('?').unwrap_or(fragment_at);
+    let value = percent_encoding::utf8_percent_encode(username, USERNAME_QUERY_VALUE).to_string();
+    let tail = format!(
+        "{}{}{}",
+        tail[..query_at].replace(USERNAME_TEMPLATE, &segment),
+        tail[query_at..fragment_at].replace(USERNAME_TEMPLATE, &value),
+        tail[fragment_at..].replace(USERNAME_TEMPLATE, &segment)
+    );
     if !host.contains(USERNAME_TEMPLATE) {
-        return Ok(template.replace(USERNAME_TEMPLATE, &segment));
+        return Ok(format!(
+            "{}{}",
+            template[..authority_end].replace(USERNAME_TEMPLATE, &segment),
+            tail
+        ));
     }
     let is_label = !username.starts_with('.')
         && !username.ends_with('.')
@@ -156,7 +181,7 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
         "{}{}{}",
         template[..host_at].replace(USERNAME_TEMPLATE, &segment),
         host.replace(USERNAME_TEMPLATE, username),
-        template[authority_end..].replace(USERNAME_TEMPLATE, &segment)
+        tail
     ))
 }
 
@@ -576,6 +601,54 @@ mod tests {
             expand_username_in_url("https://{username}@dav.example.test/u/{username}", "a b")
                 .unwrap(),
             "https://a%20b@dav.example.test/u/a%20b"
+        );
+    }
+
+    /// Greptile 4583669546: a user name that fills a query value goes in as
+    /// one value, so `&`, `+`, `;` and `=` cannot add or change a parameter;
+    /// in the path and the fragment it keeps the segment encoding (`/` is
+    /// `%2F`, `&` and `=` stay as they are), and a `?` inside the fragment
+    /// starts no query.
+    #[test]
+    fn a_user_name_in_the_query_is_filled_as_one_value() {
+        let full = "https://dav.example.test/u/{username}?account={username}&x=1#{username}";
+        for (user, path, value) in [
+            (
+                "alice&mode=other",
+                "alice&mode=other",
+                "alice%26mode%3Dother",
+            ),
+            ("a+b", "a+b", "a%2Bb"),
+            ("k;v", "k;v", "k%3Bv"),
+            ("a=b", "a=b", "a%3Db"),
+            ("a/b", "a%2Fb", "a%2Fb"),
+            ("a b", "a%20b", "a%20b"),
+            ("a#b?c", "a%23b%3Fc", "a%23b%3Fc"),
+            (
+                "alice@example.com",
+                "alice@example.com",
+                "alice@example.com",
+            ),
+        ] {
+            assert_eq!(
+                expand_username_in_url(full, user).unwrap(),
+                format!("https://dav.example.test/u/{path}?account={value}&x=1#{path}"),
+                "{user:?}"
+            );
+        }
+        // A query straight after the host, and a host label with a query.
+        assert_eq!(
+            expand_username_in_url("https://dav.example.test?account={username}", "a&b").unwrap(),
+            "https://dav.example.test?account=a%26b"
+        );
+        assert_eq!(
+            expand_username_in_url("https://{username}.example.test/?q={username}", "a-1").unwrap(),
+            "https://a-1.example.test/?q=a-1"
+        );
+        // A `?` in the fragment is the fragment's.
+        assert_eq!(
+            expand_username_in_url("https://dav.example.test/x#f?{username}", "a&b").unwrap(),
+            "https://dav.example.test/x#f?a&b"
         );
     }
 

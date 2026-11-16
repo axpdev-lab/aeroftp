@@ -40,3 +40,18 @@ export function isConnectHardTimeoutError(error: unknown): boolean {
   if (error instanceof Error) return error.message.includes(CONNECT_HARD_TIMEOUT_MARKER);
   return String(error).includes(CONNECT_HARD_TIMEOUT_MARKER);
 }
+
+// A connect refused before its command was sent: an older connect a newer
+// phase superseded is still running, and its cancel never reached the backend
+// (both deliveries failed), so it could still install over this one. A
+// failure, not a cancel (the failure toast and the saved-server marker). Its
+// message is the text shown to the user, also through `String(error)`.
+export class ConnectEarlierNotStoppedError extends Error {
+  override toString(): string {
+    return this.message;
+  }
+}
+
+export function isConnectEarlierNotStoppedError(error: unknown): boolean {
+  return error instanceof ConnectEarlierNotStoppedError;
+}

@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} haina SFTP, kwa hivyo AeroFTP inatumia SCP kwenye muunganisho uleule.",
             "saveOnAnotherServer": "Haijahifadhiwa: faili hii ilifunguliwa kutoka kwa seva, akaunti au tabaka lililosimbwa ambalo halitumiki sasa. Rudi kwenye kichupo chake, kisha hifadhi tena.",
             "openedOnAnotherServer": "Haikufunguliwa: seva ilibadilika wakati faili ilikuwa ikisomwa. Ifungue tena.",
-            "remoteTargetChanged": "Hakuna kilichobadilishwa: seva, akaunti au safu iliyosimbwa imebadilika tangu kitendo kianze, au bado inaunganisha upya. Jaribu tena kwenye muunganisho wa sasa."
+            "remoteTargetChanged": "Hakuna kilichobadilishwa: seva, akaunti au safu iliyosimbwa imebadilika tangu kitendo kianze, au bado inaunganisha upya. Jaribu tena kwenye muunganisho wa sasa.",
+            "connectEarlierNotStopped": "Jaribio la awali la kuunganisha halikuweza kusimamishwa na bado linaendelea, kwa hiyo muunganisho huu haukuanzishwa. Jaribu tena likimalizika."
         },
         "about": {
             "tagline": "Zaidi ya FTP. Zana kamili za msanidi.",

@@ -3,6 +3,7 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import { USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
+import { ConnectEarlierNotStoppedError, isConnectEarlierNotStoppedError } from '../utils/connectCancel';
 import { transformWithOxc } from 'vite';
 import APP from '../App.tsx?raw';
 import React, { act, useState } from 'react';
@@ -1417,6 +1418,11 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
  *  `{ current: 0 }` for a ref, a spy otherwise). */
 async function runAppSlice(source: string, overrides: Record<string, unknown>, result: string) {
     const { code } = await transformWithOxc(source, 'app-slice.ts');
+    // App's own error class and its check, unless a test gives its own: a
+    // made-up one would answer every check with a truthy promise.
+    overrides.ConnectEarlierNotStoppedError ??= ConnectEarlierNotStoppedError;
+    overrides.isConnectEarlierNotStoppedError ??= isConnectEarlierNotStoppedError;
+    overrides.useLatestCallback ??= (fn: unknown) => fn;
     const made = new Map<string | symbol, unknown>();
     const scope = new Proxy(overrides, {
         has: (target, key) => typeof key === 'string' && (key in target || !(key in globalThis)),
@@ -1806,6 +1812,68 @@ describe('Reviewed ownership of a connect', () => {
         expect(backend.slot).toBe('B');
     });
 
+    it("fails B closed, without sending it, when A's cancel fails twice", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot. Every cancel delivery fails, so A is never cancelled in
+        // the backend and still installs when it comes back.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        const order: string[] = [];
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') {
+                order.push(`cancel ${args.token} failed`);
+                throw new Error('IPC unavailable');
+            }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                order.push(`connect ${server}`);
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        // B's phase begins: both deliveries of A's cancel fail.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const b = wrappers.runConnect('provider_connect', { server: 'B' });
+        // B fails, as a failure (not a cancel), and is never sent: A may
+        // still install, and would replace it.
+        await expect(b).rejects.toThrow('toast.connectEarlierNotStopped');
+        await expect(b).rejects.toSatisfy(isConnectEarlierNotStoppedError);
+        expect(order).toEqual(['connect A', 'cancel token-1 failed', 'cancel token-1 failed']);
+        expect(notify.info).not.toHaveBeenCalled();
+        // B replaced nothing: the backend's tab is still the one it was.
+        expect(refs.backendReplacementSeqRef.current).toBe(0);
+        // A, never cancelled in the backend, installs when it comes back.
+        releaseA();
+        await a;
+        expect(backend.slot).toBe('A');
+        // A has ended: nothing can install over a connect sent now.
+        await wrappers.runConnect('provider_connect', { server: 'C' });
+        expect(backend.slot).toBe('C');
+        expect(order.slice(3)).toEqual(['connect C']);
+    });
+
     it("keeps B's backend certain when B confirms while a cancelled A is still cleaning up", async () => {
         const refs = freshRefs();
         const accounting = await accountingOn(refs);
@@ -1972,7 +2040,7 @@ describe('Reviewed ownership of a connect', () => {
         const setSessions = vi.fn();
         const setConnectionParams = vi.fn();
         const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
-            ...refs, ...accounting, invoke, remoteConnectPhaseRef: { current: false },
+            ...refs, ...accounting, invoke, remoteConnectPhaseRef: { current: false }, uncancelledOlderConnectRuns: () => false,
             CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
             isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
             isConnectCancelledError: () => false, isListingCancelled: () => false,
@@ -2007,7 +2075,7 @@ describe('Reviewed ownership of a connect', () => {
     it.each([
         ['AeroCloud is off', { enabled: false }, [], false, []],
         ['no profile is saved', {}, [], false, []],
-        ['the live server is the cloud\'s', {}, ['cloud'], true, ['supersede 1']],
+        ['the live server is the cloud\'s', {}, ['cloud'], true, ['provider_connection_generation', 'supersede 1', 'provider_connection_generation']],
         ['the open ends another server to connect its own', {}, ['cloud'], false, ['supersede 1', 'provider_connection_generation']],
     ] as const)('cancels a connect in flight only where the AeroCloud open takes the backend (%s)', async (_label, config, profiles, sameServer, expected) => {
         const refs = freshRefs();
@@ -2024,7 +2092,7 @@ describe('Reviewed ownership of a connect', () => {
         });
         const supersedeOlderConnects = vi.fn((phase: number) => { events.push(`supersede ${phase}`); });
         const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
-            ...refs, ...accounting, invoke, supersedeOlderConnects, remoteConnectPhaseRef: { current: false },
+            ...refs, ...accounting, invoke, supersedeOlderConnects, remoteConnectPhaseRef: { current: false }, uncancelledOlderConnectRuns: () => false,
             CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
             isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
             isConnectCancelledError: () => false, isListingCancelled: () => false,
@@ -2048,6 +2116,91 @@ describe('Reviewed ownership of a connect', () => {
         expect(relevant.slice(0, expected.length)).toEqual(expected);
         if (expected.length === 0) expect(supersedeOlderConnects).not.toHaveBeenCalled();
         else expect(supersedeOlderConnects).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['A installs before its delayed cancel arrives: the open reconnects', 'installs'],
+        ['the delayed cancel refuses A: the open reuses the live backend', 'refused'],
+        ["A's cancel never arrives and A still runs: the open fails closed", 'undelivered'],
+    ] as const)('revalidates the live backend after a delayed cancellation during same-server reuse (%s)', async (_label, a) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud' };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        // The cancels of the reuse's supersede are held, as a slow IPC would.
+        let sendCancels!: () => void;
+        let deliverCancels!: () => void;
+        const cancelsSent = new Promise<void>(resolve => { sendCancels = resolve; });
+        const cancelsDelivered = new Promise<void>(resolve => { deliverCancels = resolve; });
+        let supersedes = 0;
+        const supersedeOlderConnects = vi.fn(async () => {
+            if (++supersedes > 1) return;
+            sendCancels();
+            await cancelsDelivered;
+        });
+        // AeroCloud's own connect, when it reconnects: it installs the cloud.
+        const runConnect = vi.fn(async () => { fake.backend.provider = 'cloud'; fake.backend.providerGeneration += 1; });
+        const notify = { error: vi.fn(), success: vi.fn() };
+        const setActiveSessionId = vi.fn();
+        const setConnectionParams = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, runConnect, remoteConnectPhaseRef: { current: false },
+            uncancelledOlderConnectRuns: () => a === 'undelivered',
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} }],
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            // The live tab is the cloud's own server: the same-server branch.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => true, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId, setShowCloudPanel: vi.fn(),
+            setSessions: vi.fn(), setConnectionParams, remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify,
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const open = handleCloudTabClick();
+        await cancelsSent;
+        // A connect that began before the open and is still in flight: its
+        // cancel is on its way.
+        if (a === 'installs') { fake.backend.provider = 'A'; fake.backend.providerGeneration += 1; }
+        deliverCancels();
+        await open;
+        // The folder open's next step after its listing.
+        const listed = invoke.mock.calls.some(([command]) => command === 'get_local_files');
+        if (a === 'installs') {
+            // The backend serves A now, not the live tab: the open ends A's
+            // session and connects the cloud's own before it lists.
+            expect(invoke).toHaveBeenCalledWith('provider_disconnect', { expectedGeneration: 2 });
+            expect(runConnect).toHaveBeenCalledWith('provider_connect', expect.objectContaining({ server: 'dav.example.test' }));
+            expect(fake.backend.provider).toBe('cloud');
+            expect(listed).toBe(true);
+        } else if (a === 'refused') {
+            // Nothing moved: the live backend is the cloud's, reused as is.
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(invoke).not.toHaveBeenCalledWith('provider_disconnect', expect.anything());
+            expect(fake.backend.provider).toBe('old');
+            expect(setConnectionParams).toHaveBeenCalledOnce();
+            expect(listed).toBe(true);
+        } else {
+            // A may still install: nothing is listed, reused or connected,
+            // and the previous session is live again.
+            expect(notify.error).toHaveBeenCalledWith('toast.connectionFailedTitle', 'toast.connectEarlierNotStopped');
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(setConnectionParams).not.toHaveBeenCalled();
+            expect(listed).toBe(false);
+            expect(setActiveSessionId).toHaveBeenLastCalledWith('old-tab');
+        }
     });
 
     it.each([

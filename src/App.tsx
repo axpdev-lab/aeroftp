@@ -237,7 +237,7 @@ import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
 import { createNavigationGate, OS_OPEN_NAV_WAIT_MS } from './utils/navigationGate';
 import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
-import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, CONNECT_SUPERSEDED_MARKER, isConnectCancelledError, isConnectHardTimeoutError, isConnectSupersededError } from './utils/connectCancel';
+import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, CONNECT_SUPERSEDED_MARKER, ConnectEarlierNotStoppedError, isConnectCancelledError, isConnectEarlierNotStoppedError, isConnectHardTimeoutError, isConnectSupersededError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
@@ -2650,6 +2650,19 @@ const App: React.FC = () => {
   // connect sends its own command only after them (`trackedConnect`), so an
   // older connect is cancelled before the newer one can take the slot.
   const supersedeCancelsRef = useRef<Promise<void>>(Promise.resolve());
+  // The superseded connects whose cancel never reached the backend (both
+  // deliveries failed): while one still runs it may install, so no newer
+  // connect is sent (`trackedConnect` fails it closed) and AeroCloud does not
+  // reuse the backend.
+  const undeliveredCancelsRef = useRef(new Set<string>());
+  /** Whether a superseded connect whose cancel never reached the backend is
+   *  still running (other than `own`). */
+  const uncancelledOlderConnectRuns = (own?: string) =>
+    [...undeliveredCancelsRef.current].some(token => token !== own && inFlightConnectsRef.current.has(token));
+  // The error a connect left unsent for one of them ends with, in the
+  // language of now (stable: the connect wrappers keep it).
+  const earlierConnectNotStopped = useLatestCallback(() =>
+    new ConnectEarlierNotStoppedError(t('toast.connectEarlierNotStopped')));
   const supersedeOlderConnects = (phaseVersion: number): Promise<void> => {
     const cancels: Promise<unknown>[] = [];
     for (const [token, beganAt] of inFlightConnectsRef.current) {
@@ -2660,6 +2673,7 @@ const App: React.FC = () => {
       const cancel = () => invoke('cancel_connection', { token });
       cancels.push(cancel().catch(() => cancel()).catch((e) => {
         logger.debug('[supersedeOlderConnects] cancel_connection failed twice:', e);
+        undeliveredCancelsRef.current.add(token);
       }));
     }
     const sent = Promise.all([supersedeCancelsRef.current, ...cancels]).then(() => undefined);
@@ -2672,8 +2686,10 @@ const App: React.FC = () => {
     inFlightConnectsRef.current.set(token, remoteConnectPhaseVersionRef.current);
     try {
       // The older connects this phase cancelled are cancelled in the backend
-      // before this one is sent.
+      // before this one is sent; one whose cancel never got there and that
+      // still runs could install over this one, so this one is not sent.
       await supersedeCancelsRef.current;
+      if (uncancelledOlderConnectRuns(token)) throw earlierConnectNotStopped();
       return await run(token);
     } catch (error) {
       if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
@@ -2681,6 +2697,7 @@ const App: React.FC = () => {
     } finally {
       inFlightConnectsRef.current.delete(token);
       supersededConnectsRef.current.delete(token);
+      undeliveredCancelsRef.current.delete(token);
     }
   };
   /** A connect outside `cancellableConnect` (a device open, a resume's sign-in
@@ -2738,6 +2755,13 @@ const App: React.FC = () => {
       // Overtaken by a newer connect phase: a cancel, without the cancel toast
       // (the user did not cancel; the newer connect owns the workspace).
       if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
+      // Not sent (an older connect could still install, `trackedConnect`): a
+      // failure, and nothing was replaced. Before the cancel check: the user
+      // did not cancel this one.
+      if (isConnectEarlierNotStoppedError(error)) {
+        refusedBeforeInstall = true;
+        throw error;
+      }
       // Hard-timeout backstop: the connect never answered. This is a real
       // failure, not a user cancel, so signal a best-effort backend cancel and
       // re-throw a clean error string that the per-flow catch surfaces via its
@@ -10452,8 +10476,52 @@ const App: React.FC = () => {
         // Deselect current session tab since we're going to AeroCloud
         setActiveSessionId(null);
 
-        // If different server/protocol, reconnect
-        if (!isSameServer) {
+        // The live backend is reused only while it still serves the live
+        // connection once the connects this open supersedes are cancelled: a
+        // connect that began before this open and is still in flight would
+        // install over it. The cancels are awaited, and the generations read
+        // before them are read again: one that moved means a connect installed
+        // before its cancel arrived, so the backend now serves that connect's
+        // provider, and the open reconnects instead of listing it.
+        let reusesLiveServer = isSameServer;
+        if (reusesLiveServer) {
+          const backendGenerations = () => Promise.all([
+            invoke<number>('provider_connection_generation'),
+            invoke<number>('ftp_connection_generation'),
+          ]);
+          const generationsBefore = await backendGenerations();
+          if (!ownsPhase()) return;
+          await supersedeOlderConnects(phaseVersion);
+          const generationsAfter = await backendGenerations();
+          if (!ownsPhase()) return;
+          // A superseded connect whose cancel never reached the backend may
+          // still install over anything this open uses or connects: the open
+          // fails closed and the previous session stays as it was.
+          if (uncancelledOlderConnectRuns()) {
+            notify.error(t('toast.connectionFailedTitle'), t('toast.connectEarlierNotStopped'));
+            if (capturedSessionId) {
+              setActiveSessionId(capturedSessionId);
+              setSessions(prev => prev.map(s =>
+                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
+              ));
+            }
+            return;
+          }
+          reusesLiveServer = generationsBefore.every((generation, i) => generation === generationsAfter[i]);
+          if (reusesLiveServer) {
+            // The AeroCloud tab has no session of its own, so
+            // with the tab deselected the form state is what names its
+            // connection (resolveLiveConnectionParams): give it the cloud's
+            // params, as the reconnect below does.
+            setConnectionParams(connParams);
+          } else {
+            logger.debug('The live backend changed while its older connects were cancelled, reconnecting to cloud server...');
+          }
+        }
+
+        // If different server/protocol, or a backend no longer the live
+        // connection, reconnect
+        if (!reusesLiveServer) {
           logger.debug('Different server, reconnecting to cloud server...');
           try {
             setLoading(true);
@@ -10502,15 +10570,6 @@ const App: React.FC = () => {
             // open another one took leaves it to that one.
             if (ownsPhase()) setLoading(false);
           }
-        } else {
-          // Same backend kept, now the cloud's: a connect that began before
-          // this open and is still in flight would install over it.
-          supersedeOlderConnects(phaseVersion);
-          // The AeroCloud tab has no session of its own, so
-          // with the tab deselected the form state is what names its
-          // connection (resolveLiveConnectionParams): give it the cloud's
-          // params, as the reconnect above does.
-          setConnectionParams(connParams);
         }
 
         // Ensure panels are visible (user might have been in local-only mode)
@@ -10526,16 +10585,16 @@ const App: React.FC = () => {
         // Navigate to cloud folders
         try {
           const owner = ownSessionFromNow();
-          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
+          const listedFolder = await openCloudRemoteFolder(isProvider && !reusesLiveServer, owner);
           if (!owner.owns()) return;
           setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           if (!owner.owns()) return;
-          if (!isSameServer) setIsConnected(true);
+          if (!reusesLiveServer) setIsConnected(true);
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
-          if (isSameServer) {
+          if (reusesLiveServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
@@ -10560,7 +10619,7 @@ const App: React.FC = () => {
           }
           // On a connection this open made, nothing was listed: the workspace
           // stays disconnected, and the user opens a connection again.
-          if (!isSameServer) {
+          if (!reusesLiveServer) {
             setShowConnectionScreen(true);
           } else if (!remoteEntered && currentRemotePath && triedGeneration === remoteNavCounter.current) {
             // A listing can fail after the server entered the folder: the
@@ -12201,7 +12260,8 @@ const App: React.FC = () => {
           // backend refuses its install over the newer connection.
           oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }));
         } catch (connectErr) {
-          if (isConnectCancelledError(connectErr)) throw connectErr;
+          // Neither a cancel nor a connect left unsent asks for a new sign-in.
+          if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
           const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
           const lower = errMsg.toLowerCase();
           if (
@@ -12265,7 +12325,7 @@ const App: React.FC = () => {
           // Under its own token, as the OAuth connect above.
           await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
         } catch (connectErr) {
-          if (isConnectCancelledError(connectErr)) throw connectErr;
+          if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
           await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
           await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
         } finally {

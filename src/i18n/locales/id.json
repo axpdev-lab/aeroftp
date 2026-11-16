@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama.",
             "saveOnAnotherServer": "Tidak disimpan: file ini dibuka dari server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu simpan lagi.",
             "openedOnAnotherServer": "Tidak dibuka: server berubah saat file sedang dibaca. Buka lagi.",
-            "remoteTargetChanged": "Tidak ada yang diubah: server, akun, atau lapisan terenkripsi berubah sejak tindakan dimulai, atau masih menyambung ulang. Coba lagi pada koneksi saat ini."
+            "remoteTargetChanged": "Tidak ada yang diubah: server, akun, atau lapisan terenkripsi berubah sejak tindakan dimulai, atau masih menyambung ulang. Coba lagi pada koneksi saat ini.",
+            "connectEarlierNotStopped": "Upaya koneksi sebelumnya tidak dapat dihentikan dan masih berjalan, sehingga koneksi ini tidak dimulai. Coba lagi setelah selesai."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
