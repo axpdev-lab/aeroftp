@@ -733,24 +733,36 @@ impl ProviderState {
             .map_err(|_| "Transfer still in progress; connection or overlay was not changed. Stop the transfer and try again".to_string())
     }
 
-    /// First step of a legacy FTP connect or disconnect: take the gate within
-    /// `wait`, then advance the GUI target and drop the legacy owner binding.
-    /// A gate timeout returns before either change. The caller keeps the guard
-    /// while it replaces or closes the FTP session.
+    /// A legacy FTP connect or disconnect that goes ahead: the GUI target
+    /// advances and the legacy owner binding is dropped. `connect_ftp` and
+    /// `disconnect_ftp` call it holding the gate and the FTP manager, after
+    /// the checks that leave the live session as it is (a cancelled connect,
+    /// a disconnect of an earlier session).
+    pub(crate) fn retire_legacy_ftp_target(&self) {
+        self.advance_gui_target();
+        self.clear_legacy_gui_owner();
+    }
+
+    /// The gate, then [`Self::retire_legacy_ftp_target`]: what a legacy FTP
+    /// connect or disconnect with nothing to refuse does before it replaces
+    /// or closes the session. A gate timeout returns before either change.
+    #[cfg(test)]
     pub(crate) async fn begin_legacy_ftp_target_change(
         &self,
         wait: Duration,
     ) -> Result<tokio::sync::RwLockWriteGuard<'_, ()>, String> {
         let change = self.transfer_owner_write(wait).await?;
-        self.advance_gui_target();
-        self.clear_legacy_gui_owner();
+        self.retire_legacy_ftp_target();
         Ok(change)
     }
 
+    /// `cancel` is the device open's connect token, checked under the provider
+    /// lock as every connect's is.
     pub(crate) async fn install_mtp_provider(
         &self,
         mut provider: Box<dyn StorageProvider>,
         config: ProviderConfig,
+        cancel: Option<&CancellationToken>,
     ) -> Result<(), String> {
         let owner = match crate::credential_store::off_async_worker(
             crate::sync_owner::GuiOwnerContext::capture,
@@ -769,6 +781,7 @@ impl ProviderState {
             None,
             Some(owner),
             Duration::from_secs(30),
+            cancel,
         )
         .await
     }
@@ -1108,8 +1121,18 @@ pub const CONNECT_CANCELLED: &str = "CONNECT_CANCELLED";
 /// cancel), so the map never accumulates stale entries.
 #[derive(Default)]
 pub struct ConnectionCancelRegistry {
-    tokens: std::sync::Mutex<std::collections::HashMap<String, CancellationToken>>,
+    /// Each key's live registration: its own id and its token.
+    tokens: std::sync::Mutex<std::collections::HashMap<String, (u64, CancellationToken)>>,
+    next_id: std::sync::atomic::AtomicU64,
+    /// Keys cancelled before their connect registered: a cancel that reaches
+    /// the backend ahead of its command (a newer connect overtook it while
+    /// the command was still on its way) is kept here, and the registration
+    /// that follows starts cancelled. Bounded, oldest dropped first.
+    cancelled_before_registration: std::sync::Mutex<std::collections::VecDeque<String>>,
 }
+
+/// How many early cancels the registry keeps for connects not yet registered.
+const EARLY_CANCELS_KEPT: usize = 64;
 
 impl ConnectionCancelRegistry {
     pub fn new() -> Self {
@@ -1120,38 +1143,71 @@ impl ConnectionCancelRegistry {
     /// connect command to `select!` on. If a token is already registered for
     /// the same key (a retried attempt that reused the id), it is cancelled
     /// and replaced so a stale entry can never shadow the live attempt.
-    pub fn register(&self, key: &str) -> CancellationToken {
+    /// Returns the registration's own id with its token: the id goes to the
+    /// attempt's guard ([`ConnectTokenGuard::new`]), so its cleanup ends this
+    /// registration and no other.
+    pub fn register(&self, key: &str) -> (u64, CancellationToken) {
         let token = CancellationToken::new();
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut map = self.lock();
-        if let Some(previous) = map.insert(key.to_string(), token.clone()) {
+        // A cancel that arrived first: this attempt starts cancelled.
+        let mut early = self.early_cancels();
+        if let Some(at) = early.iter().position(|cancelled| cancelled == key) {
+            early.remove(at);
+            token.cancel();
+        }
+        drop(early);
+        if let Some((_, previous)) = map.insert(key.to_string(), (id, token.clone())) {
             previous.cancel();
         }
-        token
+        (id, token)
     }
 
-    /// Remove the token for `key`. Called by the drop guard once the connect
-    /// resolves. A no-op when the key is absent.
+    /// Remove the token for `key`. A no-op when the key is absent.
     pub fn unregister(&self, key: &str) {
         self.lock().remove(key);
     }
 
-    /// Cancel the in-progress connection registered under `key`. Idempotent:
-    /// returns `true` if a live token was found and signalled, `false` if the
-    /// key was already gone (the connect resolved before the cancel landed, or
-    /// it was never registered).
-    pub fn cancel(&self, key: &str) -> bool {
-        match self.lock().get(key) {
-            Some(token) => {
-                token.cancel();
-                true
-            }
-            None => false,
+    /// Remove `key` only while it still holds the registration `id`: a newer
+    /// registration of a reused key stays.
+    fn unregister_registration(&self, key: &str, id: u64) {
+        let mut map = self.lock();
+        if map.get(key).is_some_and(|(live, _)| *live == id) {
+            map.remove(key);
         }
+    }
+
+    /// Cancel the in-progress connection registered under `key`. Idempotent:
+    /// returns `true` if a live token was found and signalled, `false` if none
+    /// is registered. A key with no registration is remembered (bounded), so a
+    /// connect whose command arrives after its cancel registers cancelled and
+    /// never connects; a key whose connect already resolved is never reused.
+    pub fn cancel(&self, key: &str) -> bool {
+        let map = self.lock();
+        if let Some((_, token)) = map.get(key) {
+            token.cancel();
+            return true;
+        }
+        let mut early = self.early_cancels();
+        if !early.iter().any(|cancelled| cancelled == key) {
+            if early.len() == EARLY_CANCELS_KEPT {
+                early.pop_front();
+            }
+            early.push_back(key.to_string());
+        }
+        false
+    }
+
+    fn early_cancels(&self) -> std::sync::MutexGuard<'_, std::collections::VecDeque<String>> {
+        self.cancelled_before_registration
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn lock(
         &self,
-    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, CancellationToken>> {
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, (u64, CancellationToken)>>
+    {
         self.tokens
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1171,17 +1227,20 @@ impl ConnectionCancelRegistry {
 pub(crate) struct ConnectTokenGuard<'a> {
     registry: &'a ConnectionCancelRegistry,
     key: String,
+    /// The registration this guard ends, the id `register` returned for it:
+    /// a later registration of the same key is not this guard's.
+    id: u64,
 }
 
 impl<'a> ConnectTokenGuard<'a> {
-    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String) -> Self {
-        Self { registry, key }
+    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, key: String, id: u64) -> Self {
+        Self { registry, key, id }
     }
 }
 
 impl Drop for ConnectTokenGuard<'_> {
     fn drop(&mut self) {
-        self.registry.unregister(&self.key);
+        self.registry.unregister_registration(&self.key, self.id);
     }
 }
 
@@ -1205,15 +1264,56 @@ pub(crate) async fn run_cancellable_connect<T, F>(
 where
     F: std::future::Future<Output = Result<T, String>>,
 {
-    let cancel_token = connect_token.map(|key| cancel_registry.register(key));
-    let _cancel_guard =
-        connect_token.map(|key| ConnectTokenGuard::new(cancel_registry, key.to_string()));
-    match cancel_token.as_ref() {
-        Some(token) => tokio::select! {
-            res = fut => res,
-            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
-        },
-        None => fut.await,
+    ConnectRegistration::new(cancel_registry, connect_token)
+        .run(fut)
+        .await
+}
+
+/// A connect's cancellation token, registered under its connect token for as
+/// long as this value lives (de-registered by its drop guard). A connect that
+/// installs its provider keeps it through the install and passes `token()` to
+/// it, so a cancel that lands while the install waits for the slot is still
+/// seen ([`install_connected_provider`]).
+pub(crate) struct ConnectRegistration<'a> {
+    token: Option<CancellationToken>,
+    _guard: Option<ConnectTokenGuard<'a>>,
+}
+
+impl<'a> ConnectRegistration<'a> {
+    pub(crate) fn new(registry: &'a ConnectionCancelRegistry, connect_token: Option<&str>) -> Self {
+        match connect_token.map(|key| (key, registry.register(key))) {
+            Some((key, (id, token))) => Self {
+                token: Some(token),
+                _guard: Some(ConnectTokenGuard::new(registry, key.to_string(), id)),
+            },
+            None => Self {
+                token: None,
+                _guard: None,
+            },
+        }
+    }
+
+    /// The token to check before the provider is stored.
+    pub(crate) fn token(&self) -> Option<&CancellationToken> {
+        self.token.as_ref()
+    }
+
+    /// Run `fut`, returning `CONNECT_CANCELLED` if the token is cancelled
+    /// first; dropping the future on cancel tears the in-flight work down.
+    pub(crate) async fn run<T, F>(&self, fut: F) -> Result<T, String>
+    where
+        F: std::future::Future<Output = Result<T, String>>,
+    {
+        match self.token.as_ref() {
+            // A connect cancelled before it runs (a newer connect began) does
+            // not start: the cancel is polled first.
+            Some(token) => tokio::select! {
+                biased;
+                _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
+                res = fut => res,
+            },
+            None => fut.await,
+        }
     }
 }
 
@@ -2551,26 +2651,46 @@ pub async fn provider_connect(
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
     params: ProviderConnectionParams,
 ) -> Result<ProviderConnected, String> {
+    let scp_app = app.clone();
     crate::panic_safe::catch(
         "provider_connect",
         connected_with_warnings(provider_connect_inner(
-            app,
-            state,
-            cancel_registry,
-            peer_runtime,
+            &state,
+            &cancel_registry,
             params,
+            |config: ProviderConfig| async move {
+                // AeroShare: a peer drive browses a LOCAL replica that the
+                // PeerRuntime keeps converging in the background. Ensure its
+                // sync task is up BEFORE the provider connects, so a first
+                // connect creates the replica folder and starts pulling (the
+                // panel can browse the last-synced state even while the friend
+                // is offline).
+                if config.provider_type == ProviderType::Peer {
+                    peer_runtime.ensure_sub_for_config(&app, &config).await?;
+                }
+                Ok(())
+            },
+            move |server| emit_session_event(&scp_app, SessionEventKind::ScpMode, server),
         )),
     )
     .await
 }
 
-async fn provider_connect_inner(
-    app: tauri::AppHandle,
-    state: State<'_, ProviderState>,
-    cancel_registry: State<'_, ConnectionCancelRegistry>,
-    peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+/// Body of [`provider_connect`]. `prepare` runs the work the connect needs
+/// before its provider is built (the AeroShare replica), `went_on_over_scp`
+/// reports an SFTP profile that went on over SCP.
+async fn provider_connect_inner<P, PFut, E>(
+    state: &ProviderState,
+    cancel_registry: &ConnectionCancelRegistry,
     params: ProviderConnectionParams,
-) -> Result<String, String> {
+    prepare: P,
+    went_on_over_scp: E,
+) -> Result<String, String>
+where
+    P: FnOnce(ProviderConfig) -> PFut,
+    PFut: std::future::Future<Output = Result<(), String>>,
+    E: FnOnce(String),
+{
     let owner =
         crate::credential_store::off_async_worker(crate::sync_owner::GuiOwnerContext::capture)?;
     info!(
@@ -2578,16 +2698,23 @@ async fn provider_connect_inner(
         params.protocol, params.server
     );
 
-    let mut config = params.to_provider_config()?;
+    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
+    // connect token before any await, so an Esc / "still connecting" Cancel,
+    // or a newer connect, reaches this connect wherever it waits; the guard
+    // de-registers it on every exit path. Registered after an await, a cancel
+    // that came during it found no entry and was lost.
+    let connect_token = params.connect_token.clone();
+    let registration = ConnectRegistration::new(cancel_registry, connect_token.as_deref());
 
-    // AeroShare: a peer drive browses a LOCAL replica that the PeerRuntime
-    // keeps converging in the background. Ensure its sync task is up BEFORE
-    // the provider connects, so a first connect creates the replica folder
-    // and starts pulling (the panel can browse the last-synced state even
-    // while the friend is offline).
-    if config.provider_type == ProviderType::Peer {
-        peer_runtime.ensure_sub_for_config(&app, &config).await?;
-    }
+    let mut config = params.to_provider_config()?;
+    // The preparation reads the config's extras, never its secret: it gets a
+    // copy with the password zeroized (A3-05).
+    let mut prepare_config = config.clone();
+    prepare_config.zeroize_password();
+    // Under the registration: a connect already cancelled (a newer connect
+    // began, or its cancel came first) never prepares, and one cancelled
+    // while it prepares stops waiting for it.
+    registration.run(prepare(prepare_config)).await?;
 
     // SEC-GH-001: For GitHub App mode, inject the held installation token
     // so the token never crosses the IPC boundary.
@@ -2610,40 +2737,26 @@ async fn provider_connect_inner(
     // A3-05: Zeroize password after it has been consumed by the provider
     config.zeroize_password();
 
-    // W3.1 (#270.5): register a cancellation token under the frontend-supplied
-    // connect token so an Esc / "still connecting" Cancel can abort this
-    // connect. The guard de-registers it on every exit path.
-    let connect_key = params.connect_token.clone();
-    let cancel_token = connect_key
-        .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = connect_key
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
-
     // Connect, cancellable via the registered token. Dropping the
     // `provider.connect()` future on cancel tears down the in-flight
     // TCP/TLS/HTTP connect cleanly for async transports (reqwest, russh,
     // suppaftp). An `ssh2` SFTP handshake on `spawn_blocking` is NOT abortable
     // mid-syscall: it runs to completion in the background and is dropped right
     // after, which is acceptable for a first cut (documented in the PR).
-    let connect_outcome: Result<(), String> = match cancel_token.as_ref() {
-        Some(token) => tokio::select! {
-            res = provider.connect() => res.map_err(|e| format!("Connection failed: {}", e)),
-            _ = token.cancelled() => Err(CONNECT_CANCELLED.to_string()),
-        },
-        None => provider
-            .connect()
-            .await
-            .map_err(|e| format!("Connection failed: {}", e)),
-    };
-    connect_outcome?;
+    registration
+        .run(async {
+            provider
+                .connect()
+                .await
+                .map_err(|e| format!("Connection failed: {}", e))
+        })
+        .await?;
 
     let display_name = provider.display_name();
     let mut protocol = format!("{:?}", provider.provider_type());
     if crate::providers::sftp::SftpProvider::went_on_over_scp(provider.as_mut()) {
         protocol = "Scp (the server has no SFTP)".to_string();
-        emit_session_event(&app, SessionEventKind::ScpMode, params.server.clone());
+        went_on_over_scp(params.server.clone());
     }
 
     // Store provider and config. If a previous provider is still held here
@@ -2654,14 +2767,20 @@ async fn provider_connect_inner(
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
+    //
+    // The config goes in with the provider, under the same provider lock: a
+    // connect that installs after this one cannot have its provider described
+    // by this one's config.
+    let profile_id = config.extra.get("profile_id").cloned();
     install_connected_provider_with_owner(
-        &state,
+        state,
         provider,
-        config.extra.get("profile_id").cloned(),
+        profile_id,
         Some(config),
         None,
         Some(owner),
         Duration::from_secs(30),
+        registration.token(),
     )
     .await?;
 
@@ -2669,14 +2788,29 @@ async fn provider_connect_inner(
     Ok(format!("Connected to {} via {}", display_name, protocol))
 }
 
+/// Refuse the install of a connect that was cancelled: its own provider is
+/// disconnected, outside every lock and bounded (a failure is only logged),
+/// and the slot is never touched.
+async fn refuse_cancelled_install(mut provider: Box<dyn StorageProvider>) -> Result<(), String> {
+    match tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) | Err(_) => {
+            warn!("provider_connect: a connect cancelled before its install did not disconnect cleanly")
+        }
+    }
+    Err(CONNECT_CANCELLED.to_string())
+}
+
 /// Put a freshly connected provider in the slot, disconnecting the previous
 /// one. Storage reads of the previous connection are cancelled first (#958),
 /// so a stalled scan or quota read cannot keep the slot from being taken.
+/// `cancel` is the connect's own token ([`ConnectRegistration::token`]).
 #[cfg(test)]
 async fn install_connected_provider(
     state: &ProviderState,
     provider: Box<dyn StorageProvider>,
     profile_id: Option<String>,
+    cancel: Option<&CancellationToken>,
 ) -> Result<(), String> {
     install_connected_provider_with_config(
         state,
@@ -2684,6 +2818,7 @@ async fn install_connected_provider(
         profile_id,
         None,
         Duration::from_secs(30),
+        cancel,
     )
     .await
 }
@@ -2695,11 +2830,26 @@ async fn install_connected_provider_with_config(
     profile_id: Option<String>,
     config: Option<ProviderConfig>,
     wait: Duration,
+    cancel: Option<&CancellationToken>,
 ) -> Result<(), String> {
-    install_connected_provider_with_owner(state, provider, profile_id, config, None, None, wait)
-        .await
+    install_connected_provider_with_owner(
+        state, provider, profile_id, config, None, None, wait, cancel,
+    )
+    .await
 }
 
+/// The one place a newly connected provider enters the slot (pinned by
+/// `only_the_installer_puts_a_connected_provider_in_the_slot`; the overlay
+/// wraps re-store the provider they have just taken). The install waits for
+/// the transfer gate, the drain and the provider lock, up to a minute: a
+/// connect cancelled meanwhile (its frontend timed out and moved on) is
+/// refused under the provider lock before the previous connection is
+/// retired, and again right before the store, with no await between that
+/// check and the store, so a late install never replaces a connection
+/// confirmed after it. A cancel that lands after the store is too late and
+/// changes nothing. The new connection's owner, account binding and config
+/// are published with it (`owner.with_current`), or not at all.
+#[allow(clippy::too_many_arguments)]
 async fn install_connected_provider_with_owner(
     state: &ProviderState,
     mut provider: Box<dyn StorageProvider>,
@@ -2708,9 +2858,15 @@ async fn install_connected_provider_with_owner(
     oauth_client: Option<String>,
     owner: Option<crate::sync_owner::GuiOwnerContext>,
     wait: Duration,
+    cancel: Option<&CancellationToken>,
 ) -> Result<(), String> {
+    // A connect cancelled before it gets here leaves the live connection as
+    // it is, its storage reads included: it is refused before anything runs.
+    if cancel.is_some_and(CancellationToken::is_cancelled) {
+        return refuse_cancelled_install(provider).await;
+    }
     state.cancel_storage_reads();
-    let _connection_change = match state.transfer_owner_write(wait).await {
+    let connection_change = match state.transfer_owner_write(wait).await {
         Ok(guard) => guard,
         Err(error) => {
             let _ = tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await;
@@ -2725,6 +2881,12 @@ async fn install_connected_provider_with_owner(
     }
     drain_in_flight_transfers(state, Duration::from_secs(30)).await;
     let mut prov_lock = state.provider.lock().await;
+    // Cancelled while it waited: the live connection is left as it is.
+    if cancel.is_some_and(CancellationToken::is_cancelled) {
+        drop(prov_lock);
+        drop(connection_change);
+        return refuse_cancelled_install(provider).await;
+    }
     let mut config_lock = state.config.lock().await;
     let previous = prov_lock.take();
     *config_lock = None;
@@ -2755,6 +2917,14 @@ async fn install_connected_provider_with_owner(
         let seen = poison.load(Ordering::SeqCst);
         (poison, seen)
     });
+    // The last check, under the provider lock: nothing awaits between it and
+    // the store below. The previous connection is already retired.
+    if cancel.is_some_and(CancellationToken::is_cancelled) {
+        drop(config_lock);
+        drop(prov_lock);
+        drop(connection_change);
+        return refuse_cancelled_install(provider).await;
+    }
     let mut candidate = Some(provider);
     let publish = || {
         *state
@@ -2763,7 +2933,11 @@ async fn install_connected_provider_with_owner(
             .unwrap_or_else(|e| e.into_inner()) =
             owner.map(|owner| (GuiOwnerSource::Provider, owner));
         state.clear_legacy_gui_owner();
-        *prov_lock = candidate.take();
+        if let Some(provider) = candidate.take() {
+            // The slot is empty: its previous provider was retired above.
+            let previous = prov_lock.replace(provider);
+            debug_assert!(previous.is_none());
+        }
         *state
             .connected_profile_id
             .lock()
@@ -2822,12 +2996,15 @@ pub async fn cancel_connection(
     Ok(())
 }
 
-/// Disconnect from the current provider
+/// Disconnect from the current provider. With `expected_generation` (what
+/// [`provider_connection_generation`] answered), only the connection of that
+/// generation is ended: a later connect owns the slot and is left alone.
 #[tauri::command]
 pub async fn provider_disconnect(
     app: tauri::AppHandle,
     state: State<'_, ProviderState>,
     peer_runtime: State<'_, crate::peer::runtime::PeerRuntime>,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
     // LT1: this command runs on the async runtime (off the GTK main thread).
     // The teardown below is pure provider/session state + peer emit: it must
@@ -2837,7 +3014,7 @@ pub async fn provider_disconnect(
     // open_extract_window / rebuild_menu / aeroshare_notify for the
     // run_on_main_thread discipline on the remaining GTK sites.
     //
-    provider_disconnect_inner(&state, move |namespace| async move {
+    provider_disconnect_inner(&state, expected_generation, move |namespace| async move {
         peer_runtime.standby(&app, &namespace).await;
     })
     .await
@@ -2847,16 +3024,30 @@ pub async fn provider_disconnect(
 /// namespace when the connection is a peer drive.
 async fn provider_disconnect_inner<F, Fut>(
     state: &ProviderState,
+    expected_generation: Option<u64>,
     standby_peer: F,
 ) -> Result<(), String>
 where
     F: FnOnce(String) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    let owns_the_slot = || {
+        expected_generation
+            .is_none_or(|expected| state.connection_generation.load(Ordering::SeqCst) == expected)
+    };
+    // Another connection's: not even its storage reads are cancelled.
+    if !owns_the_slot() {
+        return Ok(());
+    }
     // #958: a stalled storage read holds the provider lock this teardown
     // needs, so cancel it before waiting for anything.
     state.cancel_storage_reads();
     let _connection_change = state.transfer_owner_write(Duration::from_secs(30)).await?;
+    // A connect installs under this same guard: checked again now that none
+    // can land before the teardown below.
+    if !owns_the_slot() {
+        return Ok(());
+    }
     // Issue #233: wait for any in-flight DAG transfer to drain before
     // mutating the provider slot. Without this, an active download/upload
     // sees the box yanked and surfaces a spurious `NotConnected` instead
@@ -9365,12 +9556,10 @@ pub async fn oauth2_connect(
         Ok::<Box<dyn StorageProvider>, String>(provider)
     };
 
-    let provider = run_cancellable_connect(
-        &cancel_registry,
-        params.connect_token.as_deref(),
-        build_provider,
-    )
-    .await?;
+    // Registered through the install, so a cancel while it waits for the slot
+    // is still seen there.
+    let registration = ConnectRegistration::new(&cancel_registry, params.connect_token.as_deref());
+    let provider = registration.run(build_provider).await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -9394,6 +9583,7 @@ pub async fn oauth2_connect(
         Some(oauth_identity_client(token_client)),
         Some(owner),
         Duration::from_secs(30),
+        registration.token(),
     )
     .await?;
 
@@ -9438,14 +9628,13 @@ pub async fn twake_sign_in(
     use crate::providers::oauth2::{bind_callback_listener_on_port, wait_for_callback};
     use crate::providers::twake;
 
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let (listener, port) = bind_callback_listener_on_port(twake::TWAKE_CALLBACK_PORT)
         .await
@@ -9528,14 +9717,13 @@ pub async fn oauth2_full_auth(
     // #360: register the connect token so an Esc / "still connecting" Cancel can
     // abort the browser-callback wait below (the longest phase of the flow).
     // The guard de-registers it on every exit path.
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let (_, port) = oauth_callback_endpoint(&params.provider)?;
     let (listener, port) = bind_callback_listener_on_port(port)
@@ -11063,7 +11251,7 @@ pub(crate) fn load_fourshared_tokens_for(
             "fourshared",
             profile_id,
             user,
-        ) {
+        )? {
             if let Some((token, secret)) = data.split_once(':') {
                 return Ok((token.to_string(), secret.to_string()));
             }
@@ -11083,14 +11271,13 @@ pub async fn fourshared_full_auth(
     info!("Starting full 4shared OAuth 1.0 flow");
 
     // #360: register the connect token so Esc / Cancel can abort the callback wait.
-    let cancel_token = params
+    let registration = params
         .connect_token
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration
+        .map(|(key, (id, _))| ConnectTokenGuard::new(&cancel_registry, key.to_string(), id));
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -11398,13 +11585,17 @@ pub async fn fourshared_connect(
 
     let mut provider = FourSharedProvider::new(config);
     // #360: cancellable connect (Esc / "still connecting" Cancel).
-    run_cancellable_connect(&cancel_registry, connect_token.as_deref(), async {
-        provider
-            .connect()
-            .await
-            .map_err(|e| format!("4shared connection failed: {}", e))
-    })
-    .await?;
+    // Registered through the install, so a cancel while it waits for the slot
+    // is still seen there.
+    let registration = ConnectRegistration::new(&cancel_registry, connect_token.as_deref());
+    registration
+        .run(async {
+            provider
+                .connect()
+                .await
+                .map_err(|e| format!("4shared connection failed: {}", e))
+        })
+        .await?;
 
     let display_name = provider.display_name();
     let account_email = provider.account_email();
@@ -11417,6 +11608,7 @@ pub async fn fourshared_connect(
         Some(oauth_client),
         Some(owner),
         Duration::from_secs(30),
+        registration.token(),
     )
     .await?;
 
@@ -12682,6 +12874,44 @@ pub async fn box_list_folder_locks(
 #[tauri::command]
 pub async fn fourshared_has_tokens(profile_id: Option<String>) -> Result<bool, String> {
     Ok(load_fourshared_tokens(profile_id.as_deref().unwrap_or_default()).is_ok())
+}
+
+/// Move the 4shared token a sign-in wrote under `from_profile_id` (the id the
+/// connection form chose for the profile it would save) to `to_profile_id`,
+/// the existing profile the form saved onto instead. The exact key is read,
+/// never the legacy singleton, so no other account's token is copied; with no
+/// token under `from_profile_id` nothing changes.
+#[tauri::command]
+pub async fn fourshared_adopt_tokens(
+    from_profile_id: String,
+    to_profile_id: String,
+) -> Result<(), String> {
+    fourshared_adopt_tokens_inner(&from_profile_id, &to_profile_id)
+}
+
+fn fourshared_adopt_tokens_inner(from_profile_id: &str, to_profile_id: &str) -> Result<(), String> {
+    if from_profile_id.is_empty() || to_profile_id.is_empty() || from_profile_id == to_profile_id {
+        return Ok(());
+    }
+    let Some(store) = crate::credential_store::CredentialStore::from_cache() else {
+        return Err("Credential vault not open".to_string());
+    };
+    let from_key = fourshared_token_key(from_profile_id);
+    // A read that fails is not a missing token: reported as a success, the
+    // save went on with the token the destination already held, another
+    // account's.
+    let Some(data) =
+        crate::user_partitions::resolve_active_credential_owner_aware(&store, &from_key)?
+            .map(|value| value.to_string())
+            .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    let (token, secret) = data
+        .split_once(':')
+        .ok_or_else(|| "The 4shared token of this sign-in is malformed".to_string())?;
+    store_fourshared_tokens(to_profile_id, token, secret)?;
+    crate::user_partitions::delete_profile_credential(&store, from_profile_id, &from_key)
 }
 
 /// Clear 4shared tokens (logout). Removes this profile's token; the legacy
@@ -17149,7 +17379,7 @@ mod tests {
         );
 
         let (fresh, fresh_log) = Wanderer::in_folder(ProviderType::Sftp, "/home/u");
-        install_connected_provider(&state, Box::new(fresh), Some("p1".to_string()))
+        install_connected_provider(&state, Box::new(fresh), Some("p1".to_string()), None)
             .await
             .unwrap();
         assert!(!state.folder_lost(), "a connect left the mark");
@@ -19269,7 +19499,7 @@ mod tests {
                 keys.clone(),
                 "/",
             );
-            install_connected_provider(&state, Box::new(overlay), Some("gh".into()))
+            install_connected_provider(&state, Box::new(overlay), Some("gh".into()), None)
                 .await
                 .unwrap();
             state.active_crypt_overlay.store(true, Ordering::SeqCst);
@@ -19312,7 +19542,7 @@ mod tests {
             keys.clone(),
             "/",
         );
-        install_connected_provider(&state, Box::new(overlay), Some("gh".into()))
+        install_connected_provider(&state, Box::new(overlay), Some("gh".into()), None)
             .await
             .unwrap();
         state.active_crypt_overlay.store(true, Ordering::SeqCst);
@@ -19581,7 +19811,7 @@ mod tests {
     fn test_connection_cancel_registry_register_and_cleanup() {
         let registry = ConnectionCancelRegistry::new();
         assert_eq!(registry.active_count(), 0);
-        let token = registry.register("conn-1");
+        let (_, token) = registry.register("conn-1");
         assert_eq!(registry.active_count(), 1);
         assert!(!token.is_cancelled());
         // The drop guard mirrors what the connect command does on every exit
@@ -19593,7 +19823,7 @@ mod tests {
     #[test]
     fn test_connection_cancel_registry_cancel_signals_token() {
         let registry = ConnectionCancelRegistry::new();
-        let token = registry.register("conn-2");
+        let (_, token) = registry.register("conn-2");
         assert!(registry.cancel("conn-2"), "live token must report found");
         assert!(token.is_cancelled());
     }
@@ -19604,19 +19834,45 @@ mod tests {
         // Cancelling a token that was never registered is a no-op returning false.
         assert!(!registry.cancel("missing"));
         // Once the entry is de-registered, a late cancel stays false (no panic).
-        let token = registry.register("conn-3");
+        let (_, token) = registry.register("conn-3");
         assert!(registry.cancel("conn-3"));
         registry.unregister("conn-3");
         assert!(!registry.cancel("conn-3"));
         assert!(token.is_cancelled());
     }
 
+    /// A reused key: dropping the first attempt's guard leaves the second
+    /// attempt registered, so a cancel still reaches it, also when the second
+    /// registers before the first attempt's guard is built.
+    #[test]
+    fn an_earlier_guard_never_removes_a_newer_registration_of_its_key() {
+        let registry = ConnectionCancelRegistry::new();
+        // B registers between A's register and A's guard: A's guard still
+        // carries A's own id, the one register returned.
+        let (first_id, first) = registry.register("K");
+        let (second_id, second) = registry.register("K");
+        let first_guard = ConnectTokenGuard::new(&registry, "K".to_string(), first_id);
+        let second_guard = ConnectTokenGuard::new(&registry, "K".to_string(), second_id);
+        assert!(
+            first.is_cancelled(),
+            "the second registration cancels the first"
+        );
+        drop(first_guard);
+        assert!(
+            registry.cancel("K"),
+            "the second registration is still there"
+        );
+        assert!(second.is_cancelled());
+        drop(second_guard);
+        assert_eq!(registry.active_count(), 0);
+    }
+
     #[test]
     fn test_connection_cancel_registry_reregister_cancels_previous() {
         let registry = ConnectionCancelRegistry::new();
-        let first = registry.register("conn-4");
+        let (_, first) = registry.register("conn-4");
         // A retried attempt reusing the same id must not leave two live tokens.
-        let second = registry.register("conn-4");
+        let (_, second) = registry.register("conn-4");
         assert!(
             first.is_cancelled(),
             "stale token must be cancelled on re-register"
@@ -19629,8 +19885,8 @@ mod tests {
     async fn test_select_cancel_returns_marker_and_guard_cleans_up() {
         let registry = ConnectionCancelRegistry::new();
         let key = "conn-select";
-        let token = registry.register(key);
-        let guard = ConnectTokenGuard::new(&registry, key.to_string());
+        let (id, token) = registry.register(key);
+        let guard = ConnectTokenGuard::new(&registry, key.to_string(), id);
         assert_eq!(registry.active_count(), 1);
 
         // A connect that never resolves; the cancel branch must win the select
@@ -23101,9 +23357,14 @@ mod tests {
     #[tokio::test]
     async fn an_install_without_a_config_clears_the_previous_one() {
         let state = probe_state(answering(), Some("srv_b"));
-        install_connected_provider(&state, Box::new(answering()), Some("srv_oauth".to_string()))
-            .await
-            .unwrap();
+        install_connected_provider(
+            &state,
+            Box::new(answering()),
+            Some("srv_oauth".to_string()),
+            None,
+        )
+        .await
+        .unwrap();
         assert!(state.config.lock().await.is_none());
         let tab = probe_for("127.0.0.1", 2162, "row163", None);
         assert!(!probe_alive_inner(&state, &tab, Duration::from_secs(5)).await);
@@ -23961,7 +24222,7 @@ mod tests {
         let state = stall_state(StallProvider::default());
         let disconnected = assert_teardown_cancels_storage_reads(
             &state,
-            provider_disconnect_inner(&state, |_| async {}),
+            provider_disconnect_inner(&state, None, |_| async {}),
         )
         .await;
         disconnected.unwrap();
@@ -23977,7 +24238,7 @@ mod tests {
         };
         assert_teardown_cancels_storage_reads(
             &state,
-            install_connected_provider(&state, Box::new(next), None),
+            install_connected_provider(&state, Box::new(next), None, None),
         )
         .await
         .unwrap();
@@ -26257,6 +26518,7 @@ mod restored_transfer_owner_tests {
                     Some("p".into()),
                     Some(config),
                     Duration::from_secs(10),
+                    None,
                 )
                 .await
                 .unwrap();
@@ -26345,6 +26607,7 @@ mod restored_transfer_owner_tests {
                     Some(app),
                     None,
                     Duration::from_secs(10),
+                    None,
                 )
                 .await
                 .unwrap();
@@ -26485,7 +26748,7 @@ mod restored_transfer_owner_tests {
         let state = ProviderState::new();
         let provider =
             crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
-        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()), None)
             .await
             .unwrap();
         let before = state.gui_target_snapshot(true).await.unwrap();
@@ -26561,7 +26824,7 @@ mod restored_transfer_owner_tests {
         fake.recursive_children = vec!["/d/a".into(), "/d/b".into(), "/d/c".into()];
         fake.child_gate = Some(gate.clone());
         fake.shared_writes = Some(writes.clone());
-        install_connected_provider(&state, Box::new(fake), None)
+        install_connected_provider(&state, Box::new(fake), None, None)
             .await
             .unwrap();
         let handle = app.handle().clone();
@@ -26599,7 +26862,7 @@ mod restored_transfer_owner_tests {
         let writes = Arc::new(std::sync::Mutex::new(Vec::new()));
         let mut fake = crate::providers::probe_fake::ProbeFake::new();
         fake.shared_writes = Some(writes.clone());
-        install_connected_provider(&state, Box::new(fake), None)
+        install_connected_provider(&state, Box::new(fake), None, None)
             .await
             .unwrap();
         let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
@@ -26637,7 +26900,7 @@ mod restored_transfer_owner_tests {
         let mut fake = crate::providers::probe_fake::ProbeFake::new();
         fake.delete_gate = Some(gate.clone());
         fake.shared_writes = Some(writes.clone());
-        install_connected_provider(&state, Box::new(fake), None)
+        install_connected_provider(&state, Box::new(fake), None, None)
             .await
             .unwrap();
         let cancel = AtomicBool::new(false);
@@ -26684,7 +26947,7 @@ mod restored_transfer_owner_tests {
         let state = ProviderState::new();
         let provider =
             crate::providers::github::GitHubProvider::protected_for_test(format!("http://{addr}"));
-        install_connected_provider(&state, Box::new(provider), Some("gh".into()))
+        install_connected_provider(&state, Box::new(provider), Some("gh".into()), None)
             .await
             .unwrap();
         let before = state.gui_target_snapshot(true).await.unwrap();
@@ -26851,6 +27114,7 @@ mod restored_transfer_owner_tests {
                 &other,
                 Box::new(EditFake::new(true, false)),
                 Some("B".into()),
+                None,
             )
             .await
         });
@@ -26946,6 +27210,14 @@ mod restored_transfer_owner_tests {
 
     #[tokio::test]
     async fn mtp_install_waits_for_pin_then_invalidates_previous_profile_identity() {
+        // The install captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one, where no
+        // other test moves the vault or the account under it.
+        if !super::isolated_account_fixture::in_isolated_child(
+            "provider_commands::restored_transfer_owner_tests::mtp_install_waits_for_pin_then_invalidates_previous_profile_identity",
+        ) {
+            return;
+        }
         use crate::providers::mtp::{backend::FakeMtpBackend, provider::MtpProvider};
         let state = Arc::new(state_with_profile());
         let pin = state
@@ -26957,7 +27229,7 @@ mod restored_transfer_owner_tests {
         let other = state.clone();
         let mut install = tokio::spawn(async move {
             other
-                .install_mtp_provider(Box::new(mtp), mtp_config())
+                .install_mtp_provider(Box::new(mtp), mtp_config(), None)
                 .await
         });
         assert!(
@@ -27002,6 +27274,7 @@ mod restored_transfer_owner_tests {
             None,
             Some(mtp_config()),
             Duration::from_millis(10),
+            None,
         )
         .await
         .unwrap_err();
@@ -27028,6 +27301,7 @@ mod restored_transfer_owner_tests {
             &state,
             Box::new(EditFake::new(true, false)),
             Some("A".to_string()),
+            None,
         )
         .await
         .unwrap();
@@ -27057,6 +27331,7 @@ mod restored_transfer_owner_tests {
                 &other,
                 Box::new(EditFake::new(true, false)),
                 Some("A".to_string()),
+                None,
             )
             .await
             .unwrap();
@@ -27104,6 +27379,7 @@ mod restored_transfer_owner_tests {
                 &state,
                 Box::new(EditFake::new(true, false)),
                 Some("A".to_string()),
+                None,
             ),
         )
         .await
@@ -27164,6 +27440,7 @@ mod restored_transfer_owner_tests {
             &state,
             Box::new(EditFake::new(true, false)),
             Some("B".to_string()),
+            None,
         )
         .await
         .unwrap();
@@ -27619,6 +27896,7 @@ mod installer_account_switch_tests {
                 disconnected: previous_disconnected.clone(),
             }),
             Some("A".into()),
+            None,
         )
         .await
         .unwrap();
@@ -27650,6 +27928,7 @@ mod installer_account_switch_tests {
                 None,
                 Some(owner),
                 Duration::from_secs(10),
+                None,
             )
             .await
         });
@@ -27815,7 +28094,7 @@ mod installer_account_switch_tests {
             assert!(state.gui_owner_context.lock().unwrap().is_some());
             // Both halves run, so a failure names each one that went wrong.
             let mut wrong = Vec::new();
-            provider_disconnect_inner(&state, |_| async {})
+            provider_disconnect_inner(&state, None, |_| async {})
                 .await
                 .unwrap();
             if state.gui_owner_context.lock().unwrap().is_some() {
@@ -27831,7 +28110,7 @@ mod installer_account_switch_tests {
             // with the legacy session's own disconnect.
             let legacy = crate::sync_owner::GuiOwnerContext::capture().unwrap();
             state.set_legacy_gui_owner(legacy, None).unwrap();
-            provider_disconnect_inner(&state, |_| async {})
+            provider_disconnect_inner(&state, None, |_| async {})
                 .await
                 .unwrap();
             if state.gui_owner_context.lock().unwrap().is_none() {
@@ -27853,5 +28132,891 @@ mod installer_account_switch_tests {
             }
             assert!(wrong.is_empty(), "{wrong:#?}");
         });
+    }
+}
+
+#[cfg(test)]
+mod connect_install_cancel_tests {
+    use super::*;
+    use std::sync::atomic::AtomicBool;
+
+    /// The commands whose provider goes into the slot through
+    /// `install_connected_provider_with_owner`. The frontend counts each of
+    /// them as a backend replacement (`replacingBackend`), and its wiring test
+    /// reads this list, so a command added here is checked there too.
+    const PROVIDER_SLOT_INSTALLERS: &[&str] = &[
+        "provider_connect",
+        "oauth2_connect",
+        "fourshared_connect",
+        "mtp_open_device",
+        "mtp_open_gvfs_mount",
+    ];
+
+    /// A provider that says which one it is and records its disconnect.
+    struct Tagged {
+        tag: &'static str,
+        disconnected: Arc<AtomicBool>,
+    }
+
+    fn tagged(tag: &'static str) -> (Tagged, Arc<AtomicBool>) {
+        let flag = Arc::new(AtomicBool::new(false));
+        (
+            Tagged {
+                tag,
+                disconnected: flag.clone(),
+            },
+            flag,
+        )
+    }
+
+    #[async_trait::async_trait]
+    impl StorageProvider for Tagged {
+        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+            self
+        }
+        fn provider_type(&self) -> ProviderType {
+            ProviderType::Sftp
+        }
+        fn display_name(&self) -> String {
+            self.tag.to_string()
+        }
+        async fn connect(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn disconnect(&mut self) -> Result<(), ProviderError> {
+            self.disconnected.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        fn is_connected(&self) -> bool {
+            true
+        }
+        async fn list(&mut self, _path: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
+            Ok(Vec::new())
+        }
+        async fn pwd(&mut self) -> Result<String, ProviderError> {
+            Ok("/".to_string())
+        }
+        async fn cd(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn cd_up(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn download(
+            &mut self,
+            _remote_path: &str,
+            _local_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("download".to_string()))
+        }
+        async fn download_to_bytes(
+            &mut self,
+            _remote_path: &str,
+        ) -> Result<Vec<u8>, ProviderError> {
+            Err(ProviderError::NotSupported("download_to_bytes".to_string()))
+        }
+        async fn upload(
+            &mut self,
+            _local_path: &str,
+            _remote_path: &str,
+            _progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+        ) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("upload".to_string()))
+        }
+        async fn mkdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("mkdir".to_string()))
+        }
+        async fn delete(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("delete".to_string()))
+        }
+        async fn rmdir(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir".to_string()))
+        }
+        async fn rmdir_recursive(&mut self, _path: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rmdir_recursive".to_string()))
+        }
+        async fn rename(&mut self, _from: &str, _to: &str) -> Result<(), ProviderError> {
+            Err(ProviderError::NotSupported("rename".to_string()))
+        }
+        async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
+            Err(ProviderError::NotFound(path.to_string()))
+        }
+        async fn size(&mut self, _path: &str) -> Result<u64, ProviderError> {
+            Ok(0)
+        }
+        async fn exists(&mut self, _path: &str) -> Result<bool, ProviderError> {
+            Ok(false)
+        }
+        async fn keep_alive(&mut self) -> Result<(), ProviderError> {
+            Ok(())
+        }
+        async fn server_info(&mut self) -> Result<String, ProviderError> {
+            Ok(self.tag.to_string())
+        }
+    }
+
+    async fn in_slot(state: &ProviderState) -> Option<String> {
+        state
+            .provider
+            .lock()
+            .await
+            .as_ref()
+            .map(|provider| provider.display_name())
+    }
+
+    /// Connect A's frontend timed out and cancelled it while A's install
+    /// waited for the slot (a transfer held the gate); B was installed and
+    /// confirmed before. A is refused under the provider lock, disconnected,
+    /// and B stays in the slot with its profile.
+    #[tokio::test]
+    async fn a_connect_cancelled_while_its_install_waits_never_takes_the_slot() {
+        let state = Arc::new(ProviderState::new());
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        let transfer = state.transfer_owner_gate.read().await;
+        let token = CancellationToken::new();
+        let (a, a_gone) = tagged("A");
+        let installing = {
+            let state = state.clone();
+            let token = token.clone();
+            tokio::spawn(async move {
+                install_connected_provider(&state, Box::new(a), Some("A".into()), Some(&token))
+                    .await
+            })
+        };
+        tokio::task::yield_now().await;
+        token.cancel();
+        drop(transfer);
+        assert_eq!(installing.await.unwrap().unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("B")
+        );
+        assert!(
+            a_gone.load(Ordering::SeqCst),
+            "the refused provider is disconnected"
+        );
+        assert!(!b_gone.load(Ordering::SeqCst));
+        // Nothing is held after the refusal.
+        assert!(state.transfer_owner_gate.try_write().is_ok());
+    }
+
+    /// A teardown dispatched for the connection its caller saw lands after a
+    /// later connect installed its own: it names an older generation, so the
+    /// later connection keeps the slot.
+    #[tokio::test]
+    async fn a_disconnect_naming_an_earlier_generation_leaves_the_later_connect_in_the_slot() {
+        let state = ProviderState::new();
+        let (a, _) = tagged("A");
+        install_connected_provider(&state, Box::new(a), Some("A".into()), None)
+            .await
+            .unwrap();
+        let seen_by_a = state.connection_generation.load(Ordering::SeqCst);
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        provider_disconnect_inner(&state, Some(seen_by_a), |_| async {})
+            .await
+            .unwrap();
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("B")
+        );
+        // Naming B's own generation ends B, as a disconnect without one does.
+        let seen_by_b = state.connection_generation.load(Ordering::SeqCst);
+        provider_disconnect_inner(&state, Some(seen_by_b), |_| async {})
+            .await
+            .unwrap();
+        assert_eq!(in_slot(&state).await, None);
+        assert!(b_gone.load(Ordering::SeqCst));
+    }
+
+    /// The same teardown when it passed its first check and then waits for the
+    /// transfer-owner guard while a later connect, queued ahead of it, takes
+    /// the guard and installs: checked again under the guard, it leaves the
+    /// later connection in the slot.
+    #[tokio::test]
+    async fn a_disconnect_waiting_for_the_guard_leaves_a_connect_installed_ahead_of_it() {
+        let state = Arc::new(ProviderState::new());
+        let (a, _) = tagged("A");
+        install_connected_provider(&state, Box::new(a), Some("A".into()), None)
+            .await
+            .unwrap();
+        let seen_by_a = state.connection_generation.load(Ordering::SeqCst);
+        let transfer = state.transfer_owner_gate.read().await;
+        let (b, b_gone) = tagged("B");
+        let installing = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                install_connected_provider(&state, Box::new(b), Some("B".into()), None).await
+            })
+        };
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        let disconnecting = {
+            let state = state.clone();
+            tokio::spawn(async move {
+                provider_disconnect_inner(&state, Some(seen_by_a), |_| async {}).await
+            })
+        };
+        for _ in 0..4 {
+            tokio::task::yield_now().await;
+        }
+        // A's disconnect is queued behind B's install, its first check passed.
+        assert!(!disconnecting.is_finished());
+        drop(transfer);
+        installing.await.unwrap().unwrap();
+        disconnecting.await.unwrap().unwrap();
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+    }
+
+    /// A connect cancelled while it waits in its preparation (the AeroShare
+    /// replica a Peer connect ensures first) is registered already, so the
+    /// cancel reaches it: it never connects, and a provider another connect
+    /// installed meanwhile keeps the slot.
+    #[tokio::test]
+    async fn a_connect_cancelled_while_it_prepares_never_takes_the_slot() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !super::isolated_account_fixture::in_isolated_child(
+            "provider_commands::connect_install_cancel_tests::a_connect_cancelled_while_it_prepares_never_takes_the_slot",
+        ) {
+            return;
+        }
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-a",
+        }))
+        .unwrap();
+        let (reached_tx, reached_rx) = tokio::sync::oneshot::channel::<()>();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let connecting = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            move |_config: ProviderConfig| async move {
+                let _ = reached_tx.send(());
+                let _ = release_rx.await;
+                Ok(())
+            },
+            |_| {},
+        );
+        let elsewhere = async {
+            reached_rx.await.unwrap();
+            assert!(
+                registry.cancel("connect-a"),
+                "the cancel finds the connect's registration"
+            );
+            let (b, b_gone) = tagged("B");
+            install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+                .await
+                .unwrap();
+            release_tx.send(()).unwrap();
+            b_gone
+        };
+        let (connected, b_gone) = tokio::join!(connecting, elsewhere);
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+    }
+
+    /// CodeRabbit on #1574: a cancel delivered before A's command registered
+    /// was lost, so A connected and installed over B. The registry now keeps
+    /// the early cancel, A registers cancelled and never takes the slot.
+    #[tokio::test]
+    async fn a_cancel_delivered_before_the_connect_registers_still_refuses_it() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !super::isolated_account_fixture::in_isolated_child(
+            "provider_commands::connect_install_cancel_tests::a_cancel_delivered_before_the_connect_registers_still_refuses_it",
+        ) {
+            return;
+        }
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        // The cancel reaches the backend ahead of A's command.
+        assert!(!registry.cancel("connect-early"));
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-early",
+        }))
+        .unwrap();
+        let prepared = std::sync::atomic::AtomicBool::new(false);
+        let connected = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            |_config: ProviderConfig| async {
+                prepared.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        // CodeRabbit (CLI deep, #1574): registered cancelled, it never
+        // prepares either (no AeroShare replica for a refused connect).
+        assert!(!prepared.load(Ordering::SeqCst), "A never prepared");
+        // A later attempt under another key is not affected, and the early
+        // cancel was consumed by the one it named.
+        let (_, fresh) = registry.register("connect-other");
+        assert!(!fresh.is_cancelled());
+        let (_, again) = registry.register("connect-early");
+        assert!(!again.is_cancelled());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): a connect cancelled while its
+    /// preparation waits returns at once, without waiting for the
+    /// preparation, and never takes the slot.
+    #[tokio::test]
+    async fn a_connect_cancelled_while_it_prepares_stops_waiting_for_it() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !super::isolated_account_fixture::in_isolated_child(
+            "provider_commands::connect_install_cancel_tests::a_connect_cancelled_while_it_prepares_stops_waiting_for_it",
+        ) {
+            return;
+        }
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-stuck",
+        }))
+        .unwrap();
+        let (reached_tx, reached_rx) = tokio::sync::oneshot::channel::<()>();
+        let connecting = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            move |_config: ProviderConfig| async move {
+                let _ = reached_tx.send(());
+                // A preparation that never ends on its own.
+                std::future::pending::<()>().await;
+                Ok(())
+            },
+            |_| {},
+        );
+        let cancel = async {
+            reached_rx.await.unwrap();
+            assert!(registry.cancel("connect-stuck"));
+        };
+        let (connected, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(connecting, cancel)
+        })
+        .await
+        .expect("the cancelled connect returned without its preparation");
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert!(in_slot(&state).await.is_none());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): the config is installed with its
+    /// provider, under the provider lock; a separate write after the install
+    /// let a connect that resumed late describe a newer connect's provider.
+    #[test]
+    fn provider_connect_installs_the_config_with_its_provider() {
+        let code = include_str!("provider_commands.rs");
+        let start = code.find("async fn provider_connect_inner<").unwrap();
+        let body = &code[start..start + code[start..].find("\n}\n").unwrap()];
+        assert!(
+            body.contains("install_connected_provider_with_owner("),
+            "{body}"
+        );
+        assert!(body.contains("Some(config),"), "{body}");
+        assert!(!body.contains("state.config.lock()"), "{body}");
+    }
+
+    /// Greptile on #1574: the install cancelled the live connection's storage
+    /// reads before it checked its own cancel. A connect cancelled before it
+    /// gets there now leaves them running, and the slot as it was.
+    #[tokio::test]
+    async fn a_cancelled_install_leaves_the_live_connection_reads_alone() {
+        let state = ProviderState::new();
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        let (_, quota_read) = state.quota_cancel.arm();
+        let (_, used_scan) = state.used_scan_cancel.arm();
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let (a, a_gone) = tagged("A");
+        let refused =
+            install_connected_provider(&state, Box::new(a), Some("A".into()), Some(&cancelled))
+                .await
+                .unwrap_err();
+        assert_eq!(refused, CONNECT_CANCELLED);
+        assert!(!quota_read.is_cancelled(), "B's quota read was cancelled");
+        assert!(
+            !used_scan.is_cancelled(),
+            "B's used-space scan was cancelled"
+        );
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst));
+        assert!(
+            a_gone.load(Ordering::SeqCst),
+            "the refused provider is disconnected"
+        );
+    }
+
+    /// The early cancels are bounded: the oldest is dropped first.
+    #[test]
+    fn the_registry_keeps_a_bounded_number_of_early_cancels() {
+        let registry = ConnectionCancelRegistry::default();
+        for n in 0..=EARLY_CANCELS_KEPT {
+            registry.cancel(&format!("k{n}"));
+        }
+        assert!(
+            !registry.register("k0").1.is_cancelled(),
+            "the oldest was dropped"
+        );
+        assert!(registry.register("k1").1.is_cancelled());
+        assert!(registry
+            .register(&format!("k{EARLY_CANCELS_KEPT}"))
+            .1
+            .is_cancelled());
+    }
+
+    /// The two features together: a connect that reported a warning while it
+    /// prepared and was then overtaken (cancelled) is still refused through
+    /// `connected_with_warnings`, the command's own wrapper, and the provider
+    /// another connect installed meanwhile keeps the slot.
+    #[tokio::test]
+    async fn a_superseded_connect_with_warnings_is_still_refused() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !super::isolated_account_fixture::in_isolated_child(
+            "provider_commands::connect_install_cancel_tests::a_superseded_connect_with_warnings_is_still_refused",
+        ) {
+            return;
+        }
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
+        let _ = crate::providers::take_warnings();
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-w",
+        }))
+        .unwrap();
+        let (reached_tx, reached_rx) = tokio::sync::oneshot::channel::<()>();
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        let connecting = connected_with_warnings(provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            move |_config: ProviderConfig| async move {
+                crate::providers::report_warning("the overtaken connect's".to_string());
+                let _ = reached_tx.send(());
+                let _ = release_rx.await;
+                Ok(())
+            },
+            |_| {},
+        ));
+        let elsewhere = async {
+            reached_rx.await.unwrap();
+            assert!(registry.cancel("connect-w"));
+            let (b, b_gone) = tagged("B");
+            install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+                .await
+                .unwrap();
+            release_tx.send(()).unwrap();
+            b_gone
+        };
+        let (connected, b_gone) = tokio::join!(connecting, elsewhere);
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        // Its warning went with its refusal: none is left for a later connect.
+        assert!(crate::providers::take_warnings().is_empty());
+    }
+
+    /// A cancel that lands after the store is too late: the installed
+    /// connection stays whole.
+    #[tokio::test]
+    async fn a_cancel_after_the_store_changes_nothing() {
+        let state = ProviderState::new();
+        let token = CancellationToken::new();
+        let (a, a_gone) = tagged("A");
+        install_connected_provider(&state, Box::new(a), Some("A".into()), Some(&token))
+            .await
+            .unwrap();
+        token.cancel();
+        assert_eq!(in_slot(&state).await.as_deref(), Some("A"));
+        assert_eq!(
+            state.connected_profile_id.lock().unwrap().as_deref(),
+            Some("A")
+        );
+        assert!(!a_gone.load(Ordering::SeqCst));
+    }
+
+    /// The production part of a source file: every top-level test module
+    /// (`#[cfg(test)] mod`, `pub(crate) mod` or `pub mod`, closed by a `}` at
+    /// column 0) removed,
+    /// wherever it sits in the file.
+    fn production(source: &str) -> String {
+        let mut out = String::with_capacity(source.len());
+        let mut rest = source;
+        let next_test_module = |text: &str| {
+            [
+                "\n#[cfg(test)]\nmod ",
+                "\n#[cfg(test)]\npub(crate) mod ",
+                "\n#[cfg(test)]\npub mod ",
+            ]
+            .iter()
+            .filter_map(|marker| text.find(marker))
+            .min()
+        };
+        while let Some(at) = next_test_module(rest) {
+            out.push_str(&rest[..at]);
+            let after = &rest[at + 1..];
+            rest = match after.find("\n}\n") {
+                Some(end) => &after[end + 2..],
+                None => "",
+            };
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// The installer is the only place a newly connected provider enters the
+    /// slot. Nothing awaits between its cancel check and the store, and the
+    /// provider lock is held from the store through the config write, so a
+    /// probe under that lock never sees the new provider with the previous
+    /// connection's config. Every production source that holds a
+    /// `ProviderState` is scanned, the deref-assign form included. The overlay
+    /// wraps and unwrap are the allowed re-stores: each puts back the provider
+    /// it has just taken from the slot (wrapped, or its raw inner) while the
+    /// same caller holds the slot, so no other connection can enter between
+    /// the take and the store and no cancel check applies.
+    #[test]
+    fn only_the_installer_puts_a_connected_provider_in_the_slot() {
+        let code = &production(include_str!("provider_commands.rs"));
+        let start = code
+            .find("async fn install_connected_provider_with_owner(")
+            .unwrap();
+        let body = &code[start..start + code[start..].find("\n}\n").unwrap()];
+        // Checks: one before anything runs (a cancelled connect leaves the
+        // live connection's reads alone), and the last one under the provider
+        // lock, with no await between it and the store.
+        let cancel_check = "if cancel.is_some_and(CancellationToken::is_cancelled) {";
+        let early = body.find(cancel_check).expect("the early cancel check");
+        assert!(
+            early < body.find("state.cancel_storage_reads();").unwrap(),
+            "the cancel is checked before the live connection's reads are cancelled"
+        );
+        let check = body.rfind(cancel_check).expect("the cancel check");
+        assert!(early < check, "a check under the provider lock too");
+        let store = body
+            .find("let previous = prov_lock.replace(provider);")
+            .unwrap();
+        let refusal_end = check + body[check..].find("\n    }\n").unwrap();
+        assert!(check < store && refusal_end < store);
+        assert!(
+            !body[refusal_end..store].contains(".await"),
+            "{}",
+            &body[refusal_end..store]
+        );
+        // The config is written in the same publication as the provider.
+        let config_write = body.find("*config_lock = config;").unwrap();
+        assert!(store < config_write);
+        assert!(
+            !body[store..config_write].contains("drop(prov_lock)"),
+            "the provider lock is released before the config write"
+        );
+
+        // Every store into a slot, in every production source of the crate
+        // that holds a ProviderState, by file and enclosing function.
+        fn sources(dir: &std::path::Path, out: &mut Vec<(String, String)>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    sources(&path, out);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    if text.contains("ProviderState") {
+                        out.push((path.display().to_string(), production(&text)));
+                    }
+                }
+            }
+        }
+        let mut files = Vec::new();
+        sources(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &mut files,
+        );
+        assert!(files.len() > 10, "{}", files.len());
+        let mut stores: Vec<(String, String)> = Vec::new();
+        for (path, text) in &files {
+            for (at, line) in text.match_indices('\n').map(|(at, _)| at + 1).map(|at| {
+                (
+                    at,
+                    &text[at..at + text[at..].find('\n').unwrap_or(text.len() - at)],
+                )
+            }) {
+                // A deref-assign of a provider value: a boxed one, or a
+                // provider binding by the names the slot code uses.
+                let trimmed = line.trim_start();
+                let deref_store = trimmed.starts_with('*')
+                    && [
+                        " = Some(Box::new(",
+                        " = Some(provider)",
+                        " = Some(raw)",
+                        " = Some(wrapped)",
+                        " = Some(inner)",
+                    ]
+                    .iter()
+                    .any(|value| trimmed.contains(value));
+                if deref_store
+                    || line.contains("prov_lock.replace(")
+                    || line.contains(".provider.lock().await.replace(")
+                    || line.contains(".provider.lock().await = Some(")
+                {
+                    let before = &text[..at];
+                    let open = before
+                        .rfind("\nasync fn ")
+                        .max(before.rfind("\npub async fn "))
+                        .max(before.rfind("\npub(crate) async fn "))
+                        .max(before.rfind("\nfn "))
+                        .max(before.rfind("\npub fn "))
+                        .unwrap();
+                    let name = before[open..].split("fn ").nth(1).unwrap();
+                    let file = path.rsplit(['/', '\\']).next().unwrap().to_string();
+                    stores.push((file, name[..name.find('(').unwrap()].to_string()));
+                }
+            }
+        }
+        stores.sort();
+        assert_eq!(
+            stores,
+            [
+                (
+                    "crypt_overlay_provider.rs".to_string(),
+                    "apply_overlay_in_place".to_string()
+                ),
+                (
+                    "crypt_overlay_provider.rs".to_string(),
+                    "clear_overlay_in_place".to_string()
+                ),
+                (
+                    "provider_commands.rs".to_string(),
+                    "install_connected_provider_with_owner".to_string()
+                ),
+                (
+                    "provider_commands.rs".to_string(),
+                    "provider_rearm_cached_crypt_overlay".to_string()
+                ),
+            ]
+        );
+    }
+
+    /// Every installer passes its connect's own token, still registered
+    /// while the install waits, and the commands that install are the list
+    /// the frontend's wiring test reads.
+    #[test]
+    fn every_connect_install_checks_its_own_token() {
+        let code = &production(include_str!("provider_commands.rs"));
+        // `async fn name(` or, generic, `async fn name<`.
+        let body_of = |name: &str| {
+            let start = code
+                .find(&format!("async fn {name}("))
+                .or_else(|| code.find(&format!("async fn {name}<")))
+                .unwrap_or_else(|| panic!("{name}"));
+            &code[start..start + code[start..].find("\n}\n").unwrap()]
+        };
+        for name in [
+            "provider_connect_inner",
+            "oauth2_connect",
+            "fourshared_connect",
+        ] {
+            let body = body_of(name);
+            assert!(body.contains("ConnectRegistration::new("), "{name}");
+            assert!(body.contains("registration.token(),"), "{name}");
+            assert!(!body.contains("run_cancellable_connect("), "{name}");
+        }
+        // The function each production call of `entry` sits in.
+        let callers_of = |entry: &str| -> Vec<&str> {
+            code.match_indices(&format!("{entry}("))
+                .filter(|(at, _)| !code[..*at].ends_with("fn "))
+                .map(|(at, _)| {
+                    let open = code[..at].rfind("async fn ").unwrap();
+                    let name = &code[open + "async fn ".len()..];
+                    &name[..name.find(['(', '<']).unwrap()]
+                })
+                .collect()
+        };
+        // Every production install goes through the one that publishes its
+        // owner with it; `provider_connect_inner` hands its config in with
+        // its provider. The two shorter forms are test-only wrappers.
+        assert_eq!(
+            callers_of("install_connected_provider_with_owner"),
+            [
+                "install_mtp_provider",
+                "provider_connect_inner",
+                "install_connected_provider_with_config",
+                "oauth2_connect",
+                "fourshared_connect"
+            ]
+        );
+        assert_eq!(
+            callers_of("install_connected_provider_with_config"),
+            ["install_connected_provider"]
+        );
+        assert!(callers_of("install_connected_provider").is_empty());
+        // The device opens register their token too and hand it to the
+        // install (`install_mtp_provider`'s `cancel`).
+        let mtp = &production(include_str!("providers/mtp/commands.rs"));
+        for command in ["mtp_open_device", "mtp_open_gvfs_mount"] {
+            let start = mtp
+                .find(&format!("pub async fn {command}("))
+                .unwrap_or_else(|| panic!("{command}"));
+            let body = &mtp[start..start + mtp[start..].find("\n}\n").unwrap()];
+            assert!(body.contains("ConnectRegistration::new("), "{command}");
+            assert!(body.contains("registration.token()"), "{command}");
+        }
+        assert!(mtp.contains("state.install_mtp_provider(provider, config, cancel)"));
+        assert_eq!(PROVIDER_SLOT_INSTALLERS.len(), 5);
+    }
+}
+
+#[cfg(test)]
+mod fourshared_attempt_key_tests {
+    use super::*;
+    use crate::credential_store::CredentialStore;
+
+    /// Two connection forms sign in one after the other, each under its own
+    /// attempt key, then the first one connects: it reads its own account's
+    /// token, never the second form's (CodeRabbit on #1565). A form that saves
+    /// onto an existing profile moves its token there.
+    #[test]
+    fn a_4shared_connect_reads_the_token_of_its_own_sign_in() {
+        let _env = crate::test_env::lock();
+        let _partition = crate::user_partitions::test_lock();
+        let dir = tempfile::TempDir::new().unwrap();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        std::env::set_var("XDG_CONFIG_HOME", dir.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("fourshared-attempt-test").unwrap();
+        CredentialStore::unlock_with_master("fourshared-attempt-test", None).unwrap();
+        let store = CredentialStore::from_cache().unwrap();
+        crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+
+        // Sign-in A, then sign-in B, then connect A.
+        store_fourshared_tokens("srv_attempt_a", "token-a", "secret-a").unwrap();
+        store_fourshared_tokens("srv_attempt_b", "token-b", "secret-b").unwrap();
+        let pair = |token: &str, secret: &str| (token.to_string(), secret.to_string());
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_a").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_b").unwrap(),
+            pair("token-b", "secret-b")
+        );
+
+        // A saves onto an existing profile: its token moves there, B's stays.
+        fourshared_adopt_tokens_inner("srv_attempt_a", "kept").unwrap();
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        assert!(load_fourshared_tokens("srv_attempt_a").is_err());
+        assert_eq!(
+            load_fourshared_tokens("srv_attempt_b").unwrap(),
+            pair("token-b", "secret-b")
+        );
+        // No token under the attempt key: nothing to move, nothing changes.
+        fourshared_adopt_tokens_inner("srv_attempt_a", "kept").unwrap();
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        // A profile saved before the per-profile layout has no token of its
+        // own and keeps connecting with the legacy one (kept on purpose); a
+        // profile with its own token never reads it.
+        store
+            .store("oauth_fourshared", "legacy-token:legacy-secret")
+            .unwrap();
+        assert_eq!(
+            load_fourshared_tokens("srv_legacy").unwrap(),
+            pair("legacy-token", "legacy-secret")
+        );
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
+        // CodeRabbit (CLI deep, #1574): a source token that cannot be read is
+        // an error, not "nothing to move": the save must not go on with the
+        // destination's own (another account's) token.
+        let partitions = crate::user_partitions::cli_db_path().unwrap();
+        std::fs::remove_file(&partitions).unwrap();
+        std::fs::create_dir(&partitions).unwrap();
+        assert!(fourshared_adopt_tokens_inner("srv_attempt_b", "kept").is_err());
+        std::fs::remove_dir(&partitions).unwrap();
+
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        if let Some(value) = previous_passphrase {
+            std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+
+    /// CodeRabbit on #1565 (thread 4577064144): an existing profile without its
+    /// own 4shared token connects with the legacy singleton. The connect reads
+    /// its token once, at the start of the attempt, before it waits on the
+    /// network, the cancel registration or the slot, and the provider keeps the
+    /// values it was built with: a singleton written while the connect waits
+    /// cannot change the account that attempt connects.
+    #[test]
+    fn a_4shared_connect_reads_its_token_once_before_it_waits() {
+        let src = include_str!("provider_commands.rs");
+        let start = src.find("pub async fn fourshared_connect(").unwrap();
+        let body = &src[start..start + src[start..].find("\n}\n").unwrap()];
+        let read = body
+            .find("load_fourshared_tokens(&params.profile_id)?")
+            .expect("the connect reads its own token");
+        assert_eq!(body.matches("load_fourshared_tokens(").count(), 1);
+        assert!(
+            read < body.find(".await").unwrap(),
+            "read before the first wait"
+        );
+        for reread in [
+            "CredentialStore",
+            "resolve_profile_oauth_token",
+            "oauth_fourshared",
+        ] {
+            assert!(!body.contains(reread), "{reread}");
+        }
+        let provider = include_str!("providers/fourshared.rs");
+        for reread in [
+            "credential_store",
+            "CredentialStore",
+            "oauth_fourshared",
+            "load_fourshared_tokens",
+        ] {
+            assert!(!provider.contains(reread), "{reread}");
+        }
     }
 }

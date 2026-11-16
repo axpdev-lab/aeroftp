@@ -34,7 +34,7 @@ function context() {
         setRemoteListLoading: vi.fn((value: boolean) => { state.loading = value; }),
         setRemoteListReason: vi.fn((value: string | null) => { state.reason = value; }),
         setActiveSessionId: vi.fn(), setShowRemotePanel: vi.fn(), setIsConnected: vi.fn(), sessionId: 'new-tab',
-        ConnectScope: class {}, cancelRemoteNavigation: vi.fn(),
+        ConnectScope: class {}, cancelRemoteNavigation: vi.fn(), supersedeOlderConnects: vi.fn(),
     };
     return { state, ctx };
 }
@@ -90,7 +90,8 @@ it('switching to a plain target resets abandoned overlay decryption', async () =
     const from = app.indexOf('const switchSession = async');
     const marker = "      } else {\n        setRcloneCryptVaultId(null);\n        setAeroCryptVaultId(null);\n        setCryptOverlayOwner(null);";
     const start = app.indexOf(marker, from);
-    const end = app.indexOf("\n      setSessions(prev =>", start);
+    // The plain branch ends where the switch checks the replacement sequence.
+    const end = app.indexOf("\n      // Another invoke replaced the backend after this switch's own connect", start);
     if (start < 0 || end < 0) throw new Error('Missing plain switch handler');
     await run(app.slice(start + '      } else {'.length, end).replace(/}\s*$/, ''), {
         ...ctx, setRcloneCryptVaultId: vi.fn(), setAeroCryptVaultId: vi.fn(), setCryptOverlayOwner: vi.fn(),

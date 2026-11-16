@@ -66,6 +66,8 @@ const WEBDAV_PRESET_IDS = new Set<string>([
     'jianguoyun',
     'filelu-webdav',
     'felicloud-webdav',
+    'puter-webdav',
+    'lifetimecloud',
 ]);
 
 const S3_PRESET_IDS = new Set<string>([
@@ -85,9 +87,10 @@ const S3_PRESET_IDS = new Set<string>([
     'ibm-cos',
     'tigris',
     'fastly',
+    'neon-s3',
 ]);
 
-/** Lowercase, trim, strip scheme + www. + trailing path. */
+/** Lowercase, trim, strip scheme, userinfo, www., path, query and fragment. */
 export const normalizeHost = (raw: string | undefined): string => {
     if (!raw) return '';
     let s = raw.trim().toLowerCase();
@@ -97,15 +100,21 @@ export const normalizeHost = (raw: string | undefined): string => {
             break;
         }
     }
+    // The authority ends at the path, the query or the fragment; none of
+    // them names the server, and a query can carry a credential that a
+    // dedup key printed by the logs must never hold.
+    const authorityEnd = s.search(/[/?#]/);
+    if (authorityEnd !== -1) {
+        s = s.slice(0, authorityEnd);
+    }
+    // URL userinfo (`user:pass@host`) is never part of the server identity
+    // either.
+    const at = s.lastIndexOf('@');
+    if (at !== -1) {
+        s = s.slice(at + 1);
+    }
     if (s.startsWith('www.')) {
         s = s.slice(4);
-    }
-    const slash = s.indexOf('/');
-    if (slash !== -1) {
-        s = s.slice(0, slash);
-    }
-    while (s.endsWith('/')) {
-        s = s.slice(0, -1);
     }
     return s;
 };
@@ -198,8 +207,72 @@ const accessKeyHash = (accessKey: string): string => {
     return fastHashHex((accessKey || '').trim()).slice(0, 16);
 };
 
+/**
+ * WebDAV presets whose server URL is chosen by the user (self-hosted or
+ * per-user node): nextcloud, seafile, infinicloud. Their dedup key must
+ * carry the normalised host or the same user name on two servers collapses
+ * into one drive. Mirrors the Rust `is_user_hosted_webdav_preset`.
+ */
+const USER_HOSTED_WEBDAV_PRESETS: ReadonlySet<string> = new Set([
+    'nextcloud',
+    'seafile',
+    'infinicloud',
+]);
+
+const isUserHostedWebDavPreset = (providerId: string | undefined): boolean =>
+    !!providerId && USER_HOSTED_WEBDAV_PRESETS.has(providerId);
+
 const isWebDavPreset = (providerId: string | undefined): boolean =>
     !!providerId && WEBDAV_PRESET_IDS.has(providerId);
+
+/**
+ * The port a WebDAV host with no port of its own connects to: 80 for a clear
+ * scheme (`http://`, and `webdav://`, which `normalizeHost` reads the same
+ * way), 443 for `https://`, `webdavs://` and a host with no scheme. Read from
+ * the host as written, before `normalizeHost` drops the scheme. Mirrors the
+ * Rust `default_webdav_port`.
+ */
+const defaultWebDavPort = (rawHost: string | undefined): number => {
+    const s = (rawHost || '').trim().toLowerCase();
+    return s.startsWith('http://') || s.startsWith('webdav://') ? 80 : 443;
+};
+
+/**
+ * First path segment of the server URL: for `https://dav.puter.com/alice`
+ * that is `alice`, the Puter account the WebDAV root belongs to. Token auth
+ * uses the literal username `-token` for every account, so without this the
+ * dedup key cannot tell two Puter drives apart. Mirrors the Rust
+ * `puter_account`.
+ */
+const puterAccount = (rawHost: string | undefined): string => {
+    if (!rawHost) return '';
+    let s = rawHost.trim().toLowerCase();
+    for (const scheme of ['https://', 'http://', 'webdavs://', 'webdav://']) {
+        if (s.startsWith(scheme)) {
+            s = s.slice(scheme.length);
+            break;
+        }
+    }
+    // A query or fragment is not part of the path: an account named only
+    // inside it is no account.
+    const query = s.search(/[?#]/);
+    if (query !== -1) s = s.slice(0, query);
+    const slash = s.indexOf('/');
+    if (slash === -1) return '';
+    let segment = s.slice(slash + 1).split('/')[0];
+    // The URL holds the account percent-encoded (`a%40b`), the user name
+    // decoded (`a@b`): decoded, both spellings of one account key alike.
+    try {
+        // Lowercased again after decoding: `%41lice` and `alice` are one account.
+        segment = decodeURIComponent(segment).toLowerCase();
+    } catch {
+        // A malformed escape stays as written.
+    }
+    // The form saves the default `https://dav.puter.com/{username}` as it
+    // is: the placeholder names no account, the profile's user name does.
+    if (segment.includes('{username}')) return '';
+    return segment;
+};
 
 const isS3Preset = (providerId: string | undefined): boolean =>
     !!providerId && S3_PRESET_IDS.has(providerId);
@@ -236,6 +309,31 @@ export const getStorageDedupKey = (server: ServerProfile): string => {
     }
 
     if (proto === 'webdav') {
+        if (providerId === 'puter-webdav') {
+            const account = puterAccount(server.host);
+            // The account path is the drive identity, whichever auth method
+            // the profile uses: password and token profiles of one account
+            // must produce the same key.
+            if (account) return `webdav:puter-webdav:${account}`;
+            // Token auth shares the literal username `-token`; with no
+            // account path two Puter profiles cannot be told apart, so they
+            // must not collapse into one drive.
+            if (userNorm === '-token') return `id:${server.id}`;
+            return `webdav:puter-webdav:${userOrId}`;
+        }
+        if (isUserHostedWebDavPreset(providerId)) {
+            // An embedded `:port` in the host and the port field name the
+            // same endpoint: take the embedded one as effective and keep it
+            // out of the host portion so both spellings key alike.
+            const normalized = normalizeHost(server.host);
+            const embedded = /:(\d+)$/.exec(normalized);
+            const host = embedded ? normalized.slice(0, embedded.index) : normalized;
+            const port = embedded
+                ? Number(embedded[1])
+                : server.port || defaultWebDavPort(server.host);
+            const portPart = port === 443 ? '' : `:${port}`;
+            return `webdav:${providerId}:${host}${portPart}:${userOrId}`;
+        }
         if (isWebDavPreset(providerId)) {
             return `webdav:${providerId}:${userOrId}`;
         }

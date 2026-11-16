@@ -40,14 +40,43 @@ describe('AboutDialog frontend dependency versions', () => {
         expect(viteConfig).toContain('__FRONTEND_VERSIONS__');
     });
 
-    it('lockfile resolves Vite 8.3.7', () => {
-        const viteLock = lock?.packages?.['node_modules/vite']?.version;
-        expect(viteLock).toBe('8.3.7');
+    // Read from the repo files, never written here: a Vite bump changes the
+    // lockfile, and these checks must hold for any version it resolves.
+    const viteLock = lock?.packages?.['node_modules/vite']?.version;
+
+    // Whether `version` is inside the caret `range` npm admits: the same
+    // major (the same minor under 0.x) and not below the range's minimum.
+    // npm may lock a later compatible version without touching the range.
+    const satisfiesCaret = (version: string, range: string): boolean => {
+        const min = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(range);
+        const got = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+        if (!min || !got) return false;
+        const [lo, at] = [min.slice(1).map(Number), got.slice(1).map(Number)];
+        if (at[0] !== lo[0] || (lo[0] === 0 && at[1] !== lo[1])) return false;
+        for (let i = 0; i < 3; i++) {
+            if (at[i] !== lo[i]) return at[i] > lo[i];
+        }
+        return true;
+    };
+
+    it('lockfile resolves Vite to a concrete version', () => {
+        expect(viteLock).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
     it('package.json vite dependency is aligned with lockfile', () => {
         const viteManifest = pkg?.devDependencies?.['vite'];
-        expect(viteManifest).toBe('^8.3.7');
+        expect(viteManifest).toMatch(/^\^/);
+        expect(satisfiesCaret(viteLock ?? '', viteManifest ?? '')).toBe(true);
+    });
+
+    it('a locked version is aligned when the caret range admits it', () => {
+        expect(satisfiesCaret('8.3.8', '^8.3.8')).toBe(true);
+        expect(satisfiesCaret('8.3.9', '^8.3.8')).toBe(true);
+        expect(satisfiesCaret('8.4.0', '^8.3.8')).toBe(true);
+        expect(satisfiesCaret('8.3.7', '^8.3.8')).toBe(false);
+        expect(satisfiesCaret('9.0.0', '^8.3.8')).toBe(false);
+        expect(satisfiesCaret('0.3.1', '^0.2.0')).toBe(false);
+        expect(satisfiesCaret('0.2.5', '^0.2.0')).toBe(true);
     });
 
     it('shared resolver prioritizes lockfile version when manifest range differs', () => {
@@ -132,8 +161,8 @@ describe('AboutDialog frontend dependency versions', () => {
             vite: resolveInstalledVersion('vite', undefined, rootDir, lock, pkg),
         };
 
-        // Vite must report the build version 8.3.7
-        expect(frontDeps.vite).toBe('8.3.7');
+        // Vite must report the version the lockfile resolves for the build
+        expect(frontDeps.vite).toBe(viteLock);
 
         // All frontend deps must be concrete semver, no range prefixes or question marks
         for (const [dep, ver] of Object.entries(frontDeps)) {

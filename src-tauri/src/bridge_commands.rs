@@ -614,6 +614,54 @@ pub fn materialize_imported_crypt_overlay(
     Ok(())
 }
 
+/// `entry` with its start folder (`initialPath`, `options.initial_path`) and,
+/// when its overlay is exported, its rclone-crypt scope filled with the
+/// profile's user name, as the connect opens them
+/// (`bridge_shared::export_start_folder`). Done here, once, for every source:
+/// a writer that copied the stored path wrote a literal `{username}` folder
+/// into its file. An `Err` is the reason the profile is skipped. The CLI
+/// export fills its profiles with it too (`collect_export_scaffold`).
+pub fn with_filled_start_folders(entry: &Value) -> Result<Value, String> {
+    let username = entry
+        .get("username")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let fill = |value: &mut Value| -> Result<(), String> {
+        if let Some(path) = value.as_str() {
+            *value = Value::String(crate::bridge_shared::export_start_folder(path, &username)?);
+        }
+        Ok(())
+    };
+    let mut entry = entry.clone();
+    if let Some(path) = entry.get_mut("initialPath") {
+        fill(path)?;
+    }
+    if let Some(options) = entry.get_mut("options").filter(|o| o.is_object()) {
+        let crypt_enabled =
+            options.get("rcloneCryptEnabled").and_then(|v| v.as_bool()) == Some(true);
+        if let Some(path) = options.get_mut("initial_path") {
+            fill(path)?;
+        }
+        if crypt_enabled {
+            if let Some(scope) = options.get_mut("rcloneCryptOverlayScope") {
+                fill(scope)?;
+            }
+        }
+    }
+    // An enabled rclone-crypt overlay's scope becomes the exported crypt
+    // remote's folder (`inject_rclone_crypt_export_options`).
+    if let Some(overlay) = entry.get_mut("aeroCryptOverlay").filter(|o| {
+        o.get("enabled").and_then(|v| v.as_bool()) == Some(true)
+            && o.get("kind").and_then(|v| v.as_str()) == Some("rclone-crypt")
+    }) {
+        if let Some(scope) = overlay.get_mut("remoteScope") {
+            fill(scope)?;
+        }
+    }
+    Ok(entry)
+}
+
 /// `entry` without the private `__aeroftp_*` options. Only the backend writes
 /// them, from the vault, when credentials are exported (`inject_rclone_*`): a
 /// caller that sends them would otherwise get its own token and app keys
@@ -1024,12 +1072,15 @@ pub fn oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
 /// never resolve to different vault entries.
 ///
 /// The singleton fallback is what keeps an install that authorised before the
-/// per-profile layout existed connecting without re-authorising.
+/// per-profile layout existed connecting without re-authorising. It is taken
+/// only when the profile's own key is absent: a key that cannot be read is an
+/// error, not a missing token, and the singleton may be another profile's
+/// account.
 pub fn resolve_profile_oauth_token(
     store: &CredentialStore,
     slug: &str,
     profile_id: &str,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     resolve_profile_oauth_token_for(store, slug, profile_id, None)
 }
 
@@ -1040,24 +1091,22 @@ pub fn resolve_profile_oauth_token_for(
     slug: &str,
     profile_id: &str,
     user: Option<i64>,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     // Owner-aware: only the legacy owner falls back to the shared vault, so a
     // profile id or singleton shared with another user never lends its token.
-    let read = |key: String| {
-        match user {
+    let read = |key: String| -> Result<Option<String>, String> {
+        Ok(match user {
             Some(user) => {
-                crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, &key)
+                crate::user_partitions::resolve_credential_for_user_owner_aware(store, user, &key)?
             }
-            None => crate::user_partitions::resolve_active_credential_owner_aware(store, &key),
+            None => crate::user_partitions::resolve_active_credential_owner_aware(store, &key)?,
         }
-        .ok()
-        .flatten()
         .map(|value| value.to_string())
-        .filter(|value| !value.is_empty())
+        .filter(|value| !value.is_empty()))
     };
     if !profile_id.is_empty() {
-        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id)) {
-            return Some(value);
+        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id))? {
+            return Ok(Some(value));
         }
     }
     read(format!("oauth_{}", slug))
@@ -1121,23 +1170,26 @@ pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (Stri
 /// export arm emits a `rclone config reconnect` comment instead of a broken
 /// remote when any piece is missing. Shared by the GUI bridge export and the
 /// CLI `cmd_export_rclone` so the two paths never diverge.
+///
+/// `Err` when the profile's token cannot be read: the caller skips the
+/// profile rather than export it with another profile's token.
 pub fn inject_rclone_oauth_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
-) {
+) -> Result<(), String> {
     let slug = match crate::oauth_vault_slug_for_protocol(protocol) {
         Some(s) => s,
-        None => return,
+        None => return Ok(()),
     };
     // Only the providers we actually export to rclone get the client-cred keys.
     let cred_key = match rclone_oauth_client_cred_key(protocol) {
         Some(k) => k,
-        None => return,
+        None => return Ok(()),
     };
 
-    let token = resolve_profile_oauth_token(store, slug, id);
+    let token = resolve_profile_oauth_token(store, slug, id)?;
 
     let client_id = store
         .get(&format!("oauth_{}_client_id", cred_key))
@@ -1149,7 +1201,7 @@ pub fn inject_rclone_oauth_export_options(
         .filter(|s| !s.is_empty());
 
     if token.is_none() && client_id.is_none() && client_secret.is_none() {
-        return;
+        return Ok(());
     }
 
     // Ensure options is an object we can write the private keys into.
@@ -1200,6 +1252,7 @@ pub fn inject_rclone_oauth_export_options(
             opts.insert("region".into(), Value::String(region));
         }
     }
+    Ok(())
 }
 
 /// #128-D: for an rclone `filen` export, pull the per-profile Filen CLI API key
@@ -1783,6 +1836,15 @@ async fn export_bridge_profiles(
                     skipped.push(json!({ "name": name, "reason": reason }));
                     continue;
                 }
+                // The start folder as the profile opens it, for every source.
+                let filled_entry = match with_filled_start_folders(entry) {
+                    Ok(filled) => filled,
+                    Err(reason) => {
+                        skipped.push(json!({ "name": name, "reason": reason }));
+                        continue;
+                    }
+                };
+                let entry = &filled_entry;
                 // #128-D: rclone OAuth-token exports need the vaulted token plus
                 // the BYO client_id/secret injected into `options` before the
                 // entry is deserialized, so `export_rclone` can emit a usable,
@@ -1798,7 +1860,12 @@ async fn export_bridge_profiles(
                             .to_string();
                         let mut opts = e.get("options").cloned();
                         let before = opts.clone();
-                        inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
+                        if let Err(reason) =
+                            inject_rclone_oauth_export_options(&mut opts, st, &proto, &id)
+                        {
+                            skipped.push(json!({ "name": name, "reason": reason }));
+                            continue;
+                        }
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);
@@ -2850,6 +2917,140 @@ mod tests {
                 "{source}"
             );
         }
+    }
+
+    /// Every bridge writes the start folder as the profile opens it: a
+    /// `{username}` template is filled before any writer sees the entry, and a
+    /// profile whose user name cannot fill it is skipped with the reason. The
+    /// writers copied the stored path, so a literal `{username}` folder went
+    /// into lftp, WinSCP, FileZilla and the rest.
+    #[tokio::test]
+    async fn every_source_exports_the_start_folder_the_profile_opens() {
+        for source in crate::bridge_shared::BRIDGE_GENERIC_SOURCES {
+            // PuTTY writes its sessions into the Windows registry of the user
+            // who runs it, never into the chosen file, and a session holds no
+            // folder (HostName, PortNumber, Protocol, UserName, PublicKeyFile):
+            // a test must not touch it. The fill it would get is the one
+            // below (`with_filled_start_folders_fills_every_folder_it_exports`).
+            if *source == "putty" {
+                continue;
+            }
+            let proto = crate::bridge_shared::bridge_supported_protocols(source)[0];
+            let (ext, _) = crate::bridge_shared::bridge_export_format(source).unwrap();
+            let profile = |id: &str, user: &str| {
+                json!({
+                    "id": id, "name": id, "host": "nas.example.test", "port": 22,
+                    "username": user, "protocol": proto,
+                    "initialPath": "/home/{username}/backup",
+                    "options": { "initial_path": "/home/{username}/backup", "bucket": "media" }
+                })
+            };
+            let servers = json!([profile("filled", "alice"), profile("unfilled", "")]).to_string();
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join(format!("export.{ext}"));
+            let out = export_bridge_profiles(
+                source,
+                &servers,
+                false,
+                &path.to_string_lossy(),
+                None,
+                |_| None,
+            )
+            .await
+            .unwrap_or_else(|e| panic!("{source}: {e}"));
+            assert!(
+                out["skipped"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|skip| skip["name"] == "unfilled"
+                        && skip["reason"] == crate::connection_manifest::USERNAME_TEMPLATE_MISSING),
+                "{source}: {out}"
+            );
+            let mut written = String::new();
+            for file in walkdir(dir.path()) {
+                // Some formats are UTF-16 (a PuTTY .reg): read as bytes, NULs dropped.
+                let bytes = std::fs::read(file).unwrap_or_default();
+                written.push_str(&String::from_utf8_lossy(&bytes).replace('\0', ""));
+            }
+            assert!(!written.is_empty(), "{source}: nothing written");
+            assert!(
+                !written.contains("{username}"),
+                "{source} wrote the template:\n{written}"
+            );
+        }
+    }
+
+    /// The fill every source's entry goes through, on any platform and with
+    /// no writer at all: the start folder in both spellings, a crypt scope
+    /// only when its overlay is exported, and the reason for a template the
+    /// user name cannot fill.
+    #[test]
+    fn with_filled_start_folders_fills_every_folder_it_exports() {
+        let entry = |user: &str, crypt: bool| {
+            json!({
+                "username": user,
+                "initialPath": "/home/{username}/backup",
+                "options": {
+                    "initial_path": "/home/{username}/backup",
+                    "rcloneCryptEnabled": crypt,
+                    "rcloneCryptOverlayScope": "/vault/{username}",
+                }
+            })
+        };
+        let filled = with_filled_start_folders(&entry("alice", true)).unwrap();
+        assert_eq!(filled["initialPath"], "/home/alice/backup");
+        assert_eq!(filled["options"]["initial_path"], "/home/alice/backup");
+        assert_eq!(filled["options"]["rcloneCryptOverlayScope"], "/vault/alice");
+        // A disabled overlay's scope is not exported, so it stays as stored.
+        let plain = with_filled_start_folders(&entry("alice", false)).unwrap();
+        assert_eq!(
+            plain["options"]["rcloneCryptOverlayScope"],
+            "/vault/{username}"
+        );
+        assert_eq!(
+            with_filled_start_folders(&entry("", false)).unwrap_err(),
+            crate::connection_manifest::USERNAME_TEMPLATE_MISSING
+        );
+        assert!(with_filled_start_folders(&entry("a/b", false)).is_err());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): an enabled rclone-crypt overlay's
+    /// `remoteScope` becomes the exported crypt remote's folder
+    /// (`inject_rclone_crypt_export_options`), so it is filled as the profile
+    /// opens it; a disabled overlay and an AeroCrypt one are not exported
+    /// from it and stay as stored.
+    #[test]
+    fn with_filled_start_folders_fills_an_exported_overlay_scope() {
+        let entry = |enabled: bool, kind: &str| {
+            json!({
+                "username": "alice",
+                "aeroCryptOverlay": { "enabled": enabled, "kind": kind, "remoteScope": "/vault/{username}" }
+            })
+        };
+        let filled = with_filled_start_folders(&entry(true, "rclone-crypt")).unwrap();
+        assert_eq!(filled["aeroCryptOverlay"]["remoteScope"], "/vault/alice");
+        for (enabled, kind) in [(false, "rclone-crypt"), (true, "aerocrypt")] {
+            let kept = with_filled_start_folders(&entry(enabled, kind)).unwrap();
+            assert_eq!(kept["aeroCryptOverlay"]["remoteScope"], "/vault/{username}");
+        }
+        // A user name that cannot fill it refuses the profile.
+        let mut bad = entry(true, "rclone-crypt");
+        bad["username"] = json!("a/b");
+        assert!(with_filled_start_folders(&bad).is_err());
+    }
+
+    fn walkdir(dir: &Path) -> Vec<std::path::PathBuf> {
+        let mut files = Vec::new();
+        for entry in std::fs::read_dir(dir).unwrap().flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                files.extend(walkdir(&path));
+            } else {
+                files.push(path);
+            }
+        }
+        files
     }
 
     #[tokio::test]

@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} nemá SFTP, preto AeroFTP používa SCP na rovnakom pripojení.",
             "saveOnAnotherServer": "Neuložené: tento súbor bol otvorený zo servera, účtu alebo šifrovanej vrstvy, ktoré teraz nie sú aktívne. Vráťte sa na jeho kartu a uložte ho znova.",
             "openedOnAnotherServer": "Neotvorené: server sa zmenil počas čítania súboru. Otvorte ho znova.",
-            "remoteTargetChanged": "Nič sa nezmenilo: server, účet alebo šifrovaná vrstva sa od začiatku akcie zmenili, alebo sa stále znovu pripájajú. Skúste to znova na aktuálnom pripojení."
+            "remoteTargetChanged": "Nič sa nezmenilo: server, účet alebo šifrovaná vrstva sa od začiatku akcie zmenili, alebo sa stále znovu pripájajú. Skúste to znova na aktuálnom pripojení.",
+            "connectEarlierNotStopped": "Predchádzajúci pokus o pripojenie sa nepodarilo zastaviť a stále beží, preto sa toto pripojenie nespustilo. Skúste to znova, keď skončí."
         },
         "about": {
             "tagline": "Viac ako FTP. Kompletná sada nástrojov pre vývojárov.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: globálne distribuované úložisko kompatibilné s S3, bez poplatkov za odchádzajúce dáta (5 GB zadarmo)",
             "trustPasvAddress": "Použiť pasívnu adresu zadanú serverom",
             "trustPasvAddressHelp": "Vypnuté: dátové spojenia smerujú na hostiteľa, ku ktorému ste sa pripojili, rovnako ako pri curl. Zapnite len pre server, ktorý posiela dáta z inej adresy.",
-            "discoverFastly": "Fastly Object Storage: úložisko kompatibilné s S3 v 12 regiónoch (5 GB zdarma, vyžaduje sa karta)"
+            "discoverFastly": "Fastly Object Storage: úložisko kompatibilné s S3 v 12 regiónoch (5 GB zdarma, vyžaduje sa karta)",
+            "discoverNeon": "Neon Object Storage: úložisko kompatibilné s S3 pre každú vetvu projektu (5 GB zadarmo na projekt)",
+            "discoverPuter": "Cloudové úložisko Puter cez WebDAV (25 MB zadarmo, bez karty)",
+            "discoverLifetimeCloud": "Úložisko LifetimeCloud cez WebDAV (1 GB zadarmo, bez karty)"
         },
         "shortcuts": {
             "title": "Klávesové skratky",

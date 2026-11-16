@@ -1160,6 +1160,15 @@ impl WebDavProvider {
         }
     }
 
+    /// The URL a profile's start folder is requested at (`build_url` of its
+    /// `initial_path`, before any connect-time root), for the bridge tests
+    /// that check a bookmark reopens the same resource.
+    #[cfg(test)]
+    pub(crate) fn start_folder_request_url(config: &crate::providers::ProviderConfig) -> String {
+        let provider = Self::new(WebDavConfig::from_provider_config(config).unwrap()).unwrap();
+        provider.build_url(provider.config.initial_path.as_deref().unwrap_or("/"))
+    }
+
     /// Build full URL for a path
     fn build_url(&self, path: &str) -> String {
         // Issue #264: in single-file mode every operation targets the
@@ -1491,7 +1500,7 @@ impl WebDavProvider {
     /// broke strict path-matching servers"). `/` is never in the set:
     /// segments are encoded individually and rejoined, so a trailing
     /// slash (collection form) is preserved.
-    fn encode_path(path: &str) -> String {
+    pub(crate) fn encode_path(path: &str) -> String {
         const WEBDAV_SEGMENT: &AsciiSet = &CONTROLS
             .add(b' ')
             .add(b'"')
@@ -6750,6 +6759,84 @@ mod tests {
             "{outcome:?}"
         );
         assert!(!local.exists(), "a stalled download leaves no file behind");
+    }
+
+    /// The path a `{username}` server template puts on the wire: one level of
+    /// percent-encoding, read from the request the server receives rather
+    /// than from the string we build. Plain names, `@` and a space reach the
+    /// server exactly as before the template had its own encoding; `%`, `/`,
+    /// `?` and `#` used to reach it raw, as a broken escape, a second path
+    /// level, a query or a fragment.
+    #[tokio::test]
+    async fn a_username_template_reaches_the_server_encoded_exactly_once() {
+        let cases = [
+            ("alice", "/dav/alice/"),
+            ("alice@example.com", "/dav/alice@example.com/"),
+            ("a b", "/dav/a%20b/"),
+            ("50%", "/dav/50%25/"),
+            ("a/b", "/dav/a%2Fb/"),
+            ("a?b", "/dav/a%3Fb/"),
+            ("a#b", "/dav/a%23b/"),
+        ];
+        for (user, wire_path) in cases {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let base = format!("http://{}", listener.local_addr().unwrap());
+            let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+            let record = seen.clone();
+            let app = axum::Router::new().fallback(axum::routing::any(
+                move |req: axum::extract::Request| {
+                    let record = record.clone();
+                    async move {
+                        let raw = req
+                            .uri()
+                            .path_and_query()
+                            .map(|pq| pq.as_str().to_string())
+                            .unwrap_or_default();
+                        record.lock().unwrap().push(raw.clone());
+                        // A collection, so the connect succeeds and a listing
+                        // follows through `build_url`.
+                        let body = format!(
+                            "<?xml version=\"1.0\"?><d:multistatus xmlns:d=\"DAV:\"><d:response>\
+                             <d:href>{raw}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/>\
+                             </d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>\
+                             </d:response></d:multistatus>"
+                        );
+                        (axum::http::StatusCode::MULTI_STATUS, body)
+                    }
+                },
+            ));
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("tls_mode".to_string(), "http".to_string());
+            let config = crate::providers::ProviderConfig {
+                name: "template".to_string(),
+                provider_type: crate::providers::ProviderType::WebDav,
+                host: format!("{base}/dav/{{username}}/"),
+                port: None,
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            };
+            let dav = WebDavConfig::from_provider_config(&config).expect("config");
+            let mut provider = WebDavProvider::new(dav).expect("provider");
+            provider
+                .connect()
+                .await
+                .unwrap_or_else(|e| panic!("{user}: {e}"));
+            // A request built by `build_url`, not the probe's own URL: the
+            // account segment stays encoded once there too.
+            let _ = provider.list("docs").await;
+            server.abort();
+            let seen = seen.lock().unwrap().clone();
+            assert!(!seen.is_empty(), "{user}: no request reached the server");
+            assert_eq!(seen[0], wire_path, "{user}: {seen:?}");
+            let listing = format!("{wire_path}docs");
+            assert!(
+                seen.iter().skip(1).any(|path| path.starts_with(&listing)),
+                "{user}: no listing under {listing}: {seen:?}"
+            );
+        }
     }
 
     /// Nextcloud and ownCloud refuse a PROPFIND on `/`; the root found under

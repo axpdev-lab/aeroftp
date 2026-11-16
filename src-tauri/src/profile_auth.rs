@@ -877,12 +877,13 @@ async fn provider_at(
     }
     if kind == ProviderType::FourShared {
         let client = client_settings(scope, profile, &config);
-        let raw = scope
-            .read(&format!("oauth_fourshared_{id}"))?
-            .or_else(|| {
-                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)
-            })
-            .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
+        let raw = match scope.read(&format!("oauth_fourshared_{id}"))? {
+            Some(raw) => Some(raw),
+            None => {
+                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)?
+            }
+        }
+        .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
         let (token, secret) = raw
             .split_once(':')
             .filter(|(a, b)| !a.is_empty() && !b.is_empty())

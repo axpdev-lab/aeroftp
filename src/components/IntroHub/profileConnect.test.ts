@@ -139,3 +139,28 @@ it('does not re-authenticate OAuth or 4shared after their actual connect call is
         expect(connect).not.toHaveBeenCalled();
     }
 });
+it.each([['an OAuth', 'dropbox', 'oauth2_connect'], ['a 4shared', 'fourshared', 'fourshared_connect']])("hands %s sign-in's own replacement receipt to the connect, not a later mark", async (_label, protocol, command) => {
+    state.profiles[0].protocol = protocol as ServerProfile['protocol'];
+    state.invoke.mockImplementation(async name => {
+        if (name === 'get_credential') return 'fixture-key';
+        if (name === 'oauth2_has_tokens' || name === 'fourshared_has_tokens') return true;
+        if (name === command) return { display_name: 'Account', account_email: 'a@example.test' };
+        return undefined;
+    });
+    // App's cancellableConnect: the sign-in's replacement ends, its receipt is
+    // filled, and then another connect's replacement ends before onConnect.
+    let replacements = 4;
+    const cancellableConnect = async <T,>(run: (token: string) => Promise<T>, receipt?: { mark?: unknown }) => {
+        const result = await run('token');
+        replacements += 1;
+        if (receipt) receipt.mark = { replacements, confirmations: 0 };
+        replacements += 1;
+        return result;
+    };
+    await mount({ cancellableConnect });
+    await act(async () => { await connector('fixture', new ConnectScope()); });
+    expect(connect).toHaveBeenCalledOnce();
+    const [, , , signInMark] = connect.mock.calls[0] as unknown as [unknown, unknown, unknown, { replacements: number }];
+    expect(signInMark).toEqual({ replacements: 5, confirmations: 0 });
+    expect(replacements).toBe(6);
+});

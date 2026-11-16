@@ -96,7 +96,10 @@ describe('a takeover outside a connect phase releases the remote navigation', ()
     });
 
     it('takes over through it for the OAuth and 4shared handshake of My Servers', () => {
-        expect(APP).toContain('onParkActiveSession={takeOverActiveSession}');
+        // Through the wrapper that first marks the backend uncertain.
+        expect(APP).toContain('onParkActiveSession={takeOverBeforeSignIn}');
+        const start = APP.indexOf('  const takeOverBeforeSignIn = useLatestCallback(');
+        expect(APP.slice(start, APP.indexOf('\n  });\n', start))).toContain('takeOverActiveSession();');
     });
 
     it('leaves the connect phases on their own release', () => {

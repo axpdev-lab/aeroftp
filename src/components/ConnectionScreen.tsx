@@ -10,6 +10,7 @@ import { presetConnectionOptions, connectionProfileDefaults } from '../providers
 import React, { useState, useEffect, useRef, useMemo, useId, useLayoutEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
+import { latestSettledBackendSwapToken, swapBackend } from '../hooks/useOAuth2';
 import { ProtonModeSwitchDialog } from './ProtonModeSwitchDialog';
 import { protonModeOf, runProtonModeSwitch, type ProtonSwitchPlan } from '../utils/protonModeSwitch';
 import { pickFile, pickSave } from '../utils/pickPath';
@@ -17,6 +18,7 @@ import { FolderOpen, ChevronDown, Save, Copy, Cloud, Check, Settings, Clock, Fol
 import { ConnectionParams, ProviderType, ProviderOptions, DeviceFingerprint, isOAuthProvider, isAeroCloudProvider, isFourSharedProvider, isNativeApiProtocol, isSshProtocol, providerServesQuota, providerSupportsCryptOverlay, ServerProfile } from '../types';
 import type { CryptSecretForm } from '../types';
 import { cryptSecretForms, hydratedSecretForms, secretFormsHalfRecorded } from '../utils/cryptSecretForm';
+import { expandUsernameInPath, hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import { CryptSecretFormChoice } from './CryptSecretFormChoice';
 import type { MtpDeviceInfo } from '../types/aerofile';
 import { deviceFingerprintFromMtpInfo, matchLiveDevice } from '../utils/mtpFingerprint';
@@ -131,9 +133,16 @@ interface ConnectionScreenProps {
 interface FourSharedConnectProps {
     rightColumn: React.ReactNode;
     onConnected: (displayName: string) => void | Promise<void>;
+    /** The sign-in cannot start: it would swap the backend for a connect the form then refuses. */
+    disabled?: boolean;
+    /** This attempt's own token key: the id the profile is saved under (the
+     *  one edited, or the one a new profile will take). The sign-in writes the
+     *  token there and the connect reads it there, so another form's sign-in
+     *  cannot replace it while this connect waits. */
+    tokenProfileId: string;
 }
 
-const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected }) => {
+const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onConnected, disabled, tokenProfileId }) => {
     const t = useTranslation();
     const [hasExistingTokens, setHasExistingTokens] = useState(false);
     const [isChecking, setIsChecking] = useState(true);
@@ -149,13 +158,16 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
 
     // This component owns authentication only. Profile metadata belongs to the
     // shared right column, so edit hydration and tab drafts have one source.
+    // The sign-in this form would use is the one stored under its own key
+    // (`tokenProfileId`): checked again whenever that key changes.
     useEffect(() => {
         let cancelled = false;
+        setIsChecking(true);
         void (async () => {
             try {
                 const [credentials, tokens] = await Promise.allSettled([
                     loadFourSharedCredentials(),
-                    invoke<boolean>('fourshared_has_tokens').catch(() => false),
+                    invoke<boolean>('fourshared_has_tokens', { profileId: tokenProfileId }).catch(() => false),
                 ]);
                 if (cancelled) return;
                 setHasExistingTokens(tokens.status === 'fulfilled' && !!tokens.value);
@@ -172,16 +184,17 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [tokenProfileId]);
 
     const handleConnect = async () => {
+        if (disabled) return;
         if (!consumerKey || !consumerSecret) return;
         setIsConnecting(true);
         setError(null);
         try {
-            const result = await invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
-                params: { consumer_key: consumerKey, consumer_secret: consumerSecret },
-            });
+            const result = await swapBackend(() => invoke<{ display_name: string; account_email: string | null }>('fourshared_connect', {
+                params: { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: tokenProfileId },
+            }));
             await onConnected(result.display_name || '4shared');
         } catch (err) {
             setError(String(err));
@@ -191,13 +204,13 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
     };
 
     const handleSignIn = async () => {
-        if (!consumerKey || !consumerSecret) return;
+        if (disabled || !consumerKey || !consumerSecret) return;
         setIsAuthenticating(true);
         setError(null);
         try {
             // One call: an import or another window must not see half of the pair.
             await invoke('store_oauth_app', { provider: 'fourshared', clientId: consumerKey, clientSecret: consumerSecret });
-            await countedOAuthLogin(oauthLoginKey('fourshared', null), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret } }));
+            await countedOAuthLogin(oauthLoginKey('fourshared', tokenProfileId), () => invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: tokenProfileId } }));
             setHasExistingTokens(true);
             setWantsNewAccount(false);
             await handleConnect();
@@ -210,7 +223,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
 
     const handleLogout = async () => {
         try {
-            await invoke('fourshared_logout');
+            await invoke('fourshared_logout', { profileId: tokenProfileId });
             setHasExistingTokens(false);
             setWantsNewAccount(false);
         } catch (err) {
@@ -249,7 +262,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
                 {useExistingAccount && (
                     <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1.5"><Check size={14} />{t('connection.fourshared.previouslyAuthenticated')}</p>
                 )}
-                <button type="button" onClick={useExistingAccount ? handleConnect : handleSignIn} disabled={busy || !consumerKey || !consumerSecret} className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                <button type="button" onClick={useExistingAccount ? handleConnect : handleSignIn} disabled={disabled || busy || !consumerKey || !consumerSecret} className="w-full py-3 px-4 rounded-lg text-white font-medium flex items-center justify-center gap-2 transition-colors bg-blue-500 hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
                     {busy ? (
                         <><Loader2 size={20} className="animate-spin" />{t(isAuthenticating ? 'connection.authenticating' : 'connection.connecting')}</>
                     ) : (
@@ -339,6 +352,11 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
 
     // Edit state
     const [editingProfileId, setEditingProfileId] = useState<string | null>(null);
+    // The id a new profile takes, chosen before a 4shared sign-in so the token
+    // is written where the saved profile reads it (renewed once it is used).
+    const newFourSharedProfileId = () => `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+    const [pendingFourSharedProfileId, setPendingFourSharedProfileId] = useState(newFourSharedProfileId);
+    const fourSharedTokenProfileId = editingProfileId || pendingFourSharedProfileId;
     const editingProfileIdRef = useRef<string | null>(null);
     // Snapshot of the (protocol, providerId) pair captured when the user
     // entered edit mode. Used by `modeChanged` to detect when the operator
@@ -410,6 +428,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const formProvider = selectedProvider
         || (activeProviderId ? getProviderById(activeProviderId) : null)
         || (protocol === 'swift' ? getProviderById('blomp') : null);
+
+    const usernameField = formProvider?.fields?.find(f => f.key === 'username');
+    const passwordField = formProvider?.fields?.find(f => f.key === 'password');
 
     // Track which preset fields have been unlocked for editing
     const [presetUnlocked, setPresetUnlocked] = useState<Record<string, boolean>>({});
@@ -513,14 +534,30 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     // Re-validate overlays remote path whenever the baseline remoteDir changes
     // (user edits Remote Path after typing a scope, or on hydration).
     useEffect(() => {
+        // One line on purpose: overlayScope.test.ts counts the lines that
+        // resolve or validate a scope (each must pass the protocol), and the
+        // scope is resolved once here for both checks below.
+        const resolvedScope = resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol), valid = isValidOverlayScope(resolvedScope, quickConnectDirs.remoteDir, protocol);
+        // A crypt overlay folder still holding `{username}` once the user name
+        // is filled would anchor the overlay at a folder named after the
+        // placeholder, and uploads to the real one would go up unencrypted: the
+        // backend refuses to unlock it, and this error blocks every save path
+        // (`overlaySaveBlocked`). The check runs on the scope as saved: a
+        // relative Overlays Path is nested under the Remote Path, whose
+        // template it then carries.
+        if (aeroCryptEnabled && providerSupportsCryptOverlay(protocol) && hasUnresolvedUsernameTemplate(
+            expandUsernameInPath(resolvedScope, connectionParams.username),
+        )) {
+            setOverlaysRemotePathError(USERNAME_TEMPLATE_UNRESOLVED);
+            return;
+        }
         if (!overlaysRemotePath && !overlaysRemotePathError) return;
         // Validate the RESOLVED scope: a bare subfolder name is nested under the
         // Remote Path (#369 relative UX), so it is always in scope and the error
         // never fires for normal input; the guard only survives as a safety net.
-        const valid = isValidOverlayScope(resolveOverlayScope(overlaysRemotePath, quickConnectDirs.remoteDir, protocol), quickConnectDirs.remoteDir, protocol);
         setOverlaysRemotePathError(valid ? null : t('aerocryptProfile.overlaysRemotePathInvalid'));
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t]);
+    }, [overlaysRemotePath, quickConnectDirs.remoteDir, protocol, t, aeroCryptEnabled, connectionParams.username]);
 
     // The overlay section back to the fresh-form default. A profile made after
     // an edit session must not inherit that session's overlay: its locked
@@ -1065,9 +1102,42 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
     const cryptFormsHalfRecorded =
         aeroCryptEnabled && overlayEligible && aeroCryptKind === 'rclone-crypt'
         && secretFormsHalfRecorded({ password: aeroCryptPasswordForm, salt: aeroCryptSaltForm });
-    // The overlay gates saveToServers applies, for the OAuth edit Save that
-    // bypasses it (handleOAuthMetadataSave).
-    const oauthOverlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded;
+    // The one overlay gate every save path applies before it builds the
+    // overlay fields (saveToServers, Save as new, the mode conversion, the
+    // OAuth edit Save and both OAuth sign-in completions), and that disables
+    // their buttons: a confirm that disagrees with a set-once password (#322),
+    // an invalid or unresolved Overlays Remote Path (#369, `{username}`),
+    // default-salt intent the backend would reject for entropy (#276), and an
+    // rclone-crypt form recorded for one secret only.
+    const overlaySaveBlocked = aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded;
+
+    // A sign-in component (OAuthConnect, FourSharedConnect) has already swapped
+    // the backend when its onConnected runs (`swapBackend`, which put the live
+    // tab aside first). The swap it reports on is the one that settled last
+    // (`latestSettledBackendSwapToken`, read here, in the task of that settle).
+    // The hand-off asks App first: a sign-in whose swap was overtaken by a
+    // later one, or by a connect, no longer owns the backend and is refused.
+    // Every exit that does not hand the connection to App (an overlay gate, a
+    // failed profile read or save, a throw, a refused hand-off) reports it, and
+    // App puts aside a tab opened while the swap ran. App's connect parks
+    // first, synchronously, so once the hand-off is called the tab is parked.
+    const afterBackendSwap = <A extends unknown[]>(handler: (handOff: (params?: ConnectionParams) => void, ...args: A) => Promise<void>) =>
+        async (...args: A) => {
+            const token = latestSettledBackendSwapToken();
+            let handedOff = false;
+            const handOff = (params?: ConnectionParams) => {
+                const request = { token, accepted: true };
+                window.dispatchEvent(new CustomEvent('aeroftp-sign-in-handoff', { detail: request }));
+                if (!request.accepted) return;
+                handedOff = true;
+                onConnect(params);
+            };
+            try {
+                await handler(handOff, ...args);
+            } finally {
+                if (!handedOff) window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }));
+            }
+        };
 
     // P3: build the overlay-binding profile fields + stash the overlay password
     // in the vault under aerocrypt_overlay_pw_<id> (mirrors stashFilenApiKey).
@@ -1287,26 +1357,13 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // If editing an existing profile (and not creating a copy), name/saveConnection might be implicit
         if (!protocol) return;
 
-        // #322: the crypt-overlay password is set-once; block a save where the
-        // freshly-typed password and its confirm disagree (a typo would lock the
-        // encrypted blobs forever). The save button is already disabled on
-        // mismatch (aeroCryptConfirmMismatch); this is defense-in-depth.
-        if (aeroCryptConfirmMismatch) return;
-
-        // #369: block save if the overlays remote path is invalid. The field
-        // already shows the translated error and the button is disabled while
-        // invalid; this is defense-in-depth (same pattern as the password confirm).
-        if (overlaysRemotePathError) return;
-
-        // #276: never persist default-salt intent that the backend would reject
-        // for entropy. The button is disabled in that state; defense-in-depth so
-        // the vault can never be created with a per-vault salt behind an on-
-        // looking toggle.
-        if (defaultSaltEntropyMismatch) return;
-
-        // rclone-crypt forms: both or neither (cryptFormsHalfRecorded). The
-        // button is disabled in that state; defense-in-depth.
-        if (cryptFormsHalfRecorded) return;
+        // The overlay gate (overlaySaveBlocked): a set-once password whose
+        // confirm disagrees (#322; a typo would lock the encrypted blobs
+        // forever), an invalid or unresolved Overlays Remote Path (#369),
+        // default-salt intent the backend would reject for entropy (#276), or
+        // an rclone-crypt form recorded for one secret only. The button is
+        // disabled in each state; this is defense-in-depth.
+        if (overlaySaveBlocked) return;
 
         // #369: the Remote Path is editable with a bound overlay, but it must
         // still contain the pinned anchor. Saving it elsewhere would leave the
@@ -1725,11 +1782,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // empty). The footer Save is disabled in that state; defense-in-depth.
         if (remotePathEscapesOverlay) return;
         // This Save also persists overlay edits now (oauthEditHasChanges sees
-        // them), so it needs the same three overlay gates as saveToServers:
-        // a confirm that disagrees with a set-once password (#322), an invalid
-        // Overlays Remote Path (#369), and default-salt intent the backend
-        // would reject for entropy (#276).
-        if (oauthOverlaySaveBlocked) return;
+        // them), so it applies the overlay gate every save path applies.
+        if (overlaySaveBlocked) return;
         // A read-modify-write: the strict read refuses a vault it could not
         // reach instead of answering [], which would read as "not found".
         let existingServers: ServerProfile[];
@@ -1876,7 +1930,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // profile straight into the orphaned state. Defense-in-depth behind
         // the disabled button.
         if (remotePathEscapesOverlay) return;
-        if (cryptFormsHalfRecorded) return;
+        if (overlaySaveBlocked) return;
         // Validate name is different
         const profilesRead = await readProfilesForSave();
         if (!profilesRead) return;
@@ -2049,7 +2103,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
         // persisted with a Remote Path that leaves the pinned anchor outside.
         // Defense-in-depth behind the disabled button.
         if (remotePathEscapesOverlay) return;
-        if (cryptFormsHalfRecorded) return;
+        if (overlaySaveBlocked) return;
 
         const profilesRead = await readProfilesForSave();
         if (!profilesRead) return;
@@ -2946,7 +3000,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </button>
                 <button
                     onClick={handleSaveAsNew}
-                    disabled={loading || remotePathEscapesOverlay}
+                    disabled={loading || remotePathEscapesOverlay || overlaySaveBlocked}
                     className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-green-600 hover:bg-green-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('connection.saveAsNewProfileTitle')}
                 >
@@ -2955,7 +3009,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                 </button>
                 <button
                     onClick={handleConvertMode}
-                    disabled={loading || remotePathEscapesOverlay}
+                    disabled={loading || remotePathEscapesOverlay || overlaySaveBlocked}
                     className="flex-1 min-w-[140px] py-3 px-4 rounded-lg font-medium text-white bg-orange-600 hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     title={t('connection.convertReplacesOriginal')}
                 >
@@ -3184,6 +3238,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             {overlaysRemotePathError && (
                                 <p className="mt-1 text-xs text-red-600 dark:text-red-400">{overlaysRemotePathError}</p>
                             )}
+
                         </div>
                         <div className="rounded-lg border border-emerald-300/60 dark:border-emerald-700/50 bg-emerald-50/50 dark:bg-emerald-900/20 p-3 space-y-2">
                         <Checkbox
@@ -3640,7 +3695,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </button>
                         )}
                         {showCancelSaveAsNew && editingProfileId && (
-                            <button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay || cryptFormsHalfRecorded} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title={t('connection.saveAsNew')}>
+                            <button onClick={handleSaveAsNew} disabled={remotePathEscapesOverlay || overlaySaveBlocked} className="px-4 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" title={t('connection.saveAsNew')}>
                                 <Copy size={18} />
                             </button>
                         )}
@@ -3651,7 +3706,7 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                         )}
                         <button
                             onClick={saveOverride || handleConnectAndSave}
-                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || aeroCryptConfirmMismatch || !!overlaysRemotePathError || defaultSaltEntropyMismatch || cryptFormsHalfRecorded || remotePathEscapesOverlay)}
+                            disabled={saveOverride ? (loading || btnDisabled) : (loading || btnDisabled || overlaySaveBlocked || remotePathEscapesOverlay)}
                             className={`${(showCancelSaveAsNew || cancelOverride) ? 'flex-1' : 'w-full'} py-3 rounded-lg font-medium text-white cursor-pointer active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-[0_1px_3px_rgba(0,0,0,0.08)] dark:shadow-[0_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50 ${loading ? 'bg-gray-400 !cursor-not-allowed' : buttonColorClass}`}
                         >
                             {loading ? (
@@ -4047,10 +4102,12 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                             </div>
                         ) : isFourSharedProvider(protocol) ? (
                             <FourSharedConnect
+                                tokenProfileId={fourSharedTokenProfileId}
+                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
-                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || oauthOverlaySaveBlocked,
+                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || overlaySaveBlocked,
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
@@ -4059,8 +4116,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         }
                                         : { disabled: false, buttonColorClass: '', hideSaveButton: true },
                                 )}
-                                onConnected={async (displayName) => {
-                                    if (remotePathEscapesOverlay || oauthOverlaySaveBlocked) return;
+                                onConnected={afterBackendSwap(async (handOff, displayName: string) => {
+                                    if (remotePathEscapesOverlay || overlaySaveBlocked) return;
                                     let connectedSavedId: string | undefined = editingProfileId || undefined;
                                     if (saveConnection) {
                                         const profilesRead = await readProfilesForSave();
@@ -4075,7 +4132,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                         }
                                         const duplicate = editTarget || existingServers.find(s => s.name === saveName && s.protocol === protocol);
                                         if (!duplicate) {
-                                            const newId = `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
+                                            // The id this attempt signed in under, so its token is the profile's.
+                                            const newId = fourSharedTokenProfileId;
                                             const overlayFields = await aeroCryptOverlayFields(newId, undefined, undefined, undefined, credentials.write);
                                             const newServer: ServerProfile = {
                                                 id: newId,
@@ -4093,6 +4151,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                             const newServers = [...existingServers, newServer];
                                             if (!(await persistProfilesForSave(newServers, credentials, profilesUserId, profilesRevision))) return;
                                             connectedSavedId = newId;
+                                            // That id is a profile's now: the next new one takes another.
+                                            if (!editingProfileId) setPendingFourSharedProfileId(newFourSharedProfileId());
                                         } else {
                                             const overlayFields = await aeroCryptOverlayFields(duplicate.id, duplicate.hasStoredAeroCryptPassword, duplicate.hasStoredAeroCryptSalt, duplicate.hasStoredAeroCryptKeyfilePath, credentials.write);
                                             const updated = existingServers.map(s => s.id === duplicate.id ? {
@@ -4104,21 +4164,27 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                 ...overlayFields,
                                             } : s);
                                             if (!(await persistProfilesForSave(updated, credentials, profilesUserId, profilesRevision))) return;
+                                            // Saved onto another profile of that name: the token this attempt
+                                            // signed in under moves to it, inside the vault.
+                                            if (duplicate.id !== fourSharedTokenProfileId) {
+                                                await invoke('fourshared_adopt_tokens', { fromProfileId: fourSharedTokenProfileId, toProfileId: duplicate.id });
+                                            }
                                             connectedSavedId = duplicate.id;
                                         }
                                     }
-                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
-                                }}
+                                    handOff(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
+                                })}
                             />
                         ) : isOAuthProvider(protocol) ? (
                             <OAuthConnect
+                                disabled={remotePathEscapesOverlay || overlaySaveBlocked}
                                 provider={protocol as 'googledrive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zohoworkdrive' | 'yandexdisk'}
                                 initialLocalPath={quickConnectDirs.localDir}
                                 onLocalPathChange={(path) => onQuickConnectDirsChange({ ...quickConnectDirs, localDir: path })}
                                 rightColumn={renderRightColumn(
                                     editingProfileId
                                         ? {
-                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || oauthOverlaySaveBlocked,
+                                            disabled: !oauthEditHasChanges() || remotePathEscapesOverlay || overlaySaveBlocked,
                                             buttonColorClass: 'bg-green-600 hover:bg-green-700',
                                             hideSaveButton: false,
                                             saveOverride: handleOAuthMetadataSave,
@@ -4132,13 +4198,14 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                 connectionName={connectionName}
                                 onConnectionNameChange={setConnectionName}
                                 isEditing={!!editingProfileId}
-                                onConnected={async (displayName, extraOptions) => {
+                                onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {
                                     // #369: same anchor-escape rule as the other save
                                     // paths. Edit mode implies saveConnection=true, so
                                     // completing the OAuth sign-in would persist the
                                     // escaping Remote Path + overlay fields below even
                                     // though the footer Save is disabled in this state.
-                                    if (remotePathEscapesOverlay) return;
+                                    // The overlay gate applies as on every save path.
+                                    if (remotePathEscapesOverlay || overlaySaveBlocked) return;
                                     // The saved profile id this live OAuth connection maps to. Seeded
                                     // from editingProfileId (edit mode) so the connect carries a
                                     // savedServerId even when several accounts share the provider:
@@ -4200,8 +4267,8 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                     // (and unlocks its crypt overlay) regardless of how many accounts
                                     // share the provider. No id (fresh unsaved connect) keeps the old
                                     // no-arg behaviour + provider-unique linkage fallback.
-                                    onConnect(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
-                                }}
+                                    handOff(connectedSavedId ? { ...connectionParams, protocol: protocol as ProviderType, savedServerId: connectedSavedId } : undefined);
+                                })}
                             />
                         ) : isPeer && !editingProfileId && !editingProfile ? (
                             /* AeroShare peer-ADD (reached via the Discover tile ->
@@ -6305,6 +6372,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     />
                                                 )}
                                             </div>
+                                            {!isFilenDesktopBridge && usernameField?.helpText && (
+                                                <p className="text-xs text-gray-500 mt-1">{usernameField.helpText}</p>
+                                            )}
                                         </div>
                                         {/* Password: not applicable to an AeroShare friend (peer carries
                                             no password; the binding rides in options.peer*). */}
@@ -6332,6 +6402,9 @@ export const ConnectionScreen: React.FC<ConnectionScreenProps> = ({
                                                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                                                 </button>
                                             </div>
+                                            {!isFilenDesktopBridge && passwordField?.helpText && (
+                                                <p className="text-xs text-gray-500 mt-1">{passwordField.helpText}</p>
+                                            )}
                                             {isFilenDesktopBridge && (
                                                 <p className={`mt-1.5 text-xs ${filenBridgeCredentialIssue ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}`}>
                                                     {filenBridgeCredentialIssue

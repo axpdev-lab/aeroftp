@@ -29,6 +29,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useTauriListener, guardedUnlisten } from './hooks/useTauriListener';
 import { useSelectionFolderSizes } from './hooks/useSelectionFolderSizes';
+import type { BackendSwapDetail } from './hooks/useOAuth2';
+import { getConnectionPreset } from './providers/connectionManifest';
 import { pickFile } from './utils/pickPath';
 import { homeDir, downloadDir } from '@tauri-apps/api/path';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -52,6 +54,7 @@ import { overlayWarningTitleKey } from './utils/overlayWarningTitle';
 import { refusalFor, type OverlayRefusal } from './utils/overlayRefusal';
 import { canonicalSyncSuffixEqual, isWithinSyncFolder, relativeSyncSegments } from './utils/syncNavigationPath';
 import { cryptSyncBoundaryActive, planProviderSyncMirror, syncMirrorConflictText } from './utils/syncNavigationMirror';
+
 
 interface DownloadFolderParams {
   expected_gui_target?: number;
@@ -287,13 +290,14 @@ import { previewRouteFor } from './utils/previewRoute';
 import { useOpenRequests } from './hooks/useOpenRequests';
 import { createNavigationGate, OS_OPEN_NAV_WAIT_MS } from './utils/navigationGate';
 import { addFolderTabs, mergeOpenBatch, openInFolderTab, planLocalOpen, sameLocalFolder, settleReusedTab, takeTabSelection, type LastLocalOpen, type LocalOpenGroup } from './utils/openRequestPlan';
-import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, isConnectCancelledError, isConnectHardTimeoutError } from './utils/connectCancel';
+import { CONNECT_CANCELLED_MARKER, CONNECT_HARD_TIMEOUT_MARKER, CONNECT_SUPERSEDED_MARKER, ConnectEarlierNotStoppedError, isConnectCancelledError, isConnectEarlierNotStoppedError, isConnectHardTimeoutError, isConnectSupersededError } from './utils/connectCancel';
 import { shouldPersistUsedScan } from './utils/usedScanPersist';
 import { usedScanBoundKey } from './utils/usedScanBound';
 import type { UpdateVerificationInfo } from './utils/updateVerification';
 import { UpdateVerificationPanel } from './components/UpdateVerificationPanel';
 import { safePickerStartDir } from './utils/safePickerDir';
 import { loginRelativeForm, normalizeOverlayAnchor } from './utils/overlayScope';
+import { connectStartFolder } from './utils/usernameTemplate';
 import { isLoginRelativeScope, knownCryptScope, placeUnderLoginFolder, profileOverlayScope, normCryptScope, normLandingPath, restoredTransferCryptScope, restoredTransferRequiresOverlay, connectLandsOutsideOverlay, isWithinCryptScope, resolveBoundCryptScope, resolveUsernameTemplate, shouldAutoUnlockOverlayOnConnect } from './utils/cryptScope';
 import { migrateFilenApiKeysToVault } from './utils/filenApiKeyMigration';
 import { CustomTitlebar } from './components/CustomTitlebar';
@@ -608,6 +612,7 @@ import { QueuedTargetChangedError, type QueuedTarget } from './utils/queuedTarge
 import { countedOAuthLogin, oauthLoginCount, oauthLoginKey } from './utils/oauthLogins';
 import { remoteFolderSizes, type RemoteFolderSizes, type RemoteSizeProgress } from './utils/remoteFolderSizes';
 import { probeAliveArgs, reusesOpenTab } from './utils/probeAliveArgs';
+import type { BackendMark, ConnectReceipt } from './utils/backendMark';
 import { asLocalFileEntry, deepestLocalRowsFirst, focusedLocalPanel, localClipboardEntries, localRowFolder, localRowFolderKey, localRowName, localRowNameClashes, localPanelShows, selectedLocalRows, selectedLocalTrees } from './utils/localSelection';
 
 // W3.1 (#270.5): marker the backend connect commands return when the user
@@ -1108,11 +1113,54 @@ const App: React.FC = () => {
   // Connections confirmed so far: a teardown that times out leaves the
   // backend uncertain unless one was confirmed after it started.
   const backendConfirmationsRef = useRef(0);
+  // Replacements ended so far (`replacingBackend`). A connect reads it as its
+  // own invoke returns and checks it again before it confirms its tab: one
+  // more means another replacement ended meanwhile, and the backend holds that
+  // one's provider.
+  const backendReplacementSeqRef = useRef(0);
+  /** Where the backend stands as a connect's own invoke returns: the
+   *  replacements ended and the connections confirmed so far. `createSession`
+   *  compares it to refuse a tab whose backend was replaced meanwhile, and to
+   *  leave alone the state of a connect that confirmed after it. */
+  const backendMark = (): BackendMark => ({
+    replacements: backendReplacementSeqRef.current,
+    confirmations: backendConfirmationsRef.current,
+  });
   /** A tab is connected to the backend again: its state is known. Called at
    *  the points a connect or a switch confirms its connection, and only there. */
   const confirmBackendConnection = () => {
     backendUncertainRef.current = false;
     backendConfirmationsRef.current += 1;
+  };
+  /** Starts an invoke that replaces the backend's provider (every connect,
+   *  a tab switch, a sign-in swap, the resume of a restored transfer) and
+   *  returns its end, to call in a finally. While one runs, nothing is bound
+   *  to the live tab (`backendServesLiveTab`, through `backendTeardownsRef`):
+   *  the backend may already hold the new provider before the invoke
+   *  returns. At its end, a tab another
+   *  connect confirmed meanwhile has had its backend replaced, so the backend
+   *  is marked uncertain until a connect confirms a tab again. The end
+   *  returns the mark it leaves (`backendMark`), the receipt of this
+   *  replacement. */
+  const replacingBackend = () => {
+    const confirmedBefore = backendConfirmationsRef.current;
+    // Counted with the teardowns: either way the live tab is not what the
+    // backend serves until it ends (`backendServesLiveTab`).
+    backendTeardownsRef.current += 1;
+    let receipt: BackendMark | null = null;
+    // `replaced` false: the backend refused this invoke before it touched the
+    // slot (a connect cancelled before its install), so nothing was replaced
+    // and a tab another connect confirmed meanwhile keeps its backend.
+    return (replaced = true): BackendMark => {
+      if (receipt) return receipt;
+      backendTeardownsRef.current -= 1;
+      if (replaced) {
+        backendReplacementSeqRef.current += 1;
+        if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
+      }
+      receipt = backendMark();
+      return receipt;
+    };
   };
   const remoteConnectPhaseVersionRef = useRef(0);
   // The session tabs open when a connect from the servers screen or the Quick
@@ -2744,6 +2792,107 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Every connect in flight, by its connect token, with the connect phase that
+  // was current when it began. The backend keeps one provider slot: a connect
+  // a newer phase overtook must not install over the newer one's, so a new
+  // phase cancels the connects that began before it (`supersedeOlderConnects`)
+  // and the backend refuses a cancelled connect's install under the provider
+  // lock. A superseded connect ends as a cancel without the cancel toast.
+  const inFlightConnectsRef = useRef(new Map<string, number>());
+  const supersededConnectsRef = useRef(new Set<string>());
+  // The cancels the latest phase start sent, until the backend has them: a
+  // connect sends its own command only after them (`trackedConnect`), so an
+  // older connect is cancelled before the newer one can take the slot.
+  const supersedeCancelsRef = useRef<Promise<void>>(Promise.resolve());
+  // The superseded connects whose cancel never reached the backend (both
+  // deliveries failed): while one still runs it may install, so no newer
+  // connect is sent (`trackedConnect` fails it closed) and AeroCloud does not
+  // reuse the backend.
+  const undeliveredCancelsRef = useRef(new Set<string>());
+  /** Whether a superseded connect whose cancel never reached the backend is
+   *  still running (other than `own`). */
+  const uncancelledOlderConnectRuns = (own?: string) =>
+    [...undeliveredCancelsRef.current].some(token => token !== own && inFlightConnectsRef.current.has(token));
+  // The error a connect left unsent for one of them ends with, in the
+  // language of now (stable: the connect wrappers keep it).
+  const earlierConnectNotStopped = useLatestCallback(() =>
+    new ConnectEarlierNotStoppedError(t('toast.connectEarlierNotStopped')));
+  const supersedeOlderConnects = (phaseVersion: number): Promise<void> => {
+    const cancels: Promise<unknown>[] = [];
+    for (const [token, beganAt] of inFlightConnectsRef.current) {
+      if (beganAt >= phaseVersion || supersededConnectsRef.current.has(token)) continue;
+      supersededConnectsRef.current.add(token);
+      // The backend never refuses a cancel (one for a connect not yet
+      // registered is kept for it); a failed delivery is sent once more.
+      const cancel = () => invoke('cancel_connection', { token });
+      cancels.push(cancel().catch(() => cancel()).catch((e) => {
+        logger.debug('[supersedeOlderConnects] cancel_connection failed twice:', e);
+        undeliveredCancelsRef.current.add(token);
+      }));
+    }
+    const sent = Promise.all([supersedeCancelsRef.current, ...cancels]).then(() => undefined);
+    supersedeCancelsRef.current = sent;
+    return sent;
+  };
+  /** Runs a connect under `token`, tracked for `supersedeOlderConnects`; one
+   *  a newer phase cancelled rejects with CONNECT_SUPERSEDED. `beganAt` is the
+   *  phase the connect belongs to (default: the current one); one a newer
+   *  phase already overtook is not sent. */
+  const trackedConnect = async <T,>(
+    run: (connectToken: string) => Promise<T>,
+    token: string,
+    beganAt = remoteConnectPhaseVersionRef.current,
+  ): Promise<T> => {
+    inFlightConnectsRef.current.set(token, beganAt);
+    try {
+      if (beganAt < remoteConnectPhaseVersionRef.current) {
+        supersededConnectsRef.current.add(token);
+        throw new Error(CONNECT_SUPERSEDED_MARKER);
+      }
+      // The older connects this phase cancelled are cancelled in the backend
+      // before this one is sent; one whose cancel never got there and that
+      // still runs could install over this one, so this one is not sent.
+      await supersedeCancelsRef.current;
+      if (uncancelledOlderConnectRuns(token)) throw earlierConnectNotStopped();
+      const result = await run(token);
+      // Overtaken while it ran but answered anyway (its install beat the
+      // cancel): the newer phase owns the workspace, so this one's success is
+      // not applied.
+      if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
+      return result;
+    } catch (error) {
+      if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
+      throw error;
+    } finally {
+      inFlightConnectsRef.current.delete(token);
+      supersededConnectsRef.current.delete(token);
+      undeliveredCancelsRef.current.delete(token);
+    }
+  };
+  /** A connect outside `cancellableConnect` (a device open, a resume's sign-in
+   *  connect) under its own tracked token; superseded, it ends as a cancel.
+   *  `outcome.replaced` becomes true once a connect sent through it may have
+   *  replaced the backend: not when it was never sent (`trackedConnect`) or
+   *  the backend refused it as cancelled before its install. */
+  const phaseCancellable = async <T,>(run: (connectToken: string) => Promise<T>, outcome?: { replaced: boolean }): Promise<T> => {
+    try {
+      return await trackedConnect(async (connectToken) => {
+        let replaced = true;
+        try {
+          return await run(connectToken);
+        } catch (error) {
+          if (isConnectCancelledError(error)) replaced = false;
+          throw error;
+        } finally {
+          if (outcome && replaced) outcome.replaced = true;
+        }
+      }, makeConnectToken());
+    } catch (error) {
+      if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
+      throw error;
+    }
+  };
+
   // Central cancellable connect wrapper. Every connect phase funnels through
   // here so the token plumbing, Esc handling, still-connecting modal, and the
   // cancelled-vs-failed toast distinction live in ONE place instead of ad-hoc
@@ -2753,9 +2902,26 @@ const App: React.FC = () => {
   // one registers under it and a cancel reaches whichever phase is in flight.
   const cancellableConnect = useCallback(async <T,>(
     run: (connectToken: string) => Promise<T>,
+    receipt?: ConnectReceipt,
   ): Promise<T> => {
     const token = beginConnectAttempt();
     let hardTimer: ReturnType<typeof setTimeout> | null = null;
+    // This connect replaces the backend's provider (`replacingBackend`),
+    // unless the backend refuses it as cancelled before its install.
+    const endReplacement = replacingBackend();
+    // Sent: the connect's command went out (`trackedConnect` may refuse it
+    // before, then nothing was replaced).
+    let sent = false;
+    let refusedBeforeInstall = false;
+    const runRefusable = async (connectToken: string): Promise<T> => {
+      sent = true;
+      try {
+        return await run(connectToken);
+      } catch (error) {
+        if (isConnectCancelledError(error)) refusedBeforeInstall = true;
+        throw error;
+      }
+    };
     try {
       // Race the connect against a hard-timeout deadline so even a backend
       // command that can never answer (a panic strands the IPC resolver) still
@@ -2769,9 +2935,16 @@ const App: React.FC = () => {
         };
         extendHardTimeoutRef.current = armHardTimeout;
         armHardTimeout();
-        run(token).then(resolve, reject);
+        trackedConnect(runRefusable, token, receipt?.phase).then(resolve, reject);
       });
     } catch (error) {
+      // Overtaken by a newer connect phase: a cancel, without the cancel toast
+      // (the user did not cancel; the newer connect owns the workspace).
+      if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
+      // Not sent (an older connect could still install, `trackedConnect`): a
+      // failure, and nothing was replaced (`sent`). Before the cancel check:
+      // the user did not cancel this one.
+      if (isConnectEarlierNotStoppedError(error)) throw error;
       // Hard-timeout backstop: the connect never answered. This is a real
       // failure, not a user cancel, so signal a best-effort backend cancel and
       // re-throw a clean error string that the per-flow catch surfaces via its
@@ -2794,6 +2967,8 @@ const App: React.FC = () => {
       if (hardTimer) clearTimeout(hardTimer);
       extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
+      const mark = endReplacement(sent && !refusedBeforeInstall);
+      if (receipt) receipt.mark = mark;
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
 
@@ -2828,12 +3003,13 @@ const App: React.FC = () => {
     command: 'provider_connect' | 'connect_ftp',
     params: Record<string, unknown>,
     scope?: ConnectScope,
+    receipt?: ConnectReceipt,
   ): Promise<T> => cancellableConnect<T>((token) => {
     wentOnOverScpRef.current = false;
     return scope ? scope.cancellable(() => invoke<void>('cancel_connection', { token }),
       () => invoke<T>(command, { params: { ...params, connectToken: token } })) :
       invoke<T>(command, { params: { ...params, connectToken: token } });
-  }).then((answer) => {
+  }, receipt).then((answer) => {
     if (command === 'provider_connect') showConnectWarnings(answer);
     return answer;
   }), [cancellableConnect, showConnectWarnings]);
@@ -5222,6 +5398,16 @@ const App: React.FC = () => {
     parkActiveSession(keepDeviceTab);
   });
 
+  /** My Servers' OAuth and 4shared sign-in puts the live tab aside after its
+   *  awaits, right before its connect replaces the backend: marked uncertain
+   *  at once, so no queued write passes `backendServesLiveTab` before React
+   *  commits the park (`isConnected` reads true until then), as the
+   *  connection form's sign-in swap does. */
+  const takeOverBeforeSignIn = useLatestCallback(() => {
+    backendUncertainRef.current = true;
+    takeOverActiveSession();
+  });
+
   /** Shared open path for PLACES exclusive fallback and saved device profile card.
    *  Gvfs-first: if the desktop already mounted the phone, install an FS-backed
    *  provider rooted at that mount (no libmtp; no bus fight). Else exclusive
@@ -5233,14 +5419,25 @@ const App: React.FC = () => {
     connectScope = new ConnectScope(),
   ) => {
     connectScope.assert();
+    // The open replaces the backend: it begins a connect phase, so an older
+    // connect still in flight is cancelled, and a newer one stops it after
+    // any await, before it ends a connection or installs.
+    const openedAtPhase = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(openedAtPhase);
+    const stillCurrent = () => {
+      if (openedAtPhase !== remoteConnectPhaseVersionRef.current) throw new Error(CONNECT_SUPERSEDED_MARKER);
+    };
     try {
       // The live tab is put aside before its backend goes, and a listing it
       // still has running can no longer land on the device session.
       takeOverActiveSession();
       // Drop any live remote/FTP slot first; open also drains ProviderState.
       try { await connectScope.step(() => invoke('provider_disconnect')); } catch { connectScope.assert(); /* not connected */ }
+      stillCurrent();
       try { await connectScope.step(() => invoke('disconnect_ftp')); } catch { connectScope.assert(); /* not connected */ }
+      stillCurrent();
       try { await connectScope.step(() => invoke('mtp_close_device', { deviceId: null })); } catch { connectScope.assert(); /* none */ }
+      stillCurrent();
 
       // Ride gvfs when the desktop already holds the single MTP session.
       // Exclusive libmtp after automount always loses (PTP_ERROR_IO) and can wedge
@@ -5252,24 +5449,43 @@ const App: React.FC = () => {
       } catch { connectScope.assert();
         gvfsMount = null;
       }
+      stillCurrent();
 
       const displayHint =
         profile?.name || device.displayName || undefined;
       let session: MtpSessionInfo;
-      if (gvfsMount) {
-        session = await connectScope.step(() => invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
-          mountPath: gvfsMount,
-          deviceId: device.deviceId,
-          displayName: displayHint ?? null,
-        }));
-        mtpGvfsMountPathRef.current = gvfsMount;
-      } else {
-        session = await connectScope.step(() => invoke<MtpSessionInfo>('mtp_open_device', {
-          deviceId: device.deviceId,
-        }));
-        mtpGvfsMountPathRef.current = null;
+      // The open installs the device into the provider slot: a replacement,
+      // counted as every connect's is (`replacingBackend`).
+      const endDeviceReplacement = replacingBackend();
+      // Refused or never sent, the open replaced nothing (`phaseCancellable`).
+      const deviceOpen = { replaced: false };
+      try {
+        // Under its own connect token: a newer phase cancels it, and the
+        // backend then refuses its install.
+        if (gvfsMount) {
+          session = await connectScope.step(() => phaseCancellable(connectToken => invoke<MtpSessionInfo>('mtp_open_gvfs_mount', {
+            mountPath: gvfsMount,
+            deviceId: device.deviceId,
+            displayName: displayHint ?? null,
+            connectToken,
+          }), deviceOpen));
+          stillCurrent();
+          mtpGvfsMountPathRef.current = gvfsMount;
+        } else {
+          session = await connectScope.step(() => phaseCancellable(connectToken => invoke<MtpSessionInfo>('mtp_open_device', {
+            deviceId: device.deviceId,
+            connectToken,
+          }), deviceOpen));
+          stillCurrent();
+          mtpGvfsMountPathRef.current = null;
+        }
+      } finally {
+        endDeviceReplacement(deviceOpen.replaced);
       }
       setActivePortableDeviceId(session.deviceId);
+      // The device holds the backend now (its own replacement has ended):
+      // checked again before its tab is confirmed, after the listing below.
+      const deviceReplacedAt = backendReplacementSeqRef.current;
 
       const displayName =
         profile?.name || session.displayName || device.displayName || t('sidebar.portable_device');
@@ -5380,6 +5596,9 @@ const App: React.FC = () => {
 
       // Session tab so disconnect / multi-tab plumbing treats MTP like any provider.
       // savedServerId makes activeProfileIds pulse the My Servers card.
+      if (backendReplacementSeqRef.current !== deviceReplacedAt) {
+        throw new Error(t('toast.remoteTargetChanged'));
+      }
       // The backend is connected to this tab's server: no longer uncertain.
       confirmBackendConnection();
       const newSession: FtpSession = {
@@ -5433,6 +5652,11 @@ const App: React.FC = () => {
         }
       }
     } catch (err) { connectScope.assert();
+      // Overtaken by a newer connect: that one owns the device ids, the
+      // panels and the toast. Reported as a cancel to the caller.
+      if (isConnectSupersededError(err) || openedAtPhase !== remoteConnectPhaseVersionRef.current) {
+        throw new Error(CONNECT_CANCELLED_MARKER);
+      }
       setActivePortableDeviceId(null);
       mtpGvfsMountPathRef.current = null;
       const errorMessage = typeof err === 'string' ? err : String(err);
@@ -7088,6 +7312,7 @@ const App: React.FC = () => {
       // Invalidate old scope-entry work and release its latch and spinner.
       releaseRemoteNavigation();
       const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+      supersedeOlderConnects(phaseVersion);
       remoteConnectPhaseRef.current = 'connect';
       connectStartSessionsRef.current = { phaseVersion, ids: new Set(sessions.map(s => s.id)) };
       try {
@@ -7624,6 +7849,19 @@ const App: React.FC = () => {
         port: params.port || 443,
       };
     }
+    // A named WebDAV preset saved with an empty host (LifetimeCloud, Puter)
+    // connects to the manifest's server, as the CLI and the bridges do
+    // (`apply_webdav_profile_defaults`): blank, the resume of a saved
+    // profile, a tab switch and the quick connect stopped at "fill in the
+    // endpoint". Only the preset's own server: `custom-webdav` and the
+    // protocol default leave a blank host blank.
+    if (protocol === 'webdav' && !(params.server ?? '').trim() && params.providerId) {
+      const preset = getConnectionPreset(params.providerId);
+      const server = preset?.protocol === 'webdav' && !preset.generic
+        ? String(preset.defaults.server ?? '').trim()
+        : '';
+      if (server) return { ...params, server };
+    }
     return params;
   };
 
@@ -8087,6 +8325,7 @@ const App: React.FC = () => {
     // A branch switch disconnects and logs in again, so it is a connect: a
     // Cancel on its listing leaves no session to fall back to.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'connect';
     try {
       const { effectiveParams, providerParams } = await buildProviderParams(nextParams, currentRemotePath || null);
@@ -8095,6 +8334,9 @@ const App: React.FC = () => {
       cancelRemoteSearch();
       setRemoteSearchResults(null);
       await runConnect('provider_connect', providerParams);
+      // The same tab is connected to the backend again, on its new branch,
+      // unless a newer connect owns the workspace now.
+      if (phaseVersion === remoteConnectPhaseVersionRef.current) confirmBackendConnection();
 
       // One spinner over both attempts: the retry at the provider root is the
       // same wait to the user, and it must not fire when the first attempt was
@@ -8487,6 +8729,68 @@ const App: React.FC = () => {
     return () => window.removeEventListener('aeroftp-cancel-totp-autoretry', cancel);
   }, []);
 
+  // A sign-in in the connection form (OAuthConnect, FourSharedConnect) swaps
+  // the backend before the form decides (`swapBackend`). The backend holds the
+  // provider of whichever swap settles last, so the live tab is put aside both
+  // before a swap and when it settles: a tab connected while the swap ran had
+  // its backend replaced. Until a connect confirms a tab again, nothing is
+  // bound to the backend: it is marked uncertain, which `backendServesLiveTab`
+  // reads synchronously, so the transfer queue and the direct actions cannot
+  // reach the new account before React commits the park.
+  // The form's report names its own sign-in. A hand-off is accepted only from
+  // the sign-in that settled last with no connect since (another sign-in or a
+  // connect has the backend now: it is refused and says so); an abandoned one
+  // puts aside a tab opened while it ran, and a report on an older sign-in, or
+  // one that comes after another connect began, is left alone.
+  const backendSwapRef = useRef<{ token: number; settledAtPhase: number } | null>(null);
+  const refuseStaleHandoff = useLatestCallback(() => {
+    notify.error(t('connection.connectionFailed'), t('toast.remoteTargetChanged'));
+  });
+  useEffect(() => {
+    // The end of each swap still in flight (`replacingBackend`).
+    const swapsInFlight = new Map<number, () => void>();
+    const ownsBackend = (token: number | undefined) => {
+      const last = backendSwapRef.current;
+      return !!last && last.token === token && last.settledAtPhase === remoteConnectPhaseVersionRef.current;
+    };
+    const swap = (event: Event) => {
+      const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
+      // `swapBackend` tells every start one settle, after a throw or a
+      // rejection too.
+      if (phase === 'start') {
+        swapsInFlight.set(token, replacingBackend());
+      } else {
+        swapsInFlight.get(token)?.();
+        swapsInFlight.delete(token);
+        backendSwapRef.current = { token, settledAtPhase: remoteConnectPhaseVersionRef.current };
+      }
+      // Nothing is bound to the backend until a connect or a switch confirms
+      // a tab again (`confirmBackendConnection`). Set synchronously, so a
+      // queued write cannot pass `backendServesLiveTab` before React commits
+      // the park: this runs after an await, and `isConnected` reads true until
+      // then.
+      backendUncertainRef.current = true;
+      takeOverActiveSession();
+    };
+    const handoff = (event: Event) => {
+      const request = (event as CustomEvent<{ token: number; accepted: boolean }>).detail;
+      if (ownsBackend(request.token)) return;
+      request.accepted = false;
+      refuseStaleHandoff();
+    };
+    const abandoned = (event: Event) => {
+      if (ownsBackend((event as CustomEvent<{ token?: number }>).detail?.token)) parkActiveSession();
+    };
+    window.addEventListener('aeroftp-backend-swap', swap);
+    window.addEventListener('aeroftp-sign-in-handoff', handoff);
+    window.addEventListener('aeroftp-sign-in-abandoned', abandoned);
+    return () => {
+      window.removeEventListener('aeroftp-backend-swap', swap);
+      window.removeEventListener('aeroftp-sign-in-handoff', handoff);
+      window.removeEventListener('aeroftp-sign-in-abandoned', abandoned);
+    };
+  }, []);
+
   // FTP operations
   const connectToFtpImpl = async (
     overrideParams?: ConnectionParams,
@@ -8496,6 +8800,10 @@ const App: React.FC = () => {
     // the branches below that swallow a failed listing (rather than throwing out
     // of here) test it before they go on to build the session.
     const connectEpoch = connectAbortEpochRef.current;
+    // The connect phase this connect belongs to (`asConnectPhase` began it):
+    // one a newer phase overtook during a preflight neither ends the newer
+    // connection nor sends its own (`trackedConnect`).
+    const connectPhase = remoteConnectPhaseVersionRef.current;
     // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
     // auto-retry. Without this, entering the API key (or any manual reconnect)
     // mid-countdown leaves the bottom-right countdown popup up and its 1s timer
@@ -8530,6 +8838,15 @@ const App: React.FC = () => {
     logger.debug('[connectToFtp] effectiveParams:', effectiveParams);
     logger.debug('[connectToFtp] protocol:', protocol);
     const isOAuth = !!protocol && (isOAuthProvider(protocol) || isFourSharedProvider(protocol));
+    // An OAuth connect arrives after its sign-in's swap returned: the
+    // replacements ended by now are the ones this tab may sit on.
+    const oauthReplacedAt = backendMark();
+    if (isOAuth) {
+      // An OAuth connect arrives after the connection form's sign-in swapped
+      // the backend: the live tab is put aside before any lookup, await or exit
+      // below, so none of them leaves it live over another account's backend.
+      parkActiveSession();
+    }
     const isProvider = !!protocol && !isOAuth && usesProviderApi(protocol);
     logger.debug('[connectToFtp] isOAuth:', isOAuth, 'isProvider:', isProvider);
 
@@ -8586,10 +8903,18 @@ const App: React.FC = () => {
     }
 
     if (isOAuth) {
+      // A start folder the user name cannot fill is refused before the view
+      // or the session changes (connectStartFolder).
+      let oauthStartFolder: string | null;
+      try {
+        oauthStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
+      } catch (error) {
+        notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+        setLoading(false);
+        return;
+      }
       // OAuth provider is already connected via OAuthConnect/FourSharedConnect component
-      // Just switch to file manager view. The component replaced the backend,
-      // so the live tab is put aside first.
-      parkActiveSession();
+      // Just switch to file manager view; the live tab was put aside above.
       setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
       setLoading(false);
       setShowConnectionScreen(false);
@@ -8604,7 +8929,7 @@ const App: React.FC = () => {
       // saved on an OAuth profile (Google Drive, Dropbox, ...) was never unlocked:
       // no decrypted names, and the path-bar overlay badge/button never appeared.
       const overlaySavedId = effectiveParams.savedServerId;
-      let oauthInitialPath = resolveUsernameTemplate(remoteDirInput, effectiveParams.username) || '/';
+      let oauthInitialPath = oauthStartFolder || '/';
       let overlayHint = overlaySavedId ? await getProfileOverlayHint(overlaySavedId, oauthInitialPath) : null;
       let oauthResponse: FileListResponse | null = null;
       if (overlayHint && overlaySavedId) {
@@ -8686,15 +9011,16 @@ const App: React.FC = () => {
         await changeLocalDirectory(oauthLocalDir);
       }
       // Create session: profile name titles the tab, fresh files avoid stale closure
-      await createSession(
+      if (await createSession(
         oauthTabName,
         effectiveParams,
         oauthResponse?.current_path || oauthInitialPath,
         oauthLocalDir || currentLocalPath,
         overlayHint && !overlayHint.opensOutside ? [] : oauthResponse?.files,
         undefined,
-        overlayHint ? oauthInitialPath : undefined
-      );
+        overlayHint ? oauthInitialPath : undefined,
+        oauthReplacedAt,
+      ) === 'stale') return;
       if (overlayHint && overlaySavedId) {
         markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
       }
@@ -8727,6 +9053,16 @@ const App: React.FC = () => {
         return;
       }
 
+      // A start folder the user name cannot fill is refused before anything
+      // changes, a reused session included (connectStartFolder).
+      let providerStartFolder: string | null;
+      try {
+        providerStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
+      } catch (error) {
+        notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+        return;
+      }
+
       // #128-C: re-entering an account that is still connected in the backend
       // must not tear the session down and force a fresh 2FA/TOTP login. The 🏠
       // Home button (handleNewTabFromSavedServer) caches the active tab WITHOUT
@@ -8744,9 +9080,19 @@ const App: React.FC = () => {
         });
         if (reusable) {
           let alive = false;
+          // Read before the probe: a replacement that ends while it runs (a
+          // sign-in swap) leaves a backend that is not this tab's.
+          const probedAt = backendReplacementSeqRef.current;
           try {
             alive = await invoke<boolean>('provider_probe_alive', probeAliveArgs(reusable.connectionParams, protocol));
           } catch { alive = false; }
+          // A newer connect began meanwhile: it owns the workspace.
+          if (connectPhase !== remoteConnectPhaseVersionRef.current) return;
+          if (backendReplacementSeqRef.current !== probedAt) alive = false;
+          // A connect that replaces the backend is still running: it may have
+          // installed already, under an identity the probe cannot tell apart
+          // (a GitHub branch), so the tab is not reused on its answer.
+          if (backendTeardownsRef.current !== 0) alive = false;
           if (alive) {
             logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
             setActiveSessionId(reusable.id);
@@ -8834,6 +9180,12 @@ const App: React.FC = () => {
           const target = normalizeProviderConnectionParams(effectiveParams);
           const accepted = await checkSftpHostKey(target.server, target.port || 22);
           if (!accepted) { setLoading(false); return; }
+          // A newer connect began while the prompt was open: it owns the
+          // workspace, so this one ends here, leaving its connection alone.
+          if (connectPhase !== remoteConnectPhaseVersionRef.current) {
+            humanLog.updateEntry(logId, { status: 'cancelled' });
+            return;
+          }
         }
         // The live tab is put aside before its backend goes.
         parkActiveSession();
@@ -8854,7 +9206,7 @@ const App: React.FC = () => {
         // doc comment. Then strip the literal Nextcloud WebDAV root for
         // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles saved before
         // basePath was dropped from the preset.
-        const qcTemplateResolved = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
+        const qcTemplateResolved = providerStartFolder;
         const resolvedRemoteDir = stripLegacyNextcloudWebdavRoot(
           qcTemplateResolved,
           effectiveParams.providerId,
@@ -8869,7 +9221,9 @@ const App: React.FC = () => {
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
-        await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams));
+        const providerReceipt: ConnectReceipt = { phase: connectPhase };
+        await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams, undefined, providerReceipt));
+        const providerReplacedAt = providerReceipt.mark!;
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
         totpRetryCountRef.current = 0;
         if (connectingLogId) humanLog.updateEntry(connectingLogId, { status: 'success', message: t('activity.connected_to', { ip: connIp || connHost, port: String(effectiveParams.port || 443) }) });
@@ -8977,15 +9331,16 @@ const App: React.FC = () => {
           providerId: effectiveParams.providerId,
           savedServerId: effectiveParams.savedServerId,
         };
-        await createSession(
+        if (await createSession(
           providerName,
           sessionParams,
           response.current_path,
           quickConnectDirs.localDir || currentLocalPath,
           overlayHint && !overlayHint.opensOutside ? [] : files,
           undefined,
-          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
-        );
+          overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined,
+          providerReplacedAt,
+        ) === 'stale') return;
         if (overlayHint && overlaySavedId) {
           markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
         }
@@ -9035,6 +9390,8 @@ const App: React.FC = () => {
     const protocolLabel = connectionViaLabel(effectiveParams);
     const logId = humanLog.logStart('CONNECT', { server: effectiveParams.server, protocol: protocolLabel });
     try {
+      // Refused before any state change or request (connectStartFolder).
+      const ftpStartFolder = connectStartFolder(remoteDirInput, effectiveParams.username);
       // The live tab is put aside before its backend goes.
       parkActiveSession();
       // First disconnect any active OAuth provider to avoid conflicts
@@ -9045,11 +9402,13 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
+      const ftpReceipt: ConnectReceipt = { phase: connectPhase };
       await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
         ...(effectiveParams as unknown as Record<string, unknown>),
         // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
         trustPasvAddress: loadedOptionOn(effectiveParams.options, 'trustPasvAddress'),
-      }));
+      }, undefined, ftpReceipt));
+      const ftpReplacedAt = ftpReceipt.mark!;
       if (ftpConnLogId) humanLog.updateEntry(ftpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: ftpIp || effectiveParams.server, port: String(effectiveParams.port || 21) }) });
       // Clear the standalone connect-failure marker on a confirmed FTP/SFTP
       // login (#180 / 4486730822). Separate signal from health.
@@ -9068,7 +9427,7 @@ const App: React.FC = () => {
       // resolution (Nextcloud-based presets) happens here too, mirroring the
       // provider-API path above.
       let ftpResponse: FileListResponse | null = null;
-      const ftpResolvedRemoteDir = resolveUsernameTemplate(remoteDirInput, effectiveParams.username);
+      const ftpResolvedRemoteDir = ftpStartFolder;
       if (ftpResolvedRemoteDir) {
         // Pass protocol explicitly to avoid stale state from previous provider session
         await changeRemoteDirectory(ftpResolvedRemoteDir, effectiveParams.protocol || 'ftp');
@@ -9087,13 +9446,16 @@ const App: React.FC = () => {
         await changeLocalDirectory(quickConnectDirs.localDir);
       }
       // Create session tab for FTP/FTPS/SFTP connections: pass fresh files to avoid stale closure
-      await createSession(
+      if (await createSession(
         effectiveParams.displayName || effectiveParams.server,
         effectiveParams,
         ftpResponse?.current_path || remoteDirInput || currentRemotePath,
         quickConnectDirs.localDir || currentLocalPath,
-        ftpResponse?.files
-      );
+        ftpResponse?.files,
+        undefined,
+        undefined,
+        ftpReplacedAt,
+      ) === 'stale') return;
     } catch (error) {
       // W3.1: user-cancelled connect, not a failure (see runConnect).
       if (isConnectCancelledError(error)) return;
@@ -9199,7 +9561,7 @@ const App: React.FC = () => {
   // Session Management for Multi-Tab
   // Accept optional file lists to avoid stale closure captures: callers that
   // just did setRemoteFiles/setLocalFiles should pass the fresh arrays here.
-  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string) => {
+  const createSession = async (serverName: string, params: ConnectionParams, remotePath: string, localPath: string, freshRemoteFiles?: RemoteFile[], freshLocalFiles?: LocalFile[], initialPathOverride?: string, replacedAt?: BackendMark): Promise<'live' | 'stale'> => {
     // Deep copy params to prevent reference mutation when switching tabs
     const paramsCopy: ConnectionParams = JSON.parse(JSON.stringify(params));
 
@@ -9219,14 +9581,26 @@ const App: React.FC = () => {
       }
     } catch { /* ignore */ }
 
-    // The backend is connected to this tab's server: no longer uncertain.
-    confirmBackendConnection();
+    // Another invoke replaced the backend after this connect's own returned
+    // (`replacedAt`, read then by the caller): the backend holds that one's
+    // provider. The tab is kept, cached, to reconnect with a click, and nothing
+    // is confirmed or made live.
+    const replacedMeanwhile = replacedAt !== undefined && backendReplacementSeqRef.current !== replacedAt.replacements;
+    if (replacedMeanwhile) {
+      // The flow set the workspace connected before this; undone only when no
+      // connect confirmed a tab since: a newer one that did owns that state.
+      if (backendConfirmationsRef.current === replacedAt.confirmations) setIsConnected(false);
+      notify.error(t('connection.connectionFailed'), t('toast.remoteTargetChanged'));
+    } else {
+      // The backend is connected to this tab's server: no longer uncertain.
+      confirmBackendConnection();
+    }
     const newSession: FtpSession = {
       id: `session_${Date.now()}`,
       serverId: serverName,
       savedServerId: paramsCopy.savedServerId,
       serverName,
-      status: 'connected',
+      status: replacedMeanwhile ? 'cached' : 'connected',
       remotePath,
       localPath,
       remoteFiles: freshRemoteFiles ? [...freshRemoteFiles] : [...remoteFiles],
@@ -9243,11 +9617,18 @@ const App: React.FC = () => {
       syncBasePaths: null,
       aeroVaultOverlaySession: null,
     };
-    // Reset global sync state for new session
-    setIsSyncNavigation(false);
-    setSyncBasePaths(null);
+    // Reset global sync state for the new session, when it becomes the live
+    // one: a stale tab leaves the live connection's settings alone.
+    if (!replacedMeanwhile) {
+      setIsSyncNavigation(false);
+      setSyncBasePaths(null);
+    }
     setSessions(prev => [...prev, newSession]);
-    setActiveSessionId(newSession.id);
+    if (!replacedMeanwhile) setActiveSessionId(newSession.id);
+    // A stale tab is not this connect's success: its caller stops before any
+    // metadata read or write (quota, overlay, failure marker), which would
+    // describe the backend that replaced it.
+    return replacedMeanwhile ? 'stale' : 'live';
   };
 
   // Favicon detection: auto-detect project favicon from FTP/SFTP web projects
@@ -9398,6 +9779,7 @@ const App: React.FC = () => {
     // listing here now raises the spinner, and a Cancel tears the half-switched
     // session down rather than leaving the user staring at stale files.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
+    supersedeOlderConnects(phaseVersion);
     remoteConnectPhaseRef.current = 'switch';
     const listWithSpinner = <T,>(fn: () => Promise<T>): Promise<T> =>
       withRemoteListSpinner(fn, listingReason(targetSession.remotePath));
@@ -9415,6 +9797,11 @@ const App: React.FC = () => {
       // link dropped, or the probe did not answer within its few seconds, it
       // returns false and we fall through to the normal reconnect, whose
       // listing can be cancelled, so tab-to-tab switching is unchanged.
+      // Read before the probe (a replacement that ends while it runs is not
+      // this tab's backend), again after this switch's own connect, if it
+      // reconnects, and checked before its tab is confirmed
+      // (`backendReplacementSeqRef`).
+      let switchReplacedAt = backendReplacementSeqRef.current;
       let stillAlive = false;
       if (!targetSession.cryptOverlay) {
         try {
@@ -9423,6 +9810,12 @@ const App: React.FC = () => {
           stillAlive = false;
         }
       }
+      // A connect that replaces the backend is still running: it may have
+      // installed already, under an identity the probe cannot tell apart (a
+      // GitHub branch), so the switch reconnects instead of reusing.
+      if (backendTeardownsRef.current !== 0) stillAlive = false;
+      // Each connect of this switch fills it as its own replacement ends.
+      const switchReceipt: ConnectReceipt = {};
 
       if (stillAlive) {
         logger.debug('[switchSession] #128-C: backend session still alive, reusing without reconnect (no 2FA)');
@@ -9487,7 +9880,8 @@ const App: React.FC = () => {
           await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(
             () => invoke<void>('cancel_connection', { token }),
             () => invoke('fourshared_connect', { params: { consumer_key: clientId, consumer_secret: clientSecret,
-              profile_id: targetSession.savedServerId ?? '', connect_token: token } }))));
+              profile_id: targetSession.savedServerId ?? '', connect_token: token } })), switchReceipt));
+          switchReplacedAt = switchReceipt.mark!.replacements;
         } else {
           // OAuth 2.0 providers (Google Drive, Dropbox, OneDrive, Box, pCloud, Zoho)
           const oauthProvider = protocol === 'googledrive' ? 'google_drive' : protocol;
@@ -9513,7 +9907,8 @@ const App: React.FC = () => {
             ...(region && { region }),
           };
           try {
-            await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
+            await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } })), switchReceipt));
+            switchReplacedAt = switchReceipt.mark!.replacements;
           } catch (connectErr) { connectScope.assert();
             const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
             const lower = errMsg.toLowerCase();
@@ -9523,8 +9918,9 @@ const App: React.FC = () => {
                 lower.includes('token expired') ||
                 (lower.includes('token') && lower.includes('refresh'))) {
               logger.debug('[switchSession] OAuth token invalid, re-authenticating...');
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } })))));
-              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } }))));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => countedOAuthLogin(oauthLoginKey(protocol, targetSession.savedServerId), () => invoke('oauth2_full_auth', { params: { ...oauthParams, connect_token: token } }))), switchReceipt));
+              await connectScope.step(() => cancellableConnect(token => connectScope.cancellable(() => invoke<void>('cancel_connection', { token }), () => invoke('oauth2_connect', { params: { ...oauthParams, connect_token: token } })), switchReceipt));
+              switchReplacedAt = switchReceipt.mark!.replacements;
             } else {
               throw connectErr;
             }
@@ -9567,7 +9963,8 @@ const App: React.FC = () => {
         const providerParams = providerPayload.providerParams;
 
         logger.debug('[switchSession] provider protocol:', providerParams.protocol);
-        await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope));
+        await connectScope.step(() => runConnect('provider_connect', providerParams, connectScope, switchReceipt));
+        switchReplacedAt = switchReceipt.mark!.replacements;
         if (!targetSession.cryptOverlay && targetSession.remotePath && targetSession.remotePath !== '/') {
           try {
             await connectScope.step(() => listWithSpinner(() => invoke('provider_change_dir', { path: targetSession.remotePath })));
@@ -9589,7 +9986,8 @@ const App: React.FC = () => {
         await connectScope.step(() => runConnect('connect_ftp', {
           ...(targetSession.connectionParams as unknown as Record<string, unknown>),
           trustPasvAddress: loadedOptionOn(targetSession.connectionParams.options, 'trustPasvAddress'),
-        }, connectScope));
+        }, connectScope, switchReceipt));
+        switchReplacedAt = switchReceipt.mark!.replacements;
 
         // Navigate to the saved path to restore session state.
         // Avoid using paths from previous WebDAV/S3 sessions (e.g., /wwwhome, /bucket-name)
@@ -9690,6 +10088,11 @@ const App: React.FC = () => {
         await connectScope.step(() => invoke('provider_clear_crypt_overlay', { full: true }).catch(() => undefined));
       }
 
+      // Another invoke replaced the backend after this switch's own connect
+      // or probe: the tab is not this server's any more, and the switch fails.
+      if (backendReplacementSeqRef.current !== switchReplacedAt) {
+        throw new Error(t('toast.remoteTargetChanged'));
+      }
       setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, status: 'connected' } : s));
       // The backend is connected to this tab's server: no longer uncertain.
       confirmBackendConnection();
@@ -9990,7 +10393,10 @@ const App: React.FC = () => {
     logger.debug('Cloud Tab clicked');
 
     // AeroCloud opens (or re-points) a connection before it lists, so a Cancel
-    // on its listing has no usable session to fall back to either.
+    // on its listing has no usable session to fall back to either. The connects
+    // still in flight are cancelled only where the open takes the backend (it
+    // reuses the live server, or ends it to connect its own): an open that only
+    // shows the panel (no config, profile or credentials) leaves them alone.
     const phaseVersion = ++remoteConnectPhaseVersionRef.current;
     remoteConnectPhaseRef.current = 'connect';
     // The open belongs to its phase: another connect, a tab switch or a newer
@@ -10005,6 +10411,16 @@ const App: React.FC = () => {
     const connectionAtEntry = quotaConnectionRef.current;
     const ownsPhase = () => phaseVersion === remoteConnectPhaseVersionRef.current
       && connectionAtEntry === quotaConnectionRef.current;
+    // The backend serves the tab on screen only while no invoke that replaces
+    // it runs, none ended since the open began, and no teardown left it
+    // uncertain. A connect that installed before the open read anything (a
+    // branch switch whose answer is still on its way) moves no generation the
+    // open can see, but it is still running or it ended: either way the open
+    // neither reuses the backend nor gives the tab back as connected.
+    const replacementsAtEntry = backendReplacementSeqRef.current;
+    const backendServesTabOnScreen = () => backendTeardownsRef.current === 0
+      && !backendUncertainRef.current
+      && backendReplacementSeqRef.current === replacementsAtEntry;
     // The connection this open made when none was on screen (scenario 2):
     // a failure after it leaves no row or folder of it actionable.
     let connectedHere = false;
@@ -10085,11 +10501,21 @@ const App: React.FC = () => {
       // its tab cached, never marked connected again.
       let previousSessionEnded = false;
       const connectToCloudServer = async (): Promise<void> => {
+        // Ends only the sessions this open saw (their generations, read while
+        // it still owns its phase): a newer connect that lands meanwhile,
+        // provider or FTP, keeps its own, even if this teardown was already
+        // dispatched (the backend refuses a disconnect of another generation).
         const endCurrentConnection = async () => {
-          previousSessionEnded = true;
-          try { await invoke('provider_disconnect'); } catch { }
+          // From here the open takes the backend: a connect that began before
+          // it and is still in flight would install over the cloud's own.
+          supersedeOlderConnects(phaseVersion);
+          const providerGeneration = await invoke<number>('provider_connection_generation');
+          const ftpGeneration = await invoke<number>('ftp_connection_generation');
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
-          try { await invoke('disconnect_ftp'); } catch { }
+          previousSessionEnded = true;
+          try { await invoke('provider_disconnect', { expectedGeneration: providerGeneration }); } catch { }
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          try { await invoke('disconnect_ftp', { expectedGeneration: ftpGeneration }); } catch { }
         };
         if (isProvider) {
           // Non-FTP: use provider_connect (SFTP, WebDAV, S3, MEGA, Azure, Filen, Koofr, etc.)
@@ -10138,6 +10564,12 @@ const App: React.FC = () => {
           await endCurrentConnection();
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('provider_connect', providerParams);
+          // Confirmed here, with no await after the connect, in both of its
+          // callers (a reconnect to another server, a first connect): a backend
+          // left uncertain otherwise refused every action on AeroCloud. Not
+          // when a newer connect owns the workspace now.
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          confirmBackendConnection();
         } else {
           // FTP/FTPS: use connect_ftp
           const ftpParams = {
@@ -10149,6 +10581,8 @@ const App: React.FC = () => {
           await endCurrentConnection();
           if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
           await runConnect('connect_ftp', ftpParams);
+          if (!ownsPhase()) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);
+          confirmBackendConnection();
         }
       };
 
@@ -10296,9 +10730,67 @@ const App: React.FC = () => {
 
         // Deselect current session tab since we're going to AeroCloud
         setActiveSessionId(null);
+        // An open that takes nothing gives the parked tab back as connected
+        // only while the backend still serves it; otherwise the tab stays
+        // cached, to reconnect with a click, and the workspace is
+        // disconnected, as after a session the open ended.
+        const restoreTabOnScreen = () => {
+          if (backendServesTabOnScreen()) {
+            if (capturedSessionId) {
+              setActiveSessionId(capturedSessionId);
+              setSessions(prev => prev.map(s =>
+                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
+              ));
+            }
+            return;
+          }
+          setIsConnected(false);
+          setRemoteFiles([]);
+          setShowConnectionScreen(true);
+        };
 
-        // If different server/protocol, reconnect
-        if (!isSameServer) {
+        // The live backend is reused only while it still serves the live
+        // connection once the connects this open supersedes are cancelled: a
+        // connect that began before this open and is still in flight would
+        // install over it. The cancels are awaited, and the generations read
+        // before them are read again: one that moved means a connect installed
+        // before its cancel arrived, so the backend now serves that connect's
+        // provider, and the open reconnects instead of listing it.
+        let reusesLiveServer = isSameServer;
+        if (reusesLiveServer) {
+          const backendGenerations = () => Promise.all([
+            invoke<number>('provider_connection_generation'),
+            invoke<number>('ftp_connection_generation'),
+          ]);
+          const generationsBefore = await backendGenerations();
+          if (!ownsPhase()) return;
+          await supersedeOlderConnects(phaseVersion);
+          const generationsAfter = await backendGenerations();
+          if (!ownsPhase()) return;
+          // A superseded connect whose cancel never reached the backend may
+          // still install over anything this open uses or connects: the open
+          // fails closed and the previous session stays as it was.
+          if (uncancelledOlderConnectRuns()) {
+            notify.error(t('toast.connectionFailedTitle'), t('toast.connectEarlierNotStopped'));
+            restoreTabOnScreen();
+            return;
+          }
+          reusesLiveServer = backendServesTabOnScreen()
+            && generationsBefore.every((generation, i) => generation === generationsAfter[i]);
+          if (reusesLiveServer) {
+            // The AeroCloud tab has no session of its own, so
+            // with the tab deselected the form state is what names its
+            // connection (resolveLiveConnectionParams): give it the cloud's
+            // params, as the reconnect below does.
+            setConnectionParams(connParams);
+          } else {
+            logger.debug('The live backend changed while its older connects were cancelled, reconnecting to cloud server...');
+          }
+        }
+
+        // If different server/protocol, or a backend no longer the live
+        // connection, reconnect
+        if (!reusesLiveServer) {
           logger.debug('Different server, reconnecting to cloud server...');
           try {
             setLoading(true);
@@ -10333,12 +10825,10 @@ const App: React.FC = () => {
               setIsConnected(false);
               setRemoteFiles([]);
               setShowConnectionScreen(true);
-            } else if (capturedSessionId) {
-              // Nothing was ended: the previous session is still live.
-              setActiveSessionId(capturedSessionId);
-              setSessions(prev => prev.map(s =>
-                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
-              ));
+            } else {
+              // Nothing was ended: the previous session is still live, if the
+              // backend still serves it.
+              restoreTabOnScreen();
             }
             setLoading(false);
             return;
@@ -10347,12 +10837,6 @@ const App: React.FC = () => {
             // open another one took leaves it to that one.
             if (ownsPhase()) setLoading(false);
           }
-        } else {
-          // Same backend kept. The AeroCloud tab has no session of its own, so
-          // with the tab deselected the form state is what names its
-          // connection (resolveLiveConnectionParams): give it the cloud's
-          // params, as the reconnect above does.
-          setConnectionParams(connParams);
         }
 
         // Ensure panels are visible (user might have been in local-only mode)
@@ -10368,16 +10852,16 @@ const App: React.FC = () => {
         // Navigate to cloud folders
         try {
           const owner = ownSessionFromNow();
-          const listedFolder = await openCloudRemoteFolder(isProvider && !isSameServer, owner);
+          const listedFolder = await openCloudRemoteFolder(isProvider && !reusesLiveServer, owner);
           if (!owner.owns()) return;
           setSyncBasePaths({ remote: listedFolder, local: cloudConfig.local_folder });
           const localFilesData: LocalFile[] = await invoke('get_local_files', { path: cloudConfig.local_folder, showHidden: showHiddenFiles });
           if (!owner.owns()) return;
-          if (!isSameServer) setIsConnected(true);
+          if (!reusesLiveServer) setIsConnected(true);
           setLocalFiles(localFilesData);
           setCurrentLocalPath(cloudConfig.local_folder);
           adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });
-          if (isSameServer) {
+          if (reusesLiveServer) {
             humanLog.logRaw('activity.connect_success', 'CONNECT', { server: `AeroCloud (${cloudServerName})`, protocol: protocolLabel }, 'success');
           }
         } catch (navError) {
@@ -10402,7 +10886,7 @@ const App: React.FC = () => {
           }
           // On a connection this open made, nothing was listed: the workspace
           // stays disconnected, and the user opens a connection again.
-          if (!isSameServer) {
+          if (!reusesLiveServer) {
             setShowConnectionScreen(true);
           } else if (!remoteEntered && currentRemotePath && triedGeneration === remoteNavCounter.current) {
             // A listing can fail after the server entered the folder: the
@@ -10439,8 +10923,18 @@ const App: React.FC = () => {
       setSelectedRemoteFiles(new Set());
       setRemoteSearchResults(null);
       setRemoteSearchQuery('');
-      await connectToCloudServer();
-      if (!ownsPhase()) return;
+      // An open that lost its phase settles its own log row as cancelled, so
+      // the row is not left running: the outer catch cannot reach `logId`.
+      try {
+        await connectToCloudServer();
+      } catch (error) {
+        if (!ownsPhase()) humanLog.updateEntry(logId, { status: 'cancelled' });
+        throw error;
+      }
+      if (!ownsPhase()) {
+        humanLog.updateEntry(logId, { status: 'cancelled' });
+        return;
+      }
       connectedHere = true;
       // The workspace is connected once the AeroCloud folder has listed, as
       // a replacing open does: until then no remote action, upload or drop
@@ -12109,9 +12603,22 @@ const App: React.FC = () => {
         });
         if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
         let oauthResult: { display_name?: string; account_email?: string | null };
+        // The connect below replaces the backend's provider: the live tab is
+        // put aside first, as every other connect does, so it is never left
+        // live over this account while the resume waits; marked uncertain at
+        // once, so no queued write passes before React commits the park.
+        backendUncertainRef.current = true;
+        takeOverActiveSession();
+        const endOAuthReplacement = replacingBackend();
+        // Refused or never sent, a connect replaced nothing (`phaseCancellable`).
+        const oauthConnects = { replaced: false };
         try {
-          oauthResult = await invoke('oauth2_connect', { params: baseParams });
+          // Under its own token: a newer connect phase cancels it, and the
+          // backend refuses its install over the newer connection.
+          oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }), oauthConnects);
         } catch (connectErr) {
+          // Neither a cancel nor a connect left unsent asks for a new sign-in.
+          if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
           const errMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
           const lower = errMsg.toLowerCase();
           if (
@@ -12121,10 +12628,12 @@ const App: React.FC = () => {
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
             await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
-            oauthResult = await invoke('oauth2_connect', { params: baseParams });
+            oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }), oauthConnects);
           } else {
             throw connectErr;
           }
+        } finally {
+          endOAuthReplacement(oauthConnects.replaced);
         }
         const displayName = oauthResult?.display_name || profile.name;
         const accountEmail = oauthResult?.account_email || profile.username || '';
@@ -12165,11 +12674,21 @@ const App: React.FC = () => {
         const hasTokens = await invoke<boolean>('fourshared_has_tokens', { profileId: profile.id });
         const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };
         if (!hasTokens) await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
+        // As for OAuth above: the tab is put aside before the backend leaves it.
+        backendUncertainRef.current = true;
+        takeOverActiveSession();
+        const endFourSharedReplacement = replacingBackend();
+        // Refused or never sent, a connect replaced nothing (`phaseCancellable`).
+        const fourSharedConnects = { replaced: false };
         try {
-          await invoke('fourshared_connect', { params });
-        } catch {
+          // Under its own token, as the OAuth connect above.
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }), fourSharedConnects);
+        } catch (connectErr) {
+          if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
           await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
-          await invoke('fourshared_connect', { params });
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }), fourSharedConnects);
+        } finally {
+          endFourSharedReplacement(fourSharedConnects.replaced);
         }
         await connectToFtp({
           server: profile.name,
@@ -20916,7 +21435,7 @@ const App: React.FC = () => {
               connectingProfileId={connectingProfileId}
               onDisconnectProfile={disconnectProfile}
               onOpenMtpDeviceProfile={openMtpSessionFromLiveDevice}
-              onParkActiveSession={takeOverActiveSession}
+              onParkActiveSession={takeOverBeforeSignIn}
               serversRefreshKey={serversRefreshKey}
               onServersChanged={() => setServersRefreshKey(k => k + 1)}
               onAeroCloud={() => {
@@ -20934,8 +21453,10 @@ const App: React.FC = () => {
               onAeroFile={handleToggleAeroFile}
               onOpenCrossProfile={(opts) => setShowCrossProfilePanel(opts ?? {})}
               onOpenMountManager={() => setShowMountManager({})}
-              onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath, connectScope = new ConnectScope()) => {
+              onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath, signInMark, connectScope = new ConnectScope()) => {
                 connectScope.assert();
+                // The connect phase this connect belongs to (see connectToFtpImpl).
+                const connectPhase = remoteConnectPhaseVersionRef.current;
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
 
@@ -20948,8 +21469,25 @@ const App: React.FC = () => {
                 const isOAuth = normalizedParams.protocol && (isOAuthProvider(normalizedParams.protocol) || isFourSharedProvider(normalizedParams.protocol));
                 logger.debug('[onSavedServerConnect] profile:', { protocol: normalizedParams.protocol, savedServerId: normalizedParams.savedServerId });
                 logger.debug('[onSavedServerConnect] isOAuth:', isOAuth);
+                // My Servers' sign-in returned before this connect: the
+                // replacements ended by now are the ones this tab may sit on.
+                // My Servers' sign-in hands its own replacement's receipt over;
+                // without one, the mark now.
+                const savedOAuthReplacedAt = signInMark ?? backendMark();
 
                 if (isOAuth) {
+                  // My Servers put the live tab aside (onParkActiveSession)
+                  // before its sign-in swapped the backend, so the refusal
+                  // below leaves no tab live over another account's backend.
+                  // A start folder the user name cannot fill is refused before
+                  // the view or the session changes (connectStartFolder).
+                  let savedOauthStartFolder: string | null;
+                  try {
+                    savedOauthStartFolder = connectStartFolder(initialPath, normalizedParams.username);
+                  } catch (error) {
+                    notify.error(t('connection.connectionFailed'), String(error instanceof Error ? error.message : error));
+                    return 'failed' as const;
+                  }
                   // OAuth provider is already connected via SavedServers/FourSharedConnect component
                   // Just switch to file manager view
                   setIsConnected(true); setShowRemotePanel(true); setShowLocalPreview(false);
@@ -20966,7 +21504,7 @@ const App: React.FC = () => {
                   // unlocked (no decrypted names, no path-bar overlay badge/button).
                   const savedOverlaySavedId = normalizedParams.savedServerId;
                   let savedOverlayHint = savedOverlaySavedId ? await connectScope.step(() => getProfileOverlayHint(savedOverlaySavedId)) : null;
-                  let savedOauthInitialPath = resolveUsernameTemplate(initialPath, normalizedParams.username) || '/';
+                  let savedOauthInitialPath = savedOauthStartFolder || '/';
                   let savedOauthResp: FileListResponse | null = null;
                   if (savedOverlayHint && savedOverlaySavedId) {
                     // Probe the configured landing, but never let a transient
@@ -21028,15 +21566,16 @@ const App: React.FC = () => {
                     resolvedLocalPath = await connectScope.step(() => safeChangeLocalDirectory(localInitialPath));
                   }
                   // Create session with provider name: pass fresh files to avoid stale closure
-                  await connectScope.step(() => createSession(
+                  if (await connectScope.step(() => createSession(
                     providerName,
                     normalizedParams,
                     savedOauthResp?.current_path || savedOauthInitialPath,
                     resolvedLocalPath,
                     savedOverlayHint && !savedOverlayHint.opensOutside ? [] : savedOauthResp?.files,
                     undefined,
-                    savedOverlayHint ? savedOauthInitialPath : undefined
-                  ));
+                    savedOverlayHint ? savedOauthInitialPath : undefined,
+                    savedOAuthReplacedAt,
+                  )) === 'stale') return 'failed' as const;
                   if (savedOverlayHint && savedOverlaySavedId) {
                     markSessionOverlayKind({ savedServerId: savedOverlaySavedId }, savedOverlayHint.kind, savedOverlayHint.anchor);
                   }
@@ -21098,12 +21637,20 @@ const App: React.FC = () => {
                   const logId = humanLog.logStart('CONNECT', { server: maskedProviderName, protocol: protocolLabel });
 
                   try {
+                    // Refused before any state change or request (connectStartFolder).
+                    const savedProviderStartFolder = connectStartFolder(initialPath, normalizedParams.username);
                     // SEC-P1-06: TOFU host key check for SFTP and SCP (one
                     // known_hosts), asked before the current connection
                     // ends, so a refused key leaves it as it was.
                     if (isSshProtocol(normalizedParams.protocol)) {
                       const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
                       if (!accepted) return 'pending_human' as const;
+                      // A newer connect began while the prompt was open: it
+                      // owns the workspace, so this one ends here.
+                      if (connectPhase !== remoteConnectPhaseVersionRef.current) {
+                        humanLog.updateEntry(logId, { status: 'cancelled' });
+                        return 'failed' as const;
+                      }
                     }
                     // The live tab is put aside before its backend goes.
                     parkActiveSession();
@@ -21116,7 +21663,7 @@ const App: React.FC = () => {
                     // Then strip the literal Nextcloud WebDAV root for
                     // legacy TAB.DIGITAL / Felicloud / Nextcloud profiles
                     // saved before basePath was dropped from the preset.
-                    const templateResolved = resolveUsernameTemplate(initialPath, normalizedParams.username);
+                    const templateResolved = savedProviderStartFolder;
                     const resolvedSavedInitialPath = stripLegacyNextcloudWebdavRoot(
                         templateResolved,
                         normalizedParams.providerId,
@@ -21129,7 +21676,9 @@ const App: React.FC = () => {
                     logger.debug('[onSavedServerConnect] provider protocol:', providerParams.protocol);
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await connectScope.step(() => logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp'));
-                      await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope)));
+                      const savedProviderReceipt: ConnectReceipt = { phase: connectPhase };
+                      await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope, savedProviderReceipt)));
+                      const savedProviderReplacedAt = savedProviderReceipt.mark!;
 
                       const isFilenConnect =
                         connectedParams.protocol === 'filen' ||
@@ -21211,15 +21760,16 @@ const App: React.FC = () => {
                       resolvedLocalPath2 = await connectScope.step(() => safeChangeLocalDirectory(localInitialPath));
                     }
 
-                    await connectScope.step(() => createSession(
+                    if (await connectScope.step(() => createSession(
                       providerName,
                       connectedParams,
                       response.current_path,
                       resolvedLocalPath2,
                       overlayHint && !overlayHint.opensOutside ? [] : files,
                       undefined,
-                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined
-                    ));
+                      overlayHint ? placeUnderLoginFolder(startFolder, overlayHint.loginFolder) || response.current_path || '/' : undefined,
+                      savedProviderReplacedAt,
+                    )) === 'stale') return 'failed' as const;
                     if (overlayHint && overlaySavedId) {
                       markSessionOverlayKind({ savedServerId: overlaySavedId }, overlayHint.kind, overlayHint.anchor);
                     }
@@ -21278,6 +21828,8 @@ const App: React.FC = () => {
                 const protocolLabel = connectionViaLabel(params);
                 const logId = humanLog.logStart('CONNECT', { server: params.server, protocol: protocolLabel });
                 try {
+                  // Refused before any state change or request (connectStartFolder).
+                  const savedFtpStartFolder = connectStartFolder(initialPath, params.username);
                   // The live tab is put aside before its backend goes.
                   parkActiveSession();
                   // Disconnect any existing provider connections first (S3, WebDAV, OAuth)
@@ -21285,7 +21837,9 @@ const App: React.FC = () => {
 
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await connectScope.step(() => logConnectionSteps(params.server, params.port || 21, savedFtpProto));
-                  await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope)));
+                  const savedFtpReceipt: ConnectReceipt = { phase: connectPhase };
+                  await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope, savedFtpReceipt)));
+                  const savedFtpReplacedAt = savedFtpReceipt.mark!;
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });
                   // Clear standalone connect-failure marker (#180 / 4486730822).
                   if (params.savedServerId) {
@@ -21302,7 +21856,7 @@ const App: React.FC = () => {
                   // Get the actual remote path after connection. {username}
                   // template resolution mirrors the provider-API branch above.
                   let savedFtpResponse: FileListResponse | null = null;
-                  const ftpResolvedInitialPath = resolveUsernameTemplate(initialPath, params.username);
+                  const ftpResolvedInitialPath = savedFtpStartFolder;
                   if (ftpResolvedInitialPath) {
                     // Pass the protocol explicitly to avoid using stale state from previous session
                     await connectScope.step(() => changeRemoteDirectory(ftpResolvedInitialPath, params.protocol || 'ftp'));
@@ -21319,13 +21873,16 @@ const App: React.FC = () => {
                   }
                   // Use displayName if provided, otherwise extract from server
                   const sessionName = params.displayName || serverHost(params.server);
-                  await connectScope.step(() => createSession(
+                  if (await connectScope.step(() => createSession(
                     sessionName,
                     params,
                     savedFtpResponse?.current_path || initialPath || '/',
                     resolvedLocalPath3,
-                    savedFtpResponse?.files
-                  ));
+                    savedFtpResponse?.files,
+                    undefined,
+                    undefined,
+                    savedFtpReplacedAt,
+                  )) === 'stale') return 'failed' as const;
                   // Reset form for next "Add New Server"
                   setConnectionParams({ server: '', username: '', password: '' });
                   setQuickConnectDirs({ remoteDir: '', localDir: '' });

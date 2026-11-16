@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} nima SFTP, zato AeroFTP uporablja SCP na isti povezavi.",
             "saveOnAnotherServer": "Ni shranjeno: ta datoteka je bila odprta s strežnika, računa ali šifriranega sloja, ki trenutno ni aktiven. Vrnite se na njegov zavihek in shranite znova.",
             "openedOnAnotherServer": "Ni odprto: strežnik se je spremenil med branjem datoteke. Odprite jo znova.",
-            "remoteTargetChanged": "Nič ni bilo spremenjeno: strežnik, račun ali šifrirana plast so se od začetka dejanja spremenili ali se še ponovno povezujejo. Poskusite znova na trenutni povezavi."
+            "remoteTargetChanged": "Nič ni bilo spremenjeno: strežnik, račun ali šifrirana plast so se od začetka dejanja spremenili ali se še ponovno povezujejo. Poskusite znova na trenutni povezavi.",
+            "connectEarlierNotStopped": "Prejšnjega poskusa povezave ni bilo mogoče ustaviti in se še izvaja, zato ta povezava ni bila zagnana. Poskusite znova, ko se konča."
         },
         "about": {
             "tagline": "Več kot FTP. Popolno razvojno orodje.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: globalno porazdeljeno shranjevanje, združljivo s S3, brez stroškov izhodnega prenosa (5 GB brezplačno)",
             "trustPasvAddress": "Uporabi pasivni naslov, ki ga poda strežnik",
             "trustPasvAddressHelp": "Izklopljeno: podatkovne povezave gredo na gostitelja, s katerim ste se povezali, kot počne curl. Vklopite le za strežnik, ki pošilja podatke z drugega naslova.",
-            "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)"
+            "discoverFastly": "Fastly Object Storage: shramba, združljiva z S3, v 12 regijah (5 GB brezplačno, potrebna kartica)",
+            "discoverNeon": "Neon Object Storage: shrambe, združljive s S3, za vsako vejo projekta (5 GB brezplačno na projekt)",
+            "discoverPuter": "Puter oblaka shranjevanje prek WebDAV-a (25 MB brezplačno, brez kartice)",
+            "discoverLifetimeCloud": "Shramba LifetimeCloud prek WebDAV (1 GB brezplačno, brez kartice)"
         },
         "shortcuts": {
             "title": "Bližnjice na tipkovnici",

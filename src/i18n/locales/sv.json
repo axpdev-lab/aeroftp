@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} saknar SFTP, så AeroFTP använder SCP på samma anslutning.",
             "saveOnAnotherServer": "Inte sparad: den här filen öppnades från en server, ett konto eller ett krypterat överlägg som inte är aktivt nu. Växla tillbaka till dess flik och spara igen.",
             "openedOnAnotherServer": "Inte öppnad: servern ändrades medan filen lästes. Öppna den igen.",
-            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen."
+            "remoteTargetChanged": "Ingenting ändrades: servern, kontot eller det krypterade lagret har ändrats sedan åtgärden startade, eller ansluter fortfarande på nytt. Försök igen på den aktuella anslutningen.",
+            "connectEarlierNotStopped": "Ett tidigare anslutningsförsök kunde inte stoppas och pågår fortfarande, så den här anslutningen startades inte. Försök igen när det har avslutats."
         },
         "about": {
             "tagline": "Mer än FTP. En komplett utvecklarverktygslåda.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: globalt distribuerad S3-kompatibel lagring, utan avgifter för utgående data (5 GB gratis)",
             "trustPasvAddress": "Använd den passiva adress servern anger",
             "trustPasvAddressHelp": "Av: dataanslutningar går till värden du anslöt till, som curl gör. Slå bara på för en server som skickar data från en annan adress.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort krävs)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort krävs)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per projektgren (5 GB gratis per projekt)",
+            "discoverPuter": "Puter-molnlagring via WebDAV (25 MB gratis, inget kort)",
+            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, inget kort)"
         },
         "shortcuts": {
             "title": "Kortkommandon",

@@ -50,17 +50,20 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Jottacloud | NO | 5 GB | API |
 | kDrive | CH | 15 GB | API |
 | Koofr | SI | 10 GB | API, WebDAV |
+| LifetimeCloud | IT | 1 GB (limited: 50 files, 50 MB per file) | WebDAV |
 | Mail.ru Cloud | RU | 8 GB (app password required) | WebDAV |
 | MEGA | NZ | 20 GB (E2E) | API, MEGAcmd, S4 (S3)* |
 | Microsoft Azure Blob | US | 12-month trial | Blob* |
 | Microsoft OneDrive | US | 5 GB | OAuth |
 | MinIO | - | self-hosted | S3 |
+| Neon Object Storage | US | 5 GB (per project) | S3 |
 | Nextcloud | - | self-hosted | WebDAV |
 | OpenDrive | US | 5 GB | API, WebDAV |
 | Oracle Cloud | US | 20 GB (always-free, card req.) | S3* |
 | pCloud Drive | CH | 10 GB | OAuth, WebDAV* |
 | PixelUnion | EU | 16 GB (managed Immich) | API |
 | Proton Drive | CH | 5 GB (E2E) | API / CLI |
+| Puter | US | 25 MB (limited: 25 MB in total) | WebDAV |
 | Quotaless | - | trial / invite | S3*, WebDAV* |
 | S3Drive | - | 12 GB (via Storj) | S3 |
 | Seafile | - | self-hosted | WebDAV |
@@ -76,7 +79,7 @@ aeroftp.app / docs.aeroftp.app provider tables mirror this list.
 | Yandex Object Storage | RU | 1 GB (always-free, card req.) | S3* |
 | Zoho WorkDrive | IN | 5 GB | OAuth |
 
-<sub>58 providers, 72 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
+<sub>61 providers, 75 connection methods. `*` marks a paid / credit-card-gated plan. HQ is the ISO 3166-1 alpha-2 of the company HQ (EU = pan-European). Free-tier sizes are approximate: verify with the provider.</sub>
 
 <!-- END PROVIDERS-TABLE -->
 

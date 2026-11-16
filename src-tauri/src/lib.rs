@@ -13,7 +13,7 @@ use sha2::{Digest, Sha256};
 use sigstore::bundle::verify::{blocking::Verifier as SigstoreVerifier, policy};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -2235,6 +2235,10 @@ pub async fn throttle_transfer(
 // Shared application state
 pub(crate) struct AppState {
     pub(crate) ftp_manager: Mutex<FtpManager>,
+    /// The legacy FTP session's generation: `connect_ftp` and `disconnect_ftp`
+    /// move it while they hold `ftp_manager`, so a teardown that read it can
+    /// end only the session it saw.
+    ftp_connection_generation: AtomicU64,
     pub(crate) cancel_flag: Arc<AtomicBool>,
     cancel_token: Mutex<CancellationToken>,
     speed_limits: SpeedLimits,
@@ -2260,6 +2264,7 @@ impl AppState {
     fn new() -> Self {
         Self {
             ftp_manager: Mutex::new(FtpManager::new()),
+            ftp_connection_generation: AtomicU64::new(0),
             cancel_flag: Arc::new(AtomicBool::new(false)),
             cancel_token: Mutex::new(CancellationToken::new()),
             speed_limits: SpeedLimits::new(),
@@ -4252,15 +4257,15 @@ async fn connect_ftp(
 ) -> Result<(), String> {
     panic_safe::catch(
         "connect_ftp",
-        connect_ftp_inner(state, provider_state, cancel_registry, params),
+        connect_ftp_inner(&state, &provider_state, &cancel_registry, params),
     )
     .await
 }
 
 async fn connect_ftp_inner(
-    state: State<'_, AppState>,
-    provider_state: State<'_, provider_commands::ProviderState>,
-    cancel_registry: State<'_, provider_commands::ConnectionCancelRegistry>,
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    cancel_registry: &provider_commands::ConnectionCancelRegistry,
     params: ConnectionParams,
 ) -> Result<(), String> {
     let owner =
@@ -4286,17 +4291,33 @@ async fn connect_ftp_inner(
     // every exit path. suppaftp's connect/login are async, so dropping the
     // future on cancel tears the in-flight TCP/TLS handshake down cleanly.
     let connect_key = params.connect_token.clone();
-    let cancel_token = connect_key
+    let registration = connect_key
         .as_deref()
-        .map(|key| cancel_registry.register(key));
-    let _cancel_guard = connect_key
-        .as_deref()
-        .map(|key| provider_commands::ConnectTokenGuard::new(&cancel_registry, key.to_string()));
+        .map(|key| (key, cancel_registry.register(key)));
+    let cancel_token = registration.as_ref().map(|(_, (_, token))| token.clone());
+    let _cancel_guard = registration.map(|(key, (id, _))| {
+        provider_commands::ConnectTokenGuard::new(cancel_registry, key.to_string(), id)
+    });
 
     let _change = provider_state
-        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
+        .transfer_owner_write(std::time::Duration::from_secs(30))
         .await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
+    // Cancelled before it started (a cancel that came first, or one that
+    // came while it waited for the manager): the live session is left as it
+    // is, its generation, target and owner binding with it.
+    if cancel_token
+        .as_ref()
+        .is_some_and(|token| token.is_cancelled())
+    {
+        return Err(provider_commands::CONNECT_CANCELLED.to_string());
+    }
+    // A new session from here on, whatever the outcome: the one before it
+    // is replaced, its target and owner binding with it.
+    provider_state.retire_legacy_ftp_target();
+    state
+        .ftp_connection_generation
+        .fetch_add(1, Ordering::SeqCst);
     ftp_manager.set_trust_pasv_address(params.trust_pasv_address);
 
     let do_connect = async {
@@ -4350,15 +4371,41 @@ async fn connect_ftp_inner(
     Ok(())
 }
 
+/// The legacy FTP session's generation, for a later `disconnect_ftp` that
+/// must end only this session.
+#[tauri::command]
+async fn ftp_connection_generation(state: State<'_, AppState>) -> Result<u64, String> {
+    Ok(state.ftp_connection_generation.load(Ordering::SeqCst))
+}
+
+/// Disconnect the legacy FTP session. With `expected_generation` (what
+/// `ftp_connection_generation` answered), only that session is ended: a later
+/// `connect_ftp` owns the manager, its target and its owner binding, and is
+/// left alone.
 #[tauri::command]
 async fn disconnect_ftp(
     state: State<'_, AppState>,
     provider_state: State<'_, provider_commands::ProviderState>,
+    expected_generation: Option<u64>,
+) -> Result<(), String> {
+    disconnect_ftp_inner(&state, &provider_state, expected_generation).await
+}
+
+async fn disconnect_ftp_inner(
+    state: &AppState,
+    provider_state: &provider_commands::ProviderState,
+    expected_generation: Option<u64>,
 ) -> Result<(), String> {
     let _change = provider_state
-        .begin_legacy_ftp_target_change(std::time::Duration::from_secs(30))
+        .transfer_owner_write(std::time::Duration::from_secs(30))
         .await?;
     let mut ftp_manager = state.ftp_manager.lock().await;
+    let generation = &state.ftp_connection_generation;
+    if expected_generation.is_some_and(|expected| generation.load(Ordering::SeqCst) != expected) {
+        return Ok(());
+    }
+    provider_state.retire_legacy_ftp_target();
+    generation.fetch_add(1, Ordering::SeqCst);
     ftp_manager
         .disconnect()
         .await
@@ -5533,6 +5580,152 @@ mod parse_remote_mtime_tests {
         assert_eq!(parse_remote_mtime("yesterday"), None);
         assert_eq!(parse_remote_mtime("?"), None);
         assert_eq!(parse_remote_mtime(""), None);
+    }
+}
+
+#[cfg(test)]
+mod legacy_ftp_generation_tests {
+    use super::*;
+
+    /// A local FTP server that logs anyone in and answers every other
+    /// command, one session per accepted socket.
+    async fn ftp_server() -> String {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap().to_string();
+        tokio::spawn(async move {
+            while let Ok((socket, _)) = listener.accept().await {
+                tokio::spawn(async move {
+                    let (read, mut write) = socket.into_split();
+                    let mut lines = BufReader::new(read).lines();
+                    if write.write_all(b"220 ready\r\n").await.is_err() {
+                        return;
+                    }
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        let reply = match line.split_whitespace().next().unwrap_or("") {
+                            "USER" => "331 password please\r\n",
+                            "PASS" => "230 logged in\r\n",
+                            "PWD" => "257 \"/\" is the current directory\r\n",
+                            "QUIT" => "221 bye\r\n",
+                            _ => "200 ok\r\n",
+                        };
+                        if write.write_all(reply.as_bytes()).await.is_err() {
+                            return;
+                        }
+                    }
+                });
+            }
+        });
+        addr
+    }
+
+    fn params(server: &str) -> ConnectionParams {
+        ConnectionParams {
+            server: server.to_string(),
+            username: "u".to_string(),
+            password: "p".to_string(),
+            connect_token: None,
+            trust_pasv_address: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_disconnect_naming_an_earlier_session_leaves_the_later_connect_connected() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !provider_commands::isolated_account_fixture::in_isolated_child(
+            "legacy_ftp_generation_tests::a_disconnect_naming_an_earlier_session_leaves_the_later_connect_connected",
+        ) {
+            return;
+        }
+        let state = AppState::new();
+        let provider_state = provider_commands::ProviderState::new();
+        let registry = provider_commands::ConnectionCancelRegistry::default();
+        let server = ftp_server().await;
+        connect_ftp_inner(&state, &provider_state, &registry, params(&server))
+            .await
+            .unwrap();
+        // A reads the session it means to end; B connects before A's
+        // disconnect runs.
+        let seen_by_a = state.ftp_connection_generation.load(Ordering::SeqCst);
+        connect_ftp_inner(&state, &provider_state, &registry, params(&server))
+            .await
+            .unwrap();
+        disconnect_ftp_inner(&state, &provider_state, Some(seen_by_a))
+            .await
+            .unwrap();
+        assert!(
+            state.ftp_manager.lock().await.is_connected(),
+            "B's session survives A's late disconnect"
+        );
+        // A disconnect that names B's session ends it, as one without a
+        // generation does.
+        let seen_by_b = state.ftp_connection_generation.load(Ordering::SeqCst);
+        disconnect_ftp_inner(&state, &provider_state, Some(seen_by_b))
+            .await
+            .unwrap();
+        assert!(!state.ftp_manager.lock().await.is_connected());
+        connect_ftp_inner(&state, &provider_state, &registry, params(&server))
+            .await
+            .unwrap();
+        disconnect_ftp_inner(&state, &provider_state, None)
+            .await
+            .unwrap();
+        assert!(!state.ftp_manager.lock().await.is_connected());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): a connect B cancelled before it could
+    /// start, either before it registered or while it waited for the
+    /// manager, leaves A's live session and its generation untouched.
+    #[tokio::test]
+    async fn a_cancelled_connect_leaves_the_live_session_and_its_generation() {
+        // A connect captures its owner from the account database: the body
+        // runs in a child whose database is a private temporary one.
+        if !provider_commands::isolated_account_fixture::in_isolated_child(
+            "legacy_ftp_generation_tests::a_cancelled_connect_leaves_the_live_session_and_its_generation",
+        ) {
+            return;
+        }
+        let state = AppState::new();
+        let provider_state = provider_commands::ProviderState::new();
+        let registry = provider_commands::ConnectionCancelRegistry::default();
+        let server = ftp_server().await;
+        connect_ftp_inner(&state, &provider_state, &registry, params(&server))
+            .await
+            .unwrap();
+        let live = state.ftp_connection_generation.load(Ordering::SeqCst);
+        let with_token = |token: &str| ConnectionParams {
+            connect_token: Some(token.to_string()),
+            ..params(&server)
+        };
+
+        // Cancelled before its command arrived (the cancel is kept for it).
+        registry.cancel("early");
+        let early =
+            connect_ftp_inner(&state, &provider_state, &registry, with_token("early")).await;
+        assert_eq!(early.unwrap_err(), provider_commands::CONNECT_CANCELLED);
+        assert!(state.ftp_manager.lock().await.is_connected());
+        assert_eq!(state.ftp_connection_generation.load(Ordering::SeqCst), live);
+
+        // Cancelled while it waits for the manager another command holds.
+        let held = state.ftp_manager.lock().await;
+        let waiting = connect_ftp_inner(&state, &provider_state, &registry, with_token("waiting"));
+        tokio::pin!(waiting);
+        assert!(
+            futures_util::poll!(&mut waiting).is_pending(),
+            "B waits for the manager"
+        );
+        assert!(registry.cancel("waiting"));
+        drop(held);
+        assert_eq!(
+            waiting.await.unwrap_err(),
+            provider_commands::CONNECT_CANCELLED
+        );
+        assert!(
+            state.ftp_manager.lock().await.is_connected(),
+            "A's session survives B's cancel"
+        );
+        assert_eq!(state.ftp_connection_generation.load(Ordering::SeqCst), live);
     }
 }
 
@@ -24201,10 +24394,14 @@ pub fn per_profile_vault_keys_for_target_reset(
 /// a one-shot fallback to the legacy singleton key. The export bundle copies
 /// the value verbatim so the destination device can write it back without
 /// re-parsing. Issue #214.
+///
+/// The singleton is read only when the profile's own key is absent; a key
+/// that cannot be read fails the export (`Err`), because the singleton may
+/// be another profile's account.
 fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
     server: &profile_export::ServerProfileExport,
-) -> profile_export::ProviderSecrets {
+) -> Result<profile_export::ProviderSecrets, String> {
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
@@ -24212,18 +24409,18 @@ fn collect_provider_secrets_for_server(
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(Some(value)) =
-            user_partitions::resolve_active_credential_owner_aware(store, &per_profile)
-        {
+        let read = |key: &str| {
+            user_partitions::resolve_active_credential_owner_aware(store, key)
+                .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
+        };
+        if let Some(value) = read(&per_profile)? {
             out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
             // migrated yet for this provider on this device, and only for its
             // owner (owner-aware: another user never exports it).
             let legacy = format!("oauth_{}", slug);
-            if let Ok(Some(value)) =
-                user_partitions::resolve_active_credential_owner_aware(store, &legacy)
-            {
+            if let Some(value) = read(&legacy)? {
                 out.oauth = Some(value.to_string());
             }
         }
@@ -24233,11 +24430,13 @@ fn collect_provider_secrets_for_server(
         let per_profile = format!("jottacloud_refresh_{}", server.id);
         let read = |key: &str| {
             user_partitions::resolve_active_credential_owner_aware(store, key)
-                .ok()
-                .flatten()
-                .map(|value| value.to_string())
+                .map(|value| value.map(|value| value.to_string()))
+                .map_err(|e| format!("{}: cannot read its Jottacloud token: {e}", server.name))
         };
-        out.jotta_refresh = read(&per_profile).or_else(|| read("jottacloud_refresh"));
+        out.jotta_refresh = match read(&per_profile)? {
+            Some(value) => Some(value),
+            None => read("jottacloud_refresh")?,
+        };
     }
 
     // Bundle the BYO OAuth app `client_id`/`client_secret` (global vault
@@ -24366,7 +24565,7 @@ fn collect_provider_secrets_for_server(
         out.profile_auth = Some(auth);
     }
 
-    out
+    Ok(out)
 }
 
 #[tauri::command]
@@ -24412,7 +24611,7 @@ pub async fn export_server_profiles_core(
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
-                    let secrets = collect_provider_secrets_for_server(&store, server);
+                    let secrets = collect_provider_secrets_for_server(&store, server)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()
@@ -27835,6 +28034,7 @@ pub fn run() {
             panic_safe::debug_panic_command,
             connect_ftp,
             disconnect_ftp,
+            ftp_connection_generation,
             crate::portal_chooser::chooser_unavailable,
             ftp_noop,
             reconnect_ftp,
@@ -28366,6 +28566,7 @@ pub fn run() {
             provider_commands::fourshared_connect,
             provider_commands::fourshared_has_tokens,
             provider_commands::fourshared_logout,
+            provider_commands::fourshared_adopt_tokens,
             provider_commands::zoho_list_trash,
             provider_commands::zoho_permanent_delete,
             provider_commands::zoho_restore_from_trash,
