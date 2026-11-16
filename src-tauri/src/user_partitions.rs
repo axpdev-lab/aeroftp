@@ -3947,9 +3947,6 @@ fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Active user id resolved quietly without an AppHandle. Returns `None` on any
-/// error (DB unopenable, no active user): callers use it only to decide whether
-/// a best-effort mirror is possible, never to gate the authoritative vault write.
 /// Remove `credential_id` from `user_id`'s partition, reporting a failure:
 /// a sign-out must not go on while a partition copy it could not remove stays
 /// readable (`unmirror_credential_for_user_best_effort_any` drops the error).
@@ -3960,15 +3957,21 @@ pub(crate) fn try_unmirror_active_credential(
     delete_user_credential_for(&open_or_init_cli()?, user_id, credential_id)
 }
 
-pub(crate) fn active_user_id_quiet() -> Option<i64> {
-    let conn = open_or_init_cli().ok()?;
-    active_user_id(&conn).ok().flatten()
+/// The active account for a write or a delete that readers must see: a lookup
+/// that fails is an error, since a partition row may be holding the old value.
+/// `Ok(None)` is a confirmed absence: no account.
+pub(crate) fn active_user_id_for_write() -> Result<Option<i64>, String> {
+    #[cfg(test)]
+    if ACCOUNT_LOOKUP_FAILS.with(std::cell::Cell::get) {
+        return Err("Active account lookup: refused".to_string());
+    }
+    active_user_id(&open_or_init_cli()?)
 }
 
-/// The active account for a write that readers must see: a lookup that fails is an
-/// error, since a partition row may be holding the old value. `None` means no account.
-fn active_user_id_for_write() -> Result<Option<i64>, String> {
-    active_user_id(&open_or_init_cli()?)
+#[cfg(test)]
+thread_local! {
+    /// The active account cannot be read (an unopenable partition DB).
+    pub(crate) static ACCOUNT_LOOKUP_FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// Save a secret of `profile_id` for the accounts that hold that profile, whichever
@@ -4693,12 +4696,14 @@ pub fn restore_credential_op_for_user(
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
 /// active user's partition. Part of an explicit user delete, never a purge.
 /// The account is the one active when the call starts, as for
-/// [`store_active_credential_dual`].
+/// [`store_active_credential_dual`]. A lookup that fails is an error before
+/// either copy changes: read as no account, it deleted the vault copy and
+/// left the partition's, which readers prefer.
 pub fn delete_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<(), String> {
-    delete_credential_dual_as(store, active_user_id_quiet(), credential_id)
+    delete_credential_dual_as(store, active_user_id_for_write()?, credential_id)
 }
 
 /// [`delete_active_credential_dual`] for `user_id`, the account active when
@@ -4810,10 +4815,13 @@ pub fn mirror_active_credential(
 }
 
 /// Best-effort removal of one secret from the active user's partition. The
-/// partition half of an explicit token delete (OAuth/Jottacloud logout).
+/// partition half of an explicit token delete (OAuth/Jottacloud logout). An
+/// account that cannot be read is logged, not taken for no account.
 pub fn unmirror_active_credential(credential_id: &str) {
-    if let Some(user_id) = active_user_id_quiet() {
-        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    match active_user_id_for_write() {
+        Ok(Some(user_id)) => unmirror_credential_for_user_best_effort_any(user_id, credential_id),
+        Ok(None) => {}
+        Err(e) => tracing::warn!("Partition copy of a credential not removed: {e}"),
     }
 }
 

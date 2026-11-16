@@ -22429,12 +22429,21 @@ async fn delete_credential(webview: tauri::Webview, account: String) -> Result<(
     only_main_window(webview.label(), "delete_credential")?;
     let store = credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "STORE_NOT_READY".to_string())?;
-    // Dual-delete. Removes from the vault and, best-effort, the active user's
-    // partition copy, which readers prefer to the vault. Not a mass purge
-    // (that is MUV-6). The account is the one active now, whatever the key:
-    // the call-sites that mirror with an explicit type (OAuth, Jottacloud)
-    // are not prefix-classified, and a copy left behind is read first.
-    let user_id = user_partitions::active_user_id_quiet();
+    delete_credential_for_active_account(store, account).await
+}
+
+/// Dual-delete. Removes from the vault and, best-effort, the active user's
+/// partition copy, which readers prefer to the vault. Not a mass purge
+/// (that is MUV-6). The account is the one active now, whatever the key:
+/// the call-sites that mirror with an explicit type (OAuth, Jottacloud)
+/// are not prefix-classified, and a copy left behind is read first. A lookup
+/// that fails is an error before either copy changes, never no account.
+async fn delete_credential_for_active_account(
+    store: credential_store::CredentialStore,
+    account: String,
+) -> Result<(), String> {
+    let user_id = user_partitions::active_user_id_for_write()
+        .map_err(|e| format!("Failed to delete credential: {}", e))?;
     tauri::async_runtime::spawn_blocking(move || {
         user_partitions::delete_credential_dual_as(&store, user_id, &account)
     })

@@ -162,11 +162,13 @@ fn chain_owner(user: Option<i64>) -> Option<i64> {
 }
 
 /// The account a pending rotation belongs to: the bound one ([`chain_owner`]),
-/// or the account active now for an unbound provider.
-fn pending_owner(user: Option<i64>) -> Option<i64> {
+/// or the account active now for an unbound provider. A lookup that fails
+/// is an error: taken for no account, it filed one account's chain under
+/// the legacy stores' owner.
+fn pending_owner(user: Option<i64>) -> Result<Option<i64>, String> {
     match user {
-        Some(_) => chain_owner(user),
-        None => crate::user_partitions::active_user_id_quiet(),
+        Some(_) => Ok(chain_owner(user)),
+        None => crate::user_partitions::active_user_id_for_write(),
     }
 }
 
@@ -566,7 +568,13 @@ impl JottacloudProvider {
     /// Persist the rotated chain, off the async worker (see
     /// [`crate::credential_store::off_async_worker`]).
     fn persist_refresh_token(&self) {
-        let owner = pending_owner(self.credential_user);
+        let owner = match pending_owner(self.credential_user) {
+            Ok(owner) => owner,
+            Err(e) => {
+                jotta_log(&format!("Refresh token not persisted: {}", e));
+                return;
+            }
+        };
         // Held through the writes: see `delete_refresh_chain`.
         let deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
         // A chain loaded from a key deleted since is the authorization that
@@ -710,11 +718,13 @@ impl JottacloudProvider {
     /// A rotation this process could not persist (`PENDING_ROTATIONS`) is
     /// that account's live chain, ahead of the stored one Jotta consumed.
     fn load_refresh_chain(user: Option<i64>, account: &str) -> Option<(String, String, String)> {
-        let pending = PENDING_ROTATIONS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&(pending_owner(user), account.to_string()))
-            .cloned();
+        let pending = pending_owner(user).ok().and_then(|owner| {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .get(&(owner, account.to_string()))
+                .cloned()
+        });
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -803,8 +813,8 @@ impl JottacloudProvider {
                 // key of the same name belongs to the legacy owner.
                 // A pending rotation Jotta refused is dead too: dropped,
                 // unless a newer rotation has replaced it meanwhile.
-                {
-                    let key = (pending_owner(self.credential_user), account.clone());
+                if let Ok(owner) = pending_owner(self.credential_user) {
+                    let key = (owner, account.clone());
                     let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
                     let refused = pending.get(&key).is_some_and(|json| {
                         serde_json::from_str::<serde_json::Value>(json)
@@ -4319,6 +4329,104 @@ mod tests {
         assert!(partition, "the refused copy is still there");
     }
 
+    /// A failed account lookup was read as no account: a delete removed the
+    /// vault copy and kept the partition's, which readers prefer, and an
+    /// unbound provider filed its unstored rotation under the legacy stores'
+    /// owner. Both delete entry points refuse now before either copy
+    /// changes, and the rotation is filed under no owner.
+    #[test]
+    fn a_failed_account_lookup_deletes_nothing_and_files_no_rotation() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_failed_account_lookup_deletes_nothing_and_files_no_rotation",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-lookup-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-lookup-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let key = "jottacloud_refresh_lookup".to_string();
+        partitions::store_credential_for_user(&store, first, &key, "jottacloud_refresh", "chain")
+            .expect("store the chain");
+        store.store(&key, "chain").expect("store the vault copy");
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (Some(first), key.clone()),
+            zeroize::Zeroizing::new("pending".to_string()),
+        );
+        partitions::ACCOUNT_LOOKUP_FAILS.with(|fails| fails.set(true));
+        let mut wrong = Vec::new();
+        for entrypoint in ["active", "gui"] {
+            let deleted = match entrypoint {
+                "active" => partitions::delete_active_credential_dual(&store, &key),
+                _ => tauri::async_runtime::block_on(crate::delete_credential_for_active_account(
+                    CredentialStore::from_cache().expect("cached vault"),
+                    key.clone(),
+                )),
+            };
+            let vault = store.get(&key).is_ok();
+            let recorded = DELETED_CHAINS
+                .lock()
+                .unwrap()
+                .at
+                .keys()
+                .any(|(_, account)| account == &key);
+            let kept = PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(Some(first), key.clone()));
+            if deleted.is_ok() || !vault || recorded || !kept {
+                wrong.push(format!(
+                    "{entrypoint}: {deleted:?}, vault kept {vault}, recorded {recorded}, rotation kept {kept}"
+                ));
+            }
+        }
+        // An unbound provider whose rotated chain finds no account to go to.
+        let mut provider = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("unbound-lookup");
+        provider.refresh_token = SecretString::from("successor".to_string());
+        provider.persist_refresh_token();
+        partitions::ACCOUNT_LOOKUP_FAILS.with(|fails| fails.set(false));
+        let unbound = "jottacloud_refresh_unbound-lookup";
+        let filed: Vec<_> = PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|(_, account)| account == unbound)
+            .map(|(owner, _)| *owner)
+            .collect();
+        let stored = store.get(unbound).is_ok();
+        let partition = partitions::resolve_credential_for_user(&store, first, &key)
+            .expect("read")
+            .is_some();
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != &key && account != unbound);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(partition, "the partition copy is still there");
+        assert!(filed.is_empty(), "rotation filed under {filed:?}");
+        assert!(!stored, "the successor reached the vault");
+    }
+
     /// A delete removed the vault copy, recorded itself, and only then the
     /// partition copy: a connection that began in between took the new clock,
     /// read the partition copy, and stored its rotated chain again. Both
@@ -4676,7 +4784,7 @@ mod tests {
                 "purged" => partitions::delete_credential_for_user_dual(&store, first, &key),
                 "deleted" => partitions::delete_credential_dual_as(
                     &store,
-                    partitions::active_user_id_quiet(),
+                    partitions::active_user_id_for_write().expect("active account"),
                     &key,
                 ),
                 _ => partitions::delete_credential_dual_as(&store, None, &key),
