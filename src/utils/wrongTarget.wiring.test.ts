@@ -5,6 +5,9 @@ import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
 import { isDeletionCancelled } from './localTrash';
 import { splitForFileBatch } from './fileBatchRouting';
+import { createUnifiedTransferPlan } from './unifiedTransferPlanner';
+import { createLocalEndpoint } from './panelEndpoints';
+import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from './localSelection';
 import APP from '../App.tsx?raw';
 import CODE_BLOCK from '../components/DevTools/CodeBlockActions.tsx?raw';
 import CODE_EDITOR from '../components/DevTools/CodeEditor.tsx?raw';
@@ -631,6 +634,62 @@ async function stagedPlan(f: ReturnType<typeof fixture>, staged: Record<string, 
     stage(staged);
     return pending!;
 }
+
+// CodeRabbit on #1561, the local-local sibling of the sync roots (review
+// 5913269115): a planned cross-panel copy or move read the panels' folders and
+// selection at Execute, so with a panel moved since the files went into
+// another folder than the plan showed.
+describe('a planned local-local copy or move whose panels moved before Execute', () => {
+    it.each(['copy', 'move'] as const)('acts on the plan\'s folders and files (%s)', async mode => {
+        const rowA = { name: 'a.txt', path: '/a/a.txt', is_dir: false, size: 1, modified: null } as never;
+        const rowX = { name: 'x.txt', path: '/c/x.txt', is_dir: false, size: 1, modified: null } as never;
+        // Staged with App's own planner and staging, on /a -> /b with a.txt.
+        let pending: Record<string, unknown> | null = null;
+        const stageSource = between(APP, '  const stageUnifiedTransferPlan = useLatestCallback(', '\n  // AeroSync dialog:')
+            + '\n' + between(APP, '  const planLocalSelectionAcrossPanels = useCallback(', '\n  React.useEffect(() => {');
+        const { code: stageCode } = await transformWithOxc(stageSource, 'stage-local.ts');
+        const staging = {
+            useLatestCallback: <T,>(fn: T) => fn, useCallback: <T,>(fn: T) => fn,
+            snapshotQueuedTarget: () => ({}), queuedTargetGuard: () => () => undefined, prepareGuiTarget: () => Promise.resolve({ epoch: 1 }),
+            setPendingUnifiedTransferPlan: (value: Record<string, unknown>) => { pending = value; },
+            activeLocalPanelId: 'local',
+            localUnifiedPanel: { endpoint: createLocalEndpoint('local', '/a') }, local2UnifiedPanel: { endpoint: createLocalEndpoint('local2', '/b') },
+            localFiles: [rowA], localFiles2: [], sortedLocalFiles: [rowA], sortedLocalFiles2: [],
+            selectedLocalFiles: new Set(['a.txt']), selectedLocalFiles2: new Set(),
+            selectedLocalTrees, localRowNameClashes, asLocalFileEntry, createUnifiedTransferPlan,
+            notify: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        };
+        const plan = new Function(...Object.keys(staging), `${stageCode}; return planLocalSelectionAcrossPanels;`)(...Object.values(staging)) as (mode: string, panel: string) => void;
+        plan(mode, 'local');
+        expect(pending).not.toBeNull();
+
+        // Both panels moved, to /c (x.txt selected) and /d; then Execute.
+        const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+            if (command === 'get_local_files') return args!.path === '/b' ? [] : [rowX];
+            return undefined;
+        });
+        const runSource = between(APP, '  const transferLocalSelectionAcrossPanels = useCallback(', '\n  // Keep the F5/F6 forward ref')
+            + '\n' + between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code: runCode } = await transformWithOxc(runSource, 'run-local.ts');
+        const running = {
+            useLatestCallback: <T,>(fn: T) => fn, useCallback: <T,>(fn: T) => fn,
+            stopCountRef: { current: 0 }, queuedTargetGuard: () => () => undefined, queuedTargetProblem: () => null,
+            pendingUnifiedTransferPlan: pending, setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            activeLocalPanelId: 'local', currentLocalPath: '/c', currentLocalPath2: '/d',
+            localFiles: [rowX], localFiles2: [], sortedLocalFiles: [rowX], sortedLocalFiles2: [],
+            selectedLocalFiles: new Set(['x.txt']), selectedLocalFiles2: new Set(),
+            selectedLocalTrees, localRowNameClashes, asLocalFileEntry, setConfirmDialog: vi.fn(),
+            loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(), invoke,
+            notify: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        };
+        const execute = new Function(...Object.keys(running), `${runCode}; return executeUnifiedTransferPlan;`)(...Object.values(running)) as () => Promise<void>;
+        await execute();
+        const writes = invoke.mock.calls.filter(([command]) => command === 'copy_local_file' || command === 'rename_local_file');
+        expect(writes).toEqual([[mode === 'copy' ? 'copy_local_file' : 'rename_local_file', { from: '/a/a.txt', to: '/b/a.txt', overwrite: false }]]);
+        // The overwrite check read the plan's target folder, not the panel's.
+        expect(invoke.mock.calls.filter(([command]) => command === 'get_local_files').map(([, args]) => args!.path)).toEqual(['/b']);
+    });
+});
 
 describe('a transfer plan whose server changes after it was made', () => {
     // CodeRabbit 4579437713 and the CLI on the round: the plan took its target

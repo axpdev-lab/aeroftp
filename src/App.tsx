@@ -174,6 +174,14 @@ interface LocalLocalRunOptions {
   roots: { source: string; destination: string };
 }
 
+/** A planned cross-panel copy or move: the folders and the files the plan
+ *  named when it was staged. */
+interface StagedLocalTransfer {
+  sourceDir: string;
+  targetDir: string;
+  entries: LocalFile[];
+}
+
 /** The roots a local-local comparison was taken on, from its context. */
 const comparedLocalRoots = (context: { initialSource?: string; initialDestination?: string }) =>
   ({ source: context.initialSource ?? '', destination: context.initialDestination ?? '' });
@@ -1176,6 +1184,10 @@ const App: React.FC = () => {
     // selection state directly. `path` carries the full source-side
     // absolute path so the executor does not need to recompute it.
     transferEntries?: Array<{ name: string; path: string; is_dir: boolean; size?: number }>;
+    // A local-local copy or move: the files selected when it was staged, which
+    // it acts on with the plan's own folders, whatever the panels show by
+    // Execute.
+    localEntries?: LocalFile[];
     // CO-1: runtime knobs surfaced by the AeroSync Plan tab (Speed
     // mode + Verify policy). When the executor reaches a branch that
     // calls into the Rust planner (today: `local_sync_run`), these
@@ -12500,7 +12512,7 @@ const App: React.FC = () => {
    * the opposite local panel's current directory. Wired to F5 / F6 and to the
    * "Copy to other panel" / "Move to other panel" context menu items.
    */
-  const transferLocalSelectionAcrossPanels = useCallback(async (mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2') => {
+  const transferLocalSelectionAcrossPanels = useCallback(async (mode: 'copy' | 'move', sourceOverride?: 'local' | 'local2', staged?: StagedLocalTransfer) => {
     // sourceOverride lets the right-click context menu pin which panel
     // owns the selection at the moment the menu was opened, instead of
     // racing with React state updates: showLocalContextMenu does
@@ -12511,24 +12523,37 @@ const App: React.FC = () => {
     // closure's value, which by then is already in sync with focus.
     const sourceId: 'local' | 'local2' = sourceOverride ?? activeLocalPanelId;
     const targetId: 'local' | 'local2' = sourceId === 'local' ? 'local2' : 'local';
-    const sourceSelection = sourceId === 'local2' ? selectedLocalFiles2 : selectedLocalFiles;
-    const sourceFiles = sourceId === 'local2' ? localFiles2 : localFiles;
-    const sourceDir = sourceId === 'local2' ? currentLocalPath2 : currentLocalPath;
-    const targetDir = targetId === 'local2' ? currentLocalPath2 : currentLocalPath;
-    if (!targetDir || sourceSelection.size === 0) return;
-    // The rows selected, nested rows of a flattened search included, each as
-    // a file of its own folder: the copy takes the file's name, not the path
-    // the search shows it under. A selected folder takes what is below it.
-    const sourceRows = sourceId === 'local2' ? sortedLocalFiles2 : sortedLocalFiles;
-    const rows = selectedLocalTrees(sourceRows, sourceFiles, sourceSelection)
-      .filter(f => f.name !== '..');
-    const clashes = localRowNameClashes(rows);
-    if (clashes.length > 0) {
-      notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
-      return;
+    let sourceDir: string;
+    let targetDir: string;
+    let selected: LocalFile[];
+    if (staged) {
+      // A planned copy or move acts on the folders and the files the plan
+      // named when it was staged, never on what the panels show by Execute: a
+      // panel moved since sent the files to another folder (CodeRabbit on
+      // #1561, the local-local sibling of the sync roots).
+      ({ sourceDir, targetDir } = staged);
+      selected = staged.entries;
+      if (!targetDir || selected.length === 0) return;
+    } else {
+      const sourceSelection = sourceId === 'local2' ? selectedLocalFiles2 : selectedLocalFiles;
+      const sourceFiles = sourceId === 'local2' ? localFiles2 : localFiles;
+      sourceDir = sourceId === 'local2' ? currentLocalPath2 : currentLocalPath;
+      targetDir = targetId === 'local2' ? currentLocalPath2 : currentLocalPath;
+      if (!targetDir || sourceSelection.size === 0) return;
+      // The rows selected, nested rows of a flattened search included, each as
+      // a file of its own folder: the copy takes the file's name, not the path
+      // the search shows it under. A selected folder takes what is below it.
+      const sourceRows = sourceId === 'local2' ? sortedLocalFiles2 : sortedLocalFiles;
+      const rows = selectedLocalTrees(sourceRows, sourceFiles, sourceSelection)
+        .filter(f => f.name !== '..');
+      const clashes = localRowNameClashes(rows);
+      if (clashes.length > 0) {
+        notify.error(t('search.flattenNameClashTitle'), t('search.flattenNameClash', { names: clashes.join(', ') }));
+        return;
+      }
+      selected = rows.map(asLocalFileEntry);
+      if (selected.length === 0) return;
     }
-    const selected = rows.map(asLocalFileEntry);
-    if (selected.length === 0) return;
 
     // Data-loss guard: the backend copy/rename overwrites a same-named file in the
     // target panel atomically and irreversibly (no trash). Detect collisions
@@ -12536,7 +12561,18 @@ const App: React.FC = () => {
     // skip the colliding entries if the user declines. Non-colliding files are
     // still sent with overwrite:false so a race that creates the file meanwhile
     // fails safe rather than clobbering. (CLAUDE-AV-B1-11 / audit C-F01)
-    const targetListing = targetId === 'local2' ? localFiles2 : localFiles;
+    // A planned transfer lists its own target folder: the panel may show
+    // another one by now. An unreadable one sends nothing.
+    let targetListing: LocalFile[];
+    if (staged) {
+      try { targetListing = await invoke<LocalFile[]>('get_local_files', { path: targetDir, showHidden: true }); }
+      catch (e) {
+        notify.error(mode === 'copy' ? t('toast.copyFailed') || 'Copy failed' : t('toast.renameFailed', { error: '' }) || 'Move failed', `${targetDir}: ${String(e)}`);
+        return;
+      }
+    } else {
+      targetListing = targetId === 'local2' ? localFiles2 : localFiles;
+    }
     const targetNames = new Set(targetListing.filter(f => !f.is_dir && f.name !== '..').map(f => f.name));
     const collisions = selected.filter(f => targetNames.has(f.name));
     let overwriteAll = false;
@@ -12648,6 +12684,9 @@ const App: React.FC = () => {
         totalBytes,
         preferDelta: mode !== 'copy',
       }),
+      // The files selected now: Execute copies or moves these, from and to
+      // the plan's folders.
+      localEntries: selectedFiles.map(asLocalFileEntry),
     });
   }, [
     activeLocalPanelId,
@@ -12691,7 +12730,13 @@ const App: React.FC = () => {
     setUnifiedTransferExecuting(true);
     try {
       if (plan.pairKind === 'local-local' && (plan.mode === 'copy' || plan.mode === 'move')) {
-        await transferLocalSelectionAcrossPanels(plan.mode, sourceLocalPanelId);
+        // The plan's own folders and the files staged with it, as the sync
+        // modes and remote-remote use the plan's paths: never the panels'
+        // folders or selection at Execute.
+        const entries = pendingUnifiedTransferPlan.localEntries;
+        if (plan.source.kind === 'local' && plan.destination.kind === 'local' && entries) {
+          await transferLocalSelectionAcrossPanels(plan.mode, sourceLocalPanelId, { sourceDir: plan.source.path, targetDir: plan.destination.path, entries });
+        }
         setPendingUnifiedTransferPlan(null);
         return;
       }
