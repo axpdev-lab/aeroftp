@@ -23,12 +23,15 @@ const {
     STATUS_BAR_SPACING_PX,
 } = await import('./useStatusBarFit');
 
-// Stubbed geometry: every left item 100px (the server name 60px of it, 150px
-// untruncated), every label 50px with no gap, the right cluster 300px of
+// Stubbed geometry: every left item 100px; in the connection block a dot and
+// an icon of 20px each and the server name, 60px on screen and 150px
+// untruncated; every label 50px with no gap; the right cluster 300px of
 // icons plus the labels that are in the flow.
 const ITEM = 100;
 const NAME = 60;
 const NAME_FULL = 150;
+const DOT = 20;
+let nameFull = NAME_FULL;
 const LABEL = 50;
 const ICONS = 300;
 let barWidth = 0;
@@ -42,8 +45,8 @@ const left = () => bar()?.children[0] as HTMLElement | undefined;
 const right = () => bar()?.children[1] as HTMLElement | undefined;
 const labels = (tier?: string) => right()!.querySelectorAll(tier ? `[data-statusbar-label="${tier}"]` : '[data-statusbar-label]').length;
 const compact = () => bar().getAttribute('data-compact');
-// The connection block counts with its name untruncated.
-const identity = () => (left()!.children.length - 1) * ITEM + NAME_FULL - NAME;
+// The connection block counts from its contents, its name untruncated.
+const identity = () => (left()!.children.length - 2) * ITEM + 2 * DOT + nameFull;
 // What the bar needs with the path at its minimum and each label tier shown.
 const needAll = () => identity() + STATUS_BAR_PATH_MIN_PX + ICONS + labels() * LABEL + STATUS_BAR_SPACING_PX;
 const needStatus = () => needAll() - labels('launcher') * LABEL;
@@ -74,6 +77,7 @@ const render = async (props: Record<string, unknown> = {}) => {
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
     resizeCallbacks = [];
+    nameFull = NAME_FULL;
     vi.stubGlobal('ResizeObserver', class {
         constructor(cb: () => void) { resizeCallbacks.push(cb); }
         observe() {}
@@ -86,11 +90,14 @@ beforeEach(() => {
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
         const width = this.hasAttribute('data-statusbar-label') ? LABEL
             : this.hasAttribute('data-statusbar-name') ? NAME
-                : this.parentElement === left() ? ITEM : 0;
+                // The connection block's box honours the min-width held on it.
+                : this === left()?.children[0] ? Math.max(2 * DOT + NAME, parseFloat((this as HTMLElement).style.minWidth) || 0)
+                    : this.parentElement === left() ? ITEM
+                        : this.parentElement === left()?.children[0] ? DOT : 0;
         return { width, height: 0, x: 0, y: 0, top: 0, left: 0, right: width, bottom: 0, toJSON: () => ({}) } as DOMRect;
     });
     vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
-        if (this.hasAttribute('data-statusbar-name')) return NAME_FULL;
+        if (this.hasAttribute('data-statusbar-name')) return nameFull;
         if (this !== right()) return 0;
         const inFlow = compact() === 'all' ? 0 : compact() === 'launchers' ? labels('status') : labels();
         return ICONS + inFlow * LABEL;
@@ -164,7 +171,7 @@ it('lets the path give way before the server name truncates', async () => {
     barWidth = 3000;
     await render();
     const connection = left()!.children[0] as HTMLElement;
-    const natural = ITEM - NAME + NAME_FULL;
+    const natural = 2 * DOT + NAME_FULL;
     const others = identity() - natural;
     const hold = async (room: number) => {
         leftWidth = others + room;
@@ -176,6 +183,22 @@ it('lets the path give way before the server name truncates', async () => {
     // Less room: the name takes all of it, never less than its minimum.
     expect(await hold(natural - 30)).toBe(`${natural - 30}px`);
     expect(await hold(10)).toBe(`${natural - (NAME_FULL - STATUS_BAR_NAME_MIN_PX)}px`);
+});
+
+it('gives the room back when the server name gets shorter', async () => {
+    barWidth = 3000;
+    await render();
+    const connection = left()!.children[0] as HTMLElement;
+    leftWidth = 3000;
+    await resizeTo(needAll() - 1);
+    expect(compact()).toBe('launchers');
+    expect(connection.style.minWidth).toBe(`${2 * DOT + NAME_FULL}px`);
+    // Same mounted block, shorter name: its held minimum must not count.
+    nameFull = 30;
+    await render({ serverInfo: 'Box' });
+    await act(async () => { await Promise.resolve(); });
+    expect(connection.style.minWidth).toBe(`${2 * DOT + 30}px`);
+    expect(compact()).toBeNull();
 });
 
 it('re-measures when content changes without a resize', async () => {

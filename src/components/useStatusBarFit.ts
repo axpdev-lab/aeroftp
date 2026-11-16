@@ -65,13 +65,18 @@ const px = (value: string | undefined): number => {
 const width = (el: Element): number => el.getBoundingClientRect().width;
 
 // Width the element would take untruncated: the server name shrinks once the
-// labels are gone, and the measure must not depend on that.
+// labels are gone, and the measure must not depend on that. The block that
+// holds the name is summed from its contents, never read from its own box:
+// the min-width this hook puts on it would otherwise outlive a shorter name.
 function naturalWidth(child: Element): { natural: number; name: number } {
     const name = child.querySelector<HTMLElement>('[data-statusbar-name]');
     if (!name) return { natural: width(child), name: 0 };
     const cap = px(getComputedStyle(name).maxWidth) || Infinity;
     const nameNatural = Math.min(name.scrollWidth, cap);
-    return { natural: width(child) - width(name) + nameNatural, name: nameNatural };
+    const parts = Array.from(child.children);
+    let natural = px(getComputedStyle(child).columnGap) * Math.max(0, parts.length - 1);
+    for (const part of parts) natural += part === name ? nameNatural : width(part);
+    return { natural, name: nameNatural };
 }
 
 interface IdentityFit {
