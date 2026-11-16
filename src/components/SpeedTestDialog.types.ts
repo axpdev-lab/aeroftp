@@ -48,6 +48,7 @@ export interface SpeedTestResult {
 
 export interface SpeedTestProviderConnectionParams {
     protocol: string;
+    provider_id?: string | null;
     server: string;
     port?: number | null;
     username: string;
@@ -67,6 +68,7 @@ export interface SpeedTestProviderConnectionParams {
     allow_scp_fallback?: false;
     tls_mode?: string | null;
     verify_cert?: boolean | null;
+    base_path?: string | null;
     trust_pasv_address?: boolean;
 }
 

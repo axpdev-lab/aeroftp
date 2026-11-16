@@ -152,6 +152,7 @@ pub mod readable_vault;
 pub mod s3cmd_import;
 pub mod sftp_download_tuning;
 pub mod speed_payload;
+pub mod template_import;
 pub mod vault_mount;
 pub mod vault_storage_provider;
 pub mod vault_telemetry;
@@ -22828,6 +22829,18 @@ pub fn per_profile_vault_keys(profile_id: &str, protocol: Option<&str>) -> Vec<S
     keys
 }
 
+const ALL_OAUTH_VAULT_SLUGS: [&str; 9] = [
+    "google",
+    "googlephotos",
+    "dropbox",
+    "onedrive",
+    "box",
+    "pcloud",
+    "zohoworkdrive",
+    "yandexdisk",
+    "fourshared",
+];
+
 /// All owned entries, including authorization attempts that cannot be copied.
 pub fn per_profile_vault_keys_for_delete(profile_id: &str, protocol: Option<&str>) -> Vec<String> {
     let mut keys = per_profile_vault_keys(profile_id, protocol);
@@ -22836,6 +22849,20 @@ pub fn per_profile_vault_keys_for_delete(profile_id: &str, protocol: Option<&str
             .iter()
             .map(|prefix| format!("{prefix}_{profile_id}")),
     );
+    keys
+}
+
+/// Every vault key that may belong to `profile_id` across all provider modes,
+/// excluding any keys in `preserve_keys` written by the replacement itself.
+pub fn per_profile_vault_keys_for_target_reset(
+    profile_id: &str,
+    preserve_keys: &[String],
+) -> Vec<String> {
+    let mut keys = per_profile_vault_keys_for_delete(profile_id, None);
+    for slug in ALL_OAUTH_VAULT_SLUGS {
+        keys.push(format!("oauth_{slug}_{profile_id}"));
+    }
+    keys.retain(|k| !preserve_keys.iter().any(|keep| keep == k));
     keys
 }
 
@@ -23196,7 +23223,7 @@ fn check_reviewed_file(bytes: &[u8], reviewed: Option<&str>) -> Result<(), Strin
 
 /// Without an unlocked vault neither the list nor the secrets can be reached,
 /// and reading the list as empty would make every profile look new.
-const IMPORT_VAULT_NOT_READY: &str =
+pub(crate) const IMPORT_VAULT_NOT_READY: &str =
     "Vault not ready: the saved profiles cannot be read to compare the import with, so nothing was imported; unlock the vault and import the file again";
 
 /// An import stores into an account's partition or not at all. It never falls
@@ -23677,7 +23704,7 @@ pub fn store_imported_profiles<T>(
 /// An import writes secrets and list as one: on a filesystem without file locks,
 /// another import's rollback could put back a secret under the list this one
 /// stored, so it stops here and says what to do. Other saves go on.
-fn refuse_import_without_file_locks(
+pub(crate) fn refuse_import_without_file_locks(
     lock: Option<&user_partitions::ProfileListLock>,
 ) -> Result<(), String> {
     if lock.is_some_and(|lock| !lock.is_exclusive()) {
@@ -23688,9 +23715,9 @@ fn refuse_import_without_file_locks(
 
 /// The per-profile keys an import writes for `user`, in the vault and its
 /// partition, as the connect paths read them.
-struct VaultSecretSlots<'a> {
-    store: &'a credential_store::CredentialStore,
-    user: i64,
+pub(crate) struct VaultSecretSlots<'a> {
+    pub(crate) store: &'a credential_store::CredentialStore,
+    pub(crate) user: i64,
 }
 
 impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
@@ -23701,6 +23728,11 @@ impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
     }
 
     fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+        if write.delete {
+            return user_partitions::delete_imported_credential_for_user(
+                self.store, self.user, &write.key,
+            );
+        }
         user_partitions::store_imported_credential_for_user(
             self.store,
             self.user,
@@ -23715,11 +23747,12 @@ impl profile_import_plan::SecretSlots for VaultSecretSlots<'_> {
         write: &profile_import_plan::SecretWrite,
         before: Self::Snapshot,
     ) -> Result<(), String> {
-        user_partitions::restore_credential_for_user(
+        user_partitions::restore_credential_op_for_user(
             self.store,
             self.user,
             &write.key,
             write.kind,
+            write.delete,
             &write.value,
             &before,
         )
@@ -23740,6 +23773,9 @@ impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
     }
 
     fn write(&self, write: &profile_import_plan::SecretWrite) -> Result<(), String> {
+        if write.delete {
+            return self.store.delete(&write.key).map_err(|e| e.to_string());
+        }
         self.store
             .store(&write.key, &write.value)
             .map_err(|e| e.to_string())
@@ -23756,10 +23792,10 @@ impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
             Err(credential_store::CredentialError::NotFound(_)) => None,
             Err(e) => return Err(e.to_string()),
         };
-        match profile_import_plan::rollback_action(
+        match profile_import_plan::rollback_action_for_write(
             current.as_deref(),
-            &write.value,
-            before.as_ref().map(|value| value.as_str()),
+            write,
+            before.as_deref().map(|value| value.as_str()),
         ) {
             profile_import_plan::RollbackAction::Leave => Ok(()),
             profile_import_plan::RollbackAction::Restore(value) => self
@@ -23776,16 +23812,16 @@ impl profile_import_plan::SecretSlots for VaultOnlySlots<'_> {
 /// Which profiles had a secret restored whose presence the redaction reports:
 /// a binding or a key can round-trip without its secret when the export left
 /// credentials out or the vault was not ready.
-struct RestoredImportSecrets {
-    aerocrypt_pw: std::collections::HashSet<String>,
-    aerocrypt_salt: std::collections::HashSet<String>,
-    aerocrypt_keyfile_path: std::collections::HashSet<String>,
-    aerocrypt_config: std::collections::HashSet<String>,
-    filen_api_key: std::collections::HashSet<String>,
+pub(crate) struct RestoredImportSecrets {
+    pub(crate) aerocrypt_pw: std::collections::HashSet<String>,
+    pub(crate) aerocrypt_salt: std::collections::HashSet<String>,
+    pub(crate) aerocrypt_keyfile_path: std::collections::HashSet<String>,
+    pub(crate) aerocrypt_config: std::collections::HashSet<String>,
+    pub(crate) filen_api_key: std::collections::HashSet<String>,
 }
 
 /// The secrets [`import_secret_writes`] writes for `servers`, by kind.
-fn restored_import_secrets(
+pub(crate) fn restored_import_secrets(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
 ) -> RestoredImportSecrets {
@@ -23826,7 +23862,7 @@ fn vault_value(
 /// corrupted export), writes nothing: tokens have no meaning without the profile
 /// they belong to. Audit v4.1.0: a skipped profile is not in `servers`, so a stored
 /// profile it matches keeps its secrets.
-fn import_secret_writes(
+pub(crate) fn import_secret_writes(
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
 ) -> Vec<profile_import_plan::SecretWrite> {
@@ -23910,7 +23946,7 @@ fn import_secret_writes(
 
 /// What each stored Jottacloud profile's own key holds before the import writes
 /// it, or why it could not be read.
-fn own_jotta_chains(
+pub(crate) fn own_jotta_chains(
     store: &credential_store::CredentialStore,
     servers: &[profile_export::ServerProfileExport],
     provider_secrets: &std::collections::HashMap<String, profile_export::ProviderSecrets>,
@@ -23933,12 +23969,12 @@ fn own_jotta_chains(
 
 /// What writing the shared secrets did, by profile id.
 #[derive(Default)]
-struct SharedImportSecrets {
+pub(crate) struct SharedImportSecrets {
     /// Profiles whose custom OAuth app was not written, the provider's stored
     /// app being another one.
-    kept_oauth_apps: std::collections::HashSet<String>,
+    pub(crate) kept_oauth_apps: std::collections::HashSet<String>,
     /// Profiles whose shared secret or native session could not be written.
-    failed: std::collections::HashSet<String>,
+    pub(crate) failed: std::collections::HashSet<String>,
 }
 
 /// Write what the list commit must come before, in file order: the provider-wide
@@ -23947,7 +23983,7 @@ struct SharedImportSecrets {
 /// the native Proton session. A failure stops nothing, since the list is stored:
 /// its profile is reported and asks for a new sign-in. The error text stays in the
 /// log, as it could quote a value.
-fn restore_shared_import_secrets(
+pub(crate) fn restore_shared_import_secrets(
     store: &credential_store::CredentialStore,
     user: i64,
     servers: &[profile_export::ServerProfileExport],
@@ -24082,7 +24118,7 @@ fn restore_shared_import_secrets(
 
 /// H16 fix: the profile as returned to the renderer, without its secrets: only
 /// non-sensitive fields and flags saying which secrets are stored.
-fn redact_imported_server(
+pub(crate) fn redact_imported_server(
     s: &profile_export::ServerProfileExport,
     restored: &RestoredImportSecrets,
 ) -> serde_json::Value {
@@ -25009,6 +25045,40 @@ mod per_profile_vault_keys_tests {
                 "transient auth must not be duplicated"
             );
             assert!(deleted.contains(&key), "transient auth must be purged");
+        }
+    }
+
+    #[test]
+    fn oauth_vault_slug_list_matches_manifest_protocols_and_aliases() {
+        let manifest = crate::connection_manifest::manifest();
+        let mut seen_slugs = std::collections::HashSet::new();
+
+        for spec in &manifest.protocols {
+            for token in std::iter::once(&spec.token).chain(spec.aliases.iter()) {
+                if let Some(slug) = super::oauth_vault_slug_for_protocol(token) {
+                    assert!(
+                        super::ALL_OAUTH_VAULT_SLUGS.contains(&slug),
+                        "manifest protocol token '{token}' mapped to '{slug}', which is missing from ALL_OAUTH_VAULT_SLUGS"
+                    );
+                    seen_slugs.insert(slug);
+                }
+            }
+        }
+        for alias in manifest.aliases.keys() {
+            if let Some(slug) = super::oauth_vault_slug_for_protocol(alias) {
+                assert!(
+                    super::ALL_OAUTH_VAULT_SLUGS.contains(&slug),
+                    "manifest alias '{alias}' mapped to '{slug}', which is missing from ALL_OAUTH_VAULT_SLUGS"
+                );
+                seen_slugs.insert(slug);
+            }
+        }
+
+        for &slug in &super::ALL_OAUTH_VAULT_SLUGS {
+            assert!(
+                seen_slugs.contains(slug),
+                "ALL_OAUTH_VAULT_SLUGS entry '{slug}' is never returned for any manifest protocol token or alias"
+            );
         }
     }
 }
@@ -26709,6 +26779,8 @@ pub fn run() {
             bridge_commands::bridge_identify,
             bridge_commands::import_bridge_config,
             bridge_commands::export_bridge_config,
+            template_import::preview_configuration_template,
+            template_import::import_configuration_template,
             // Full Keystore Export/Import
             export_keystore,
             import_keystore,

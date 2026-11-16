@@ -452,11 +452,12 @@ export interface ProviderOptions {
    *  downgrade exposes the whole account. Only the Blomp preset sets it. */
   allowCleartextStorage?: boolean;
 
-  // WebDAV-specific scheme override.
+  // WebDAV-specific scheme override and optional base collection path.
   // "auto" (default): port 443 -> https, port 80 -> http, localhost / RFC1918
   // / *.local / Filen Desktop hostnames -> http on any port, otherwise https.
   // "http"/"https" force the scheme regardless of port.
   webdavScheme?: 'http' | 'https' | 'auto';
+  basePath?: string;
 
   // SFTP-specific (SCP profiles store the first three)
   private_key_path?: string; // Path to SSH private key

@@ -5366,6 +5366,51 @@ enum ImportCommands {
         )]
         on_existing: ExistingProfileArg,
     },
+    /// Preview or import server profiles from an INI configuration template
+    /// file or stdin (`-`). Preview is the default; pass `--apply` to write.
+    Template {
+        /// Path to a configuration template file, or `-` to read from stdin
+        path: String,
+        /// Write imported profiles and secrets into the active user's vault
+        /// (default is a dry-run preview)
+        #[arg(long, conflicts_with = "dry_run")]
+        apply: bool,
+        /// Explicit no-op alias for preview mode (touches neither vault nor profiles)
+        #[arg(long = "dry-run", conflicts_with = "apply")]
+        dry_run: bool,
+        #[arg(
+            long = "on-existing",
+            value_enum,
+            default_value_t = ExistingProfileArg::Skip,
+            value_name = "MODE",
+            help = ON_EXISTING_HELP
+        )]
+        on_existing: ExistingProfileArg,
+        /// Explicit encoding (`clear` or `obscured`) for secret values in the template
+        #[arg(long = "secret-form", value_enum, value_name = "FORM")]
+        secret_form: Option<TemplateSecretFormArg>,
+        /// Explicit per-block encoding (`BLOCK=clear` or `BLOCK=obscured`, repeatable)
+        #[arg(long = "secret-form-for", value_name = "BLOCK=FORM")]
+        secret_form_for: Vec<String>,
+        /// With --apply, keep options that turn a security check off; refused in --strict mode
+        #[arg(long = "keep-insecure-options")]
+        keep_insecure_options: bool,
+    },
+}
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+enum TemplateSecretFormArg {
+    Clear,
+    Obscured,
+}
+
+impl From<TemplateSecretFormArg> for ftp_client_gui_lib::rclone_import::TemplateSecretForm {
+    fn from(arg: TemplateSecretFormArg) -> Self {
+        match arg {
+            TemplateSecretFormArg::Clear => Self::Clear,
+            TemplateSecretFormArg::Obscured => Self::Obscured,
+        }
+    }
 }
 
 #[derive(Subcommand, Clone)]
@@ -7728,6 +7773,9 @@ fn strict_mode_violations(cli: &Cli) -> Vec<&'static str> {
                 keep_insecure_options: true,
                 ..
             } | ImportCommands::Rclone {
+                keep_insecure_options: true,
+                ..
+            } | ImportCommands::Template {
                 keep_insecure_options: true,
                 ..
             }
@@ -42589,6 +42637,545 @@ async fn apply_rclone_import_to_vault(
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum TemplateSourceError {
+    NotFound(String),
+    InvalidInput(String),
+}
+
+impl std::fmt::Display for TemplateSourceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotFound(msg) | Self::InvalidInput(msg) => f.write_str(msg),
+        }
+    }
+}
+
+fn read_template_input_from_source(
+    path: &str,
+    stdin_reader: impl std::io::Read,
+) -> Result<ftp_client_gui_lib::template_import::TemplateInput, TemplateSourceError> {
+    use ftp_client_gui_lib::template_import::TemplateInput;
+    if path == "-" {
+        let cap = ftp_client_gui_lib::bridge_shared::MAX_IMPORT_FILE_BYTES;
+        let mut bytes = Vec::new();
+        stdin_reader
+            .take(cap + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| {
+                TemplateSourceError::InvalidInput(format!(
+                    "Failed to read configuration template from stdin: {e}"
+                ))
+            })?;
+        if bytes.len() as u64 > cap {
+            return Err(TemplateSourceError::InvalidInput(format!(
+                "Configuration template from stdin exceeds the {} MB size limit.",
+                cap / (1024 * 1024)
+            )));
+        }
+        let content = String::from_utf8(bytes).map_err(|_| {
+            TemplateSourceError::InvalidInput(
+                "Configuration template from stdin is not valid UTF-8.".to_string(),
+            )
+        })?;
+        return Ok(TemplateInput::Text { content });
+    }
+    let file_path = std::path::PathBuf::from(path);
+    if !file_path.exists() {
+        return Err(TemplateSourceError::NotFound(format!(
+            "Configuration template file not found: {}",
+            file_path.display()
+        )));
+    }
+    ftp_client_gui_lib::bridge_shared::ensure_import_file_size_ok(&file_path)
+        .map_err(TemplateSourceError::InvalidInput)?;
+    Ok(TemplateInput::File {
+        path: file_path.display().to_string(),
+    })
+}
+
+struct ExistingProfilesCheck {
+    profiles: Vec<serde_json::Value>,
+    profiles_checked: bool,
+    note: Option<String>,
+}
+
+fn read_existing_profiles_for_template_preview(cli: &Cli) -> ExistingProfilesCheck {
+    match open_vault(cli) {
+        Ok(store) => match ensure_active_user_unlocked(cli, &store) {
+            Ok(Some(target)) => {
+                if !is_active_user(&store, target.id) {
+                    ExistingProfilesCheck {
+                        profiles: Vec::new(),
+                        profiles_checked: false,
+                        note: Some(
+                            "selected user is not the active account; collision check skipped"
+                                .to_string(),
+                        ),
+                    }
+                } else {
+                    match ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                        &store, target.id,
+                    ) {
+                        Ok((list, _)) => ExistingProfilesCheck {
+                            profiles: list,
+                            profiles_checked: true,
+                            note: None,
+                        },
+                        Err(e) => ExistingProfilesCheck {
+                            profiles: Vec::new(),
+                            profiles_checked: false,
+                            note: Some(format!(
+                                "could not read active profiles ({e}); collision check skipped"
+                            )),
+                        },
+                    }
+                }
+            }
+            Ok(None) => ExistingProfilesCheck {
+                profiles: Vec::new(),
+                profiles_checked: false,
+                note: Some("no active user account; collision check skipped".to_string()),
+            },
+            Err(e) => ExistingProfilesCheck {
+                profiles: Vec::new(),
+                profiles_checked: false,
+                note: Some(format!(
+                    "active user is locked or unreadable ({e}); collision check skipped"
+                )),
+            },
+        },
+        Err(e) => ExistingProfilesCheck {
+            profiles: Vec::new(),
+            profiles_checked: false,
+            note: Some(format!("vault unavailable ({e}); collision check skipped")),
+        },
+    }
+}
+
+fn parse_secret_form_overrides(
+    items: &[String],
+) -> Result<
+    std::collections::HashMap<String, ftp_client_gui_lib::rclone_import::TemplateSecretForm>,
+    String,
+> {
+    use ftp_client_gui_lib::rclone_import::TemplateSecretForm;
+    let mut map = std::collections::HashMap::new();
+    for item in items {
+        let Some((block, raw_form)) = item.rsplit_once('=') else {
+            return Err(format!(
+                "Invalid `--secret-form-for` value '{}': expected BLOCK=clear or BLOCK=obscured.",
+                sanitize_filename(item)
+            ));
+        };
+        let block_trimmed = block.trim();
+        if block_trimmed.is_empty() {
+            return Err(
+                "Invalid `--secret-form-for` value: block name cannot be empty.".to_string(),
+            );
+        }
+        let form = match raw_form.trim().to_ascii_lowercase().as_str() {
+            "clear" => TemplateSecretForm::Clear,
+            "obscured" => TemplateSecretForm::Obscured,
+            _ => {
+                return Err(format!(
+                    "Invalid secret form '{}' for block '{}': expected 'clear' or 'obscured'.",
+                    sanitize_filename(raw_form),
+                    sanitize_filename(block_trimmed)
+                ));
+            }
+        };
+        map.insert(block_trimmed.to_string(), form);
+    }
+    Ok(map)
+}
+
+fn format_template_preview_text(
+    report: &ftp_client_gui_lib::template_import::TemplatePreviewReport,
+    existing_profiles_note: Option<&str>,
+) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Configuration template preview ({}, {} block(s)):\n",
+        report.source_label, report.total_blocks
+    ));
+    if let Some(note) = existing_profiles_note {
+        out.push_str(&format!("  Note: {}\n", sanitize_filename(note)));
+    }
+    for issue in &report.parse_issues {
+        let blk = issue
+            .block_name
+            .as_deref()
+            .map(|b| format!(" [{}] ", sanitize_filename(b)))
+            .unwrap_or_else(|| " ".to_string());
+        out.push_str(&format!(
+            "  ! Line {}{}: {}\n",
+            issue.line,
+            blk,
+            sanitize_filename(&issue.message)
+        ));
+    }
+    for row in &report.rows {
+        let action = format!("{:?}", row.action).to_lowercase();
+        let cred = if row.needs_secret_form_choice {
+            if row.looks_obscured {
+                "secret form required (looks obscured; pass --secret-form clear|obscured or --secret-form-for BLOCK=FORM)".to_string()
+            } else {
+                "secret form required (looks plain; pass --secret-form clear|obscured or --secret-form-for BLOCK=FORM)".to_string()
+            }
+        } else if let Some(note) = row.secret_note.as_deref() {
+            match row.secret_form {
+                Some(ftp_client_gui_lib::rclone_import::TemplateSecretForm::Clear) => {
+                    format!("{note} [clear]")
+                }
+                Some(ftp_client_gui_lib::rclone_import::TemplateSecretForm::Obscured) => {
+                    format!("{note} [obscured]")
+                }
+                None => note.to_string(),
+            }
+        } else if row.has_credential {
+            "credential ready".to_string()
+        } else {
+            "no credential".to_string()
+        };
+        out.push_str(&format!(
+            "  - [line {}] {} -> {} ({}, {}:{}, {}) [{} | {}]\n",
+            row.start_line,
+            sanitize_filename(&row.block_name),
+            sanitize_filename(&row.target_name),
+            row.protocol,
+            sanitize_filename(&row.host),
+            row.port,
+            sanitize_filename(&row.username),
+            action,
+            cred
+        ));
+    }
+    for skipped in &report.skipped {
+        out.push_str(&format!(
+            "  x [line {}] {} ({}): {}\n",
+            skipped.start_line,
+            sanitize_filename(&skipped.name),
+            sanitize_filename(&skipped.backend_type),
+            sanitize_filename(&skipped.reason)
+        ));
+    }
+    for warning in &report.warnings {
+        out.push_str(&format!(
+            "  * [line {}] {}: {}\n",
+            warning.start_line,
+            sanitize_filename(&warning.name),
+            sanitize_filename(&warning.reason)
+        ));
+    }
+    if !report.security.is_empty() {
+        out.push_str("  Security options reset by default (--keep-insecure-options to retain):\n");
+        for sec in &report.security {
+            let keys: Vec<&str> = sec.reset.iter().map(|r| r.key.as_str()).collect();
+            out.push_str(&format!(
+                "    - {}: {}\n",
+                sanitize_filename(&sec.name),
+                keys.join(", ")
+            ));
+        }
+    }
+    out.push_str(
+        "Dry-run only: pass `--apply` with `aeroftp-cli import template` to store profiles.\n",
+    );
+    out
+}
+
+fn format_template_apply_text(
+    res: &ftp_client_gui_lib::template_import::TemplateImportResult,
+) -> (String, String) {
+    let mut stdout_buf = String::new();
+    let mut stderr_buf = String::new();
+    let total_skipped = res.skipped_existing.len() + res.skipped_duplicate_in_template.len();
+    stdout_buf.push_str(&format!(
+        "Configuration template applied: {} imported, {} skipped, {} invalid.\n",
+        res.applied.len(),
+        total_skipped,
+        res.skipped_invalid.len()
+    ));
+    for row in &res.applied {
+        let note = row.secret_note.as_deref().unwrap_or("no credential");
+        stdout_buf.push_str(&format!(
+            "  + {} ({}, {:?} | {})\n",
+            sanitize_filename(&row.target_name),
+            row.protocol,
+            row.action,
+            note
+        ));
+    }
+    for dup in &res.skipped_duplicate_in_template {
+        stdout_buf.push_str(&format!(
+            "  - {} [skip | duplicate in template]\n",
+            sanitize_filename(dup)
+        ));
+    }
+    for warning in &res.warnings {
+        stdout_buf.push_str(&format!(
+            "  * [line {}] {}: {}\n",
+            warning.start_line,
+            sanitize_filename(&warning.name),
+            sanitize_filename(&warning.reason)
+        ));
+    }
+    for issue in &res.parse_issues {
+        let blk = issue
+            .block_name
+            .as_deref()
+            .map(|b| format!(" [{}]", sanitize_filename(b)))
+            .unwrap_or_default();
+        stdout_buf.push_str(&format!(
+            "  ! Line {}{}: {}\n",
+            issue.line,
+            blk,
+            sanitize_filename(&issue.message)
+        ));
+    }
+    for name in &res.oauth_apps_kept {
+        let safe_name = sanitize_filename(name);
+        stderr_buf.push_str(&format!(
+            "Warning: \"{safe_name}\" came with another custom OAuth app than the one this device has for that provider. The stored app was kept, so sign this profile in again if it stops connecting.\n"
+        ));
+    }
+    for skipped in &res.skipped_invalid {
+        stderr_buf.push_str(&format!(
+            "Skipped [line {}] {}: {}\n",
+            skipped.start_line,
+            sanitize_filename(&skipped.name),
+            sanitize_filename(&skipped.reason)
+        ));
+    }
+    for name in &res.shared_secrets_failed {
+        let safe_name = sanitize_filename(name);
+        stderr_buf.push_str(&format!(
+            "Warning: \"{safe_name}\" was imported, but a shared secret or session of the file could not be stored. Sign this profile in again.\n"
+        ));
+    }
+    for line in import_security_notice_lines(&res.security, false) {
+        stderr_buf.push_str(&line);
+        stderr_buf.push('\n');
+    }
+    (stdout_buf, stderr_buf)
+}
+
+/// The blocks a template import still needs a secret form for, as the
+/// preview lists them: also a skipped base that an imported crypt inherits,
+/// which is the block the user must answer, not the crypt.
+fn template_missing_secret_form_blocks(
+    preview: &ftp_client_gui_lib::template_import::TemplatePreviewReport,
+) -> Vec<String> {
+    preview
+        .secret_choice_blocks
+        .iter()
+        .map(|block| sanitize_filename(block))
+        .collect()
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn cmd_import_template(
+    path: String,
+    json: bool,
+    apply: bool,
+    _dry_run: bool,
+    on_existing: ExistingProfileArg,
+    secret_form: Option<TemplateSecretFormArg>,
+    secret_form_for: Vec<String>,
+    keep_insecure_options: bool,
+    cli: &Cli,
+) -> i32 {
+    use ftp_client_gui_lib::profile_security::KeptRelaxation;
+    use ftp_client_gui_lib::template_import::{
+        apply_template_for_user, preview_template_with_current, TemplateApplyOptions,
+        TemplatePreviewOptions,
+    };
+
+    let emit_err = |msg: &str| {
+        if json {
+            println!("{}", serde_json::json!({ "error": msg }));
+        } else {
+            eprintln!("Error: {}", sanitize_filename(msg));
+        }
+    };
+
+    let secret_forms = match parse_secret_form_overrides(&secret_form_for) {
+        Ok(map) => map,
+        Err(e) => {
+            emit_err(&e);
+            return 5;
+        }
+    };
+    let default_secret_form = secret_form.map(Into::into);
+
+    let input = match read_template_input_from_source(&path, std::io::stdin()) {
+        Ok(inp) => inp,
+        Err(TemplateSourceError::NotFound(msg)) => {
+            emit_err(&msg);
+            return 2;
+        }
+        Err(TemplateSourceError::InvalidInput(msg)) => {
+            emit_err(&msg);
+            return 5;
+        }
+    };
+
+    let existing_mode = on_existing.into_inner();
+
+    if !apply {
+        let existing_check = read_existing_profiles_for_template_preview(cli);
+        let preview_opts = TemplatePreviewOptions {
+            existing: existing_mode,
+            default_secret_form,
+            secret_forms,
+        };
+        return match preview_template_with_current(&input, &preview_opts, &existing_check.profiles)
+        {
+            Ok(report) => {
+                if json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "mode": "preview",
+                            "dryRun": true,
+                            "existingProfilesChecked": existing_check.profiles_checked,
+                            "existingProfilesNote": existing_check.note,
+                            "report": report,
+                        }))
+                        .unwrap_or_default()
+                    );
+                } else {
+                    print!(
+                        "{}",
+                        format_template_preview_text(&report, existing_check.note.as_deref())
+                    );
+                }
+                0
+            }
+            Err(e) => {
+                emit_err(&e);
+                5
+            }
+        };
+    }
+
+    let store = match open_vault(cli) {
+        Ok(s) => s,
+        Err(e) => {
+            emit_err(&format!("vault unlock failed: {e}"));
+            return 5;
+        }
+    };
+    let target = match ensure_active_user_unlocked(cli, &store) {
+        Ok(Some(user)) => user,
+        Ok(None) => {
+            emit_err("cannot read profiles: NO_ACTIVE_USER");
+            return 4;
+        }
+        Err(e) => {
+            emit_err(&format!("cannot read profiles: {e}"));
+            return 4;
+        }
+    };
+    if !is_active_user(&store, target.id) {
+        emit_err(
+            "the account named for this import (--user or AEROFTP_USER) must be the active one; run `users switch` first",
+        );
+        return 4;
+    }
+    let current = match ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+        &store, target.id,
+    ) {
+        Ok((list, _)) => list,
+        Err(e) => {
+            emit_err(&format!("cannot read active profiles: {e}"));
+            return 4;
+        }
+    };
+
+    let preview_opts = TemplatePreviewOptions {
+        existing: existing_mode,
+        default_secret_form,
+        secret_forms: secret_forms.clone(),
+    };
+    let preview = match preview_template_with_current(&input, &preview_opts, &current) {
+        Ok(p) => p,
+        Err(e) => {
+            emit_err(&e);
+            return 5;
+        }
+    };
+
+    let missing_form_blocks = template_missing_secret_form_blocks(&preview);
+    if !missing_form_blocks.is_empty() {
+        emit_err(&format!(
+            "Configuration template contains secret(s) in [{}] without an explicit encoding. Pass `--secret-form clear|obscured` or `--secret-form-for BLOCK=clear|obscured`.",
+            missing_form_blocks.join(", ")
+        ));
+        return 5;
+    }
+
+    let mut keep_relaxed = Vec::new();
+    if keep_insecure_options {
+        for sec in &preview.security {
+            for r in sec.reset.iter().chain(sec.kept.iter()) {
+                keep_relaxed.push(KeptRelaxation {
+                    file_index: sec.file_index,
+                    key: r.key.clone(),
+                });
+            }
+        }
+    }
+
+    let apply_opts = TemplateApplyOptions {
+        existing: existing_mode,
+        default_secret_form,
+        secret_forms,
+        selected_blocks: None,
+        keep_relaxed,
+        expected_digest_sha256: Some(preview.digest_sha256),
+        expected_plan_digest_sha256: Some(preview.plan_digest_sha256),
+        expected_user_id: Some(target.id),
+    };
+
+    match apply_template_for_user(&store, target.id, &input, &apply_opts) {
+        Ok(res) => {
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({
+                        "mode": "apply",
+                        "dryRun": false,
+                        "applied": res.applied,
+                        "skippedExisting": res.skipped_existing,
+                        "skippedDuplicateInTemplate": res.skipped_duplicate_in_template,
+                        "skippedInvalid": res.skipped_invalid,
+                        "warnings": res.warnings,
+                        "parseIssues": res.parse_issues,
+                        "security": res.security,
+                        "oauthAppsKept": res.oauth_apps_kept,
+                        "sharedSecretsFailed": res.shared_secrets_failed,
+                        "digestSha256": res.digest_sha256,
+                    }))
+                    .unwrap_or_default()
+                );
+            } else {
+                let (stdout_text, stderr_text) = format_template_apply_text(&res);
+                print!("{stdout_text}");
+                if !stderr_text.is_empty() {
+                    eprint!("{stderr_text}");
+                }
+            }
+            0
+        }
+        Err(e) => {
+            emit_err(&e);
+            5
+        }
+    }
+}
+
 /// Shared text/JSON printer for every bridge importer. `v` is the
 /// `serde_json::Value` produced by `serde_json::to_value(&<Src>ImportResult)`,
 /// so its keys are the camelCase serde shape: `servers`, `skipped`,
@@ -44208,29 +44795,41 @@ fn print_import_security_notice(
     found: &[ftp_client_gui_lib::profile_import_plan::ImportedSecurity],
     dry_run: bool,
 ) {
+    for line in import_security_notice_lines(found, dry_run) {
+        eprintln!("{line}");
+    }
+}
+
+/// The lines of [`print_import_security_notice`], also written by the text
+/// result of a template apply, which prints no preview before it stores.
+fn import_security_notice_lines(
+    found: &[ftp_client_gui_lib::profile_import_plan::ImportedSecurity],
+    dry_run: bool,
+) -> Vec<String> {
     let keys = |list: &[ftp_client_gui_lib::profile_security::Relaxation]| {
         list.iter()
-            .map(|r| format!("{}={}", r.key, r.value))
+            .map(|r| format!("{}={}", r.key, sanitize_filename(&r.value)))
             .collect::<Vec<_>>()
             .join(", ")
     };
     let verb = if dry_run { "would be reset" } else { "reset" };
+    let mut lines = Vec::new();
     for entry in found {
+        let name = sanitize_filename(&entry.name);
         if !entry.reset.is_empty() {
-            eprintln!(
-                "Security: \"{}\" {verb} to the safe default: {} (pass --keep-insecure-options to keep them)",
-                entry.name,
+            lines.push(format!(
+                "Security: \"{name}\" {verb} to the safe default: {} (pass --keep-insecure-options to keep them)",
                 keys(&entry.reset)
-            );
+            ));
         }
         if !entry.kept.is_empty() {
-            eprintln!(
-                "Warning: \"{}\" keeps options that turn a security check off: {}",
-                entry.name,
+            lines.push(format!(
+                "Warning: \"{name}\" keeps options that turn a security check off: {}",
                 keys(&entry.kept)
-            );
+            ));
         }
     }
+    lines
 }
 
 /// The summary's ", N resemble an existing profile", or nothing for none.
@@ -45141,6 +45740,14 @@ async fn cmd_keystore_repair(
 
     // Destructive-action confirmation (skipped with -y or in JSON mode).
     if !yes && !json {
+        if !std::io::stdin().is_terminal() {
+            print_error(
+                format,
+                "Refusing keystore repair without --yes when stdin is not a terminal.",
+                5,
+            );
+            return 5;
+        }
         eprintln!(
             "This RESETS the credential vault (vault.db + vault.key) and restores from:\n  {input}"
         );
@@ -82751,6 +83358,28 @@ async fn main() {
                 )
                 .await
             }
+            ImportCommands::Template {
+                path,
+                apply,
+                dry_run,
+                on_existing,
+                secret_form,
+                secret_form_for,
+                keep_insecure_options,
+            } => {
+                cmd_import_template(
+                    path.clone(),
+                    json_output,
+                    *apply,
+                    *dry_run,
+                    *on_existing,
+                    *secret_form,
+                    secret_form_for.clone(),
+                    *keep_insecure_options,
+                    &cli,
+                )
+                .await
+            }
         },
         Commands::Export { command } => match command {
             ExportCommands::Rclone { output, profiles } => {
@@ -83218,6 +83847,13 @@ fn effective_max_attempts(cli: &Cli, format: OutputFormat) -> u32 {
 }
 
 // ── Tests ──────────────────────────────────────────────────────────
+
+// A private executable with its own portable.marker for every child test run,
+// so a child never resolves the developer's data root (on Windows `dirs`
+// ignores HOME and XDG_CONFIG_HOME).
+#[cfg(test)]
+#[path = "../../tests/support/isolated_cli.rs"]
+mod isolated_cli;
 
 #[cfg(test)]
 mod tests {
@@ -86750,6 +87386,17 @@ mod tests {
                     keep_insecure_options: true,
                 },
             },
+            Commands::Import {
+                command: ImportCommands::Template {
+                    path: "-".into(),
+                    apply: true,
+                    dry_run: false,
+                    on_existing: ExistingProfileArg::Skip,
+                    secret_form: Some(TemplateSecretFormArg::Clear),
+                    secret_form_for: Vec::new(),
+                    keep_insecure_options: true,
+                },
+            },
         ];
         for command in commands {
             let mut cli = test_cli();
@@ -86767,6 +87414,766 @@ mod tests {
             },
         };
         assert!(strict_mode_violations(&cli).is_empty());
+        cli.command = Commands::Import {
+            command: ImportCommands::Template {
+                path: "-".into(),
+                apply: true,
+                dry_run: false,
+                on_existing: ExistingProfileArg::Overwrite,
+                secret_form: Some(TemplateSecretFormArg::Clear),
+                secret_form_for: vec!["prod=obscured".into()],
+                keep_insecure_options: false,
+            },
+        };
+        assert!(strict_mode_violations(&cli).is_empty());
+    }
+
+    #[test]
+    fn import_template_stdin_enforces_10mb_cap_and_preview_is_neutral() {
+        let too_big =
+            vec![b'a'; ftp_client_gui_lib::bridge_shared::MAX_IMPORT_FILE_BYTES as usize + 1];
+        let err = read_template_input_from_source("-", std::io::Cursor::new(too_big))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("10 MB"), "{err}");
+        assert!(!err.to_lowercase().contains("rclone"), "{err}");
+
+        let input = read_template_input_from_source(
+            "-",
+            std::io::Cursor::new(
+                b"[demo]\ntype = sftp\nhost = demo.example\nuser = alice\npass = PlainSecret!\n",
+            ),
+        )
+        .unwrap();
+        let preview = ftp_client_gui_lib::template_import::preview_template_with_current(
+            &input,
+            &ftp_client_gui_lib::template_import::TemplatePreviewOptions::default(),
+            &[],
+        )
+        .unwrap();
+        let rendered = format_template_preview_text(
+            &preview,
+            Some("vault unavailable (test); collision check skipped"),
+        );
+        assert!(
+            rendered.contains("aeroftp-cli import template"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("collision check skipped"), "{rendered}");
+        assert!(!rendered.to_lowercase().contains("rclone"), "{rendered}");
+        assert!(!rendered.contains("PlainSecret!"), "{rendered}");
+    }
+
+    #[test]
+    fn import_template_rejects_apply_with_dry_run() {
+        on_big_stack(|| {
+            let res = Cli::try_parse_from([
+                "aeroftp-cli",
+                "import",
+                "template",
+                "--apply",
+                "--dry-run",
+                "-",
+            ]);
+            assert!(
+                res.is_err(),
+                "conflicting --apply and --dry-run must be rejected by clap"
+            );
+        });
+    }
+
+    #[test]
+    fn import_template_reports_when_vault_profiles_unreadable() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_C1_CHILD";
+        if std::env::var_os(CHILD).is_some() {
+            // Its data root is broken on purpose, so only where it runs is checked.
+            assert_child_runs_from_private_root();
+            on_big_stack(|| {
+                let cli = Cli::try_parse_from(["aeroftp-cli", "--json", "import", "template", "-"])
+                    .expect("parse preview template command");
+                let check = read_existing_profiles_for_template_preview(&cli);
+                assert!(!check.profiles_checked, "check={:?}", check.note);
+                assert!(
+                    check
+                        .note
+                        .as_deref()
+                        .is_some_and(|n| n.contains("collision check skipped")),
+                    "unexpected note: {:?}",
+                    check.note
+                );
+            });
+            return;
+        }
+
+        // The child's data root is a file where its folder should be, so the
+        // saved profiles cannot be read on any platform.
+        let root = crate::isolated_cli::root();
+        let portable_dir = root.path().join("cli");
+        std::fs::create_dir_all(&portable_dir).unwrap();
+        std::fs::write(portable_dir.join("data"), b"not-a-directory").unwrap();
+        assert_child_finishes_in(
+            root.path(),
+            "tests::import_template_reports_when_vault_profiles_unreadable",
+            &[(CHILD, "1")],
+            std::time::Duration::from_secs(15),
+        );
+    }
+
+    #[test]
+    fn import_template_parses_secret_form_flags() {
+        use ftp_client_gui_lib::rclone_import::TemplateSecretForm;
+        let parsed = parse_secret_form_overrides(&[
+            "alpha = clear".into(),
+            "beta=obscured".into(),
+            "foo=bar=clear".into(),
+        ])
+        .unwrap();
+        assert_eq!(parsed.get("alpha"), Some(&TemplateSecretForm::Clear));
+        assert_eq!(parsed.get("beta"), Some(&TemplateSecretForm::Obscured));
+        assert_eq!(parsed.get("foo=bar"), Some(&TemplateSecretForm::Clear));
+        assert!(parse_secret_form_overrides(&["alpha".into()]).is_err());
+        assert!(parse_secret_form_overrides(&["=clear".into()]).is_err());
+        assert!(parse_secret_form_overrides(&["alpha=auto".into()]).is_err());
+    }
+
+    #[test]
+    fn import_template_reports_missing_file_warnings_and_template_duplicates() {
+        let missing = read_template_input_from_source(
+            "/nonexistent/path/template-does-not-exist.ini",
+            std::io::empty(),
+        )
+        .unwrap_err();
+        assert!(matches!(missing, TemplateSourceError::NotFound(_)));
+        on_big_stack(|| {
+            let cli = test_cli();
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let code = rt.block_on(cmd_import_template(
+                "/nonexistent/path/template-does-not-exist.ini".to_string(),
+                true,
+                false,
+                false,
+                ExistingProfileArg::Skip,
+                None,
+                Vec::new(),
+                false,
+                &cli,
+            ));
+            assert_eq!(code, 2, "missing template file must exit 2");
+        });
+
+        let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
+            applied: Vec::new(),
+            skipped_existing: vec!["old-item".to_string()],
+            skipped_duplicate_in_template: vec!["dup-item".to_string()],
+            skipped_unselected: Vec::new(),
+            skipped_invalid: Vec::new(),
+            warnings: vec![ftp_client_gui_lib::rclone_import::TemplateBlockWarning {
+                start_line: 12,
+                name: "warn-item".to_string(),
+                reason: "example warning".to_string(),
+            }],
+            parse_issues: Vec::new(),
+            security: Vec::new(),
+            oauth_apps_kept: Vec::new(),
+            shared_secrets_failed: Vec::new(),
+            stored: Vec::new(),
+            digest_sha256: "d".to_string(),
+        };
+        let (stdout_text, _stderr) = format_template_apply_text(&fake_res);
+        assert!(stdout_text.contains("2 skipped"), "{stdout_text}");
+        assert!(
+            stdout_text.contains("dup-item [skip | duplicate in template]"),
+            "{stdout_text}"
+        );
+        assert!(
+            stdout_text.contains("* [line 12] warn-item: example warning"),
+            "{stdout_text}"
+        );
+    }
+
+    #[test]
+    fn template_apply_text_reports_each_reset_and_kept_security_option() {
+        use ftp_client_gui_lib::profile_import_plan::ImportedSecurity;
+        use ftp_client_gui_lib::profile_security::Relaxation;
+        let relaxed = |key: &str, value: &str| Relaxation {
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
+            applied: Vec::new(),
+            skipped_existing: Vec::new(),
+            skipped_duplicate_in_template: Vec::new(),
+            skipped_unselected: Vec::new(),
+            skipped_invalid: Vec::new(),
+            warnings: Vec::new(),
+            parse_issues: Vec::new(),
+            security: vec![
+                ImportedSecurity {
+                    file_index: 0,
+                    name: "plain-dav".to_string(),
+                    reset: vec![
+                        relaxed("webdavScheme", "http"),
+                        relaxed("verifyCert", "false"),
+                    ],
+                    kept: Vec::new(),
+                },
+                ImportedSecurity {
+                    file_index: 1,
+                    name: "lab-ftp\u{1b}[31m".to_string(),
+                    reset: Vec::new(),
+                    kept: vec![relaxed("trustPasvAddress", "true")],
+                },
+            ],
+            oauth_apps_kept: Vec::new(),
+            shared_secrets_failed: Vec::new(),
+            stored: Vec::new(),
+            digest_sha256: "d".to_string(),
+        };
+        let (_stdout, stderr_text) = format_template_apply_text(&fake_res);
+        assert!(
+            stderr_text.contains(
+                "Security: \"plain-dav\" reset to the safe default: webdavScheme=http, verifyCert=false (pass --keep-insecure-options to keep them)\n"
+            ),
+            "{stderr_text}"
+        );
+        assert!(
+            stderr_text.contains(
+                "Warning: \"lab-ftp\" keeps options that turn a security check off: trustPasvAddress=true\n"
+            ),
+            "{stderr_text}"
+        );
+        assert!(!stderr_text.contains('\u{1b}'), "{stderr_text:?}");
+    }
+
+    #[test]
+    fn template_apply_text_reports_parse_issues_shared_secret_failures_and_kept_oauth_apps() {
+        let fake_res = ftp_client_gui_lib::template_import::TemplateImportResult {
+            applied: Vec::new(),
+            skipped_existing: Vec::new(),
+            skipped_duplicate_in_template: Vec::new(),
+            skipped_unselected: Vec::new(),
+            skipped_invalid: Vec::new(),
+            warnings: Vec::new(),
+            parse_issues: vec![ftp_client_gui_lib::rclone_import::IniParseIssue {
+                line: 7,
+                block_name: Some("alpha".to_string()),
+                message: "Malformed key value line on line 7".to_string(),
+            }],
+            security: Vec::new(),
+            oauth_apps_kept: vec!["Work OneDrive".to_string(), "Personal Drive".to_string()],
+            shared_secrets_failed: vec!["Team Box".to_string(), "Archive Storage".to_string()],
+            stored: Vec::new(),
+            digest_sha256: "d".to_string(),
+        };
+        let (stdout_text, stderr_text) = format_template_apply_text(&fake_res);
+        assert!(
+            stdout_text.contains("Line 7 [alpha]: Malformed key value line on line 7"),
+            "missing parse issue in text output:\n{stdout_text}"
+        );
+        for profile in [
+            "Work OneDrive",
+            "Personal Drive",
+            "Team Box",
+            "Archive Storage",
+        ] {
+            let line = stderr_text
+                .lines()
+                .find(|l| l.contains(profile))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing recovery warning line for `{profile}` in stderr:\n{stderr_text}"
+                    )
+                });
+            assert!(
+                line.contains("Warning:")
+                    && line
+                        .to_ascii_lowercase()
+                        .contains("sign this profile in again"),
+                "warning line for `{profile}` must ask the user to sign in again: {line}"
+            );
+        }
+        let combined = format!("{stdout_text}\n{stderr_text}");
+        assert!(
+            !combined.to_lowercase().contains("rclone"),
+            "public template text must not mention rclone:\n{combined}"
+        );
+    }
+
+    #[test]
+    fn cloudinary_cli_clear_import_keeps_api_key_verbatim() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CLOUDINARY_CLEAR_CHILD";
+        // Canonical 22-char base64url shape matching a 16-byte rclone IV.
+        let canonical_22 = "AAAAAAAAAAAAAAAAAAAAAA";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    Some(TemplateSecretFormArg::Clear),
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(code, 0, "CLI Clear template apply must succeed");
+
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active CLI test user");
+                let (profiles, _) =
+                    ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                        &store, active.id,
+                    )
+                    .unwrap();
+                let saved = profiles
+                    .iter()
+                    .find(|p| p.get("name").and_then(serde_json::Value::as_str) == Some("cl"))
+                    .expect("imported Cloudinary profile");
+                assert_eq!(
+                    saved.get("username").and_then(serde_json::Value::as_str),
+                    Some(canonical_22),
+                    "CLI Clear import must keep Cloudinary api_key verbatim"
+                );
+                let id = saved
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("profile id");
+                let secret = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("server_{id}"),
+                )
+                .unwrap();
+                assert_eq!(secret.as_deref().map(|z| z.as_str()), Some("plain-secret"));
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("cloudinary.conf");
+        std::fs::write(
+            &file,
+            format!(
+                "[cl]\ntype = cloudinary\ncloud_name = demo-cloud\napi_key = {canonical_22}\napi_secret = plain-secret\n"
+            ),
+        )
+        .unwrap();
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin_within(
+            "tests::cloudinary_cli_clear_import_keeps_api_key_verbatim",
+            &[
+                (CHILD, file.to_str().unwrap()),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+                ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
+                ("HOME", cfg_dir.to_str().unwrap()),
+            ],
+            std::time::Duration::from_secs(30),
+        );
+    }
+
+    fn assert_child_finishes_with_open_stdin_within(
+        test_name: &str,
+        envs: &[(&str, &str)],
+        timeout: std::time::Duration,
+    ) {
+        let root = crate::isolated_cli::root();
+        assert_child_finishes_in(root.path(), test_name, envs, timeout);
+    }
+
+    /// [`assert_child_finishes_with_open_stdin_within`] in a private root the
+    /// caller made (and may have prepared, as a broken data root).
+    fn assert_child_finishes_in(
+        root: &std::path::Path,
+        test_name: &str,
+        envs: &[(&str, &str)],
+        timeout: std::time::Duration,
+    ) {
+        // Its own executable beside a portable.marker: the child's data root is
+        // inside `root`, whatever the platform does with HOME and XDG variables.
+        let mut cmd = crate::isolated_cli::command(&std::env::current_exe().unwrap(), root);
+        cmd.env(PRIVATE_ROOT_ENV, root);
+        cmd.args(["--exact", test_name, "--nocapture", "--test-threads=1"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+        let mut child = cmd.spawn().expect("spawn child with open stdin pipe");
+        let open_stdin = child.stdin.take().expect("piped stdin");
+        let deadline = std::time::Instant::now() + timeout;
+        let status = loop {
+            if let Some(status) = child.try_wait().expect("poll child") {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                let _ = child.kill();
+                drop(open_stdin);
+                panic!("{test_name} blocked on an open never-closed stdin pipe");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        };
+        drop(open_stdin);
+        assert!(status.success(), "{test_name} child failed: {status}");
+    }
+
+    /// Set by the child runner to the child's private root.
+    const PRIVATE_ROOT_ENV: &str = "AEROFTP_CLI_TEST_PRIVATE_ROOT";
+
+    /// Called first in a child: it runs as the portable copy in its private
+    /// root. Returns that root.
+    fn assert_child_runs_from_private_root() -> std::ffi::OsString {
+        let root = std::env::var_os(PRIVATE_ROOT_ENV).expect("started by the child runner");
+        let exe = std::env::current_exe().unwrap();
+        assert!(
+            exe.starts_with(&root) && ftp_client_gui_lib::portable::is_portable(),
+            "the child runs {} outside its private root {}",
+            exe.display(),
+            std::path::Path::new(&root).display()
+        );
+        root
+    }
+
+    /// Called first in a child: its data root is the private one the runner made.
+    fn assert_child_data_root_is_private() {
+        let root = assert_child_runs_from_private_root();
+        let data = ftp_client_gui_lib::portable::aeroftp_data_root().expect("a data root");
+        assert!(
+            data.starts_with(&root),
+            "the child resolves {} outside its private root {}",
+            data.display(),
+            std::path::Path::new(&root).display()
+        );
+    }
+
+    fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
+        assert_child_finishes_with_open_stdin_within(
+            test_name,
+            envs,
+            std::time::Duration::from_secs(15),
+        );
+    }
+
+    #[test]
+    fn import_template_file_never_reads_open_stdin_pipe() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_FILE_OPEN_STDIN_CHILD";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    false,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(code, 0, "file template preview must finish without stdin");
+            });
+            return;
+        }
+
+        struct FailIfRead;
+        impl std::io::Read for FailIfRead {
+            fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
+                panic!("import template must not read stdin when given a file path");
+            }
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("template.conf");
+        std::fs::write(
+            &file,
+            "[demo]\ntype = sftp\nhost = demo.example\nuser = alice\n",
+        )
+        .unwrap();
+        let path_str = file.to_str().unwrap().to_string();
+
+        let input = read_template_input_from_source(&path_str, FailIfRead)
+            .expect("file template must ignore stdin");
+        assert!(matches!(
+            input,
+            ftp_client_gui_lib::template_import::TemplateInput::File { .. }
+        ));
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin(
+            "tests::import_template_file_never_reads_open_stdin_pipe",
+            &[
+                (CHILD, &path_str),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+            ],
+        );
+    }
+
+    #[test]
+    fn import_template_refusals_exit_with_config_error_code_5() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_TEMPLATE_EXIT5_CHILD";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+
+                let bad_flag_code = rt.block_on(cmd_import_template(
+                    tpl_path.clone(),
+                    true,
+                    false,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    vec!["invalid_without_equals".to_string()],
+                    false,
+                    &cli,
+                ));
+                assert_eq!(bad_flag_code, 5, "invalid --secret-form-for must exit 5");
+
+                let missing_form_code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(
+                    missing_form_code, 5,
+                    "missing secret form on --apply must exit 5"
+                );
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let file = dir.path().join("template.conf");
+        std::fs::write(
+            &file,
+            "[dav]\ntype = webdav\nurl = https://dav.example.test/dav/\nuser = alice\npass = PlainSecret!\n",
+        )
+        .unwrap();
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin_within(
+            "tests::import_template_refusals_exit_with_config_error_code_5",
+            &[
+                (CHILD, file.to_str().unwrap()),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+                ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
+                ("HOME", cfg_dir.to_str().unwrap()),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+            std::time::Duration::from_secs(30),
+        );
+    }
+
+    #[test]
+    fn crypt_over_skipped_base_cli_secret_form_for_mixed_case() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_CHILD";
+        const SEED: &str = "AEROFTP_CLI_TEST_CRYPT_SKIPPED_BASE_SEED";
+        if let Ok(tpl_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
+            let seed_path = std::env::var(SEED).expect("seed path");
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+
+                let seed_code = rt.block_on(cmd_import_template(
+                    seed_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    Vec::new(),
+                    false,
+                    &cli,
+                ));
+                assert_eq!(seed_code, 0, "seeding [base] profile must succeed");
+
+                let missing_base_code = rt.block_on(cmd_import_template(
+                    tpl_path.clone(),
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    vec!["vault=clear".to_string()],
+                    false,
+                    &cli,
+                ));
+                assert_eq!(
+                    missing_base_code, 5,
+                    "omitting --secret-form-for base on skipped inherited base must exit 5"
+                );
+                // The hint names the block the user must answer: the base.
+                {
+                    let store = open_vault(&cli).expect("open CLI test vault");
+                    let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                        .unwrap()
+                        .expect("active CLI test user");
+                    let (current, _) =
+                        ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                            &store, active.id,
+                        )
+                        .unwrap();
+                    let mut forms = std::collections::HashMap::new();
+                    forms.insert(
+                        "vault".to_string(),
+                        ftp_client_gui_lib::rclone_import::TemplateSecretForm::Clear,
+                    );
+                    let preview = ftp_client_gui_lib::template_import::preview_template_with_current(
+                        &ftp_client_gui_lib::template_import::TemplateInput::File {
+                            path: tpl_path.clone(),
+                        },
+                        &ftp_client_gui_lib::template_import::TemplatePreviewOptions {
+                            existing: ftp_client_gui_lib::profile_import_plan::ExistingProfileMode::Skip,
+                            default_secret_form: None,
+                            secret_forms: forms,
+                        },
+                        &current,
+                    )
+                    .unwrap();
+                    let hint = template_missing_secret_form_blocks(&preview);
+                    assert!(
+                        hint.contains(&"base".to_string()),
+                        "the hint names base: {hint:?}"
+                    );
+                }
+
+                let ok_code = rt.block_on(cmd_import_template(
+                    tpl_path,
+                    true,
+                    true,
+                    false,
+                    ExistingProfileArg::Skip,
+                    None,
+                    vec!["vault=clear".to_string(), "base=obscured".to_string()],
+                    false,
+                    &cli,
+                ));
+                assert_eq!(ok_code, 0, "mixed --secret-form-for apply must succeed");
+
+                let store = open_vault(&cli).expect("open CLI test vault");
+                let active = ftp_client_gui_lib::user_partitions::cli_get_active_user(&store)
+                    .unwrap()
+                    .expect("active CLI test user");
+                let (profiles, _) =
+                    ftp_client_gui_lib::user_partitions::cli_read_active_profiles_at_revision(
+                        &store, active.id,
+                    )
+                    .unwrap();
+                let vault = profiles
+                    .iter()
+                    .find(|p| p.get("name").and_then(serde_json::Value::as_str) == Some("vault"))
+                    .expect("imported vault profile");
+                let vault_id = vault
+                    .get("id")
+                    .and_then(serde_json::Value::as_str)
+                    .expect("vault id");
+
+                let login_pw = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("server_{vault_id}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    login_pw.as_deref().map(|z| z.as_str()),
+                    Some("PlainLoginPw!")
+                );
+
+                let crypt_pw = ftp_client_gui_lib::user_partitions::resolve_credential_for_user(
+                    &store,
+                    active.id,
+                    &format!("aerocrypt_overlay_pw_{vault_id}"),
+                )
+                .unwrap();
+                assert_eq!(
+                    crypt_pw.as_deref().map(|z| z.as_str()),
+                    Some("ClearVaultPw!")
+                );
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let seed_file = dir.path().join("seed.conf");
+        std::fs::write(
+            &seed_file,
+            "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\n",
+        )
+        .unwrap();
+        let obscured_base_pw = "AQIDBAUGBwgJCgsMDQ4PEAsEp7cjRnTRuCeemrY";
+        let tpl_file = dir.path().join("template.conf");
+        std::fs::write(
+            &tpl_file,
+            format!(
+                "[base]\ntype = sftp\nhost = nas.example.test\nuser = alice\npass = {obscured_base_pw}\n\n\
+                 [vault]\ntype = crypt\nremote = base:enc\npassword = ClearVaultPw!\n"
+            ),
+        )
+        .unwrap();
+        let cfg_dir = dir.path().join("xdg");
+        std::fs::create_dir_all(&cfg_dir).unwrap();
+        assert_child_finishes_with_open_stdin_within(
+            "tests::crypt_over_skipped_base_cli_secret_form_for_mixed_case",
+            &[
+                (CHILD, tpl_file.to_str().unwrap()),
+                (SEED, seed_file.to_str().unwrap()),
+                ("XDG_CONFIG_HOME", cfg_dir.to_str().unwrap()),
+                ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
+                ("HOME", cfg_dir.to_str().unwrap()),
+                ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
+            ],
+            std::time::Duration::from_secs(30),
+        );
+    }
+
+    #[test]
+    fn keystore_repair_does_not_block_on_open_non_tty_stdin_pipe() {
+        const CHILD: &str = "AEROFTP_CLI_TEST_KEYSTORE_REPAIR_OPEN_STDIN_CHILD";
+        if let Ok(backup_path) = std::env::var(CHILD) {
+            assert_child_data_root_is_private();
+            on_big_stack(move || {
+                let cli = test_cli();
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let code = rt.block_on(cmd_keystore_repair(
+                    &cli,
+                    &backup_path,
+                    &None,
+                    false,
+                    &None,
+                    false,
+                    false,
+                    OutputFormat::Text,
+                ));
+                assert_eq!(code, 5, "non-TTY repair without --yes must fail closed");
+            });
+            return;
+        }
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let backup = dir.path().join("vault-backup.aeroftp");
+        std::fs::write(&backup, b"{}").unwrap();
+        assert_child_finishes_with_open_stdin(
+            "tests::keystore_repair_does_not_block_on_open_non_tty_stdin_pipe",
+            &[(CHILD, backup.to_str().unwrap())],
+        );
     }
 
     /// A saved profile is refused for the option that relaxes a check, named
