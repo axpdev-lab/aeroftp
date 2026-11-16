@@ -32,11 +32,19 @@ const NAME = 60;
 const NAME_FULL = 150;
 const DOT = 20;
 let nameFull = NAME_FULL;
-const LABEL = 50;
+const LABEL_W = 50;
+let LABEL = LABEL_W;
 const ICONS = 300;
 let barWidth = 0;
 let leftWidth = 0;
-let resizeCallbacks: Array<() => void> = [];
+// Fake observers keep what they watch, so a test can fire only the ones that
+// watch the bar (a window resize) or only the content ones (a font change).
+let observers: Array<{ cb: () => void; targets: Set<Element> }> = [];
+let frames: Array<() => void> = [];
+const fire = (watching: (target: Element) => boolean) => observers
+    .filter((o) => [...o.targets].some(watching))
+    .forEach((o) => o.cb());
+const flushFrames = () => { const due = frames; frames = []; due.forEach((cb) => cb()); };
 
 let root: Root;
 let host: HTMLDivElement;
@@ -52,7 +60,7 @@ const needAll = () => identity() + STATUS_BAR_PATH_MIN_PX + ICONS + labels() * L
 const needStatus = () => needAll() - labels('launcher') * LABEL;
 const resizeTo = (width: number) => act(() => {
     barWidth = width;
-    resizeCallbacks.forEach((cb) => cb());
+    fire((target) => target === bar());
 });
 
 const render = async (props: Record<string, unknown> = {}) => {
@@ -76,13 +84,18 @@ const render = async (props: Record<string, unknown> = {}) => {
 
 beforeEach(() => {
     (globalThis as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
-    resizeCallbacks = [];
+    observers = [];
+    frames = [];
+    LABEL = LABEL_W;
     nameFull = NAME_FULL;
     vi.stubGlobal('ResizeObserver', class {
-        constructor(cb: () => void) { resizeCallbacks.push(cb); }
-        observe() {}
-        disconnect() {}
+        private entry: { cb: () => void; targets: Set<Element> };
+        constructor(cb: () => void) { this.entry = { cb, targets: new Set() }; observers.push(this.entry); }
+        observe(target: Element) { this.entry.targets.add(target); }
+        disconnect() { this.entry.targets.clear(); }
     });
+    vi.stubGlobal('requestAnimationFrame', (cb: () => void) => frames.push(cb));
+    vi.stubGlobal('cancelAnimationFrame', () => {});
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
         if (this.getAttribute('role') === 'status') return barWidth;
         return this === left() ? leftWidth : 0;
@@ -198,6 +211,28 @@ it('gives the room back when the server name gets shorter', async () => {
     await render({ serverInfo: 'Box' });
     await act(async () => { await Promise.resolve(); });
     expect(connection.style.minWidth).toBe(`${2 * DOT + 30}px`);
+    expect(compact()).toBeNull();
+});
+
+it('re-measures when the text gets wider with no resize and no DOM change', async () => {
+    barWidth = 3000;
+    await render();
+    await resizeTo(needAll() + STATUS_BAR_HYSTERESIS_PX);
+    expect(compact()).toBeNull();
+    // Another font family: every label wider, the bar and its DOM unchanged.
+    LABEL = LABEL_W + 10;
+    await act(async () => {
+        fire((target) => target === right());
+        flushFrames();
+    });
+    expect(compact()).toBe('launchers');
+    // Back to the narrower font: only the hidden labels change width, the
+    // cluster around them does not, and the labels still come back.
+    LABEL = LABEL_W;
+    await act(async () => {
+        fire((target) => target.hasAttribute('data-statusbar-label') && target.getAttribute('data-statusbar-label') === 'launcher');
+        flushFrames();
+    });
     expect(compact()).toBeNull();
 });
 

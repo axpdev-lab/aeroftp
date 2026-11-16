@@ -154,9 +154,18 @@ export function fitStatusBar(bar: HTMLElement, left: HTMLElement, right: HTMLEle
 
 /**
  * Keeps `data-compact` on the bar in step with its width and its content.
- * The bar's size is watched with a ResizeObserver; content changes (a chip
- * appearing, a language switch, AeroShare rendering on its own) with a
- * MutationObserver, which does not see the attributes this hook writes.
+ * - The bar's own size: a ResizeObserver, fitted at once.
+ * - Content added, removed or retexted (a chip appearing, a language switch,
+ *   AeroShare rendering on its own): a MutationObserver, which does not see
+ *   the attributes this hook writes.
+ * - Text that changes width with no change to the bar or its DOM (another
+ *   font family, a web font that finishes loading): a second ResizeObserver
+ *   on the right cluster, the left items and every label, fitted on the next
+ *   frame. The labels are watched one by one because a hidden label is out
+ *   of the flow: it can change width without resizing anything around it.
+ *   Fitting inside that callback would resize the elements it observes and
+ *   end in a ResizeObserver loop error; the fit is exact, so the frame after
+ *   settles with no further change.
  */
 export function useStatusBarFit(
     barRef: RefObject<HTMLElement | null>,
@@ -170,13 +179,38 @@ export function useStatusBarFit(
         if (!bar || !left || !right) return undefined;
         const fit = () => fitStatusBar(bar, left, right);
         fit();
-        const resize = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(fit);
+        const hasResizeObserver = typeof ResizeObserver !== 'undefined';
+        const resize = hasResizeObserver ? new ResizeObserver(fit) : undefined;
         resize?.observe(bar);
-        const mutation = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(fit);
+
+        let frame: number | undefined;
+        const fitNextFrame = () => {
+            if (frame !== undefined) return;
+            frame = requestAnimationFrame(() => {
+                frame = undefined;
+                fit();
+            });
+        };
+        const content = hasResizeObserver ? new ResizeObserver(fitNextFrame) : undefined;
+        const watchContent = () => {
+            if (!content) return;
+            content.disconnect();
+            content.observe(right);
+            for (const child of Array.from(left.children)) content.observe(child);
+            right.querySelectorAll('[data-statusbar-label]').forEach((label) => content.observe(label));
+        };
+        watchContent();
+
+        const mutation = typeof MutationObserver === 'undefined' ? undefined : new MutationObserver(() => {
+            watchContent();
+            fit();
+        });
         mutation?.observe(bar, { subtree: true, childList: true, characterData: true, attributeFilter: ['class'] });
         return () => {
             resize?.disconnect();
+            content?.disconnect();
             mutation?.disconnect();
+            if (frame !== undefined) cancelAnimationFrame(frame);
         };
     }, [barRef, leftRef, rightRef]);
 }
