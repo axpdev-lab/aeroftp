@@ -168,7 +168,15 @@ interface LocalLocalRunOptions {
   maniac?: boolean;
   /** As in `ConnectedRemoteRunOptions`. */
   planBatchGeneration?: number;
+  /** The folders the plan was compared on: the left one (source) and the
+   *  right one (destination). The run acts on these, never on the panels'
+   *  folders at launch, which may have moved since. */
+  roots: { source: string; destination: string };
 }
+
+/** The roots a local-local comparison was taken on, from its context. */
+const comparedLocalRoots = (context: { initialSource?: string; initialDestination?: string }) =>
+  ({ source: context.initialSource ?? '', destination: context.initialDestination ?? '' });
 
 
 interface ProviderApplyCryptOverlayResult {
@@ -13638,9 +13646,13 @@ const App: React.FC = () => {
     runDirs: SyncRunDirs,
     opts: LocalLocalRunOptions,
   ): void => {
-    // Both panels must be rooted: the runner resolves every entry against
-    // both paths, so an empty root would build a bogus absolute path.
-    if (!currentLocalPath || !currentLocalPath2) {
+    // The comparison's roots, not the panels' folders now: a panel moved
+    // after the comparison paired the plan's overwrites and deletes with
+    // another folder (CodeRabbit on #1561). Both must be set: the runner
+    // resolves every entry against both, so an empty root would build a
+    // bogus absolute path.
+    const { source: localRoot, destination: remoteRoot } = opts.roots;
+    if (!localRoot || !remoteRoot) {
       notify.warning(
         t('aerosync.title') || 'AeroSync',
         t('aerosync.compareUnavailable') || 'Open a second panel to sync.',
@@ -13672,8 +13684,8 @@ const App: React.FC = () => {
     }
 
     const runConfig: RemoteSyncConfig = {
-      localRoot: currentLocalPath,
-      remoteRoot: currentLocalPath2,
+      localRoot,
+      remoteRoot,
       isProvider: false,
       isFtp: false,
       isLocalLocal: true,
@@ -13748,6 +13760,7 @@ const App: React.FC = () => {
         direction: 'local_to_remote',
         verifyPolicy: 'size_only',
         planBatchGeneration: context.batchGeneration,
+        roots: comparedLocalRoots(context),
       });
       return;
     }
@@ -13790,6 +13803,7 @@ const App: React.FC = () => {
         direction: 'remote_to_local',
         verifyPolicy: 'size_only',
         planBatchGeneration: context.batchGeneration,
+        roots: comparedLocalRoots(context),
       });
       return;
     }
@@ -13843,6 +13857,7 @@ const App: React.FC = () => {
         retryPolicy: journal.retry_policy,
         versionedBackup: journal.backup_dir ? { dir: journal.backup_dir } : null,
         resumeJournal: journal,
+        roots: comparedLocalRoots(context),
       });
       return;
     }
@@ -13938,6 +13953,7 @@ const App: React.FC = () => {
         versionedBackup: runtime.versionedBackup,
         maniac: runtime.speedMode === 'maniac',
         planBatchGeneration: context.batchGeneration,
+        roots: comparedLocalRoots(context),
       });
       return;
     }

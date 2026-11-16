@@ -1348,6 +1348,62 @@ it('routes every stored transfer callback and every single transfer through the 
     expect(app).toContain('const runSingles = withTransferGeneration(async (');
 });
 
+// CodeRabbit on #1561 (review 5913269115): a local panel that changed
+// folders after the comparison made the launcher pair the plan with the new
+// folder, so an overwrite or delete approved for /backup reached /other.
+it('runs a local-local plan on its comparison roots after a panel changed folders', async () => {
+    const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-roots.ts');
+    const copies: Record<string, unknown>[] = [];
+    const backend = wrapIntentInvoke(async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+        if (cmd === 'copy_local_file') copies.push({ ...args });
+        return undefined as T;
+    });
+    const invoke = vi.fn(<T,>(cmd: string, args?: Record<string, unknown>) => backend<T>(cmd, args));
+    // Compared on /work and /backup; both panels have moved since.
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, currentLocalPath: '/elsewhere', currentLocalPath2: '/other',
+        notify: { error: vi.fn(), info: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        remoteSyncRunningRef: { current: false }, batchCancelledRef: { current: false }, cancelLevelRef: { current: 0 },
+        runRemoteSync, runTrackedSync, runDeltaGate, syncRunnerPendingRef: { current: null as Promise<void> | null }, syncCancelPendingRef: { current: null as Promise<void> | null },
+        syncRunQueueBridge: () => () => undefined, transferQueue: { hasActiveTransfersNow: () => false, stopAll: vi.fn() }, invoke,
+        setRemoteSyncResult: vi.fn(), loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(), setSyncCancelling: vi.fn(),
+        stopCountRef: { current: 0 }, stopAllCountRef: { current: 0 }, syncPreflightPendingRef: { current: null }, setSyncPreflightPending: vi.fn(),
+        setDeltaEligibilityPrompt: vi.fn(), syncRefreshAbortRef: { current: null }, loadLocalWaitersRef: { current: new Set() },
+        batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null }, activeTransferRef: { current: null }, batchResumeResolverRef: { current: null },
+        dispatchTransferToast: vi.fn(), setIsBatchPaused: vi.fn(), setBatchPauseReason: vi.fn(),
+    };
+    const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
+    launch([file('report.txt')], { remote: [], local: [] }, { direction: 'local_to_remote', verifyPolicy: 'none', roots: { source: '/work', destination: '/backup' } });
+    await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalledTimes(1));
+    expect(copies.length).toBeGreaterThan(0);
+    const paths = JSON.stringify(copies);
+    expect(paths).toContain('/backup/report.txt');
+    expect(paths).not.toContain('/other');
+    expect(paths).not.toContain('/elsewhere');
+});
+
+it('refuses a local-local plan with no comparison roots', async () => {
+    const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-no-roots.ts');
+    const invoke = vi.fn();
+    const context = {
+        useLatestCallback: (fn: unknown) => fn, currentLocalPath: '/left', currentLocalPath2: '/right',
+        notify: { error: vi.fn(), info: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        remoteSyncRunningRef: { current: false }, invoke,
+    };
+    const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
+    launch([file('one')], { remote: [], local: [] }, { direction: 'local_to_remote', verifyPolicy: 'none', roots: { source: '', destination: '/backup' } });
+    expect(context.notify.warning).toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
+});
+
+it('passes the comparison roots from every local-local caller', async () => {
+    const { default: app } = await import('../App.tsx?raw');
+    const calls = app.split('runLocalLocalSync(').slice(1).map(call => call.slice(0, call.indexOf('});')));
+    expect(calls).toHaveLength(4);
+    for (const call of calls) expect(call).toContain('roots: comparedLocalRoots(context),');
+    expect(app).toContain("({ source: context.initialSource ?? '', destination: context.initialDestination ?? '' })");
+});
+
 it('keeps the local-local latch until a delayed cancel_transfer acknowledgement settles', async () => {
     const launchCode = await appSlice('  const runLocalLocalSync = useLatestCallback((', '  const handleCompareMirrorLeftToRight =', 'local-local-latch.ts');
     const stopCode = await appSlice('  const cancelTransfer = async', '  // Circuit breaker: attempt reconnection', 'local-local-stop.ts');
@@ -1377,7 +1433,7 @@ it('keeps the local-local latch until a delayed cancel_transfer acknowledgement 
     };
     const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
     const stop = new Function(...Object.keys(context), `${stopCode};return cancelTransfer;`)(...Object.values(context));
-    const options = { direction: 'local_to_remote', verifyPolicy: 'none' };
+    const options = { direction: 'local_to_remote', verifyPolicy: 'none', roots: { source: '/left', destination: '/right' } };
     launch([file('one')], { remote: [], local: [] }, options);
     await vi.waitFor(() => expect(copies).toBe(1));
     expect(resets()).toBe(1);
