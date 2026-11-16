@@ -5,6 +5,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { transformWithOxc } from 'vite';
 import appRaw from '../App.tsx?raw';
 import cryptRaw from './AeroCryptUnlock.tsx?raw';
+import connectionScreenRaw from './ConnectionScreen.tsx?raw';
+import myServersRaw from './IntroHub/MyServersPanel.tsx?raw';
 
 describe('a failure that would otherwise read as success', () => {
     it('shows a failed remote search with notifications off', () => {
@@ -130,4 +132,25 @@ describe('a failure that would otherwise read as success', () => {
         expect(selection).toHaveBeenCalledWith(new Set());
     });
 
+});
+
+describe('a 4shared sign-in writes only the token of its own profile', () => {
+    // CodeRabbit on #1565 (thread 4577064144): the backend writes the legacy
+    // singleton, which a profile without a token of its own connects with, only
+    // for a sign-in with an empty profile_id. No sign-in sends one.
+    it('passes a profile id to every fourshared_full_auth call', () => {
+        const sites = [appRaw, connectionScreenRaw, myServersRaw]
+            .map(src => src.split("invoke('fourshared_full_auth'").length - 1);
+        expect(sites).toEqual([2, 0, 2]);
+        expect(connectionScreenRaw.split("invoke<string>('fourshared_full_auth'").length - 1).toBe(1);
+
+        expect(appRaw).toContain("const params = { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: profile.id };");
+        expect(myServersRaw).toContain("? { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id, connect_token: connectToken }");
+        expect(myServersRaw).toContain(": { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: server.id };");
+        expect(connectionScreenRaw).toContain("invoke<string>('fourshared_full_auth', { params: { consumer_key: consumerKey, consumer_secret: consumerSecret, profile_id: tokenProfileId } })");
+        // The form's id is the edited profile's or a fresh attempt id, never empty.
+        expect(connectionScreenRaw).toContain('const fourSharedTokenProfileId = editingProfileId || pendingFourSharedProfileId;');
+        expect(connectionScreenRaw).toContain('const newFourSharedProfileId = () => `srv_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;');
+        expect(connectionScreenRaw).toContain('useState(newFourSharedProfileId)');
+    });
 });

@@ -24637,6 +24637,20 @@ mod fourshared_attempt_key_tests {
             load_fourshared_tokens("kept").unwrap(),
             pair("token-a", "secret-a")
         );
+        // A profile saved before the per-profile layout has no token of its
+        // own and keeps connecting with the legacy one (kept on purpose); a
+        // profile with its own token never reads it.
+        store
+            .store("oauth_fourshared", "legacy-token:legacy-secret")
+            .unwrap();
+        assert_eq!(
+            load_fourshared_tokens("srv_legacy").unwrap(),
+            pair("legacy-token", "legacy-secret")
+        );
+        assert_eq!(
+            load_fourshared_tokens("kept").unwrap(),
+            pair("token-a", "secret-a")
+        );
         // CodeRabbit (CLI deep, #1574): a source token that cannot be read is
         // an error, not "nothing to move": the save must not go on with the
         // destination's own (another account's) token.
@@ -24653,6 +24667,43 @@ mod fourshared_attempt_key_tests {
         }
         if let Some(value) = previous_passphrase {
             std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+        }
+    }
+
+    /// CodeRabbit on #1565 (thread 4577064144): an existing profile without its
+    /// own 4shared token connects with the legacy singleton. The connect reads
+    /// its token once, at the start of the attempt, before it waits on the
+    /// network, the cancel registration or the slot, and the provider keeps the
+    /// values it was built with: a singleton written while the connect waits
+    /// cannot change the account that attempt connects.
+    #[test]
+    fn a_4shared_connect_reads_its_token_once_before_it_waits() {
+        let src = include_str!("provider_commands.rs");
+        let start = src.find("pub async fn fourshared_connect(").unwrap();
+        let body = &src[start..start + src[start..].find("\n}\n").unwrap()];
+        let read = body
+            .find("load_fourshared_tokens(&params.profile_id)?")
+            .expect("the connect reads its own token");
+        assert_eq!(body.matches("load_fourshared_tokens(").count(), 1);
+        assert!(
+            read < body.find(".await").unwrap(),
+            "read before the first wait"
+        );
+        for reread in [
+            "CredentialStore",
+            "resolve_profile_oauth_token",
+            "oauth_fourshared",
+        ] {
+            assert!(!body.contains(reread), "{reread}");
+        }
+        let provider = include_str!("providers/fourshared.rs");
+        for reread in [
+            "credential_store",
+            "CredentialStore",
+            "oauth_fourshared",
+            "load_fourshared_tokens",
+        ] {
+            assert!(!provider.contains(reread), "{reread}");
         }
     }
 }
