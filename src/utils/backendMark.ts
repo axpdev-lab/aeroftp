@@ -14,4 +14,8 @@ export interface BackendMark {
  *  while the result travels back is not counted as this connect's. */
 export interface ConnectReceipt {
   mark?: BackendMark;
+  /** The connect phase the connect belongs to, when it began before its
+   *  command was sent (a preflight in between): one a newer phase overtook
+   *  meanwhile is not sent (`trackedConnect`). */
+  phase?: number;
 }

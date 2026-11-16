@@ -1403,7 +1403,7 @@ describe('A connect whose backend another invoke replaced meanwhile', () => {
         expect(sw).toMatch(/if \(backendReplacementSeqRef\.current !== switchReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n\s+setSessions\(prev => prev\.map\(s => s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \}[^\n]+\n[^\n]+\n\s+confirmBackendConnection\(\);/);
         // The device open counts its own replacement, reads the sequence once
         // it ended, and checks it after its listing.
-        expect(APP).toMatch(/const endDeviceReplacement = replacingBackend\(\);\n\s+try \{[^]*?mtp_open_gvfs_mount[^]*?mtp_open_device[^]*?\} finally \{\n\s+endDeviceReplacement\(\);\n\s+\}\n\s+setActivePortableDeviceId\(session\.deviceId\);\n(\s+\/\/[^\n]*\n)*\s+const deviceReplacedAt = backendReplacementSeqRef\.current;/);
+        expect(APP).toMatch(/const endDeviceReplacement = replacingBackend\(\);\n(\s+\/\/[^\n]*\n)*\s+const deviceOpen = \{ replaced: false \};\n\s+try \{[^]*?mtp_open_gvfs_mount[^]*?mtp_open_device[^]*?\} finally \{\n\s+endDeviceReplacement\(deviceOpen\.replaced\);\n\s+\}\n\s+setActivePortableDeviceId\(session\.deviceId\);\n(\s+\/\/[^\n]*\n)*\s+const deviceReplacedAt = backendReplacementSeqRef\.current;/);
         expect(APP).toMatch(/if \(backendReplacementSeqRef\.current !== deviceReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n[^\n]+\n\s+confirmBackendConnection\(\);/);
         // The AeroCloud open (both of its connects) and a GitHub branch switch
         // confirm with no await after their connect: nothing else would.
@@ -1525,7 +1525,13 @@ describe('Bot-named runs of the backend replacement checks', () => {
             'device-open.ts');
         const deviceScope = { ...refs, ...accounting, invoke: deviceInvoke, t: (key: string) => key, findGvfsMtpMount: () => null,
             localFiles: [], remoteFiles: [], currentLocalPath: '/home/me', notify: { info: vi.fn(), error: vi.fn() },
-            supersedeOlderConnects: vi.fn(), phaseCancellable: (run: (token: string) => unknown) => run('device-token') };
+            supersedeOlderConnects: vi.fn(),
+            // A sent open that the backend did not refuse replaced the backend.
+            phaseCancellable: async (run: (token: string) => unknown, outcome?: { replaced: boolean }) => {
+                const result = await run('device-token');
+                if (outcome) outcome.replaced = true;
+                return result;
+            } };
         const open = await runAppSlice(deviceCode, deviceScope, 'openDevice');
         expect(deviceInvoke).not.toHaveBeenCalled();
 
@@ -1872,6 +1878,175 @@ describe('Reviewed ownership of a connect', () => {
         await wrappers.runConnect('provider_connect', { server: 'C' });
         expect(backend.slot).toBe('C');
         expect(order.slice(3)).toEqual(['connect C']);
+    });
+
+    it("ends A superseded when A installed before its cancel and answers after B's phase began", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot. A installs at once, then its answer is held (the install
+        // beat the cancel, so the backend has nothing left to refuse).
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aInstalled = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                if (server === 'A') { reachA(); await aReleased; }
+                return { server };
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then((value: unknown) => value, (error: unknown) => String(error));
+        await aInstalled;
+        // B's phase begins and B connects over A's slot.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        await expect(wrappers.runConnect('provider_connect', { server: 'B' })).resolves.toEqual({ server: 'B' });
+        expect(backend.slot).toBe('B');
+        // A's answer comes back late: B's phase owns the workspace, so A ends
+        // as a cancel (not applied), without the cancel toast.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(notify.info).not.toHaveBeenCalled();
+        expect(backend.slot).toBe('B');
+    });
+
+    it("does not send a connect whose phase a newer one overtook before it was sent", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const invoke = vi.fn(async () => undefined);
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        // A's phase (0) began, then B's phase began during A's preflight.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const receipt: { phase?: number; mark?: unknown } = { phase: 0 };
+        await expect(wrappers.runConnect('provider_connect', { server: 'A' }, undefined, receipt)).rejects.toThrow('CONNECT_CANCELLED');
+        // A was never sent and replaced nothing; not a user cancel: no toast.
+        expect(invoke).not.toHaveBeenCalledWith('provider_connect', expect.anything());
+        expect(refs.backendReplacementSeqRef.current).toBe(0);
+        expect(notify.info).not.toHaveBeenCalled();
+        // A connect of the current phase is sent.
+        await wrappers.runConnect('provider_connect', { server: 'B' }, undefined, { phase: 1 });
+        expect(invoke).toHaveBeenCalledWith('provider_connect', expect.anything());
+    });
+
+    it.each([
+        ['refused by the backend', 'refused'],
+        ['never sent', 'unsent'],
+        ['installed', 'installs'],
+    ] as const)("ends a device open %s with the replacement it really made, B confirming meanwhile", async (_label, fate) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; connectToken?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { if (fate === 'refused') backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'mtp_open_device') {
+                reachA(); await aReleased;
+                if (backend.cancelled.has(args.connectToken!)) throw 'CONNECT_CANCELLED';
+                backend.slot = 'device';
+                return { deviceId: 'd' };
+            }
+            if (command === 'provider_connect') { backend.slot = args.params!.server; return undefined; }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects, phaseCancellable }');
+        // A device open as App runs it: its replacement ends with what the
+        // open really did (`phaseCancellable`'s outcome).
+        const endDeviceReplacement = accounting.replacingBackend();
+        const deviceOpen = { replaced: false };
+        if (fate === 'unsent') {
+            // An older connect X whose cancel never reaches the backend still
+            // runs, so A's open is not sent (`trackedConnect`); a connect
+            // confirms a tab meanwhile.
+            invoke.mockImplementation((async (command: string, args: { params?: { server: string } }) => {
+                if (command === 'cancel_connection') throw new Error('IPC unavailable');
+                if (command === 'provider_connect' && args.params!.server === 'X') { reachA(); await aReleased; }
+                if (command === 'mtp_open_device') backend.slot = 'device';
+                return undefined;
+            }) as typeof invoke);
+            const x = wrappers.runConnect('provider_connect', { server: 'X' }).catch(() => undefined);
+            await aReached;
+            wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+            accounting.confirmBackendConnection();
+            await expect(wrappers.phaseCancellable((connectToken: string) => invoke('mtp_open_device', { connectToken }), deviceOpen)).rejects.toThrow('toast.connectEarlierNotStopped');
+            expect(backend.slot).toBe('old');
+            // X ends after A's replacement has (`void`: its own end is X's).
+            void x;
+        } else {
+            const a = wrappers.phaseCancellable((connectToken: string) => invoke('mtp_open_device', { connectToken }), deviceOpen).then(() => 'opened', (error: unknown) => String(error));
+            await aReached;
+            if (fate === 'installs') releaseA();
+            wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+            await wrappers.runConnect('provider_connect', { server: 'B' });
+            accounting.confirmBackendConnection();
+            const seqAfterB = refs.backendReplacementSeqRef.current;
+            expect(seqAfterB).toBe(1);
+            releaseA();
+            await a;
+        }
+        const seqBeforeAEnd = refs.backendReplacementSeqRef.current;
+        endDeviceReplacement(deviceOpen.replaced);
+        if (fate === 'installs') {
+            // A did replace the backend after B confirmed: uncertain.
+            expect(refs.backendReplacementSeqRef.current).toBe(seqBeforeAEnd + 1);
+            expect(refs.backendUncertainRef.current).toBe(true);
+        } else {
+            // A replaced nothing: B's confirmed backend stays certain.
+            expect(refs.backendReplacementSeqRef.current).toBe(seqBeforeAEnd);
+            expect(refs.backendUncertainRef.current).toBe(false);
+        }
+        releaseA();
+    });
+
+    it('ends every device, OAuth and 4shared replacement with what its connects did', () => {
+        expect(APP).toContain('endDeviceReplacement(deviceOpen.replaced);');
+        expect(APP).toContain('endOAuthReplacement(oauthConnects.replaced);');
+        expect(APP).toContain('endFourSharedReplacement(fourSharedConnects.replaced);');
+        expect(APP.match(/phaseCancellable\(/g)?.length).toBe(6);
+        expect(APP.match(/\), (?:deviceOpen|oauthConnects|fourSharedConnects)\)\)?;?/g)?.length).toBe(6);
     });
 
     it("keeps B's backend certain when B confirms while a cancelled A is still cleaning up", async () => {
@@ -2246,7 +2421,8 @@ describe('Reviewed ownership of a connect', () => {
             `${appBetween('  const cancellableConnect = useCallback(async <T,>(', '\n  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);')}\n${appBetween('  const runConnect = useCallback(<T,>(', '\n  }), [cancellableConnect, showConnectWarnings]);')}\n${appBetween('  const connectUnderRow = async (', '\n  };\n')}`,
             { ...refs, ...accounting, useCallback: (fn: unknown) => fn, beginConnectAttempt: () => 'token', endConnectAttempt: () => undefined,
                 invoke: vi.fn(async () => undefined), connectCancelledRef: { current: false }, extendHardTimeoutRef: { current: null },
-                isConnectHardTimeoutError: () => false, isConnectCancelledError: () => false, humanLog: { updateEntry: vi.fn() } },
+                isConnectHardTimeoutError: () => false, isConnectCancelledError: () => false, humanLog: { updateEntry: vi.fn() },
+                trackedConnect: <T,>(run: (token: string) => Promise<T>, token: string) => run(token) },
             '{ runConnect, connectUnderRow }',
         );
         const endB = accounting.replacingBackend();
@@ -2341,6 +2517,85 @@ describe('Every invoke that installs a provider in the backend slot', () => {
     });
 });
 
+describe('A tab switch that probes the live backend', () => {
+    it('fails when a replacement ends while the probe runs', async () => {
+        const from = APP.indexOf('      // Read before the probe (a replacement');
+        const to = APP.indexOf('      // Each connect of this switch fills it as its own replacement ends.', from);
+        expect(from, 'switchSession probe').toBeGreaterThan(-1);
+        expect(to).toBeGreaterThan(from);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(from, to)}\nreturn { stillAlive, switchReplacedAt };\n}\n`, 'switch-probe.ts');
+        const run = async (replacedDuringProbe: boolean) => {
+            const backendReplacementSeqRef = { current: 3 };
+            const ctx: Record<string, unknown> = {
+                backendReplacementSeqRef,
+                targetSession: { cryptOverlay: null, connectionParams: {} },
+                protocol: 'webdav',
+                probeAliveArgs: () => ({}),
+                connectScope: { step: (fn: () => unknown) => fn(), assert: () => undefined },
+                // A sign-in swap (no new phase) replaces the backend while
+                // the probe waits; the probe still answers for the old server.
+                invoke: async () => { if (replacedDuringProbe) backendReplacementSeqRef.current += 1; return true; },
+            };
+            const probe = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<{ stillAlive: boolean; switchReplacedAt: number }>);
+            // The switch's final check: refuse when the sequence moved.
+            return { ...probe, refused: backendReplacementSeqRef.current !== probe.switchReplacedAt };
+        };
+        expect(await run(false)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: false });
+        expect(await run(true)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: true });
+    });
+});
+
+describe('A connect overtaken while its SSH host key prompt is open', () => {
+    // The host key prompt and the teardown after it, from each connect path
+    // that asks it inside its own phase.
+    const SITES: Array<[string, string, string, Record<string, unknown>]> = [
+        ['connectToFtpImpl', '        if (isSshProtocol(protocol)) {\n          const target', '        parkActiveSession();\n',
+            { protocol: 'sftp', effectiveParams: { server: 'h', port: 22 }, normalizeProviderConnectionParams: (p: unknown) => p }],
+        ['onSavedServerConnect', '                    if (isSshProtocol(normalizedParams.protocol)) {', '                    parkActiveSession();\n',
+            { normalizedParams: { protocol: 'sftp', server: 'h', port: 22 }, connectScope: { step: (fn: () => unknown) => fn() } }],
+    ];
+    it.each(SITES)('%s ends without ending the newer connection', async (_name, from, to, extra) => {
+        const start = APP.indexOf(from);
+        const end = APP.indexOf(to, start);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        const body = APP.slice(start, end + to.length);
+        const run = async (overtake: boolean) => {
+            const ref = { current: 1 };
+            const ctx: Record<string, unknown> = {
+                ...extra,
+                connectPhase: 1,
+                remoteConnectPhaseVersionRef: ref,
+                logId: 'log-a',
+                isSshProtocol: (protocol: string) => protocol === 'sftp',
+                checkSftpHostKey: async () => { if (overtake) ref.current += 1; return true; },
+                setLoading: vi.fn(),
+                humanLog: { updateEntry: vi.fn() },
+                parkActiveSession: vi.fn(),
+            };
+            const { code } = await transformWithOxc(`async () => {\n${body}\nreturn 'went on';\n}\n`, 'host-key-phase.ts');
+            const outcome = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<unknown>);
+            return { outcome, ctx };
+        };
+        // The user accepts the key with no newer connect: the connect goes on.
+        const plain = await run(false);
+        expect(plain.outcome).toBe('went on');
+        expect(plain.ctx.parkActiveSession).toHaveBeenCalledOnce();
+        // B's phase began while the prompt was open: A stops before it puts
+        // B's tab aside (its teardown ends B's connection).
+        const overtaken = await run(true);
+        expect(overtaken.outcome).not.toBe('went on');
+        expect(overtaken.ctx.parkActiveSession).not.toHaveBeenCalled();
+        expect((overtaken.ctx.humanLog as { updateEntry: ReturnType<typeof vi.fn> }).updateEntry).toHaveBeenCalledWith('log-a', { status: 'cancelled' });
+    });
+
+    it('sends each of their connects with the phase the connect began in', () => {
+        for (const receipt of ['providerReceipt', 'ftpReceipt', 'savedProviderReceipt', 'savedFtpReceipt']) {
+            expect(APP, receipt).toContain(`const ${receipt}: ConnectReceipt = { phase: connectPhase };`);
+        }
+    });
+});
+
 describe('A provider connect that could reuse a live session', () => {
     it('refuses a start folder the user name cannot fill before the reuse', async () => {
         const start = APP.indexOf('    if (isProvider) {\n', APP.indexOf('  const connectToFtpImpl = async ('));
@@ -2365,6 +2620,9 @@ describe('A provider connect that could reuse a live session', () => {
             fetchStorageQuota: vi.fn(),
             showHiddenFiles: false,
             logger: { debug: () => undefined },
+            connectPhase: 1,
+            remoteConnectPhaseVersionRef: { current: 1 },
+            backendReplacementSeqRef: { current: 0 },
         };
         const run = async (remoteDirInput: string) => {
             ctx.remoteDirInput = remoteDirInput;
@@ -2381,6 +2639,46 @@ describe('A provider connect that could reuse a live session', () => {
         expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
         expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
         expect((ctx.invoke as ReturnType<typeof vi.fn>).mock.calls.map(([command]) => command)).not.toContain('provider_probe_alive');
+    });
+});
+
+describe('A provider connect that reuses a live session after a probe', () => {
+    it.each([
+        ['nothing happens meanwhile', 'none', true],
+        ['a sign-in swap replaces the backend', 'replaced', false],
+        ['a newer connect begins', 'overtaken', false],
+    ] as const)('reuses the tab only if %s', async (_label, during, reuses) => {
+        const start = APP.indexOf('    if (isProvider) {\n', APP.indexOf('  const connectToFtpImpl = async ('));
+        const end = APP.indexOf('      setLoading(true);\n', start);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(start, end)}}\nreturn 'reconnects';\n}\n`, 'provider-reuse-probe.ts');
+        const params = { protocol: 'webdav', server: 'https://dav.example.test', username: 'alice', password: 'x', savedServerId: 'p1' };
+        const backendReplacementSeqRef = { current: 0 };
+        const remoteConnectPhaseVersionRef = { current: 1 };
+        const ctx: Record<string, unknown> = {
+            effectiveParams: params, protocol: 'webdav', isProvider: true, remoteDirInput: '/docs', opts: undefined,
+            sessions: [{ id: 's1', connectionParams: params, remoteFiles: [], remotePath: '/docs', localPath: '/home/u' }],
+            invoke: vi.fn(async (command: string) => {
+                if (command !== 'provider_probe_alive') return [];
+                if (during === 'replaced') backendReplacementSeqRef.current += 1;
+                if (during === 'overtaken') remoteConnectPhaseVersionRef.current += 1;
+                return true;
+            }),
+            notify: { error: vi.fn() }, t: (key: string) => key, connectStartFolder, probeAliveArgs: () => ({}),
+            reusesOpenTab: () => true, confirmBackendConnection: vi.fn(), fetchStorageQuota: vi.fn(), showHiddenFiles: false,
+            logger: { debug: () => undefined },
+            connectPhase: 1, remoteConnectPhaseVersionRef, backendReplacementSeqRef,
+        };
+        for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
+        const outcome = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<unknown>);
+        if (reuses) {
+            expect(ctx.setActiveSessionId).toHaveBeenCalledWith('s1');
+            expect(ctx.confirmBackendConnection).toHaveBeenCalledOnce();
+        } else {
+            expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+            expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+            // Replaced: it reconnects; overtaken: it ends, leaving B alone.
+            expect(outcome).toBe(during === 'replaced' ? 'reconnects' : undefined);
+        }
     });
 });
 

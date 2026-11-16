@@ -4386,15 +4386,22 @@ fn webdav_username_template_problem(server: &RcloneExportServer) -> Option<Strin
         &server.host,
     )
     .unwrap_or_else(|| server.host.clone());
-    // The URL the export writes is the host followed by `basePath`: a
-    // template in either part must fill.
+    // The URL the export writes is the host followed by `basePath`, unless
+    // the host carries its own path (then `basePath` is not written, as in
+    // the WebDAV section below): a template in a written part must fill.
     let base_path = server
         .options
         .as_ref()
         .and_then(|o| o.get("basePath"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
-    let url = format!("{host}{base_path}");
+    let host_has_own_path =
+        crate::providers::types::webdav_host_has_own_path(host.trim().trim_end_matches('/'));
+    let url = if host_has_own_path {
+        host.clone()
+    } else {
+        format!("{host}{base_path}")
+    };
     crate::connection_manifest::expand_username_in_url(&url, &server.username).err()
 }
 
@@ -4545,6 +4552,21 @@ fn options_with_filled_folders(
         if let Some(path) = options.get(key).and_then(|v| v.as_str()) {
             let filled = crate::bridge_shared::export_start_folder(path, &server.username)?;
             options[key] = serde_json::Value::String(filled);
+        }
+    }
+    // An imported crypt target (`name:path` or a bare path) takes precedence
+    // over the scope (`crypt_export_remote_target`): its path is filled too,
+    // the remote name kept.
+    if crypt_enabled {
+        if let Some(existing) = options.get("rcloneCryptRemote").and_then(|v| v.as_str()) {
+            let filled = match existing.split_once(':') {
+                Some((name, path)) => format!(
+                    "{name}:{}",
+                    crate::bridge_shared::export_start_folder(path, &server.username)?
+                ),
+                None => crate::bridge_shared::export_start_folder(existing, &server.username)?,
+            };
+            options["rcloneCryptRemote"] = serde_json::Value::String(filled);
         }
     }
     Ok(Some(options))
@@ -11711,6 +11733,80 @@ token = {\"access_token\":\"acc\",\"token_type\":\"Zoho-oauthtoken\",\"refresh_t
             conf.contains(crate::connection_manifest::USERNAME_TEMPLATE_MISSING),
             "{conf}"
         );
+    }
+
+    /// CodeRabbit (CLI deep, #1574): an imported crypt target takes
+    /// precedence over the scope, so its path is filled with the start
+    /// folder's; the remote name is kept, and a user name that cannot fill
+    /// it refuses the profile.
+    #[test]
+    fn options_with_filled_folders_fills_the_imported_crypt_target() {
+        let server = |user: &str, crypt: bool, target: &str| {
+            let mut s = server_with(
+                "crypt-target",
+                "sftp",
+                "nas.example.test",
+                22,
+                None,
+                serde_json::json!({
+                    "initial_path": "/home/{username}/vault",
+                    "rcloneCryptEnabled": crypt,
+                    "rcloneCryptRemote": target,
+                }),
+            );
+            s.username = user.to_string();
+            s
+        };
+        let filled = |user: &str, crypt: bool, target: &str| {
+            options_with_filled_folders(&server(user, crypt, target)).map(|o| o.unwrap())
+        };
+        let o = filled("alice", true, "old:/home/{username}/vault").unwrap();
+        assert_eq!(o["initial_path"], "/home/alice/vault");
+        assert_eq!(o["rcloneCryptRemote"], "old:/home/alice/vault");
+        assert_eq!(
+            filled("alice", true, "/home/{username}/vault").unwrap()["rcloneCryptRemote"],
+            "/home/alice/vault"
+        );
+        assert_eq!(
+            filled("alice", true, "old:").unwrap()["rcloneCryptRemote"],
+            "old:"
+        );
+        // The final crypt target the export writes is the filled folder.
+        let o = filled("alice", true, "old:/home/{username}/vault").unwrap();
+        assert_eq!(
+            crypt_export_remote_target("nas", "nas", None, None, &o),
+            "nas:/home/alice/vault"
+        );
+        // A disabled crypt is not exported: its target stays as stored.
+        assert_eq!(
+            filled("alice", false, "old:/home/{username}/vault").unwrap()["rcloneCryptRemote"],
+            "old:/home/{username}/vault"
+        );
+        assert!(filled("a/b", true, "old:/vault/{username}").is_err());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): a host that carries its own path makes
+    /// the export ignore `basePath` (the WebDAV section writes the host
+    /// alone), so a stale `{username}` there does not refuse a profile whose
+    /// written URL has nothing to fill.
+    #[test]
+    fn a_stale_base_path_template_beside_a_host_path_does_not_refuse_the_export() {
+        let mut server = server_with(
+            "own-path",
+            "webdav",
+            "https://dav.example.test/remote.php/dav/files/team/",
+            443,
+            None,
+            serde_json::json!({ "basePath": "/dav/{username}/" }),
+        );
+        server.username = String::new();
+        let (outcome, conf) = export_to_string(&[server], "own-path");
+        assert_eq!(outcome.exported, 1, "{conf}");
+        assert!(
+            conf.contains("url = https://dav.example.test/remote.php/dav/files/team/"),
+            "{conf}"
+        );
+        assert!(!conf.contains("{username}"), "{conf}");
     }
 
     /// A disabled rclone-crypt overlay with a stale `{username}` scope does not

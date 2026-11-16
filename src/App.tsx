@@ -2681,16 +2681,31 @@ const App: React.FC = () => {
     return sent;
   };
   /** Runs a connect under `token`, tracked for `supersedeOlderConnects`; one
-   *  a newer phase cancelled rejects with CONNECT_SUPERSEDED. */
-  const trackedConnect = async <T,>(run: (connectToken: string) => Promise<T>, token: string): Promise<T> => {
-    inFlightConnectsRef.current.set(token, remoteConnectPhaseVersionRef.current);
+   *  a newer phase cancelled rejects with CONNECT_SUPERSEDED. `beganAt` is the
+   *  phase the connect belongs to (default: the current one); one a newer
+   *  phase already overtook is not sent. */
+  const trackedConnect = async <T,>(
+    run: (connectToken: string) => Promise<T>,
+    token: string,
+    beganAt = remoteConnectPhaseVersionRef.current,
+  ): Promise<T> => {
+    inFlightConnectsRef.current.set(token, beganAt);
     try {
+      if (beganAt < remoteConnectPhaseVersionRef.current) {
+        supersededConnectsRef.current.add(token);
+        throw new Error(CONNECT_SUPERSEDED_MARKER);
+      }
       // The older connects this phase cancelled are cancelled in the backend
       // before this one is sent; one whose cancel never got there and that
       // still runs could install over this one, so this one is not sent.
       await supersedeCancelsRef.current;
       if (uncancelledOlderConnectRuns(token)) throw earlierConnectNotStopped();
-      return await run(token);
+      const result = await run(token);
+      // Overtaken while it ran but answered anyway (its install beat the
+      // cancel): the newer phase owns the workspace, so this one's success is
+      // not applied.
+      if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
+      return result;
     } catch (error) {
       if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
       throw error;
@@ -2701,10 +2716,23 @@ const App: React.FC = () => {
     }
   };
   /** A connect outside `cancellableConnect` (a device open, a resume's sign-in
-   *  connect) under its own tracked token; superseded, it ends as a cancel. */
-  const phaseCancellable = async <T,>(run: (connectToken: string) => Promise<T>): Promise<T> => {
+   *  connect) under its own tracked token; superseded, it ends as a cancel.
+   *  `outcome.replaced` becomes true once a connect sent through it may have
+   *  replaced the backend: not when it was never sent (`trackedConnect`) or
+   *  the backend refused it as cancelled before its install. */
+  const phaseCancellable = async <T,>(run: (connectToken: string) => Promise<T>, outcome?: { replaced: boolean }): Promise<T> => {
     try {
-      return await trackedConnect(run, makeConnectToken());
+      return await trackedConnect(async (connectToken) => {
+        let replaced = true;
+        try {
+          return await run(connectToken);
+        } catch (error) {
+          if (isConnectCancelledError(error)) replaced = false;
+          throw error;
+        } finally {
+          if (outcome && replaced) outcome.replaced = true;
+        }
+      }, makeConnectToken());
     } catch (error) {
       if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
       throw error;
@@ -2727,8 +2755,12 @@ const App: React.FC = () => {
     // This connect replaces the backend's provider (`replacingBackend`),
     // unless the backend refuses it as cancelled before its install.
     const endReplacement = replacingBackend();
+    // Sent: the connect's command went out (`trackedConnect` may refuse it
+    // before, then nothing was replaced).
+    let sent = false;
     let refusedBeforeInstall = false;
     const runRefusable = async (connectToken: string): Promise<T> => {
+      sent = true;
       try {
         return await run(connectToken);
       } catch (error) {
@@ -2749,19 +2781,16 @@ const App: React.FC = () => {
         };
         extendHardTimeoutRef.current = armHardTimeout;
         armHardTimeout();
-        trackedConnect(runRefusable, token).then(resolve, reject);
+        trackedConnect(runRefusable, token, receipt?.phase).then(resolve, reject);
       });
     } catch (error) {
       // Overtaken by a newer connect phase: a cancel, without the cancel toast
       // (the user did not cancel; the newer connect owns the workspace).
       if (isConnectSupersededError(error)) throw new Error(CONNECT_CANCELLED_MARKER);
       // Not sent (an older connect could still install, `trackedConnect`): a
-      // failure, and nothing was replaced. Before the cancel check: the user
-      // did not cancel this one.
-      if (isConnectEarlierNotStoppedError(error)) {
-        refusedBeforeInstall = true;
-        throw error;
-      }
+      // failure, and nothing was replaced (`sent`). Before the cancel check:
+      // the user did not cancel this one.
+      if (isConnectEarlierNotStoppedError(error)) throw error;
       // Hard-timeout backstop: the connect never answered. This is a real
       // failure, not a user cancel, so signal a best-effort backend cancel and
       // re-throw a clean error string that the per-flow catch surfaces via its
@@ -2784,7 +2813,7 @@ const App: React.FC = () => {
       if (hardTimer) clearTimeout(hardTimer);
       extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
-      const mark = endReplacement(!refusedBeforeInstall);
+      const mark = endReplacement(sent && !refusedBeforeInstall);
       if (receipt) receipt.mark = mark;
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);
@@ -5272,6 +5301,8 @@ const App: React.FC = () => {
       // The open installs the device into the provider slot: a replacement,
       // counted as every connect's is (`replacingBackend`).
       const endDeviceReplacement = replacingBackend();
+      // Refused or never sent, the open replaced nothing (`phaseCancellable`).
+      const deviceOpen = { replaced: false };
       try {
         // Under its own connect token: a newer phase cancels it, and the
         // backend then refuses its install.
@@ -5281,19 +5312,19 @@ const App: React.FC = () => {
             deviceId: device.deviceId,
             displayName: displayHint ?? null,
             connectToken,
-          })));
+          }), deviceOpen));
           stillCurrent();
           mtpGvfsMountPathRef.current = gvfsMount;
         } else {
           session = await connectScope.step(() => phaseCancellable(connectToken => invoke<MtpSessionInfo>('mtp_open_device', {
             deviceId: device.deviceId,
             connectToken,
-          })));
+          }), deviceOpen));
           stillCurrent();
           mtpGvfsMountPathRef.current = null;
         }
       } finally {
-        endDeviceReplacement();
+        endDeviceReplacement(deviceOpen.replaced);
       }
       setActivePortableDeviceId(session.deviceId);
       // The device holds the backend now (its own replacement has ended):
@@ -8581,6 +8612,10 @@ const App: React.FC = () => {
     // the branches below that swallow a failed listing (rather than throwing out
     // of here) test it before they go on to build the session.
     const connectEpoch = connectAbortEpochRef.current;
+    // The connect phase this connect belongs to (`asConnectPhase` began it):
+    // one a newer phase overtook during a preflight neither ends the newer
+    // connection nor sends its own (`trackedConnect`).
+    const connectPhase = remoteConnectPhaseVersionRef.current;
     // #128 item E: a user-initiated connect cancels any pending saved-secret 2FA
     // auto-retry. Without this, entering the API key (or any manual reconnect)
     // mid-countdown leaves the bottom-right countdown popup up and its 1s timer
@@ -8857,9 +8892,15 @@ const App: React.FC = () => {
         });
         if (reusable) {
           let alive = false;
+          // Read before the probe: a replacement that ends while it runs (a
+          // sign-in swap) leaves a backend that is not this tab's.
+          const probedAt = backendReplacementSeqRef.current;
           try {
             alive = await invoke<boolean>('provider_probe_alive', probeAliveArgs(reusable.connectionParams, protocol));
           } catch { alive = false; }
+          // A newer connect began meanwhile: it owns the workspace.
+          if (connectPhase !== remoteConnectPhaseVersionRef.current) return;
+          if (backendReplacementSeqRef.current !== probedAt) alive = false;
           if (alive) {
             logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
             setActiveSessionId(reusable.id);
@@ -8947,6 +8988,12 @@ const App: React.FC = () => {
           const target = normalizeProviderConnectionParams(effectiveParams);
           const accepted = await checkSftpHostKey(target.server, target.port || 22);
           if (!accepted) { setLoading(false); return; }
+          // A newer connect began while the prompt was open: it owns the
+          // workspace, so this one ends here, leaving its connection alone.
+          if (connectPhase !== remoteConnectPhaseVersionRef.current) {
+            humanLog.updateEntry(logId, { status: 'cancelled' });
+            return;
+          }
         }
         // The live tab is put aside before its backend goes.
         parkActiveSession();
@@ -8982,7 +9029,7 @@ const App: React.FC = () => {
         logger.debug('[connectToFtp] provider_connect params:', { ...providerParams, password: providerParams.password ? '***' : null, key_passphrase: providerParams.key_passphrase ? '***' : null });
         const connHost = effectiveParams.server || getProviderHostFallback(protocol, effectiveParams.username);
         const { resolvedIp: connIp, connectingLogId } = await logConnectionSteps(connHost, effectiveParams.port || 443, protocol);
-        const providerReceipt: ConnectReceipt = {};
+        const providerReceipt: ConnectReceipt = { phase: connectPhase };
         await connectUnderRow(connectingLogId, () => runConnect('provider_connect', providerParams, undefined, providerReceipt));
         const providerReplacedAt = providerReceipt.mark!;
         // 2FA accepted: clear the saved-secret auto-retry budget (issue #128).
@@ -9163,7 +9210,7 @@ const App: React.FC = () => {
       }
       const ftpProto = effectiveParams.protocol || 'ftp';
       const { resolvedIp: ftpIp, connectingLogId: ftpConnLogId } = await logConnectionSteps(effectiveParams.server, effectiveParams.port || 21, ftpProto);
-      const ftpReceipt: ConnectReceipt = {};
+      const ftpReceipt: ConnectReceipt = { phase: connectPhase };
       await connectUnderRow(ftpConnLogId, () => runConnect('connect_ftp', {
         ...(effectiveParams as unknown as Record<string, unknown>),
         // #1506 Requested 188: the PASV address opt-in rides with the legacy command.
@@ -9558,6 +9605,11 @@ const App: React.FC = () => {
       // link dropped, or the probe did not answer within its few seconds, it
       // returns false and we fall through to the normal reconnect, whose
       // listing can be cancelled, so tab-to-tab switching is unchanged.
+      // Read before the probe (a replacement that ends while it runs is not
+      // this tab's backend), again after this switch's own connect, if it
+      // reconnects, and checked before its tab is confirmed
+      // (`backendReplacementSeqRef`).
+      let switchReplacedAt = backendReplacementSeqRef.current;
       let stillAlive = false;
       if (!targetSession.cryptOverlay) {
         try {
@@ -9566,9 +9618,6 @@ const App: React.FC = () => {
           stillAlive = false;
         }
       }
-      // Read again after this switch's own connect, if it reconnects, and checked
-      // before its tab is confirmed (`backendReplacementSeqRef`).
-      let switchReplacedAt = backendReplacementSeqRef.current;
       // Each connect of this switch fills it as its own replacement ends.
       const switchReceipt: ConnectReceipt = {};
 
@@ -12255,10 +12304,12 @@ const App: React.FC = () => {
         backendUncertainRef.current = true;
         takeOverActiveSession();
         const endOAuthReplacement = replacingBackend();
+        // Refused or never sent, a connect replaced nothing (`phaseCancellable`).
+        const oauthConnects = { replaced: false };
         try {
           // Under its own token: a newer connect phase cancels it, and the
           // backend refuses its install over the newer connection.
-          oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }));
+          oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }), oauthConnects);
         } catch (connectErr) {
           // Neither a cancel nor a connect left unsent asks for a new sign-in.
           if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
@@ -12271,12 +12322,12 @@ const App: React.FC = () => {
             || (lower.includes('invalid') && lower.includes('access_token'))
           ) {
             await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('oauth2_full_auth', { params: baseParams }));
-            oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }));
+            oauthResult = await phaseCancellable(token => invoke('oauth2_connect', { params: { ...baseParams, connect_token: token } }), oauthConnects);
           } else {
             throw connectErr;
           }
         } finally {
-          endOAuthReplacement();
+          endOAuthReplacement(oauthConnects.replaced);
         }
         const displayName = oauthResult?.display_name || profile.name;
         const accountEmail = oauthResult?.account_email || profile.username || '';
@@ -12321,15 +12372,17 @@ const App: React.FC = () => {
         backendUncertainRef.current = true;
         takeOverActiveSession();
         const endFourSharedReplacement = replacingBackend();
+        // Refused or never sent, a connect replaced nothing (`phaseCancellable`).
+        const fourSharedConnects = { replaced: false };
         try {
           // Under its own token, as the OAuth connect above.
-          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }), fourSharedConnects);
         } catch (connectErr) {
           if (isConnectCancelledError(connectErr) || isConnectEarlierNotStoppedError(connectErr)) throw connectErr;
           await countedOAuthLogin(oauthLoginKey(protocol, profile.id), () => invoke('fourshared_full_auth', { params }));
-          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }));
+          await phaseCancellable(token => invoke('fourshared_connect', { params: { ...params, connect_token: token } }), fourSharedConnects);
         } finally {
-          endFourSharedReplacement();
+          endFourSharedReplacement(fourSharedConnects.replaced);
         }
         await connectToFtp({
           server: profile.name,
@@ -20467,6 +20520,8 @@ const App: React.FC = () => {
               onOpenMountManager={() => setShowMountManager({})}
               onSavedServerConnect={asConnectPhase(async (params, initialPath, localInitialPath, signInMark, connectScope = new ConnectScope()) => {
                 connectScope.assert();
+                // The connect phase this connect belongs to (see connectToFtpImpl).
+                const connectPhase = remoteConnectPhaseVersionRef.current;
                 // NOTE: Do NOT set connectionParams here - that would show the form
                 // The form should only appear when clicking Edit, not when connecting
 
@@ -20655,6 +20710,12 @@ const App: React.FC = () => {
                     if (isSshProtocol(normalizedParams.protocol)) {
                       const accepted = await connectScope.step(() => checkSftpHostKey(normalizedParams.server, normalizedParams.port || 22, connectScope));
                       if (!accepted) return 'pending_human' as const;
+                      // A newer connect began while the prompt was open: it
+                      // owns the workspace, so this one ends here.
+                      if (connectPhase !== remoteConnectPhaseVersionRef.current) {
+                        humanLog.updateEntry(logId, { status: 'cancelled' });
+                        return 'failed' as const;
+                      }
                     }
                     // The live tab is put aside before its backend goes.
                     parkActiveSession();
@@ -20680,7 +20741,7 @@ const App: React.FC = () => {
                     logger.debug('[onSavedServerConnect] provider protocol:', providerParams.protocol);
                     const savedConnHost = connectedParams.server || getProviderHostFallback(connectedParams.protocol, connectedParams.username);
                     const { resolvedIp: savedIp, connectingLogId: savedConnLogId } = await connectScope.step(() => logConnectionSteps(savedConnHost, connectedParams.port || 443, connectedParams.protocol || 'ftp'));
-                      const savedProviderReceipt: ConnectReceipt = {};
+                      const savedProviderReceipt: ConnectReceipt = { phase: connectPhase };
                       await connectUnderRow(savedConnLogId, () => connectScope.step(() => runConnect('provider_connect', providerParams, connectScope, savedProviderReceipt)));
                       const savedProviderReplacedAt = savedProviderReceipt.mark!;
 
@@ -20841,7 +20902,7 @@ const App: React.FC = () => {
 
                   const savedFtpProto = params.protocol || 'ftp';
                   const { resolvedIp: savedFtpIp, connectingLogId: savedFtpConnLogId } = await connectScope.step(() => logConnectionSteps(params.server, params.port || 21, savedFtpProto));
-                  const savedFtpReceipt: ConnectReceipt = {};
+                  const savedFtpReceipt: ConnectReceipt = { phase: connectPhase };
                   await connectUnderRow(savedFtpConnLogId, () => connectScope.step(() => runConnect('connect_ftp', params as unknown as Record<string, unknown>, connectScope, savedFtpReceipt)));
                   const savedFtpReplacedAt = savedFtpReceipt.mark!;
                   if (savedFtpConnLogId) humanLog.updateEntry(savedFtpConnLogId, { status: 'success', message: t('activity.connected_to', { ip: savedFtpIp || params.server, port: String(params.port || 21) }) });

@@ -39,7 +39,9 @@ export function deriveProviderId(server: SearchableServer): string | undefined {
         // swallowed by the generic 'cloud.' Nextcloud rule below, and lookalikes
         // like gmail.ru are rejected. Similarly, lifetimecloud.me contains
         // 'cloud.' and must match on a real domain boundary before Nextcloud.
-        const davHost = host.replace(/^https?:\/\//, '').split(/[/?#]/)[0].split('@').pop()!.split(':')[0];
+        // Any scheme (`https://`, or `webdav://` / `webdavs://` from an
+        // imported profile) before the authority.
+        const davHost = host.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '').split(/[/?#]/)[0].split('@').pop()!.split(':')[0];
         if (davHost === 'mail.ru' || davHost.endsWith('.mail.ru')) return 'mailru-cloud';
         // Puter WebDAV: exact dav.puter.com or a subdomain of it.
         if (davHost === 'dav.puter.com' || davHost.endsWith('.dav.puter.com')) return 'puter-webdav';

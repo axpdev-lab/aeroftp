@@ -447,6 +447,11 @@ fn lftp_bookmark_name(name: &str) -> String {
         .collect()
 }
 
+/// The reason an lftp export skips a WebDAV endpoint whose own path holds an
+/// encoded `/`: lftp's bookmark cannot keep it apart from a separator.
+pub const LFTP_ENCODED_SLASH_ENDPOINT: &str =
+    "WebDAV endpoint path contains an encoded slash (%2F) that an lftp bookmark cannot keep";
+
 pub fn export_lftp(
     servers: &[LftpExportServer],
     passwords: &HashMap<String, String>,
@@ -495,6 +500,13 @@ pub fn export_lftp(
             }
         };
         if let Some(ep) = &endpoint {
+            // The importer decodes the bookmark's whole path once into one
+            // start folder: an encoded `/` inside a segment of the endpoint's
+            // own path would come back as a separator, another collection.
+            if ep.path.to_ascii_lowercase().contains("%2f") {
+                outcome.skip(&server.name, LFTP_ENCODED_SLASH_ENDPOINT);
+                continue;
+            }
             scheme = ep.scheme;
         }
 
@@ -747,8 +759,8 @@ mystery gopher://old.example.com/0/
     /// requests for the imported profile's start folder is the one it
     /// requests for the exported profile's, for endpoints whose own path
     /// holds escapes and folders whose names hold them. A segment that itself
-    /// holds a slash (`/a%2Fb`) cannot survive: the bookmark is one path
-    /// string, decoded whole, with no way to mark a slash inside a segment.
+    /// holds a slash (`/a%2Fb`) cannot survive (the bookmark is one path
+    /// string, decoded whole), so its export is refused.
     #[test]
     fn a_webdav_bookmark_reopens_the_same_resource() {
         let request = |host: &str, port: u16, initial: Option<&str>| {
@@ -803,10 +815,39 @@ mystery gopher://old.example.com/0/
                 assert_eq!(back, original, "{base} {folder}: {written}");
             }
         }
-        // The limit: a slash inside a segment of the endpoint's own path.
-        let (original, back, written) = reopened("/a%2Fb", "/docs");
-        assert_ne!(back, original, "{written}");
-        assert!(back.ends_with("/a/b/docs"), "{back}");
+        // A slash inside a segment of the endpoint's own path cannot be kept
+        // (the import decodes the whole path once): the export refuses the
+        // profile instead of writing a bookmark for another collection.
+        for base in ["/a%2Fb", "/a%2fb"] {
+            let server = LftpExportServer {
+                id: "dav".into(),
+                name: "dav".into(),
+                host: format!("https://dav.example.com{base}"),
+                port: 0,
+                username: String::new(),
+                protocol: Some("webdav".into()),
+                options: None,
+                provider_id: None,
+                initial_path: Some("/docs".into()),
+            };
+            let tmp = std::env::temp_dir().join(format!(
+                "aeroftp-test-lftp-encoded-slash-{}.bookmarks",
+                crate::bridge_shared::uuid_v4()
+            ));
+            let exported = export_lftp(&[server], &HashMap::new(), &tmp).expect("should run");
+            let written = std::fs::read_to_string(&tmp).unwrap_or_default();
+            std::fs::remove_file(&tmp).ok();
+            assert_eq!(exported.exported, 0, "{base}: {written}");
+            assert_eq!(
+                exported.skipped,
+                vec![crate::bridge_shared::BridgeExportSkip {
+                    name: "dav".to_string(),
+                    reason: LFTP_ENCODED_SLASH_ENDPOINT.to_string(),
+                }],
+                "{base}"
+            );
+            assert!(!written.contains("dav.example.com"), "{written}");
+        }
     }
 
     /// Raw whitespace around a bookmark line is not part of its URL: trailing

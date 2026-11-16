@@ -219,6 +219,14 @@ describe('deriveProviderId LifetimeCloud host boundary', () => {
         expect(deriveProviderId(dav('https://user@lifetimecloud.me:443/dav/alice?foo=bar'))).toBe('lifetimecloud');
     });
 
+    it('reads the host behind any scheme, webdav and webdavs included', () => {
+        expect(deriveProviderId(dav('webdavs://dav.puter.com/alice'))).toBe('puter-webdav');
+        expect(deriveProviderId(dav('webdavs://lifetimecloud.me/dav/alice/'))).toBe('lifetimecloud');
+        expect(deriveProviderId(dav('webdav://app.koofr.net/dav/Koofr'))).toBe('koofr-webdav');
+        expect(deriveProviderId(dav('WEBDAVS://user@dav.puter.com:443/alice'))).toBe('puter-webdav');
+        expect(deriveProviderId(dav('webdavs://dav.puter.com.example/alice'))).not.toBe('puter-webdav');
+    });
+
     it('rejects lookalike hosts and keeps Nextcloud hosts on nextcloud', () => {
         expect(deriveProviderId(dav('https://notlifetimecloud.me/dav/alice/'))).not.toBe('lifetimecloud');
         expect(deriveProviderId(dav('https://lifetimecloud.me.example/dav/alice/'))).not.toBe('lifetimecloud');

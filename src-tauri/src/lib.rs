@@ -4136,6 +4136,15 @@ async fn connect_ftp_inner(
     });
 
     let mut ftp_manager = state.ftp_manager.lock().await;
+    // Cancelled before it started (a cancel that came first, or one that
+    // came while it waited for the manager): the live session is left as it
+    // is, its generation with it.
+    if cancel_token
+        .as_ref()
+        .is_some_and(|token| token.is_cancelled())
+    {
+        return Err(provider_commands::CONNECT_CANCELLED.to_string());
+    }
     // A new session from here on, whatever the outcome: the one before it
     // is replaced.
     state
@@ -5328,6 +5337,51 @@ mod legacy_ftp_generation_tests {
             .unwrap();
         disconnect_ftp_inner(&state, None).await.unwrap();
         assert!(!state.ftp_manager.lock().await.is_connected());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): a connect B cancelled before it could
+    /// start, either before it registered or while it waited for the
+    /// manager, leaves A's live session and its generation untouched.
+    #[tokio::test]
+    async fn a_cancelled_connect_leaves_the_live_session_and_its_generation() {
+        let state = AppState::new();
+        let registry = provider_commands::ConnectionCancelRegistry::default();
+        let server = ftp_server().await;
+        connect_ftp_inner(&state, &registry, params(&server))
+            .await
+            .unwrap();
+        let live = state.ftp_connection_generation.load(Ordering::SeqCst);
+        let with_token = |token: &str| ConnectionParams {
+            connect_token: Some(token.to_string()),
+            ..params(&server)
+        };
+
+        // Cancelled before its command arrived (the cancel is kept for it).
+        registry.cancel("early");
+        let early = connect_ftp_inner(&state, &registry, with_token("early")).await;
+        assert_eq!(early.unwrap_err(), provider_commands::CONNECT_CANCELLED);
+        assert!(state.ftp_manager.lock().await.is_connected());
+        assert_eq!(state.ftp_connection_generation.load(Ordering::SeqCst), live);
+
+        // Cancelled while it waits for the manager another command holds.
+        let held = state.ftp_manager.lock().await;
+        let waiting = connect_ftp_inner(&state, &registry, with_token("waiting"));
+        tokio::pin!(waiting);
+        assert!(
+            futures_util::poll!(&mut waiting).is_pending(),
+            "B waits for the manager"
+        );
+        assert!(registry.cancel("waiting"));
+        drop(held);
+        assert_eq!(
+            waiting.await.unwrap_err(),
+            provider_commands::CONNECT_CANCELLED
+        );
+        assert!(
+            state.ftp_manager.lock().await.is_connected(),
+            "A's session survives B's cancel"
+        );
+        assert_eq!(state.ftp_connection_generation.load(Ordering::SeqCst), live);
     }
 }
 

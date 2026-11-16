@@ -2221,7 +2221,10 @@ where
     // copy with the password zeroized (A3-05).
     let mut prepare_config = config.clone();
     prepare_config.zeroize_password();
-    prepare(prepare_config).await?;
+    // Under the registration: a connect already cancelled (a newer connect
+    // began, or its cancel came first) never prepares, and one cancelled
+    // while it prepares stops waiting for it.
+    registration.run(prepare(prepare_config)).await?;
 
     // SEC-GH-001: For GitHub App mode, inject the held installation token
     // so the token never crosses the IPC boundary.
@@ -2274,17 +2277,20 @@ where
     //
     // Issue #233: drain in-flight DAG transfers BEFORE taking the slot, so
     // an active download/upload cannot see the box yanked from under it.
-    install_connected_provider(
+    //
+    // The config goes in with the provider, under the same provider lock: a
+    // connect that installs after this one cannot have its provider described
+    // by this one's config.
+    let profile_id = config.extra.get("profile_id").cloned();
+    install_connected_provider_with_config(
         state,
         provider,
-        config.extra.get("profile_id").cloned(),
+        profile_id,
+        Some(config),
+        Duration::from_secs(30),
         registration.token(),
     )
     .await?;
-    {
-        let mut config_lock = state.config.lock().await;
-        *config_lock = Some(config);
-    }
 
     info!("Connected successfully: {}", display_name);
     Ok(format!("Connected to {} via {}", display_name, protocol))
@@ -11689,10 +11695,11 @@ fn fourshared_adopt_tokens_inner(from_profile_id: &str, to_profile_id: &str) -> 
         return Err("Credential vault not open".to_string());
     };
     let from_key = fourshared_token_key(from_profile_id);
+    // A read that fails is not a missing token: reported as a success, the
+    // save went on with the token the destination already held, another
+    // account's.
     let Some(data) =
-        crate::user_partitions::resolve_active_credential_owner_aware(&store, &from_key)
-            .ok()
-            .flatten()
+        crate::user_partitions::resolve_active_credential_owner_aware(&store, &from_key)?
             .map(|value| value.to_string())
             .filter(|value| !value.is_empty())
     else {
@@ -24170,13 +24177,69 @@ mod connect_install_cancel_tests {
         assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
         assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
         assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        // CodeRabbit (CLI deep, #1574): registered cancelled, it never
+        // prepares either (no AeroShare replica for a refused connect).
+        assert!(!prepared.load(Ordering::SeqCst), "A never prepared");
         // A later attempt under another key is not affected, and the early
         // cancel was consumed by the one it named.
         let (_, fresh) = registry.register("connect-other");
         assert!(!fresh.is_cancelled());
         let (_, again) = registry.register("connect-early");
         assert!(!again.is_cancelled());
-        let _ = prepared;
+    }
+
+    /// CodeRabbit (CLI deep, #1574): a connect cancelled while its
+    /// preparation waits returns at once, without waiting for the
+    /// preparation, and never takes the slot.
+    #[tokio::test]
+    async fn a_connect_cancelled_while_it_prepares_stops_waiting_for_it() {
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-stuck",
+        }))
+        .unwrap();
+        let (reached_tx, reached_rx) = tokio::sync::oneshot::channel::<()>();
+        let connecting = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            move |_config: ProviderConfig| async move {
+                let _ = reached_tx.send(());
+                // A preparation that never ends on its own.
+                std::future::pending::<()>().await;
+                Ok(())
+            },
+            |_| {},
+        );
+        let cancel = async {
+            reached_rx.await.unwrap();
+            assert!(registry.cancel("connect-stuck"));
+        };
+        let (connected, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+            tokio::join!(connecting, cancel)
+        })
+        .await
+        .expect("the cancelled connect returned without its preparation");
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert!(in_slot(&state).await.is_none());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): the config is installed with its
+    /// provider, under the provider lock; a separate write after the install
+    /// let a connect that resumed late describe a newer connect's provider.
+    #[test]
+    fn provider_connect_installs_the_config_with_its_provider() {
+        let code = include_str!("provider_commands.rs");
+        let start = code.find("async fn provider_connect_inner<").unwrap();
+        let body = &code[start..start + code[start..].find("\n}\n").unwrap()];
+        assert!(
+            body.contains("install_connected_provider_with_config("),
+            "{body}"
+        );
+        assert!(body.contains("Some(config),"), "{body}");
+        assert!(!body.contains("state.config.lock()"), "{body}");
     }
 
     /// Greptile on #1574: the install cancelled the live connection's storage
@@ -24479,24 +24542,29 @@ mod connect_install_cancel_tests {
             assert!(body.contains("registration.token(),"), "{name}");
             assert!(!body.contains("run_cancellable_connect("), "{name}");
         }
-        let callers: Vec<&str> = code
-            .match_indices("install_connected_provider(")
-            .filter(|(at, _)| !code[..*at].ends_with("fn "))
-            .map(|(at, _)| {
-                let open = code[..at]
-                    .rfind("\nasync fn ")
-                    .max(code[..at].rfind("\npub async fn "))
-                    .unwrap();
-                let name = code[open..].split("fn ").nth(1).unwrap();
-                &name[..name.find(['(', '<']).unwrap()]
-            })
-            .collect();
+        // The function each production call of `entry` sits in.
+        let callers_of = |entry: &str| -> Vec<&str> {
+            code.match_indices(&format!("{entry}("))
+                .filter(|(at, _)| !code[..*at].ends_with("fn "))
+                .map(|(at, _)| {
+                    let open = code[..at].rfind("async fn ").unwrap();
+                    let name = &code[open + "async fn ".len()..];
+                    &name[..name.find(['(', '<']).unwrap()]
+                })
+                .collect()
+        };
         assert_eq!(
-            callers,
+            callers_of("install_connected_provider"),
+            ["oauth2_connect", "fourshared_connect"]
+        );
+        // `provider_connect_inner` hands its config in with its provider;
+        // the other two are the device install and the wrapper above.
+        assert_eq!(
+            callers_of("install_connected_provider_with_config"),
             [
+                "install_mtp_provider",
                 "provider_connect_inner",
-                "oauth2_connect",
-                "fourshared_connect"
+                "install_connected_provider"
             ]
         );
         // The device opens register their token too and hand it to the
@@ -24569,6 +24637,14 @@ mod fourshared_attempt_key_tests {
             load_fourshared_tokens("kept").unwrap(),
             pair("token-a", "secret-a")
         );
+        // CodeRabbit (CLI deep, #1574): a source token that cannot be read is
+        // an error, not "nothing to move": the save must not go on with the
+        // destination's own (another account's) token.
+        let partitions = crate::user_partitions::cli_db_path().unwrap();
+        std::fs::remove_file(&partitions).unwrap();
+        std::fs::create_dir(&partitions).unwrap();
+        assert!(fourshared_adopt_tokens_inner("srv_attempt_b", "kept").is_err());
+        std::fs::remove_dir(&partitions).unwrap();
 
         CredentialStore::clear_cache();
         match previous_xdg {

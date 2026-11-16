@@ -43656,7 +43656,6 @@ fn collect_export_scaffold_with(
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let options = entry.get("options").cloned();
-        let overlay = entry.get("aeroCryptOverlay").cloned();
 
         let secret = secret_for(id, &protocol);
 
@@ -43697,6 +43696,7 @@ fn collect_export_scaffold_with(
             }
         };
         let options = filled.get("options").cloned();
+        let overlay = filled.get("aeroCryptOverlay").cloned();
         let initial_path = filled
             .get("initialPath")
             .and_then(|v| v.as_str())
@@ -45726,6 +45726,25 @@ mod export_start_folder_tests {
         assert!(collected.profiles.is_empty());
         assert_eq!(collected.skipped.len(), 1);
         assert_eq!(collected.skipped[0].0, "backup");
+    }
+
+    /// CodeRabbit (CLI deep, #1574): the CLI writers take the overlay from
+    /// the scaffold, so an enabled rclone-crypt overlay's scope is the filled
+    /// one, as in the GUI export.
+    #[test]
+    fn a_cli_export_hands_the_writers_the_filled_overlay_scope() {
+        let mut profiles = profile("alice");
+        profiles[0]["aeroCryptOverlay"] = serde_json::json!({
+            "enabled": true, "kind": "rclone-crypt", "remoteScope": "/vault/{username}"
+        });
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("rclone");
+        let collected =
+            collect_export_scaffold_with(&profiles, None, "rclone", supported, &[], |_, _| {
+                "pw".to_string()
+            })
+            .unwrap();
+        let overlay = collected.profiles[0].overlay.as_ref().unwrap();
+        assert_eq!(overlay["remoteScope"], "/vault/alice");
     }
 }
 

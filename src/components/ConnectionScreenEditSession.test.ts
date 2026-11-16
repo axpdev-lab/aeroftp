@@ -75,12 +75,12 @@ describe('ConnectionScreen edit sessions', () => {
             const untilCommand = resume.slice(from, resume.indexOf(command, from));
             expect(untilCommand, command).toContain('backendUncertainRef.current = true;\n        takeOverActiveSession();');
             // Counted as a replacement in flight until it returns, in a finally.
-            expect(untilCommand, command).toMatch(/const end\w+Replacement = replacingBackend\(\);\n\s+try \{\n(\s+\/\/[^\n]*\n)*\s+[^\n]*$/);
+            expect(untilCommand, command).toMatch(/const end\w+Replacement = replacingBackend\(\);\n(\s+\/\/[^\n]*\n)*\s+const \w+ = \{ replaced: false \};\n\s+try \{\n(\s+\/\/[^\n]*\n)*\s+[^\n]*$/);
         }
         // Every connect, switch and swap invoke goes through cancellableConnect,
         // which counts it the same way.
         const central = appSource.slice(appSource.indexOf('  const cancellableConnect = useCallback('));
-        expect(central.slice(0, central.indexOf('  }, [beginConnectAttempt'))).toMatch(/const endReplacement = replacingBackend\(\);[\s\S]*\} finally \{[\s\S]*const mark = endReplacement\(!refusedBeforeInstall\);\n\s+if \(receipt\) receipt\.mark = mark;\n\s+\}\n$/);
+        expect(central.slice(0, central.indexOf('  }, [beginConnectAttempt'))).toMatch(/const endReplacement = replacingBackend\(\);[\s\S]*\} finally \{[\s\S]*const mark = endReplacement\(sent && !refusedBeforeInstall\);\n\s+if \(receipt\) receipt\.mark = mark;\n\s+\}\n$/);
     });
 
     it('gates every path that writes overlay fields on the one overlay predicate', () => {

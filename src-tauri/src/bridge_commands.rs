@@ -649,6 +649,16 @@ pub fn with_filled_start_folders(entry: &Value) -> Result<Value, String> {
             }
         }
     }
+    // An enabled rclone-crypt overlay's scope becomes the exported crypt
+    // remote's folder (`inject_rclone_crypt_export_options`).
+    if let Some(overlay) = entry.get_mut("aeroCryptOverlay").filter(|o| {
+        o.get("enabled").and_then(|v| v.as_bool()) == Some(true)
+            && o.get("kind").and_then(|v| v.as_str()) == Some("rclone-crypt")
+    }) {
+        if let Some(scope) = overlay.get_mut("remoteScope") {
+            fill(scope)?;
+        }
+    }
     Ok(entry)
 }
 
@@ -2977,6 +2987,31 @@ mod tests {
             crate::connection_manifest::USERNAME_TEMPLATE_MISSING
         );
         assert!(with_filled_start_folders(&entry("a/b", false)).is_err());
+    }
+
+    /// CodeRabbit (CLI deep, #1574): an enabled rclone-crypt overlay's
+    /// `remoteScope` becomes the exported crypt remote's folder
+    /// (`inject_rclone_crypt_export_options`), so it is filled as the profile
+    /// opens it; a disabled overlay and an AeroCrypt one are not exported
+    /// from it and stay as stored.
+    #[test]
+    fn with_filled_start_folders_fills_an_exported_overlay_scope() {
+        let entry = |enabled: bool, kind: &str| {
+            json!({
+                "username": "alice",
+                "aeroCryptOverlay": { "enabled": enabled, "kind": kind, "remoteScope": "/vault/{username}" }
+            })
+        };
+        let filled = with_filled_start_folders(&entry(true, "rclone-crypt")).unwrap();
+        assert_eq!(filled["aeroCryptOverlay"]["remoteScope"], "/vault/alice");
+        for (enabled, kind) in [(false, "rclone-crypt"), (true, "aerocrypt")] {
+            let kept = with_filled_start_folders(&entry(enabled, kind)).unwrap();
+            assert_eq!(kept["aeroCryptOverlay"]["remoteScope"], "/vault/{username}");
+        }
+        // A user name that cannot fill it refuses the profile.
+        let mut bad = entry(true, "rclone-crypt");
+        bad["username"] = json!("a/b");
+        assert!(with_filled_start_folders(&bad).is_err());
     }
 
     fn walkdir(dir: &Path) -> Vec<std::path::PathBuf> {

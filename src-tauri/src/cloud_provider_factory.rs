@@ -553,6 +553,13 @@ fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::
     if remote_folder == "/" && SLASH_IS_THE_STARTING_FOLDER.contains(&protocol) {
         return false;
     }
+    // WebDAV opens every absolute folder under its server root, the starting
+    // folder as written (`WebDavProvider::resolve_root`): `/cloud/` under
+    // `/reports` and under `/reports ` are two folders. Only without a root
+    // (none, or `/`) does an absolute folder not move with it.
+    if protocol == "webdav" && remote_folder.starts_with('/') {
+        return profile_root(profile).is_ok_and(|root| root.is_empty() || root == "/");
+    }
     remote_folder.starts_with('/')
         || (crate::crypt_overlay_provider::login_relative_protocol(protocol)
             && crate::crypt_overlay_provider::is_login_relative_scope(remote_folder))
@@ -1757,6 +1764,9 @@ mod tests {
         // config's remote folder `/`: the folder that `/` lists, and the path
         // of the last PROPFIND, the listing of `/`.
         async fn slash_on_webdav(initial: &str) -> (String, String) {
+            folder_on_webdav(initial, "/").await
+        }
+        async fn folder_on_webdav(initial: &str, folder: &str) -> (String, String) {
             let (url, seen) = dav_server().await;
             let profile = serde_json::json!({ "protocol": "webdav", "initialPath": initial });
             let root = profile_root(&profile).unwrap();
@@ -1776,9 +1786,17 @@ mod tests {
                 enter_profile_root(&mut *provider, Some(&root))
                     .await
                     .unwrap();
-                provider.cd("/").await.unwrap();
+                // `cd` keeps an absolute folder other than `/` out of a
+                // rooted connection (`path_violates_root`); AeroCloud then
+                // reads it through `exists` and `list` (`cloud_service`'s
+                // remote probe), which open it under the root.
+                if folder == "/" {
+                    provider.cd(folder).await.unwrap();
+                } else {
+                    assert!(provider.cd(folder).await.is_err(), "{folder}");
+                }
                 let here = provider.pwd().await.unwrap();
-                provider.list("/").await.unwrap();
+                provider.list(folder).await.unwrap();
                 let listed = seen.lock().unwrap().last().cloned().unwrap();
                 (here, listed)
             })
@@ -1801,6 +1819,32 @@ mod tests {
         // Two folders, two identities; the unpadded one keeps main's form.
         assert_eq!(identity("/reports"), "/reports");
         assert_eq!(identity("/reports "), "/reports ");
+
+        // CodeRabbit (CLI deep, #1574): an absolute remote folder is opened
+        // under the root too, so `/cloud/` under two roots that differ by one
+        // space is two folders on the wire, and two identities.
+        let (_, plain_cloud) = folder_on_webdav("/reports", "/cloud/").await;
+        let (_, padded_cloud) = folder_on_webdav("/reports ", "/cloud/").await;
+        assert_ne!(plain_cloud, padded_cloud);
+        assert!(plain_cloud.starts_with("/reports/cloud"), "{plain_cloud}");
+        let cloud_identity = |initial: &str| {
+            identity_root(
+                &serde_json::json!({ "protocol": "webdav", "initialPath": initial }),
+                "/cloud/",
+            )
+            .unwrap()
+        };
+        assert_ne!(cloud_identity("/reports"), cloud_identity("/reports "));
+        assert_eq!(cloud_identity("/reports"), "/reports");
+        // Without a root, an absolute folder does not move with it.
+        assert!(remote_folder_is_root_independent(
+            "/cloud/",
+            &serde_json::json!({ "protocol": "webdav", "initialPath": "" })
+        ));
+        assert!(!remote_folder_is_root_independent(
+            "/cloud/",
+            &serde_json::json!({ "protocol": "webdav", "initialPath": "/reports" })
+        ));
     }
 
     /// WebDAV's `/` follows the root now (`SLASH_IS_THE_STARTING_FOLDER`).
@@ -2137,7 +2181,8 @@ mod tests {
 
     /// The identity follows the data path. With an absolute remote folder
     /// (or one under the SFTP login folder) the data path does not depend on
-    /// the root, so the identity keeps main's form (filled, trimmed, placed)
+    /// the root (except on WebDAV, which opens an absolute folder under its
+    /// root), so the identity keeps main's form (filled, trimmed, placed)
     /// and nobody re-indexes; with a relative or blank one the data path is
     /// the literal root plus that folder, so the identity carries the literal
     /// root. The data path is resolved as `cd` resolves it
@@ -2162,24 +2207,6 @@ mod tests {
                 "/cloud/",
                 "/reports",
                 "~/ /reports",
-            ),
-            (
-                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
-                "/cloud/",
-                "/reports",
-                "/reports ",
-            ),
-            (
-                serde_json::json!({ "protocol": "webdav", "initialPath": " /reports" }),
-                "/cloud/",
-                "/reports",
-                " /reports",
-            ),
-            (
-                serde_json::json!({ "protocol": "webdav", "initialPath": "/users/{username}", "username": "alice " }),
-                "/cloud/",
-                "/users/alice",
-                "/users/alice ",
             ),
             (
                 serde_json::json!({ "protocol": "sftp", "initialPath": "docs " }),
@@ -2209,8 +2236,25 @@ mod tests {
             assert_eq!(profile_root(&profile).unwrap(), root, "{profile}");
         }
         // Folders opened under the root: the literal root. `~/cloud` is
-        // under the login folder only on SFTP and SCP.
+        // under the login folder only on SFTP and SCP. WebDAV opens an
+        // absolute folder under its root too (`WebDavProvider::resolve_root`,
+        // CodeRabbit CLI deep on #1574).
         for (profile, remote, identity) in [
+            (
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
+                "/cloud/",
+                "/reports ",
+            ),
+            (
+                serde_json::json!({ "protocol": "webdav", "initialPath": " /reports" }),
+                "/cloud/",
+                " /reports",
+            ),
+            (
+                serde_json::json!({ "protocol": "webdav", "initialPath": "/users/{username}", "username": "alice " }),
+                "/cloud/",
+                "/users/alice ",
+            ),
             (
                 serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " }),
                 "cloud/",
@@ -2242,9 +2286,10 @@ mod tests {
         // One profile whose folder is edited by one trailing space.
         let before = serde_json::json!({ "protocol": "webdav", "initialPath": "/reports" });
         let after = serde_json::json!({ "protocol": "webdav", "initialPath": "/reports " });
-        // Absolute remote folder: the same data path, so the same identity.
-        assert_eq!(opened(&before, "/cloud/"), opened(&after, "/cloud/"));
-        assert_eq!(
+        // Absolute remote folder: WebDAV opens it under the root
+        // (`a_webdav_slash_lists_the_root_the_identity_names` shows it on the
+        // wire), so another data path and another identity.
+        assert_ne!(
             identity_root(&before, "/cloud/").unwrap(),
             identity_root(&after, "/cloud/").unwrap()
         );
@@ -2268,16 +2313,18 @@ mod tests {
         };
         let binding = serde_json::Value::Null;
         for (folder, user, remote, golden) in [
-            // Absolute remote folders: padded folders keep main's digest.
+            // An absolute remote folder under an unpadded root keeps main's
+            // digest. A padded root names another folder on WebDAV (the
+            // absolute folder is opened under it), so it gets its own.
             (
-                "/reports ",
+                "/reports",
                 "alice",
                 "/cloud/",
                 "72d819bbedf5054f7aa4614af41d575cd609561d8f55569c693cca6827abbac9",
             ),
             (
                 "/users/{username}",
-                "alice ",
+                "alice",
                 "/cloud/",
                 "c2874d1d749ec91b678a2429a5b9c654c560f1d24667ed20b304ec5dcbdee950",
             ),
