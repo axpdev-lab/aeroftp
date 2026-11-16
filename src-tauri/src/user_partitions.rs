@@ -883,6 +883,29 @@ fn resolve_relocate_secret(
     protocol: &str,
     profile_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    let read_vault =
+        |key: &str| Ok(CredentialStore::from_cache().and_then(|store| store.get_secret(key).ok()));
+    resolve_relocate_secret_with(
+        conn,
+        root_key,
+        user_id,
+        user_dek,
+        protocol,
+        profile_id,
+        &read_vault,
+    )
+}
+
+/// [`resolve_relocate_secret`] with the vault read given.
+fn resolve_relocate_secret_with(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    user_dek: Option<&SecretKey>,
+    protocol: &str,
+    profile_id: &str,
+    read_vault: &SecretReader<'_>,
+) -> Result<Option<Zeroizing<String>>, String> {
     let candidates = relocate_credential_key_candidates(protocol, profile_id);
     for key in &candidates {
         let from_partition = if let Some(dek) = user_dek {
@@ -902,12 +925,15 @@ fn resolve_relocate_secret(
                 return Ok(Some(secret));
             }
         }
+        // A private token of another account than the legacy owner is its
+        // partition row alone: the vault key of that name is the owner's.
+        if vault_copy_is_another_accounts(conn, user_id, key)? {
+            continue;
+        }
         // Dual-write fallback: vault still holds secrets not yet mirrored.
-        if let Some(store) = CredentialStore::from_cache() {
-            if let Ok(secret) = store.get_secret(key) {
-                if !secret.is_empty() {
-                    return Ok(Some(secret));
-                }
+        if let Ok(Some(secret)) = read_vault(key) {
+            if !secret.is_empty() {
+                return Ok(Some(secret));
             }
         }
     }
@@ -2956,8 +2982,14 @@ fn relocate_secret_key_dual(
                 copied = false;
             }
             Ok(Some(secret)) => {
-                // Vault stays in sync (source of truth + fallback + downgrade safe).
-                let in_vault = store.is_some_and(|store| store.store(new_key, &secret).is_ok());
+                // Vault stays in sync (source of truth + fallback + downgrade safe),
+                // except for a target's private token: the vault key of that
+                // name is the legacy owner's, so the target's row alone holds it.
+                let target_private =
+                    vault_copy_is_another_accounts(conn, relocation.target_user_id, new_key)
+                        .unwrap_or(true);
+                let in_vault = !target_private
+                    && store.is_some_and(|store| store.store(new_key, &secret).is_ok());
                 // Mirror onto the target partition under its scoped DEK.
                 let root_secret = user_crypto::secret_key_from_bytes(root_key);
                 let in_partition = resolve_user_dek_scoped(
@@ -2994,7 +3026,11 @@ fn relocate_secret_key_dual(
             tracing::warn!("Relocate: {source_key} kept, its copy {new_key} was not written");
             return false;
         }
-        if let Some(store) = store {
+        // A source's private token was its row alone: the vault key of that
+        // name is the legacy owner's and stays.
+        let source_private =
+            vault_copy_is_another_accounts(conn, source_user_id, source_key).unwrap_or(true);
+        if let Some(store) = store.filter(|_| !source_private) {
             let _ = store.delete(source_key);
         }
         let _ = delete_user_credential_for(conn, source_user_id, source_key);
@@ -3348,8 +3384,45 @@ const CREDS_MIGRATED_PREFIX: &str = "creds_migrated_";
 /// `None`. Lets the migration engine run against a fake vault in tests.
 type SecretReader<'a> = dyn Fn(&str) -> Result<Option<Zeroizing<String>>, String> + 'a;
 
+/// Closure that removes one secret from the legacy vault; absent is not an error.
+type SecretDeleter<'a> = dyn Fn(&str) -> Result<(), String> + 'a;
+
+/// Marks an account whose private tokens left the vault ([`align_private_tokens_inner`]).
+const PRIVATE_TOKENS_ALIGNED_PREFIX: &str = "private_tokens_aligned_";
+
 fn creds_migrated_key(user_id: i64) -> String {
     format!("{CREDS_MIGRATED_PREFIX}{user_id}")
+}
+
+fn private_tokens_aligned(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    let value: Option<String> = conn
+        .query_row(
+            "SELECT value FROM global_state WHERE key = ?1",
+            params![format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user_id}")],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("Read private token marker: {e}"))?;
+    Ok(value.as_deref() == Some("1"))
+}
+
+fn mark_private_tokens_aligned(conn: &Connection, user_id: i64) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO global_state(key, value, updated_at)
+         VALUES (?1, '1', ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        params![
+            format!("{PRIVATE_TOKENS_ALIGNED_PREFIX}{user_id}"),
+            now_ms()
+        ],
+    )
+    .map_err(|e| format!("Write private token marker: {e}"))?;
+    Ok(())
+}
+
+/// Both one-time passes over an account's legacy secrets are done.
+fn credentials_settled(conn: &Connection, user_id: i64) -> Result<bool, String> {
+    Ok(is_creds_migrated(conn, user_id)? && private_tokens_aligned(conn, user_id)?)
 }
 
 fn is_creds_migrated(conn: &Connection, user_id: i64) -> Result<bool, String> {
@@ -3390,6 +3463,17 @@ fn session_user_id() -> Option<i64> {
 /// moves it, and a deleted owner leaves no owner instead of handing its legacy
 /// secrets to the next admin. User ids are AUTOINCREMENT, so never reused.
 fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
+    nonprofile_secret_owner_in(conn, true)
+}
+
+/// [`nonprofile_secret_owner`] on a connection that may be read-only: the
+/// owner not yet persisted is the one the first writer would persist, and is
+/// returned without storing it.
+fn nonprofile_secret_owner_unpersisted(conn: &Connection) -> Result<Option<i64>, String> {
+    nonprofile_secret_owner_in(conn, false)
+}
+
+fn nonprofile_secret_owner_in(conn: &Connection, persist: bool) -> Result<Option<i64>, String> {
     let read_stored = || {
         conn.query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -3413,6 +3497,9 @@ fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
             let Some(first_admin) = first_admin else {
                 return Ok(None);
             };
+            if !persist {
+                return Ok(Some(first_admin));
+            }
             conn.execute(
                 "INSERT OR IGNORE INTO global_state(key, value, updated_at) VALUES (?1, ?2, ?3)",
                 params![LEGACY_OWNER_KEY, first_admin.to_string(), now_ms()],
@@ -3433,6 +3520,14 @@ fn nonprofile_secret_owner(conn: &Connection) -> Result<Option<i64>, String> {
         )
         .map_err(|e| format!("Read legacy credential owner: {e}"))?;
     Ok(exists.then_some(owner))
+}
+
+/// Remove one secret from the live store; one already absent is not an error.
+fn delete_optional_secret(store: &CredentialStore, account: &str) -> Result<(), String> {
+    match store.delete(account) {
+        Ok(()) | Err(CredentialError::NotFound(_)) => Ok(()),
+        Err(e) => Err(format!("Delete legacy secret: {e}")),
+    }
 }
 
 /// Read one optional secret from the live store, mapping NotFound to None.
@@ -3591,6 +3686,97 @@ fn migrate_user_credentials_inner(
     }
 }
 
+/// The private token keys ([`private_token_type`]) a profile's id gives.
+fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
+    let mut keys = vec![format!("jottacloud_refresh_{profile_id}")];
+    keys.extend(
+        OAUTH_TOKEN_SLUGS
+            .iter()
+            .map(|slug| format!("oauth_{slug}_{profile_id}")),
+    );
+    keys.extend(
+        crate::profile_auth::DURABLE_KEY_PREFIXES
+            .iter()
+            .chain(crate::profile_auth::TRANSIENT_KEY_PREFIXES.iter())
+            .map(|prefix| format!("{prefix}_{profile_id}")),
+    );
+    keys.retain(|key| private_token_type(key).is_some());
+    keys
+}
+
+/// MUV-6 for private tokens: the tokens an account other than the legacy owner
+/// saved before they were kept to its partition still sit in the vault, where
+/// the vault key reads as the owner's (a backup of the vault carries it, the
+/// owner's fallback answers it). Each one of this account's profiles is copied
+/// into its partition when no row is there yet, then removed from the vault.
+/// A profile id another account also holds is left: the vault copy cannot be
+/// told apart, and the legacy owner reads it as its own. Idempotent via the
+/// `private_tokens_aligned_<id>` marker; a locked passphrase account is left
+/// unmarked until its first unlock, as for [`migrate_user_credentials_inner`].
+fn align_private_tokens_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+    delete_secret: &SecretDeleter<'_>,
+) -> Result<usize, String> {
+    if private_tokens_aligned(conn, user_id)? {
+        return Ok(0);
+    }
+    if nonprofile_secret_owner(conn)? == Some(user_id) {
+        mark_private_tokens_aligned(conn, user_id)?;
+        return Ok(0);
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let profiles = read_profiles_with_dek(conn, uid, dek)?;
+        let mut sole = Vec::new();
+        for id in profiles
+            .iter()
+            .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
+        {
+            let tag = user_crypto::metadata_tag(&root_secret, b"profile-uid", id)?;
+            let shared: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM server_profiles
+                     WHERE profile_uid = ?1 AND user_id <> ?2)",
+                    params![tag, uid],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Read profile holders: {e}"))?;
+            if !shared {
+                sole.extend(
+                    private_token_keys_of_profile(id)
+                        .into_iter()
+                        .filter(|key| vault_keys.contains(key)),
+                );
+            }
+        }
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start private token alignment: {e}"))?;
+        for key in &sole {
+            let kind = private_token_type(key).unwrap_or("oauth");
+            copy_one_credential(&tx, uid, dek, key, kind, read_secret)?;
+        }
+        tx.commit()
+            .map_err(|e| format!("Commit private token alignment: {e}"))?;
+        Ok(sole)
+    });
+    let moved = match outcome {
+        Ok(moved) => moved,
+        Err(e) if e == "USER_LOCKED" => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    // The copies are committed: only now does the vault let go of them.
+    for key in &moved {
+        delete_secret(key)?;
+    }
+    mark_private_tokens_aligned(conn, user_id)?;
+    Ok(moved.len())
+}
+
 /// Reader-fallback net (sec 3.3), engine form: prefer the per-user encrypted
 /// store, falling back to the legacy vault only when its per-user row is absent.
 /// A locked partition refuses access; MUV-6 drops the fallback once purged.
@@ -3606,6 +3792,11 @@ fn read_credential_with_fallback_inner(
         Ok(None) => {}
         Err(e) => return Err(e),
     }
+    // Another account's private token lives in its partition alone: the vault
+    // key of that name is the legacy owner's ([`private_token_user`]).
+    if vault_copy_is_another_accounts(conn, user_id, credential_id)? {
+        return Ok(None);
+    }
     read_secret(credential_id)
 }
 
@@ -3615,7 +3806,7 @@ fn read_credential_with_fallback_inner(
 /// is done; a locked passphrase user is intentionally NOT "eager-pending".
 fn has_eager_pending_users(conn: &Connection) -> Result<bool, String> {
     for user in list_users(conn)? {
-        if is_creds_migrated(conn, user.id)? {
+        if credentials_settled(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -3636,7 +3827,7 @@ pub fn migrate_credentials_eager_all(
     let users = list_users(conn)?;
     let mut pending = Vec::new();
     for user in &users {
-        if is_creds_migrated(conn, user.id)? {
+        if credentials_settled(conn, user.id)? {
             continue;
         }
         if !user.has_passphrase || session_user_id() == Some(user.id) {
@@ -3650,6 +3841,7 @@ pub fn migrate_credentials_eager_all(
         .list_accounts()
         .map_err(|e| format!("List vault accounts: {e}"))?;
     let read_secret = |key: &str| get_optional_secret(store, key);
+    let delete_secret = |key: &str| delete_optional_secret(store, key);
     let mut total = 0usize;
     for user_id in pending {
         match migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret) {
@@ -3657,6 +3849,15 @@ pub fn migrate_credentials_eager_all(
             // Leave unmarked; a transient failure is retried on the next boot.
             Err(_) => continue,
         }
+        // After the copy, which reads the same vault keys.
+        let _ = align_private_tokens_inner(
+            conn,
+            root_key,
+            user_id,
+            &vault_keys,
+            &read_secret,
+            &delete_secret,
+        );
     }
     Ok(total)
 }
@@ -3669,14 +3870,25 @@ pub fn migrate_credentials_for_user(
     root_key: &[u8; 32],
     user_id: i64,
 ) -> Result<usize, String> {
-    if is_creds_migrated(conn, user_id)? {
+    if credentials_settled(conn, user_id)? {
         return Ok(0);
     }
     let vault_keys = store
         .list_accounts()
         .map_err(|e| format!("List vault accounts: {e}"))?;
     let read_secret = |key: &str| get_optional_secret(store, key);
-    migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)
+    let delete_secret = |key: &str| delete_optional_secret(store, key);
+    let migrated =
+        migrate_user_credentials_inner(conn, root_key, user_id, &vault_keys, &read_secret)?;
+    align_private_tokens_inner(
+        conn,
+        root_key,
+        user_id,
+        &vault_keys,
+        &read_secret,
+        &delete_secret,
+    )?;
+    Ok(migrated)
 }
 
 /// Reader-fallback net (sec 3.3): store-backed wrapper of
@@ -3823,10 +4035,22 @@ pub(crate) fn delete_profile_credential(
             users.push(active);
         }
     }
+    // The vault copy goes only when one of these accounts reads it: a private
+    // token of the others is their row alone, and the vault key of that name
+    // is the legacy owner's ([`vault_copy_is_another_accounts`]).
+    let mut vault_is_theirs = users.is_empty();
+    for user in &users {
+        if !vault_copy_is_another_accounts(&conn, *user, credential_id)? {
+            vault_is_theirs = true;
+        }
+    }
     // The rows first, as readers prefer them: a failure here leaves the vault for a
     // retry, and a retry after a vault failure finds the rows already gone.
     for user in users {
         delete_user_credential_for(&conn, user, credential_id)?;
+    }
+    if !vault_is_theirs {
+        return Ok(());
     }
     match store.delete(credential_id) {
         Ok(_) | Err(crate::credential_store::CredentialError::NotFound(_)) => Ok(()),
@@ -4223,6 +4447,11 @@ pub fn store_credential_for_user_dual(
     credential_id: &str,
     secret: &str,
 ) -> Result<(), String> {
+    // A private token keeps its type, so another account's stays in its
+    // partition (a profile copy, `profile duplicate`).
+    if let Some(kind) = private_token_type(credential_id) {
+        return store_credential_for_user_typed_dual(store, user_id, credential_id, kind, secret);
+    }
     store
         .store(credential_id, secret)
         .map_err(|e| format!("Store credential in vault: {e}"))?;
@@ -4262,18 +4491,11 @@ pub fn store_imported_credential_for_user(
     credential_type: Option<&str>,
     secret: &str,
 ) -> Result<(), String> {
-    if let Some(private) = credential_type
-        .map(|kind| private_token_user(Some(user_id), kind))
-        .transpose()?
-        .flatten()
-    {
-        return store_credential_for_user(
-            store,
-            private,
-            credential_id,
-            credential_type.unwrap_or_default(),
-            secret,
-        );
+    // A write that names no type still holds a token when its key does.
+    if let Some(kind) = credential_type.or_else(|| private_token_type(credential_id)) {
+        if let Some(private) = private_token_user(Some(user_id), kind)? {
+            return store_credential_for_user(store, private, credential_id, kind, secret);
+        }
     }
     store
         .store(credential_id, secret)
@@ -4294,13 +4516,20 @@ pub fn delete_imported_credential_for_user(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    let before_vault = get_optional_secret(store, credential_id)?;
     let mut conn = open_or_init_cli()?;
     let _session = hold_user_session(&conn, user_id);
     let tx = conn
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential delete: {e}"))?;
     delete_user_credential_for(&tx, user_id, credential_id)?;
+    // Another account's private token is its row alone: the vault key of that
+    // name is the legacy owner's and stays.
+    if vault_copy_is_another_accounts(&tx, user_id, credential_id)? {
+        return tx
+            .commit()
+            .map_err(|e| format!("Commit credential delete: {e}"));
+    }
+    let before_vault = get_optional_secret(store, credential_id)?;
     store
         .delete(credential_id)
         .map_err(|e| format!("Delete credential from vault: {e}"))?;
@@ -4398,7 +4627,14 @@ pub fn restore_credential_op_for_user(
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .map_err(|e| format!("Start credential restore: {e}"))?;
     let partition = get_user_credential_for(&tx, &root_key, user_id, credential_id)?;
-    let vault = get_optional_secret(store, credential_id)?;
+    // Another account's private token was written to its row alone: the vault
+    // key of that name is the legacy owner's, and the undo leaves it.
+    let vault_is_theirs = !vault_copy_is_another_accounts(&tx, user_id, credential_id)?;
+    let vault = if vault_is_theirs {
+        get_optional_secret(store, credential_id)?
+    } else {
+        None
+    };
     let write_op = if written_delete {
         SecretWrite::delete(credential_id.to_string(), None)
     } else {
@@ -4424,11 +4660,15 @@ pub fn restore_credential_op_for_user(
         }
         RollbackAction::Delete => delete_user_credential_for(&tx, user_id, credential_id)?,
     }
-    let vault_action = rollback_action_for_write(
-        vault.as_ref().map(|v| v.as_str()),
-        &write_op,
-        before.vault.as_ref().map(|v| v.as_str()),
-    );
+    let vault_action = if vault_is_theirs {
+        rollback_action_for_write(
+            vault.as_ref().map(|v| v.as_str()),
+            &write_op,
+            before.vault.as_ref().map(|v| v.as_str()),
+        )
+    } else {
+        RollbackAction::Leave
+    };
     let vault_changed = vault_action != RollbackAction::Leave;
     match vault_action {
         RollbackAction::Leave => {}
@@ -4567,6 +4807,77 @@ pub fn unmirror_active_credential(credential_id: &str) {
 /// Token types that belong to one user only: OAuth tokens and Jottacloud
 /// refresh chains.
 const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+
+/// The providers whose OAuth token lives under `oauth_<slug>` (the singleton)
+/// or `oauth_<slug>_<profile id>`.
+const OAUTH_TOKEN_SLUGS: [&str; 9] = [
+    "google",
+    "googlephotos",
+    "dropbox",
+    "onedrive",
+    "box",
+    "pcloud",
+    "zohoworkdrive",
+    "yandexdisk",
+    "fourshared",
+];
+
+/// The app settings that share the `oauth_<slug>_` prefix with the tokens:
+/// machine-wide, never one user's.
+const OAUTH_APP_SETTING_SUFFIXES: [&str; 3] = ["client_id", "client_secret", "region"];
+
+/// The type of [`PRIVATE_TOKEN_TYPES`] a key holds, by the names its writers
+/// give it: the one place a reader, writer or delete that knows only the key
+/// learns that the key is one user's. An OAuth token (`oauth_<slug>`,
+/// `oauth_<slug>_<profile>`, not the app settings next to it), a profile's
+/// authorization state that [`crate::profile_auth`] writes as `oauth`
+/// (`profile_auth_*`, `github_oauth_<profile>`, `github_pem_<profile>`, not the
+/// globals `github_oauth_token` and `github_pat`), or a Jottacloud refresh
+/// chain. `None` for every other key.
+pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
+    if credential_id == "jottacloud_refresh" || credential_id.starts_with("jottacloud_refresh_") {
+        return Some("jottacloud_refresh");
+    }
+    if let Some(rest) = credential_id.strip_prefix("oauth_") {
+        let token = OAUTH_TOKEN_SLUGS.iter().any(|slug| {
+            rest == *slug
+                || rest
+                    .strip_prefix(slug)
+                    .and_then(|tail| tail.strip_prefix('_'))
+                    .is_some_and(|tail| {
+                        !tail.is_empty() && !OAUTH_APP_SETTING_SUFFIXES.contains(&tail)
+                    })
+        });
+        return token.then_some("oauth");
+    }
+    if matches!(credential_id, "github_oauth_token" | "github_pat") {
+        return None;
+    }
+    crate::profile_auth::DURABLE_KEY_PREFIXES
+        .iter()
+        .chain(crate::profile_auth::TRANSIENT_KEY_PREFIXES.iter())
+        .any(|prefix| {
+            credential_id
+                .strip_prefix(prefix)
+                .and_then(|tail| tail.strip_prefix('_'))
+                .is_some_and(|tail| !tail.is_empty())
+        })
+        .then_some("oauth")
+}
+
+/// Whether the vault copy of `credential_id` is someone else's for
+/// `user_id`: a private token ([`private_token_type`]) and an account other
+/// than the legacy owner, whose key of that name it is. Such an account reads
+/// and writes its own partition row only. Reads `conn` only, so a read-only
+/// connection does.
+pub(crate) fn vault_copy_is_another_accounts(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    Ok(private_token_type(credential_id).is_some()
+        && nonprofile_secret_owner_unpersisted(conn)? != Some(user_id))
+}
 
 /// The user whose tokens of `credential_type` must stay in its own partition:
 /// anyone but the legacy owner. Written to the shared vault, a token would be
@@ -7943,6 +8254,249 @@ mod tests {
         ));
         assert_eq!(read(open.id, "server_new").as_deref(), Some("secret"));
         assert_eq!(read(source, "server_old"), None);
+    }
+
+    /// A token relocated between two accounts other than the legacy owner goes
+    /// row to row: the vault keys of those names are the owner's, so neither
+    /// the copy nor a Move's cleanup touches them. Into the owner's account
+    /// the copy still reaches the vault, which that account reads.
+    #[test]
+    fn a_token_relocated_between_other_accounts_leaves_the_owners_vault_keys() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_vault(dir.path());
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = store.derive_user_partition_wrapping_key();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let source = create_passphrase_less_user(&mut conn, &root, "Source", None, None).unwrap();
+        let target = create_passphrase_less_user(&mut conn, &root, "Target", None, None).unwrap();
+        clear_user_session();
+        for key in ["oauth_dropbox_old", "oauth_dropbox_new"] {
+            store.store(key, "owners-token").unwrap();
+        }
+        set_user_credential_for(
+            &conn,
+            &root,
+            source.id,
+            "oauth_dropbox_old",
+            "oauth",
+            "token",
+        )
+        .unwrap();
+        let relocation = |target: i64, moved: bool| ProfileRelocation {
+            source_profile_id: "old".into(),
+            new_profile_id: "new".into(),
+            profile_name: "P".into(),
+            target_user_id: target,
+            moved,
+            inserted: true,
+            already_present: false,
+            protocol: "dropbox".into(),
+            secrets_not_copied: Vec::new(),
+        };
+        let read = |user: i64, key: &str| {
+            get_user_credential_for(&conn, &root, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert!(relocate_secret_key_dual(
+            &conn,
+            Some(&store),
+            &root,
+            source.id,
+            &relocation(target.id, true),
+            None,
+            "oauth_dropbox_old",
+            "oauth_dropbox_new",
+            "oauth",
+        ));
+        assert_eq!(
+            read(target.id, "oauth_dropbox_new").as_deref(),
+            Some("token")
+        );
+        assert_eq!(read(source.id, "oauth_dropbox_old"), None);
+        assert_eq!(store.get("oauth_dropbox_new").unwrap(), "owners-token");
+        assert_eq!(store.get("oauth_dropbox_old").unwrap(), "owners-token");
+
+        store.delete("oauth_dropbox_new").unwrap();
+        assert!(relocate_secret_key_dual(
+            &conn,
+            Some(&store),
+            &root,
+            target.id,
+            &relocation(owner, false),
+            None,
+            "oauth_dropbox_new",
+            "oauth_dropbox_new",
+            "oauth",
+        ));
+        assert_eq!(store.get("oauth_dropbox_new").unwrap(), "token");
+        assert_eq!(
+            read(target.id, "oauth_dropbox_new").as_deref(),
+            Some("token")
+        );
+    }
+
+    /// The account a relocation compares is read like every other reader reads
+    /// it: another account's token from its row alone, never the owner's vault
+    /// key of the same name, which would make two different sign-ins match.
+    #[test]
+    fn a_relocation_fingerprints_another_accounts_token_from_its_row_alone() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let (_keys, read_vault) = fake_vault(&[("oauth_dropbox_p", "owners-token")]);
+        let resolve = |user: i64| {
+            resolve_relocate_secret_with(&conn, &root, user, None, "dropbox", "p", &read_vault)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(resolve(other.id), None);
+        assert_eq!(resolve(owner).as_deref(), Some("owners-token"));
+        set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p", "oauth", "own").unwrap();
+        assert_eq!(resolve(other.id).as_deref(), Some("own"));
+    }
+
+    /// MUV-6 for private tokens: what another account saved in the vault before
+    /// its tokens were kept to its partition moves there, its own row winning
+    /// over a stale vault copy, and leaves the vault. A profile id the legacy
+    /// owner also holds, the owner's singleton and the app settings stay. A
+    /// vault that refuses a delete leaves the account unmarked, and the next
+    /// pass finishes; a settled account, and the owner, are passed over.
+    #[test]
+    fn another_accounts_tokens_saved_in_the_vault_move_to_its_partition() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("mine"), profile("held"), profile("profile-0")],
+        )
+        .unwrap();
+        set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_held", "oauth", "row")
+            .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("oauth_dropbox_mine", "mine-token"),
+            ("profile_auth_config_mine", "mine-config"),
+            ("oauth_dropbox_held", "stale-token"),
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("server_mine", "password"),
+            ("oauth_dropbox", "owners-singleton"),
+            ("oauth_dropbox_client_id", "app-id"),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let refuse = |_: &str| Err("vault busy".to_string());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        assert!(align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &refuse).is_err());
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+
+        let moved =
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let mut gone = deleted.borrow().clone();
+        gone.sort();
+        assert_eq!(
+            gone,
+            [
+                "oauth_dropbox_held",
+                "oauth_dropbox_mine",
+                "profile_auth_config_mine"
+            ]
+        );
+        assert_eq!(moved, 3);
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+        assert_eq!(
+            row("profile_auth_config_mine").as_deref(),
+            Some("mine-config")
+        );
+        assert_eq!(row("oauth_dropbox_held").as_deref(), Some("row"));
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("server_mine"), None);
+
+        deleted.borrow_mut().clear();
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, owner, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(private_tokens_aligned(&conn, owner).unwrap());
+    }
+
+    /// An account whose private tokens are not aligned yet is work for the
+    /// boot pass, even when its secrets were copied long ago.
+    #[test]
+    fn an_account_not_aligned_yet_is_pending_for_the_boot_pass() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        for user in list_users(&conn).unwrap() {
+            mark_creds_migrated(&conn, user.id).unwrap();
+        }
+        assert!(has_eager_pending_users(&conn).unwrap());
+        for user in list_users(&conn).unwrap() {
+            mark_private_tokens_aligned(&conn, user.id).unwrap();
+        }
+        assert!(!has_eager_pending_users(&conn).unwrap());
+    }
+
+    /// Whose a private token's vault key is, asked on a read-only connection
+    /// before any owner is stored: answered, and nothing written.
+    #[test]
+    fn whose_vault_copy_it_is_is_answered_on_a_read_only_connection() {
+        let _guard = test_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("partitions.db");
+        let mut conn = open_or_init_path(path.clone()).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        conn.execute(
+            "DELETE FROM global_state WHERE key = ?1",
+            params![LEGACY_OWNER_KEY],
+        )
+        .unwrap();
+        drop(conn);
+        let read_only =
+            Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
+        assert!(vault_copy_is_another_accounts(&read_only, other.id, "oauth_dropbox_p").unwrap());
+        assert!(!vault_copy_is_another_accounts(&read_only, other.id, "server_p").unwrap());
+        let stored: Option<String> = read_only
+            .query_row(
+                "SELECT value FROM global_state WHERE key = ?1",
+                params![LEGACY_OWNER_KEY],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(stored, None);
     }
 
     /// A locked account that is not the legacy owner cannot take a save: its readers
@@ -12207,6 +12761,118 @@ mod tests {
         assert_eq!(vault_reads.get(), 1, "legacy owner migrates on a miss");
     }
 
+    /// Every key a private token is written under maps to its type, and only
+    /// those: the app settings and globals that share a prefix with them, and
+    /// every other credential, map to none. Each type of
+    /// `PRIVATE_TOKEN_TYPES` is reached.
+    #[test]
+    fn every_private_token_key_maps_to_its_type_and_no_other_key_does() {
+        let private = [
+            ("jottacloud_refresh", "jottacloud_refresh"),
+            ("jottacloud_refresh_srv_1", "jottacloud_refresh"),
+            ("oauth_google", "oauth"),
+            ("oauth_google_srv_1", "oauth"),
+            ("oauth_googlephotos", "oauth"),
+            ("oauth_googlephotos_srv_1", "oauth"),
+            ("oauth_dropbox_srv_1", "oauth"),
+            ("oauth_onedrive_srv_1", "oauth"),
+            ("oauth_box_srv_1", "oauth"),
+            ("oauth_pcloud_srv_1", "oauth"),
+            ("oauth_zohoworkdrive_srv_1", "oauth"),
+            ("oauth_yandexdisk_srv_1", "oauth"),
+            ("oauth_fourshared_srv_1", "oauth"),
+            ("profile_auth_config_srv_1", "oauth"),
+            ("profile_auth_pending_srv_1", "oauth"),
+            ("profile_auth_deadline_srv_1", "oauth"),
+            ("github_oauth_srv_1", "oauth"),
+            ("github_pem_srv_1", "oauth"),
+        ];
+        for (key, kind) in private {
+            assert_eq!(private_token_type(key), Some(kind), "{key}");
+        }
+        for kind in PRIVATE_TOKEN_TYPES {
+            assert!(
+                private.iter().any(|(_, k)| *k == kind),
+                "no key reaches the private type {kind}"
+            );
+        }
+        for key in [
+            "oauth_google_client_id",
+            "oauth_dropbox_client_secret",
+            "oauth_pcloud_region",
+            "oauth_zohoworkdrive_region",
+            "oauth_rollback_app_client_id",
+            "oauth_token",
+            "oauth_",
+            "oauth_google_",
+            "github_oauth_token",
+            "github_pat",
+            "github_oauth",
+            "profile_auth_config",
+            "profile_auth_config_",
+            "jottacloud_refreshed",
+            "server_srv_1",
+            "server_modes_srv_1",
+            "ai_apikey_openai",
+            "aerocrypt_overlay_pw_srv_1",
+            "filen_api_key_srv_1",
+            "onedrive_drive_id_srv_1",
+            "totp_secret",
+        ] {
+            assert_eq!(private_token_type(key), None, "{key}");
+        }
+    }
+
+    /// A private token of an account other than the legacy owner is read from
+    /// that account's partition alone: the vault key of the same name is the
+    /// legacy owner's, and the owner still reads it. Any other key keeps the
+    /// vault fallback for every account.
+    #[test]
+    fn a_private_token_is_never_read_from_the_vault_for_another_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let user = create_passphrase_less_user(&mut conn, &root, "private", None, None)
+            .expect("create user");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("legacy-owners-token".to_string())))
+        };
+        for key in [
+            "oauth_dropbox_srv_1",
+            "jottacloud_refresh",
+            "github_oauth_srv_1",
+        ] {
+            vault_reads.set(0);
+            assert!(
+                read_credential_with_fallback_inner(&conn, &root, user.id, key, &read)
+                    .expect("private read")
+                    .is_none(),
+                "{key}"
+            );
+            assert_eq!(vault_reads.get(), 0, "{key}: the vault was read");
+            assert_eq!(
+                read_credential_with_fallback_inner(&conn, &root, owner.id, key, &read)
+                    .expect("owner read")
+                    .expect("owner value")
+                    .as_str(),
+                "legacy-owners-token",
+                "{key}"
+            );
+        }
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, user.id, "server_srv_1", &read)
+                .expect("server read")
+                .expect("vault fallback")
+                .as_str(),
+            "legacy-owners-token"
+        );
+    }
+
     #[test]
     fn owner_aware_reader_never_reads_vault_for_nonowner() {
         let _guard = test_lock();
@@ -12375,14 +13041,28 @@ mod tests {
                 .as_str(),
             "token-v2"
         );
-        // A never-mirrored OAuth token resolves via the vault fallback.
+        // A never-mirrored OAuth token resolves via the vault fallback for the
+        // legacy owner, whose key it is, and for nobody else.
+        let owner = nonprofile_secret_owner(&conn)
+            .expect("owner")
+            .expect("legacy owner");
+        assert_ne!(owner, user.id);
         assert_eq!(
-            read_credential_with_fallback_inner(&conn, &root, user.id, "oauth_dropbox_99", &read)
+            read_credential_with_fallback_inner(&conn, &root, owner, "oauth_dropbox_99", &read)
                 .expect("read vault-only oauth")
                 .expect("present")
                 .as_str(),
             "vault-token"
         );
+        assert!(read_credential_with_fallback_inner(
+            &conn,
+            &root,
+            user.id,
+            "oauth_dropbox_99",
+            &read
+        )
+        .expect("read vault-only oauth")
+        .is_none());
     }
 
     // --- MUV-3: server_* reader/writer cutover ----------------------------

@@ -1312,6 +1312,10 @@ fn partition_db(config_dir: Option<&Path>) -> Option<PathBuf> {
 ///
 /// Only "not found" counts as absent: any other vault error aborts, because
 /// an absent value becomes a delete when the plan restores this device.
+///
+/// A private token of an account other than the legacy owner is its partition
+/// row alone (`vault_copy_is_another_accounts`): the vault key of that name is
+/// the owner's, so it is never compared or restored as this account's.
 fn read_effective_secret(
     store: &crate::credential_store::CredentialStore,
     conn: Option<&rusqlite::Connection>,
@@ -1320,12 +1324,21 @@ fn read_effective_secret(
 ) -> Result<Option<Zeroizing<String>>, KeystoreExportError> {
     if let Some(conn) = conn {
         if let Ok(Some(user_id)) = crate::user_partitions::active_user_id(conn) {
+            let private =
+                crate::user_partitions::vault_copy_is_another_accounts(conn, user_id, key)
+                    .map_err(|e| {
+                        KeystoreExportError::Encryption(format!(
+                            "Read {key} from this device's partition: {e}"
+                        ))
+                    })?;
             match crate::user_partitions::get_user_credential_for(conn, root_key, user_id, key) {
                 Ok(Some(value)) => return Ok(Some(value)),
+                Ok(None) if private => return Ok(None),
                 Ok(None) => {}
                 // A locked passphrase account: the app falls back to the vault
-                // too (`read_credential_with_fallback_inner`), and so does this.
-                Err(e) if e == "USER_LOCKED" => {}
+                // too (`read_credential_with_fallback_inner`), and so does this,
+                // except for a private token, which only the partition holds.
+                Err(e) if e == "USER_LOCKED" && !private => {}
                 // Anything else the app would report, so the plan stops too.
                 Err(e) => {
                     return Err(KeystoreExportError::Encryption(format!(
@@ -1347,12 +1360,35 @@ fn read_effective_secret(
 /// `db`. `store_active_credential_dual` would not do: it mirrors only
 /// `server_*` and `ai_apikey_*`, and a partition row left behind for any other
 /// key would shadow the vault value just written.
+///
+/// A private token of an account other than the legacy owner goes to that
+/// account's row alone: the vault key of that name is the owner's and keeps
+/// its value (`vault_copy_is_another_accounts`).
 fn write_profile_secret(
     store: &crate::credential_store::CredentialStore,
     db: Option<&Path>,
     key: &str,
     value: Option<&str>,
 ) -> Result<(), String> {
+    if let Some(db) = db {
+        let conn =
+            rusqlite::Connection::open(db).map_err(|e| format!("open {}: {e}", db.display()))?;
+        if let Some(user_id) = crate::user_partitions::active_user_id(&conn)? {
+            if crate::user_partitions::vault_copy_is_another_accounts(&conn, user_id, key)? {
+                let Some(v) = value else {
+                    return crate::user_partitions::delete_active_user_credential(&conn, key);
+                };
+                let kind = crate::user_partitions::private_token_type(key).unwrap_or("oauth");
+                let mut root_key = store.derive_user_partition_wrapping_key();
+                let written = crate::user_partitions::set_active_user_credential(
+                    &conn, &root_key, key, kind, v,
+                );
+                root_key.zeroize();
+                // No vault copy to fall back on: a locked account is reported.
+                return written.map_err(|e| format!("partition row not written: {e}"));
+            }
+        }
+    }
     match value {
         Some(v) => store.store(key, v).map_err(|e| e.to_string())?,
         None => match store.delete(key) {
@@ -3904,6 +3940,51 @@ mod tests {
         read_effective_secret(store, Some(&conn), &root, key)
             .unwrap()
             .map(|v| v.to_string())
+    }
+
+    /// A restore run by an account other than the legacy owner compares and
+    /// writes that account's own token, its partition row: the vault key of
+    /// the same name is the owner's, read as nobody else's and left as it is
+    /// by a write or a delete. A key that is not a token keeps the dual write.
+    #[test]
+    fn a_restore_by_another_account_keeps_to_its_own_token() {
+        let _guard = crate::user_partitions::test_lock();
+        crate::user_partitions::clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let store = throwaway_store(dir.path(), "vault.db");
+        let cfg = dir.path().join("config");
+        partition_with(&store, &cfg, &[]);
+        let db = cfg.join("user_partitions.db");
+        let root = store.derive_user_partition_wrapping_key();
+        let mut conn = rusqlite::Connection::open(&db).unwrap();
+        let other =
+            crate::user_partitions::create_user(&mut conn, &root, "Other", None, None, None)
+                .unwrap();
+        crate::user_partitions::set_active_user(&conn, other.id).unwrap();
+        drop(conn);
+        let key = "oauth_dropbox_srv_drive";
+        store.store(key, "owners-token").unwrap();
+
+        let read_only = || {
+            rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+                .unwrap()
+        };
+        let effective = |key: &str| {
+            read_effective_secret(&store, Some(&read_only()), &root, key)
+                .unwrap()
+                .map(|v| v.to_string())
+        };
+        assert_eq!(effective(key), None);
+        write_profile_secret(&store, Some(&db), key, Some("others-token")).unwrap();
+        assert_eq!(store.get(key).unwrap(), "owners-token");
+        assert_eq!(effective(key).as_deref(), Some("others-token"));
+        write_profile_secret(&store, Some(&db), key, None).unwrap();
+        assert_eq!(store.get(key).unwrap(), "owners-token");
+        assert_eq!(effective(key), None);
+
+        write_profile_secret(&store, Some(&db), "server_srv_drive", Some("password")).unwrap();
+        assert_eq!(store.get("server_srv_drive").unwrap(), "password");
+        assert_eq!(effective("server_srv_drive").as_deref(), Some("password"));
     }
 
     #[test]

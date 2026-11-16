@@ -442,6 +442,7 @@ async fn round_trip() {
         gaps.push("Corrupt non-object auth configuration is accepted");
     }
     durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
+    private_tokens_keep_to_their_account(&store, active.id, owner.id);
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -1719,4 +1720,121 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
         0
     );
     assert!(vault::load_session(active, None).unwrap().is_some());
+}
+
+/// A private token written through the untyped dual writer (a profile copy,
+/// `profile duplicate`) by an account other than the legacy owner lands in
+/// that account's partition only: the vault key of the same name, the legacy
+/// owner's, keeps its value. Read back, that account sees its own copy, or
+/// nothing once it is gone, never the owner's; the owner still reads its own.
+/// Any other key keeps the dual write.
+fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64, private_id: i64) {
+    for key in [
+        "oauth_dropbox_copy-target",
+        "jottacloud_refresh_copy-target",
+        "profile_auth_config_copy-target",
+        "github_oauth_copy-target",
+    ] {
+        store.store(key, "legacy-owners-token").unwrap();
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        let read = |user: i64| {
+            users::resolve_credential_for_user(store, user, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(read(private_id).as_deref(), Some("private-token"), "{key}");
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(
+            read(legacy_id).as_deref(),
+            Some("legacy-owners-token"),
+            "{key}"
+        );
+        store.delete(key).unwrap();
+    }
+    users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
+        .unwrap();
+    assert_eq!(store.get("server_copy-target").unwrap(), "server");
+    users::unmirror_credential_for_user_best_effort_any(private_id, "server_copy-target");
+    store.delete("server_copy-target").unwrap();
+
+    // Readiness reads the same place: the owner's live token in the vault
+    // says nothing about the other account, whose own token, expired, is
+    // the one that counts for it.
+    let token = |expires_at: i64| {
+        serde_json::json!({
+            "access_token": "access",
+            "refresh_token": "refresh",
+            "expires_at": expires_at,
+            "token_type": "Bearer",
+            "scopes": [],
+        })
+        .to_string()
+    };
+    let now = chrono::Utc::now().timestamp();
+    store
+        .store("oauth_dropbox_copy-target", &token(now + 3600))
+        .unwrap();
+    let readiness = |user: i64| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            "copy-target",
+            "dropbox",
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    assert_eq!(readiness(legacy_id), "valid");
+    assert_eq!(readiness(private_id), "no_credentials");
+    users::store_credential_for_user_dual(
+        store,
+        private_id,
+        "oauth_dropbox_copy-target",
+        &token(now - 3600),
+    )
+    .unwrap();
+    assert_eq!(readiness(private_id), "needs_refresh");
+    assert_eq!(readiness(legacy_id), "valid");
+    users::unmirror_credential_for_user_best_effort_any(private_id, "oauth_dropbox_copy-target");
+    store.delete("oauth_dropbox_copy-target").unwrap();
+
+    // An import run by the other account writes, undoes and deletes its own
+    // row, also when the write names no type: the vault key of the same name
+    // keeps the owner's value throughout, and so does a sign-out.
+    let key = "oauth_box_import-target";
+    store.store(key, "owners-token").unwrap();
+    let row = |user: i64| {
+        let conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::get_user_credential_for(&conn, &root, user, key)
+            .unwrap()
+            .map(|value| value.to_string())
+    };
+    let before = users::snapshot_credential_for_user(store, private_id, key).unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id).as_deref(), Some("file-token"));
+    // The owner signs in meanwhile with the same value: the undo of the other
+    // account's write leaves it.
+    store.store(key, "file-token").unwrap();
+    users::restore_credential_for_user(store, private_id, key, None, "file-token", &before)
+        .unwrap();
+    assert_eq!(store.get(key).unwrap(), "file-token");
+    assert_eq!(row(private_id), None);
+    store.store(key, "owners-token").unwrap();
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::delete_imported_credential_for_user(store, private_id, key).unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    users::store_imported_credential_for_user(store, private_id, key, None, "file-token").unwrap();
+    users::cli_set_active_user(store, private_id).unwrap();
+    let signed_out = users::delete_profile_credential(store, "import-target", key);
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    signed_out.unwrap();
+    assert_eq!(store.get(key).unwrap(), "owners-token");
+    assert_eq!(row(private_id), None);
+    store.delete(key).unwrap();
 }

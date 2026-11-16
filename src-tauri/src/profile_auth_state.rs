@@ -243,9 +243,71 @@ pub fn derive_profile_auth_state_for_user(
             Err(_) => "unknown",
         };
     }
-    #[cfg(not(feature = "proton-native"))]
-    let _ = user_id;
+    // Another account's token lives in its partition alone
+    // (`private_token_user`): its state is read there, never from the vault
+    // key of the same name, which is the legacy owner's.
+    if source == AuthSource::Vault
+        && !protocol.eq_ignore_ascii_case("github")
+        && oauth_vault_key_for_protocol(protocol).is_some()
+    {
+        let private =
+            user_id.map(|user| crate::user_partitions::private_token_user(Some(user), "oauth"));
+        match private {
+            Some(Ok(Some(user))) => {
+                return partition_token_state(store, user, profile_id, protocol)
+            }
+            Some(Err(_)) => return "unknown",
+            _ => {}
+        }
+    }
     derive_profile_auth_state(store, accounts, profile_id, protocol, source)
+}
+
+/// The state of an account's own token, read from its partition under the
+/// keys [`auth_token_account`] tries, in the same order.
+fn partition_token_state(
+    store: &CredentialStore,
+    user_id: i64,
+    profile_id: &str,
+    protocol: &str,
+) -> &'static str {
+    let mut keys = Vec::new();
+    if protocol.eq_ignore_ascii_case("jottacloud") && !profile_id.is_empty() {
+        keys.push(format!("jottacloud_refresh_{}", profile_id));
+    }
+    if let Some(slug) = oauth_vault_slug_for_oauth_protocol(protocol) {
+        if !profile_id.is_empty() {
+            keys.push(format!("oauth_{}_{}", slug, profile_id));
+        }
+    }
+    keys.extend(oauth_vault_key_for_protocol(protocol).map(str::to_string));
+    for key in keys {
+        match crate::user_partitions::resolve_credential_for_user_owner_aware(store, user_id, &key)
+        {
+            Ok(Some(json)) => return stored_token_state(&json),
+            Ok(None) => {}
+            Err(_) => return "unknown",
+        }
+    }
+    "no_credentials"
+}
+
+/// The state a stored token gives: an OAuth record by its expiry, a
+/// Jottacloud chain (no `expires_at`) by its presence.
+fn stored_token_state(json: &str) -> &'static str {
+    if let Ok(tokens) = serde_json::from_str::<StoredTokens>(json) {
+        if tokens.is_expired() {
+            if tokens.refresh_token.is_some() {
+                return "needs_refresh";
+            }
+            return "expired";
+        }
+        return "valid";
+    }
+    // Jottacloud's `jottacloud_refresh` is a different shape (raw refresh
+    // token JSON, no expires_at). Presence == valid until the next request
+    // proves otherwise.
+    "valid"
 }
 
 /// Derive readiness from a legacy vault-key snapshot. Callers with an
@@ -291,21 +353,7 @@ pub fn derive_profile_auth_state(
             return "no_credentials";
         };
         match store.get(&key) {
-            Ok(json) => {
-                if let Ok(tokens) = serde_json::from_str::<StoredTokens>(&json) {
-                    if tokens.is_expired() {
-                        if tokens.refresh_token.is_some() {
-                            return "needs_refresh";
-                        }
-                        return "expired";
-                    }
-                    return "valid";
-                }
-                // Jottacloud's `jottacloud_refresh` is a different shape
-                // (raw refresh token JSON, no expires_at). Presence ==
-                // valid until the next request proves otherwise.
-                "valid"
-            }
+            Ok(json) => stored_token_state(&json),
             Err(_) => "unknown",
         }
     } else if has_server {
