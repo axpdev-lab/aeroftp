@@ -318,6 +318,27 @@ it('keeps no queue mapping of a batch child that never started once its batch en
     expect(items.find(item => item.id === 'q2')?.status).toBe('pending');
 });
 
+it('settles a started batch child whose completion comes after its batch ended', async () => {
+    let items = [
+        { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+    ] as TransferItem[];
+    const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+        startTransfer: (id: string) => { items = updateTransferStatus(items, id, 'transferring'); },
+        completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+    });
+    Object.defineProperty(queue, 'items', { get: () => items });
+    const { controls } = await mount(queue);
+    controls.registerFileBatchRows('ul-files-9', ['q1']);
+    await emit({ event_type: 'file_start', transfer_id: 'ul-files-9-0', filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+    await emit({ event_type: 'complete', transfer_id: 'ul-files-9', filename: 'batch', direction: 'upload' });
+    // The batch's end drops the bare `ul-files-9-0`; the started file keeps
+    // `ul-files-9-0:/a.txt`, by which its own completion finds its row.
+    expect([...controls.transferIdToQueueId.current.keys()]).toEqual(['ul-files-9-0:/a.txt']);
+    await emit({ event_type: 'file_complete', transfer_id: 'ul-files-9-0', filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+    expect(items[0].status).toBe('completed');
+    expect([...controls.transferIdToQueueId.current.keys()]).toEqual([]);
+});
+
 it('settles the active row and activity when the server skips an occupied upload', async () => {
     const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
         addItem: vi.fn(() => 'duplicate'), completeTransfer: vi.fn(),
