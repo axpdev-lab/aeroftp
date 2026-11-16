@@ -145,6 +145,7 @@ export function fixture(options: Options = {}) {
   // reset or a batch command clears it, and a single or folder transfer
   // refuses while it is raised, as the legacy flag and the provider token do.
   const nativeCancel = { current: false };
+  const cancelLevelRef = { current: 0 };
   const refusedWhileCancelled = ['provider_upload_file', 'provider_download_file', 'upload_file', 'download_file', 'provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
     if (nativeCancel.current && refusedWhileCancelled.includes(command)) throw 'Transfer cancelled by user';
@@ -163,6 +164,7 @@ export function fixture(options: Options = {}) {
       return undefined;
     }
     if (command === 'reset_cancel_flag') { nativeCancel.current = false; return undefined; }
+    if (command === 'cancel_transfer') { nativeCancel.current = true; return undefined; }
     if (['provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'].includes(command)) {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
@@ -280,7 +282,7 @@ export function fixture(options: Options = {}) {
     liveConnectionParams, aeroVaultOverlaySession: vaultSession, aeroVaultSessionRef: { current: vaultSession }, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
-    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef: { current: 0 },
+    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef,
     batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
@@ -335,6 +337,7 @@ export function fixture(options: Options = {}) {
   const hardStop = () => {
     stopCountRef.current += 1;
     batchCancelledRef.current = true;
+    cancelLevelRef.current = 2;
     nativeCancel.current = true;
   };
   /** The user opens another AeroVault on the same connection: the server and

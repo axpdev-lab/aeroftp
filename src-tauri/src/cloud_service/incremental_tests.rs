@@ -3280,6 +3280,10 @@ async fn a_new_twin_of_a_mapped_implicit_parent_waits_for_the_full_scan() {
 /// carry the loaded `read_seq` until `save_sync_index`. When a GUI sync
 /// deletes and retires a path after AeroCloud loaded its baseline, the later
 /// AeroCloud save is refused and does not restore the retired baseline.
+// `XDG_CONFIG_HOME` moves the data root on Linux only, as for the other
+// sync-index tests that set it; elsewhere the index would land in the real
+// configuration folder.
+#[cfg(target_os = "linux")]
 #[test]
 fn an_aerocloud_save_after_a_gui_sync_retires_a_path_is_refused() {
     let _env = crate::test_env::lock();

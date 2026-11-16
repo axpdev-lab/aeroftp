@@ -1067,10 +1067,15 @@ describe('the editor\'s save of a remote file', () => {
         expect(saves(f)).toEqual([]);
         expect(f.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
         f.switchServer({ server: 'a.example' });
+        // The GUI target epoch answers a value of its own, so a save that sent
+        // the generation in its place (or the other way round) is told apart.
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) =>
+            command === 'provider_gui_target_epoch' ? 9 : answer(command, args));
         await f.saveDevToolsFile('new', file);
         // Bound to the connection and GUI target read just before the write,
         // held by the backend through it (Greptile on #1526, CodeRabbit 4580538013).
-        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7, expectedGuiTarget: 7 }]]);
+        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7, expectedGuiTarget: 9 }]]);
     });
 
     it('rejects a save the backend refused or failed, saying why once', async () => {

@@ -351,6 +351,36 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(f.nativeCancel.current).toBe(false);
   });
 
+  // CodeRabbit CLI on #1561 (App.tsx rearmNativeCancelForRow): a hard Stop
+  // whose cancel the backend runs before the row's reset loses it to that
+  // reset, for every transfer the Stop meant. The row raises it again.
+  it('a hard Stop that lands while a Retry resets native cancellation keeps it raised', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+
+    const original = f.invoke.getMockImplementation()!;
+    f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+      // The Stop's cancel reaches the backend first, then the row's reset.
+      if (command === 'reset_cancel_flag') f.hardStop();
+      return original(command, args);
+    });
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.nativeCancel.current).toBe(true);
+    const resetAt = f.invoke.mock.calls.findIndex(([command]) => command === 'reset_cancel_flag');
+    expect(f.invoke.mock.calls.slice(resetAt + 1).map(([command]) => command)).toContain('cancel_transfer');
+  });
+
   it('a Stop during a batch-dispatched single-file Retry epoch read cancels without clearing native cancellation', async () => {
     const f = fixture({
       folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },

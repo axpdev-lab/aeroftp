@@ -38,8 +38,21 @@ fn legacy_revision(provider: OAuthProvider) -> &'static std::sync::atomic::Atomi
     &MEMORY_TOKEN_REVISIONS[index]
 }
 
-fn adopted_destination_key(key: &str) -> String {
-    format!("\0adopted:{key}")
+/// Where an adoption moved the singleton record `observed` from `key`. The
+/// record's digest is part of the marker, so two adoptions of the same
+/// singleton (one record, then another one restored by a migration) each keep
+/// their own destination, and the marker holds no token.
+fn adopted_destination_key(key: &str, observed: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!(
+        "{}{}",
+        adopted_marker_prefix(key),
+        hex::encode(Sha256::digest(observed.as_bytes()))
+    )
+}
+
+fn adopted_marker_prefix(key: &str) -> String {
+    format!("\0adopted:{key}\0")
 }
 
 fn invalidate_memory_tokens(
@@ -50,9 +63,9 @@ fn invalidate_memory_tokens(
     revision.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if let Some(map) = cache.as_mut() {
         map.remove(account);
-        let from_account = adopted_destination_key(account);
+        let from_account = adopted_marker_prefix(account);
         map.retain(|key, val| {
-            key != &from_account && !(key.starts_with("\0adopted:") && val == account)
+            !key.starts_with(&from_account) && !(key.starts_with("\0adopted:") && val == account)
         });
     }
 }
@@ -80,8 +93,8 @@ fn adopt_memory_record(
     valid(json)?;
     let json = map.remove(legacy).expect("the singleton read above");
     let adopted = Zeroizing::new(json.clone());
+    map.insert(adopted_destination_key(legacy, &json), account.to_owned());
     map.insert(account.to_owned(), json);
-    map.insert(adopted_destination_key(legacy), account.to_owned());
     Ok(Some(adopted))
 }
 
@@ -100,7 +113,7 @@ fn replace_memory_record(
     let at = if map.get(key).is_some_and(|raw| raw == observed) {
         Some(key.to_owned())
     } else {
-        map.get(&adopted_destination_key(key))
+        map.get(&adopted_destination_key(key, observed))
             .filter(|moved| map.get(moved.as_str()).is_some_and(|raw| raw == observed))
             .cloned()
     };
@@ -2892,6 +2905,40 @@ mod tests {
             &mut map, &account, "rotated", "late"
         ));
         assert_eq!(map.get(&account).map(String::as_str), Some("again"));
+    }
+
+    /// Two adoptions of the same singleton during refreshes that read it: the
+    /// first record moves to P, a migration restores another one, which moves
+    /// to Q. Each refresh lands where its own record went, and neither takes
+    /// the other's destination.
+    #[test]
+    fn two_adoptions_of_one_singleton_each_keep_their_own_destination() {
+        let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
+        let p = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
+        let q = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "q");
+        let mut map = HashMap::from([(legacy.clone(), "first".to_string())]);
+        adopt_memory_record(&mut map, &p, &legacy, true, |_| Ok(())).unwrap();
+        map.insert(legacy.clone(), "second".to_string());
+        adopt_memory_record(&mut map, &q, &legacy, true, |_| Ok(())).unwrap();
+        assert!(replace_memory_record(
+            &mut map,
+            &legacy,
+            "first",
+            "first-rotated"
+        ));
+        assert!(replace_memory_record(
+            &mut map,
+            &legacy,
+            "second",
+            "second-rotated"
+        ));
+        assert_eq!(map.get(&p).map(String::as_str), Some("first-rotated"));
+        assert_eq!(map.get(&q).map(String::as_str), Some("second-rotated"));
+        assert!(
+            map.keys()
+                .all(|key| !key.contains("first") && !key.contains("second")),
+            "a marker holds no record"
+        );
     }
 
     /// CodeRabbit 4580538002: when profiles P and Q hold the same raw token

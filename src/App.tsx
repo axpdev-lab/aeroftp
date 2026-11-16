@@ -11174,7 +11174,14 @@ const App: React.FC = () => {
    *  the cancelled token. A Stop after this sets both again. */
   const rearmNativeCancelForRow = async (onRowDispatch: () => void): Promise<number> => {
     const epoch = await captureGuiTarget(onRowDispatch);
+    const stops = stopCountRef.current;
     await invoke('reset_cancel_flag', { expectedGuiTarget: epoch });
+    if (stopCountRef.current !== stops) {
+      // A Stop landed while the reset was on its way, and the backend may have
+      // run the Stop's cancel first: the reset would then clear it for the
+      // transfers that Stop meant. Raise it again, at the Stop's level.
+      try { await invoke(cancelLevelRef.current === 1 ? 'stop_starting_transfers' : 'cancel_transfer'); } catch { }
+    }
     onRowDispatch();
     return epoch;
   };
