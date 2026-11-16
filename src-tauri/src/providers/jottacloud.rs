@@ -625,11 +625,13 @@ impl JottacloudProvider {
             jotta_log("Refresh token not persisted: its stored chain was deleted meanwhile");
             return;
         }
-        let persisted =
+        let written =
             crate::credential_store::off_async_worker(|| self.persist_refresh_token_now(&accounts));
         let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
         for account in accounts {
-            if persisted {
+            // Per key: a key left unwritten still holds the chain Jotta
+            // consumed, whatever happened to the others.
+            if written.contains(&account) {
                 pending.remove(&(owner, account));
             } else {
                 // Jotta has consumed the stored chain: the rotated one is the
@@ -650,8 +652,8 @@ impl JottacloudProvider {
         .to_string()
     }
 
-    /// Whether every copy of the rotated chain was written to `accounts`.
-    fn persist_refresh_token_now(&self, accounts: &[String]) -> bool {
+    /// The keys of `accounts` every copy of the rotated chain was written to.
+    fn persist_refresh_token_now(&self, accounts: &[String]) -> Vec<String> {
         let data = serde_json::json!({
             "refresh_token": self.refresh_token.expose_secret(),
             "token_endpoint": self.token_endpoint,
@@ -667,82 +669,81 @@ impl JottacloudProvider {
             Ok(user) => user,
             Err(e) => {
                 jotta_log(&format!("Refresh token not persisted: {}", e));
+                return Vec::new();
+            }
+        };
+        // The keys this chain may be written to. A private chain is never
+        // written to the singleton: that key is left unwritten, so its
+        // rotation stays pending for this process.
+        let writable: Vec<&String> = accounts
+            .iter()
+            .filter(|account| private_user.is_none() || account.as_str() != "jottacloud_refresh")
+            .collect();
+        let write = |store: &crate::credential_store::CredentialStore, account: &str| -> bool {
+            if let Some(user) = private_user {
+                return crate::user_partitions::store_credential_for_user(
+                    store,
+                    user,
+                    account,
+                    "jottacloud_refresh",
+                    &json,
+                )
+                .is_ok();
+            }
+            if store.store(account, &json).is_err() {
                 return false;
             }
+            // MUV-4: mirror into the active user's partition (per-profile only).
+            account == "jottacloud_refresh"
+                || match self.credential_user {
+                    Some(user) => crate::user_partitions::mirror_credential_for_user_typed(
+                        store,
+                        user,
+                        account,
+                        "jottacloud_refresh",
+                        &json,
+                    ),
+                    None => crate::user_partitions::mirror_active_credential(
+                        store,
+                        account,
+                        "jottacloud_refresh",
+                        &json,
+                    ),
+                }
+                .is_ok()
         };
-        let write_all = |store: &crate::credential_store::CredentialStore| -> bool {
-            if let Some(user) = private_user {
-                let own: Vec<&String> = accounts
-                    .iter()
-                    .filter(|account| account.as_str() != "jottacloud_refresh")
-                    .collect();
-                // A chain with no key of its own (no profile) has nowhere to
-                // be stored: not written, so it stays pending for this process.
-                return !own.is_empty()
-                    && own.into_iter().all(|account| {
-                        crate::user_partitions::store_credential_for_user(
-                            store,
-                            user,
-                            account,
-                            "jottacloud_refresh",
-                            &json,
-                        )
-                        .is_ok()
-                    });
-            }
-            let mut ok = true;
-            for account in accounts {
-                if store.store(account, &json).is_err() {
-                    ok = false;
-                    continue;
-                }
-                // MUV-4: mirror into the active user's partition (per-profile only).
-                if account != "jottacloud_refresh"
-                    && match self.credential_user {
-                        Some(user) => crate::user_partitions::mirror_credential_for_user_typed(
-                            store,
-                            user,
-                            account,
-                            "jottacloud_refresh",
-                            &json,
-                        ),
-                        None => crate::user_partitions::mirror_active_credential(
-                            store,
-                            account,
-                            "jottacloud_refresh",
-                            &json,
-                        ),
-                    }
-                    .is_err()
-                {
-                    ok = false;
+        let mut written: Vec<String> = Vec::new();
+        let mut write_missing = |store: &crate::credential_store::CredentialStore| {
+            for account in &writable {
+                if !written.contains(account) && write(store, account) {
+                    written.push((*account).clone());
                 }
             }
-            ok
+            written.len() == writable.len()
         };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if write_all(&store) {
+            if write_missing(&store) {
                 jotta_log(&format!(
                     "Refresh token persisted to vault ({} key(s))",
-                    accounts.len()
+                    writable.len()
                 ));
-                return true;
+                return written;
             }
         }
         // Try auto-init vault. Also a second attempt after a failed write: Jotta has
         // already rotated the chain, and the old one in the vault is of no use.
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                if write_all(&store) {
+                if write_missing(&store) {
                     jotta_log("Refresh token persisted to auto-initialized vault");
-                    return true;
+                    return written;
                 }
             }
         }
         // Readers prefer the partition row: a stale one holds a rotated chain, so this
         // must not read as a success.
         jotta_log("Refresh token NOT fully persisted: the vault or the partition refused it");
-        false
+        written
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the
@@ -5031,7 +5032,10 @@ mod tests {
     /// for a success, and the pending successor was dropped, so the next
     /// connection sent the predecessor Jotta had consumed. Nothing is
     /// written now, the successor stays pending, and the next connection
-    /// sends it.
+    /// sends it. A connection with a profile next loads that pending
+    /// singleton and writes only its own key: success is per key, so the
+    /// singleton's newest successor stays pending too, and the last
+    /// connection without a profile sends it.
     #[test]
     fn a_rotation_with_no_key_of_its_own_stays_pending_for_the_next_connection() {
         use crate::credential_store::CredentialStore;
@@ -5120,21 +5124,40 @@ mod tests {
             .unwrap()
             .contains_key(&(Some(second), key.to_string()));
         let vault = store.get(key).is_ok();
-        let mut provider = no_profile();
-        let reconnected = runtime.block_on(provider.try_connect_with_refresh());
-        drop(provider);
-        let resent = sent.lock().unwrap().get(1).cloned();
-        if !matches!(reconnected, Ok(true))
-            || !resent
-                .as_deref()
-                .is_some_and(|body| body.contains("successor-1"))
-        {
-            wrong.push(format!("reconnection: {reconnected:?}, sent {resent:?}"));
+        // No profile, then a profile, then no profile again: each sends the
+        // newest successor of the chain it loads.
+        for (step, profile, expected) in [
+            ("profile-bound", Some("bound"), "successor-1"),
+            ("no profile again", None, "successor-2"),
+        ] {
+            let mut provider = no_profile();
+            if let Some(profile) = profile {
+                provider = provider.with_profile_id(profile);
+            }
+            let reconnected = runtime.block_on(provider.try_connect_with_refresh());
+            drop(provider);
+            let resent = sent.lock().unwrap().last().cloned();
+            if !matches!(reconnected, Ok(true))
+                || !resent
+                    .as_deref()
+                    .is_some_and(|body| body.contains(&format!("refresh_token={expected}&")))
+            {
+                wrong.push(format!(
+                    "{step}: {reconnected:?}, sent {resent:?}, expected {expected}"
+                ));
+            }
+        }
+        let own =
+            partitions::resolve_credential_for_user(&store, second, "jottacloud_refresh_bound")
+                .expect("read")
+                .is_some_and(|json| json.contains("successor-2"));
+        if !own {
+            wrong.push("profile-bound: its own key does not hold successor-2".to_string());
         }
         PENDING_ROTATIONS
             .lock()
             .unwrap()
-            .retain(|(_, account), _| account != key);
+            .retain(|(_, account), _| account != key && account != "jottacloud_refresh_bound");
         server.abort();
         drop(runtime);
         CredentialStore::clear_cache();
