@@ -538,6 +538,22 @@ test('licensing exceptions: fails fast if unlisted component has non-free restri
   );
 });
 
+test('licensing exceptions: fails fast on restriction clauses wrapped across line breaks', () => {
+  const wrappedComp = {
+    name: 'wrapped-clause-crate',
+    version: '1.0.0',
+    license: 'Custom',
+    source: 'cargo',
+    licenseFiles: [{ filename: 'LICENSE.txt', content: 'This library cannot be used to develop\nRAR software.' }],
+    noticeFiles: [],
+    authors: ['Wrapped Author'],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([wrappedComp], [], SPDX_STANDARD_LICENSES_FILE, []),
+    /Component wrapped-clause-crate@1\.0\.0 .* contains non-free restriction clauses but is not registered in KNOWN_NON_FREE_EXCEPTIONS/
+  );
+});
+
 test('fallback placeholders: no <copyright holders> or unpopulated placeholders remain in output', () => {
   const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
   const content = fs.readFileSync(noticesFile, 'utf8');
@@ -562,6 +578,22 @@ test('fallback placeholders: generator rejects unreviewed component without auth
   assert.throws(
     () => generateNoticesMarkdown([compWithoutAuthor], [], SPDX_STANDARD_LICENSES_FILE, []),
     /Component unreviewed-authorless-crate@0\.0\.1 has no manifest authors and is missing reviewed attribution in PINNED_FALLBACK_ATTRIBUTIONS/
+  );
+});
+
+test('fallback placeholders: generator rejects authored component without pinned copyright year for placeholder license', () => {
+  const compWithoutYear = {
+    name: 'authored-no-year-crate',
+    version: '1.0.0',
+    license: 'BSD-3-Clause',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: ['Valid Author <author@example.com>'],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([compWithoutYear], [], SPDX_STANDARD_LICENSES_FILE, []),
+    /Component authored-no-year-crate@1\.0\.0 requires a reviewed copyright year in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice/
   );
 });
 

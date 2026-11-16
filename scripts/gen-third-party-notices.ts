@@ -113,6 +113,8 @@ export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> =
   'objc2-core-services@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
   'objc2-core-text@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
   'objc2-core-wlan@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
+  'objc2-encode@4.1.0': { author: 'Mads Marquart', year: '2021-2024' },
+  'objc2-exception-helper@0.1.1': { author: 'Mads Marquart', year: '2024' },
   'objc2-foundation@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
   'objc2-quartz-core@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
   'objc2-security@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
@@ -632,8 +634,8 @@ export function generateNoticesMarkdown(
     }
   }
 
-  // Scan all components for unlisted non-free restriction clauses
-  const nonFreePattern = /(re-create.*compression algorithm|cannot be used to develop.*rar)/i;
+  // Scan all components for unlisted non-free restriction clauses (spanning potential line breaks)
+  const nonFreePattern = /(re-create[\s\S]*?compression algorithm|cannot be used to develop[\s\S]*?rar)/i;
   for (const comp of [...sortedCargoDeps, ...sortedNpmDeps]) {
     const isDeclared = nonFreeExceptions.some(
       (exc) => exc.crateName === comp.name && exc.version === comp.version
@@ -852,9 +854,15 @@ export function generateNoticesMarkdown(
         for (const comp of comps) {
           const key = `${comp.name}@${comp.version}`;
           const pinned = PINNED_FALLBACK_ATTRIBUTIONS[key];
-          const year = pinned?.year || '2024';
+          const year = pinned?.year;
+          if (!year && !key.startsWith('test-')) {
+            throw new Error(
+              `Component ${key} requires a reviewed copyright year in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice`
+            );
+          }
+          const actualYear = year || '2024';
           const author = (comp.authors && comp.authors.length > 0) ? comp.authors.join(', ') : pinned?.author;
-          copyrightLines.push(`Copyright (c) ${year} ${author} (${comp.name})`);
+          copyrightLines.push(`Copyright (c) ${actualYear} ${author} (${comp.name})`);
         }
         licText = licText.replace(/Copyright \(c\) <year> <copyright holders>/g, copyrightLines.join('\n'));
         licText = licText.replace(/Copyright \(c\) <year> <author>/g, copyrightLines.join('\n'));
