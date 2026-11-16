@@ -1361,6 +1361,52 @@ async fn ensure_parent_dirs(inner: &mut Box<dyn StorageProvider>, enc_path: &str
     }
 }
 
+/// How [`CryptOverlayProvider::enter`] asks the inner provider to move.
+#[derive(Clone, Copy)]
+enum Entry {
+    /// [`StorageProvider::cd`].
+    Cd,
+    /// [`StorageProvider::return_to_folder`].
+    Return,
+}
+
+impl CryptOverlayProvider {
+    /// The body of `cd` and `return_to_folder`: map `path`, keep the scope
+    /// alias state, and move the inner provider as `entry` says.
+    async fn enter(&mut self, path: &str, entry: Entry) -> Result<(), ProviderError> {
+        // A relative target is relative to where the session is, which is
+        // unknown while a report is missing; an absolute one is not.
+        if !path.starts_with('/') {
+            self.settle_scope_alias().await?;
+        }
+        let enc = self.map(path, true, AccessKind::Read)?;
+        // Pending before the server is asked, and for this request: a `cd`
+        // into the anchor that is cancelled after the server moved never
+        // reaches learn_scope_alias, and the next path call must still ask
+        // where the session landed instead of reading the anchor's other name
+        // as a folder outside it. While an earlier probe waits, a `cd`
+        // cancelled midway leaves the session in one of two folders that no
+        // report tells apart: unknown, not the earlier probe's answer. A
+        // refused `cd` moved nothing and leaves the state as it was.
+        let before = self.alias_pending.clone();
+        if before.is_some() {
+            self.alias_pending = Some(AliasPending::Unknown);
+        } else if self.below_scope(&enc).is_some() {
+            self.alias_pending = Some(AliasPending::Probe(enc.clone()));
+        }
+        let moved = match entry {
+            Entry::Cd => self.inner.cd(&enc).await,
+            Entry::Return => self.inner.return_to_folder(&enc).await,
+        };
+        if let Err(e) = moved {
+            self.alias_pending = before;
+            return Err(e);
+        }
+        self.learn_scope_alias(&enc).await;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl StorageProvider for CryptOverlayProvider {
     fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
@@ -1487,45 +1533,15 @@ impl StorageProvider for CryptOverlayProvider {
         if path == ".." {
             return self.cd_up().await;
         }
-        // A relative target is relative to where the session is, which is
-        // unknown while a report is missing; an absolute one is not.
-        if !path.starts_with('/') {
-            self.settle_scope_alias().await?;
-        }
-        let enc = self.map(path, true, AccessKind::Read)?;
-        // Pending before the server is asked, and for this request: a `cd`
-        // into the anchor that is cancelled after the server moved never
-        // reaches learn_scope_alias, and the next path call must still ask
-        // where the session landed instead of reading the anchor's other name
-        // as a folder outside it. While an earlier probe waits, a `cd`
-        // cancelled midway leaves the session in one of two folders that no
-        // report tells apart: unknown, not the earlier probe's answer. A
-        // refused `cd` moved nothing and leaves the state as it was.
-        let before = self.alias_pending.clone();
-        if before.is_some() {
-            self.alias_pending = Some(AliasPending::Unknown);
-        } else if self.below_scope(&enc).is_some() {
-            self.alias_pending = Some(AliasPending::Probe(enc.clone()));
-        }
-        if let Err(e) = self.inner.cd(&enc).await {
-            self.alias_pending = before;
-            return Err(e);
-        }
-        self.learn_scope_alias(&enc).await;
-        Ok(())
+        self.enter(path, Entry::Cd).await
     }
 
-    /// An absolute folder is entered as [`Self::cd`] enters it. A relative
-    /// one is mapped as `cd` maps it, and the inner provider decides whether
-    /// it can still be entered: only it knows whether its reports name a
-    /// folder from anywhere (FTP refuses a relative one).
+    /// Mapped and tracked as [`Self::cd`] maps and tracks it, with the inner
+    /// provider's own return: only it knows whether a refused return leaves
+    /// its session usable in the folder it stands in (FTP closes it as lost),
+    /// and whether a relative report names a folder from anywhere.
     async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
-        if folder.starts_with('/') {
-            return self.cd(folder).await;
-        }
-        self.settle_scope_alias().await?;
-        let enc = self.map(folder, true, AccessKind::Read)?;
-        self.inner.return_to_folder(&enc).await
+        self.enter(folder, Entry::Return).await
     }
 
     /// At or below the anchor, Up goes to the parent of the folder the
@@ -5089,6 +5105,27 @@ pub(crate) mod tests {
         }
     }
 
+    /// CodeRabbit CLI on the integrated delta of #1561: the overlay's
+    /// return entered an absolute folder with the inner `cd`, so an inner
+    /// provider that closes its session on a refused return (FTP) stayed
+    /// usable in the folder it stood in. Inside the scope and outside it, the
+    /// overlay maps the folder and hands it to the inner provider's own return.
+    #[tokio::test]
+    async fn a_return_through_the_overlay_is_the_inner_providers_own_return() {
+        let mem = MemProvider::new();
+        let returns = mem.returns.clone();
+        let mut provider = CryptOverlayProvider::new(Box::new(mem), aerocrypt_keys(), "/Vault");
+        provider.return_to_folder("/Plain").await.unwrap();
+        provider.return_to_folder("/Vault/a").await.unwrap();
+        let asked = returns.lock().unwrap().clone();
+        assert_eq!(asked.len(), 2, "{asked:?}");
+        assert_eq!(asked[0], "/Plain");
+        assert!(
+            asked[1].starts_with("/Vault/") && asked[1] != "/Vault/a",
+            "not the mapped folder: {asked:?}"
+        );
+    }
+
     /// V1 regression (pre-tag audit): the fetch-side classifier must mirror
     /// `encode_plain_target` decision-for-decision. A RELATIVE target under a
     /// bound scope is encrypted in full by the mapper, so it must classify as
@@ -5949,6 +5986,8 @@ pub(crate) mod tests {
         literal_tilde: bool,
         /// `cd` into this folder fails, as on a folder removed meanwhile.
         refuse_cd: Option<&'static str>,
+        /// Every folder `return_to_folder` was asked for, in order.
+        returns: std::sync::Arc<Mutex<Vec<String>>>,
         /// The login folder the provider recorded at connect, as FTP keeps
         /// the post-login `PWD`: `resolve_home_scope` uses it instead of a
         /// `cd("~")` the protocol may not honour.
@@ -5988,6 +6027,7 @@ pub(crate) mod tests {
                 identity_calls: Mutex::new(Vec::new()),
                 literal_tilde: false,
                 refuse_cd: None,
+                returns: Default::default(),
                 login_folder: None,
                 kind: ProviderType::Ftp,
                 reports_as: None,
@@ -6216,6 +6256,10 @@ pub(crate) mod tests {
                 std::future::pending::<()>().await;
             }
             Ok(())
+        }
+        async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+            self.returns.lock().unwrap().push(folder.to_string());
+            self.cd(folder).await
         }
         /// `CDUP`: the last step of the folder as the server holds it, dropped
         /// as written.

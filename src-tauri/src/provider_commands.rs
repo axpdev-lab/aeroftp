@@ -5515,6 +5515,31 @@ async fn download_file_for_ipc<R: tauri::Runtime>(
     }
 }
 
+/// The folder a folder transfer returns the provider to
+/// ([`StorageProvider::return_to_folder`]) once it is done, as `pwd` reads it
+/// before anything moves.
+///
+/// A folder that cannot be read refuses the transfer before it lists or
+/// writes anything. The walk moves the session, and with no folder to return
+/// to it would stay usable in the last folder walked while the panel shows
+/// the one it left. A provider reads none while its connection is gone, and
+/// FTP none while its folder is lost, when no command may run until an
+/// absolute `cd`. No provider reports an empty folder.
+async fn folder_to_return_to(provider: &mut dyn StorageProvider) -> Result<String, String> {
+    match provider.pwd().await {
+        Ok(folder) if !folder.is_empty() => Ok(folder),
+        Ok(_) => Err(
+            "the folder this session stands in was reported empty, so it could not be returned \
+             to after the transfer; nothing was transferred"
+                .to_string(),
+        ),
+        Err(e) => Err(format!(
+            "the folder this session stands in could not be read ({e}), so it could not be \
+             returned to after the transfer; nothing was transferred"
+        )),
+    }
+}
+
 /// Download a folder recursively from the remote server (OAuth providers)
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
@@ -5553,13 +5578,13 @@ pub async fn provider_download_folder(
         sftp_download_preset,
     };
 
-    // Capture current pwd so we can restore it after folder scan changes it
+    // The folder to return to once the scan, which walks the tree with `cd`,
+    // is done. Unreadable, nothing is transferred.
     let original_pwd = {
         let mut lock = state.provider.lock().await;
-        if let Some(p) = lock.as_mut() {
-            p.pwd().await.ok().filter(|pwd| !pwd.is_empty())
-        } else {
-            None
+        match lock.as_mut() {
+            Some(p) => Some(folder_to_return_to(p.as_mut()).await?),
+            None => None,
         }
     };
 
@@ -5634,13 +5659,13 @@ pub async fn provider_upload_folder(
         sftp_download_preset: None,
     };
 
-    // Capture current pwd so we can restore it after upload
+    // The folder to return to once the upload is done (a provider's
+    // `mkdir` or listing may move the session). Unreadable, nothing is sent.
     let original_pwd = {
         let mut lock = state.provider.lock().await;
-        if let Some(p) = lock.as_mut() {
-            p.pwd().await.ok().filter(|pwd| !pwd.is_empty())
-        } else {
-            None
+        match lock.as_mut() {
+            Some(p) => Some(folder_to_return_to(p.as_mut()).await?),
+            None => None,
         }
     };
 
@@ -16947,6 +16972,28 @@ mod tests {
                 .unwrap_err();
             assert_eq!(entered, FOLDER_LOST_REFUSAL, "cd {request}");
         }
+    }
+
+    /// CodeRabbit CLI on the integrated delta of #1561: a folder transfer
+    /// whose starting folder cannot be read is refused before it moves the
+    /// session, instead of walking the tree and staying in its last folder.
+    /// An empty report is refused too; a readable folder is the one returned to.
+    #[tokio::test]
+    async fn a_folder_transfer_needs_the_folder_it_will_return_to() {
+        let (mut unreadable, log) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        unreadable.reports_folder = false;
+        let refused = folder_to_return_to(&mut unreadable).await.unwrap_err();
+        assert!(refused.contains("nothing was transferred"), "{refused}");
+        assert!(!refused.contains("/work"), "{refused}");
+        let (mut empty, _) = Wanderer::in_folder(ProviderType::Sftp, "");
+        assert!(folder_to_return_to(&mut empty).await.is_err());
+        let (mut readable, _) = Wanderer::in_folder(ProviderType::Sftp, "/work");
+        assert_eq!(folder_to_return_to(&mut readable).await.unwrap(), "/work");
+        let requests = log.requests.lock().unwrap().clone();
+        assert!(
+            requests.is_empty(),
+            "the check moved the session: {requests:?}"
+        );
     }
 
     /// Finding 5 of round 11: a silent reconnect that cannot open the

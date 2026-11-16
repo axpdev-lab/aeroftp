@@ -4704,6 +4704,29 @@ mod remote_projection_tests {
         SyncIndex::new("local".to_string(), "remote".to_string())
     }
 
+    /// CodeRabbit CLI on the integrated delta of #1561: the view of a baseline
+    /// that serves no one keeps the recovery keys and the read point it was
+    /// loaded at, so a stale publication after it is still refused, and none
+    /// of the files.
+    #[test]
+    fn a_recovery_only_view_keeps_the_recovery_keys_and_the_read_point() {
+        let mut loaded = index();
+        loaded.profile_id = Some("p".to_string());
+        loaded.files.insert("a.txt".to_string(), file());
+        loaded.pending_recovery_keys.insert("a.txt".to_string());
+        loaded.read_seq = Some(41);
+        let view = super::recovery_only_view(loaded).expect("a pending recovery");
+        assert!(view.files.is_empty());
+        assert_eq!(view.read_seq, Some(41));
+        assert_eq!(view.profile_id.as_deref(), Some("p"));
+        let keys = std::collections::HashSet::from(["a.txt".to_string()]);
+        assert_eq!(view.pending_recovery_keys, keys);
+        assert_eq!(view.unverified_keys, keys);
+        let mut idle = index();
+        idle.read_seq = Some(41);
+        assert!(super::recovery_only_view(idle).is_none());
+    }
+
     fn dir() -> SyncIndexEntry {
         SyncIndexEntry {
             size: 0,

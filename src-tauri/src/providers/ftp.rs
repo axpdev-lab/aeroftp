@@ -2325,19 +2325,38 @@ impl StorageProvider for FtpProvider {
         outcome
     }
 
-    /// A relative folder is entered from the folder the session stands in
-    /// now, so it would name another one: the session is closed as lost
-    /// there instead, as a redial to it is ([`Self::restore_working_directory`]).
+    /// Stand again in the folder a folder transfer left, or close the session
+    /// as lost there ([`Self::lose_folder`]), as a redial does
+    /// ([`Self::restore_working_directory`]): never stay usable in the
+    /// scanned folder while the caller believes it is back.
+    ///
+    /// - A relative folder is entered from the folder the session stands in
+    ///   now, so it would name another one: it is not sent.
+    /// - The folder is owed ([`Self::owed_folder`]) before the server is
+    ///   asked, so a return dropped during its `CWD` or `PWD` has the next
+    ///   command redial to it, not to the scanned one.
+    /// - A refused return (the folder is gone, a 550) leaves the session lost
+    ///   in it, so a later relative command sends nothing.
     async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
-        if names_one_folder(folder) {
-            return self.cd(folder).await;
+        if !names_one_folder(folder) {
+            self.lose_folder(folder);
+            return Err(ProviderError::InvalidPath(
+                "the folder the session left was reported as a relative path, which cannot be \
+                 entered again: change to an absolute folder to go on"
+                    .to_string(),
+            ));
         }
-        self.lose_relative_folder(folder);
-        Err(ProviderError::InvalidPath(
-            "the folder the session left was reported as a relative path, which cannot be \
-             entered again: change to an absolute folder to go on"
-                .to_string(),
-        ))
+        self.owed_folder = Some(folder.to_string());
+        match self.cd(folder).await {
+            Ok(()) => {
+                self.owed_folder = None;
+                Ok(())
+            }
+            Err(err) => {
+                self.lose_folder(folder);
+                Err(err)
+            }
+        }
     }
 
     fn download_was_refused(&self) -> bool {
@@ -4875,10 +4894,10 @@ impl FtpProvider {
         }
     }
 
-    /// Close the session as lost in `folder`, a relative folder that names
-    /// another folder from anywhere but where it was reported. No command runs
+    /// Close the session as lost in `folder`, the folder the caller believes
+    /// it stands in and the session could not enter again. No command runs
     /// until a `cd` to an absolute folder (or `cd_up`) opens a session again.
-    fn lose_relative_folder(&mut self, folder: &str) {
+    fn lose_folder(&mut self, folder: &str) {
         self.owed_folder = None;
         self.stream = None;
         self.current_path = folder.to_string();
@@ -4918,7 +4937,7 @@ impl FtpProvider {
         // session stands in, and names another folder than the one left:
         // the session is closed as lost instead.
         if !names_one_folder(previous) {
-            self.lose_relative_folder(previous);
+            self.lose_folder(previous);
             return Err(ProviderError::InvalidPath(
                 "reconnected, but the session's folder was reported as a relative path, which \
                  cannot be entered again: change to an absolute folder to go on"
@@ -4945,9 +4964,7 @@ impl FtpProvider {
                 Ok(())
             }
             Err(err) => {
-                self.stream = None;
-                self.current_path = previous.to_string();
-                self.folder_lost = true;
+                self.lose_folder(previous);
                 Err(err)
             }
         }
@@ -10733,6 +10750,77 @@ mod rename_contract_tests {
             .map(|e| e.name)
             .collect();
         assert!(names.contains(&"b.txt".to_string()), "{names:?}");
+    }
+
+    /// A return dropped during its `CWD` still owes the folder: the next
+    /// relative upload redials to `/shown` and stores there, not in the
+    /// scanned `/tree` the session stood in.
+    #[tokio::test]
+    async fn a_return_dropped_during_its_cwd_still_owes_the_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("c.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let (mut provider, _log, files) = provider_on_server_holding(
+            &["/shown/a.txt", "/tree/b.txt"],
+            Quirks {
+                login_dir: Some("/shown"),
+                log_commands: true,
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        provider.cd("/tree").await.unwrap();
+        files.lock().unwrap().push("!stall CWD /shown".to_string());
+        let dropped = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.return_to_folder(&before),
+        )
+        .await;
+        assert!(dropped.is_err(), "the return was answered: {dropped:?}");
+        provider
+            .upload(local, "c.txt", None)
+            .await
+            .expect("the upload after the dropped return");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/shown/c.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/tree/c.txt".to_string()), "{held:?}");
+    }
+
+    /// A refused return (the folder went away during the scan) leaves the
+    /// session lost in `/shown`, not usable in the scanned `/tree`: two
+    /// relative uploads store nothing.
+    #[tokio::test]
+    async fn a_refused_return_leaves_no_session_in_the_scanned_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("c.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let (mut provider, log, files) = provider_on_server_holding(
+            &["/shown/a.txt", "/tree/b.txt"],
+            Quirks {
+                login_dir: Some("/shown"),
+                log_commands: true,
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        provider.cd("/tree").await.unwrap();
+        files.lock().unwrap().push("!refuse CWD /shown".to_string());
+        assert!(provider.return_to_folder(&before).await.is_err());
+        assert!(!provider.is_connected(), "the session was kept in /tree");
+        assert_eq!(provider.current_path, "/shown");
+        for _ in 0..2 {
+            assert!(provider.upload(local, "c.txt", None).await.is_err());
+        }
+        let sent = log.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("STOR")), "{sent:?}");
+        let held = files.lock().unwrap().clone();
+        assert!(!held.contains(&"/tree/c.txt".to_string()), "{held:?}");
     }
 
     /// An absolute folder is entered again as `cd` enters it.
