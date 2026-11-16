@@ -99,5 +99,10 @@ describe('thirdPartyLicenses', () => {
       expect(res.target).toBe(GITHUB_NOTICES_URL);
       expect(mockUrlOpener).toHaveBeenCalledWith(GITHUB_NOTICES_URL);
     });
+
+    it('points to immutable release tag ref instead of main branch', () => {
+      expect(GITHUB_NOTICES_URL).toMatch(/^https:\/\/github\.com\/axpdev-lab\/aeroftp\/blob\/v\d+\.\d+\.\d+\/THIRD-PARTY-NOTICES\.md$/);
+      expect(GITHUB_NOTICES_URL).not.toContain('/blob/main/');
+    });
   });
 });

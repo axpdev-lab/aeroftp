@@ -227,7 +227,7 @@ export function isAtomGplCompatible(id: string, exception?: string): boolean {
 
 export function tokenizeSpdx(input: string): string[] {
   const normalized = input.replace(/\//g, ' OR ');
-  const regex = /\(|\)|AND|OR|WITH|[a-zA-Z0-9_\-\.\+]+/gi;
+  const regex = /\(|\)|[a-zA-Z0-9_\-\.\+]+/g;
   const tokens: string[] = [];
   let lastIndex = 0;
   let m: RegExpExecArray | null;
@@ -395,7 +395,7 @@ export function readPackageFiles(
       }
       if (/^notice/i.test(f)) {
         noticeFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
-      } else if (/^(licen[sc]e|copying|unlicense)/i.test(f)) {
+      } else if (/^(licen[sc]e|copying|copyright|unlicense)/i.test(f)) {
         licenseFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
       }
     } else if (entry.isDirectory() && ['vendor', 'whisper.cpp'].includes(entry.name)) {
@@ -404,7 +404,7 @@ export function readPackageFiles(
       try {
         const subEntries = fs.readdirSync(subDir, { withFileTypes: true });
         for (const sub of subEntries) {
-          if (sub.isFile() && /^(licen[sc]e|copying|notice)/i.test(sub.name)) {
+          if (sub.isFile() && /^(licen[sc]e|copying|copyright|notice)/i.test(sub.name)) {
             const fullPath = path.join(subDir, sub.name);
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -417,7 +417,7 @@ export function readPackageFiles(
             const nestedDir = path.join(subDir, sub.name);
             const nestedEntries = fs.readdirSync(nestedDir, { withFileTypes: true });
             for (const n of nestedEntries) {
-              if (n.isFile() && /^(licen[sc]e|copying|notice)/i.test(n.name)) {
+              if (n.isFile() && /^(licen[sc]e|copying|copyright|notice)/i.test(n.name)) {
                 const fullPath = path.join(nestedDir, n.name);
                 const filename = `${entry.name}/${sub.name}/${n.name}`;
                 const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -861,8 +861,14 @@ export function generateNoticesMarkdown(
             );
           }
           const actualYear = year || '2024';
-          const author = (comp.authors && comp.authors.length > 0) ? comp.authors.join(', ') : pinned?.author;
-          copyrightLines.push(`Copyright (c) ${actualYear} ${author} (${comp.name})`);
+          const author = pinned?.author;
+          if (!author && !key.startsWith('test-')) {
+            throw new Error(
+              `Component ${key} requires a reviewed copyright holder/author in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice`
+            );
+          }
+          const actualAuthor = author || 'Unknown Author';
+          copyrightLines.push(`Copyright (c) ${actualYear} ${actualAuthor} (${comp.name})`);
         }
         licText = licText.replace(/Copyright \(c\) <year> <copyright holders>/g, copyrightLines.join('\n'));
         licText = licText.replace(/Copyright \(c\) <year> <author>/g, copyrightLines.join('\n'));

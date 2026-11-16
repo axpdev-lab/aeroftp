@@ -3,9 +3,10 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { executableDir, resolveResource } from '@tauri-apps/api/path';
+import packageJson from '../../package.json';
 import { openUrl } from './openUrl';
 
-export const GITHUB_NOTICES_URL = 'https://github.com/axpdev-lab/aeroftp/blob/main/THIRD-PARTY-NOTICES.md';
+export const GITHUB_NOTICES_URL = `https://github.com/axpdev-lab/aeroftp/blob/v${packageJson.version}/THIRD-PARTY-NOTICES.md`;
 
 /**
  * Absolute Linux candidate paths where THIRD-PARTY-NOTICES.md may be installed.

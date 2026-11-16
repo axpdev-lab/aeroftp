@@ -30,6 +30,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 test('SPDX parser: tokenizer handles operators, parentheses, slashes, and identifiers', () => {
   assert.deepStrictEqual(tokenizeSpdx('MIT'), ['MIT']);
   assert.deepStrictEqual(tokenizeSpdx('Apache-2.0 / MIT'), ['Apache-2.0', 'OR', 'MIT']);
+  assert.deepStrictEqual(tokenizeSpdx('MIT ORacle-x'), ['MIT', 'ORacle-x']);
   assert.deepStrictEqual(
     tokenizeSpdx('(Apache-2.0 OR MIT) AND BSD-3-Clause'),
     ['(', 'Apache-2.0', 'OR', 'MIT', ')', 'AND', 'BSD-3-Clause']
@@ -108,6 +109,8 @@ test('SPDX parser: incompatible fixtures fail GPL-3.0 compatibility gate (red-pr
   );
 
   // Incomplete expressions and unconsumed tokens must fail
+  assert.strictEqual(isGplCompatible('MIT ORacle-x'), false, 'Operator substring in identifier must not split token');
+  assert.strictEqual(isGplCompatible('MIT AND ORacle-x'), false, 'Unrecognized identifier in AND must fail');
   assert.strictEqual(isGplCompatible('MIT SSPL-1.0'), false, 'Trailing unconsumed token must fail');
   assert.strictEqual(isGplCompatible('MIT WITH'), false, 'Missing exception for WITH must fail');
   assert.strictEqual(isGplCompatible('MIT OR'), false, 'Missing RHS for OR must fail');
@@ -220,6 +223,20 @@ test('npm collection: walks lock entries by path and preserves multiple versions
 
     // Dev dependencies must be excluded
     assert.strictEqual(deps.some((d) => d.name === 'dev-tool'), false, 'devDependencies must be excluded');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('readPackageFiles: collects COPYRIGHT files together with license texts', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-copyright-test-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'COPYRIGHT'), 'Copyright (c) 2024 Test Project Contributors');
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License text');
+    const { licenseFiles } = readPackageFiles(tmpDir, 'test-copyright-crate@1.0.0');
+    assert.strictEqual(licenseFiles.length, 2);
+    assert.ok(licenseFiles.some((f) => f.filename === 'COPYRIGHT'));
+    assert.ok(licenseFiles.some((f) => f.filename === 'LICENSE'));
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
