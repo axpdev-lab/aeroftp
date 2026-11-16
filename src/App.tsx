@@ -180,6 +180,9 @@ interface StagedLocalTransfer {
   sourceDir: string;
   targetDir: string;
   entries: LocalFile[];
+  /** The plan's Stop since Execute: checked after each await and before
+   *  each file, so a Stop during the target listing moves nothing. */
+  stopped: () => boolean;
 }
 
 /** The roots a local-local comparison was taken on, from its context. */
@@ -12570,6 +12573,7 @@ const App: React.FC = () => {
         notify.error(mode === 'copy' ? t('toast.copyFailed') || 'Copy failed' : t('toast.renameFailed', { error: '' }) || 'Move failed', `${targetDir}: ${String(e)}`);
         return;
       }
+      if (staged.stopped()) return;
     } else {
       targetListing = targetId === 'local2' ? localFiles2 : localFiles;
     }
@@ -12584,6 +12588,7 @@ const App: React.FC = () => {
           onCancel: () => { setConfirmDialog(null); resolve(false); },
         });
       });
+      if (staged?.stopped()) return;
     }
 
     let ok = 0, failed = 0, skipped = 0;
@@ -12601,6 +12606,7 @@ const App: React.FC = () => {
         skipped++;
         return;
       }
+      if (staged?.stopped()) return;
       try {
         await invoke(mode === 'copy' ? 'copy_local_file' : 'rename_local_file', {
           from: file.path,
@@ -12735,7 +12741,7 @@ const App: React.FC = () => {
         // folders or selection at Execute.
         const entries = pendingUnifiedTransferPlan.localEntries;
         if (plan.source.kind === 'local' && plan.destination.kind === 'local' && entries) {
-          await transferLocalSelectionAcrossPanels(plan.mode, sourceLocalPanelId, { sourceDir: plan.source.path, targetDir: plan.destination.path, entries });
+          await transferLocalSelectionAcrossPanels(plan.mode, sourceLocalPanelId, { sourceDir: plan.source.path, targetDir: plan.destination.path, entries, stopped: stoppedSinceStart });
         }
         setPendingUnifiedTransferPlan(null);
         return;

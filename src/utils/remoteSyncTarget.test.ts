@@ -1375,11 +1375,10 @@ it('runs a local-local plan on its comparison roots after a panel changed folder
     const launch = new Function(...Object.keys(context), `${launchCode};return runLocalLocalSync;`)(...Object.values(context));
     launch([file('report.txt')], { remote: [], local: [] }, { direction: 'local_to_remote', verifyPolicy: 'none', roots: { source: '/work', destination: '/backup' } });
     await vi.waitFor(() => expect(context.setRemoteSyncResult).toHaveBeenCalledTimes(1));
-    expect(copies.length).toBeGreaterThan(0);
-    const paths = JSON.stringify(copies);
-    expect(paths).toContain('/backup/report.txt');
-    expect(paths).not.toContain('/other');
-    expect(paths).not.toContain('/elsewhere');
+    // Both roots pinned on their own: the copy reads from the compared
+    // source and writes into the compared destination.
+    expect(copies).toHaveLength(1);
+    expect(copies[0]).toMatchObject({ from: '/work/report.txt', to: '/backup/report.txt' });
 });
 
 it('refuses a local-local plan with no comparison roots', async () => {

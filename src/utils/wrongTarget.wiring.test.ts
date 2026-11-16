@@ -640,7 +640,7 @@ async function stagedPlan(f: ReturnType<typeof fixture>, staged: Record<string, 
 // selection at Execute, so with a panel moved since the files went into
 // another folder than the plan showed.
 describe('a planned local-local copy or move whose panels moved before Execute', () => {
-    it.each(['copy', 'move'] as const)('acts on the plan\'s folders and files (%s)', async mode => {
+    const runPlanned = async (mode: 'copy' | 'move', onListing: (stopCount: { current: number }) => void = () => undefined) => {
         const rowA = { name: 'a.txt', path: '/a/a.txt', is_dir: false, size: 1, modified: null } as never;
         const rowX = { name: 'x.txt', path: '/c/x.txt', is_dir: false, size: 1, modified: null } as never;
         // Staged with App's own planner and staging, on /a -> /b with a.txt.
@@ -664,8 +664,9 @@ describe('a planned local-local copy or move whose panels moved before Execute',
         expect(pending).not.toBeNull();
 
         // Both panels moved, to /c (x.txt selected) and /d; then Execute.
+        const stopCountRef = { current: 0 };
         const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
-            if (command === 'get_local_files') return args!.path === '/b' ? [] : [rowX];
+            if (command === 'get_local_files') { onListing(stopCountRef); return args!.path === '/b' ? [] : [rowX]; }
             return undefined;
         });
         const runSource = between(APP, '  const transferLocalSelectionAcrossPanels = useCallback(', '\n  // Keep the F5/F6 forward ref')
@@ -673,7 +674,7 @@ describe('a planned local-local copy or move whose panels moved before Execute',
         const { code: runCode } = await transformWithOxc(runSource, 'run-local.ts');
         const running = {
             useLatestCallback: <T,>(fn: T) => fn, useCallback: <T,>(fn: T) => fn,
-            stopCountRef: { current: 0 }, queuedTargetGuard: () => () => undefined, queuedTargetProblem: () => null,
+            stopCountRef, queuedTargetGuard: () => () => undefined, queuedTargetProblem: () => null,
             pendingUnifiedTransferPlan: pending, setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
             activeLocalPanelId: 'local', currentLocalPath: '/c', currentLocalPath2: '/d',
             localFiles: [rowX], localFiles2: [], sortedLocalFiles: [rowX], sortedLocalFiles2: [],
@@ -684,10 +685,22 @@ describe('a planned local-local copy or move whose panels moved before Execute',
         };
         const execute = new Function(...Object.keys(running), `${runCode}; return executeUnifiedTransferPlan;`)(...Object.values(running)) as () => Promise<void>;
         await execute();
+        return invoke;
+    };
+
+    it.each(['copy', 'move'] as const)('acts on the plan\'s folders and files (%s)', async mode => {
+        const invoke = await runPlanned(mode);
         const writes = invoke.mock.calls.filter(([command]) => command === 'copy_local_file' || command === 'rename_local_file');
         expect(writes).toEqual([[mode === 'copy' ? 'copy_local_file' : 'rename_local_file', { from: '/a/a.txt', to: '/b/a.txt', overwrite: false }]]);
         // The overwrite check read the plan's target folder, not the panel's.
         expect(invoke.mock.calls.filter(([command]) => command === 'get_local_files').map(([, args]) => args!.path)).toEqual(['/b']);
+    });
+
+    // CodeRabbit CLI on this delta: a Stop while the plan lists its target
+    // folder still let the files go after the listing.
+    it.each(['copy', 'move'] as const)('starts no %s when Stop lands during the target listing', async mode => {
+        const invoke = await runPlanned(mode, stopCount => { stopCount.current += 1; });
+        expect(invoke.mock.calls.filter(([command]) => command === 'copy_local_file' || command === 'rename_local_file')).toEqual([]);
     });
 });
 
