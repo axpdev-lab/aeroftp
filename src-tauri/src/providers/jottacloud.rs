@@ -153,10 +153,21 @@ static PENDING_ROTATIONS: std::sync::LazyLock<std::sync::Mutex<PendingRotations>
 /// The chain of each (owning account, vault key) a rotation could not store.
 type PendingRotations = HashMap<(Option<i64>, String), zeroize::Zeroizing<String>>;
 
-/// The account a pending rotation belongs to: the bound one, or the account
-/// active now for an unbound provider.
+/// The one owner a chain's pending rotation and its deletion are recorded
+/// under. The explicit legacy scope (`LEGACY_ONLY_ACCOUNT`) is the legacy
+/// stores, which a delete naming no account removes: both are `None`, so a
+/// delete of either scope stops a rotation of the other.
+fn chain_owner(user: Option<i64>) -> Option<i64> {
+    user.filter(|user| *user != crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+}
+
+/// The account a pending rotation belongs to: the bound one ([`chain_owner`]),
+/// or the account active now for an unbound provider.
 fn pending_owner(user: Option<i64>) -> Option<i64> {
-    user.or_else(crate::user_partitions::active_user_id_quiet)
+    match user {
+        Some(_) => chain_owner(user),
+        None => crate::user_partitions::active_user_id_quiet(),
+    }
 }
 
 /// When each stored chain was last deleted in this process, by (owning
@@ -211,7 +222,7 @@ pub(crate) fn delete_refresh_chain<E>(
     if !is_refresh_chain(account) {
         return delete();
     }
-    let key = (user, account.to_string());
+    let key = (chain_owner(user), account.to_string());
     let mut deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
     delete()?;
     deleted.clock += 1;
@@ -4489,20 +4500,26 @@ mod tests {
             "refresh_token": "stored", "token_endpoint": endpoint, "username": "jotta-user",
         })
         .to_string();
-        // (profile, the key its chain is loaded from and deleted under).
+        // (profile, the key its chain is loaded from and deleted under, the
+        // account the provider is bound to). The explicit legacy scope reads
+        // the vault, and its delete names no account.
+        let legacy = partitions::LEGACY_ONLY_ACCOUNT;
         let mut wrong = Vec::new();
-        for (profile, loaded) in [
-            ("held", "jottacloud_refresh_held"),
-            ("from-singleton", "jottacloud_refresh"),
+        for (profile, loaded, bound) in [
+            ("held", "jottacloud_refresh_held", first),
+            ("from-singleton", "jottacloud_refresh", first),
+            ("legacy-scope", "jottacloud_refresh_legacy-scope", legacy),
         ] {
-            partitions::store_credential_for_user(
-                &store,
-                first,
-                loaded,
-                "jottacloud_refresh",
-                &chain,
-            )
-            .expect("store the chain");
+            if bound != legacy {
+                partitions::store_credential_for_user(
+                    &store,
+                    first,
+                    loaded,
+                    "jottacloud_refresh",
+                    &chain,
+                )
+                .expect("store the chain");
+            }
             store.store(loaded, &chain).expect("store the vault copy");
             let (deleted_tx, deleted_rx) = tokio::sync::oneshot::channel::<()>();
             *runtime.block_on(held.lock()) = Some(deleted_rx);
@@ -4513,7 +4530,7 @@ mod tests {
                 initial_path: None,
             })
             .with_profile_id(profile);
-            provider.set_credential_user(Some(first));
+            provider.set_credential_user(Some(bound));
             let exchange = runtime.spawn(async move {
                 let connected = provider.try_connect_with_refresh().await;
                 (provider, connected)
@@ -4521,7 +4538,11 @@ mod tests {
             arrived_rx
                 .recv_timeout(std::time::Duration::from_secs(20))
                 .expect("the exchange reached the endpoint");
-            partitions::delete_credential_for_user_dual(&store, first, loaded).unwrap();
+            if bound == legacy {
+                partitions::delete_credential_dual_as(&store, None, loaded).unwrap();
+            } else {
+                partitions::delete_credential_for_user_dual(&store, first, loaded).unwrap();
+            }
             deleted_tx.send(()).unwrap();
             let (_provider, connected) = runtime.block_on(exchange).unwrap();
             if !matches!(connected, Ok(true)) {
@@ -4535,7 +4556,8 @@ mod tests {
                 let pending = PENDING_ROTATIONS
                     .lock()
                     .unwrap()
-                    .contains_key(&(Some(first), key.clone()));
+                    .keys()
+                    .any(|(_, account)| account == &key);
                 if vault || partition || pending {
                     wrong.push(format!(
                         "{profile}: {key} stored after the delete (vault {vault}, partition {partition}, pending {pending})"
