@@ -97,27 +97,53 @@ fn a_case_answering_after_the_timeout_is_reported_not_waited_on() {
     assert_eq!(wrong, ["late: did not answer in time, then late answer"]);
 }
 
+/// A copy case: the copy's answer, unless it left something at the
+/// destination. That is reported on its own, without the answer, so a
+/// refusal that still created the destination cannot pass as a refusal.
+fn copy_case(name: &'static str, copy: fn(&std::path::Path, &std::path::Path) -> String) -> Case {
+    (
+        name,
+        Box::new(move |path| {
+            let to = path.with_file_name("copy");
+            let copied = copy(&path, &to);
+            if to.exists() {
+                return "a copy was left at the destination".to_string();
+            }
+            copied
+        }),
+        REFUSED,
+    )
+}
+
+/// A copy refused with the right words that still created its destination
+/// is reported.
+#[test]
+fn a_refused_copy_that_left_a_destination_is_reported() {
+    let wrong = refused_at_once(vec![copy_case("refused, then created", |_, to| {
+        std::fs::write(to, b"partial").unwrap();
+        format!("Err({REFUSED:?})")
+    })]);
+    assert_eq!(
+        wrong,
+        ["refused, then created: a copy was left at the destination"]
+    );
+}
+
 /// A FIFO with no writer held the local copy inside `open`, before the check
 /// that refuses it and before any Stop could be seen.
 #[test]
 fn a_fifo_to_copy_is_refused_at_once() {
-    let wrong = refused_at_once(vec![(
-        "copy_file_cancellable",
-        Box::new(|path| {
-            let to = path.with_file_name("copy");
-            let copied = super::copy_file_cancellable(
-                &path,
-                &to,
+    let wrong = refused_at_once(vec![copy_case("copy_file_cancellable", |path, to| {
+        format!(
+            "{:?}",
+            super::copy_file_cancellable(
+                path,
+                to,
                 &std::sync::atomic::AtomicBool::new(false),
                 super::LocalPublish::Replace,
-            );
-            if to.exists() {
-                return format!("{copied:?}, and a copy was left at the destination");
-            }
-            format!("{copied:?}")
-        }),
-        REFUSED,
-    )]);
+            )
+        )
+    })]);
     assert!(wrong.is_empty(), "{wrong:#?}");
 }
 

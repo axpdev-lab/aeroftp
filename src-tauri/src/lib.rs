@@ -9705,13 +9705,21 @@ fn native_copy_windows(
 /// copy once `cancel` (its context) is set.
 #[cfg(target_os = "macos")]
 extern "C" fn macos_copy_status(
-    _what: libc::c_int,
+    what: libc::c_int,
     _stage: libc::c_int,
-    _state: libc::copyfile_state_t,
+    state: libc::copyfile_state_t,
     _source: *const libc::c_char,
     _destination: *const libc::c_char,
     context: *mut libc::c_void,
 ) -> libc::c_int {
+    #[cfg(test)]
+    if what == libc::COPYFILE_COPY_DATA {
+        // SAFETY: `state` is the live state of the `fcopyfile` call that
+        // invokes this callback.
+        unsafe { macos_data_pass::observe(state) };
+    }
+    #[cfg(not(test))]
+    let _ = (what, state);
     // SAFETY: `context` is the `&AtomicBool` `native_copy_macos` sets, alive
     // for the whole `fcopyfile` call that invokes this callback.
     let cancel = unsafe { &*(context as *const AtomicBool) };
@@ -9719,6 +9727,35 @@ extern "C" fn macos_copy_status(
         libc::COPYFILE_QUIT
     } else {
         libc::COPYFILE_CONTINUE
+    }
+}
+
+/// The destination's mode at each data report of `fcopyfile`, on the
+/// copying thread (`u32::MAX`: it could not be read).
+#[cfg(all(test, target_os = "macos"))]
+mod macos_data_pass {
+    std::thread_local! {
+        pub(super) static MODES: std::cell::RefCell<Vec<u32>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    /// # Safety
+    /// `state` is a live `fcopyfile` state.
+    pub(super) unsafe fn observe(state: libc::copyfile_state_t) {
+        let mut fd: libc::c_int = -1;
+        let mut stat: libc::stat = std::mem::zeroed();
+        let mode = if libc::copyfile_state_get(
+            state,
+            libc::COPYFILE_STATE_DST_FD as u32,
+            std::ptr::from_mut(&mut fd).cast(),
+        ) == 0
+            && libc::fstat(fd, &mut stat) == 0
+        {
+            u32::from(stat.st_mode) & 0o7777
+        } else {
+            u32::MAX
+        };
+        MODES.with(|modes| modes.borrow_mut().push(mode));
     }
 }
 
@@ -9811,6 +9848,51 @@ mod native_local_copy_tests {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(names, [std::ffi::OsString::from("source.bin")]);
+    }
+
+    /// The macOS copy writes its data while the temporary is owner-only and
+    /// gives it the source's mode afterwards. Observed from `fcopyfile`'s own
+    /// data reports, so a report that never comes fails by name.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn native_local_copy_macos_stays_owner_only_until_its_data_is_in() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("source.bin");
+        std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
+        std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let temp = dir.path().join("temp.bin");
+        let source = std::fs::File::open(&from).unwrap();
+        let permissions = source.metadata().unwrap().permissions();
+        macos_data_pass::MODES.with(|modes| modes.borrow_mut().clear());
+        let copied = native_copy_macos(&source, permissions, &temp, &AtomicBool::new(false));
+        let modes = macos_data_pass::MODES.with(|modes| modes.take());
+        assert!(copied.is_ok(), "the copy failed: {copied:?}");
+        assert!(
+            !modes.is_empty(),
+            "fcopyfile sent its status callback no data report, so the mode during the data pass was not observed"
+        );
+        assert!(
+            !modes.contains(&u32::MAX),
+            "the destination descriptor could not be read from the copy state in {} of {} data reports",
+            modes.iter().filter(|mode| **mode == u32::MAX).count(),
+            modes.len()
+        );
+        let open: Vec<String> = modes
+            .iter()
+            .filter(|mode| **mode & 0o077 != 0)
+            .map(|mode| format!("{mode:o}"))
+            .collect();
+        assert!(
+            open.is_empty(),
+            "the temporary was open to other accounts while its data was written: modes {open:?} in {} data reports",
+            modes.len()
+        );
+        let published = std::fs::metadata(&temp).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            published, 0o644,
+            "the copy did not take the source's mode: {published:o}"
+        );
     }
 
     /// The Windows copy is stopped by `CopyFileExW` itself: with the flag set,

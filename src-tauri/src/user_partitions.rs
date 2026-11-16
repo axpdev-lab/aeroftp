@@ -3959,13 +3959,27 @@ pub(crate) fn try_unmirror_active_credential(
 
 /// The active account for a write or a delete that readers must see: a lookup
 /// that fails is an error, since a partition row may be holding the old value.
-/// `Ok(None)` is a confirmed absence: no account.
+/// So is a store that cannot be opened or read, an active value that is not
+/// an id, and no active account while accounts exist (no writer leaves that
+/// state: the one that creates the first account activates it). `Ok(None)`
+/// is a confirmed absence: no account at all.
 pub(crate) fn active_user_id_for_write() -> Result<Option<i64>, String> {
     #[cfg(test)]
     if ACCOUNT_LOOKUP_FAILS.load(std::sync::atomic::Ordering::SeqCst) {
         return Err("Active account lookup: refused".to_string());
     }
-    active_user_id(&open_or_init_cli()?)
+    let conn = open_or_init_cli()?;
+    if let Some(user) = active_user_id(&conn)? {
+        return Ok(Some(user));
+    }
+    let accounts: i64 = conn
+        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+        .map_err(|e| format!("Read accounts: {e}"))?;
+    if accounts == 0 {
+        Ok(None)
+    } else {
+        Err("Active account lookup: accounts exist but none is active".to_string())
+    }
 }
 
 /// The active account cannot be read (an unopenable partition DB), on every
