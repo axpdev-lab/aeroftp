@@ -2535,7 +2535,8 @@ impl CredentialStore {
 
     /// Flip one ciphertext byte of `account`'s entry, so reading it fails
     /// with an `Encryption` error while every other entry still reads.
-    #[cfg(test)]
+    // Used only by profile_auth_tests.rs, which builds on Linux alone.
+    #[cfg(all(test, target_os = "linux"))]
     pub(crate) fn corrupt_entry_for_test(&self, account: &str) {
         let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path).unwrap()).unwrap();
         let mut vault = Self::read_vault(&self.vault_path).unwrap();
