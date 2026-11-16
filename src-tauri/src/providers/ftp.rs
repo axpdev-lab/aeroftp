@@ -1382,11 +1382,14 @@ impl FtpProvider {
     async fn restore_cwd(&mut self, saved: &str) -> Result<(), ProviderError> {
         if !names_one_folder(saved) {
             self.abandoned_command.store(true, Ordering::Relaxed);
-            return Err(ProviderError::InvalidPath(Self::doing(
-                "restoring the working directory to",
-                saved,
-                "it is a relative folder",
-            )));
+            // No folder in the message, as in `restore_working_directory`:
+            // it is the server's own report, not a path the caller gave, and
+            // the error crosses IPC and the logs.
+            return Err(ProviderError::InvalidPath(
+                "the session's folder was reported as a relative path, which cannot be \
+                 entered again: change to an absolute folder to go on"
+                    .to_string(),
+            ));
         }
         let stream = self.stream_mut()?;
         let back = stream.cwd(saved).await;
@@ -2320,6 +2323,21 @@ impl StorageProvider for FtpProvider {
         let outcome = self.cd_up_command().await;
         guard.disarm();
         outcome
+    }
+
+    /// A relative folder is entered from the folder the session stands in
+    /// now, so it would name another one: the session is closed as lost
+    /// there instead, as a redial to it is ([`Self::restore_working_directory`]).
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        if names_one_folder(folder) {
+            return self.cd(folder).await;
+        }
+        self.lose_relative_folder(folder);
+        Err(ProviderError::InvalidPath(
+            "the folder the session left was reported as a relative path, which cannot be \
+             entered again: change to an absolute folder to go on"
+                .to_string(),
+        ))
     }
 
     fn download_was_refused(&self) -> bool {
@@ -4857,6 +4875,16 @@ impl FtpProvider {
         }
     }
 
+    /// Close the session as lost in `folder`, a relative folder that names
+    /// another folder from anywhere but where it was reported. No command runs
+    /// until a `cd` to an absolute folder (or `cd_up`) opens a session again.
+    fn lose_relative_folder(&mut self, folder: &str) {
+        self.owed_folder = None;
+        self.stream = None;
+        self.current_path = folder.to_string();
+        self.folder_lost = true;
+    }
+
     /// Put the redialed session back in the directory the caller left it in.
     ///
     /// `connect()` lands where login (and `initial_path`) puts it, and it
@@ -4890,10 +4918,7 @@ impl FtpProvider {
         // session stands in, and names another folder than the one left:
         // the session is closed as lost instead.
         if !names_one_folder(previous) {
-            self.owed_folder = None;
-            self.stream = None;
-            self.current_path = previous.to_string();
-            self.folder_lost = true;
+            self.lose_relative_folder(previous);
             return Err(ProviderError::InvalidPath(
                 "reconnected, but the session's folder was reported as a relative path, which \
                  cannot be entered again: change to an absolute folder to go on"
@@ -10656,6 +10681,78 @@ mod rename_contract_tests {
         let relative = provider.cd("x").await.unwrap_err().to_string();
         assert!(!relative.contains("docs"), "{relative}");
         assert_eq!(provider.current_path, "docs");
+    }
+
+    /// A folder transfer walks its tree with `cd` and then returns to the
+    /// folder `pwd` reported before. Reported relative (`docs`), that folder
+    /// names `/docs/a/docs` from the scanned `/docs/a`: the session is closed
+    /// as lost there instead, no command runs until an absolute `cd`, and the
+    /// refusal names no folder.
+    #[tokio::test]
+    async fn returning_to_a_relative_folder_after_a_scan_enters_no_folder_of_that_name() {
+        let quirks = Quirks {
+            login_dir: Some("/docs"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, _files) =
+            provider_on_server_holding(&["/docs/a/docs/trap.txt", "/docs/b.txt"], quirks, None)
+                .await;
+        let before = provider.pwd().await.unwrap();
+        assert_eq!(before, "docs");
+        provider.cd("/docs/a").await.unwrap();
+
+        let refused = provider
+            .return_to_folder(&before)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!refused.contains("docs"), "{refused}");
+        assert!(
+            !provider.is_connected(),
+            "the session was kept in the scanned folder"
+        );
+        assert_eq!(provider.current_path, "docs");
+
+        log.lock().unwrap().clear();
+        let relative = provider.cd("x").await.unwrap_err().to_string();
+        assert!(!relative.contains("docs"), "{relative}");
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "a command ran while the folder was lost: {:?}",
+            log.lock().unwrap()
+        );
+        provider.cd("/docs").await.unwrap();
+        assert!(provider.is_connected());
+        let names: Vec<String> = provider
+            .list(".")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert!(names.contains(&"b.txt".to_string()), "{names:?}");
+    }
+
+    /// An absolute folder is entered again as `cd` enters it.
+    #[tokio::test]
+    async fn returning_to_an_absolute_folder_after_a_scan_enters_it() {
+        let (mut provider, _log, _files) = provider_on_server_holding(
+            &["/docs/a/x.txt", "/docs/b.txt"],
+            Quirks {
+                login_dir: Some("/docs"),
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        assert_eq!(before, "/docs");
+        provider.cd("/docs/a").await.unwrap();
+        provider.return_to_folder(&before).await.unwrap();
+        assert!(provider.is_connected());
+        assert_eq!(provider.pwd().await.unwrap(), "/docs");
     }
 
     /// Every redial returns to the folder it left only when that folder

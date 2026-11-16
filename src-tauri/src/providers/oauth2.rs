@@ -38,17 +38,37 @@ fn legacy_revision(provider: OAuthProvider) -> &'static std::sync::atomic::Atomi
     &MEMORY_TOKEN_REVISIONS[index]
 }
 
-/// Where an adoption moved the singleton record `observed` from `key`. The
-/// record's digest is part of the marker, so two adoptions of the same
-/// singleton (one record, then another one restored by a migration) each keep
-/// their own destination, and the marker holds no token.
-fn adopted_destination_key(key: &str, observed: &str) -> String {
-    use sha2::{Digest, Sha256};
-    format!(
-        "{}{}",
-        adopted_marker_prefix(key),
-        hex::encode(Sha256::digest(observed.as_bytes()))
-    )
+/// The number of each insertion of a record into the memory cache. A record
+/// read, adopted and then restored with the same contents (a legacy file the
+/// locked vault's migration keeps) is a second insertion with its own number:
+/// the contents alone cannot tell the two apart.
+static MEMORY_RECORD_INCARNATIONS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(1);
+
+fn incarnation_key(key: &str) -> String {
+    format!("\0incarnation:{key}")
+}
+
+/// Insert `json` at `key` as a new incarnation of that record.
+fn insert_memory_record(map: &mut HashMap<String, String>, key: &str, json: String) {
+    let incarnation = MEMORY_RECORD_INCARNATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    map.insert(incarnation_key(key), incarnation.to_string());
+    map.insert(key.to_owned(), json);
+}
+
+/// The incarnation of the record at `key`; 0 for one inserted without a number.
+fn memory_incarnation(map: &HashMap<String, String>, key: &str) -> u64 {
+    map.get(&incarnation_key(key))
+        .and_then(|n| n.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Where an adoption moved incarnation `incarnation` of the singleton record
+/// from `key`. Two adoptions of the same singleton (one record, then another
+/// restored by a migration, with the same contents or not) each keep their own
+/// destination, and the marker holds no token.
+fn adopted_destination_key(key: &str, incarnation: u64) -> String {
+    format!("{}{incarnation}", adopted_marker_prefix(key))
 }
 
 fn adopted_marker_prefix(key: &str) -> String {
@@ -63,6 +83,7 @@ fn invalidate_memory_tokens(
     revision.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if let Some(map) = cache.as_mut() {
         map.remove(account);
+        map.remove(&incarnation_key(account));
         let from_account = adopted_marker_prefix(account);
         map.retain(|key, val| {
             !key.starts_with(&from_account) && !(key.starts_with("\0adopted:") && val == account)
@@ -91,29 +112,38 @@ fn adopt_memory_record(
         return Ok(None);
     };
     valid(json)?;
+    let incarnation = memory_incarnation(map, legacy);
     let json = map.remove(legacy).expect("the singleton read above");
+    map.remove(&incarnation_key(legacy));
     let adopted = Zeroizing::new(json.clone());
-    map.insert(adopted_destination_key(legacy, &json), account.to_owned());
-    map.insert(account.to_owned(), json);
+    map.insert(
+        adopted_destination_key(legacy, incarnation),
+        account.to_owned(),
+    );
+    insert_memory_record(map, account, json);
     Ok(Some(adopted))
 }
 
-/// Replace the memory record a refresh read (`observed`, from `key`) with the
-/// refreshed `json`, only while it is unchanged. A profile read that adopted
-/// the singleton during the refresh moved it verbatim
-/// ([`adopt_memory_record`]): the refreshed tokens go where it moved, so a
-/// provider that retires the previous refresh token leaves no profile holding
-/// it. Any other change keeps the record and refuses the refresh.
+/// Replace the memory record a refresh read (`observed`, incarnation
+/// `incarnation` of `key`) with the refreshed `json`, only while it is
+/// unchanged. A profile read that adopted the singleton during the refresh
+/// moved it verbatim ([`adopt_memory_record`]): the refreshed tokens go where
+/// that incarnation moved, so a provider that retires the previous refresh
+/// token leaves no profile holding it. Any other change keeps the record and
+/// refuses the refresh.
 fn replace_memory_record(
     map: &mut HashMap<String, String>,
     key: &str,
+    incarnation: u64,
     observed: &str,
     json: &str,
 ) -> bool {
-    let at = if map.get(key).is_some_and(|raw| raw == observed) {
+    let at = if map.get(key).is_some_and(|raw| raw == observed)
+        && memory_incarnation(map, key) == incarnation
+    {
         Some(key.to_owned())
     } else {
-        map.get(&adopted_destination_key(key, observed))
+        map.get(&adopted_destination_key(key, incarnation))
             .filter(|moved| map.get(moved.as_str()).is_some_and(|raw| raw == observed))
             .cloned()
     };
@@ -585,7 +615,8 @@ enum TokenSource {
     Unavailable,
     Partition(i64),
     Vault,
-    Memory(String),
+    /// The key and the incarnation the read found there.
+    Memory(String, u64),
 }
 
 impl TokenRecord {
@@ -788,11 +819,12 @@ pub(crate) fn force_signout_enolck_for_test(on: bool) {
 // denies an unused function).
 #[cfg(all(test, unix))]
 pub(crate) fn seed_memory_token_for_test(account: &str, json: &str) {
-    MEMORY_TOKEN_CACHE
-        .lock()
-        .unwrap()
-        .get_or_insert_with(HashMap::new)
-        .insert(account.to_owned(), json.to_owned());
+    let mut cache = MEMORY_TOKEN_CACHE.lock().unwrap();
+    insert_memory_record(
+        cache.get_or_insert_with(HashMap::new),
+        account,
+        json.to_owned(),
+    );
 }
 
 /// Whether the in-memory token cache still holds one account (tests only).
@@ -1627,7 +1659,7 @@ impl OAuth2Manager {
         // Vault requires master password: store in memory only (never on disk unencrypted)
         if let Ok(mut cache) = MEMORY_TOKEN_CACHE.lock() {
             let map = cache.get_or_insert_with(HashMap::new);
-            map.insert(account, json.to_string());
+            insert_memory_record(map, &account, json.to_string());
         }
 
         info!("Tokens stored in memory for {:?} (vault locked)", provider);
@@ -1767,7 +1799,7 @@ impl OAuth2Manager {
                 )
                 .map_err(|_| token_owner_changed())?
             }
-            TokenSource::Vault | TokenSource::Memory(_) => {
+            TokenSource::Vault | TokenSource::Memory(..) => {
                 let update = || -> Result<bool, String> {
                     match &observed.source {
                         TokenSource::Vault => {
@@ -1777,14 +1809,20 @@ impl OAuth2Manager {
                                 .replace_secret_if_unchanged(account, &observed.raw, &json)
                                 .map_err(|_| "Authorization changed".to_owned())
                         }
-                        TokenSource::Memory(key) => {
+                        TokenSource::Memory(key, incarnation) => {
                             let mut cache = MEMORY_TOKEN_CACHE
                                 .lock()
                                 .map_err(|_| "Authorization changed".to_owned())?;
                             let Some(map) = cache.as_mut() else {
                                 return Ok(false);
                             };
-                            Ok(replace_memory_record(map, key, &observed.raw, &json))
+                            Ok(replace_memory_record(
+                                map,
+                                key,
+                                *incarnation,
+                                &observed.raw,
+                                &json,
+                            ))
                         }
                         _ => Ok(false),
                     }
@@ -1894,9 +1932,10 @@ impl OAuth2Manager {
                             .map(drop)
                     })?;
                 if let Some(json) = adopted {
+                    let incarnation = memory_incarnation(map, &account);
                     return Self::decode_record(
                         &json,
-                        TokenSource::Memory(account.clone()),
+                        TokenSource::Memory(account.clone(), incarnation),
                         credential_user,
                     );
                 }
@@ -1974,11 +2013,12 @@ impl OAuth2Manager {
         if revision.load(std::sync::atomic::Ordering::SeqCst) != observed {
             return Err(token_owner_changed());
         }
-        let current = cache
-            .get_or_insert_with(HashMap::new)
-            .entry(account.clone())
-            .or_insert_with(|| json.to_owned());
-        Self::decode_record(current, TokenSource::Memory(account), user)
+        let map = cache.get_or_insert_with(HashMap::new);
+        if !map.contains_key(&account) {
+            insert_memory_record(map, &account, json.to_owned());
+        }
+        let source = TokenSource::Memory(account.clone(), memory_incarnation(map, &account));
+        Self::decode_record(&map[&account], source, user)
     }
 
     /// Delete tokens from credential vault, memory cache, and legacy files
@@ -2883,12 +2923,14 @@ mod tests {
     fn a_refresh_overlapping_an_adoption_lands_on_the_adopted_record() {
         let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
         let account = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
-        let mut map = HashMap::from([(legacy.clone(), "before".to_string())]);
+        let mut map = HashMap::new();
+        insert_memory_record(&mut map, &legacy, "before".to_string());
         // The refresh read `before` from the singleton; then the profile read
         // adopted it.
+        let read = memory_incarnation(&map, &legacy);
         adopt_memory_record(&mut map, &account, &legacy, true, |_| Ok(())).unwrap();
         assert!(replace_memory_record(
-            &mut map, &legacy, "before", "rotated"
+            &mut map, &legacy, read, "before", "rotated"
         ));
         assert_eq!(map.get(&account).map(String::as_str), Some("rotated"));
         assert!(
@@ -2896,13 +2938,14 @@ mod tests {
             "not written back to the singleton"
         );
         // In place, as before.
+        let here = memory_incarnation(&map, &account);
         assert!(replace_memory_record(
-            &mut map, &account, "rotated", "again"
+            &mut map, &account, here, "rotated", "again"
         ));
         assert_eq!(map.get(&account).map(String::as_str), Some("again"));
         // A record changed since the read (a new sign-in) refuses the refresh.
         assert!(!replace_memory_record(
-            &mut map, &account, "rotated", "late"
+            &mut map, &account, here, "rotated", "late"
         ));
         assert_eq!(map.get(&account).map(String::as_str), Some("again"));
     }
@@ -2916,19 +2959,24 @@ mod tests {
         let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
         let p = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
         let q = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "q");
-        let mut map = HashMap::from([(legacy.clone(), "first".to_string())]);
+        let mut map = HashMap::new();
+        insert_memory_record(&mut map, &legacy, "first".to_string());
+        let first = memory_incarnation(&map, &legacy);
         adopt_memory_record(&mut map, &p, &legacy, true, |_| Ok(())).unwrap();
-        map.insert(legacy.clone(), "second".to_string());
+        insert_memory_record(&mut map, &legacy, "second".to_string());
+        let second = memory_incarnation(&map, &legacy);
         adopt_memory_record(&mut map, &q, &legacy, true, |_| Ok(())).unwrap();
         assert!(replace_memory_record(
             &mut map,
             &legacy,
+            first,
             "first",
             "first-rotated"
         ));
         assert!(replace_memory_record(
             &mut map,
             &legacy,
+            second,
             "second",
             "second-rotated"
         ));
@@ -2939,6 +2987,29 @@ mod tests {
                 .all(|key| !key.contains("first") && !key.contains("second")),
             "a marker holds no record"
         );
+    }
+
+    /// CodeRabbit CLI on the integrated delta of #1561: a refresh reads the
+    /// singleton R, P adopts it, a migration restores the same R (the locked
+    /// vault keeps the legacy file), and Q adopts that one. The refresh's
+    /// tokens go to P, which holds the record it read; Q's copy is another
+    /// insertion and stays as it was.
+    #[test]
+    fn a_refresh_lands_on_the_adoption_of_the_record_it_read_when_an_identical_one_is_restored() {
+        let legacy = OAuth2Manager::legacy_token_account_key(OAuthProvider::Dropbox);
+        let p = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
+        let q = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "q");
+        let mut map = HashMap::new();
+        insert_memory_record(&mut map, &legacy, "R".to_string());
+        let read = memory_incarnation(&map, &legacy);
+        adopt_memory_record(&mut map, &p, &legacy, true, |_| Ok(())).unwrap();
+        insert_memory_record(&mut map, &legacy, "R".to_string());
+        adopt_memory_record(&mut map, &q, &legacy, true, |_| Ok(())).unwrap();
+        assert!(replace_memory_record(
+            &mut map, &legacy, read, "R", "rotated"
+        ));
+        assert_eq!(map.get(&p).map(String::as_str), Some("rotated"));
+        assert_eq!(map.get(&q).map(String::as_str), Some("R"));
     }
 
     /// CodeRabbit 4580538002: when profiles P and Q hold the same raw token
@@ -2955,7 +3026,7 @@ mod tests {
         invalidate_memory_tokens(&mut cache, legacy_revision(OAuthProvider::Dropbox), &p);
         let map = cache.as_mut().unwrap();
         assert!(
-            !replace_memory_record(map, &p, "same-raw-record", "rotated-by-p"),
+            !replace_memory_record(map, &p, 0, "same-raw-record", "rotated-by-p"),
             "deleted profile P's refresh must be refused"
         );
         assert_eq!(

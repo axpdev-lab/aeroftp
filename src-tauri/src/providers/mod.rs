@@ -1350,6 +1350,16 @@ pub trait StorageProvider: Send + Sync {
     /// Go to parent directory
     async fn cd_up(&mut self) -> Result<(), ProviderError>;
 
+    /// Stand again in `folder`, a folder [`Self::pwd`] reported before the
+    /// session moved (a folder transfer walks its tree with [`Self::cd`]).
+    ///
+    /// The default enters it with [`Self::cd`]. A provider whose reports may
+    /// be relative overrides it: a relative report names the folder only from
+    /// where it was read, so from anywhere else `cd` would enter another one.
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        self.cd(folder).await
+    }
+
     /// Download a file to local path
     async fn download(
         &mut self,

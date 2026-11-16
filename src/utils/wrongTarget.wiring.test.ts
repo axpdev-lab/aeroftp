@@ -847,6 +847,27 @@ describe('a local file uploaded into another folder of a vault overlay', () => {
         expect(f.invoke.mock.calls.filter(([command]) => /upload|aerovault_overlay_add_file/.test(command))).toEqual([]);
     });
 
+    // CodeRabbit CLI on the integrated delta of #1561: the Paste routed each
+    // file by the ref, but chose the batch by the session from state. A vault
+    // opened before React committed it left the batch eligible, and two local
+    // files went to the provider batch, outside the vault.
+    it('a Paste of two files into a vault opened before React commits it writes both into that vault', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('a.txt'), local('b.txt')], [REMOTE]: [] } });
+        f.switchVault('vault-opened-meanwhile');
+        f.clipboardCopy([
+            { name: 'a.txt', path: `${LOCAL}/a.txt`, is_dir: false },
+            { name: 'b.txt', path: `${LOCAL}/b.txt`, is_dir: false },
+        ], false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        const sent = f.invoke.mock.calls.map(([command]) => command);
+        expect(sent.filter(command => /^provider_upload|^upload_files_batch|^upload_file$/.test(command))).toEqual([]);
+        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds.map(([, args]) => [args!.sessionId, args!.remotePlainName])).toEqual([
+            ['vault-opened-meanwhile', 'a.txt'],
+            ['vault-opened-meanwhile', 'b.txt'],
+        ]);
+    });
+
     // The editor reads and saves through the provider, never a vault session:
     // its target leaves the vault out, so a vault opened meanwhile refuses
     // no save of a provider file.

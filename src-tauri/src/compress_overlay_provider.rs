@@ -383,6 +383,10 @@ impl StorageProvider for CompressOverlayProvider {
         self.inner.cd_up().await
     }
 
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        self.inner.return_to_folder(folder).await
+    }
+
     fn download_was_refused(&self) -> bool {
         self.inner.download_was_refused()
     }

@@ -14468,7 +14468,10 @@ const App: React.FC = () => {
   ): FileBatchSessionFlags => {
     const protocol = liveConnectionParams.protocol;
     return {
-      aeroVaultOverlay: !!aeroVaultOverlaySession?.sessionId,
+      // The ref, as each file's routing reads it (uploadFile, clipboardPaste):
+      // a vault opened before React commits it keeps the files out of the
+      // provider batch.
+      aeroVaultOverlay: !!aeroVaultSessionRef.current?.sessionId,
       gitHostUpload: direction === 'upload' && (protocol === 'github' || protocol === 'gitlab'),
       legacyCut: !!options.cut && !usesProviderApi(protocol),
     };

@@ -5516,20 +5516,6 @@ async fn download_file_for_ipc<R: tauri::Runtime>(
 }
 
 /// Download a folder recursively from the remote server (OAuth providers)
-/// The folder a folder transfer returns the provider to once it is done, as
-/// `pwd` read it before. Any non-empty folder is restored, except a relative
-/// one on FTP: there a `CWD` to it resolves against the folder the scan left
-/// the session in, so it could land in another folder of the same name
-/// rather than the one the user was in. Other providers report their own
-/// folder form (an SFTP home, a bucket prefix) and keep being restored.
-fn restorable_folder(provider: ProviderType, pwd: String) -> Option<String> {
-    if pwd.is_empty() {
-        return None;
-    }
-    let ftp = matches!(provider, ProviderType::Ftp | ProviderType::Ftps);
-    (!ftp || crate::providers::ftp::names_one_folder(&pwd)).then_some(pwd)
-}
-
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn provider_download_folder(
@@ -5571,8 +5557,7 @@ pub async fn provider_download_folder(
     let original_pwd = {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
-            let pwd = p.pwd().await.unwrap_or_default();
-            restorable_folder(p.provider_type(), pwd)
+            p.pwd().await.ok().filter(|pwd| !pwd.is_empty())
         } else {
             None
         }
@@ -5594,7 +5579,9 @@ pub async fn provider_download_folder(
     if let Some(original_pwd) = original_pwd {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
-            let _ = p.cd(&original_pwd).await;
+            // `return_to_folder`, not `cd`: a relative FTP folder entered
+            // from the scanned one would be another folder of that name.
+            let _ = p.return_to_folder(&original_pwd).await;
         }
     }
 
@@ -5651,8 +5638,7 @@ pub async fn provider_upload_folder(
     let original_pwd = {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
-            let pwd = p.pwd().await.unwrap_or_default();
-            restorable_folder(p.provider_type(), pwd)
+            p.pwd().await.ok().filter(|pwd| !pwd.is_empty())
         } else {
             None
         }
@@ -5674,7 +5660,9 @@ pub async fn provider_upload_folder(
     if let Some(original_pwd) = original_pwd {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
-            let _ = p.cd(&original_pwd).await;
+            // `return_to_folder`, not `cd`: a relative FTP folder entered
+            // from the scanned one would be another folder of that name.
+            let _ = p.return_to_folder(&original_pwd).await;
         }
     }
 
@@ -17315,32 +17303,6 @@ mod tests {
                 .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
             "{saved:?}"
         );
-    }
-
-    /// A folder transfer restores the folder the session was in, except a
-    /// relative one on FTP, which a `CWD` would resolve against the scanned
-    /// folder. SFTP and the other providers keep their own folder form.
-    #[test]
-    fn a_folder_transfer_restores_every_folder_but_a_relative_one_on_ftp() {
-        assert_eq!(
-            restorable_folder(ProviderType::Ftp, "/shown".into()).as_deref(),
-            Some("/shown")
-        );
-        assert_eq!(
-            restorable_folder(ProviderType::Ftps, "C:/shown".into()).as_deref(),
-            Some("C:/shown")
-        );
-        assert_eq!(restorable_folder(ProviderType::Ftp, "shown".into()), None);
-        assert_eq!(restorable_folder(ProviderType::Ftps, "shown".into()), None);
-        assert_eq!(
-            restorable_folder(ProviderType::Sftp, "home/u".into()).as_deref(),
-            Some("home/u")
-        );
-        assert_eq!(
-            restorable_folder(ProviderType::S3, "prefix/in".into()).as_deref(),
-            Some("prefix/in")
-        );
-        assert_eq!(restorable_folder(ProviderType::Sftp, String::new()), None);
     }
 
     /// CodeRabbit 4580538013: an overlay replacement on the same connection

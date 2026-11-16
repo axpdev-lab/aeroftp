@@ -1515,6 +1515,19 @@ impl StorageProvider for CryptOverlayProvider {
         Ok(())
     }
 
+    /// An absolute folder is entered as [`Self::cd`] enters it. A relative
+    /// one is mapped as `cd` maps it, and the inner provider decides whether
+    /// it can still be entered: only it knows whether its reports name a
+    /// folder from anywhere (FTP refuses a relative one).
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        if folder.starts_with('/') {
+            return self.cd(folder).await;
+        }
+        self.settle_scope_alias().await?;
+        let enc = self.map(folder, true, AccessKind::Read)?;
+        self.inner.return_to_folder(&enc).await
+    }
+
     /// At or below the anchor, Up goes to the parent of the folder the
     /// session shows, as the panel's Up does with the displayed parent: from
     /// the anchor of a home the server reports under another name
