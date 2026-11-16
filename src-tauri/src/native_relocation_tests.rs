@@ -226,13 +226,20 @@ fn a_native_session_keeps_to_its_account() {
     assert!(!vault::another_profile_holds(&store, owner, &key("dup-a"), "shared-uid").unwrap());
 
     // A Copy into another account does not carry the session: the target is
-    // told the profile asks to sign in again, and the source keeps it.
+    // told the profile asks to sign in again, and the source keeps it. The
+    // legacy owner's vault session of the same name is not the source's, and
+    // stays.
+    let owners_raw = raw(&session("owners-copy-uid", "r1"));
+    let vault_raw = |id: &str| store.get(&key(id)).ok();
+    store.store(&key("copy-me"), &owners_raw).unwrap();
+    store.store(&key("move-me"), &owners_raw).unwrap();
     seed("copy-me", "copy-uid");
     let copied = relocate(source.id, "copy-me", "copied", false);
     assert!(copied.inserted);
     assert_eq!(copied.secrets_not_copied, vec![key("copied")]);
     assert_eq!(target_row("copied"), None);
     assert_eq!(loaded(owner, "copy-me").as_deref(), Some("r1"));
+    assert_eq!(vault_raw("copy-me").as_deref(), Some(owners_raw.as_str()));
 
     // A Move does not carry it either, and drops the source's copy locally.
     seed("move-me", "move-uid");
@@ -241,7 +248,36 @@ fn a_native_session_keeps_to_its_account() {
     assert_eq!(moved.secrets_not_copied, vec![key("moved")]);
     assert_eq!(target_row("moved"), None);
     assert_eq!(loaded(owner, "move-me"), None);
-    assert!(!in_vault("move-me") && !in_vault("moved"));
+    assert_eq!(vault_raw("move-me").as_deref(), Some(owners_raw.as_str()));
+    assert!(!in_vault("moved"));
+    store.delete(&key("copy-me")).unwrap();
+    store.delete(&key("move-me")).unwrap();
+
+    // A Move waits for a refresh in flight, which holds the session's lease
+    // until it has saved: the refreshed pair is saved before the drop, never
+    // after it, where it would put the session back in the source account.
+    seed("busy", "busy-uid");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let lease = runtime
+        .block_on(crate::providers::oauth2::RefreshLease::acquire(
+            &vault::refresh_lease_slug("busy-uid"),
+        ))
+        .unwrap();
+    std::thread::scope(|scope| {
+        let mover = scope.spawn(|| relocate(source.id, "busy", "busy-moved", true));
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(loaded(owner, "busy").as_deref(), Some("r1"));
+        vault::VaultSession::new(owner, Some("busy"), &session("busy-uid", "r1"))
+            .save(&session("busy-uid", "r2").tokens);
+        assert_eq!(loaded(owner, "busy").as_deref(), Some("r2"));
+        drop(lease);
+        assert!(mover.join().unwrap().moved);
+    });
+    assert_eq!(loaded(owner, "busy"), None);
+    assert!(!in_vault("busy"));
 
     // The legacy owner's Move also drops its vault copy, which no profile of
     // that account holds any more.

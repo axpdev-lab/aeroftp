@@ -243,13 +243,14 @@ pub fn derive_profile_auth_state_for_user(
             Err(_) => "unknown",
         };
     }
+    // GitHub's own readiness, for the account asked about, not the active one.
+    if protocol.eq_ignore_ascii_case("github") {
+        return crate::profile_auth::saved_github_readiness(store, profile_id, None, user_id);
+    }
     // Another account's token lives in its partition alone
     // (`private_token_user`): its state is read there, never from the vault
     // key of the same name, which is the legacy owner's.
-    if source == AuthSource::Vault
-        && !protocol.eq_ignore_ascii_case("github")
-        && oauth_vault_key_for_protocol(protocol).is_some()
-    {
+    if source == AuthSource::Vault && oauth_vault_key_for_protocol(protocol).is_some() {
         let private =
             user_id.map(|user| crate::user_partitions::private_token_user(Some(user), "oauth"));
         match private {

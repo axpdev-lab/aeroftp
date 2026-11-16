@@ -443,6 +443,7 @@ async fn round_trip() {
     }
     durable_profile_auth_lifecycle(&store, &github, active.id, owner.id).await;
     private_tokens_keep_to_their_account(&store, active.id, owner.id);
+    a_purge_reports_the_accounts_own_token(&store, active.id, owner.id).await;
     #[cfg(feature = "proton-native")]
     native_session_ownership(&store, active.id, owner.id).await;
     crate::crypt_overlay_provider::tests::captured_overlay_owner_survives_account_switch(
@@ -1063,8 +1064,7 @@ async fn durable_profile_auth_lifecycle(
         assert!(store.get("oauth_legacyapp_client_id").is_err());
         store.delete("config_oauth_clients").unwrap();
 
-        // A profile's token goes to the account holding it, not the active one, and a
-        // sign-out removes that row too.
+        // A profile's token goes to the account holding it, not the active one.
         let root = store.derive_user_partition_wrapping_key();
         users::set_user_credential_for(&conn, &root, other_id, "oauth_box_owned", "oauth", "old")
             .unwrap();
@@ -1084,10 +1084,23 @@ async fn durable_profile_auth_lifecycle(
         assert_eq!(row(other_id).as_deref(), Some("new"));
         users::set_user_credential_for(&conn, &root, active_id, "oauth_box_owned", "oauth", "own")
             .unwrap();
+        // Both accounts hold it now: a sign-in and a sign-out of the active one are
+        // its own, and the other account keeps its token.
+        users::store_profile_credential(
+            store,
+            "owned",
+            "oauth_box_owned",
+            Some("oauth"),
+            "active-new",
+        )
+        .unwrap();
+        assert_eq!(row(active_id).as_deref(), Some("active-new"));
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         users::delete_profile_credential(store, "owned", "oauth_box_owned").unwrap();
-        assert_eq!(row(other_id), None);
+        assert_eq!(row(other_id).as_deref(), Some("new"));
         assert_eq!(row(active_id), None);
         assert!(store.get("oauth_box_owned").is_err());
+        users::unmirror_credential_for_user_best_effort_any(other_id, "oauth_box_owned");
 
         // A key outside the typed set follows its row, as a relocation leaves one.
         let root = store.derive_user_partition_wrapping_key();
@@ -1723,6 +1736,34 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     assert!(vault::load_session(active, None).unwrap().is_some());
 }
 
+/// The purge of a profile, run by an account other than the legacy owner,
+/// reports a private token as removed where that account reads it: its own
+/// row, never the owner's vault key of the same name.
+async fn a_purge_reports_the_accounts_own_token(
+    store: &CredentialStore,
+    legacy_id: i64,
+    private_id: i64,
+) {
+    let key = "oauth_dropbox_purge-target";
+    let purge = || crate::purge_profile_secrets("purge-target".into(), Some("dropbox".into()));
+    users::cli_set_active_user(store, private_id).unwrap();
+    store.store(key, "owners-token").unwrap();
+    let without_a_row = purge().await;
+    store.store(key, "owners-token").unwrap();
+    users::store_credential_for_user_dual(store, private_id, key, "own-token").unwrap();
+    let with_its_row = purge().await;
+    users::cli_set_active_user(store, legacy_id).unwrap();
+    assert!(!without_a_row.unwrap().iter().any(|removed| removed == key));
+    assert!(with_its_row.unwrap().iter().any(|removed| removed == key));
+    let conn = users::open_or_init_cli().unwrap();
+    let root = store.derive_user_partition_wrapping_key();
+    assert_eq!(
+        users::get_user_credential_for(&conn, &root, private_id, key).unwrap(),
+        None
+    );
+    let _ = store.delete(key);
+}
+
 /// A private token written through the untyped dual writer (a profile copy,
 /// `profile duplicate`) by an account other than the legacy owner lands in
 /// that account's partition only: the vault key of the same name, the legacy
@@ -1801,6 +1842,66 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
     assert_eq!(readiness(legacy_id), "valid");
     users::unmirror_credential_for_user_best_effort_any(private_id, "oauth_dropbox_copy-target");
     store.delete("oauth_dropbox_copy-target").unwrap();
+
+    // The same for a Jottacloud chain, under the profile's key and under the
+    // singleton, for GitHub's own authorization, which is read for the account
+    // asked about rather than the active one, and for an account whose locked
+    // partition cannot say.
+    let state = |user: i64, profile: &str, protocol: &str| {
+        let accounts = store.list_accounts().unwrap().into_iter().collect();
+        crate::profile_auth_state::derive_profile_auth_state_for_user(
+            store,
+            &accounts,
+            profile,
+            protocol,
+            crate::profile_auth_state::AuthSource::Vault,
+            Some(user),
+        )
+    };
+    for key in ["jottacloud_refresh_copy-target", "jottacloud_refresh"] {
+        store.store(key, "owners-chain").unwrap();
+        assert_eq!(
+            state(legacy_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "no_credentials",
+            "{key}"
+        );
+        users::store_credential_for_user_dual(store, private_id, key, "others-chain").unwrap();
+        assert_eq!(
+            state(private_id, "copy-target", "jottacloud"),
+            "valid",
+            "{key}"
+        );
+        users::unmirror_credential_for_user_best_effort_any(private_id, key);
+        store.delete(key).unwrap();
+    }
+    store
+        .store("profile_auth_config_gh-target", r#"{"mode":"authorize"}"#)
+        .unwrap();
+    store.store("github_oauth_gh-target", "gho_owners").unwrap();
+    assert_eq!(state(legacy_id, "gh-target", "github"), "valid");
+    assert_eq!(state(private_id, "gh-target", "github"), "no_credentials");
+    store.delete("profile_auth_config_gh-target").unwrap();
+    store.delete("github_oauth_gh-target").unwrap();
+    let locked = {
+        let mut conn = users::open_or_init_cli().unwrap();
+        let root = store.derive_user_partition_wrapping_key();
+        users::create_user(
+            &mut conn,
+            &root,
+            "Locked",
+            None,
+            None,
+            Some("locked passphrase"),
+        )
+        .unwrap()
+    };
+    assert_eq!(state(locked.id, "copy-target", "dropbox"), "unknown");
+    users::delete_user(&mut users::open_or_init_cli().unwrap(), locked.id).unwrap();
 
     // An import run by the other account writes, undoes and deletes its own
     // row, also when the write names no type: the vault key of the same name

@@ -35,7 +35,7 @@ use zeroize::Zeroizing;
 
 use super::api::{ProtonApi, SessionStore};
 use super::session::{ProtonSession, SessionTokens, StoredSession};
-use crate::credential_store::CredentialStore;
+use crate::credential_store::{CredentialError, CredentialStore};
 use crate::providers::oauth2::RefreshLease;
 use crate::providers::ProviderError;
 
@@ -233,16 +233,39 @@ fn saved_sessions(
             .filter_map(|(key, raw)| parse(&raw).ok().map(|session| (key, session)))
             .collect());
     }
-    let mut keys = store.list_accounts().unwrap_or_default();
+    vault_sessions(|| store.list_accounts(), |key| store.get(key))
+}
+
+/// The sessions among the vault's keys. A list or a read the vault refuses is
+/// an error, never a missing copy: a sign-out that missed a copy would revoke
+/// the session it holds. A key gone since the list is no copy, and neither is
+/// a value that is no session.
+fn vault_sessions(
+    list: impl FnOnce() -> Result<Vec<String>, CredentialError>,
+    get: impl Fn(&str) -> Result<String, CredentialError>,
+) -> Result<Vec<(String, ProtonSession)>, ProviderError> {
+    let mut keys = list().map_err(|error| {
+        ProviderError::Other(format!(
+            "the vault could not list the saved sessions: {error}"
+        ))
+    })?;
     keys.sort_unstable();
-    Ok(keys
-        .into_iter()
-        .filter(|key| is_session_key(key))
-        .filter_map(|key| {
-            let session = store.get(&key).ok().and_then(|raw| parse(&raw).ok())?;
-            Some((key, session))
-        })
-        .collect())
+    let mut sessions = Vec::new();
+    for key in keys.into_iter().filter(|key| is_session_key(key)) {
+        let raw = match get(&key) {
+            Ok(raw) => raw,
+            Err(CredentialError::NotFound(_)) => continue,
+            Err(error) => {
+                return Err(ProviderError::Other(format!(
+                    "the vault could not read a saved session: {error}"
+                )))
+            }
+        };
+        if let Ok(session) = parse(&raw) {
+            sessions.push((key, session));
+        }
+    }
+    Ok(sessions)
 }
 
 /// The open vault, initialising it when it needs no master password.
@@ -387,8 +410,10 @@ pub fn delete_session(owner: SessionOwner, profile_id: Option<&str>) -> Result<(
     remove_saved(&store, owner, &key)
 }
 
-/// Remove a failed local duplicate without revoking its source's shared
-/// remote session. The fresh destination still uses normal mutation guards.
+/// Remove a profile's saved session locally, without revoking it: a failed
+/// local duplicate, whose source shares the remote session, or the source of a
+/// Move into another account. The key lock and the session's refresh lease are
+/// held, so a refresh in flight saves its pair before the removal, never after.
 pub fn discard_session_blocking(
     owner: SessionOwner,
     profile_id: &str,
@@ -729,7 +754,7 @@ pub async fn revoke_saved_session(owner: SessionOwner, profile_id: Option<&str>)
 /// The lease slug of a session's refresh: one per session UID, so the
 /// profiles that share a session refresh it one at a time, across processes
 /// too. Hashed, since it becomes a file name and a UID is not one.
-fn refresh_lease_slug(uid: &str) -> String {
+pub(crate) fn refresh_lease_slug(uid: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(uid.as_bytes());
     format!("proton_native_{}", hex::encode(&digest[..12]))
@@ -1130,6 +1155,32 @@ mod tests {
         ));
         assert!(!session_shared("uid-1", [session("uid-2")]));
         assert!(!session_shared("uid-1", []));
+    }
+
+    /// A copy the vault cannot list or read is not a missing copy: the sign-out
+    /// that asks whether another profile holds the session gets an error and
+    /// keeps the session, instead of revoking one that profile may hold. A key
+    /// gone since the list is no copy.
+    #[test]
+    fn a_copy_the_vault_cannot_read_stops_the_revoke() {
+        let raw = serde_json::to_string(&StoredSession::from(&session("uid-1"))).unwrap();
+        let (held, gone) = (session_key(Some("held")), session_key(Some("gone")));
+        let refused = || CredentialError::Encryption("synthetic refusal".into());
+        assert!(vault_sessions(|| Err(refused()), |_| Ok(raw.clone())).is_err());
+        assert!(vault_sessions(|| Ok(vec![held.clone()]), |_| Err(refused())).is_err());
+        let found = vault_sessions(
+            || Ok(vec![gone.clone(), held.clone()]),
+            |key| {
+                if key == held {
+                    Ok(raw.clone())
+                } else {
+                    Err(CredentialError::NotFound(key.into()))
+                }
+            },
+        )
+        .unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].0, held);
     }
 
     /// Codex on #1293: a duplicate shares its original's session, but the

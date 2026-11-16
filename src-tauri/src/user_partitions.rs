@@ -2634,6 +2634,9 @@ fn relocate_server_profile_and_credentials(
             new_profile_id,
             remove_from_source,
         )?;
+        // Without native Proton nothing refreshes the session, so its row goes
+        // with the profile.
+        #[cfg(not(feature = "proton-native"))]
         if relocation.moved {
             delete_user_credential_for(&tx, source_user_id, &source_key)?;
         }
@@ -2653,8 +2656,22 @@ fn relocate_server_profile_and_credentials(
     if source_has_session && relocation.inserted {
         relocation.secrets_not_copied.push(new_key);
     }
-    // The legacy owner's session also had its vault copy, which no profile of
-    // that account holds any more.
+    // A Move drops the source's session locally under its key lock and its
+    // refresh lease: a refresh in flight saves its pair before the drop, never
+    // after it, which would put the session back in the account the profile
+    // left. The legacy owner's vault copy goes with it.
+    #[cfg(feature = "proton-native")]
+    if source_has_session && relocation.moved {
+        use crate::providers::proton_native::vault;
+        vault::discard_session_blocking(vault::SessionOwner::for_user(Some(source_user_id)), profile_id)
+            .map_err(|error| {
+                format!(
+                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session failed: {error}",
+                    relocation.new_profile_id, target_user_id,
+                )
+            })?;
+    }
+    #[cfg(not(feature = "proton-native"))]
     if source_has_session
         && relocation.moved
         && !vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
@@ -3522,18 +3539,25 @@ fn copy_user_secrets_with_dek(
             "server",
             read_secret,
         )?;
-        migrated += copy_one_credential(
-            &tx,
-            user_id,
-            dek,
-            &format!("jottacloud_refresh_{id}"),
-            "jottacloud_refresh",
-            read_secret,
-        )?;
+        // Another account's private tokens are not taken from the vault here:
+        // the vault key is the legacy owner's, also of a profile id both hold.
+        // [`align_private_tokens_inner`] moves the ones of its own profiles.
+        let taken = |key: &str| owns_global_secrets || private_token_type(key).is_none();
+        let jottacloud = format!("jottacloud_refresh_{id}");
+        if taken(&jottacloud) {
+            migrated += copy_one_credential(
+                &tx,
+                user_id,
+                dek,
+                &jottacloud,
+                "jottacloud_refresh",
+                read_secret,
+            )?;
+        }
         let suffix = format!("_{id}");
         for key in vault_keys
             .iter()
-            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix))
+            .filter(|k| k.starts_with("oauth_") && k.ends_with(&suffix) && taken(k))
         {
             migrated += copy_one_credential(&tx, user_id, dek, key, "oauth", read_secret)?;
         }
@@ -3610,7 +3634,9 @@ fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
 /// owner's fallback answers it). Each one of this account's profiles is copied
 /// into its partition when no row is there yet, then removed from the vault.
 /// A profile id another account also holds is left: the vault copy cannot be
-/// told apart, and the legacy owner reads it as its own. Idempotent via the
+/// told apart, and the legacy owner reads it as its own; a row of this account
+/// holding the vault's very value is a copy an earlier migration made, and is
+/// dropped. Idempotent via the
 /// `private_tokens_aligned_<id>` marker; a locked passphrase account is left
 /// unmarked until its first unlock, as for [`migrate_user_credentials_inner`].
 ///
@@ -3634,16 +3660,45 @@ fn align_private_tokens_inner(
         mark_private_tokens_aligned(conn, user_id)?;
         return Ok(0);
     }
+    // Which profiles another account holds must not change until the vault has
+    // let go: a profile writer, or the save of a token for a profile, holds the
+    // list lock. It is not re-entrant and a caller may hold it (an import's
+    // secret writes reach this through `init_or_migrate_cli`), so a busy lock
+    // leaves the account unmarked for the next pass, as `mirror_after_load` does.
+    let lock = match conn.path() {
+        Some(path) if !path.is_empty() => {
+            match ProfileListLock::acquire_within(
+                std::path::Path::new(path),
+                std::time::Duration::ZERO,
+            ) {
+                Ok(lock) => Some(lock),
+                Err(e) if e == PROFILE_LIST_BUSY => {
+                    tracing::debug!("Private tokens not aligned by this pass: {e}");
+                    return Ok(0);
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        _ => None,
+    };
+    // On a filesystem without file locks the list lock excludes nobody: the
+    // copies are still made, the holders read in the same transaction as every
+    // profile writer's, but the vault keeps its keys, since a holder added after
+    // the commit would lose the one it reads.
+    let vault_lets_go = lock.as_ref().is_none_or(ProfileListLock::is_exclusive);
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
-        let profiles = read_profiles_with_dek(conn, uid, dek)?;
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Start private token alignment: {e}"))?;
+        let profiles = read_profiles_with_dek(&tx, uid, dek)?;
         let mut sole = Vec::new();
         for id in profiles
             .iter()
             .filter_map(|p| value_str(p, &["id", "uid", "profileUid"]))
         {
             let tag = user_crypto::metadata_tag(&root_secret, b"profile-uid", id)?;
-            let shared: bool = conn
+            let shared: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM server_profiles
                      WHERE profile_uid = ?1 AND user_id <> ?2)",
@@ -3651,12 +3706,36 @@ fn align_private_tokens_inner(
                     |row| row.get(0),
                 )
                 .map_err(|e| format!("Read profile holders: {e}"))?;
+            let keys = private_token_keys_of_profile(id)
+                .into_iter()
+                .filter(|key| vault_keys.contains(key));
             if !shared {
-                sole.extend(
-                    private_token_keys_of_profile(id)
-                        .into_iter()
-                        .filter(|key| vault_keys.contains(key)),
-                );
+                sole.extend(keys);
+                continue;
+            }
+            // A profile id another account also holds: the vault key is the
+            // legacy owner's, and a row of this account holding the very value
+            // the vault holds is a copy of it, which an earlier migration made.
+            // A native Proton session is the same session by its UID, whatever
+            // pair a refresh has rotated it to since. A sign-in of its own
+            // gives another token, or another session, and stays.
+            for key in keys {
+                let Some(row) = read_credential_with_dek(&tx, uid, dek, &key)? else {
+                    continue;
+                };
+                let Some(vault) = read_secret(&key)? else {
+                    continue;
+                };
+                let copied = if is_proton_session_key(&key) {
+                    proton_session_uid(&row).is_some_and(|copy| {
+                        proton_session_uid(&vault).is_some_and(|held| held == copy)
+                    })
+                } else {
+                    *vault == *row
+                };
+                if copied {
+                    delete_user_credential_for(&tx, uid, &key)?;
+                }
             }
         }
         let unbound = format!("{PROTON_UNBOUND_USER_PREFIX}{uid}");
@@ -3673,9 +3752,6 @@ fn align_private_tokens_inner(
                 held_elsewhere.insert(held);
             }
         }
-        let tx =
-            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
-                .map_err(|e| format!("Start private token alignment: {e}"))?;
         for key in &sole {
             let kind = private_token_type(key).unwrap_or("oauth");
             if is_proton_session_key(key) {
@@ -3700,8 +3776,10 @@ fn align_private_tokens_inner(
         Err(e) => return Err(e),
     };
     // The copies are committed: only now does the vault let go of them.
-    for key in &moved {
-        delete_secret(key)?;
+    if vault_lets_go {
+        for key in &moved {
+            delete_secret(key)?;
+        }
     }
     mark_private_tokens_aligned(conn, user_id)?;
     Ok(moved.len())
@@ -3897,10 +3975,24 @@ fn active_user_id_for_write() -> Result<Option<i64>, String> {
     active_user_id(&open_or_init_cli()?)
 }
 
+/// The one account a private token's sign-in is saved for, among the `owners`
+/// holding its profile: the active account when it holds it, or the single
+/// holder. Writing it to every holder would hand one account's token to the
+/// others, so several holders and none of them active is refused.
+fn private_token_signer(owners: Vec<i64>, active: Option<i64>) -> Result<Vec<i64>, String> {
+    match active.filter(|user| owners.contains(user)) {
+        Some(active) => Ok(vec![active]),
+        None if owners.len() == 1 => Ok(owners),
+        None => Err(format!(
+            "{ACCOUNT_CHANGED}: this profile belongs to other accounts, so the sign-in was not saved"
+        )),
+    }
+}
+
 /// Save a secret of `profile_id` for the accounts that hold that profile, whichever
 /// is active: another account's token must not land in the active one's partition.
-/// Every owner is tried, and the first failure is returned. A profile no account
-/// holds yet goes to the active account.
+/// Every owner is tried, and the first failure is returned; a private token goes
+/// to one of them only. A profile no account holds yet goes to the active account.
 pub(crate) fn store_profile_credential(
     store: &CredentialStore,
     profile_id: &str,
@@ -3923,6 +4015,10 @@ pub(crate) fn store_profile_credential(
             None => store_active_credential_dual(store, credential_id, secret),
         };
     }
+    let owners = match private_token_type(credential_id) {
+        None => owners,
+        Some(_) => private_token_signer(owners, active_user_id(&conn)?)?,
+    };
     let mut first_failure = None;
     for owner in owners {
         let written = match credential_type {
@@ -3938,8 +4034,9 @@ pub(crate) fn store_profile_credential(
     first_failure.map_or(Ok(()), Err)
 }
 
-/// Remove a secret of `profile_id` from the vault and from the accounts that hold it.
-/// A failure is an error: a row left behind would keep answering readers.
+/// Remove a secret of `profile_id` from the vault and from the accounts that hold it,
+/// a private token from the active account only. A failure is an error: a row left
+/// behind would keep answering readers.
 pub(crate) fn delete_profile_credential(
     store: &CredentialStore,
     profile_id: &str,
@@ -3959,7 +4056,13 @@ pub(crate) fn delete_profile_credential(
             "{ACCOUNT_CHANGED}: this profile belongs to another account, so it was not signed out"
         ));
     }
-    let mut users = owners;
+    // A private token is one account's sign-in: the active account signs out
+    // its own, and another account holding the profile keeps its token.
+    let mut users = if private_token_type(credential_id).is_some() {
+        Vec::new()
+    } else {
+        owners
+    };
     if let Some(active) = active {
         if !users.contains(&active) {
             users.push(active);
@@ -4822,14 +4925,27 @@ const OAUTH_TOKEN_SLUGS: [&str; 9] = [
 /// machine-wide, never one user's.
 const OAUTH_APP_SETTING_SUFFIXES: [&str; 3] = ["client_id", "client_secret", "region"];
 
+/// The machine-global key of a GitHub App's PEM, `github_pem_<app id>_<installation
+/// id>` (`github_pem_vault_key`): both are numeric GitHub ids, which a profile id
+/// (`srv_<millis>_<random>`) never is, so it is not the `github_pem_<profile>` of a
+/// profile.
+fn is_github_app_pem_key(credential_id: &str) -> bool {
+    let numeric = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    credential_id
+        .strip_prefix("github_pem_")
+        .and_then(|tail| tail.split_once('_'))
+        .is_some_and(|(app, installation)| numeric(app) && numeric(installation))
+}
+
 /// The type of [`PRIVATE_TOKEN_TYPES`] a key holds, by the names its writers
 /// give it: the one place a reader, writer or delete that knows only the key
 /// learns that the key is one user's. An OAuth token (`oauth_<slug>`,
 /// `oauth_<slug>_<profile>`, not the app settings next to it), a profile's
 /// authorization state that [`crate::profile_auth`] writes as `oauth`
 /// (`profile_auth_*`, `github_oauth_<profile>`, `github_pem_<profile>`, not the
-/// globals `github_oauth_token` and `github_pat`), or a Jottacloud refresh
-/// chain. `None` for every other key.
+/// globals `github_oauth_token`, `github_pat` and the GitHub App keys
+/// [`is_github_app_pem_key`]), or a Jottacloud refresh chain. `None` for every
+/// other key.
 pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
     if credential_id == "jottacloud_refresh" || credential_id.starts_with("jottacloud_refresh_") {
         return Some("jottacloud_refresh");
@@ -4849,7 +4965,9 @@ pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
         });
         return token.then_some("oauth");
     }
-    if matches!(credential_id, "github_oauth_token" | "github_pat") {
+    if matches!(credential_id, "github_oauth_token" | "github_pat")
+        || is_github_app_pem_key(credential_id)
+    {
         return None;
     }
     crate::profile_auth::DURABLE_KEY_PREFIXES
@@ -8382,12 +8500,18 @@ mod tests {
             &mut conn,
             &root,
             other.id,
-            &[profile("mine"), profile("held"), profile("profile-0")],
+            &[
+                profile("mine"),
+                profile("held"),
+                profile("profile-0"),
+                profile("1234_5678"),
+            ],
         )
         .unwrap();
         set_user_credential_for(&conn, &root, other.id, "oauth_dropbox_held", "oauth", "row")
             .unwrap();
         let (keys, read) = fake_vault(&[
+            ("github_pem_1234_5678", "-----PEM-----"),
             ("oauth_dropbox_mine", "mine-token"),
             ("profile_auth_config_mine", "mine-config"),
             ("oauth_dropbox_held", "stale-token"),
@@ -8433,6 +8557,22 @@ mod tests {
         assert_eq!(row("oauth_dropbox_held").as_deref(), Some("row"));
         assert_eq!(row("oauth_dropbox_profile-0"), None);
         assert_eq!(row("server_mine"), None);
+        // A GitHub App's PEM is the machine's, whatever profile id reads like
+        // its key: it stays in the vault, and every account reads it there.
+        assert_eq!(row("github_pem_1234_5678"), None);
+        assert_eq!(
+            read_credential_with_fallback_inner(
+                &conn,
+                &root,
+                other.id,
+                "github_pem_1234_5678",
+                &read
+            )
+            .unwrap()
+            .as_deref()
+            .map(String::as_str),
+            Some("-----PEM-----")
+        );
 
         deleted.borrow_mut().clear();
         assert_eq!(
@@ -8445,6 +8585,249 @@ mod tests {
         );
         assert!(deleted.borrow().is_empty());
         assert!(private_tokens_aligned(&conn, owner).unwrap());
+    }
+
+    /// A profile id the legacy owner and another account both hold: the vault
+    /// copy of its tokens is the owner's, so the other account's migration and
+    /// alignment leave it, and the other account signs in by itself. Each then
+    /// reads its own token. The other account's own profile still reaches its
+    /// partition.
+    #[test]
+    fn a_profile_both_hold_keeps_the_owners_token_from_the_other_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("mine")],
+        )
+        .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", "owners-chain"),
+            ("oauth_dropbox_mine", "mine-token"),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+
+        migrate_user_credentials_inner(&conn, &root, other.id, &keys, &read).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(row("jottacloud_refresh_profile-0"), None);
+        assert_eq!(row("oauth_dropbox_mine").as_deref(), Some("mine-token"));
+        assert_eq!(*deleted.borrow(), ["oauth_dropbox_mine"]);
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            "oauth_dropbox_profile-0",
+            "oauth",
+            "others-token",
+        )
+        .unwrap();
+        let reads = |user: i64| {
+            read_credential_with_fallback_inner(
+                &conn,
+                &root,
+                user,
+                "oauth_dropbox_profile-0",
+                &read,
+            )
+            .unwrap()
+            .map(|value| value.to_string())
+        };
+        assert_eq!(reads(other.id).as_deref(), Some("others-token"));
+        assert_eq!(reads(owner).as_deref(), Some("owners-token"));
+    }
+
+    /// A private token's sign-in is saved for one account: the active one when
+    /// it holds the profile, or the single holder; with several holders and
+    /// none of them active it is refused, never written to all of them.
+    #[test]
+    fn a_private_sign_in_is_saved_for_one_account_or_refused() {
+        assert_eq!(private_token_signer(vec![2, 3], Some(3)).unwrap(), [3]);
+        assert_eq!(private_token_signer(vec![2], Some(3)).unwrap(), [2]);
+        assert_eq!(private_token_signer(vec![2], None).unwrap(), [2]);
+        for active in [Some(4), None] {
+            let refused = private_token_signer(vec![2, 3], active).unwrap_err();
+            assert!(refused.starts_with(ACCOUNT_CHANGED), "{refused}");
+        }
+    }
+
+    /// The alignment does not run while a profile writer holds the list lock,
+    /// which also covers a caller holding it: the account stays unmarked, and
+    /// the next pass sees the holder the writer added meanwhile, so the token
+    /// stays in the vault for the legacy owner who now holds the profile.
+    #[test]
+    fn a_holder_added_during_the_alignment_keeps_its_token() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let owner = nonprofile_secret_owner(&conn).unwrap().unwrap();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(&mut conn, &root, other.id, std::slice::from_ref(&profile))
+            .unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "owners-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+
+        let writer = ProfileListLock::acquire(&conn).unwrap();
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(!private_tokens_aligned(&conn, other.id).unwrap());
+        replace_server_profiles_under_lock(&mut conn, &root, owner, &[profile]).unwrap();
+        drop(writer);
+
+        assert_eq!(
+            align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap(),
+            0
+        );
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+        assert!(deleted.borrow().is_empty());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p").unwrap(),
+            None
+        );
+    }
+
+    /// An install migrated before the tokens were kept to their account: on a
+    /// profile id the legacy owner also holds, the other account's row holding
+    /// the vault's very value is the copy that migration made of the owner's
+    /// token, and is dropped; a row of its own sign-in holds another value and
+    /// stays. The vault keeps the owner's.
+    #[test]
+    fn a_copy_an_earlier_migration_made_of_a_shared_token_is_dropped() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(2);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "dropbox", "host": "", "port": 0,
+                   "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("profile-1")],
+        )
+        .unwrap();
+        mark_creds_migrated(&conn, other.id).unwrap();
+        let session = |uid: &str, pair: &str| {
+            json!({"uid": uid, "access_token": pair, "refresh_token": pair, "key_password": "k"})
+                .to_string()
+        };
+        let (rotated, copied) = (session("owners-uid", "r2"), session("owners-uid", "r1"));
+        let (owners_other, own) = (session("owners-other-uid", "r1"), session("own-uid", "r1"));
+        for (key, value) in [
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", "others-chain"),
+            ("proton_native_session_profile-0", copied.as_str()),
+            ("proton_native_session_profile-1", own.as_str()),
+        ] {
+            let kind = private_token_type(key).unwrap();
+            set_user_credential_for(&conn, &root, other.id, key, kind, value).unwrap();
+        }
+        let (keys, read) = fake_vault(&[
+            ("oauth_dropbox_profile-0", "owners-token"),
+            ("jottacloud_refresh_profile-0", "owners-chain"),
+            ("proton_native_session_profile-0", &rotated),
+            ("proton_native_session_profile-1", &owners_other),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        assert_eq!(row("oauth_dropbox_profile-0"), None);
+        assert_eq!(
+            row("jottacloud_refresh_profile-0").as_deref(),
+            Some("others-chain")
+        );
+        // The owner's session, rotated since the copy, is the same session.
+        assert_eq!(row("proton_native_session_profile-0"), None);
+        assert_eq!(
+            row("proton_native_session_profile-1").as_deref(),
+            Some(own.as_str())
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// On a filesystem without file locks the list lock excludes nobody: the
+    /// alignment still copies an account's own tokens into its partition and
+    /// is done, but the vault keeps its keys, which a holder added after the
+    /// commit would read.
+    #[test]
+    fn without_file_locks_the_alignment_copies_and_the_vault_keeps_its_keys() {
+        let _guard = test_lock();
+        clear_user_session();
+        let dir = tempfile::tempdir().unwrap();
+        let mut conn = open_or_init_path(dir.path().join("partitions.db")).expect("open");
+        let root = test_root();
+        migrate_legacy_payloads(&mut conn, Some("[]"), None, &root).expect("seed");
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = json!({"id": "p", "name": "p", "protocol": "dropbox", "host": "",
+                             "port": 0, "username": "p@example.test"});
+        replace_server_profiles_for(&mut conn, &root, other.id, &[profile]).unwrap();
+        let (keys, read) = fake_vault(&[("oauth_dropbox_p", "mine-token")]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        NO_FILE_LOCKS_IN_TEST.set(true);
+        let aligned = align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete);
+        NO_FILE_LOCKS_IN_TEST.set(false);
+        aligned.unwrap();
+        assert_eq!(
+            get_user_credential_for(&conn, &root, other.id, "oauth_dropbox_p")
+                .unwrap()
+                .as_deref()
+                .map(String::as_str),
+            Some("mine-token")
+        );
+        assert!(deleted.borrow().is_empty());
+        assert!(private_tokens_aligned(&conn, other.id).unwrap());
     }
 
     /// A native Proton session belongs to one account. A copy of a session
@@ -12597,7 +12980,7 @@ mod tests {
             ("github_pat", "ghp_x"),
             ("github_oauth_token", "gho_y"),
             // machine-global (MUV-0): must NOT migrate
-            ("github_pem_app_1", "-----PEM-----"),
+            ("github_pem_1234_5678", "-----PEM-----"),
             ("github_app_credentials", "{\"appId\":1}"),
             ("totp_secret", "vault-reserved"),
         ]);
@@ -12622,7 +13005,11 @@ mod tests {
         ] {
             assert!(ids.contains(present), "missing {present}");
         }
-        for absent in ["github_pem_app_1", "github_app_credentials", "totp_secret"] {
+        for absent in [
+            "github_pem_1234_5678",
+            "github_app_credentials",
+            "totp_secret",
+        ] {
             assert!(!ids.contains(absent), "unexpected {absent}");
         }
         assert_eq!(
@@ -12858,6 +13245,7 @@ mod tests {
             ("profile_auth_deadline_srv_1", "oauth"),
             ("github_oauth_srv_1", "oauth"),
             ("github_pem_srv_1", "oauth"),
+            ("github_pem_srv_1730000000000_123456789", "oauth"),
             ("proton_native_session", "proton_native_session"),
             ("proton_native_session_srv_1", "proton_native_session"),
             ("proton_native_unbound_user_7", "proton_native_session"),
@@ -12883,6 +13271,8 @@ mod tests {
             "github_oauth_token",
             "github_pat",
             "github_oauth",
+            // A GitHub App's PEM, keyed by its app and installation ids.
+            "github_pem_1234_5678",
             "profile_auth_config",
             "profile_auth_config_",
             "jottacloud_refreshed",
