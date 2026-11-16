@@ -293,6 +293,31 @@ it('keeps no single-file classification of settled batches, started or not', asy
     expect(controls.singleFileTransferIds.current.size).toBe(0);
 });
 
+it('keeps no queue mapping of a batch child that never started once its batch ends', async () => {
+    let items = [
+        { id: 'q1', filename: 'a.txt', path: '/a.txt', size: 1, type: 'upload', status: 'pending' },
+        { id: 'q2', filename: 'b.txt', path: '/b.txt', size: 1, type: 'upload', status: 'pending' },
+    ] as TransferItem[];
+    const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
+        completeTransfer: (id: string) => { items = updateTransferStatus(items, id, 'completed'); },
+        failTransfer: (id: string, error: string) => { items = updateTransferStatus(items, id, 'error', undefined, error); },
+    });
+    Object.defineProperty(queue, 'items', { get: () => items });
+    const { controls } = await mount(queue);
+    const ends = ['complete', 'error', 'cancelled'] as const;
+    for (const [run, end] of ends.entries()) {
+        const batchId = `ul-files-${run}`;
+        controls.registerFileBatchRows(batchId, ['q1', 'q2']);
+        await emit({ event_type: 'file_start', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        await emit({ event_type: 'file_complete', transfer_id: `${batchId}-0`, filename: 'a.txt', path: '/a.txt', direction: 'upload' });
+        // `${batchId}-1` never starts: its bare mapping ends with the batch.
+        await emit({ event_type: end, transfer_id: batchId, filename: 'batch', direction: 'upload', message: 'batch ended' });
+    }
+    expect([...controls.transferIdToQueueId.current.keys()]).toEqual([]);
+    // Its row is left to the batch's command result: the batch's end does not settle it.
+    expect(items.find(item => item.id === 'q2')?.status).toBe('pending');
+});
+
 it('settles the active row and activity when the server skips an occupied upload', async () => {
     const queue = Object.assign(queueWith({ id: 'q1', filename: 'a.txt', status: 'pending' }), {
         addItem: vi.fn(() => 'duplicate'), completeTransfer: vi.fn(),

@@ -92,6 +92,10 @@ interface UseTransferEventsOptions {
   onBatchProgress?: (snap: BatchProgressSnapshot | null) => void;
 }
 
+// `<batchId>-<n>`: the id registerFileBatchRows gives a batch's n-th file.
+const isBatchChildId = (key: string, batchId: string): boolean =>
+  key.startsWith(`${batchId}-`) && /^\d+$/.test(key.slice(batchId.length + 1));
+
 export function useTransferEvents(options: UseTransferEventsOptions) {
   // Store ALL options in a ref to avoid stale closures AND prevent re-subscribing.
   // The event listener subscribes once ([] deps) and always reads fresh values via ref.
@@ -217,6 +221,11 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
       for (const [key, queueId] of transferIdToQueueId.current.entries()) {
         if (key === transferId || key.startsWith(`${transferId}:`)) {
           queueIds.add(queueId);
+          transferIdToQueueId.current.delete(key);
+        } else if (isBatchChildId(key, transferId)) {
+          // A child a batch registered (`<id>-<n>`) and that never started
+          // keeps its bare mapping: it ends with the batch. Its row is the
+          // batch's command result to settle, not this event's.
           transferIdToQueueId.current.delete(key);
         }
       }
@@ -1165,5 +1174,5 @@ export function useTransferEvents(options: UseTransferEventsOptions) {
     return () => { ids.forEach(id => completionHolds.current.delete(id)); };
   }, []);
 
-  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions, singleFileTransferIds, completedTransferIds };
+  return { pendingFileLogIds, pendingDeleteLogIds, registerFileBatchRows, holdFileCompletions, singleFileTransferIds, completedTransferIds, transferIdToQueueId };
 }
