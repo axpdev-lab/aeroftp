@@ -9258,6 +9258,9 @@ pub(crate) mod held_local_copy {
 
     static HELD: LazyLock<(Mutex<HashSet<PathBuf>>, Condvar)> = LazyLock::new(Default::default);
 
+    // Held only by the Unix tests in sync_run_lease.rs; `wait` runs on
+    // every platform.
+    #[cfg(unix)]
     pub(crate) fn hold(source: &Path) {
         HELD.0
             .lock()
@@ -9265,6 +9268,7 @@ pub(crate) mod held_local_copy {
             .insert(source.to_path_buf());
     }
 
+    #[cfg(unix)]
     pub(crate) fn release(source: &Path) {
         HELD.0
             .lock()
