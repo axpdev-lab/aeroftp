@@ -520,7 +520,7 @@ test('licensing exceptions: generates exception section for unrar_sys with Rosha
   assert.match(content, /re-create the RAR compression algorithm/);
   assert.match(content, /only extracts RAR archives and never creates them/);
   assert.match(content, /not GPL-compatible/);
-  assert.match(content, /\[Notice Entry \d+\]\(#notice-entry-\d+\)/);
+  assert.match(content, /\[Notice Entry \d+\]\(#notice-unrar-sys\)/);
 });
 
 test('licensing exceptions: fails fast if declared exception crate is missing from tree', () => {
@@ -578,8 +578,14 @@ test('fallback placeholders: no <copyright holders> or unpopulated placeholders 
   assert.doesNotMatch(content, /<copyright holders>/);
   assert.doesNotMatch(content, /see repository maintainers/);
   // Verifies reviewed attribution is present for cx448
-  assert.match(content, /`cx448@0\.1\.1` - SPDX: `BSD-3-Clause` \(authors: Friedel Ziegelmayer \(dignifiedquire\)\)/);
-  assert.match(content, /Copyright \(c\) 2024 Friedel Ziegelmayer \(dignifiedquire\) \(cx448\)/);
+  assert.match(
+    content,
+    /`cx448@0\.1\.1` - SPDX: `BSD-3-Clause` \(authors: Friedel Ziegelmayer \(port to RustCrypto\), based on crate-crypto\/x448 by Kevaundray Wedderburn\)/
+  );
+  assert.match(
+    content,
+    /No copyright notice is shipped upstream; authors per https:\/\/github\.com\/dignifiedquire\/cx448 .*: Friedel Ziegelmayer \(port to RustCrypto\), based on crate-crypto\/x448 by Kevaundray Wedderburn \(cx448\)/
+  );
 });
 
 test('fallback placeholders: generator rejects unreviewed component without authors or pinned attribution', () => {
@@ -598,9 +604,9 @@ test('fallback placeholders: generator rejects unreviewed component without auth
   );
 });
 
-test('fallback placeholders: generator rejects authored component without pinned copyright year for placeholder license', () => {
-  const compWithoutYear = {
-    name: 'authored-no-year-crate',
+test('fallback placeholders: generator rejects authored component without entry in PINNED_FALLBACK_ATTRIBUTIONS', () => {
+  const compWithoutEntry = {
+    name: 'authored-no-entry-crate',
     version: '1.0.0',
     license: 'BSD-3-Clause',
     source: 'cargo',
@@ -609,8 +615,8 @@ test('fallback placeholders: generator rejects authored component without pinned
     authors: ['Valid Author <author@example.com>'],
   };
   assert.throws(
-    () => generateNoticesMarkdown([compWithoutYear], [], SPDX_STANDARD_LICENSES_FILE, []),
-    /Component authored-no-year-crate@1\.0\.0 requires a reviewed copyright year in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice/
+    () => generateNoticesMarkdown([compWithoutEntry], [], SPDX_STANDARD_LICENSES_FILE, []),
+    /Component authored-no-entry-crate@1\.0\.0 requires an entry in PINNED_FALLBACK_ATTRIBUTIONS/
   );
 });
 
@@ -662,4 +668,66 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   assert.doesNotMatch(content, /\| typescript \|/);
   assert.doesNotMatch(content, /\| aeroftp \|/);
   assert.doesNotMatch(content, /\| aws-lc-fips-sys \|/);
+});
+
+test('fallback attributions: all 32 pinned entries declare a non-empty source and fail fast if missing', () => {
+  const keys = Object.keys(PINNED_FALLBACK_ATTRIBUTIONS);
+  assert.strictEqual(keys.length, 32, 'Expected exactly 32 pinned fallback attributions');
+  for (const key of keys) {
+    const entry = PINNED_FALLBACK_ATTRIBUTIONS[key];
+    assert.ok(
+      entry && typeof entry.source === 'string' && entry.source.trim().length > 0,
+      `Pinned entry ${key} must declare a non-empty source`
+    );
+  }
+
+  // Verify that an empty source throws fail-fast error
+  const comp = {
+    name: 'test-no-source-crate',
+    version: '1.0.0',
+    license: 'BSD-3-Clause',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: ['Some Author'],
+  };
+  const original = PINNED_FALLBACK_ATTRIBUTIONS['test-no-source-crate@1.0.0'];
+  try {
+    PINNED_FALLBACK_ATTRIBUTIONS['test-no-source-crate@1.0.0'] = {
+      author: 'Some Author',
+      source: '',
+    };
+    assert.throws(
+      () => generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, []),
+      /Entry test-no-source-crate@1\.0\.0 in PINNED_FALLBACK_ATTRIBUTIONS must have a non-empty 'source' field/
+    );
+  } finally {
+    if (original) {
+      PINNED_FALLBACK_ATTRIBUTIONS['test-no-source-crate@1.0.0'] = original;
+    } else {
+      delete PINNED_FALLBACK_ATTRIBUTIONS['test-no-source-crate@1.0.0'];
+    }
+  }
+});
+
+test('README.md notice links resolve to valid anchors in THIRD-PARTY-NOTICES.md', () => {
+  const readmeContent = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+
+  const linkRegex = /\[([^\]]+)\]\(THIRD-PARTY-NOTICES\.md#([a-zA-Z0-9_-]+)\)/g;
+  const matches = Array.from(readmeContent.matchAll(linkRegex));
+  assert.ok(matches.length > 0, 'README.md must contain at least one link to THIRD-PARTY-NOTICES.md anchor');
+
+  for (const match of matches) {
+    const anchor = match[2];
+    const anchorTag = `<a id="${anchor}"></a>`;
+    assert.ok(
+      noticesContent.includes(anchorTag),
+      `Anchor #${anchor} linked in README.md must be present in THIRD-PARTY-NOTICES.md as ${anchorTag}`
+    );
+  }
+
+  // Specifically verify notice-unrar-sys is present and linked
+  assert.ok(readmeContent.includes('THIRD-PARTY-NOTICES.md#notice-unrar-sys'));
+  assert.ok(noticesContent.includes('<a id="notice-unrar-sys"></a>'));
 });

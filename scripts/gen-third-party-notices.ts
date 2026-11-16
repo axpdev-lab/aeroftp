@@ -90,7 +90,8 @@ export const KNOWN_NON_FREE_EXCEPTIONS: NonFreeException[] = [
 
 export interface FallbackAttribution {
   author: string;
-  year: string;
+  year?: string;
+  source: string;
 }
 
 /**
@@ -98,38 +99,137 @@ export interface FallbackAttribution {
  * without physical license texts or manifest author entries.
  */
 export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> = {
-  'alloc-stdlib@0.2.4': { author: 'Daniel Reiter Horn <danielrh@dropbox.com>', year: '2016-2023' },
-  'cx448@0.1.1': { author: 'Friedel Ziegelmayer (dignifiedquire)', year: '2024' },
-  'dispatch2@0.3.1': { author: 'Mads Marquart, Mary', year: '2024' },
-  'jni-macros@0.22.4': { author: 'The jni-rs developers', year: '2024' },
-  'libappindicator-sys@0.9.0': { author: 'Mikkel Hougesen', year: '2020-2023' },
-  'objc2-app-kit@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-cloud-kit@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-data@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-foundation@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-graphics@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-image@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-location@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-services@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-text@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-core-wlan@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-encode@4.1.0': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-exception-helper@0.1.1': { author: 'Mads Marquart', year: '2024' },
-  'objc2-foundation@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-quartz-core@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-security@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-security-foundation@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-system-configuration@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-ui-kit@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-user-notifications@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'objc2-web-kit@0.3.2': { author: 'Mads Marquart', year: '2021-2024' },
-  'r-efi@5.3.0': { author: 'David Rheinsberg', year: '2021-2024' },
-  'r-efi@6.0.0': { author: 'David Rheinsberg', year: '2021-2024' },
-  'russh-util@0.52.0': { author: 'Pierre-Étienne Meunier, Eugeny Pankov', year: '2020-2024' },
-  'rustls-platform-verifier-android@0.1.1': { author: 'The Rustls Project Developers', year: '2024' },
-  'webview2-com@0.38.2': { author: 'Peter Atashian, wravery contributors', year: '2021-2024' },
-  'webview2-com-macros@0.8.1': { author: 'Peter Atashian, wravery contributors', year: '2021-2024' },
-  'webview2-com-sys@0.38.2': { author: 'Peter Atashian, wravery contributors', year: '2021-2024' },
+  'alloc-stdlib@0.2.4': {
+    author: 'Dropbox, Inc., Daniel Reiter Horn <danielrh@dropbox.com>',
+    year: '2016',
+    source: 'https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE (repository LICENSE: Copyright (c) 2016 Dropbox, Inc.; Cargo.toml authors: Daniel Reiter Horn)',
+  },
+  'cx448@0.1.1': {
+    author: 'Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn',
+    source: 'https://github.com/dignifiedquire/cx448 (README: based on crate-crypto/x448 by Kevaundray Wedderburn, BSD-3-Clause, and RustCrypto/elliptic-curves#1121; no copyright notice in repo)',
+  },
+  'dispatch2@0.3.1': {
+    author: 'Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/crates/dispatch2/Cargo.toml (Cargo.toml authors; no copyright notice in repo)',
+  },
+  'jni-macros@0.22.4': {
+    author: 'jni team',
+    source: 'https://github.com/jni-rs/jni-rs/blob/master/Cargo.toml (Cargo.toml authors in parent jni crate; no copyright notice in repo)',
+  },
+  'libappindicator-sys@0.9.0': {
+    author: 'Mikkel Hougesen',
+    source: 'https://github.com/Hougesen/libappindicator-rs (crate maintainer and repository owner; no copyright notice in repo)',
+  },
+  'objc2-app-kit@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-cloud-kit@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-data@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-foundation@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-graphics@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-image@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-location@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-services@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-text@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-core-wlan@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-encode@4.1.0': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-exception-helper@0.1.1': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-foundation@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-quartz-core@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-security@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-security-foundation@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-system-configuration@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-ui-kit@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-user-notifications@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'objc2-web-kit@0.3.2': {
+    author: 'Mads Marquart <mads@marquart.dk>',
+    source: 'https://github.com/madsmtm/objc2/blob/master/Cargo.toml (workspace maintainer and author in parent objc2 Cargo.toml; no copyright notice in repo)',
+  },
+  'r-efi@5.3.0': {
+    author: 'David Rheinsberg, Red Hat, Inc., Microsoft Corporation',
+    year: '2017-2023',
+    source: 'https://github.com/r-efi/r-efi/blob/master/AUTHORS (AUTHORS file COPYRIGHT section: Copyright (C) 2017-2023 Red Hat, Inc., 2019-2023 Microsoft Corporation, 2022-2023 David Rheinsberg)',
+  },
+  'r-efi@6.0.0': {
+    author: 'David Rheinsberg, Red Hat, Inc., Microsoft Corporation',
+    year: '2017-2023',
+    source: 'https://github.com/r-efi/r-efi/blob/master/AUTHORS (AUTHORS file COPYRIGHT section: Copyright (C) 2017-2023 Red Hat, Inc., 2019-2023 Microsoft Corporation, 2022-2023 David Rheinsberg)',
+  },
+  'russh-util@0.52.0': {
+    author: 'Pierre-Étienne Meunier <pe@pijul.org>, Eugeny Pankov <e@ajenti.org>',
+    source: 'https://github.com/warp-tech/russh/blob/main/Cargo.toml (Cargo.toml authors in parent russh crate; no copyright notice in repo)',
+  },
+  'rustls-platform-verifier-android@0.1.1': {
+    author: 'The Rustls Project Developers',
+    source: 'https://github.com/rustls/rustls-platform-verifier (parent repository README and rustls organization project contributors; no copyright notice in repo)',
+  },
+  'webview2-com@0.38.2': {
+    author: 'Peter Atashian, wravery contributors',
+    source: 'https://github.com/wravery/webview2-rs (repository author Peter Atashian and project contributors; no copyright notice in repo)',
+  },
+  'webview2-com-macros@0.8.1': {
+    author: 'Peter Atashian, wravery contributors',
+    source: 'https://github.com/wravery/webview2-rs (repository author Peter Atashian and project contributors; no copyright notice in repo)',
+  },
+  'webview2-com-sys@0.38.2': {
+    author: 'Peter Atashian, wravery contributors',
+    source: 'https://github.com/wravery/webview2-rs (repository author Peter Atashian and project contributors; no copyright notice in repo)',
+  },
 };
 
 /**
@@ -612,6 +712,13 @@ export function generateNoticesMarkdown(
   spdxLicensesFile = SPDX_STANDARD_LICENSES_FILE,
   nonFreeExceptions: NonFreeException[] = KNOWN_NON_FREE_EXCEPTIONS
 ): string {
+  // Verify all pinned fallback attributions declare a non-empty source
+  for (const [key, attr] of Object.entries(PINNED_FALLBACK_ATTRIBUTIONS)) {
+    if (!attr.source || attr.source.trim().length === 0) {
+      throw new Error(`Entry ${key} in PINNED_FALLBACK_ATTRIBUTIONS must have a non-empty 'source' field`);
+    }
+  }
+
   const sortedCargoDeps = [...cargoDeps].sort(
     (a, b) => compareStrings(a.name, b.name) || compareStrings(a.version, b.version)
   );
@@ -694,7 +801,7 @@ export function generateNoticesMarkdown(
         );
       }
       lines.push(
-        `- **UnRAR (\`${exc.crateName}\`):** ${exc.facts} For the full text of the UnRAR license, see [Notice Entry ${entryIndex}](#notice-entry-${entryIndex}).`
+        `- **UnRAR (\`${exc.crateName}\`):** ${exc.facts} For the full text of the UnRAR license, see [Notice Entry ${entryIndex}](#notice-${exc.crateName.replace(/_/g, '-')}).`
       );
     }
     lines.push('');
@@ -752,6 +859,11 @@ export function generateNoticesMarkdown(
 
   let groupIndex = 1;
   for (const group of groupedTexts) {
+    const anchors = group.components.map((c) => `<a id="notice-${c.name.replace(/_/g, '-')}"></a>`).join('\n');
+    if (anchors) {
+      lines.push(anchors);
+      lines.push('');
+    }
     lines.push(`### Notice Entry ${groupIndex}`);
     lines.push('');
     lines.push('**Used by component(s):**');
@@ -850,30 +962,28 @@ export function generateNoticesMarkdown(
 
       let licText = standardLicenses[licKey];
       if (licText.includes('<copyright holders>') || licText.includes('<author>')) {
-        const copyrightLines: string[] = [];
+        const attributionLines: string[] = [];
         for (const comp of comps) {
           const key = `${comp.name}@${comp.version}`;
           const pinned = PINNED_FALLBACK_ATTRIBUTIONS[key];
-          const year = pinned?.year;
-          if (!year && !key.startsWith('test-')) {
-            throw new Error(
-              `Component ${key} requires a reviewed copyright year in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice`
-            );
+          if (!pinned && !key.startsWith('test-')) {
+            throw new Error(`Component ${key} requires an entry in PINNED_FALLBACK_ATTRIBUTIONS`);
           }
-          const actualYear = year || '2024';
-          const author = pinned?.author;
-          if (!author && !key.startsWith('test-')) {
-            throw new Error(
-              `Component ${key} requires a reviewed copyright holder/author in PINNED_FALLBACK_ATTRIBUTIONS before substituting the copyright notice`
-            );
+          if (pinned && (!pinned.source || pinned.source.trim().length === 0)) {
+            throw new Error(`Component ${key} has no source specified in PINNED_FALLBACK_ATTRIBUTIONS`);
           }
-          const actualAuthor = author || 'Unknown Author';
-          copyrightLines.push(`Copyright (c) ${actualYear} ${actualAuthor} (${comp.name})`);
+          const author = pinned?.author || ((comp.authors && comp.authors.length > 0) ? comp.authors.join(', ') : 'Unknown Author');
+          if (pinned?.year) {
+            attributionLines.push(`Copyright (c) ${pinned.year} ${author} (${comp.name})`);
+          } else {
+            const srcStr = pinned?.source ? ` per ${pinned.source}` : '';
+            attributionLines.push(`No copyright notice is shipped upstream; authors${srcStr}: ${author} (${comp.name})`);
+          }
         }
-        licText = licText.replace(/Copyright \(c\) <year> <copyright holders>/g, copyrightLines.join('\n'));
-        licText = licText.replace(/Copyright \(c\) <year> <author>/g, copyrightLines.join('\n'));
-        if (licText.includes('<copyright holders>')) {
-          throw new Error(`Standard license text for ${licKey} contains unpopulated <copyright holders> placeholder`);
+        licText = licText.replace(/Copyright \(c\) <year> <copyright holders>/g, attributionLines.join('\n'));
+        licText = licText.replace(/Copyright \(c\) <year> <author>/g, attributionLines.join('\n'));
+        if (licText.includes('<copyright holders>') || licText.includes('<year>')) {
+          throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders> or <year>)`);
         }
       }
 
