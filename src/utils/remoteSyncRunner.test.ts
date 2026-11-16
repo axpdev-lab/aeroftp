@@ -1312,11 +1312,27 @@ describe('remoteSyncRunner: journal kept on failures', () => {
     // CodeRabbit on #1561: the fixture refuses a lease begin whose page nonce
     // no bind established, as `acquire_at` does natively (`owns_page`), so a
     // runner that skipped the bind or used another document's nonce fails.
-    it('the intent fixture refuses a begin on an unbound, foreign or replaced page nonce', async () => {
+    // The binding is shared by the file, so the unbound case runs on a fresh
+    // instance of the fixture module, whose window no bind has reached yet.
+    it('the intent fixture refuses a begin before any bind', async () => {
+        vi.resetModules();
+        const fresh = await import('./testFixtures/syncIntents');
+        expect(fresh.currentPageBinding()).toBeNull();
+        const wrapped = fresh.createIntentFixture().wrap(async () => undefined as never);
+        for (const pageNonce of ['never-bound-page', '']) {
+            await expect(wrapped<string>('sync_run_lease_begin_cmd', { localPath: '/local/a', remotePath: '/remote', pageNonce }))
+                .rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
+        }
+        expect(fresh.currentPageBinding()).toBeNull();
+        await wrapped('sync_run_page_bind_cmd', { pageNonce: 'first-page' });
+        await expect(wrapped<string>('sync_run_lease_begin_cmd', { localPath: '/local/a', remotePath: '/remote', pageNonce: 'first-page' }))
+            .resolves.toMatch(/^run-lease-/);
+    });
+
+    it('the intent fixture refuses a begin on a foreign or replaced page nonce', async () => {
         const wrapped = createIntentFixture().wrap(async () => undefined as never);
         const begin = (pageNonce: string, localPath: string) =>
             wrapped<string>('sync_run_lease_begin_cmd', { localPath, remotePath: '/remote', pageNonce });
-        await expect(begin('never-bound-page', '/local/a')).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
         await wrapped('sync_run_page_bind_cmd', { pageNonce: 'bound-page' });
         await expect(begin('another-document', '/local/b')).rejects.toThrow('SYNC_RUN_PAGE_REPLACED');
         await expect(begin('bound-page', '/local/c')).resolves.toMatch(/^run-lease-/);

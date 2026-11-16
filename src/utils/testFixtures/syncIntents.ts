@@ -7,6 +7,8 @@ const fixtures = new WeakMap<RemoteSyncDeps['invoke'], ReturnType<typeof createI
 // `owns_page`). The runner binds once per document (its module), so the
 // binding is shared by every fixture of a test file, which runs in one window.
 let boundPageNonce: string | null = null;
+// The window's current binding, for a test that must start from none.
+export const currentPageBinding = (): string | null => boundPageNonce;
 export function createIntentFixture() {
     const generations = new Map<string,string>();
     const leases = new Map<string, string>();
