@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS-sleutelhanger",
                 "vaultFormat": "Kluisformaat",
                 "zipArchives": "ZIP-archieven"
-            }
+            },
+            "thirdPartyLicenses": "Licenties van derden"
         },
         "support": {
             "title": "Steun AeroFTP",

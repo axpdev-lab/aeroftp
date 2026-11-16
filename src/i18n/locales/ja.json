@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS キーリング",
                 "vaultFormat": "ボールト形式",
                 "zipArchives": "ZIP アーカイブ"
-            }
+            },
+            "thirdPartyLicenses": "サードパーティのライセンス"
         },
         "support": {
             "title": "AeroFTPを支援",

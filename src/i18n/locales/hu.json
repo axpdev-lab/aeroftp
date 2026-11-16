@@ -1879,7 +1879,8 @@
                 "osKeyring": "Rendszer-kulcstartó",
                 "vaultFormat": "Széfformátum",
                 "zipArchives": "ZIP-archívumok"
-            }
+            },
+            "thirdPartyLicenses": "Harmadik féltől származó licencek"
         },
         "support": {
             "title": "Támogassa az AeroFTP-t",

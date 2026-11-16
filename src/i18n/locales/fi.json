@@ -1879,7 +1879,8 @@
                 "osKeyring": "Käyttöjärjestelmän avainnippu",
                 "vaultFormat": "Holvin muoto",
                 "zipArchives": "ZIP-arkistot"
-            }
+            },
+            "thirdPartyLicenses": "Kolmannen osapuolen lisenssit"
         },
         "support": {
             "title": "Tue AeroFTP:tä",

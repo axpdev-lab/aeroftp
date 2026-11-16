@@ -225,6 +225,10 @@ parts:
       # Copy icon
       cp icons/AeroFTP_simbol_color_512x512.png $SNAPCRAFT_PART_INSTALL/usr/share/icons/hicolor/256x256/apps/aeroftp.png
       
+      # Copy third-party notices
+      mkdir -p $SNAPCRAFT_PART_INSTALL/usr/share/doc/aeroftp
+      cp THIRD-PARTY-NOTICES.md $SNAPCRAFT_PART_INSTALL/usr/share/doc/aeroftp/
+      
       # Create desktop entry
       cat > $SNAPCRAFT_PART_INSTALL/usr/share/applications/aeroftp.desktop << 'DESKTOP'
       [Desktop Entry]

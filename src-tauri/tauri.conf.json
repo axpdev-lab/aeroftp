@@ -43,6 +43,7 @@
         "license": "GPL-3.0-or-later",
         "licenseFile": "../LICENSE",
         "resources": [
+            "../THIRD-PARTY-NOTICES.md",
             "icons/mimetypes/aerovault.ico",
             "icons/mimetypes/aeroftp.ico",
             "icons/mimetypes/aeroftp-keystore.ico",
@@ -89,6 +90,7 @@
                     "python3-nautilus"
                 ],
                 "files": {
+                    "/usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",
                     "/usr/share/nautilus-python/extensions/aeroftp_extract_nautilus.py": "resources/aeroftp_extract_nautilus.py",
                     "/usr/share/metainfo/app.aeroftp.AeroFTP.metainfo.xml": "../app.aeroftp.AeroFTP.metainfo.xml",
                     "/usr/share/mime/packages/com.aeroftp.AeroVault.xml": "../com.aeroftp.AeroVault.xml",
@@ -151,6 +153,7 @@
                     "libacl.so.1()(64bit)"
                 ],
                 "files": {
+                    "/usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",
                     "/usr/lib/aeroftp/aeroftp-cli": "target/release/aeroftp-dispatch-bundle/aeroftp-cli",
                     "/usr/lib/aeroftp/aeroftp-dispatch": "target/release/aeroftp-dispatch-bundle/aeroftp-dispatch",
                     "/usr/share/nautilus-python/extensions/aeroftp_extract_nautilus.py": "resources/aeroftp_extract_nautilus.py",
@@ -210,6 +213,7 @@
             },
             "appimage": {
                 "files": {
+                    "usr/share/doc/aeroftp/THIRD-PARTY-NOTICES.md": "../THIRD-PARTY-NOTICES.md",
                     "usr/lib/aeroftp/aeroftp-cli": "target/release/aeroftp-dispatch-bundle/aeroftp-cli",
                     "usr/lib/aeroftp/aeroftp-dispatch": "target/release/aeroftp-dispatch-bundle/aeroftp-dispatch"
                 }

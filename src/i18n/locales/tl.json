@@ -1879,7 +1879,8 @@
                 "osKeyring": "Lalagyan ng susi ng OS",
                 "vaultFormat": "Format ng baul",
                 "zipArchives": "Mga arkibong ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Mga Lisensya ng Ikatlong Partido"
         },
         "support": {
             "title": "Suportahan ang AeroFTP",

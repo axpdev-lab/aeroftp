@@ -1879,7 +1879,8 @@
                 "osKeyring": "Cylch allweddi'r system",
                 "vaultFormat": "Fformat y gladdgell",
                 "zipArchives": "Archifau ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Trwyddedau trydydd parti"
         },
         "support": {
             "title": "Cefnogi AeroFTP",

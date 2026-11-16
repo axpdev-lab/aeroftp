@@ -1879,7 +1879,8 @@
                 "osKeyring": "Gantungan kunci OS",
                 "vaultFormat": "Format brankas",
                 "zipArchives": "Arsip ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Lisensi Pihak Ketiga"
         },
         "support": {
             "title": "Dukung AeroFTP",

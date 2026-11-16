@@ -1879,7 +1879,8 @@
                 "osKeyring": "সিস্টেম কীরিং",
                 "vaultFormat": "ভল্ট ফরম্যাট",
                 "zipArchives": "ZIP আর্কাইভ"
-            }
+            },
+            "thirdPartyLicenses": "তৃতীয় পক্ষের লাইসেন্স"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",

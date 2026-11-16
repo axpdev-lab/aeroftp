@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS-nyckelring",
                 "vaultFormat": "Valvformat",
                 "zipArchives": "ZIP-arkiv"
-            }
+            },
+            "thirdPartyLicenses": "Tredjepartslicenser"
         },
         "support": {
             "title": "Stöd AeroFTP",

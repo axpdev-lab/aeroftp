@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS-i võtmehoidja",
                 "vaultFormat": "Hoidla vorming",
                 "zipArchives": "ZIP-arhiivid"
-            }
+            },
+            "thirdPartyLicenses": "Kolmandate osapoolte litsentsid"
         },
         "support": {
             "title": "Toeta AeroFTP-d",

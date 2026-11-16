@@ -1879,7 +1879,8 @@
                 "osKeyring": "Pęk kluczy systemu",
                 "vaultFormat": "Format sejfu",
                 "zipArchives": "Archiwa ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licencje podmiotów trzecich"
         },
         "support": {
             "title": "Wesprzyj AeroFTP",

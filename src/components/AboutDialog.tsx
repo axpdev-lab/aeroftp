@@ -22,6 +22,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation, type TranslationFunction } from '../i18n';
 import { openUrl } from '../utils/openUrl';
+import { openThirdPartyLicenses } from '../utils/thirdPartyLicenses';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { copyText } from '../utils/clipboard';
 
@@ -320,6 +321,14 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 >
                                     GNU General Public License v3.0
                                 </button>
+                                <div className="mt-1">
+                                    <button
+                                        onClick={() => openThirdPartyLicenses()}
+                                        className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-cyan-400 underline transition-colors font-mono inline-block"
+                                    >
+                                        {t('about.thirdPartyLicenses') || 'Third-Party Licenses'}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Team: the people in TEAM.md, with the same roles. Initials

@@ -1872,7 +1872,8 @@
                 "osKeyring": "ՕՀ-ի բանալիների կապոց",
                 "vaultFormat": "Պահոցի ձևաչափ",
                 "zipArchives": "ZIP արխիվներ"
-            }
+            },
+            "thirdPartyLicenses": "Երրորդ կողմի լիցենզիաներ"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",

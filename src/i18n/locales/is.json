@@ -1879,7 +1879,8 @@
                 "osKeyring": "Lyklakippa stýrikerfis",
                 "vaultFormat": "Hvelfingarsnið",
                 "zipArchives": "ZIP-safnskrár"
-            }
+            },
+            "thirdPartyLicenses": "Leyfi þriðja aðila"
         },
         "support": {
             "title": "Styðja AeroFTP",

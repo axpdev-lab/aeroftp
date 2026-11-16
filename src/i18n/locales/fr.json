@@ -1879,7 +1879,8 @@
                 "osKeyring": "Trousseau du système",
                 "vaultFormat": "Format du coffre",
                 "zipArchives": "Archives ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licences tierces"
         },
         "support": {
             "title": "Soutenir AeroFTP",

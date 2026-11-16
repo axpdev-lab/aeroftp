@@ -1879,7 +1879,8 @@
                 "osKeyring": "Kishika funguo cha OS",
                 "vaultFormat": "Muundo wa hifadhi salama",
                 "zipArchives": "Kumbukumbu za ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Leseni za Wengine"
         },
         "support": {
             "title": "Saidia AeroFTP",

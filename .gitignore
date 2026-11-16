@@ -158,6 +158,9 @@ run-clean.sh
 # Exception: derives every published provider/preset/protocol figure into
 # docs/PROVIDER-INVENTORY.json, gated by the fast checks workflow
 !/scripts/gen-provider-inventory.ts
+# Exception: generates third-party license notices from locked dependency trees
+!/scripts/gen-third-party-notices.ts
+!/scripts/spdx-standard-licenses.json
 # Exception: stripped-diacritics gate and its reviewed baseline, run by the
 # fast checks workflow (#628 item 12)
 !/scripts/i18n-diacritics.mjs

@@ -1879,7 +1879,8 @@
                 "osKeyring": "Rantai kunci OS",
                 "vaultFormat": "Format peti besi",
                 "zipArchives": "Arkib ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Lesen Pihak Ketiga"
         },
         "support": {
             "title": "Sokong AeroFTP",

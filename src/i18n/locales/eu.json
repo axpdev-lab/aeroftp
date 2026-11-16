@@ -1879,7 +1879,8 @@
                 "osKeyring": "Sistemaren giltzatakoa",
                 "vaultFormat": "Kutxa gotorraren formatua",
                 "zipArchives": "ZIP artxiboak"
-            }
+            },
+            "thirdPartyLicenses": "Hirugarrenen lizentziak"
         },
         "support": {
             "title": "Lagundu AeroFTP",

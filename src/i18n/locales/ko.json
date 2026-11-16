@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS 키링",
                 "vaultFormat": "볼트 형식",
                 "zipArchives": "ZIP 아카이브"
-            }
+            },
+            "thirdPartyLicenses": "타사 라이선스"
         },
         "support": {
             "title": "AeroFTP 지원",

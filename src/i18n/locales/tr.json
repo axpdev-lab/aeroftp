@@ -1879,7 +1879,8 @@
                 "osKeyring": "Sistem anahtarlığı",
                 "vaultFormat": "Kasa biçimi",
                 "zipArchives": "ZIP arşivleri"
-            }
+            },
+            "thirdPartyLicenses": "Üçüncü Taraf Lisansları"
         },
         "support": {
             "title": "AeroFTP'yi Destekle",

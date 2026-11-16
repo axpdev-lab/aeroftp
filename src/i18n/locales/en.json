@@ -76,7 +76,8 @@
                 "osKeyring": "OS Keyring",
                 "vaultFormat": "Vault format",
                 "zipArchives": "ZIP archives"
-            }
+            },
+            "thirdPartyLicenses": "Third-Party Licenses"
         },
         "activity": {
             "connect_error": "Connection to {server} failed. Check credentials.",

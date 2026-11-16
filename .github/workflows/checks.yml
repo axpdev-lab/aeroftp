@@ -68,6 +68,11 @@ jobs:
       - name: Security report counts each OSV finding once across lockfiles
         run: node --test .github/scripts/test-security-report.mjs
 
+      - name: Third-party license notices are up to date
+        run: |
+          npm run check:licenses
+          node --test .github/scripts/test-third-party-notices.mjs
+
       # Two checks that read a git command through a command substitution,
       # which hides its exit status: each now fails when git does.
       - name: DCO check fails when git cannot read the commit range

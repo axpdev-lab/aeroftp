@@ -2464,7 +2464,8 @@
                 "osKeyring": "Portachiavi del sistema",
                 "vaultFormat": "Formato cassaforte",
                 "zipArchives": "Archivi ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licenze di terze parti"
         },
         "support": {
             "title": "Supporta AeroFTP",

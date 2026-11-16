@@ -1879,7 +1879,8 @@
                 "osKeyring": "Ключодържател на ОС",
                 "vaultFormat": "Формат на трезора",
                 "zipArchives": "ZIP архиви"
-            }
+            },
+            "thirdPartyLicenses": "Лицензи на трети страни"
         },
         "support": {
             "title": "Подкрепете AeroFTP",

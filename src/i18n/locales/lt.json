@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS raktinė",
                 "vaultFormat": "Saugyklos formatas",
                 "zipArchives": "ZIP archyvai"
-            }
+            },
+            "thirdPartyLicenses": "Trečiųjų šalių licencijos"
         },
         "support": {
             "title": "Palaikykite AeroFTP",

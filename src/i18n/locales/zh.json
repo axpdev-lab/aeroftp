@@ -1879,7 +1879,8 @@
                 "osKeyring": "系统密钥环",
                 "vaultFormat": "保险库格式",
                 "zipArchives": "ZIP 归档"
-            }
+            },
+            "thirdPartyLicenses": "第三方许可证"
         },
         "support": {
             "title": "支持 AeroFTP",

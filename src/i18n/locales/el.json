@@ -1879,7 +1879,8 @@
                 "osKeyring": "Κλειδοθήκη ΛΣ",
                 "vaultFormat": "Μορφή θησαυροφυλακίου",
                 "zipArchives": "Αρχεία ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Άδειες τρίτων"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",

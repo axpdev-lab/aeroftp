@@ -1879,7 +1879,8 @@
                 "osKeyring": "Chaveiro do sistema",
                 "vaultFormat": "Formato da caixa forte",
                 "zipArchives": "Arquivos ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licenzas de terceiros"
         },
         "support": {
             "title": "Apoia AeroFTP",

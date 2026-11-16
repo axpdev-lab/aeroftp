@@ -1879,7 +1879,8 @@
                 "osKeyring": "พวงกุญแจของระบบปฏิบัติการ",
                 "vaultFormat": "รูปแบบห้องนิรภัย",
                 "zipArchives": "ไฟล์บีบอัด ZIP"
-            }
+            },
+            "thirdPartyLicenses": "สัญญาอนุญาตของบุคคลที่สาม"
         },
         "support": {
             "title": "สนับสนุน AeroFTP",

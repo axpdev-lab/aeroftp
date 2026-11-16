@@ -1879,7 +1879,8 @@
                 "osKeyring": "Klíčenka systému",
                 "vaultFormat": "Formát trezoru",
                 "zipArchives": "Archivy ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Licence třetích stran"
         },
         "support": {
             "title": "Podpořte AeroFTP",

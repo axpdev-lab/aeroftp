@@ -1879,7 +1879,8 @@
                 "osKeyring": "Privjesak ključeva sustava",
                 "vaultFormat": "Format trezora",
                 "zipArchives": "ZIP arhive"
-            }
+            },
+            "thirdPartyLicenses": "Licence trećih strana"
         },
         "support": {
             "title": "Podrži AeroFTP",

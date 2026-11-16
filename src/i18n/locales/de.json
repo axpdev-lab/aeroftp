@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS-Schlüsselbund",
                 "vaultFormat": "Tresorformat",
                 "zipArchives": "ZIP-Archive"
-            }
+            },
+            "thirdPartyLicenses": "Drittanbieter-Lizenzen"
         },
         "support": {
             "title": "AeroFTP unterstützen",

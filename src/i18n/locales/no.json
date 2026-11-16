@@ -1879,7 +1879,8 @@
                 "osKeyring": "OS-nøkkelring",
                 "vaultFormat": "Hvelvformat",
                 "zipArchives": "ZIP-arkiver"
-            }
+            },
+            "thirdPartyLicenses": "Tredjepartslicenser"
         },
         "support": {
             "title": "Støtt AeroFTP",

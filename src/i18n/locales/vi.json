@@ -1879,7 +1879,8 @@
                 "osKeyring": "Chuỗi khóa hệ điều hành",
                 "vaultFormat": "Định dạng kho bảo mật",
                 "zipArchives": "Tệp nén ZIP"
-            }
+            },
+            "thirdPartyLicenses": "Giấy phép bên thứ ba"
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",
