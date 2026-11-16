@@ -275,7 +275,7 @@ where
     let start = provider.pwd().await?;
     let found = walk_for_find(provider, path, pattern, &start, budget).await;
     if provider.pwd().await.ok().as_deref() != Some(start.as_str()) {
-        provider.cd(&start).await?;
+        provider.return_to_folder(&start).await?;
     }
     found
 }

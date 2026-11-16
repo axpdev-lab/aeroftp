@@ -5533,10 +5533,13 @@ async fn folder_to_return_to(provider: &mut dyn StorageProvider) -> Result<Strin
              to after the transfer; nothing was transferred"
                 .to_string(),
         ),
-        Err(e) => Err(format!(
-            "the folder this session stands in could not be read ({e}), so it could not be \
-             returned to after the transfer; nothing was transferred"
-        )),
+        // Not the provider's text: the reply crosses IPC, and a server's or
+        // a provider's error may carry a path or a token.
+        Err(_) => Err(
+            "the folder this session stands in could not be read, so it could not be returned \
+             to after the transfer; nothing was transferred"
+                .to_string(),
+        ),
     }
 }
 
@@ -16984,7 +16987,11 @@ mod tests {
         unreadable.reports_folder = false;
         let refused = folder_to_return_to(&mut unreadable).await.unwrap_err();
         assert!(refused.contains("nothing was transferred"), "{refused}");
-        assert!(!refused.contains("/work"), "{refused}");
+        // Neither the folder nor the provider's own text (`NotSupported("pwd")`).
+        assert!(
+            !refused.contains("/work") && !refused.contains("pwd"),
+            "{refused}"
+        );
         let (mut empty, _) = Wanderer::in_folder(ProviderType::Sftp, "");
         assert!(folder_to_return_to(&mut empty).await.is_err());
         let (mut readable, _) = Wanderer::in_folder(ProviderType::Sftp, "/work");
@@ -25218,6 +25225,8 @@ mod folder_download_live_tests {
         list_moves_cwd: bool,
         /// `cd` fails.
         cd_fails: bool,
+        /// Every folder `return_to_folder` was asked for, in order.
+        returned: Vec<String>,
         /// The path a listing gives a file, where it differs from folder plus name.
         canonical: HashMap<String, String>,
         /// Raised when a download starts, as the first Stop raises it.
@@ -25371,6 +25380,10 @@ mod folder_download_live_tests {
             }
             self.cwd = path.to_string();
             Ok(())
+        }
+        async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+            self.state.lock().unwrap().returned.push(folder.to_string());
+            self.cd(folder).await
         }
         async fn cd_up(&mut self) -> Result<(), ProviderError> {
             Ok(())
@@ -25668,6 +25681,9 @@ mod folder_download_live_tests {
             ["/r/sub/a.txt"]
         );
         assert_eq!(tree.cwd, "/r");
+        // Through the provider's own return (FTP closes its session as lost
+        // rather than enter a relative folder from the walked one).
+        assert_eq!(state.lock().unwrap().returned, ["/r", "/r"]);
     }
 
     /// A search that cannot return to its folder fails, or a later relative
