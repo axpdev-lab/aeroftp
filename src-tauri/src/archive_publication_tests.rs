@@ -286,3 +286,45 @@ fn a_copied_entry_takes_its_mode_after_its_data() {
     let after = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
     assert_eq!(after, 0o755, "{after:o}");
 }
+
+/// An entry replacing a file other accounts can read takes that file's mode
+/// only once it holds the name: given before the rename, a rename that
+/// failed left the new contents readable until the temporary was removed.
+#[cfg(unix)]
+#[test]
+fn an_entry_takes_the_mode_it_keeps_only_once_published() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let existing = directory.path().join("shared");
+    std::fs::write(&existing, b"old").unwrap();
+    std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let root = super::open_archive_output(directory.path(), directory.path()).unwrap();
+    let (parent, name) = super::archive_destination_parent(&root, Path::new("shared")).unwrap();
+    let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let observed = seen.clone();
+    super::local_copy_publication::OBSERVER.with(|observer| {
+        *observer.borrow_mut() = Some(Box::new(move |stage, mode| {
+            observed.borrow_mut().push((stage, mode));
+        }));
+    });
+    let written = super::write_archive_entry_in_parent(&parent, &name, |file| {
+        file.write_all(b"new")?;
+        Ok(3)
+    });
+    super::local_copy_publication::OBSERVER.with(|observer| observer.borrow_mut().take());
+    written.unwrap();
+    let seen = seen.borrow().clone();
+    assert_eq!(seen.len(), 1, "one publication observed: {seen:?}");
+    let (_, staged) = seen[0];
+    assert_eq!(
+        staged & 0o077,
+        0,
+        "the entry was {staged:o} as it was renamed into place"
+    );
+    assert_eq!(std::fs::read(&existing).unwrap(), b"new");
+    let after = std::fs::metadata(&existing).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        after, 0o644,
+        "the kept mode after the publication: {after:o}"
+    );
+}

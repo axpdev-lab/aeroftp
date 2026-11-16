@@ -9232,13 +9232,16 @@ fn copy_file_cancellable(
         let temp = local_copy_temp(to);
         let written = native_copy_windows(from, &temp, cancel);
         drop(source);
-        publish_local_copy(&temp, to, written, cancel, publish)
+        publish_local_copy(&temp, to, written, cancel, publish, |()| Ok(()))
     }
     #[cfg(target_os = "macos")]
     {
         let temp = local_copy_temp(to);
-        let written = native_copy_macos(&source, metadata.permissions(), &temp, cancel);
-        publish_local_copy(&temp, to, written, cancel, publish)
+        let permissions = metadata.permissions();
+        let written = native_copy_macos(&source, &permissions, &temp, cancel);
+        publish_local_copy(&temp, to, written, cancel, publish, |target| {
+            finish_macos_copy(&source, &target, permissions)
+        })
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -9346,6 +9349,50 @@ fn open_local_copy_temp(temp: &std::path::Path) -> Result<std::fs::File, crate::
     options.open(temp).map_err(local_copy_failed)
 }
 
+/// The permissions a written copy holds until it is published: the owner's
+/// bits of `permissions` on Unix, so a Stop or a failed publication removes
+/// a temporary no other account could open. Applied through the handle
+/// before the publication, it also finds a file system that takes no mode,
+/// so that copy still fails before anything is published.
+fn staged_permissions(permissions: &std::fs::Permissions) -> std::fs::Permissions {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::Permissions::from_mode(permissions.mode() & !0o077)
+    }
+    #[cfg(not(unix))]
+    permissions.clone()
+}
+
+/// Every mode a temporary holds as its publication begins and, refused,
+/// before it is removed, on the copying thread.
+#[cfg(all(test, unix))]
+pub(crate) mod local_copy_publication {
+    use std::cell::RefCell;
+
+    type Observer = Box<dyn FnMut(&'static str, u32)>;
+
+    std::thread_local! {
+        pub(crate) static OBSERVER: RefCell<Option<Observer>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn observe(stage: &'static str, path: &std::path::Path) {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::symlink_metadata(path)
+            .map(|meta| meta.permissions().mode() & 0o7777)
+            .unwrap_or(u32::MAX);
+        observe_mode(stage, mode);
+    }
+
+    pub(super) fn observe_mode(stage: &'static str, mode: u32) {
+        OBSERVER.with(|observer| {
+            if let Some(observer) = observer.borrow_mut().as_mut() {
+                observer(stage, mode);
+            }
+        });
+    }
+}
+
 /// How a finished copy takes its destination's name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LocalPublish {
@@ -9375,21 +9422,35 @@ impl LocalPublish {
 /// partial file is ever left under the final name, and an existing `to`
 /// stays as it was. With [`LocalPublish::NoReplace`] the move refuses an
 /// existing `to` in the same step that takes the name.
-fn publish_local_copy(
+///
+/// The temporary stays owner-only until it holds its name: `finish` gives it
+/// what could open it to others (its mode, on macOS its ACL) through its
+/// handle, after the publication. A `finish` that fails leaves the published
+/// copy narrower than its source, never wider; it is logged, not undone,
+/// since the destination it replaced is gone.
+fn publish_local_copy<T>(
     temp: &std::path::Path,
     to: &std::path::Path,
-    written: Result<(), crate::sync::IpcError>,
+    written: Result<T, crate::sync::IpcError>,
     cancel: &AtomicBool,
     publish: LocalPublish,
+    finish: impl FnOnce(T) -> std::io::Result<()>,
 ) -> Result<(), crate::sync::IpcError> {
-    let written = written.and_then(|()| {
+    #[cfg(all(test, unix))]
+    if written.is_ok() {
+        local_copy_publication::observe("publishing", temp);
+    }
+    let written = written.and_then(|target| {
         if cancel.load(Ordering::Relaxed) {
             Err(crate::sync::IpcError::Cancelled)
         } else {
-            Ok(())
+            Ok(target)
         }
     });
-    let published = written.and_then(|()| match publish {
+    let mut target = None;
+    let published = written.and_then(|written| {
+        target = Some(written);
+        match publish {
         LocalPublish::Replace => std::fs::rename(temp, to).map_err(local_copy_failed),
         LocalPublish::NoReplace => rename_no_replace(temp, to).map_err(|e| {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -9403,11 +9464,25 @@ fn publish_local_copy(
                 local_copy_failed(e)
             }
         }),
+        }
     });
-    if published.is_err() {
-        remove_local_copy_temp(temp);
+    match (published, target) {
+        (Ok(()), Some(target)) => {
+            if let Err(e) = finish(target) {
+                tracing::warn!(
+                    "{} was copied owner-only: its permissions could not be applied: {e}",
+                    to.display()
+                );
+            }
+            Ok(())
+        }
+        (published, _) => {
+            #[cfg(all(test, unix))]
+            local_copy_publication::observe("removing", temp);
+            remove_local_copy_temp(temp);
+            published
+        }
     }
-    published
 }
 
 fn remove_local_copy_temp(temp: &std::path::Path) {
@@ -9430,8 +9505,8 @@ fn remove_local_copy_temp(temp: &std::path::Path) {
 /// Write `source` to a temporary name next to `to`, a chunk at a time,
 /// observing `cancel` before each chunk, then publish it with
 /// [`publish_local_copy`]. The temporary is created owner-only and stays so
-/// while the data arrives; it gets the source's permissions through its own
-/// handle after the last byte.
+/// until it is published; it gets the source's permissions through its own
+/// handle once it holds its name.
 // The platform copy in Windows and macOS builds; the chunked copy is still
 // what the Stop and publication tests drive there.
 #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
@@ -9460,14 +9535,26 @@ pub(crate) fn copy_into_place(
                 .map_err(local_copy_failed)?;
         }
         target.flush().map_err(local_copy_failed)?;
-        // The source's mode once the data is in: a wider one applied before
-        // would open the partial copy to other accounts.
         target
-            .set_permissions(permissions)
+            .set_permissions(staged_permissions(&permissions))
             .map_err(local_copy_failed)
     })();
-    drop(target);
-    publish_local_copy(&temp, to, written, cancel, publish)
+    // Unix: the handle outlives the rename and takes the source's mode once
+    // the copy holds its name. Elsewhere the attributes open nothing to other
+    // accounts (access is the folder's), and are set before.
+    #[cfg(unix)]
+    let written = written.map(|()| target);
+    #[cfg(not(unix))]
+    let written = written.map(|()| drop(target));
+    publish_local_copy(&temp, to, written, cancel, publish, |target| {
+        #[cfg(unix)]
+        return target.set_permissions(permissions);
+        #[cfg(not(unix))]
+        {
+            let () = target;
+            Ok(())
+        }
+    })
 }
 
 /// Move `temp` to `to` only when nothing is at `to`, in one step: an entry
@@ -9763,19 +9850,19 @@ mod macos_data_pass {
     }
 }
 
-/// Copy `source` into the new owner-only file `temp` with `fcopyfile` and
-/// what `COPYFILE_ALL` covers (data, extended attributes, ACL, mode), the
-/// flags `std::fs::copy` uses, stopped through [`macos_copy_status`]. The data
-/// goes first, while the temporary is still owner-only; the source's mode
-/// and the metadata follow it, so a partial copy is never open to other
-/// accounts.
+/// Copy `source` into the new owner-only file `temp` with `fcopyfile`, its
+/// data and extended attributes, stopped through [`macos_copy_status`], and
+/// return its handle. The rest of what `COPYFILE_ALL` covers, the flags
+/// `std::fs::copy` uses (mode, ACL), opens a file to other accounts: it
+/// comes with [`finish_macos_copy`] once the copy is published, so an
+/// unpublished one is never open to them.
 #[cfg(target_os = "macos")]
 fn native_copy_macos(
     source: &std::fs::File,
-    permissions: std::fs::Permissions,
+    permissions: &std::fs::Permissions,
     temp: &std::path::Path,
     cancel: &AtomicBool,
-) -> Result<(), crate::sync::IpcError> {
+) -> Result<std::fs::File, crate::sync::IpcError> {
     use std::os::fd::AsRawFd;
     let target = open_local_copy_temp(temp)?;
     // SAFETY: the state is freed on every path below; the callback and its
@@ -9811,22 +9898,49 @@ fn native_copy_macos(
                 Err(std::io::Error::last_os_error())
             }
         };
+        // The extended attributes open nothing to other accounts; the mode
+        // and the ACL do, and wait for the publication
+        // ([`finish_macos_copy`]).
         let result = if set {
             copy(libc::COPYFILE_DATA)
-                .and_then(|()| target.set_permissions(permissions))
-                .and_then(|()| copy(libc::COPYFILE_METADATA))
+                .and_then(|()| target.set_permissions(staged_permissions(permissions)))
+                .and_then(|()| copy(libc::COPYFILE_XATTR))
         } else {
             Err(std::io::Error::last_os_error())
         };
         libc::copyfile_state_free(state);
         result
     };
-    drop(target);
     match copied {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(target),
         Err(_) if cancel.load(Ordering::Relaxed) => Err(crate::sync::IpcError::Cancelled),
         Err(error) => Err(local_copy_failed(error)),
     }
+}
+
+/// What `COPYFILE_ALL` adds once the copy holds its name: the source's mode,
+/// ownership and ACL (`COPYFILE_SECURITY`), then its permissions, through the
+/// published copy's handle.
+#[cfg(target_os = "macos")]
+fn finish_macos_copy(
+    source: &std::fs::File,
+    target: &std::fs::File,
+    permissions: std::fs::Permissions,
+) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    // SAFETY: both descriptors are open for the call; no state is passed.
+    let copied = unsafe {
+        libc::fcopyfile(
+            source.as_raw_fd(),
+            target.as_raw_fd(),
+            std::ptr::null_mut(),
+            libc::COPYFILE_SECURITY,
+        )
+    };
+    if copied != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    target.set_permissions(permissions)
 }
 
 #[cfg(test)]
@@ -9854,8 +9968,9 @@ mod native_local_copy_tests {
         assert_eq!(names, [std::ffi::OsString::from("source.bin")]);
     }
 
-    /// The macOS copy writes its data while the temporary is owner-only and
-    /// gives it the source's mode afterwards. Observed from `fcopyfile`'s own
+    /// The macOS copy writes its data while the temporary is owner-only, and
+    /// stays so until `finish_macos_copy` gives it the source's mode (after
+    /// the publication). Observed from `fcopyfile`'s own
     /// data reports, so a report that never comes fails by name.
     #[cfg(target_os = "macos")]
     #[test]
@@ -9869,9 +9984,12 @@ mod native_local_copy_tests {
         let source = std::fs::File::open(&from).unwrap();
         let permissions = source.metadata().unwrap().permissions();
         macos_data_pass::MODES.with(|modes| modes.borrow_mut().clear());
-        let copied = native_copy_macos(&source, permissions, &temp, &AtomicBool::new(false));
+        let copied = native_copy_macos(&source, &permissions, &temp, &AtomicBool::new(false));
         let modes = macos_data_pass::MODES.with(|modes| modes.take());
-        assert!(copied.is_ok(), "the copy failed: {copied:?}");
+        let target = match copied {
+            Ok(target) => target,
+            Err(e) => panic!("the copy failed: {e:?}"),
+        };
         assert!(
             !modes.is_empty(),
             "fcopyfile sent its status callback no data report, so the mode during the data pass was not observed"
@@ -9892,11 +10010,114 @@ mod native_local_copy_tests {
             "the temporary was open to other accounts while its data was written: modes {open:?} in {} data reports",
             modes.len()
         );
+        let staged = std::fs::metadata(&temp).unwrap().permissions().mode() & 0o777;
+        assert_eq!(
+            staged, 0o600,
+            "the written copy is not owner-only before its publication: {staged:o}"
+        );
+        finish_macos_copy(&source, &target, permissions).unwrap();
         let published = std::fs::metadata(&temp).unwrap().permissions().mode() & 0o777;
         assert_eq!(
             published, 0o644,
-            "the copy did not take the source's mode: {published:o}"
+            "the copy did not take the source's mode once finished: {published:o}"
         );
+    }
+
+    /// A copy stays owner-only until it holds its name. Given the source's
+    /// mode before, a Stop after its last read or a refused publication left
+    /// the whole copy readable by other accounts until it was removed. Both
+    /// cases observe the temporary as its publication begins (the Stop is
+    /// raised there) and before it is removed: owner-only each time, then
+    /// gone, and the destination as it was. A published copy takes the
+    /// source's mode (the control). Run through each platform's own copy.
+    #[cfg(unix)]
+    #[test]
+    fn a_copy_stays_owner_only_until_it_is_published() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::sync::Arc;
+        let mut wrong = Vec::new();
+        for case in ["stop after the last read", "name taken", "published"] {
+            let dir = tempfile::tempdir().unwrap();
+            let from = dir.path().join("source.bin");
+            std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
+            std::fs::set_permissions(&from, std::fs::Permissions::from_mode(0o644)).unwrap();
+            let to = dir.path().join("copy.bin");
+            if case == "name taken" {
+                std::fs::write(&to, b"theirs").unwrap();
+            }
+            let cancel = Arc::new(AtomicBool::new(false));
+            let seen = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let (observed, stop) = (seen.clone(), cancel.clone());
+            let stops = case == "stop after the last read";
+            local_copy_publication::OBSERVER.with(|observer| {
+                *observer.borrow_mut() = Some(Box::new(move |stage, mode| {
+                    observed.borrow_mut().push((stage, mode));
+                    if stops && stage == "publishing" {
+                        stop.store(true, Ordering::Relaxed);
+                    }
+                }));
+            });
+            let publish = if case == "name taken" {
+                LocalPublish::NoReplace
+            } else {
+                LocalPublish::Replace
+            };
+            let copied = copy_file_cancellable(&from, &to, &cancel, publish);
+            local_copy_publication::OBSERVER.with(|observer| observer.borrow_mut().take());
+            let seen = seen.borrow().clone();
+            let stages: Vec<&str> = seen.iter().map(|(stage, _)| *stage).collect();
+            let expected: &[&str] = if case == "published" {
+                &["publishing"]
+            } else {
+                &["publishing", "removing"]
+            };
+            if stages != expected {
+                wrong.push(format!(
+                    "{case}: observed {stages:?}, expected {expected:?}"
+                ));
+            }
+            let open: Vec<String> = seen
+                .iter()
+                .filter(|(_, mode)| *mode & 0o077 != 0)
+                .map(|(stage, mode)| format!("{stage} {mode:o}"))
+                .collect();
+            if !open.is_empty() {
+                wrong.push(format!("{case}: open to other accounts at {open:?}"));
+            }
+            let left: Vec<_> = std::fs::read_dir(dir.path())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .filter(|name| name.starts_with(".aeroftp-copy-"))
+                .collect();
+            if !left.is_empty() {
+                wrong.push(format!("{case}: temporaries left {left:?}"));
+            }
+            match case {
+                "published" => {
+                    let mode = std::fs::metadata(&to)
+                        .map(|meta| meta.permissions().mode() & 0o777)
+                        .ok();
+                    if copied.is_err() || mode != Some(0o644) {
+                        wrong.push(format!(
+                            "{case}: {copied:?}, published mode {:?}",
+                            mode.map(|mode| format!("{mode:o}"))
+                        ));
+                    }
+                }
+                "name taken" => {
+                    if copied.is_ok() || std::fs::read(&to).ok().as_deref() != Some(&b"theirs"[..])
+                    {
+                        wrong.push(format!("{case}: {copied:?}, or the taken name changed"));
+                    }
+                }
+                _ => {
+                    if !matches!(copied, Err(crate::sync::IpcError::Cancelled)) || to.exists() {
+                        wrong.push(format!("{case}: {copied:?}, destination {}", to.exists()));
+                    }
+                }
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
     /// The Windows copy is stopped by `CopyFileExW` itself: with the flag set,
@@ -9949,7 +10170,7 @@ mod native_local_copy_tests {
         let source = std::fs::File::open(&from).unwrap();
         let permissions = source.metadata().unwrap().permissions();
         let temp = dir.path().join("temp.bin");
-        let copied = native_copy_macos(&source, permissions.clone(), &temp, &AtomicBool::new(true));
+        let copied = native_copy_macos(&source, &permissions, &temp, &AtomicBool::new(true));
         assert!(
             matches!(copied, Err(crate::sync::IpcError::Cancelled)),
             "{copied:?}"
@@ -9959,7 +10180,7 @@ mod native_local_copy_tests {
         // from the descriptor's current offset, which the stopped call above
         // may have moved to the end (the destination came out empty).
         let source = std::fs::File::open(&from).unwrap();
-        native_copy_macos(&source, permissions, &temp, &AtomicBool::new(false)).unwrap();
+        native_copy_macos(&source, &permissions, &temp, &AtomicBool::new(false)).unwrap();
         let (copied, original) = (std::fs::read(&temp).unwrap(), std::fs::read(&from).unwrap());
         assert_eq!(copied.len(), original.len(), "bytes copied");
         assert!(copied == original, "the copy differs from its source");
@@ -12099,21 +12320,48 @@ where
     let outcome = fill(&mut file).and_then(|written| {
         // Replacing an existing regular file keeps its permissions, as the
         // in-place truncation this replaces did (an executable stays one).
-        if let Ok(existing) = parent.symlink_metadata(name) {
-            if existing.is_file() {
-                let permissions = existing
+        // Only their owner bits until the entry holds its name (see
+        // `staged_permissions`): a failed rename removes a temporary no
+        // other account could open.
+        let kept = match parent.symlink_metadata(name) {
+            Ok(existing) if existing.is_file() => Some(
+                existing
                     .permissions()
                     .into_std(&file)
-                    .map_err(destination_error)?;
-                file.set_permissions(permissions)
-                    .map_err(destination_error)?;
-            }
+                    .map_err(destination_error)?,
+            ),
+            _ => None,
+        };
+        if let Some(kept) = &kept {
+            file.set_permissions(staged_permissions(kept))
+                .map_err(destination_error)?;
         }
+        #[cfg(all(test, unix))]
+        if let Ok(staged) = file.metadata() {
+            use std::os::unix::fs::PermissionsExt;
+            local_copy_publication::observe_mode(
+                "publishing",
+                staged.permissions().mode() & 0o7777,
+            );
+        }
+        // Unix: the handle outlives the rename and takes the kept mode once
+        // the entry holds its name. Elsewhere the attributes open nothing to
+        // other accounts, and are all set above.
+        #[cfg(not(unix))]
         drop(file);
         parent
             .rename(&tmp_name, parent, name)
-            .map(|()| written)
-            .map_err(destination_error)
+            .map_err(destination_error)?;
+        #[cfg(unix)]
+        if let Some(kept) = kept {
+            if let Err(e) = file.set_permissions(kept) {
+                tracing::warn!(
+                    "{} was extracted owner-only: its permissions could not be applied: {e}",
+                    std::path::Path::new(name).display()
+                );
+            }
+        }
+        Ok(written)
     });
     if outcome.is_err() {
         let _ = parent.remove_file(&tmp_name);
