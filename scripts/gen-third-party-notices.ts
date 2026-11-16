@@ -857,11 +857,19 @@ export function generateNoticesMarkdown(
     return `${fence}${lang}\n${content}\n${fence}`;
   }
 
+  const seenAnchorIds = new Set<string>();
   let groupIndex = 1;
   for (const group of groupedTexts) {
-    const anchors = group.components.map((c) => `<a id="notice-${c.name.replace(/_/g, '-')}"></a>`).join('\n');
-    if (anchors) {
-      lines.push(anchors);
+    const newAnchors: string[] = [];
+    for (const comp of group.components) {
+      const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
+      if (!seenAnchorIds.has(anchorId)) {
+        seenAnchorIds.add(anchorId);
+        newAnchors.push(`<a id="${anchorId}"></a>`);
+      }
+    }
+    if (newAnchors.length > 0) {
+      lines.push(newAnchors.join('\n'));
       lines.push('');
     }
     lines.push(`### Notice Entry ${groupIndex}`);
@@ -996,6 +1004,16 @@ export function generateNoticesMarkdown(
   if (output.includes('<copyright holders>') || output.includes('see repository maintainers')) {
     throw new Error('Generated notices contain unpopulated placeholders (<copyright holders> or see repository maintainers)');
   }
+
+  const idMatches = Array.from(output.matchAll(/\bid="([^"]+)"/g)).map((m) => m[1]);
+  const seenIds = new Set<string>();
+  for (const id of idMatches) {
+    if (seenIds.has(id)) {
+      throw new Error(`Duplicate anchor id="${id}" detected in generated notices`);
+    }
+    seenIds.add(id);
+  }
+
   return output;
 }
 

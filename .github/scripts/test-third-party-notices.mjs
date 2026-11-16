@@ -731,3 +731,46 @@ test('README.md notice links resolve to valid anchors in THIRD-PARTY-NOTICES.md'
   assert.ok(readmeContent.includes('THIRD-PARTY-NOTICES.md#notice-unrar-sys'));
   assert.ok(noticesContent.includes('<a id="notice-unrar-sys"></a>'));
 });
+
+test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
+  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const idMatches = Array.from(noticesContent.matchAll(/\bid="([^"]+)"/g)).map((m) => m[1]);
+  assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
+
+  const seenIds = new Set();
+  const duplicates = [];
+  for (const id of idMatches) {
+    if (seenIds.has(id)) {
+      duplicates.push(id);
+    }
+    seenIds.add(id);
+  }
+
+  assert.deepStrictEqual(
+    duplicates,
+    [],
+    `Found duplicate anchor ids in THIRD-PARTY-NOTICES.md: ${duplicates.join(', ')}`
+  );
+
+  // Specifically check previously duplicated IDs are now unique
+  assert.strictEqual(
+    (noticesContent.match(/<a id="notice-unrar">/g) || []).length,
+    1,
+    'notice-unrar anchor must be emitted exactly once'
+  );
+  assert.strictEqual(
+    (noticesContent.match(/<a id="notice-typeid">/g) || []).length,
+    1,
+    'notice-typeid anchor must be emitted exactly once'
+  );
+  assert.strictEqual(
+    (noticesContent.match(/<a id="notice-wasm-streams">/g) || []).length,
+    1,
+    'notice-wasm-streams anchor must be emitted exactly once'
+  );
+  assert.strictEqual(
+    (noticesContent.match(/<a id="notice-unrar-sys">/g) || []).length,
+    1,
+    'notice-unrar-sys anchor must be emitted exactly once'
+  );
+});
