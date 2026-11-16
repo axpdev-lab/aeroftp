@@ -1094,11 +1094,16 @@ const App: React.FC = () => {
     // backend serves until it ends (`backendServesLiveTab`).
     backendTeardownsRef.current += 1;
     let receipt: BackendMark | null = null;
-    return (): BackendMark => {
+    // `replaced` false: the backend refused this invoke before it touched the
+    // slot (a connect cancelled before its install), so nothing was replaced
+    // and a tab another connect confirmed meanwhile keeps its backend.
+    return (replaced = true): BackendMark => {
       if (receipt) return receipt;
       backendTeardownsRef.current -= 1;
-      backendReplacementSeqRef.current += 1;
-      if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
+      if (replaced) {
+        backendReplacementSeqRef.current += 1;
+        if (backendConfirmationsRef.current !== confirmedBefore) backendUncertainRef.current = true;
+      }
       receipt = backendMark();
       return receipt;
     };
@@ -2641,20 +2646,34 @@ const App: React.FC = () => {
   // lock. A superseded connect ends as a cancel without the cancel toast.
   const inFlightConnectsRef = useRef(new Map<string, number>());
   const supersededConnectsRef = useRef(new Set<string>());
-  const supersedeOlderConnects = (phaseVersion: number) => {
+  // The cancels the latest phase start sent, until the backend has them: a
+  // connect sends its own command only after them (`trackedConnect`), so an
+  // older connect is cancelled before the newer one can take the slot.
+  const supersedeCancelsRef = useRef<Promise<void>>(Promise.resolve());
+  const supersedeOlderConnects = (phaseVersion: number): Promise<void> => {
+    const cancels: Promise<unknown>[] = [];
     for (const [token, beganAt] of inFlightConnectsRef.current) {
       if (beganAt >= phaseVersion || supersededConnectsRef.current.has(token)) continue;
       supersededConnectsRef.current.add(token);
-      invoke('cancel_connection', { token }).catch((e) => {
-        logger.debug('[supersedeOlderConnects] cancel_connection failed (likely already resolved):', e);
-      });
+      // The backend never refuses a cancel (one for a connect not yet
+      // registered is kept for it); a failed delivery is sent once more.
+      const cancel = () => invoke('cancel_connection', { token });
+      cancels.push(cancel().catch(() => cancel()).catch((e) => {
+        logger.debug('[supersedeOlderConnects] cancel_connection failed twice:', e);
+      }));
     }
+    const sent = Promise.all([supersedeCancelsRef.current, ...cancels]).then(() => undefined);
+    supersedeCancelsRef.current = sent;
+    return sent;
   };
   /** Runs a connect under `token`, tracked for `supersedeOlderConnects`; one
    *  a newer phase cancelled rejects with CONNECT_SUPERSEDED. */
   const trackedConnect = async <T,>(run: (connectToken: string) => Promise<T>, token: string): Promise<T> => {
     inFlightConnectsRef.current.set(token, remoteConnectPhaseVersionRef.current);
     try {
+      // The older connects this phase cancelled are cancelled in the backend
+      // before this one is sent.
+      await supersedeCancelsRef.current;
       return await run(token);
     } catch (error) {
       if (supersededConnectsRef.current.has(token)) throw new Error(CONNECT_SUPERSEDED_MARKER);
@@ -2688,8 +2707,18 @@ const App: React.FC = () => {
   ): Promise<T> => {
     const token = beginConnectAttempt();
     let hardTimer: ReturnType<typeof setTimeout> | null = null;
-    // This connect replaces the backend's provider (`replacingBackend`).
+    // This connect replaces the backend's provider (`replacingBackend`),
+    // unless the backend refuses it as cancelled before its install.
     const endReplacement = replacingBackend();
+    let refusedBeforeInstall = false;
+    const runRefusable = async (connectToken: string): Promise<T> => {
+      try {
+        return await run(connectToken);
+      } catch (error) {
+        if (isConnectCancelledError(error)) refusedBeforeInstall = true;
+        throw error;
+      }
+    };
     try {
       // Race the connect against a hard-timeout deadline so even a backend
       // command that can never answer (a panic strands the IPC resolver) still
@@ -2703,7 +2732,7 @@ const App: React.FC = () => {
         };
         extendHardTimeoutRef.current = armHardTimeout;
         armHardTimeout();
-        trackedConnect(run, token).then(resolve, reject);
+        trackedConnect(runRefusable, token).then(resolve, reject);
       });
     } catch (error) {
       // Overtaken by a newer connect phase: a cancel, without the cancel toast
@@ -2731,7 +2760,7 @@ const App: React.FC = () => {
       if (hardTimer) clearTimeout(hardTimer);
       extendHardTimeoutRef.current = null;
       endConnectAttempt(token);
-      const mark = endReplacement();
+      const mark = endReplacement(!refusedBeforeInstall);
       if (receipt) receipt.mark = mark;
     }
   }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);

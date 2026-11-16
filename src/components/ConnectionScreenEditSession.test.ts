@@ -80,7 +80,7 @@ describe('ConnectionScreen edit sessions', () => {
         // Every connect, switch and swap invoke goes through cancellableConnect,
         // which counts it the same way.
         const central = appSource.slice(appSource.indexOf('  const cancellableConnect = useCallback('));
-        expect(central.slice(0, central.indexOf('  }, [beginConnectAttempt'))).toMatch(/const endReplacement = replacingBackend\(\);[\s\S]*\} finally \{[\s\S]*const mark = endReplacement\(\);\n\s+if \(receipt\) receipt\.mark = mark;\n\s+\}\n$/);
+        expect(central.slice(0, central.indexOf('  }, [beginConnectAttempt'))).toMatch(/const endReplacement = replacingBackend\(\);[\s\S]*\} finally \{[\s\S]*const mark = endReplacement\(!refusedBeforeInstall\);\n\s+if \(receipt\) receipt\.mark = mark;\n\s+\}\n$/);
     });
 
     it('gates every path that writes overlay fields on the one overlay predicate', () => {

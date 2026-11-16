@@ -345,6 +345,20 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('fourshared_connect');
     });
 
+    it("4shared checks and signs out the edited profile's own sign-in, not the shared one", async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        // Only the edited profile's key holds a sign-in.
+        mocks.invoke.mockImplementation(async (command: string, args?: any) =>
+            command === 'fourshared_has_tokens' ? args?.profileId === 'edited' : previous(command, args));
+        await openEditor('fourshared');
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_has_tokens', { profileId: 'edited' });
+        // Seen as signed in: the form offers to connect with it.
+        expect(button('connection.fourshared.connectTo4shared')).toBeTruthy();
+        const logout = container.querySelector<HTMLButtonElement>('button[title="connection.fourshared.disconnectAccount"]')!;
+        await act(async () => logout.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_logout', { profileId: 'edited' });
+    });
+
     it.each([false, true])('4shared reconnect updates the edited ID after a rename (existing tokens: %s)', async tokens => {
         const previous = mocks.invoke.getMockImplementation()!;
         mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? tokens : previous(command, args));
@@ -1174,6 +1188,8 @@ describe('An AeroCloud open after an abandoned sign-in', () => {
             loadedCertificateCheck: () => true,
             loadedOption: () => undefined,
             loadedOptionOn: () => false,
+            connectTlsMode: () => undefined,
+            webdavConnectBasePath: () => null,
             isSshProtocol: () => false,
             checkSftpHostKey: vi.fn(async () => true),
             CONNECT_CANCELLED_MARKER: 'cancelled',
@@ -1729,6 +1745,118 @@ describe('Reviewed ownership of a connect', () => {
         expect(notify.info).not.toHaveBeenCalled();
     });
 
+    it("sends B's connect only after A's cancel reached the backend, when the cancel is slow", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot; a connect whose token was cancelled before its install is
+        // refused there. A's cancel is held, as a slow IPC would.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        const order: string[] = [];
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        let deliverCancel!: () => void;
+        const cancelHeld = new Promise<void>(resolve => { deliverCancel = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') {
+                await cancelHeld;
+                backend.cancelled.add(args.token!);
+                order.push(`cancel ${args.token}`);
+                return undefined;
+            }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                order.push(`connect ${server}`);
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        vi.useRealTimers();
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        // B's phase begins: A's cancel is sent but not yet delivered.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const b = wrappers.runConnect('provider_connect', { server: 'B' });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(order).toEqual(['connect A']);
+        // The cancel is delivered: only now is B's connect sent.
+        deliverCancel();
+        await b;
+        expect(order).toEqual(['connect A', 'cancel token-1', 'connect B']);
+        expect(backend.slot).toBe('B');
+        // A comes back late: cancelled in the backend, its install is refused.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+    });
+
+    it("keeps B's backend certain when B confirms while a cancelled A is still cleaning up", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                // A is in its cleanup: refused before its install, it still
+                // disconnects its own provider before it answers.
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        vi.useRealTimers();
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        await wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        accounting.confirmBackendConnection();
+        expect(refs.backendUncertainRef.current).toBe(false);
+        const replacementsWithB = refs.backendReplacementSeqRef.current;
+        // A answers only now, refused before its install.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+        // A replaced nothing: B's tab keeps its backend.
+        expect(refs.backendUncertainRef.current).toBe(false);
+        expect(refs.backendReplacementSeqRef.current).toBe(replacementsWithB);
+        expect(refs.backendTeardownsRef.current).toBe(0);
+    });
+
     it("keeps B in the slot when A times out, B connects and is confirmed, then A's connect returns", async () => {
         const refs = freshRefs();
         const accounting = await accountingOn(refs);
@@ -2079,7 +2207,7 @@ describe('A provider connect that could reuse a live session', () => {
             t: (key: string) => key,
             connectStartFolder,
             probeAliveArgs: () => ({}),
-            sameQuickConnectTarget: () => true,
+            reusesOpenTab: () => true,
             confirmBackendConnection: vi.fn(),
             fetchStorageQuota: vi.fn(),
             showHiddenFiles: false,

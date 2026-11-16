@@ -644,7 +644,15 @@ pub struct ConnectionCancelRegistry {
     /// Each key's live registration: its own id and its token.
     tokens: std::sync::Mutex<std::collections::HashMap<String, (u64, CancellationToken)>>,
     next_id: std::sync::atomic::AtomicU64,
+    /// Keys cancelled before their connect registered: a cancel that reaches
+    /// the backend ahead of its command (a newer connect overtook it while
+    /// the command was still on its way) is kept here, and the registration
+    /// that follows starts cancelled. Bounded, oldest dropped first.
+    cancelled_before_registration: std::sync::Mutex<std::collections::VecDeque<String>>,
 }
+
+/// How many early cancels the registry keeps for connects not yet registered.
+const EARLY_CANCELS_KEPT: usize = 64;
 
 impl ConnectionCancelRegistry {
     pub fn new() -> Self {
@@ -662,6 +670,13 @@ impl ConnectionCancelRegistry {
         let token = CancellationToken::new();
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let mut map = self.lock();
+        // A cancel that arrived first: this attempt starts cancelled.
+        let mut early = self.early_cancels();
+        if let Some(at) = early.iter().position(|cancelled| cancelled == key) {
+            early.remove(at);
+            token.cancel();
+        }
+        drop(early);
         if let Some((_, previous)) = map.insert(key.to_string(), (id, token.clone())) {
             previous.cancel();
         }
@@ -683,17 +698,30 @@ impl ConnectionCancelRegistry {
     }
 
     /// Cancel the in-progress connection registered under `key`. Idempotent:
-    /// returns `true` if a live token was found and signalled, `false` if the
-    /// key was already gone (the connect resolved before the cancel landed, or
-    /// it was never registered).
+    /// returns `true` if a live token was found and signalled, `false` if none
+    /// is registered. A key with no registration is remembered (bounded), so a
+    /// connect whose command arrives after its cancel registers cancelled and
+    /// never connects; a key whose connect already resolved is never reused.
     pub fn cancel(&self, key: &str) -> bool {
-        match self.lock().get(key) {
-            Some((_, token)) => {
-                token.cancel();
-                true
-            }
-            None => false,
+        let map = self.lock();
+        if let Some((_, token)) = map.get(key) {
+            token.cancel();
+            return true;
         }
+        let mut early = self.early_cancels();
+        if !early.iter().any(|cancelled| cancelled == key) {
+            if early.len() == EARLY_CANCELS_KEPT {
+                early.pop_front();
+            }
+            early.push_back(key.to_string());
+        }
+        false
+    }
+
+    fn early_cancels(&self) -> std::sync::MutexGuard<'_, std::collections::VecDeque<String>> {
+        self.cancelled_before_registration
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
     }
 
     fn lock(
@@ -2262,6 +2290,19 @@ where
     Ok(format!("Connected to {} via {}", display_name, protocol))
 }
 
+/// Refuse the install of a connect that was cancelled: its own provider is
+/// disconnected, outside every lock and bounded (a failure is only logged),
+/// and the slot is never touched.
+async fn refuse_cancelled_install(mut provider: Box<dyn StorageProvider>) -> Result<(), String> {
+    match tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(_)) | Err(_) => {
+            warn!("provider_connect: a connect cancelled before its install did not disconnect cleanly")
+        }
+    }
+    Err(CONNECT_CANCELLED.to_string())
+}
+
 /// Put a freshly connected provider in the slot, disconnecting the previous
 /// one. Storage reads of the previous connection are cancelled first (#958),
 /// so a stalled scan or quota read cannot keep the slot from being taken.
@@ -2299,6 +2340,11 @@ async fn install_connected_provider_with_config(
     wait: Duration,
     cancel: Option<&CancellationToken>,
 ) -> Result<(), String> {
+    // A connect cancelled before it gets here leaves the live connection as
+    // it is, its storage reads included: it is refused before anything runs.
+    if cancel.is_some_and(CancellationToken::is_cancelled) {
+        return refuse_cancelled_install(provider).await;
+    }
     state.cancel_storage_reads();
     let connection_change = match state.transfer_owner_write(wait).await {
         Ok(guard) => guard,
@@ -2312,15 +2358,7 @@ async fn install_connected_provider_with_config(
     if cancel.is_some_and(CancellationToken::is_cancelled) {
         drop(prov_lock);
         drop(connection_change);
-        // Outside the lock and bounded; a refused provider that fails to
-        // disconnect is only logged.
-        match tokio::time::timeout(Duration::from_secs(2), provider.disconnect()).await {
-            Ok(Ok(())) => {}
-            Ok(Err(_)) | Err(_) => {
-                warn!("provider_connect: a connect cancelled before its install did not disconnect cleanly")
-            }
-        }
-        return Err(CONNECT_CANCELLED.to_string());
+        return refuse_cancelled_install(provider).await;
     }
     let previous = prov_lock.replace(provider);
     *state
@@ -24099,6 +24137,99 @@ mod connect_install_cancel_tests {
         assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
     }
 
+    /// CodeRabbit on #1574: a cancel delivered before A's command registered
+    /// was lost, so A connected and installed over B. The registry now keeps
+    /// the early cancel, A registers cancelled and never takes the slot.
+    #[tokio::test]
+    async fn a_cancel_delivered_before_the_connect_registers_still_refuses_it() {
+        let state = ProviderState::new();
+        let registry = ConnectionCancelRegistry::default();
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        // The cancel reaches the backend ahead of A's command.
+        assert!(!registry.cancel("connect-early"));
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "ftp", "server": "127.0.0.1", "port": 9,
+            "username": "u", "password": "p", "connect_token": "connect-early",
+        }))
+        .unwrap();
+        let prepared = std::sync::atomic::AtomicBool::new(false);
+        let connected = provider_connect_inner(
+            &state,
+            &registry,
+            params,
+            |_config: ProviderConfig| async {
+                prepared.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+            |_| {},
+        )
+        .await;
+        assert_eq!(connected.unwrap_err(), CONNECT_CANCELLED);
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst), "B is not disconnected");
+        // A later attempt under another key is not affected, and the early
+        // cancel was consumed by the one it named.
+        let (_, fresh) = registry.register("connect-other");
+        assert!(!fresh.is_cancelled());
+        let (_, again) = registry.register("connect-early");
+        assert!(!again.is_cancelled());
+        let _ = prepared;
+    }
+
+    /// Greptile on #1574: the install cancelled the live connection's storage
+    /// reads before it checked its own cancel. A connect cancelled before it
+    /// gets there now leaves them running, and the slot as it was.
+    #[tokio::test]
+    async fn a_cancelled_install_leaves_the_live_connection_reads_alone() {
+        let state = ProviderState::new();
+        let (b, b_gone) = tagged("B");
+        install_connected_provider(&state, Box::new(b), Some("B".into()), None)
+            .await
+            .unwrap();
+        let (_, quota_read) = state.quota_cancel.arm();
+        let (_, used_scan) = state.used_scan_cancel.arm();
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        let (a, a_gone) = tagged("A");
+        let refused =
+            install_connected_provider(&state, Box::new(a), Some("A".into()), Some(&cancelled))
+                .await
+                .unwrap_err();
+        assert_eq!(refused, CONNECT_CANCELLED);
+        assert!(!quota_read.is_cancelled(), "B's quota read was cancelled");
+        assert!(
+            !used_scan.is_cancelled(),
+            "B's used-space scan was cancelled"
+        );
+        assert_eq!(in_slot(&state).await.as_deref(), Some("B"));
+        assert!(!b_gone.load(Ordering::SeqCst));
+        assert!(
+            a_gone.load(Ordering::SeqCst),
+            "the refused provider is disconnected"
+        );
+    }
+
+    /// The early cancels are bounded: the oldest is dropped first.
+    #[test]
+    fn the_registry_keeps_a_bounded_number_of_early_cancels() {
+        let registry = ConnectionCancelRegistry::default();
+        for n in 0..=EARLY_CANCELS_KEPT {
+            registry.cancel(&format!("k{n}"));
+        }
+        assert!(
+            !registry.register("k0").1.is_cancelled(),
+            "the oldest was dropped"
+        );
+        assert!(registry.register("k1").1.is_cancelled());
+        assert!(registry
+            .register(&format!("k{EARLY_CANCELS_KEPT}"))
+            .1
+            .is_cancelled());
+    }
+
     /// The two features together: a connect that reported a warning while it
     /// prepared and was then overtaken (cancelled) is still refused through
     /// `connected_with_warnings`, the command's own wrapper, and the provider
@@ -24211,9 +24342,17 @@ mod connect_install_cancel_tests {
             .find("async fn install_connected_provider_with_config(")
             .unwrap();
         let body = &code[start..start + code[start..].find("\n}\n").unwrap()];
-        let check = body
-            .find("if cancel.is_some_and(CancellationToken::is_cancelled) {")
-            .expect("the cancel check");
+        // Two checks: one before anything runs (a cancelled connect leaves the
+        // live connection's reads alone), and the last one under the provider
+        // lock, with no await between it and the store.
+        let cancel_check = "if cancel.is_some_and(CancellationToken::is_cancelled) {";
+        let early = body.find(cancel_check).expect("the early cancel check");
+        assert!(
+            early < body.find("state.cancel_storage_reads();").unwrap(),
+            "the cancel is checked before the live connection's reads are cancelled"
+        );
+        let check = body.rfind(cancel_check).expect("the cancel check");
+        assert!(early < check, "a check under the provider lock too");
         let store = body
             .find("let previous = prov_lock.replace(provider);")
             .unwrap();

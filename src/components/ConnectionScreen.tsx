@@ -158,13 +158,16 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
 
     // This component owns authentication only. Profile metadata belongs to the
     // shared right column, so edit hydration and tab drafts have one source.
+    // The sign-in this form would use is the one stored under its own key
+    // (`tokenProfileId`): checked again whenever that key changes.
     useEffect(() => {
         let cancelled = false;
+        setIsChecking(true);
         void (async () => {
             try {
                 const [credentials, tokens] = await Promise.allSettled([
                     loadFourSharedCredentials(),
-                    invoke<boolean>('fourshared_has_tokens').catch(() => false),
+                    invoke<boolean>('fourshared_has_tokens', { profileId: tokenProfileId }).catch(() => false),
                 ]);
                 if (cancelled) return;
                 setHasExistingTokens(tokens.status === 'fulfilled' && !!tokens.value);
@@ -181,7 +184,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
             }
         })();
         return () => { cancelled = true; };
-    }, []);
+    }, [tokenProfileId]);
 
     const handleConnect = async () => {
         if (disabled) return;
@@ -220,7 +223,7 @@ const FourSharedConnect: React.FC<FourSharedConnectProps> = ({ rightColumn, onCo
 
     const handleLogout = async () => {
         try {
-            await invoke('fourshared_logout');
+            await invoke('fourshared_logout', { profileId: tokenProfileId });
             setHasExistingTokens(false);
             setWantsNewAccount(false);
         } catch (err) {
