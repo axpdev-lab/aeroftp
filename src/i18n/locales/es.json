@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} no tiene SFTP, así que AeroFTP usa SCP en la misma conexión.",
             "saveOnAnotherServer": "No guardado: este archivo se abrió desde un servidor, cuenta o superposición cifrada que ahora no está activa. Vuelve a su pestaña y guarda de nuevo.",
             "openedOnAnotherServer": "No abierto: el servidor cambió mientras se leía el archivo. Ábrelo de nuevo.",
-            "remoteTargetChanged": "No se cambió nada: el servidor, la cuenta o la capa cifrada cambió desde que empezó la acción, o aún se está reconectando. Inténtalo de nuevo en la conexión actual."
+            "remoteTargetChanged": "No se cambió nada: el servidor, la cuenta o la capa cifrada cambió desde que empezó la acción, o aún se está reconectando. Inténtalo de nuevo en la conexión actual.",
+            "connectEarlierNotStopped": "No se pudo detener un intento de conexión anterior y sigue en curso, por lo que esta conexión no se inició. Inténtelo de nuevo cuando termine."
         },
         "about": {
             "tagline": "Más que FTP. Un toolkit completo para desarrolladores.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: almacenamiento distribuido globalmente compatible con S3, sin cargos por salida de datos (5 GB gratis)",
             "trustPasvAddress": "Usar la dirección pasiva indicada por el servidor",
             "trustPasvAddressHelp": "Desactivado: las conexiones de datos van al host al que te has conectado, como hace curl. Actívalo solo para un servidor que envía los datos desde otra dirección.",
-            "discoverFastly": "Fastly Object Storage: almacenamiento compatible con S3 en 12 regiones (5 GB gratis, requiere tarjeta)"
+            "discoverFastly": "Fastly Object Storage: almacenamiento compatible con S3 en 12 regiones (5 GB gratis, requiere tarjeta)",
+            "discoverNeon": "Neon Object Storage: almacenamiento compatible con S3 por rama de proyecto (5 GB gratis por proyecto)",
+            "discoverPuter": "Almacenamiento en la nube Puter vía WebDAV (25 MB gratis, sin tarjeta)",
+            "discoverLifetimeCloud": "Almacenamiento LifetimeCloud mediante WebDAV (1 GB gratis, sin tarjeta)"
         },
         "shortcuts": {
             "title": "Atajos de Teclado",

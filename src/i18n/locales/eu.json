@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} zerbitzariak ez du SFTPrik, beraz AeroFTP SCP erabiltzen ari da konexio berean.",
             "saveOnAnotherServer": "Ez da gorde: fitxategi hau orain aktibo ez dagoen zerbitzari, kontu edo geruza zifratu batetik ireki zen. Itzuli bere fitxara eta gorde berriro.",
             "openedOnAnotherServer": "Ez da ireki: zerbitzaria aldatu da fitxategia irakurtzen ari zen bitartean. Ireki berriro.",
-            "remoteTargetChanged": "Ez da ezer aldatu: zerbitzaria, kontua edo geruza zifratua aldatu da ekintza hasi zenetik, edo oraindik birkonektatzen ari da. Saiatu berriro uneko konexioan."
+            "remoteTargetChanged": "Ez da ezer aldatu: zerbitzaria, kontua edo geruza zifratua aldatu da ekintza hasi zenetik, edo oraindik birkonektatzen ari da. Saiatu berriro uneko konexioan.",
+            "connectEarlierNotStopped": "Aurreko konexio-saiakera bat ezin izan da gelditu eta oraindik martxan dago, beraz konexio hau ez da hasi. Saiatu berriro amaitzen denean."
         },
         "about": {
             "tagline": "FTP baino gehiago. Garatzaileentzako tresna-sorta osoa.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: mundu osoan banatutako S3-rekin bateragarria den biltegiratzea, datu-irteeren kosturik gabe (5 GB doan)",
             "trustPasvAddress": "Erabili zerbitzariak emandako helbide pasiboa",
             "trustPasvAddressHelp": "Desaktibatuta: datu-konexioak konektatu zaren ostalarira doaz, curl-ek egiten duen bezala. Aktibatu soilik datuak beste helbide batetik bidaltzen dituen zerbitzari baterako.",
-            "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan, txartela behar da)"
+            "discoverFastly": "Fastly Object Storage: S3rekin bateragarria den biltegiratzea 12 eskualdetan (5 GB doan, txartela behar da)",
+            "discoverNeon": "Neon Object Storage: S3-rekin bateragarria den biltegiratzea proiektu-adar bakoitzerako (5 GB doan proiektu bakoitzeko)",
+            "discoverPuter": "Puter hodei-urrunera WebDAV bidez (25 MB doan, txartelik gabe)",
+            "discoverLifetimeCloud": "LifetimeCloud biltegiratzea WebDAV bidez (1 GB doan, txartelik gabe)"
         },
         "shortcuts": {
             "title": "Teklatu lasterbideak",

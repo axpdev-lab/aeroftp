@@ -2,6 +2,7 @@ import { ConnectScope, type ProfileConnectOutcome, type RegisterProfileConnector
 import * as React from 'react';
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ConnectionParams, ServerProfile } from '../../types';
+import type { BackendMark, ConnectReceipt } from '../../utils/backendMark';
 import { IntroHubHeader, FormTab } from './IntroHubHeader';
 import { applyFormTabReorder } from './formTabReorder';
 import { findOpenEditTab, markEditSessionEnded } from './editFormTabs';
@@ -52,11 +53,11 @@ export interface IntroHubProps {
     onConnectionParamsChange: (params: ConnectionParams) => void;
     onQuickConnectDirsChange: (dirs: QuickConnectDirs) => void;
     onConnect: (overrideParams?: ConnectionParams) => void;
-    onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, scope?: ConnectScope) => Promise<void | ProfileConnectOutcome>;
+    onSavedServerConnect: (params: ConnectionParams, initialPath?: string, localInitialPath?: string, signInMark?: BackendMark, scope?: ConnectScope) => Promise<void | ProfileConnectOutcome>;
     /** Run a connect phase under a cancel token so Esc / "still connecting"
      *  Cancel aborts it. Threaded down to the My Servers OAuth connect path,
      *  which dispatches OAuth full-auth + connect itself (#360). */
-    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>) => Promise<T>;
+    cancellableConnect?: <T,>(run: (connectToken: string) => Promise<T>, receipt?: ConnectReceipt) => Promise<T>;
     onSkipToFileManager: () => void;
     onAeroFile?: () => void;
     onAeroCloud?: () => void;

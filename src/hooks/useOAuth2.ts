@@ -9,6 +9,7 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { countedOAuthLogin, oauthLoginKey } from '../utils/oauthLogins';
+import { translate } from '../i18n';
 
 export type OAuthProvider = 'google_drive' | 'googlephotos' | 'dropbox' | 'onedrive' | 'box' | 'pcloud' | 'zoho_workdrive' | 'yandexdisk';
 
@@ -29,6 +30,84 @@ interface OAuthConnectionParams {
    * same device. Omitted requests keep the legacy singleton key. Issue #214.
    */
   profile_id?: string;
+}
+
+/** What a sign-in in the connection form tells App about the invoke that
+ *  replaces the backend's provider: `start` before it, `settled` when it ends,
+ *  either way. */
+export interface BackendSwapDetail {
+  token: number;
+  phase: 'start' | 'settled';
+}
+
+let lastBackendSwapToken = 0;
+let lastSettledBackendSwapToken = 0;
+
+/** The token of the sign-in swap that settled last, the one whose provider
+ *  the backend holds. The form reads it when its `onConnected` starts, which
+ *  runs in the same task as that settle (no IPC reply can come between), so
+ *  its report (`aeroftp-sign-in-handoff`, `aeroftp-sign-in-abandoned`) names
+ *  its own sign-in even when another one is still running. */
+export const latestSettledBackendSwapToken = (): number => lastSettledBackendSwapToken;
+
+/** How long a sign-in waits for the one before it to settle, as long as a
+ *  connect may take (`CONNECT_HARD_TIMEOUT_MS` in App). */
+export const BACKEND_SWAP_WAIT_MS = 120_000;
+
+/** Settles when the latest queued swap settles (or gives up waiting). Module
+ *  state, so a window reload starts with an empty queue. */
+let swapQueueTail: Promise<void> = Promise.resolve();
+
+/** Runs a sign-in's invoke that replaces the backend's provider
+ *  (`oauth2_connect`, `fourshared_connect`). App is told first, in the same
+ *  task, so the live tab is put aside before the backend leaves it: the swap
+ *  used to happen first, and until the form handed the connect over the tab
+ *  stayed live, and the transfer queue could start on it, over the new
+ *  account.
+ *
+ *  One swap at a time: a second sign-in is put aside and counted at once,
+ *  but its invoke starts only once the one before it settled, so the backend
+ *  installs the providers in the order their replies arrive and the swap that
+ *  settled last is the one it holds. The live tab stays put aside for the
+ *  whole wait (App counts the swap from its start). The wait is bounded: past
+ *  `BACKEND_SWAP_WAIT_MS` the sign-in fails with the timed-out connect text,
+ *  replacing nothing and owning nothing, and its place in the queue passes on
+ *  the swap still running before it, so the sign-ins behind it keep waiting
+ *  for that one, each with its own bounded wait. A sign-in whose invoke ran,
+ *  even one that threw at once or was rejected, frees its place when it
+ *  settles. */
+export function swapBackend<T>(run: () => Promise<T>): Promise<T> {
+  const token = ++lastBackendSwapToken;
+  let ran = false;
+  const tell = (phase: BackendSwapDetail['phase']) => {
+    if (phase === 'settled' && ran) lastSettledBackendSwapToken = token;
+    window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
+  };
+  tell('start');
+  const previous = swapQueueTail;
+  let release!: () => void;
+  swapQueueTail = new Promise<void>((resolve) => { release = resolve; });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const turn = new Promise<boolean>((resolve) => {
+    timer = setTimeout(() => resolve(false), BACKEND_SWAP_WAIT_MS);
+    void previous.then(() => resolve(true));
+  });
+  let handedOn = false;
+  return turn
+    .then((ready) => {
+      clearTimeout(timer);
+      if (!ready) {
+        handedOn = true;
+        void previous.then(release);
+        throw new Error(translate('toast.connectTimedOut'));
+      }
+      ran = true;
+      return run();
+    })
+    .finally(() => {
+      if (!handedOn) release();
+      tell('settled');
+    });
 }
 
 interface UseOAuth2Return {
@@ -71,7 +150,7 @@ export function useOAuth2(): UseOAuth2Return {
    */
   const connect = useCallback(async (params: OAuthConnectionParams): Promise<string> => {
     try {
-      const result = await invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params });
+      const result = await swapBackend(() => invoke<{ display_name: string; account_email: string | null }>('oauth2_connect', { params }));
       setIsAuthenticating(false);
       return result.display_name;
     } catch (e) {

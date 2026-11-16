@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} heeft geen SFTP, dus AeroFTP gebruikt SCP op dezelfde verbinding.",
             "saveOnAnotherServer": "Niet opgeslagen: dit bestand is geopend vanaf een server, account of versleutelde overlay die nu niet actief is. Ga terug naar het tabblad ervan en sla opnieuw op.",
             "openedOnAnotherServer": "Niet geopend: de server is gewijzigd tijdens het lezen van het bestand. Open het opnieuw.",
-            "remoteTargetChanged": "Er is niets gewijzigd: de server, het account of de versleutelde overlay is veranderd sinds de actie begon, of maakt nog opnieuw verbinding. Probeer het opnieuw op de huidige verbinding."
+            "remoteTargetChanged": "Er is niets gewijzigd: de server, het account of de versleutelde overlay is veranderd sinds de actie begon, of maakt nog opnieuw verbinding. Probeer het opnieuw op de huidige verbinding.",
+            "connectEarlierNotStopped": "Een eerdere verbindingspoging kon niet worden gestopt en loopt nog, dus deze verbinding is niet gestart. Probeer het opnieuw zodra die is beëindigd."
         },
         "about": {
             "tagline": "Meer dan FTP. Een complete ontwikkelaarstoolkit.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: wereldwijd gedistribueerde S3-compatibele opslag, geen egress-kosten (5 GB gratis)",
             "trustPasvAddress": "Het door de server opgegeven passieve adres gebruiken",
             "trustPasvAddressHelp": "Uit: dataverbindingen gaan naar de host waarmee je verbonden bent, zoals curl doet. Zet dit alleen aan voor een server die data vanaf een ander adres verstuurt.",
-            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)"
+            "discoverFastly": "Fastly Object Storage: S3-compatibele opslag in 12 regio's (5 GB gratis, kaart vereist)",
+            "discoverNeon": "Neon Object Storage: S3-compatibele opslag per projectbranch (5 GB gratis per project)",
+            "discoverPuter": "Puter-cloudopslag via WebDAV (25 MB gratis, zonder kaart)",
+            "discoverLifetimeCloud": "LifetimeCloud-opslag via WebDAV (1 GB gratis, geen kaart)"
         },
         "shortcuts": {
             "title": "Sneltoetsen",

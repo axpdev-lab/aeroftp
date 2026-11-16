@@ -150,14 +150,20 @@ pub async fn proton_native_sign_in(
     cancel_registry: State<'_, ConnectionCancelRegistry>,
     params: ProtonSignInParams,
 ) -> Result<ProtonSignInResult, String> {
-    let token = match params.connect_token.as_deref() {
-        Some(key) => cancel_registry.register(key),
-        None => CancellationToken::new(),
+    let (token, _guard) = match params.connect_token.as_deref() {
+        Some(key) => {
+            let (id, token) = cancel_registry.register(key);
+            (
+                token,
+                Some(ConnectTokenGuard::new(
+                    &cancel_registry,
+                    key.to_string(),
+                    id,
+                )),
+            )
+        }
+        None => (CancellationToken::new(), None),
     };
-    let _guard = params
-        .connect_token
-        .as_deref()
-        .map(|key| ConnectTokenGuard::new(&cancel_registry, key.to_string()));
     let email = sign_in(profile(&params.profile_id), &token, |url| {
         browser_launch_result(open::that(url))
     })

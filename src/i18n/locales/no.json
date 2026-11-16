@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} har ikke SFTP, så AeroFTP bruker SCP på samme tilkobling.",
             "saveOnAnotherServer": "Ikke lagret: denne filen ble åpnet fra en server, konto eller kryptert overlegg som ikke er aktivt nå. Bytt tilbake til fanen og lagre på nytt.",
             "openedOnAnotherServer": "Ikke åpnet: serveren ble endret mens filen ble lest. Åpne den på nytt.",
-            "remoteTargetChanged": "Ingenting ble endret: serveren, kontoen eller det krypterte laget er endret siden handlingen startet, eller kobler fortsatt til på nytt. Prøv igjen på gjeldende tilkobling."
+            "remoteTargetChanged": "Ingenting ble endret: serveren, kontoen eller det krypterte laget er endret siden handlingen startet, eller kobler fortsatt til på nytt. Prøv igjen på gjeldende tilkobling.",
+            "connectEarlierNotStopped": "Et tidligere tilkoblingsforsøk kunne ikke stoppes og kjører fortsatt, så denne tilkoblingen ble ikke startet. Prøv igjen når det er ferdig."
         },
         "about": {
             "tagline": "Mer enn FTP. Et komplett utviklerverktøy.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: globalt distribuert S3-kompatibel lagring, ingen gebyrer for utgående data (5 GB gratis)",
             "trustPasvAddress": "Bruk den passive adressen serveren oppgir",
             "trustPasvAddressHelp": "Av: dataforbindelser går til verten du koblet til, slik curl gjør. Slå på bare for en server som sender data fra en annen adresse.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibel lagring i 12 regioner (5 GB gratis, kort kreves)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibel lagring per prosjektgren (5 GB gratis per prosjekt)",
+            "discoverPuter": "Puter-skylagring via WebDAV (25 MB gratis, ingen kort)",
+            "discoverLifetimeCloud": "LifetimeCloud-lagring via WebDAV (1 GB gratis, uten kort)"
         },
         "shortcuts": {
             "title": "Tastatursnarveier",

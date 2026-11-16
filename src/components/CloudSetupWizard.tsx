@@ -6,6 +6,7 @@
 // through saved profiles, so there is no connection form here: a user without
 // a compatible profile is sent to My Servers before the wizard starts.
 
+import { hasUnresolvedUsernameTemplate, USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
 import * as React from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -212,16 +213,23 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
         if (selected) setLocalFolder(selected as string);
     };
 
-    const rootLabel = `${profile ? aeroCloudBase(withShownFolders(profile)) : ''}/`;
+    // A base the user name cannot fill still holds the placeholder: shown as a
+    // refusal and never saved, as the backend refuses it before any request.
+    const unresolvedBase = !!profile && hasUnresolvedUsernameTemplate(aeroCloudBase(profile));
+    const rootLabel = `${profile && !unresolvedBase ? aeroCloudBase(withShownFolders(profile)) : ''}/`;
     // A sub-folder refused for an empty step is named as written: stripped,
     // `a//` would read `.../a/`, a folder with nothing wrong in it.
     const sub = subfolder.trim();
     const remoteLabel = `${rootLabel}${locationProblem(sub) ? sub : sub.replace(/^\/+|\/+$/g, '')}`.replace(/\/?$/, '/');
     const notPlain = !!profile && aeroCloudFolderNotPlain(profile, subfolder);
-    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !notPlain;
+    const canAdvance = step === 1 ? !!localFolder.trim() : !!profile && !notPlain && !unresolvedBase;
 
     const handleComplete = async () => {
         if (!profile || aeroCloudFolderNotPlain(profile, subfolder)) return;
+        if (unresolvedBase) {
+            setError(t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED }));
+            return;
+        }
         setSaving(true);
         setError(null);
         try {
@@ -382,6 +390,11 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                                     <AlertCircle size={13} className="shrink-0 mt-0.5" /> <span className="break-words min-w-0">{t('cloud.remoteFolderNotPlain')}</span>
                                 </p>
                             )}
+                            {unresolvedBase && (
+                                <p role="alert" className="text-xs text-red-600 dark:text-red-400 mt-1">
+                                    {t('cloud.setupFailed', { error: USERNAME_TEMPLATE_UNRESOLVED })}
+                                </p>
+                            )}
                         </div>
                         {caveat && (
                             <p className="flex items-start gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -450,7 +463,7 @@ export const CloudSetupWizard: React.FC<CloudSetupWizardProps> = ({ onComplete, 
                             {t('common.next')} <ChevronRight size={16} />
                         </button>
                     ) : (
-                        <button onClick={handleComplete} disabled={saving || notPlain} className={PRIMARY_BUTTON_CLASS}>
+                        <button onClick={handleComplete} disabled={saving || notPlain || unresolvedBase} className={PRIMARY_BUTTON_CLASS}>
                             {saving ? <Loader2 className="animate-spin" size={16} /> : <Cloud size={16} />}
                             {t('cloud.enableCloud')}
                         </button>

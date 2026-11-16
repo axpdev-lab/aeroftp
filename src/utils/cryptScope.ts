@@ -1,3 +1,4 @@
+import { expandUsernameInPath } from './usernameTemplate';
 import type { ServerProfile } from '../types';
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 // SPDX-License-Identifier: GPL-3.0-or-later
@@ -67,10 +68,7 @@ export const resolveUsernameTemplate = (
   username: string | null | undefined,
 ): string | null => {
   if (!path) return null;
-  if (!path.includes('{username}')) return path;
-  const u = username || '';
-  if (!u.trim()) return path;
-  return path.split('{username}').join(u);
+  return expandUsernameInPath(path, username);
 };
 
 /**

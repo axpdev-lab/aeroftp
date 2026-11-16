@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} hat kein SFTP, daher verwendet AeroFTP SCP auf derselben Verbindung.",
             "saveOnAnotherServer": "Nicht gespeichert: Diese Datei wurde von einem Server, Konto oder verschlüsselten Overlay geöffnet, das jetzt nicht aktiv ist. Wechseln Sie zurück zu dessen Tab und speichern Sie erneut.",
             "openedOnAnotherServer": "Nicht geöffnet: Der Server hat sich während des Lesens der Datei geändert. Öffne sie erneut.",
-            "remoteTargetChanged": "Nichts wurde geändert: Server, Konto oder verschlüsseltes Overlay haben sich seit dem Start der Aktion geändert oder verbinden sich noch neu. Versuchen Sie es erneut mit der aktuellen Verbindung."
+            "remoteTargetChanged": "Nichts wurde geändert: Server, Konto oder verschlüsseltes Overlay haben sich seit dem Start der Aktion geändert oder verbinden sich noch neu. Versuchen Sie es erneut mit der aktuellen Verbindung.",
+            "connectEarlierNotStopped": "Ein früherer Verbindungsversuch konnte nicht gestoppt werden und läuft noch, daher wurde diese Verbindung nicht gestartet. Versuchen Sie es erneut, sobald er beendet ist."
         },
         "about": {
             "tagline": "Mehr als FTP. Ein komplettes Entwickler-Toolkit.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: global verteilter S3-kompatibler Speicher, keine Egress-Gebühren (5 GB kostenlos)",
             "trustPasvAddress": "Vom Server genannte passive Adresse verwenden",
             "trustPasvAddressHelp": "Aus: Datenverbindungen gehen an den Host, mit dem Sie verbunden sind, wie bei curl. Nur für einen Server aktivieren, der Daten von einer anderen Adresse sendet.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibler Speicher in 12 Regionen (5 GB kostenlos, Karte erforderlich)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibler Speicher pro Projekt-Branch (5 GB kostenlos pro Projekt)",
+            "discoverPuter": "Puter-Cloudspeicher über WebDAV (25 MB kostenlos, ohne Karte)",
+            "discoverLifetimeCloud": "LifetimeCloud-Speicher über WebDAV (1 GB kostenlos, ohne Karte)"
         },
         "shortcuts": {
             "title": "Tastenkombinationen",

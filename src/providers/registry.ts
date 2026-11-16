@@ -1355,6 +1355,48 @@ export const PROVIDERS: ProviderConfig[] = [
             'Endpoint and Region come from the same rclone snippet: open "Advanced" below if your values differ from the defaults (storage.kapsa.io / us-east-1)',
         ],
     },
+    {
+        id: 'neon-s3',
+        name: 'Neon Object Storage',
+        description: 'S3-compatible object storage in a Neon project (5 GB free per project)',
+        protocol: 's3',
+        category: 's3',
+        icon: 'Cloud',
+        color: '#84CC16',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.accessKeyId, helpText: 'Neon Console → Storage → Connect → S3 credentials (or `neon credentials create --scope storage:read --scope storage:write`)' },
+            { ...COMMON_FIELDS.secretAccessKey, helpText: 'Shown once when the S3 credentials are created' },
+            { ...COMMON_FIELDS.bucket, placeholder: 'my-neon-bucket', helpText: 'Bucket created in the Neon Console Storage tab' },
+            {
+                ...COMMON_FIELDS.endpoint,
+                placeholder: 'https://<branch-id>.storage.<cell>.<region>.aws.neon.tech',
+                helpText: 'Neon Console → Connect → Storage tab → S3 endpoint (each branch has its own)',
+            },
+            {
+                key: 'region',
+                label: 'Region',
+                type: 'select',
+                required: true,
+                // The four regions rclone's Neon provider publishes
+                // (backend/s3/provider/Neon.yaml, rclone v1.76.0).
+                options: [
+                    { value: 'eu-central-1', label: 'EU Central 1 (Frankfurt)' },
+                    { value: 'us-east-1', label: 'US East 1 (N. Virginia)' },
+                    { value: 'us-east-2', label: 'US East 2 (Ohio)' },
+                    { value: 'ap-southeast-1', label: 'AP Southeast 1 (Singapore)' },
+                ],
+                group: 'server',
+            },
+        ],
+        features: {
+            shareLink: true,
+            sync: true,
+        },
+        healthCheckUrl: 'https://neon.com',
+        helpUrl: 'https://neon.com/docs/storage/overview',
+        signupUrl: 'https://console.neon.tech',
+    },
 
     // =========================================================================
     // WEBDAV PROVIDERS
@@ -1418,6 +1460,30 @@ export const PROVIDERS: ProviderConfig[] = [
         signupUrl: 'https://www.cloudme.com/signup',
     },
     {
+        id: 'puter-webdav',
+        name: 'Puter',
+        description: 'Puter cloud storage via WebDAV (25 MB free, no card)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#8B5CF6',
+        stable: true,
+        fields: [
+            { ...COMMON_FIELDS.username, placeholder: 'Your Puter username', helpText: 'Token auth: use -token as the username (literal)' },
+            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set Server to https://dav.puter.com/<username> (the {username} path resolves to -token otherwise)' },
+        ],
+        setupInstructions: [
+            'The free plan is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
+        ],
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://api.puter.com',
+        helpUrl: 'https://docs.puter.com',
+        signupUrl: 'https://puter.com',
+    },
+    {
         id: 'drivehq',
         name: 'DriveHQ',
         description: 'Enterprise cloud storage and file sharing',
@@ -1467,6 +1533,45 @@ export const PROVIDERS: ProviderConfig[] = [
             'Use your full mailbox address as the username (name@mail.ru, also inbox.ru, list.ru, bk.ru, internet.ru)',
             'Generate an app password at account.mail.ru, Security, Passwords for external applications (mailbox password rejected since 2022)',
             'If the app password does not work, recreate it with Full access to Mail, Cloud and Calendar (Cloud-only scope is known to fail with third-party clients)',
+        ],
+    },
+    {
+        id: 'lifetimecloud',
+        name: 'LifetimeCloud',
+        description: 'LifetimeCloud storage via WebDAV (1 GB free, no card)',
+        protocol: 'webdav',
+        category: 'webdav',
+        icon: 'Cloud',
+        color: '#2563EB',
+        stable: true,
+        fields: [
+            {
+                ...COMMON_FIELDS.username,
+                placeholder: 'Your LifetimeCloud username',
+                helpText: 'Used to fill https://lifetimecloud.me/dav/{username}/ automatically',
+            },
+            {
+                ...COMMON_FIELDS.password,
+                label: 'WebDAV token',
+                placeholder: 'Paste WebDAV token (not your LifetimeCloud account password)',
+                helpText: 'Profile > Enable WebDAV > Generate WebDAV token (not your LifetimeCloud account password)',
+            },
+        ],
+        features: {
+            shareLink: false,
+            sync: true,
+        },
+        healthCheckUrl: 'https://lifetimecloud.me/',
+        passwordGenUrl: 'https://lifetimecloud.me/profile',
+        helpUrl: 'https://lifetimecloud.me/articles/rclone-webdav-guide.html',
+        signupUrl: 'https://lifetimecloud.me/register',
+        setupInstructions: [
+            'The free plan has no time limit but limited use: 1 GB, at most 50 MB per file and 50 files, no card',
+            'Sign in to your LifetimeCloud profile, enable WebDAV, and generate a WebDAV token (if compromised, regenerate it)',
+            'Enter that WebDAV token in the WebDAV token field above, not your LifetimeCloud account password',
+            'Plain WebDAV transfers are HTTPS-only without provider-side end-to-end encryption, and WebDAV deletes are permanent (no Trash)',
+            'Files uploaded from the LifetimeCloud website or apps are listed over WebDAV but download as encrypted data: download those from the website',
+            'Optional: enable an AeroCrypt or rclone-crypt overlay in this profile for client-side encryption',
         ],
     },
     {

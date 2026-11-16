@@ -1819,7 +1819,8 @@
             "scpModeBody": "Serverim {host} nav SFTP, tāpēc AeroFTP izmanto SCP tajā pašā savienojumā.",
             "saveOnAnotherServer": "Nav saglabāts: šis fails tika atvērts no servera, konta vai šifrēta slāņa, kas pašlaik nav aktīvs. Atgriezieties tā cilnē un saglabājiet vēlreiz.",
             "openedOnAnotherServer": "Nav atvērts: faila lasīšanas laikā serveris mainījās. Atveriet to vēlreiz.",
-            "remoteTargetChanged": "Nekas netika mainīts: serveris, konts vai šifrētais slānis ir mainījies kopš darbības sākuma vai vēl savienojas atkārtoti. Mēģiniet vēlreiz pašreizējā savienojumā."
+            "remoteTargetChanged": "Nekas netika mainīts: serveris, konts vai šifrētais slānis ir mainījies kopš darbības sākuma vai vēl savienojas atkārtoti. Mēģiniet vēlreiz pašreizējā savienojumā.",
+            "connectEarlierNotStopped": "Iepriekšējo savienojuma mēģinājumu nevarēja apturēt, un tas joprojām darbojas, tāpēc šis savienojums netika sākts. Mēģiniet vēlreiz, kad tas beigsies."
         },
         "about": {
             "tagline": "Vairāk nekā FTP. Pilns izstrādātāja rīku komplekts.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: globāli izkliedēta ar S3 saderīga krātuve, bez maksas par izejošo datplūsmu (5 GB bez maksas)",
             "trustPasvAddress": "Izmantot servera norādīto pasīvo adresi",
             "trustPasvAddressHelp": "Izslēgts: datu savienojumi iet uz resursdatoru, ar kuru izveidojāt savienojumu, kā to dara curl. Ieslēdziet tikai serverim, kas sūta datus no citas adreses.",
-            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)"
+            "discoverFastly": "Fastly Object Storage: ar S3 saderīga krātuve 12 reģionos (5 GB bez maksas, nepieciešama karte)",
+            "discoverNeon": "Neon Object Storage: ar S3 saderīga krātuve katram projekta zaram (5 GB bez maksas par projektu)",
+            "discoverPuter": "Puter mākoņdatu krātuve caur WebDAV (25 MB bez maksas, bez kartes)",
+            "discoverLifetimeCloud": "LifetimeCloud krātuve, izmantojot WebDAV (1 GB bez maksas, bez kartes)"
         },
         "shortcuts": {
             "title": "Tastatūras saīsnes",

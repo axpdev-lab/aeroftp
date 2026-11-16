@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} tidak memiliki SFTP, jadi AeroFTP menggunakan SCP pada koneksi yang sama.",
             "saveOnAnotherServer": "Tidak disimpan: file ini dibuka dari server, akun, atau overlay terenkripsi yang tidak aktif saat ini. Kembali ke tab-nya, lalu simpan lagi.",
             "openedOnAnotherServer": "Tidak dibuka: server berubah saat file sedang dibaca. Buka lagi.",
-            "remoteTargetChanged": "Tidak ada yang diubah: server, akun, atau lapisan terenkripsi berubah sejak tindakan dimulai, atau masih menyambung ulang. Coba lagi pada koneksi saat ini."
+            "remoteTargetChanged": "Tidak ada yang diubah: server, akun, atau lapisan terenkripsi berubah sejak tindakan dimulai, atau masih menyambung ulang. Coba lagi pada koneksi saat ini.",
+            "connectEarlierNotStopped": "Upaya koneksi sebelumnya tidak dapat dihentikan dan masih berjalan, sehingga koneksi ini tidak dimulai. Coba lagi setelah selesai."
         },
         "about": {
             "tagline": "Lebih dari FTP. Perangkat lengkap untuk pengembang.",
@@ -2431,7 +2432,10 @@
             "discoverTigris": "Tigris: penyimpanan terdistribusi global yang kompatibel dengan S3, tanpa biaya egress (5 GB gratis)",
             "trustPasvAddress": "Gunakan alamat pasif yang diberikan server",
             "trustPasvAddressHelp": "Nonaktif: koneksi data menuju host tempat Anda terhubung, seperti yang dilakukan curl. Aktifkan hanya untuk server yang mengirim data dari alamat lain.",
-            "discoverFastly": "Fastly Object Storage: penyimpanan kompatibel S3 di 12 wilayah (5 GB gratis, perlu kartu)"
+            "discoverFastly": "Fastly Object Storage: penyimpanan kompatibel S3 di 12 wilayah (5 GB gratis, perlu kartu)",
+            "discoverNeon": "Neon Object Storage: penyimpanan kompatibel S3 untuk setiap cabang proyek (5 GB gratis per proyek)",
+            "discoverPuter": "Penyimpanan cloud Puter melalui WebDAV (25 MB gratis, tanpa kartu)",
+            "discoverLifetimeCloud": "Penyimpanan LifetimeCloud melalui WebDAV (1 GB gratis, tanpa kartu)"
         },
         "shortcuts": {
             "title": "Pintasan Keyboard",
