@@ -835,14 +835,12 @@ impl FtpManager {
                 self.reconnect().await?;
                 // The new session stands in the login folder. If the folder
                 // the session was in cannot be entered again (removed or
-                // renamed meanwhile), the session is closed, not kept: a
-                // relative path sent after this download (an AeroAgent tool
-                // passes the path the model wrote) would otherwise name a
-                // file in the login folder.
-                if let Err(e) = self.change_dir(&cwd).await {
-                    let _ = self.disconnect().await;
-                    return Err(e);
-                }
+                // renamed meanwhile, or reported as a relative path that
+                // would name a folder under the login one), the session is
+                // closed, not kept: a relative path sent after this download
+                // (an AeroAgent tool passes the path the model wrote) would
+                // otherwise name a file in the wrong folder.
+                self.return_to_folder(&cwd).await?;
                 let stream = self.stream.as_mut().ok_or(FtpManagerError::NotConnected)?;
                 stream
                     .transfer_type(FileType::Binary)
@@ -2353,16 +2351,18 @@ pub(crate) mod exists_tests {
     /// A server that never answers SIZE on its first session and serves the file
     /// on its second.
     async fn stalls_on_size_once(body: &'static [u8]) -> (String, Arc<AtomicUsize>) {
-        let (addr, sessions, _) = stalls_on_size_once_with(body, false).await;
+        let (addr, sessions, _) = stalls_on_size_once_with(body, false, "/").await;
         (addr, sessions)
     }
 
     /// [`stalls_on_size_once`]; with `folder_gone`, its second session refuses
     /// every `CWD` (the folder the first session stood in is no longer
-    /// there). Also gives every command the sessions received, in order.
+    /// there). `pwd` is what every `PWD` reports. Also gives every command the
+    /// sessions received, in order.
     async fn stalls_on_size_once_with(
         body: &'static [u8],
         folder_gone: bool,
+        pwd: &'static str,
     ) -> (String, Arc<AtomicUsize>, Arc<std::sync::Mutex<Vec<String>>>) {
         let commands = Arc::new(std::sync::Mutex::new(Vec::new()));
         let log = Arc::clone(&commands);
@@ -2386,7 +2386,7 @@ pub(crate) mod exists_tests {
                         let reply = match cmd.as_str() {
                             "USER" => "331 password\r\n".to_string(),
                             "PASS" => "230 in\r\n".to_string(),
-                            "PWD" => "257 \"/\"\r\n".to_string(),
+                            "PWD" => format!("257 \"{pwd}\"\r\n"),
                             "CWD" if folder_gone && !first => "550 no such folder\r\n".to_string(),
                             "TYPE" | "CWD" => "200 ok\r\n".to_string(),
                             "SIZE" if first => continue,
@@ -2445,7 +2445,7 @@ pub(crate) mod exists_tests {
     /// download named a file there.
     #[tokio::test]
     async fn a_reconnect_that_cannot_enter_the_folder_again_closes_the_session() {
-        let (addr, sessions, commands) = stalls_on_size_once_with(b"hello", true).await;
+        let (addr, sessions, commands) = stalls_on_size_once_with(b"hello", true, "/").await;
         let dir = tempfile::tempdir().unwrap();
         let local = dir.path().join("a.txt");
         let mut ftp = FtpManager::new();
@@ -2467,6 +2467,36 @@ pub(crate) mod exists_tests {
             commands.lock().unwrap().len(),
             sent.len(),
             "nothing is sent after the close"
+        );
+    }
+
+    /// A server that reports its folder as a relative path: after the
+    /// reconnect that a silent SIZE forces, CWD to that report resolves under
+    /// the login folder, so a folder of the same name there would serve the
+    /// download. The session is closed instead, and no RETR is sent.
+    #[tokio::test]
+    async fn a_reconnect_after_a_relative_folder_report_retrieves_nothing() {
+        let (addr, sessions, commands) = stalls_on_size_once_with(b"hello", false, "work").await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.command_timeout = std::time::Duration::from_millis(200);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        assert_eq!(ftp.current_path(), "work");
+        let outcome = ftp.download_file("a.txt", local.to_str().unwrap()).await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        assert_eq!(sessions.load(Ordering::SeqCst), 2);
+        assert!(!ftp.is_connected(), "the session was kept");
+        assert!(!local.exists());
+        let sent = commands.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("RETR")), "{sent:?}");
+        assert!(
+            !sent
+                .iter()
+                .skip_while(|c| *c != "SIZE a.txt")
+                .any(|c| c.starts_with("CWD")),
+            "the new session entered a folder by the relative report: {sent:?}"
         );
     }
 
