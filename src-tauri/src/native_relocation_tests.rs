@@ -1,4 +1,6 @@
-//! Synthetic, isolated regressions for the production copy-user/move-user path.
+//! Synthetic, isolated regressions: a native Proton Drive session belongs to
+//! one account, on the production save, refresh, sign-out and copy-user /
+//! move-user paths.
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
@@ -10,11 +12,9 @@ use crate::providers::proton_native::{
 };
 use secrecy::SecretString;
 use serde_json::json;
-use std::sync::{mpsc, Arc};
-use std::time::{Duration, Instant};
 
 const TEST: &str =
-    "user_partitions::native_relocation_tests::native_cross_user_relocation_is_guarded_and_atomic";
+    "user_partitions::native_relocation_tests::a_native_session_keeps_to_its_account";
 const MODE: &str = "AEROFTP_NATIVE_RELOCATION_FIXTURE";
 const SOURCE_PASSWORD: &str = "synthetic source password";
 const TARGET_PASSWORD: &str = "synthetic target password";
@@ -30,123 +30,64 @@ fn session(uid: &str, generation: &str) -> ProtonSession {
     }
 }
 
-fn runtime() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap()
+fn raw(session: &ProtonSession) -> String {
+    serde_json::to_string(&StoredSession::from(session)).unwrap()
 }
 
-fn hook(callback: impl FnMut(&str) + 'static) {
-    NATIVE_RELOCATION_HOOK.set(Some(Box::new(callback)));
-}
-
-fn clear_hook() {
-    NATIVE_RELOCATION_HOOK.set(None);
-}
-
-fn assert_pair(raw: &str, uid: &str, generation: &str) {
+/// The generation of the pair a saved session holds.
+fn generation(raw: &str) -> String {
     let saved: StoredSession = serde_json::from_str(raw).unwrap();
-    assert_eq!(saved.uid, uid);
-    assert_eq!(saved.access_token, format!("access-{generation}"));
-    assert_eq!(saved.refresh_token, Some(format!("refresh-{generation}")));
     assert_eq!(saved.key_password, "synthetic-key-password");
-}
-
-fn replacement_child() {
-    let _test = test_lock();
-    // This process reopens the suite's existing master-mode vault. init()
-    // reports a locked vault; it does not consume the password environment
-    // variable for an existing one or inherit the parent's cached key/DEK.
-    assert_eq!(CredentialStore::init().unwrap(), "MASTER_PASSWORD_REQUIRED");
-    CredentialStore::unlock_with_master("synthetic native fixture master", None).unwrap();
-    let store = CredentialStore::from_cache().expect("fixture vault explicitly unlocked");
-    let owner = std::env::var("AEROFTP_RELOCATION_SOURCE_USER")
+    let generation = saved
+        .access_token
+        .strip_prefix("access-")
         .unwrap()
-        .parse()
-        .unwrap();
-    let conn = open_or_init_cli().unwrap();
-    let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-    unlock_user_transient(&conn, &root_key, owner, Some(SOURCE_PASSWORD)).unwrap();
-    let marker = PathBuf::from(std::env::var_os("AEROFTP_RELOCATION_PROBE").unwrap());
-    let raw = serde_json::to_string(&StoredSession::from(&session(
-        "replacement-uid",
-        "replacement",
-    )))
-    .unwrap();
-    // Observe the actual source-key try_lock result, not readiness before
-    // restore_session: the child might otherwise be delayed until after Move.
-    use sha2::{Digest, Sha256};
-    let source_lock_name = format!(
-        "{}.lock",
-        hex::encode(Sha256::digest(
-            vault::session_key(Some("replacement-source")).as_bytes()
-        ))
-    );
-    let probe_marker = marker.clone();
-    vault::observe_key_locks_for_test(move |path, stage| {
-        if path.file_name().and_then(|name| name.to_str()) == Some(source_lock_name.as_str()) {
-            std::fs::write(probe_marker.with_extension(stage), b"observed").unwrap();
-        }
-    });
-    runtime()
-        .block_on(vault::restore_session(
-            vault::SessionOwner::for_user(Some(owner)),
-            "replacement-source",
-            &raw,
-        ))
-        .unwrap();
-    std::fs::write(marker.with_extension("finished"), b"done").unwrap();
+        .to_string();
+    assert_eq!(saved.refresh_token, Some(format!("refresh-{generation}")));
+    generation
 }
 
 #[test]
-fn native_cross_user_relocation_is_guarded_and_atomic() {
-    match std::env::var(MODE).as_deref() {
-        Ok("replacement") => {
-            replacement_child();
-            return;
-        }
-        Ok("suite") => {}
-        _ => {
-            // Isolate the real encrypted vault and partition DB from both the
-            // owner's credentials and parallel lib tests, as the auth fixture does.
-            let executable = std::env::current_exe().unwrap();
-            let root = tempfile::Builder::new()
-                .prefix("native-relocation-")
-                .tempdir_in(executable.parent().unwrap())
-                .unwrap();
-            let child = root.path().join(format!(
-                "native-relocation-test{}",
-                std::env::consts::EXE_SUFFIX
-            ));
-            std::fs::hard_link(&executable, &child)
-                .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
-                .unwrap();
-            std::fs::write(root.path().join("portable.marker"), b"").unwrap();
-            let empty_path = root.path().join("no-external-tools");
-            std::fs::create_dir(&empty_path).unwrap();
-            let output = std::process::Command::new(child)
-                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
-                .env(MODE, "suite")
-                .env("PATH", empty_path)
-                .env("AEROFTP_MASTER_PASSWORD", "synthetic native fixture master")
-                .env("XDG_CONFIG_HOME", root.path().join("config"))
-                .env("XDG_DATA_HOME", root.path().join("data"))
-                .env("XDG_CACHE_HOME", root.path().join("cache"))
-                .env(
-                    "DBUS_SESSION_BUS_ADDRESS",
-                    "unix:path=/nonexistent-native-relocation",
-                )
-                .output()
-                .unwrap();
-            assert!(
-                output.status.success(),
-                "{}\n{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            );
-            return;
-        }
+fn a_native_session_keeps_to_its_account() {
+    if std::env::var(MODE).as_deref() != Ok("suite") {
+        // Isolate the real encrypted vault and partition DB from both the
+        // owner's credentials and parallel lib tests, as the auth fixture does.
+        let executable = std::env::current_exe().unwrap();
+        let root = tempfile::Builder::new()
+            .prefix("native-relocation-")
+            .tempdir_in(executable.parent().unwrap())
+            .unwrap();
+        let child = root.path().join(format!(
+            "native-relocation-test{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+        std::fs::hard_link(&executable, &child)
+            .or_else(|_| std::fs::copy(&executable, &child).map(|_| ()))
+            .unwrap();
+        std::fs::write(root.path().join("portable.marker"), b"").unwrap();
+        let empty_path = root.path().join("no-external-tools");
+        std::fs::create_dir(&empty_path).unwrap();
+        let output = std::process::Command::new(child)
+            .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
+            .env(MODE, "suite")
+            .env("PATH", empty_path)
+            .env("AEROFTP_MASTER_PASSWORD", "synthetic native fixture master")
+            .env("XDG_CONFIG_HOME", root.path().join("config"))
+            .env("XDG_DATA_HOME", root.path().join("data"))
+            .env("XDG_CACHE_HOME", root.path().join("cache"))
+            .env(
+                "DBUS_SESSION_BUS_ADDRESS",
+                "unix:path=/nonexistent-native-relocation",
+            )
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
     }
     let _test = test_lock();
     CredentialStore::init().unwrap();
@@ -154,7 +95,7 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
     init_or_migrate_cli(&store).unwrap();
     let mut conn = open_or_init_cli().unwrap();
     let root_key = store.derive_user_partition_wrapping_key();
-    let active = active_user_id(&conn).unwrap().unwrap();
+    let legacy = active_user_id(&conn).unwrap().unwrap();
     let source = create_user(
         &mut conn,
         &root_key,
@@ -178,511 +119,141 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
     let target_dek =
         resolve_user_dek_scoped(&conn, &root_secret, target.id, Some(TARGET_PASSWORD)).unwrap();
     let owner = vault::SessionOwner::for_user(Some(source.id));
-    let source_id = source.id;
+    let owners_owner = vault::SessionOwner::for_user(Some(legacy));
+    let key = |id: &str| vault::session_key(Some(id));
 
-    let seed = |id: &str, uid: &str| {
+    let add_profile = |user: i64, id: &str| {
         let mut db = open_or_init_cli().unwrap();
-        let mut profiles = list_server_profiles_for(&db, &root_key, source.id).unwrap();
+        let mut profiles = list_server_profiles_for(&db, &root_key, user).unwrap();
         profiles.push(
             json!({"id":id,"name":id,"protocol":"proton","host":"drive.proton.me",
-            "port":443,"username":uid,"options":{"proton_mode":"native"}}),
+            "port":443,"username":format!("{id}@example.test"),"options":{"proton_mode":"native"}}),
         );
-        replace_server_profiles_for(&mut db, &root_key, source.id, &profiles).unwrap();
-        let saved = session(uid, "r1");
-        vault::store_session(owner, Some(id), &saved).unwrap();
-        saved
+        replace_server_profiles_for(&mut db, &root_key, user, &profiles).unwrap();
     };
-    let relocate = |id: &str, new_id: &str, moved: bool| {
+    let seed = |id: &str, uid: &str| {
+        add_profile(source.id, id);
+        vault::store_session(owner, Some(id), &session(uid, "r1")).unwrap();
+    };
+    let loaded = |owner: vault::SessionOwner, id: &str| {
+        vault::load_session(owner, Some(id))
+            .unwrap()
+            .map(|session| generation(&raw(&session)))
+    };
+    let target_row = |id: &str| {
+        read_credential_with_dek(&conn, target.id, &target_dek, &key(id))
+            .unwrap()
+            .map(|raw| generation(&raw))
+    };
+    let in_vault = |id: &str| store.get(&key(id)).is_ok();
+    let relocate = |from: i64, id: &str, new_id: &str, moved: bool| {
         cli_relocate_server_profile(
             &store,
-            source.id,
+            from,
             target.id,
             id,
             new_id,
             Some(TARGET_PASSWORD),
             moved,
         )
-    };
-    let target_raw = |id: &str| {
-        read_credential_with_dek(&conn, target.id, &target_dek, &vault::session_key(Some(id)))
-            .unwrap()
-            .unwrap()
-    };
-    let source_has = |id: &str| {
-        list_server_profiles_for(&conn, &root_key, source.id)
-            .unwrap()
-            .iter()
-            .any(|profile| profile["id"] == id)
-    };
-    let target_has = |id: &str| {
-        read_profiles_with_dek(&conn, target.id, &target_dek)
-            .unwrap()
-            .iter()
-            .any(|profile| profile["id"] == id)
+        .unwrap()
     };
 
-    // Owner discovery must use the stored HMAC profile identity even before
-    // a profile has a native credential mirror.
-    seed("no-mirror-source", "no-mirror-uid");
-    let no_mirror_key = vault::session_key(Some("no-mirror-source"));
-    conn.execute(
-        "DELETE FROM user_credentials WHERE credential_id=?1",
-        params![no_mirror_key],
-    )
-    .unwrap();
-    assert_eq!(
-        profile_credential_owner_ids(&store, "no-mirror-source", &no_mirror_key).unwrap(),
-        vec![source_id]
-    );
-    relocate("no-mirror-source", "no-mirror-target", true).unwrap();
-    assert_pair(&target_raw("no-mirror-target"), "no-mirror-uid", "r1");
-
-    // A missing source mirror must not borrow another user's global value,
-    // even when the source also has a profile with that same raw ID.
-    seed("foreign-fallback-source", "source-only-uid");
+    // An account other than the legacy owner saves its session in its own
+    // partition alone; the legacy owner keeps the vault copy too.
+    // The vault is looked at first: the next read of the account runs its
+    // one-time alignment, which would clear a vault copy written by mistake.
+    seed("dup-a", "shared-uid");
+    assert!(!in_vault("dup-a"));
+    assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r1"));
+    add_profile(legacy, "owners-profile");
     vault::store_session(
-        vault::SessionOwner::for_user(Some(active)),
-        Some("foreign-fallback-source"),
-        &session("foreign-owner-uid", "foreign"),
+        owners_owner,
+        Some("owners-profile"),
+        &session("owners-uid", "r1"),
     )
     .unwrap();
-    let foreign_key = vault::session_key(Some("foreign-fallback-source"));
-    conn.execute(
-        "DELETE FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
-        params![source_id, foreign_key],
-    )
-    .unwrap();
-    relocate("foreign-fallback-source", "foreign-fallback-target", true).unwrap();
-    assert!(read_credential_with_dek(
+    assert!(in_vault("owners-profile"));
+
+    // A refresh reaches every copy of the session inside the account, and no
+    // copy another account holds of the same UID.
+    seed("dup-b", "shared-uid");
+    set_user_credential_with_dek(
         &conn,
         target.id,
         &target_dek,
-        &vault::session_key(Some("foreign-fallback-target"))
-    )
-    .unwrap()
-    .is_none());
-    assert_pair(
-        &store.get(&foreign_key).unwrap(),
-        "foreign-owner-uid",
-        "foreign",
-    );
-
-    // Rolling back a failed duplicate removes only the local destination,
-    // without revoking or deleting its source's shared session.
-    let saved = seed("discard-source", "discard-uid");
-    let raw = serde_json::to_string(&StoredSession::from(&saved)).unwrap();
-    vault::restore_session_blocking(owner, "discard-copy", &raw).unwrap();
-    vault::discard_session_blocking(owner, "discard-copy").unwrap();
-    assert!(vault::load_session(owner, Some("discard-copy"))
-        .unwrap()
-        .is_none());
-    assert_eq!(
-        vault::load_session(owner, Some("discard-source"))
-            .unwrap()
-            .unwrap()
-            .tokens
-            .uid,
-        "discard-uid"
-    );
-
-    // R1 is captured under the key locks. A real refresh store saves R2 in
-    // another thread before relocation acquires its UID lease. A retained
-    // SessionHold in the caller would deadlock this worker's partition mirror.
-    let saved = seed("copy-source", "copy-uid");
-    hook(move |stage| {
-        if stage == "captured" {
-            let saved = saved.clone();
-            let stale = serde_json::to_string(&StoredSession::from(&saved)).unwrap();
-            let (finished_tx, finished_rx) = mpsc::channel();
-            let worker = std::thread::spawn(move || {
-                let refresher = vault::VaultSession::new(owner, Some("copy-source"), &saved);
-                let _lease = runtime().block_on(refresher.lock()).unwrap();
-                refresher.save(&session("copy-uid", "r2").tokens);
-                finished_tx.send(()).unwrap();
-            });
-            finished_rx
-                .recv_timeout(Duration::from_secs(10))
-                .expect("refresh could not acquire the source session during relocation");
-            worker.join().unwrap();
-            // Model a missed best-effort mirror: the vault holds R2, while
-            // the scoped source partition still has R1. A generic second
-            // copy after the native transaction would overwrite R2 with R1.
-            set_user_credential_for(
-                &open_or_init_cli().unwrap(),
-                &root_key,
-                source_id,
-                &vault::session_key(Some("copy-source")),
-                "proton_native_session",
-                &stale,
-            )
-            .unwrap();
-        }
-    });
-    let copied = relocate("copy-source", "copy-target", false).unwrap();
-    clear_hook();
-    assert!(copied.inserted && !copied.moved);
-    assert_pair(&target_raw("copy-target"), "copy-uid", "r2");
-    assert_pair(
-        &store.get(&vault::session_key(Some("copy-target"))).unwrap(),
-        "copy-uid",
-        "r2",
-    );
-    assert_eq!(
-        vault::load_session(owner, Some("copy-source"))
-            .unwrap()
-            .unwrap()
-            .tokens
-            .access_token
-            .expose_secret(),
-        "access-r2"
-    );
-    assert_pair(
-        &get_user_credential_for(
-            &conn,
-            &root_key,
-            source.id,
-            &vault::session_key(Some("copy-source")),
-        )
-        .unwrap()
-        .unwrap(),
-        "copy-uid",
-        "r1",
-    );
-    assert!(source_has("copy-source"));
-    assert_eq!(active_user_id(&conn).unwrap(), Some(active));
-    assert!(get_user_credential_for(
-        &conn,
-        &root_key,
-        active,
-        &vault::session_key(Some("copy-target"))
-    )
-    .unwrap()
-    .is_none());
-    let dedup = relocate("copy-source", "copy-dedup", false).unwrap();
-    assert!(dedup.already_present && !dedup.inserted);
-    assert!(!target_has("copy-dedup"));
-    assert!(matches!(
-        store.get(&vault::session_key(Some("copy-dedup"))),
-        Err(CredentialError::NotFound(_))
-    ));
-
-    // Move waits for a refresher which already owns the UID lease. During the
-    // wait neither profile list has changed. R2 is committed before source
-    // removal and cannot be resurrected by the completed refresher.
-    let saved = seed("move-source", "move-uid");
-    let (held_tx, held_rx) = mpsc::channel();
-    let (captured_tx, captured_rx) = mpsc::channel();
-    let refresh = std::thread::spawn(move || {
-        let refresher = vault::VaultSession::new(owner, Some("move-source"), &saved);
-        let _lease = runtime().block_on(refresher.lock()).unwrap();
-        held_tx.send(()).unwrap();
-        captured_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-        std::thread::sleep(Duration::from_millis(200));
-        let db = open_or_init_cli().unwrap();
-        let root = user_crypto::secret_key_from_bytes(&root_key);
-        let source_tag = user_crypto::metadata_tag(&root, b"profile-uid", "move-source").unwrap();
-        let target_tag = user_crypto::metadata_tag(&root, b"profile-uid", "move-target").unwrap();
-        assert_eq!(
-            db.query_row(
-                "SELECT COUNT(*) FROM server_profiles WHERE user_id=?1 AND profile_uid=?2",
-                params![source_id, source_tag],
-                |row| row.get::<_, i64>(0)
-            )
-            .unwrap(),
-            1
-        );
-        assert_eq!(
-            db.query_row(
-                "SELECT COUNT(*) FROM server_profiles WHERE profile_uid=?1",
-                [target_tag],
-                |row| row.get::<_, i64>(0)
-            )
-            .unwrap(),
-            0
-        );
-        refresher.save(&session("move-uid", "r2").tokens);
-    });
-    held_rx.recv_timeout(Duration::from_secs(10)).unwrap();
-    hook(move |stage| {
-        if stage == "captured" {
-            captured_tx.send(()).unwrap();
-        }
-    });
-    relocate("move-source", "move-target", true).unwrap();
-    clear_hook();
-    refresh.join().unwrap();
-    assert!(!source_has("move-source"));
-    assert_pair(&target_raw("move-target"), "move-uid", "r2");
-    assert_pair(
-        &store.get(&vault::session_key(Some("move-target"))).unwrap(),
-        "move-uid",
-        "r2",
-    );
-    assert!(get_user_credential_for(
-        &conn,
-        &root_key,
-        source.id,
-        &vault::session_key(Some("move-source"))
-    )
-    .unwrap()
-    .is_none());
-    assert!(matches!(
-        store.get(&vault::session_key(Some("move-source"))),
-        Err(CredentialError::NotFound(_))
-    ));
-
-    // A different process tries to replace the source while Move owns its key
-    // guard. It completes after Move and its replacement UID is never deleted.
-    seed("replacement-source", "before-replacement-uid");
-    let child = Arc::new(Mutex::new(None));
-    let child_slot = Arc::clone(&child);
-    let marker = std::env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("replacement-probe");
-    let child_marker = marker.clone();
-    hook(move |stage| {
-        if stage == "captured" {
-            let process = std::process::Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", TEST, "--nocapture", "--test-threads=1"])
-                .env(MODE, "replacement")
-                .env("AEROFTP_RELOCATION_SOURCE_USER", source_id.to_string())
-                .env("AEROFTP_RELOCATION_PROBE", &child_marker)
-                .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-                .unwrap();
-            let deadline = Instant::now() + Duration::from_secs(10);
-            while !child_marker.with_extension("contended").is_file() {
-                assert!(
-                    !child_marker.with_extension("acquired").exists()
-                        && !child_marker.with_extension("finished").exists(),
-                    "replacement acquired the source key while relocation held its guard"
-                );
-                assert!(
-                    Instant::now() < deadline,
-                    "replacement child did not reach the source-key lock attempt"
-                );
-                std::thread::sleep(Duration::from_millis(10));
-            }
-            assert!(
-                !child_marker.with_extension("acquired").exists()
-                    && !child_marker.with_extension("finished").exists(),
-                "replacement bypassed relocation's key guard"
-            );
-            *child_slot.lock().unwrap() = Some(process);
-        }
-    });
-    relocate("replacement-source", "replacement-target", true).unwrap();
-    clear_hook();
-    let output = child
-        .lock()
-        .unwrap()
-        .take()
-        .unwrap()
-        .wait_with_output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(marker.with_extension("acquired").is_file());
-    assert!(marker.with_extension("finished").is_file());
-    assert_pair(
-        &target_raw("replacement-target"),
-        "before-replacement-uid",
-        "r1",
-    );
-    assert_pair(
-        &store
-            .get(&vault::session_key(Some("replacement-source")))
-            .unwrap(),
-        "replacement-uid",
-        "replacement",
-    );
-    assert!(!source_has("replacement-source"));
-
-    // A source held only in its partition still adopts a locally rotated pair
-    // from another saved copy of the same UID (e.g. after a prior vault error).
-    seed("partition-only-source", "partition-only-uid");
-    vault::store_session(
-        owner,
-        Some("partition-only-shared"),
-        &session("partition-only-uid", "r2"),
-    )
-    .unwrap();
-    store
-        .delete(&vault::session_key(Some("partition-only-source")))
-        .unwrap();
-    relocate("partition-only-source", "partition-only-target", true).unwrap();
-    assert_pair(
-        &target_raw("partition-only-target"),
-        "partition-only-uid",
-        "r2",
-    );
-    assert_pair(
-        &store
-            .get(&vault::session_key(Some("partition-only-target")))
-            .unwrap(),
-        "partition-only-uid",
-        "r2",
-    );
-
-    // Scoped source ownership wins over a global key belonging to another
-    // user's same-id profile. Move leaves that different UID untouched.
-    seed("shared-id-source", "scoped-source-uid");
-    vault::store_session(
-        vault::SessionOwner::for_user(Some(active)),
-        Some("shared-id-source"),
-        &session("other-owner-uid", "other"),
-    )
-    .unwrap();
-    relocate("shared-id-source", "shared-id-target", true).unwrap();
-    assert_pair(&target_raw("shared-id-target"), "scoped-source-uid", "r1");
-    assert_pair(
-        &store
-            .get(&vault::session_key(Some("shared-id-source")))
-            .unwrap(),
-        "other-owner-uid",
-        "other",
-    );
-
-    // Password, key-lock, native parse and SQLite errors precede the commit.
-    // In particular the credential INSERT trigger runs AFTER both profile
-    // lists were edited, proving that the transaction rolls all of them back.
-    let saved = seed("fault-source", "fault-uid");
-    let absent_password = cli_relocate_server_profile(
-        &store,
-        source.id,
-        target.id,
-        "fault-source",
-        "password-fault-target",
-        None,
-        true,
-    )
-    .unwrap_err();
-    assert_eq!(absent_password, "TARGET_PASSPHRASE_REQUIRED");
-    assert!(source_has("fault-source") && !target_has("password-fault-target"));
-    let locks = crate::portable::aeroftp_data_root()
-        .unwrap()
-        .join("proton_session_locks");
-    let saved_locks = locks.with_extension("saved");
-    std::fs::rename(&locks, &saved_locks).unwrap();
-    std::fs::write(&locks, b"not a directory").unwrap();
-    assert!(relocate("fault-source", "key-fault-target", true).is_err());
-    std::fs::remove_file(&locks).unwrap();
-    std::fs::rename(&saved_locks, &locks).unwrap();
-    assert!(source_has("fault-source") && !target_has("key-fault-target"));
-    let target_id = target.id;
-    hook(move |stage| {
-        if stage == "captured" {
-            open_or_init_cli()
-                .unwrap()
-                .execute(
-                    "UPDATE users SET dek_verifier=?1 WHERE id=?2",
-                    params![vec![0u8; 32], target_id],
-                )
-                .unwrap();
-        }
-    });
-    assert_eq!(
-        relocate("fault-source", "dek-fault-target", true).unwrap_err(),
-        "DEK_VERIFIER_MISMATCH"
-    );
-    clear_hook();
-    conn.execute(
-        "UPDATE users SET dek_verifier=?1 WHERE id=?2",
-        params![
-            user_crypto::compute_dek_verifier(&target_dek)
-                .unwrap()
-                .to_vec(),
-            target.id
-        ],
-    )
-    .unwrap();
-    assert!(source_has("fault-source") && !target_has("dek-fault-target"));
-    set_user_credential_for(
-        &conn,
-        &root_key,
-        source.id,
-        &vault::session_key(Some("fault-source")),
+        &key("target-copy"),
         "proton_native_session",
-        "invalid-json",
+        &raw(&session("shared-uid", "r1")),
     )
     .unwrap();
-    assert!(relocate("fault-source", "parse-fault-target", true).is_err());
-    assert!(source_has("fault-source") && !target_has("parse-fault-target"));
-    vault::store_session(owner, Some("fault-source"), &saved).unwrap();
-    conn.execute_batch(
-        "CREATE TRIGGER fail_native_relocation BEFORE INSERT ON user_credentials
-        WHEN NEW.credential_id='proton_native_session_sql-fault-target'
-        BEGIN SELECT RAISE(ABORT, 'synthetic native credential failure'); END;",
-    )
-    .unwrap();
-    let error = relocate("fault-source", "sql-fault-target", true).unwrap_err();
-    assert!(error.contains("synthetic native credential failure"));
-    conn.execute_batch("DROP TRIGGER fail_native_relocation")
+    vault::VaultSession::new(owner, Some("dup-a"), &session("shared-uid", "r1"))
+        .save(&session("shared-uid", "r2").tokens);
+    assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r2"));
+    assert_eq!(loaded(owner, "dup-b").as_deref(), Some("r2"));
+    assert_eq!(target_row("target-copy").as_deref(), Some("r1"));
+    assert!(!in_vault("dup-a") && !in_vault("dup-b"));
+    // A vault key of the same name is the legacy owner's: never adopted, even
+    // for the same UID, and never removed by this account's sign-out.
+    store
+        .store(&key("dup-a"), &raw(&session("shared-uid", "r9")))
         .unwrap();
-    assert!(source_has("fault-source") && !target_has("sql-fault-target"));
-    assert_pair(
-        &store
-            .get(&vault::session_key(Some("fault-source")))
-            .unwrap(),
-        "fault-uid",
-        "r1",
-    );
-    assert!(read_credential_with_dek(
-        &conn,
-        target.id,
-        &target_dek,
-        &vault::session_key(Some("sql-fault-target"))
-    )
-    .unwrap()
-    .is_none());
-    clear_user_session();
-    assert_eq!(
-        relocate("fault-source", "locked-fault-target", true).unwrap_err(),
-        "USER_LOCKED"
-    );
-    unlock_user_transient(&conn, &root_key, source.id, Some(SOURCE_PASSWORD)).unwrap();
-    assert!(source_has("fault-source") && !target_has("locked-fault-target"));
+    store
+        .store(&key("dup-b"), &raw(&session("owners-other-uid", "r1")))
+        .unwrap();
+    assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r2"));
 
-    // Force the actual vault write to fail AFTER SQLite has committed. The
-    // returned error explicitly reports committed state. The valid target
-    // partition credential survives, and the source vault copy is retained.
-    seed("vault-fault-source", "vault-fault-uid");
-    let vault_path = crate::portable::credential_store_dir()
+    // A duplicate inside the account takes the pair its copies hold now.
+    vault::restore_session_blocking(owner, "dup-c", &raw(&session("shared-uid", "r1"))).unwrap();
+    assert_eq!(loaded(owner, "dup-c").as_deref(), Some("r2"));
+    vault::delete_session(owner, Some("dup-c")).unwrap();
+
+    // A sign-out revokes on Proton only when no other profile of the same
+    // account holds the session; another account's copy does not count. The
+    // sign-out of a shared copy leaves the other profile signed in.
+    assert!(vault::another_profile_holds(&store, owner, &key("dup-a"), "shared-uid").unwrap());
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
         .unwrap()
-        .join(crate::credential_store::VAULT_FILENAME);
-    let backup = vault_path.with_extension("saved");
-    let fail_path = vault_path.clone();
-    let fail_backup = backup.clone();
-    hook(move |stage| {
-        if stage == "committed" {
-            std::fs::rename(&fail_path, &fail_backup).unwrap();
-            std::fs::create_dir(&fail_path).unwrap();
-        }
-    });
-    let error = relocate("vault-fault-source", "vault-fault-target", true).unwrap_err();
-    clear_hook();
-    std::fs::remove_dir(&vault_path).unwrap();
-    std::fs::rename(&backup, &vault_path).unwrap();
-    assert!(error.starts_with("RELOCATION_COMMITTED:"));
-    assert!(!source_has("vault-fault-source") && target_has("vault-fault-target"));
-    assert_pair(&target_raw("vault-fault-target"), "vault-fault-uid", "r1");
-    assert_pair(
-        &store
-            .get(&vault::session_key(Some("vault-fault-source")))
-            .unwrap(),
-        "vault-fault-uid",
-        "r1",
-    );
-    assert!(matches!(
-        store.get(&vault::session_key(Some("vault-fault-target"))),
-        Err(CredentialError::NotFound(_))
-    ));
-    assert_eq!(active_user_id(&conn).unwrap(), Some(active));
+        .block_on(vault::end_session(owner, Some("dup-b")))
+        .unwrap();
+    assert_eq!(loaded(owner, "dup-b"), None);
+    assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r2"));
+    assert!(in_vault("dup-b"));
+    store.delete(&key("dup-a")).unwrap();
+    store.delete(&key("dup-b")).unwrap();
+    assert!(!vault::another_profile_holds(&store, owner, &key("dup-a"), "shared-uid").unwrap());
+
+    // A Copy into another account does not carry the session: the target is
+    // told the profile asks to sign in again, and the source keeps it.
+    seed("copy-me", "copy-uid");
+    let copied = relocate(source.id, "copy-me", "copied", false);
+    assert!(copied.inserted);
+    assert_eq!(copied.secrets_not_copied, vec![key("copied")]);
+    assert_eq!(target_row("copied"), None);
+    assert_eq!(loaded(owner, "copy-me").as_deref(), Some("r1"));
+
+    // A Move does not carry it either, and drops the source's copy locally.
+    seed("move-me", "move-uid");
+    let moved = relocate(source.id, "move-me", "moved", true);
+    assert!(moved.moved && moved.inserted);
+    assert_eq!(moved.secrets_not_copied, vec![key("moved")]);
+    assert_eq!(target_row("moved"), None);
+    assert_eq!(loaded(owner, "move-me"), None);
+    assert!(!in_vault("move-me") && !in_vault("moved"));
+
+    // The legacy owner's Move also drops its vault copy, which no profile of
+    // that account holds any more.
+    let moved = relocate(legacy, "owners-profile", "owners-moved", true);
+    assert_eq!(moved.secrets_not_copied, vec![key("owners-moved")]);
+    assert!(!in_vault("owners-profile"));
+    assert_eq!(loaded(owners_owner, "owners-profile"), None);
+    assert_eq!(target_row("owners-moved"), None);
+
+    // A profile without a native session reports nothing missing.
+    add_profile(source.id, "no-session");
+    assert!(relocate(source.id, "no-session", "no-session-copy", false)
+        .secrets_not_copied
+        .is_empty());
 }

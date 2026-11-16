@@ -2582,9 +2582,12 @@ pub fn relocate_server_profile(
     })
 }
 
-/// Production GUI/CLI entry point. Native sessions are committed with the
-/// profiles under their key/UID guards; the remaining legacy dual writes keep
-/// their existing best-effort behavior after the partition transaction.
+/// Production GUI/CLI entry point. A native Proton Drive session belongs to
+/// one account, so it never travels: the target is told the profile asks to
+/// sign in again (`secrets_not_copied`), and a Move drops the source's copy
+/// locally, without a sign-out on Proton that would end it for any other
+/// profile of the source account holding it. The remaining per-profile
+/// secrets keep their existing best-effort dual after the partition commit.
 #[allow(clippy::too_many_arguments)]
 fn relocate_server_profile_and_credentials(
     conn: &mut Connection,
@@ -2607,169 +2610,63 @@ fn relocate_server_profile_and_credentials(
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let target_dek =
         resolve_user_dek_scoped(conn, &root_secret, target_user_id, target_passphrase)?;
-    // Copy the source DEK and RELEASE its SessionHold before either helper
-    // thread waits for a native guard. Refresh persistence may need that same
-    // session while it owns the UID lease we are waiting for.
-    let source_dek = with_user_dek(conn, &root_secret, source_user_id, |_, dek| {
-        Ok(user_crypto::secret_key_from_bytes(dek.expose_secret()))
-    })?;
-    let source_key = format!("proton_native_session_{profile_id}");
-    let new_key = format!("proton_native_session_{new_profile_id}");
-    let read_native = |user_id, dek: &SecretKey, key: &str| match read_credential_with_dek(
-        conn, user_id, dek, key,
-    )? {
-        Some(raw) => Ok(Some(raw)),
-        None => {
-            let profile = key
-                .strip_prefix("proton_native_session_")
-                .ok_or_else(|| "INVALID_NATIVE_SESSION_KEY".to_string())?;
-            let owners = profile_credential_owner_ids(store, profile, key)?;
-            // A global value cannot be attributed safely when several users
-            // own this key and the requested user's partition has no value.
-            if owners.as_slice() == [user_id]
-                || (owners.is_empty() && legacy_credential_owner_id()? == Some(user_id))
-            {
-                get_optional_secret(store, key)
-            } else {
-                Ok(None)
-            }
-        }
-    };
-
-    #[cfg(feature = "proton-native")]
-    let native = {
-        use crate::providers::proton_native::vault;
-        let keys = vault::lock_relocation_keys_blocking(profile_id, new_profile_id)
-            .map_err(|error| error.to_string())?;
-        let source = read_native(source_user_id, &source_dek, &source_key)?;
-        let target = read_native(target_user_id, &target_dek, &new_key)?;
-        #[cfg(test)]
-        native_relocation_test_hook("captured");
-        keys.lock_sessions_blocking(
-            store,
-            source.as_ref().map(|raw| raw.as_str()),
-            target.as_ref().map(|raw| raw.as_str()),
-        )
-        .map_err(|error| error.to_string())?
-    };
-    #[cfg(not(feature = "proton-native"))]
-    if read_native(source_user_id, &source_dek, &source_key)?.is_some() {
-        return Err("Native Proton session relocation requires the proton-native feature".into());
-    }
-
-    // Reread after the UID leases: a refresh may have rotated R1 to R2 while
-    // the helper waited. The target passphrase remains scoped and never primes
-    // or replaces the active user's session.
-    #[cfg(feature = "proton-native")]
-    let source = read_native(source_user_id, &source_dek, &source_key)?;
-    #[cfg(feature = "proton-native")]
-    let target = read_native(target_user_id, &target_dek, &new_key)?;
-    #[cfg(feature = "proton-native")]
-    let remove_source_vault = native.source_vault_matches();
-    #[cfg(not(feature = "proton-native"))]
-    let remove_source_vault = false;
-    let apply = |native_raw: Option<&str>| {
-        // with_user_dek acquires the source SessionHold BEFORE SQLite's write
-        // reservation and verifies that the source is still unlocked.
-        let mut relocation =
-            with_user_dek(conn, &root_secret, source_user_id, |_, current_dek| {
-                let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
-                    .map_err(|error| format!("Start profile relocation: {error}"))?;
-                let source_row = read_user_key_row(&tx, source_user_id)?;
-                let target_row = read_user_key_row(&tx, target_user_id)?;
-                if !user_crypto::verify_dek(&source_dek, &source_row.dek_verifier)?
-                    || !user_crypto::verify_dek(&target_dek, &target_row.dek_verifier)?
-                {
-                    return Err("DEK_VERIFIER_MISMATCH".into());
-                }
-                let relocation = relocate_server_profile_in_transaction(
-                    &tx,
-                    root_key,
-                    &root_secret,
-                    source_user_id,
-                    current_dek,
-                    target_user_id,
-                    &target_dek,
-                    profile_id,
-                    new_profile_id,
-                    remove_from_source,
-                )?;
-                if relocation.inserted {
-                    if let Some(raw) = native_raw {
-                        set_user_credential_with_dek(
-                            &tx,
-                            target_user_id,
-                            &target_dek,
-                            &new_key,
-                            "proton_native_session",
-                            raw,
-                        )?;
-                    }
-                }
-                if relocation.moved {
-                    delete_user_credential_for(&tx, source_user_id, &source_key)?;
-                }
-                tx.commit()
-                    .map_err(|error| format!("Commit profile relocation: {error}"))?;
-                Ok(relocation)
-            })?;
-        // This loop skips native sessions entirely. It cannot overwrite the
-        // exact pair above or delete a source outside the native guards.
-        relocation.secrets_not_copied = relocate_server_credential_dual(
-            conn,
-            store,
+    let source_key = format!("{PROTON_SESSION_PREFIX}{profile_id}");
+    let new_key = format!("{PROTON_SESSION_PREFIX}{new_profile_id}");
+    // The source's session, read as its own readers read it: its row, or the
+    // vault copy only for the legacy owner.
+    let source_has_session =
+        with_user_dek(conn, &root_secret, source_user_id, |_, dek| {
+            Ok(read_credential_with_dek(conn, source_user_id, dek, &source_key)?.is_some())
+        })? || (!vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
+            && get_optional_secret(store, &source_key)?.is_some());
+    let mut relocation = with_user_dek(conn, &root_secret, source_user_id, |_, source_dek| {
+        let tx = Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+            .map_err(|error| format!("Start profile relocation: {error}"))?;
+        let relocation = relocate_server_profile_in_transaction(
+            &tx,
             root_key,
+            &root_secret,
             source_user_id,
-            &relocation,
-            target_passphrase,
-        );
-        #[cfg(test)]
-        native_relocation_test_hook("committed");
-        if relocation.inserted {
-            if let Some(raw) = native_raw {
-                store.store(&new_key, raw).map_err(|error| format!(
-                    "RELOCATION_COMMITTED: profile {} is saved in target user {}; its valid Proton session is retained in that partition, but the vault copy failed: {error}",
-                    relocation.new_profile_id, target_user_id,
-                ))?;
-                if relocation.moved && remove_source_vault && source_key != new_key {
-                    store.delete(&source_key).map_err(|error| format!(
-                        "RELOCATION_COMMITTED: profile {} and its Proton session are saved in target user {}; removal of the source vault session failed: {error}",
-                        relocation.new_profile_id, target_user_id,
-                    ))?;
-                }
-            }
+            source_dek,
+            target_user_id,
+            &target_dek,
+            profile_id,
+            new_profile_id,
+            remove_from_source,
+        )?;
+        if relocation.moved {
+            delete_user_credential_for(&tx, source_user_id, &source_key)?;
         }
+        tx.commit()
+            .map_err(|error| format!("Commit profile relocation: {error}"))?;
         Ok(relocation)
-    };
-    #[cfg(feature = "proton-native")]
-    return native.with_current_session(
+    })?;
+    // This loop skips native sessions entirely.
+    relocation.secrets_not_copied = relocate_server_credential_dual(
+        conn,
         store,
-        source.as_ref().map(|raw| raw.as_str()),
-        target.as_ref().map(|raw| raw.as_str()),
-        apply,
+        root_key,
+        source_user_id,
+        &relocation,
+        target_passphrase,
     );
-    #[cfg(not(feature = "proton-native"))]
-    apply(None)
-}
-
-#[cfg(all(test, feature = "proton-native"))]
-type NativeRelocationHook = Option<Box<dyn FnMut(&str)>>;
-
-#[cfg(all(test, feature = "proton-native"))]
-thread_local! {
-    static NATIVE_RELOCATION_HOOK: RefCell<NativeRelocationHook> = const { RefCell::new(None) };
-}
-
-#[cfg(test)]
-fn native_relocation_test_hook(stage: &str) {
-    #[cfg(feature = "proton-native")]
-    NATIVE_RELOCATION_HOOK.with_borrow_mut(|hook| {
-        if let Some(hook) = hook {
-            hook(stage);
-        }
-    });
-    #[cfg(not(feature = "proton-native"))]
-    let _ = stage;
+    if source_has_session && relocation.inserted {
+        relocation.secrets_not_copied.push(new_key);
+    }
+    // The legacy owner's session also had its vault copy, which no profile of
+    // that account holds any more.
+    if source_has_session
+        && relocation.moved
+        && !vault_copy_is_another_accounts(conn, source_user_id, &source_key)?
+    {
+        delete_optional_secret(store, &source_key).map_err(|error| {
+            format!(
+                "RELOCATION_COMMITTED: profile {} is saved in target user {}; removal of the source's Proton session from the vault failed: {error}",
+                relocation.new_profile_id, target_user_id,
+            )
+        })?;
+    }
+    Ok(relocation)
 }
 
 /// Both profile lists are changed in the caller's transaction, after the
@@ -3688,7 +3585,10 @@ fn migrate_user_credentials_inner(
 
 /// The private token keys ([`private_token_type`]) a profile's id gives.
 fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
-    let mut keys = vec![format!("jottacloud_refresh_{profile_id}")];
+    let mut keys = vec![
+        format!("jottacloud_refresh_{profile_id}"),
+        format!("{PROTON_SESSION_PREFIX}{profile_id}"),
+    ];
     keys.extend(
         OAUTH_TOKEN_SLUGS
             .iter()
@@ -3713,6 +3613,12 @@ fn private_token_keys_of_profile(profile_id: &str) -> Vec<String> {
 /// told apart, and the legacy owner reads it as its own. Idempotent via the
 /// `private_tokens_aligned_<id>` marker; a locked passphrase account is left
 /// unmarked until its first unlock, as for [`migrate_user_credentials_inner`].
+///
+/// A native Proton Drive session belongs to one account: a copy of a session
+/// (same UID) that another account still holds in the vault is dropped here,
+/// row and vault copy, and the other account keeps it. The drop is local
+/// only, never a sign-out on Proton, which would end the session for the
+/// account that keeps it. This account signs in again.
 fn align_private_tokens_inner(
     conn: &Connection,
     root_key: &[u8; 32],
@@ -3753,11 +3659,35 @@ fn align_private_tokens_inner(
                 );
             }
         }
+        let unbound = format!("{PROTON_UNBOUND_USER_PREFIX}{uid}");
+        if vault_keys.contains(&unbound) {
+            sole.push(unbound);
+        }
+        // The sessions other accounts hold in the vault, by UID.
+        let mut held_elsewhere = HashSet::new();
+        for key in vault_keys
+            .iter()
+            .filter(|key| is_proton_session_key(key) && !sole.contains(key))
+        {
+            if let Some(held) = read_secret(key)?.and_then(|raw| proton_session_uid(&raw)) {
+                held_elsewhere.insert(held);
+            }
+        }
         let tx =
             rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
                 .map_err(|e| format!("Start private token alignment: {e}"))?;
         for key in &sole {
             let kind = private_token_type(key).unwrap_or("oauth");
+            if is_proton_session_key(key) {
+                let copy_uid = match read_credential_with_dek(&tx, uid, dek, key)? {
+                    Some(row) => proton_session_uid(&row),
+                    None => read_secret(key)?.and_then(|raw| proton_session_uid(&raw)),
+                };
+                if copy_uid.is_some_and(|copy| held_elsewhere.contains(&copy)) {
+                    delete_user_credential_for(&tx, uid, key)?;
+                    continue;
+                }
+            }
             copy_one_credential(&tx, uid, dek, key, kind, read_secret)?;
         }
         tx.commit()
@@ -4479,6 +4409,44 @@ fn partition_credential_type(
     .map_err(|e| format!("Read credential type: {e}"))
 }
 
+/// Every row of `user_id` of one `credential_type`, decrypted, by key: all the
+/// copies an account holds of one kind of token, for a caller that must see
+/// each of them (the profiles sharing one native Proton session).
+pub fn user_credentials_of_type(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_type: &str,
+) -> Result<Vec<(String, Zeroizing<String>)>, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let ids = conn
+        .prepare(
+            "SELECT credential_id FROM user_credentials
+             WHERE user_id = ?1 AND credential_type = ?2 ORDER BY credential_id",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map(params![user_id, credential_type], |row| row.get(0))?
+                .collect::<rusqlite::Result<Vec<String>>>()
+        })
+        .map_err(|e| format!("Read user credentials: {e}"))?;
+    let mut root_key = store.derive_user_partition_wrapping_key();
+    let mut rows = Vec::with_capacity(ids.len());
+    let mut failure = None;
+    for id in ids {
+        match get_user_credential_for(&conn, &root_key, user_id, &id) {
+            Ok(Some(value)) => rows.push((id, value)),
+            Ok(None) => {}
+            Err(e) => {
+                failure = Some(e);
+                break;
+            }
+        }
+    }
+    root_key.zeroize();
+    failure.map_or(Ok(rows), Err)
+}
+
 /// Write one secret of an import to everything that reads it, for `user_id`: the
 /// partition alone for a token private to that user, otherwise the vault and the
 /// partition row a reader prefers. A partition write that fails is an error even
@@ -4804,9 +4772,37 @@ pub fn unmirror_active_credential(credential_id: &str) {
     }
 }
 
-/// Token types that belong to one user only: OAuth tokens and Jottacloud
-/// refresh chains.
-const PRIVATE_TOKEN_TYPES: [&str; 2] = ["oauth", "jottacloud_refresh"];
+/// Token types that belong to one user only: OAuth tokens, Jottacloud
+/// refresh chains and native Proton Drive sessions.
+const PRIVATE_TOKEN_TYPES: [&str; 3] = ["oauth", "jottacloud_refresh", "proton_native_session"];
+
+/// Prefix of a native Proton Drive session saved for one profile, and the key
+/// of the one saved before a profile was (the legacy owner's).
+const PROTON_SESSION_PREFIX: &str = "proton_native_session_";
+const PROTON_UNBOUND_SESSION: &str = "proton_native_session";
+/// Prefix of the session an account signed in to before saving the profile.
+const PROTON_UNBOUND_USER_PREFIX: &str = "proton_native_unbound_user_";
+
+/// Whether `key` holds a native Proton Drive session.
+fn is_proton_session_key(key: &str) -> bool {
+    key == PROTON_UNBOUND_SESSION
+        || key
+            .strip_prefix(PROTON_SESSION_PREFIX)
+            .is_some_and(|tail| !tail.is_empty())
+        || key
+            .strip_prefix(PROTON_UNBOUND_USER_PREFIX)
+            .is_some_and(|tail| !tail.is_empty())
+}
+
+/// The Proton session UID a saved session names, for telling copies of one
+/// session apart without a provider build.
+fn proton_session_uid(raw: &str) -> Option<String> {
+    serde_json::from_str::<Value>(raw)
+        .ok()?
+        .get("uid")?
+        .as_str()
+        .map(str::to_string)
+}
 
 /// The providers whose OAuth token lives under `oauth_<slug>` (the singleton)
 /// or `oauth_<slug>_<profile id>`.
@@ -4837,6 +4833,9 @@ const OAUTH_APP_SETTING_SUFFIXES: [&str; 3] = ["client_id", "client_secret", "re
 pub fn private_token_type(credential_id: &str) -> Option<&'static str> {
     if credential_id == "jottacloud_refresh" || credential_id.starts_with("jottacloud_refresh_") {
         return Some("jottacloud_refresh");
+    }
+    if is_proton_session_key(credential_id) {
+        return Some("proton_native_session");
     }
     if let Some(rest) = credential_id.strip_prefix("oauth_") {
         let token = OAUTH_TOKEN_SLUGS.iter().any(|slug| {
@@ -8446,6 +8445,79 @@ mod tests {
         );
         assert!(deleted.borrow().is_empty());
         assert!(private_tokens_aligned(&conn, owner).unwrap());
+    }
+
+    /// A native Proton session belongs to one account. A copy of a session
+    /// that another account also holds in the vault (same UID) is dropped from
+    /// this one, row and vault copy, locally: the other account's copy is not
+    /// touched, so it stays signed in. A session of this account alone moves
+    /// into its partition, also when two of its own profiles hold it, and so
+    /// does the session it signed in to before saving a profile.
+    #[test]
+    fn a_native_session_two_accounts_hold_stays_with_the_other_one() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "proton", "host": "drive.proton.me",
+                   "port": 443, "username": format!("{id}@example.test")})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("copied"), profile("own-a"), profile("own-b")],
+        )
+        .unwrap();
+        let saved = |uid: &str| {
+            json!({"uid": uid, "access_token": "a", "refresh_token": "r", "key_password": "k"})
+                .to_string()
+        };
+        let (shared, own, pending) = (saved("shared"), saved("own"), saved("pending"));
+        set_user_credential_for(
+            &conn,
+            &root,
+            other.id,
+            "proton_native_session_copied",
+            "proton_native_session",
+            &shared,
+        )
+        .unwrap();
+        let unbound = format!("proton_native_unbound_user_{}", other.id);
+        let (keys, read) = fake_vault(&[
+            ("proton_native_session_profile-0", &shared),
+            ("proton_native_session_copied", &shared),
+            ("proton_native_session_own-a", &own),
+            ("proton_native_session_own-b", &own),
+            (&unbound, &pending),
+        ]);
+        let deleted = RefCell::new(Vec::<String>::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        align_private_tokens_inner(&conn, &root, other.id, &keys, &read, &delete).unwrap();
+        let mut gone = deleted.borrow().clone();
+        gone.sort();
+        let mut expected = vec![
+            "proton_native_session_copied".to_string(),
+            "proton_native_session_own-a".to_string(),
+            "proton_native_session_own-b".to_string(),
+            unbound.clone(),
+        ];
+        expected.sort();
+        assert_eq!(gone, expected);
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .and_then(|raw| proton_session_uid(&raw))
+        };
+        assert_eq!(row("proton_native_session_copied"), None);
+        assert_eq!(row("proton_native_session_own-a").as_deref(), Some("own"));
+        assert_eq!(row("proton_native_session_own-b").as_deref(), Some("own"));
+        assert_eq!(row(&unbound).as_deref(), Some("pending"));
     }
 
     /// An account whose private tokens are not aligned yet is work for the
@@ -12786,6 +12858,9 @@ mod tests {
             ("profile_auth_deadline_srv_1", "oauth"),
             ("github_oauth_srv_1", "oauth"),
             ("github_pem_srv_1", "oauth"),
+            ("proton_native_session", "proton_native_session"),
+            ("proton_native_session_srv_1", "proton_native_session"),
+            ("proton_native_unbound_user_7", "proton_native_session"),
         ];
         for (key, kind) in private {
             assert_eq!(private_token_type(key), Some(kind), "{key}");
@@ -12811,6 +12886,9 @@ mod tests {
             "profile_auth_config",
             "profile_auth_config_",
             "jottacloud_refreshed",
+            "proton_native_session_",
+            "proton_native_unbound_user_",
+            "proton_native_sessions",
             "server_srv_1",
             "server_modes_srv_1",
             "ai_apikey_openai",

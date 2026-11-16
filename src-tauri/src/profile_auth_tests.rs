@@ -1510,8 +1510,9 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
     assert_eq!(count(selected_id, &selected_key), 1);
     assert_eq!(count(active_id, &selected_key), 0);
 
-    // Refreshes continue to update their captured owner after a user switch,
-    // and shared sessions reach the owners of the other profile keys.
+    // Refreshes continue to update their captured owner after a user switch.
+    // A session belongs to one account: a copy of it another account holds is
+    // not reached, and that account signs in again when its pair runs out.
     vault::store_session(active, Some("native-shared"), &scoped).unwrap();
     users::cli_set_active_user(store, selected_id).unwrap();
     let refresher = vault::VaultSession::new(selected, Some("native-selected"), &scoped);
@@ -1534,7 +1535,7 @@ async fn native_session_ownership(store: &CredentialStore, active_id: i64, selec
             .tokens
             .access_token
             .expose_secret(),
-        "access-after"
+        "access-before"
     );
     assert_eq!(count(active_id, &selected_key), 0);
     assert_eq!(
