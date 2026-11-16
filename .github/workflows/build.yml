@@ -728,6 +728,11 @@ jobs:
           Copy-Item "src-tauri/installer/portable/portable.marker"    "$stage\portable.marker"
           Copy-Item "src-tauri/installer/portable/README.txt"         "$stage\README.txt"
           Copy-Item "LICENSE"                                         "$stage\LICENSE.txt"
+          Copy-Item "THIRD-PARTY-NOTICES.md"                          "$stage\THIRD-PARTY-NOTICES.md"
+          if (-not (Test-Path "$stage\THIRD-PARTY-NOTICES.md")) {
+            Write-Host "::error::THIRD-PARTY-NOTICES.md not found in portable stage"
+            exit 1
+          }
 
           $dest = "src-tauri/target/release/bundle/$zipName"
           if (Test-Path $dest) { Remove-Item -Force $dest }

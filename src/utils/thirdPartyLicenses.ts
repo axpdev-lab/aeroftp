@@ -2,7 +2,7 @@
 // Copyright (c) 2024-2026 axpnet (see AI-TRANSPARENCY.md)
 
 import { invoke } from '@tauri-apps/api/core';
-import { resolveResource } from '@tauri-apps/api/path';
+import { executableDir, resolveResource } from '@tauri-apps/api/path';
 import { openUrl } from './openUrl';
 
 export const GITHUB_NOTICES_URL = 'https://github.com/axpdev-lab/aeroftp/blob/main/THIRD-PARTY-NOTICES.md';
@@ -21,10 +21,12 @@ export const LINUX_NOTICE_PATHS = [
  * Returns candidate paths for THIRD-PARTY-NOTICES.md.
  * No relative paths are included to avoid CWD-dependent resolution.
  * First candidate is the Tauri-resolved bundled resource ('../THIRD-PARTY-NOTICES.md').
+ * For portable installations (e.g. Windows portable ZIP), checks beside the executable.
  * Subsequent candidates are standard Linux package install locations.
  */
 export async function getCandidateNoticePaths(
-  resourceResolver: (path: string) => Promise<string> = resolveResource
+  resourceResolver: (path: string) => Promise<string> = resolveResource,
+  executableDirGetter: () => Promise<string> = executableDir
 ): Promise<string[]> {
   const candidates: string[] = [];
   try {
@@ -34,6 +36,20 @@ export async function getCandidateNoticePaths(
     }
   } catch {
     // Resource resolver error or running outside packaged Tauri app
+  }
+  try {
+    const exeDir = await executableDirGetter();
+    if (exeDir && typeof exeDir === 'string') {
+      const sep = exeDir.includes('\\') ? '\\' : '/';
+      const exeNoticePath = exeDir.endsWith(sep)
+        ? `${exeDir}THIRD-PARTY-NOTICES.md`
+        : `${exeDir}${sep}THIRD-PARTY-NOTICES.md`;
+      if (!candidates.includes(exeNoticePath)) {
+        candidates.push(exeNoticePath);
+      }
+    }
+  } catch {
+    // Executable dir error or web environment
   }
   candidates.push(...LINUX_NOTICE_PATHS);
   return candidates;

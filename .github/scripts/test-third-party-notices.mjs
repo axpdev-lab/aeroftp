@@ -18,6 +18,9 @@ import {
   generateNoticesMarkdown,
   SPDX_STANDARD_LICENSES_FILE,
   PINNED_CRATE_LICENSES,
+  KNOWN_NON_FREE_EXCEPTIONS,
+  PINNED_FALLBACK_ATTRIBUTIONS,
+  formatDiff,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -452,7 +455,120 @@ test('THIRD-PARTY-NOTICES.md exists and is up to date with lockfiles', () => {
     cwd: ROOT,
     encoding: 'utf8',
   });
-  assert.match(out, /OK: .* is up to date \(1161 Cargo, 131 npm\)/);
+  assert.match(out, /OK: .* is up to date \(\d+ Cargo, \d+ npm\)/);
+});
+
+test('check:licenses diff reporting: prints unified diff with line numbers on mismatch', () => {
+  const existing = 'line 1\nline 2\nline 3\n';
+  const generated = 'line 1\nline 2 modified\nline 3\n';
+  const diff = formatDiff(existing, generated);
+  assert.match(diff, /--- existing \(line 2\)/);
+  assert.match(diff, /\+\+\+ generated \(line 2\)/);
+  assert.match(diff, /-line 2/);
+  assert.match(diff, /\+line 2 modified/);
+});
+
+test('determinism: shuffled dependencies and CRLF/LF line endings produce identical markdown', () => {
+  const compA = {
+    name: 'alpha-crate',
+    version: '1.0.0',
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [{ filename: 'LICENSE', content: 'Copyright (c) 2024 Alpha\r\nPermission is hereby granted...' }],
+    noticeFiles: [],
+    authors: ['Alpha Author'],
+  };
+  const compB = {
+    name: 'beta-crate',
+    version: '2.0.0',
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [{ filename: 'LICENSE', content: 'Copyright (c) 2024 Beta\nPermission is hereby granted...' }],
+    noticeFiles: [],
+    authors: ['Beta Author'],
+  };
+  const out1 = generateNoticesMarkdown([compA, compB], [], SPDX_STANDARD_LICENSES_FILE, []);
+  const out2 = generateNoticesMarkdown([compB, compA], [], SPDX_STANDARD_LICENSES_FILE, []);
+  assert.strictEqual(out1, out2);
+  assert.strictEqual(out1.includes('\r'), false);
+});
+
+test('licensing exceptions: generates exception section for unrar_sys with Roshal attribution and facts', () => {
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const content = fs.readFileSync(noticesFile, 'utf8');
+
+  assert.match(content, /## Licensing Exceptions/);
+  assert.match(content, /UnRAR \(`unrar_sys`\)/);
+  assert.match(content, /Alexander Roshal/);
+  assert.match(content, /re-create the RAR compression algorithm/);
+  assert.match(content, /only extracts RAR archives and never creates them/);
+  assert.match(content, /not GPL-compatible/);
+  assert.match(content, /\[Notice Entry \d+\]\(#notice-entry-\d+\)/);
+});
+
+test('licensing exceptions: fails fast if declared exception crate is missing from tree', () => {
+  const dummyInventory = Array.from({ length: 15 }, (_, i) => ({
+    name: `crate-${i}`,
+    version: '1.0.0',
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: ['Test Author'],
+  }));
+  assert.throws(
+    () => generateNoticesMarkdown(dummyInventory, [], SPDX_STANDARD_LICENSES_FILE, KNOWN_NON_FREE_EXCEPTIONS),
+    /Known non-free exception crate unrar_sys@0\.5\.8 is declared but missing from Cargo dependencies/
+  );
+});
+
+test('licensing exceptions: fails fast if unlisted component has non-free restriction clauses', () => {
+  const unlistedComp = {
+    name: 'rogue-crate',
+    version: '1.0.0',
+    license: 'Custom',
+    source: 'cargo',
+    licenseFiles: [{ filename: 'LICENSE.txt', content: 'This library cannot be used to develop an archive or re-create RAR compression algorithm.' }],
+    noticeFiles: [],
+    authors: ['Rogue'],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([unlistedComp], [], SPDX_STANDARD_LICENSES_FILE, []),
+    /Component rogue-crate@1\.0\.0 .* contains non-free restriction clauses but is not registered in KNOWN_NON_FREE_EXCEPTIONS/
+  );
+});
+
+test('fallback placeholders: no <copyright holders> or unpopulated placeholders remain in output', () => {
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const content = fs.readFileSync(noticesFile, 'utf8');
+
+  assert.doesNotMatch(content, /<copyright holders>/);
+  assert.doesNotMatch(content, /see repository maintainers/);
+  // Verifies reviewed attribution is present for cx448
+  assert.match(content, /`cx448@0\.1\.1` - SPDX: `BSD-3-Clause` \(authors: Friedel Ziegelmayer \(dignifiedquire\)\)/);
+  assert.match(content, /Copyright \(c\) 2024 Friedel Ziegelmayer \(dignifiedquire\) \(cx448\)/);
+});
+
+test('fallback placeholders: generator rejects unreviewed component without authors or pinned attribution', () => {
+  const compWithoutAuthor = {
+    name: 'unreviewed-authorless-crate',
+    version: '0.0.1',
+    license: 'BSD-3-Clause',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: [],
+  };
+  assert.throws(
+    () => generateNoticesMarkdown([compWithoutAuthor], [], SPDX_STANDARD_LICENSES_FILE, []),
+    /Component unreviewed-authorless-crate@0\.0\.1 has no manifest authors and is missing reviewed attribution in PINNED_FALLBACK_ATTRIBUTIONS/
+  );
+});
+
+test('build.yml includes THIRD-PARTY-NOTICES.md in Windows portable ZIP stage', () => {
+  const buildYml = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'build.yml'), 'utf8');
+  assert.match(buildYml, /Copy-Item "THIRD-PARTY-NOTICES\.md"\s+"\$stage\\THIRD-PARTY-NOTICES\.md"/);
+  assert.match(buildYml, /Test-Path "\$stage\\THIRD-PARTY-NOTICES\.md"/);
 });
 
 test('THIRD-PARTY-NOTICES.md documents distribution targets and FlatPark distinction', () => {

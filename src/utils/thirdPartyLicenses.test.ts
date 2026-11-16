@@ -38,6 +38,15 @@ describe('thirdPartyLicenses', () => {
 
       expect(paths).toEqual(LINUX_NOTICE_PATHS);
     });
+
+    it('checks executableDir for portable installations when present', async () => {
+      const mockResolver = vi.fn().mockRejectedValue(new Error('Resource not found'));
+      const mockExeDir = vi.fn().mockResolvedValue('/opt/portable-app');
+      const paths = await getCandidateNoticePaths(mockResolver, mockExeDir);
+
+      expect(paths).toContain('/opt/portable-app/THIRD-PARTY-NOTICES.md');
+      expect(mockExeDir).toHaveBeenCalled();
+    });
   });
 
   describe('openThirdPartyLicenses', () => {
