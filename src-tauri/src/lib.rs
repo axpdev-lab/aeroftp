@@ -8981,6 +8981,12 @@ async fn create_remote_folder_for_ipc(
 /// destroying the target. (CLAUDE-AV-B1-10)
 pub(crate) const DEST_EXISTS_MARKER: &str = "DEST_EXISTS";
 
+/// Sentinel prefix returned when a copy with `overwrite: Some(false)` reaches a
+/// volume that can only publish a file by replacing what is at its name (no
+/// no-replace rename, no hard links): the copy is refused there, and nothing
+/// at the destination is touched.
+pub(crate) const NO_REPLACE_UNAVAILABLE_MARKER: &str = "NO_REPLACE_UNAVAILABLE";
+
 /// True when `rename(2)` failed because source and destination are on different
 /// filesystems (classic EXDEV). Gvfs MTP FUSE mounts hit this when the user
 /// moves a phone file onto the home disk (or dual local panels on different
@@ -9311,6 +9317,11 @@ fn publish_local_copy(
         LocalPublish::NoReplace => rename_no_replace(temp, to).map_err(|e| {
             if e.kind() == std::io::ErrorKind::AlreadyExists {
                 crate::sync::IpcError::from(format!("{DEST_EXISTS_MARKER}: {}", to.display()))
+            } else if is_no_replace_unavailable(&e) {
+                crate::sync::IpcError::from(format!(
+                    "{NO_REPLACE_UNAVAILABLE_MARKER}: {}: this volume can only add a file by replacing what is at its name, so a copy that must not overwrite is refused there. Copy with overwrite, or to another volume",
+                    to.display()
+                ))
             } else {
                 local_copy_failed(e)
             }
@@ -9387,9 +9398,9 @@ pub(crate) fn copy_into_place(
 /// never replaced. A filesystem without the native no-replace rename gets a
 /// hard link, which refuses an existing name the same way, and then the
 /// temporary is removed. One with neither (exFAT, FAT and SMB on macOS, a
-/// FUSE mount whose server has neither) gets [`rename_if_absent`], the
-/// strongest publication it allows: the plain rename such a copy always
-/// had, right after its own absence check.
+/// FUSE mount whose server has neither) can publish only with a rename that
+/// replaces whatever another writer put at `to` meanwhile: the copy is
+/// refused there ([`no_replace_unavailable`]), and `to` is left as it is.
 #[cfg(not(windows))]
 fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     #[cfg(test)]
@@ -9436,7 +9447,7 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
         }
     }
     let linked = if unsupported {
-        Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        Err(std::io::Error::from_raw_os_error(libc::EPERM))
     } else {
         std::fs::hard_link(temp, to)
     };
@@ -9447,44 +9458,71 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
             }
             Ok(())
         }
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Err(e),
-        Err(_) => rename_if_absent(temp, to),
+        // link(2): EPERM where the filesystem has no hard links (FAT, exFAT),
+        // ENOTSUP / EOPNOTSUPP / ENOSYS from macOS volumes, SMB and FUSE.
+        Err(e)
+            if e.raw_os_error().is_some_and(|code| {
+                code == libc::EPERM
+                    || code == libc::ENOTSUP
+                    || code == libc::EOPNOTSUPP
+                    || code == libc::ENOSYS
+            }) =>
+        {
+            #[cfg(test)]
+            if let Some(meanwhile) = WHERE_NEITHER_STEP_EXISTS.with(|hook| hook.borrow_mut().take())
+            {
+                meanwhile();
+            }
+            Err(no_replace_unavailable())
+        }
+        Err(e) => Err(e),
     }
 }
 
-/// Give `temp` the name `to` when nothing is at `to`: the publication of a
-/// filesystem that refuses both atomic steps of [`rename_no_replace`]. The
-/// name is claimed first with an exclusive create (`O_EXCL`), which FAT, SMB
-/// and FUSE answer atomically too, and the rename then replaces only that
-/// empty placeholder: another copy finds the name taken and is refused.
+/// What a copy that must not overwrite meets on a volume with neither atomic
+/// step of [`rename_no_replace`]: the only publication left there is a rename
+/// that replaces whatever another writer put at the name meanwhile, and a
+/// placeholder claimed first would stay behind after a crash. Refused, and
+/// read by [`is_no_replace_unavailable`].
 #[cfg(not(windows))]
-fn rename_if_absent(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
-    std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(to)?;
-    #[cfg(test)]
-    if let Some(between) = BETWEEN_CLAIM_AND_RENAME.with(|hook| hook.borrow_mut().take()) {
-        between();
-    }
-    std::fs::rename(temp, to).inspect_err(|_| {
-        let _ = std::fs::remove_file(to);
-    })
+fn no_replace_unavailable() -> std::io::Error {
+    std::io::Error::new(std::io::ErrorKind::Unsupported, NoReplaceUnavailable)
 }
+
+fn is_no_replace_unavailable(error: &std::io::Error) -> bool {
+    error
+        .get_ref()
+        .is_some_and(|inner| inner.is::<NoReplaceUnavailable>())
+}
+
+#[derive(Debug)]
+#[cfg_attr(windows, allow(dead_code))]
+struct NoReplaceUnavailable;
+
+impl std::fmt::Display for NoReplaceUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the volume has neither a no-replace rename nor hard links")
+    }
+}
+
+impl std::error::Error for NoReplaceUnavailable {}
 
 #[cfg(all(test, not(windows)))]
 thread_local! {
     /// The filesystem under the test has neither a no-replace rename nor
     /// hard links.
     static NEITHER_NO_REPLACE_NOR_LINK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-    /// Run once by [`rename_if_absent`] between its claim and its rename.
-    static BETWEEN_CLAIM_AND_RENAME: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+    /// Run once where a publication finds neither atomic step, the moment
+    /// another writer can reach the name.
+    static WHERE_NEITHER_STEP_EXISTS: std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
         const { std::cell::RefCell::new(None) };
 }
 
 /// [`rename_no_replace`] on Windows: `MoveFileExW` without
 /// `MOVEFILE_REPLACE_EXISTING` fails on an existing name with
-/// `ERROR_ALREADY_EXISTS`, which std reads as `AlreadyExists`.
+/// `ERROR_ALREADY_EXISTS`. The `windows` crate reports it as the HRESULT
+/// `0x800700B7`, which std reads as no known kind, so [`win32_io_error`]
+/// turns it back into the Win32 code that std reads as `AlreadyExists`.
 #[cfg(windows)]
 fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
@@ -9505,7 +9543,29 @@ fn rename_no_replace(temp: &std::path::Path, to: &std::path::Path) -> std::io::R
             MOVE_FILE_FLAGS(0),
         )
     }
-    .map_err(std::io::Error::from)
+    .map_err(win32_io_error)
+}
+
+/// The `std::io::Error` of a failed Win32 call. The `windows` crate gives its
+/// error as an HRESULT, and its `From` passes that number to
+/// `from_raw_os_error`, where std looks up Win32 codes only: every such error
+/// reads as no known kind. A `FACILITY_WIN32` HRESULT (`0x8007xxxx`, see
+/// [`win32_code_of_hresult`]) is given its Win32 code back; any other stays
+/// as it is.
+#[cfg(windows)]
+fn win32_io_error(error: windows::core::Error) -> std::io::Error {
+    match win32_code_of_hresult(error.code().0) {
+        Some(code) => std::io::Error::from_raw_os_error(code),
+        None => std::io::Error::from(error),
+    }
+}
+
+/// The Win32 code an HRESULT carries, when it is `HRESULT_FROM_WIN32` of one
+/// (`FACILITY_WIN32` with the failure bit, `0x8007xxxx`).
+#[cfg(any(windows, test))]
+fn win32_code_of_hresult(hresult: i32) -> Option<i32> {
+    let bits = hresult as u32;
+    (bits & 0xFFFF_0000 == 0x8007_0000).then_some((bits & 0xFFFF) as i32)
 }
 
 /// `CopyFileExW`'s progress routine: called at each stream's start and after
@@ -9564,7 +9624,7 @@ fn native_copy_windows(
     match copied {
         Ok(()) => Ok(()),
         Err(_) if cancel.load(Ordering::Relaxed) => Err(crate::sync::IpcError::Cancelled),
-        Err(error) => Err(local_copy_failed(std::io::Error::from(error))),
+        Err(error) => Err(local_copy_failed(win32_io_error(error))),
     }
 }
 
@@ -9861,56 +9921,100 @@ mod native_local_copy_tests {
         assert_eq!(names, ["copy.txt"]);
     }
 
-    /// A filesystem with neither a no-replace rename nor hard links refused
-    /// every `overwrite=false` copy, which its plain rename used to publish.
-    /// There the publication checks the name is free and renames at once:
-    /// the copy publishes, and a destination created before that step is
-    /// still kept.
+    #[cfg(not(windows))]
+    fn names_in(dir: &std::path::Path) -> Vec<String> {
+        std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect()
+    }
+
+    /// A copy that must not overwrite, onto a volume with neither a
+    /// no-replace rename nor hard links: the only publication left there is
+    /// a rename that replaces what is at the name, or a placeholder claimed
+    /// first that a crash leaves behind. The copy is refused with its own
+    /// marker, the name stays absent, and no temporary is left. A destination
+    /// created during the copy keeps its bytes.
     #[cfg(not(windows))]
     #[test]
-    fn a_copy_that_must_not_overwrite_publishes_where_neither_atomic_step_exists() {
+    fn a_copy_that_must_not_overwrite_is_refused_where_neither_atomic_step_exists() {
         NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
         let dir = tempfile::tempdir().unwrap();
         let to = dir.path().join("copy.txt");
         let probe = tempfile::NamedTempFile::new().unwrap();
         let permissions = probe.as_file().metadata().unwrap().permissions();
-        let published = copy_into_place(
+        let refused = copy_into_place(
             &mut &b"ours"[..],
             permissions,
             &to,
             &AtomicBool::new(false),
             LocalPublish::NoReplace,
         );
-        let names: Vec<String> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
+        let names = names_in(dir.path());
         let raced = copy_while_the_destination_appears(LocalPublish::NoReplace);
         NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
-        assert!(published.is_ok(), "{published:?}");
-        assert_eq!(std::fs::read(&to).unwrap(), b"ours");
-        assert_eq!(names, ["copy.txt"]);
+        assert!(
+            format!("{refused:?}").contains(NO_REPLACE_UNAVAILABLE_MARKER),
+            "{refused:?}"
+        );
+        assert!(names.is_empty(), "{names:?}");
         let (copied, names, contents) = raced;
-        assert!(copied.contains(DEST_EXISTS_MARKER), "{copied}");
+        assert!(copied.contains(NO_REPLACE_UNAVAILABLE_MARKER), "{copied}");
         assert_eq!(contents, b"theirs");
         assert_eq!(names, ["copy.txt"]);
     }
 
-    /// Where neither atomic step exists, two `overwrite=false` copies to one
-    /// name both found it free and both renamed: the second replaced the
-    /// first. The name is claimed with an exclusive create before the rename,
-    /// so the copy that runs between the other's claim and rename is refused,
-    /// and exactly one publishes.
+    /// Where neither atomic step exists, another writer puts its own bytes at
+    /// the name at the moment the copy would publish (a placeholder claimed
+    /// there was filled, then renamed over). Those bytes survive, and the
+    /// copy is refused.
     #[cfg(not(windows))]
     #[test]
-    fn two_copies_that_must_not_overwrite_never_both_publish_where_neither_atomic_step_exists() {
+    fn bytes_another_writer_puts_at_the_name_survive_where_neither_atomic_step_exists() {
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("copy.txt");
+        let probe = tempfile::NamedTempFile::new().unwrap();
+        let permissions = probe.as_file().metadata().unwrap().permissions();
+        let wrote = std::rc::Rc::new(std::cell::Cell::new(false));
+        WHERE_NEITHER_STEP_EXISTS.with(|hook| {
+            let (to, wrote) = (to.clone(), wrote.clone());
+            *hook.borrow_mut() = Some(Box::new(move || {
+                std::fs::write(&to, b"theirs").unwrap();
+                wrote.set(true);
+            }));
+        });
+        let copied = copy_into_place(
+            &mut &b"ours"[..],
+            permissions,
+            &to,
+            &AtomicBool::new(false),
+            LocalPublish::NoReplace,
+        );
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
+        WHERE_NEITHER_STEP_EXISTS.with(|hook| hook.borrow_mut().take());
+        assert!(wrote.get(), "the other writer ran where the copy publishes");
+        assert!(
+            format!("{copied:?}").contains(NO_REPLACE_UNAVAILABLE_MARKER),
+            "{copied:?}"
+        );
+        assert_eq!(std::fs::read(&to).unwrap(), b"theirs");
+        assert_eq!(names_in(dir.path()), ["copy.txt"]);
+    }
+
+    /// Where neither atomic step exists, a second copy to the same name runs
+    /// at the moment the first would publish: both are refused, and nothing
+    /// is left at the name.
+    #[cfg(not(windows))]
+    #[test]
+    fn two_copies_that_must_not_overwrite_are_both_refused_where_neither_atomic_step_exists() {
         NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
         let dir = tempfile::tempdir().unwrap();
         let to = dir.path().join("copy.txt");
         let probe = tempfile::NamedTempFile::new().unwrap();
         let permissions = probe.as_file().metadata().unwrap().permissions();
         let second = std::rc::Rc::new(std::cell::RefCell::new(None));
-        BETWEEN_CLAIM_AND_RENAME.with(|hook| {
+        WHERE_NEITHER_STEP_EXISTS.with(|hook| {
             let (to, permissions, second) = (to.clone(), permissions.clone(), second.clone());
             *hook.borrow_mut() = Some(Box::new(move || {
                 *second.borrow_mut() = Some(copy_into_place(
@@ -9930,23 +10034,63 @@ mod native_local_copy_tests {
             LocalPublish::NoReplace,
         );
         NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
-        BETWEEN_CLAIM_AND_RENAME.with(|hook| hook.borrow_mut().take());
+        WHERE_NEITHER_STEP_EXISTS.with(|hook| hook.borrow_mut().take());
         let second = second
             .borrow_mut()
             .take()
-            .expect("the second copy ran between the first's claim and rename");
-        let names: Vec<String> = std::fs::read_dir(dir.path())
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-            .collect();
+            .expect("the second copy ran where the first publishes");
         let outcomes = format!("first {first:?}, second {second:?}");
-        assert!(first.is_ok(), "{outcomes}");
         assert!(
-            format!("{second:?}").contains(DEST_EXISTS_MARKER),
+            outcomes.matches(NO_REPLACE_UNAVAILABLE_MARKER).count() == 2,
             "{outcomes}"
         );
-        assert_eq!(std::fs::read(&to).unwrap(), b"first");
-        assert_eq!(names, ["copy.txt"]);
+        assert!(names_in(dir.path()).is_empty(), "{outcomes}");
+    }
+
+    /// The `windows` crate reports a failed Win32 call as
+    /// `HRESULT_FROM_WIN32(code)`: the code comes back out of it, and an
+    /// HRESULT of another facility gives none.
+    #[test]
+    fn a_win32_hresult_gives_its_win32_code_back() {
+        // 0x800700B7: HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS = 183).
+        assert_eq!(win32_code_of_hresult(0x8007_00B7_u32 as i32), Some(183));
+        // 0x80070050: HRESULT_FROM_WIN32(ERROR_FILE_EXISTS = 80).
+        assert_eq!(win32_code_of_hresult(0x8007_0050_u32 as i32), Some(80));
+        // E_FAIL and E_NOINTERFACE are no Win32 code; S_OK is no failure.
+        assert_eq!(win32_code_of_hresult(0x8000_4005_u32 as i32), None);
+        assert_eq!(win32_code_of_hresult(0x8000_4002_u32 as i32), None);
+        assert_eq!(win32_code_of_hresult(0), None);
+    }
+
+    /// On Windows, `MoveFileExW` refusing an existing name reads as
+    /// `AlreadyExists`, the kind the publication maps to the
+    /// destination-exists marker; the HRESULT the `windows` crate gives reads
+    /// as `AlreadyExists` too once converted, and std alone does not read it
+    /// so.
+    #[cfg(windows)]
+    #[test]
+    fn a_no_replace_rename_onto_an_existing_name_reads_as_already_exists_on_windows() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join("temp.txt");
+        let to = dir.path().join("copy.txt");
+        std::fs::write(&temp, b"ours").unwrap();
+        std::fs::write(&to, b"theirs").unwrap();
+        let refused = rename_no_replace(&temp, &to).unwrap_err();
+        assert_eq!(
+            refused.kind(),
+            std::io::ErrorKind::AlreadyExists,
+            "{refused:?}"
+        );
+        assert_eq!(std::fs::read(&to).unwrap(), b"theirs");
+        let hresult = windows::core::Error::from(windows::core::HRESULT(0x8007_00B7_u32 as i32));
+        assert_ne!(
+            std::io::Error::from(hresult.clone()).kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            win32_io_error(hresult).kind(),
+            std::io::ErrorKind::AlreadyExists
+        );
     }
 
     /// A folder copy with `overwrite=false` never merges into a folder that
@@ -9975,6 +10119,33 @@ mod native_local_copy_tests {
         assert!(error.starts_with(DEST_EXISTS_MARKER), "{error}");
         assert_eq!(std::fs::read(to.join("kept.txt")).unwrap(), b"theirs");
         assert!(!to.join("new.txt").exists());
+    }
+
+    /// A folder copy that must not overwrite, onto a volume with neither
+    /// atomic step: its files are refused with the same marker as a file
+    /// copy, which reaches the caller instead of a generic copy failure.
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn a_folder_copy_that_must_not_overwrite_reports_where_neither_atomic_step_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("from");
+        std::fs::create_dir(&from).unwrap();
+        std::fs::write(from.join("file.txt"), b"ours").unwrap();
+        let to = dir.path().join("to");
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(true));
+        let copied = copy_dir_recursive_cancellable(
+            &from,
+            &to,
+            0,
+            NestedLinks::Skip,
+            Some(&AtomicBool::new(false)),
+            LocalPublish::NoReplace,
+        )
+        .await;
+        NEITHER_NO_REPLACE_NOR_LINK.with(|unsupported| unsupported.set(false));
+        let error = copied.expect_err("the volume cannot publish without replacing");
+        assert!(error.starts_with(NO_REPLACE_UNAVAILABLE_MARKER), "{error}");
+        assert_eq!(names_in(&to), Vec::<String>::new());
     }
 }
 
@@ -10120,7 +10291,12 @@ async fn copy_dir_recursive_cancellable(
         } else if let Some(cancel) = cancel {
             refuse_link_destination(&dst_path)?;
             copy_file_cancellable(&src_path, &dst_path, cancel, publish).map_err(|e| match e {
-                crate::sync::IpcError::Other(text) if text.starts_with(DEST_EXISTS_MARKER) => text,
+                crate::sync::IpcError::Other(text)
+                    if text.starts_with(DEST_EXISTS_MARKER)
+                        || text.starts_with(NO_REPLACE_UNAVAILABLE_MARKER) =>
+                {
+                    text
+                }
                 _ => format!("Failed to copy file: {}", src_path.display()),
             })?;
         } else {
