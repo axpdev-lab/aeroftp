@@ -2500,6 +2500,33 @@ pub(crate) mod exists_tests {
         );
     }
 
+    /// The other side of the guard: a folder reported as an absolute path is
+    /// entered again after the reconnect, before the RETR, so the download
+    /// still completes from that folder.
+    #[tokio::test]
+    async fn a_reconnect_after_an_absolute_folder_report_retrieves_from_it() {
+        let (addr, sessions, commands) = stalls_on_size_once_with(b"hello", false, "/work").await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a.txt");
+        let mut ftp = FtpManager::new();
+        ftp.timeouts.command_timeout = std::time::Duration::from_millis(200);
+        ftp.connect(&addr).await.unwrap();
+        ftp.login("u", "p").await.unwrap();
+        ftp.download_file("a.txt", local.to_str().unwrap())
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(&local).unwrap(), b"hello");
+        assert_eq!(sessions.load(Ordering::SeqCst), 2);
+        let sent = commands.lock().unwrap().clone();
+        let after_size: Vec<&String> = sent.iter().skip_while(|c| *c != "SIZE a.txt").collect();
+        let cwd = after_size.iter().position(|c| *c == "CWD /work");
+        let retr = after_size.iter().position(|c| *c == "RETR a.txt");
+        assert!(
+            matches!((cwd, retr), (Some(c), Some(r)) if c < r),
+            "the new session did not enter /work before the RETR: {sent:?}"
+        );
+    }
+
     #[tokio::test]
     async fn a_file_is_found_on_a_server_that_refuses_size_in_ascii() {
         let addr = vsftpd_like().await;
