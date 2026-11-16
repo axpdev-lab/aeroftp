@@ -5024,7 +5024,9 @@ mod tests {
                 locked += 1;
             }
         }
-        assert_eq!(locked, 16, "the tests that use the process warning queue");
+        // 17 since `provider_commands.rs` added
+        // `a_superseded_connect_with_warnings_is_still_refused`.
+        assert_eq!(locked, 17, "the tests that use the process warning queue");
     }
 
     #[test]

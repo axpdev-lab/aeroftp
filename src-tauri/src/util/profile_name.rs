@@ -26,26 +26,26 @@ fn key(name: &str) -> String {
 }
 
 /// The names in use, handing out names not yet taken.
-struct ProfileNames {
+pub(crate) struct ProfileNames {
     taken: HashSet<String>,
 }
 
 impl ProfileNames {
     /// The names `existing` already holds.
-    fn new<'a>(existing: impl IntoIterator<Item = &'a str>) -> Self {
+    pub(crate) fn new<'a>(existing: impl IntoIterator<Item = &'a str>) -> Self {
         Self {
             taken: existing.into_iter().map(key).collect(),
         }
     }
 
     /// Takes `name` as it is when no profile has it yet; false when one has.
-    fn reserve(&mut self, name: &str) -> bool {
+    pub(crate) fn reserve(&mut self, name: &str) -> bool {
         self.taken.insert(key(name))
     }
 
     /// `name` when no profile has it yet, else the first of "name (1)",
     /// "name (2)", ... that none has. The name returned is taken from then on.
-    fn claim(&mut self, name: &str) -> String {
+    pub(crate) fn claim(&mut self, name: &str) -> String {
         let mut claimed = name.to_string();
         let mut n = 1u32;
         while self.taken.contains(&key(&claimed)) {

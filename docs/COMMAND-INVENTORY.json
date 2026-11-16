@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 468,
+    "name_matched_count": 469,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -981,7 +981,6 @@
       "local_panel_watch_stop",
       "resolve_hostname",
       "disconnect_ftp",
-      "ftp_connection_generation",
       "chooser_unavailable",
       "ftp_noop",
       "reconnect_ftp",
@@ -1075,6 +1074,7 @@
       "detect_bridge_config",
       "bridge_source_meta",
       "bridge_identify",
+      "preview_configuration_template",
       "get_dependencies",
       "ensure_ui_tokens_file",
       "debug_test_connectivity",
@@ -1172,7 +1172,6 @@
       "fourshared_full_auth",
       "fourshared_has_tokens",
       "fourshared_logout",
-      "fourshared_adopt_tokens",
       "zoho_get_file_share_links",
       "zoho_create_native_document",
       "filelu_set_file_password",
@@ -1310,7 +1309,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 335,
+    "name_unmatched_count": 334,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1332,7 +1331,6 @@
       "resolve_hostname",
       "connect_ftp",
       "disconnect_ftp",
-      "ftp_connection_generation",
       "chooser_unavailable",
       "ftp_noop",
       "reconnect_ftp",
@@ -1585,6 +1583,8 @@
       "bridge_identify",
       "import_bridge_config",
       "export_bridge_config",
+      "preview_configuration_template",
+      "import_configuration_template",
       "export_keystore",
       "import_keystore",
       "read_keystore_metadata",
@@ -1812,7 +1812,6 @@
       "fourshared_connect",
       "fourshared_has_tokens",
       "fourshared_logout",
-      "fourshared_adopt_tokens",
       "zoho_list_trash",
       "zoho_permanent_delete",
       "zoho_restore_from_trash",

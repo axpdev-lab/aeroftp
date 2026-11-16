@@ -544,6 +544,11 @@ fn identity_root(profile: &serde_json::Value, remote_folder: &str) -> Result<Str
 /// (`~`, `~/...`). A blank folder is the root itself and any other relative
 /// one is opened under it.
 fn remote_folder_is_root_independent(remote_folder: &str, profile: &serde_json::Value) -> bool {
+    // A folder the connect would refuse is read as depending on the root: its
+    // identity keeps the literal root, and nothing is placed under it.
+    if crate::util::path_location::location_problem(remote_folder).is_some() {
+        return false;
+    }
     let protocol = profile_protocol(profile);
     if remote_folder == "/" && SLASH_IS_THE_STARTING_FOLDER.contains(&protocol) {
         return false;

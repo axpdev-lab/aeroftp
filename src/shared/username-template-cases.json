@@ -7,10 +7,12 @@
     "unresolvedMessage: what every user of a derived location (the crypt overlay unlock, the AeroCloud root, the window) shows instead of acting on a location still holding the placeholder; the Rust constant USERNAME_TEMPLATE_UNRESOLVED must equal it.",
     "A user name that contains {username} itself is refused by both helpers with unresolvedMessage: filled, it would leave the placeholder in place.",
     "compositions: one profile per case, read by every pair of twin readers of a derived location: the AeroCloud root (Rust profile_root, TS profileRoot), the crypt overlay anchor (Rust profile_overlay_scope, TS profileOverlayScope) and the AeroCloud base (TS aeroCloudBase); overlayInputs are what the form's Overlays Path may hold, and each must save as remoteScope (TS resolveOverlayScope). root and scope are compared without a trailing slash; null means refused (the root) or still holding the placeholder (the scope). Nothing is trimmed, before or after the fill: a folder's edge spaces are part of its name (#1449), as are the user name's; the edge space cases fail if the helper or a reader trims.",
-    "The rows ' alice ', 'al ice' and \"$$x$'\" come from #1568's table, merged into this one: both tables were read by the same twins."
+    "The rows ' alice ', 'al ice' and \"$$x$'\" come from #1568's table, merged into this one: both tables were read by the same twins.",
+    "A '\\\\' or a control character is refused in both forms, as '/' is in a path; in a URL a '/' is encoded and stays inside its segment (a%2Fb). hostTemplate and hostCases: the user name placed in the server's host name, filled as written and only as a valid host label (letters, digits, '-' and '.', no leading or trailing '.', no '..'); null = refused (Rust only: the TS side fills no URL)."
   ],
   "pathTemplate": "/remote.php/dav/files/{username}/",
   "urlTemplate": "https://dav.example.test/dav/{username}/",
+  "hostTemplate": "https://{username}.dav.example.test/files/",
   "cases": [
     {
       "user": "alice",
@@ -83,6 +85,16 @@
       "url": "https://dav.example.test/dav/a%2Fb/"
     },
     {
+      "user": "a\\b",
+      "path": null,
+      "url": null
+    },
+    {
+      "user": "a\u0007b",
+      "path": null,
+      "url": null
+    },
+    {
       "user": "..",
       "path": null,
       "url": null
@@ -90,6 +102,52 @@
     {
       "user": ".",
       "path": null,
+      "url": null
+    }
+  ],
+  "hostCases": [
+    {
+      "user": "alice",
+      "url": "https://alice.dav.example.test/files/"
+    },
+    {
+      "user": "team-1.eu",
+      "url": "https://team-1.eu.dav.example.test/files/"
+    },
+    {
+      "user": "a b",
+      "url": null
+    },
+    {
+      "user": "a/b",
+      "url": null
+    },
+    {
+      "user": "x?y",
+      "url": null
+    },
+    {
+      "user": "x#y",
+      "url": null
+    },
+    {
+      "user": "alice@example.com",
+      "url": null
+    },
+    {
+      "user": ".alice",
+      "url": null
+    },
+    {
+      "user": "a..b",
+      "url": null
+    },
+    {
+      "user": "..",
+      "url": null
+    },
+    {
+      "user": "",
       "url": null
     }
   ],
@@ -172,5 +230,5 @@
       "scope": "/reports "
     }
   ],
-  "unresolvedMessage": "This location still holds the {username} placeholder because the profile's user name cannot fill it (it is blank, contains '/', '\\' or NUL, is '.' or '..', or is literally {username}): set the user name, or write the folder in full instead of the placeholder"
+  "unresolvedMessage": "This location still holds the {username} placeholder because the profile's user name cannot fill it (it is blank, contains '/', '\\' or a control character, is '.' or '..', or is literally {username}): set the user name, or write the folder in full instead of the placeholder"
 }

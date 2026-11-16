@@ -8,7 +8,7 @@ import {
     SpeedTestResult,
     SpeedTestRunOutcome,
 } from '../components/SpeedTestDialog.types';
-import { loadedCertificateCheck, loadedOptionOn } from './profileSecurity';
+import { connectTlsMode, loadedCertificateCheck, loadedOptionOn, webdavConnectBasePath } from './profileSecurity';
 
 export const SPEEDTEST_SIZES = [
     { bytes: 1024 * 1024, labelKey: 'speedTest.size1MB', expert: false },
@@ -103,6 +103,7 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
 
     return {
         protocol,
+        provider_id: server.providerId || null,
         server: server.host,
         port: server.port ?? null,
         username: server.username || '',
@@ -119,8 +120,9 @@ export async function buildSpeedTestConnection(server: ServerProfile): Promise<S
         key_passphrase: options.key_passphrase || null,
         timeout: options.timeout || 30,
         ...scpFallbackConnectParam(protocol, options),
-        tls_mode: options.tlsMode || (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : null),
+        tls_mode: connectTlsMode(protocol, options) ?? null,
         verify_cert: loadedCertificateCheck(options),
+        base_path: webdavConnectBasePath(protocol, options),
         trust_pasv_address: loadedOptionOn(options, 'trustPasvAddress'),
     };
 }

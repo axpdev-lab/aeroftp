@@ -205,6 +205,7 @@ pub struct SecretWrite {
     pub key: String,
     pub kind: Option<&'static str>,
     pub value: Zeroizing<String>,
+    pub delete: bool,
 }
 
 impl SecretWrite {
@@ -213,6 +214,16 @@ impl SecretWrite {
             key,
             kind,
             value: Zeroizing::new(value.to_string()),
+            delete: false,
+        }
+    }
+
+    pub fn delete(key: String, kind: Option<&'static str>) -> Self {
+        Self {
+            key,
+            kind,
+            value: Zeroizing::new(String::new()),
+            delete: true,
         }
     }
 }
@@ -236,6 +247,24 @@ pub enum RollbackAction<'a> {
     Leave,
     Restore(&'a str),
     Delete,
+}
+
+/// Decide [`RollbackAction`] for either a value write or a delete operation.
+pub fn rollback_action_for_write<'a>(
+    current: Option<&str>,
+    write: &SecretWrite,
+    before: Option<&'a str>,
+) -> RollbackAction<'a> {
+    if write.delete {
+        if current.is_some() {
+            return RollbackAction::Leave;
+        }
+        return match before {
+            Some(value) => RollbackAction::Restore(value),
+            None => RollbackAction::Leave,
+        };
+    }
+    rollback_action(current, &write.value, before)
 }
 
 /// Decide [`RollbackAction`] from what the key holds now, what the import wrote
@@ -289,6 +318,7 @@ pub fn apply_secret_writes<S: SecretSlots>(
                 });
             }
         };
+        let is_delete = write.delete;
         let result = slots.write(&write);
         applied.push((write, before));
         if let Err(e) = result {
@@ -296,9 +326,10 @@ pub fn apply_secret_writes<S: SecretSlots>(
                 .last()
                 .map(|(w, _)| w.key.clone())
                 .unwrap_or_default();
-            log::warn!("Import: {failed} could not be stored: {e}");
+            let verb = if is_delete { "cleared" } else { "stored" };
+            log::warn!("Import: {failed} could not be {verb}: {e}");
             let left = roll_back_secret_writes(slots, applied);
-            let cause = format!("the secret {failed} could not be stored, so nothing was imported");
+            let cause = format!("the secret {failed} could not be {verb}, so nothing was imported");
             return Err(if left.is_empty() {
                 format!("{cause}; fix the cause and import the file again")
             } else {
@@ -326,6 +357,7 @@ pub fn roll_back_secret_writes<S: SecretSlots>(
 }
 
 /// What became of [`write_secrets_and_commit`].
+#[derive(Debug)]
 pub enum SecretCommit<T> {
     /// The list is stored, with the secrets written.
     Done(T),
@@ -376,16 +408,21 @@ pub fn failed_rollback_message(cause: &str, left: &[String]) -> String {
 pub fn lay_import_over(list: &mut Vec<serde_json::Value>, servers: &[serde_json::Value]) {
     for profile in servers {
         let mut profile = profile.clone();
-        let overwrite =
-            profile.get("importOutcome").and_then(|v| v.as_str()) == Some("overwritten");
+        let outcome = profile
+            .get("importOutcome")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
         if let Some(fields) = profile.as_object_mut() {
             fields.remove("importOutcome");
         }
         let slot = list
             .iter()
             .position(|p| p.get("id").is_some() && p.get("id") == profile.get("id"));
-        match (overwrite, slot) {
-            (true, Some(i)) => list[i] = overwrite_profile(&list[i], &profile),
+        match (outcome.as_deref(), slot) {
+            (Some("overwritten"), Some(i)) => list[i] = overwrite_profile(&list[i], &profile),
+            (Some("replaced_target"), Some(i)) => {
+                list[i] = replace_profile_for_new_target(&list[i], &profile)
+            }
             _ => list.push(profile),
         }
     }
@@ -706,6 +743,159 @@ pub fn overwrite_profile(
         }
     }
     merged
+}
+
+/// User-side profile preferences preserved when replacing a profile slot onto a
+/// different target. Target-bound caches and metadata (`lastQuota`,
+/// `lastBucketEncryption`, `lastCompression`, `lastConnectionError`,
+/// `deviceFingerprint`, `faviconUrl`, `publicUrlBase`,
+/// `skipDeltaEligibilityPrompt`, `lastConnected`, secret flags, `options`, and
+/// future additions) are intentionally dropped by starting from `imported`.
+const USER_FIELDS_KEPT_ON_NEW_TARGET: [&str; 4] = [
+    "color",
+    "localInitialPath",
+    "siteTemplates",
+    "customIconUrl",
+];
+
+/// Replace `existing` when a template replacement points the profile id at a
+/// different target (`!same_target`): build from `imported` and carry over from
+/// `existing` only the slot `id` plus user-side preferences in
+/// [`USER_FIELDS_KEPT_ON_NEW_TARGET`], dropping every target-bound field by default.
+pub fn replace_profile_for_new_target(
+    existing: &serde_json::Value,
+    imported: &serde_json::Value,
+) -> serde_json::Value {
+    let mut merged = imported.clone();
+    if let Some(target) = merged.as_object_mut() {
+        if let Some(existing_obj) = existing.as_object() {
+            if let Some(id) = existing_obj.get("id").filter(|v| !v.is_null()) {
+                target.insert("id".to_string(), id.clone());
+            }
+            for key in USER_FIELDS_KEPT_ON_NEW_TARGET {
+                if target.get(key).is_none_or(serde_json::Value::is_null) {
+                    if let Some(val) = existing_obj.get(key).filter(|v| !v.is_null()) {
+                        target.insert(key.to_string(), val.clone());
+                    }
+                }
+            }
+        }
+        for key in OMITTED_WHEN_EMPTY {
+            if target.get(key).is_some_and(serde_json::Value::is_null) {
+                target.remove(key);
+            }
+        }
+        for flag in STORED_SECRET_FLAGS {
+            let set = target.get(flag).and_then(|v| v.as_bool()) == Some(true);
+            if set {
+                target.insert(flag.to_string(), serde_json::Value::Bool(true));
+            } else if flag == "hasStoredCredential" {
+                target.insert(flag.to_string(), serde_json::Value::Bool(false));
+            } else {
+                target.remove(flag);
+            }
+        }
+    }
+    merged
+}
+
+/// Shared vector table exercised against both [`same_target`] directly and
+/// template overwrite credential retention in `template_import`.
+#[cfg(test)]
+pub(crate) fn same_target_shared_vectors(
+) -> Vec<(&'static str, serde_json::Value, serde_json::Value, bool)> {
+    use serde_json::json;
+    let base = json!({
+        "id": "srv_1",
+        "name": "Target",
+        "protocol": "sftp",
+        "host": "files.example.test",
+        "port": 22,
+        "username": "alice",
+        "options": {}
+    });
+    vec![
+        (
+            "same target keeps existing credential",
+            base.clone(),
+            base.clone(),
+            true,
+        ),
+        (
+            "changed port clears credential",
+            base.clone(),
+            json!({
+                "protocol": "sftp",
+                "host": "files.example.test",
+                "port": 2222,
+                "username": "alice",
+                "options": {}
+            }),
+            false,
+        ),
+        (
+            "changed username clears credential",
+            base.clone(),
+            json!({
+                "protocol": "sftp",
+                "host": "files.example.test",
+                "port": 22,
+                "username": "bob",
+                "options": {}
+            }),
+            false,
+        ),
+        (
+            "changed providerId clears credential",
+            json!({
+                "protocol": "webdav",
+                "host": "dav.example.test",
+                "port": 443,
+                "username": "alice",
+                "providerId": "nextcloud",
+                "options": {}
+            }),
+            json!({
+                "protocol": "webdav",
+                "host": "dav.example.test",
+                "port": 443,
+                "username": "alice",
+                "providerId": "owncloud",
+                "options": {}
+            }),
+            false,
+        ),
+        (
+            "kept verifyCert=false clears credential",
+            json!({
+                "protocol": "webdav",
+                "host": "dav.example.test",
+                "port": 443,
+                "username": "alice",
+                "options": {}
+            }),
+            json!({
+                "protocol": "webdav",
+                "host": "dav.example.test",
+                "port": 443,
+                "username": "alice",
+                "options": { "verifyCert": false }
+            }),
+            false,
+        ),
+        (
+            "kept trustUnknownHosts=true clears credential",
+            base,
+            json!({
+                "protocol": "sftp",
+                "host": "files.example.test",
+                "port": 22,
+                "username": "alice",
+                "options": { "trustUnknownHosts": true }
+            }),
+            false,
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -1192,9 +1382,13 @@ mod tests {
             if self.fail_write == Some(write.key.as_str()) {
                 return Err(format!("rejected value {}", write.value.as_str()));
             }
-            self.values
-                .borrow_mut()
-                .insert(write.key.clone(), write.value.to_string());
+            if write.delete {
+                self.values.borrow_mut().remove(&write.key);
+            } else {
+                self.values
+                    .borrow_mut()
+                    .insert(write.key.clone(), write.value.to_string());
+            }
             if let Some((after, key, value)) = self.refresh_after {
                 if after == write.key {
                     self.values
@@ -1210,7 +1404,7 @@ mod tests {
             }
             let mut values = self.values.borrow_mut();
             let current = values.get(&write.key).cloned();
-            match rollback_action(current.as_deref(), &write.value, before.as_deref()) {
+            match rollback_action_for_write(current.as_deref(), write, before.as_deref()) {
                 RollbackAction::Leave => {}
                 RollbackAction::Restore(value) => {
                     values.insert(write.key.clone(), value.to_string());
@@ -1374,8 +1568,7 @@ mod tests {
         let message = write_secrets_and_commit(&slots, secret_writes(), true, || {
             Err::<(), _>("disk full".to_string())
         })
-        .err()
-        .expect("the list write failed");
+        .expect_err("the list write failed");
         assert!(message.starts_with("disk full"), "{message}");
         assert!(message.contains("server_a"), "{message}");
         assert!(!message.contains("file-a"), "{message}");
@@ -1411,6 +1604,152 @@ mod tests {
             assert_eq!(
                 serde_json::from_str::<ExistingProfileMode>(text).unwrap(),
                 mode
+            );
+        }
+    }
+
+    #[test]
+    fn delete_writes_roll_back_previous_secrets_on_commit_failure() {
+        let slots = FakeSlots {
+            values: RefCell::new(HashMap::from([
+                ("server_keep".into(), "old-secret".into()),
+                ("server_modes_keep".into(), "old-modes".into()),
+            ])),
+            ..Default::default()
+        };
+        let err = write_secrets_and_commit(
+            &slots,
+            vec![
+                SecretWrite::delete("server_keep".into(), None),
+                SecretWrite::delete("server_modes_keep".into(), None),
+            ],
+            false,
+            || Err::<(), String>("commit failed".into()),
+        )
+        .unwrap_err();
+        assert_eq!(err, "commit failed");
+        assert_eq!(
+            slots.values.borrow().get("server_keep").map(String::as_str),
+            Some("old-secret")
+        );
+        assert_eq!(
+            slots
+                .values
+                .borrow()
+                .get("server_modes_keep")
+                .map(String::as_str),
+            Some("old-modes")
+        );
+    }
+
+    #[test]
+    fn same_target_shared_vectors_hold() {
+        for (label, existing, incoming, expected) in same_target_shared_vectors() {
+            assert_eq!(same_target(&existing, &incoming), expected, "{label}");
+        }
+    }
+
+    #[test]
+    fn replaced_target_drops_cached_state_while_same_target_overwrite_keeps_it() {
+        use serde_json::json;
+        let existing = json!({
+            "id": "srv_42",
+            "name": "Existing",
+            "protocol": "s3",
+            "host": "old.example.test",
+            "port": 443,
+            "username": "alice",
+            "color": "#112233",
+            "localInitialPath": "/home/alice/work",
+            "siteTemplates": [{ "id": "st1", "name": "Ping", "line": "NOOP" }],
+            "customIconUrl": "data:image/png;base64,iVBORw0KGgo=",
+            "faviconUrl": "https://old.example.test/favicon.ico",
+            "publicUrlBase": "https://old.example.test/share/",
+            "skipDeltaEligibilityPrompt": true,
+            "lastConnected": "2026-11-14T00:00:00Z",
+            "lastQuota": { "used": 1024, "total": 2048, "fetched_at": "2026-11-14T00:00:00Z" },
+            "lastBucketEncryption": { "enabled": true, "algorithm": "AES256" },
+            "lastCompression": { "ratio": 0.5 },
+            "lastConnectionError": "timeout on old endpoint",
+            "deviceFingerprint": { "serial": "ABC-123" },
+            "futureTargetState": "must-not-leak-to-new-target",
+            "aeroCryptOverlay": { "enabled": true },
+            "persistModeCredentials": true,
+            "hasStoredFilenApiKey": true,
+            "hasStoredCredential": true,
+            "options": { "bucket": "old-bucket", "sasToken": "?sr=c&sig=old" }
+        });
+        let imported = json!({
+            "id": "srv_42",
+            "name": "Existing",
+            "protocol": "webdav",
+            "host": "new.example.test",
+            "port": 443,
+            "username": "bob",
+            "hasStoredCredential": false,
+            "options": { "basePath": "/dav/" }
+        });
+
+        let replaced = replace_profile_for_new_target(&existing, &imported);
+        for dropped in [
+            "lastQuota",
+            "lastBucketEncryption",
+            "lastCompression",
+            "lastConnectionError",
+            "deviceFingerprint",
+            "faviconUrl",
+            "publicUrlBase",
+            "skipDeltaEligibilityPrompt",
+            "lastConnected",
+            "futureTargetState",
+            "aeroCryptOverlay",
+            "persistModeCredentials",
+            "hasStoredFilenApiKey",
+        ] {
+            assert!(
+                replaced.get(dropped).is_none(),
+                "changed-target replace must drop {dropped}: {replaced}"
+            );
+        }
+        assert_eq!(replaced["hasStoredCredential"], json!(false));
+        assert_eq!(replaced["color"], json!("#112233"));
+        assert_eq!(replaced["localInitialPath"], json!("/home/alice/work"));
+        assert_eq!(
+            replaced["siteTemplates"],
+            json!([{ "id": "st1", "name": "Ping", "line": "NOOP" }])
+        );
+        assert_eq!(
+            replaced["customIconUrl"],
+            json!("data:image/png;base64,iVBORw0KGgo=")
+        );
+        assert_eq!(replaced["options"], json!({ "basePath": "/dav/" }));
+
+        let same_target_imported = json!({
+            "id": "srv_42",
+            "name": "Existing",
+            "protocol": "s3",
+            "host": "old.example.test",
+            "port": 443,
+            "username": "alice",
+            "options": {}
+        });
+        let kept = overwrite_profile(&existing, &same_target_imported);
+        for field in [
+            "lastQuota",
+            "lastBucketEncryption",
+            "lastCompression",
+            "lastConnectionError",
+            "deviceFingerprint",
+            "faviconUrl",
+            "publicUrlBase",
+            "skipDeltaEligibilityPrompt",
+            "lastConnected",
+            "customIconUrl",
+        ] {
+            assert_eq!(
+                kept.get(field),
+                existing.get(field),
+                "same-target overwrite must keep {field}"
             );
         }
     }

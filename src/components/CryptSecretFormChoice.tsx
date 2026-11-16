@@ -17,6 +17,11 @@ interface Props {
     disabled?: boolean;
     /** Save waits on this choice: the note shows as an error. */
     missing?: boolean;
+    /** Optional domain-specific labels overriding the default crypt strings. */
+    clearLabel?: string;
+    obscuredLabel?: string;
+    unrecordedHint?: string;
+    recordedHint?: string;
 }
 
 /**
@@ -39,7 +44,18 @@ export function formChoiceAction(
  * salt rclone generates reads exactly like an obscured empty one. A value
  * recorded in neither form shows neither option chosen.
  */
-export const CryptSecretFormChoice: React.FC<Props> = ({ legend, value, onChange, confirmChange, disabled, missing }) => {
+export const CryptSecretFormChoice: React.FC<Props> = ({
+    legend,
+    value,
+    onChange,
+    confirmChange,
+    disabled,
+    missing,
+    clearLabel,
+    obscuredLabel,
+    unrecordedHint,
+    recordedHint,
+}) => {
     const t = useTranslation();
     // One radio group per secret: the password and the salt choices share
     // their labels, so each group needs its own name.
@@ -68,11 +84,13 @@ export const CryptSecretFormChoice: React.FC<Props> = ({ legend, value, onChange
         <fieldset className="mt-1.5 text-xs text-gray-600 dark:text-gray-400">
             <legend className="sr-only">{legend}</legend>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                {option('clear', t('aerocryptProfile.secretFormTyped'))}
-                {option('obscured', t('aerocryptProfile.pastedObscured'))}
+                {option('clear', clearLabel ?? t('aerocryptProfile.secretFormTyped'))}
+                {option('obscured', obscuredLabel ?? t('aerocryptProfile.pastedObscured'))}
             </div>
             <span className={`block mt-0.5 text-[11px] ${missing && value === undefined ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-500'}`}>
-                {value === undefined ? t('aerocryptProfile.formNotRecorded') : t('aerocryptProfile.pastedObscuredHint')}
+                {value === undefined
+                    ? (unrecordedHint ?? t('aerocryptProfile.formNotRecorded'))
+                    : (recordedHint ?? t('aerocryptProfile.pastedObscuredHint'))}
             </span>
             {pending && (
                 <ConfirmDialog

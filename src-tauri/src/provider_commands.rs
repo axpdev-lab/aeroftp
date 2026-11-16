@@ -1417,6 +1417,11 @@ pub struct ProviderConnectionParams {
     /// in `ProviderConfig.extra["default_privacy"]`.
     #[serde(default, alias = "opendriveDefaultPrivacy")]
     pub opendrive_default_privacy: Option<String>,
+    /// WebDAV base collection path (e.g. `/dav/<user>/`) persisted under
+    /// `options.basePath` by importers/presets and forwarded to
+    /// `ProviderConfig.extra["base_path"]`.
+    #[serde(default, alias = "basePath")]
+    pub base_path: Option<String>,
 }
 
 /// The host the backend uses for a cloud API whatever the tab's server field
@@ -1734,6 +1739,11 @@ impl ProviderConnectionParams {
             if let Some(verify) = self.verify_cert {
                 extra.insert("verify_cert".to_string(), verify.to_string());
             }
+            if let Some(ref base_path) = self.base_path {
+                if !base_path.trim().is_empty() {
+                    extra.insert("base_path".to_string(), base_path.clone());
+                }
+            }
         }
 
         // S3 self-signed cert opt-out for local-loopback bridges (Filen Desktop S3
@@ -1929,18 +1939,7 @@ impl ProviderConnectionParams {
             self.server.clone()
         };
 
-        // Strip port suffix from host if present (e.g. "127.0.0.1:2121" → "127.0.0.1")
-        // Users sometimes enter host:port in the server field, but port is a separate param
-        let host = if let Some(colon_idx) = host.rfind(':') {
-            let after = &host[colon_idx + 1..];
-            if after.parse::<u16>().is_ok() {
-                host[..colon_idx].to_string()
-            } else {
-                host
-            }
-        } else {
-            host
-        };
+        let host = without_port_suffix(&host).to_string();
 
         Ok(ProviderConfig {
             name: format!("{}@{}", self.username, host),
@@ -3093,6 +3092,8 @@ struct ProbeIdentity<'a> {
     /// An S3 tab's custom endpoint and region (`options.endpoint`, `options.region`).
     endpoint: Option<&'a str>,
     region: Option<&'a str>,
+    /// WebDAV collection base path (`options.basePath` / `extra.base_path`).
+    base_path: Option<&'a str>,
 }
 
 /// An endpoint as a tab or a config writes it: `[scheme://]host[:port][/path]`.
@@ -3111,7 +3112,12 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
         Some((scheme, rest)) => (Some(scheme.to_ascii_lowercase()), rest),
         None => (None, text),
     };
-    let (authority, path) = rest.split_at(rest.find('/').unwrap_or(rest.len()));
+    let auth_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, rest_after_auth) = rest.split_at(auth_end);
+    let path = match rest_after_auth.find(['?', '#']) {
+        Some(idx) => &rest_after_auth[..idx],
+        None => rest_after_auth,
+    };
     let (host, port) = if let Some(bracketed) = authority.strip_prefix('[') {
         // An IPv6 literal: `[::1]` or `[::1]:21`.
         let (host, after) = bracketed.split_once(']').unwrap_or((bracketed, ""));
@@ -3132,6 +3138,88 @@ fn endpoint_of(text: &str) -> Endpoint<'_> {
     }
 }
 
+/// The server field without a trailing `:port` ("127.0.0.1:2121" is
+/// "127.0.0.1"): users sometimes write the port there, but the port is its own
+/// setting, and the connect ([`ProviderConnectionParams::to_provider_config`])
+/// builds its target from the host without it.
+fn without_port_suffix(host: &str) -> &str {
+    match host.rfind(':') {
+        Some(colon_idx) if host[colon_idx + 1..].parse::<u16>().is_ok() => &host[..colon_idx],
+        _ => host,
+    }
+}
+
+/// The root URL a WebDAV connection with these settings requests, built by
+/// the connect's own construction (`WebDavConfig::from_provider_config`:
+/// scheme, base path, `{username}`), then the root listing's `/` placed before
+/// any `?query` or `#fragment` as `WebDavProvider::build_url` does, and parsed,
+/// which normalizes it (`/./`, case). Parsed whole, a base path's trailing
+/// space would be trimmed; before the `/` it is part of the collection's name.
+/// `None` when the connect would refuse the settings.
+fn webdav_connect_target(
+    host: &str,
+    port: Option<u16>,
+    username: Option<&str>,
+    base_path: Option<&str>,
+) -> Option<url::Url> {
+    let mut extra = HashMap::new();
+    if let Some(base_path) = base_path {
+        extra.insert("base_path".to_string(), base_path.to_string());
+    }
+    let config = ProviderConfig {
+        name: String::new(),
+        provider_type: ProviderType::WebDav,
+        host: host.to_string(),
+        port,
+        username: username.map(str::to_string),
+        password: None,
+        initial_path: None,
+        extra,
+    };
+    let webdav = crate::providers::types::WebDavConfig::from_provider_config(&config).ok()?;
+    let (base, tail) = webdav
+        .url
+        .split_at(webdav.url.find(['?', '#']).unwrap_or(webdav.url.len()));
+    url::Url::parse(&format!("{}/{}", base.trim_end_matches('/'), tail)).ok()
+}
+
+/// The scheme a WebDAV host writes itself, as the connect reads it
+/// (`webdav`/`dav` are `http`, `webdavs`/`davs` are `https`). `None` when the
+/// host writes none: its scheme then also depends on a TLS choice a tab does
+/// not carry, so it cannot tell two targets apart.
+fn written_webdav_scheme(host: &str) -> Option<&'static str> {
+    match endpoint_of(host).scheme.as_deref() {
+        Some("http" | "webdav" | "dav") => Some("http"),
+        Some("https" | "webdavs" | "davs") => Some("https"),
+        _ => None,
+    }
+}
+
+/// Whether two WebDAV connect targets are the same collection: the same path
+/// and query, and, where `compare_host`, the same host and port, and the same
+/// scheme where both hosts write one (`written_schemes`). The port is each
+/// URL's own, as the request uses it: the one written in the URL, else the
+/// scheme's default (the connect writes a non-default configured port into
+/// the URL, and a host with its own scheme keeps that scheme's).
+fn same_webdav_target(
+    expected: &url::Url,
+    actual: &url::Url,
+    written_schemes: (Option<&str>, Option<&str>),
+    compare_host: bool,
+) -> bool {
+    let path = |url: &url::Url| url.path().trim_end_matches('/').to_string();
+    let schemes_agree = match written_schemes {
+        (Some(a), Some(b)) => a == b,
+        _ => true,
+    };
+    path(expected) == path(actual)
+        && expected.query() == actual.query()
+        && (!compare_host
+            || (schemes_agree
+                && expected.host_str() == actual.host_str()
+                && expected.port_or_known_default() == actual.port_or_known_default()))
+}
+
 /// Whether the tab's endpoint `expected`, on `port`, is the slot's `actual`
 /// on `actual_port`. A scheme written on one side only does not tell them
 /// apart. Where `url_port_wins` (WebDAV), a port written in the URL is the one
@@ -3143,6 +3231,17 @@ fn same_endpoint(
     port: u16,
     actual_port: u16,
     url_port_wins: bool,
+) -> bool {
+    same_endpoint_with_path(expected, actual, port, actual_port, url_port_wins, true)
+}
+
+fn same_endpoint_with_path(
+    expected: &str,
+    actual: &str,
+    port: u16,
+    actual_port: u16,
+    url_port_wins: bool,
+    compare_path: bool,
 ) -> bool {
     let (expected, actual) = (endpoint_of(expected), endpoint_of(actual));
     let schemes_agree = match (&expected.scheme, &actual.scheme) {
@@ -3156,7 +3255,10 @@ fn same_endpoint(
             && expected.port.is_none_or(|p| p == port)
             && actual.port.is_none_or(|p| p == actual_port)
     };
-    schemes_agree && expected.host == actual.host && expected.path == actual.path && ports_agree
+    schemes_agree
+        && expected.host == actual.host
+        && (!compare_path || expected.path == actual.path)
+        && ports_agree
 }
 
 /// Whether the slot holds the account `expected` names, judged from the
@@ -3225,8 +3327,57 @@ fn slot_matches_identity(
     let host = expected.host.map(str::trim).filter(|h| !h.is_empty());
     let actual_host = Some(config.host.trim()).filter(|h| !h.is_empty());
     let url_port_wins = config.provider_type == ProviderType::WebDav;
+    let is_webdav = config.provider_type == ProviderType::WebDav;
+    let slot_base_path = config
+        .extra
+        .get("base_path")
+        .or_else(|| config.extra.get("basePath"))
+        .map(String::as_str);
+    // WebDAV: both sides as the connect builds their URL, path and query
+    // included (the query can select the collection). A side without a host
+    // compares its collection only.
+    let webdav_matches = |exp_host: Option<&str>, act_host: Option<&str>| -> bool {
+        const NO_HOST: &str = "webdav.invalid";
+        // The tab carries the server field as written; the slot's host went
+        // through the connect's preprocessing, so the tab's does here too.
+        let exp_host = exp_host.map(without_port_suffix);
+        let expected_target = webdav_connect_target(
+            exp_host.unwrap_or(NO_HOST),
+            expected.port.filter(|port| *port != 0),
+            expected.username,
+            expected.base_path,
+        );
+        let actual_target = webdav_connect_target(
+            act_host.unwrap_or(NO_HOST),
+            config.port,
+            config.username.as_deref(),
+            slot_base_path,
+        );
+        match (expected_target, actual_target) {
+            (Some(exp), Some(act)) => same_webdav_target(
+                &exp,
+                &act,
+                (
+                    exp_host.and_then(written_webdav_scheme),
+                    act_host.and_then(written_webdav_scheme),
+                ),
+                exp_host.is_some() && act_host.is_some(),
+            ),
+            _ => false,
+        }
+    };
     let endpoint_matches = |host: &str, actual: &str| {
-        same_endpoint(host, actual, port, config.effective_port(), url_port_wins)
+        if is_webdav {
+            return webdav_matches(Some(host), Some(actual));
+        }
+        same_endpoint_with_path(
+            host,
+            actual,
+            port,
+            config.effective_port(),
+            url_port_wins,
+            true,
+        )
     };
     let endpoint_counts = fixed_api_host(config.provider_type).is_none();
     let expected_profile = expected.profile_id.filter(|id| !id.is_empty());
@@ -3239,7 +3390,7 @@ fn slot_matches_identity(
                 && (!endpoint_counts
                     || match (host, actual_host) {
                         (Some(host), Some(actual)) => endpoint_matches(host, actual),
-                        _ => true,
+                        _ => !is_webdav || webdav_matches(host, actual_host),
                     })
         }
         // One side is a saved profile and the other is not: not the same.
@@ -3251,7 +3402,7 @@ fn slot_matches_identity(
             !endpoint_counts
                 || match (host, actual_host) {
                     (Some(host), Some(actual)) => endpoint_matches(host, actual),
-                    (None, None) => true,
+                    (None, None) => !is_webdav || webdav_matches(None, None),
                     _ => false,
                 }
         }
@@ -3281,6 +3432,7 @@ pub async fn provider_probe_alive(
     bucket: Option<String>,
     endpoint: Option<String>,
     region: Option<String>,
+    base_path: Option<String>,
 ) -> Result<bool, String> {
     let expected = ProbeIdentity {
         protocol: protocol.as_deref(),
@@ -3291,6 +3443,7 @@ pub async fn provider_probe_alive(
         bucket: bucket.as_deref(),
         endpoint: endpoint.as_deref(),
         region: region.as_deref(),
+        base_path: base_path.as_deref(),
     };
     Ok(probe_alive_inner(&state, &expected, PROBE_ALIVE_TIMEOUT).await)
 }
@@ -17740,6 +17893,7 @@ mod tests {
             peer_role: None,
             connect_token: None,
             opendrive_default_privacy: None,
+            base_path: None,
         }
     }
 
@@ -19774,6 +19928,7 @@ mod tests {
             profile_id,
             host: Some(Box::leak(host.to_string().into_boxed_str())),
             port: Some(port),
+            base_path: None,
             bucket: None,
             endpoint: None,
             region: None,
@@ -20273,6 +20428,322 @@ mod tests {
         );
         assert!(!alive);
         assert_eq!(waited, timeout);
+    }
+
+    /// The WebDAV query can select the collection: two profile-less tabs
+    /// that differ only by their query are not the same live target, and the
+    /// same query is.
+    #[tokio::test(start_paused = true)]
+    async fn profileless_webdav_tabs_that_differ_only_by_query_are_not_the_same_target() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("https://dav.example.test/dav?tenant=alice", 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(
+            probe_alive_inner(
+                &state,
+                &tab("https://dav.example.test/dav?tenant=alice"),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab("https://dav.example.test/dav?tenant=bob"),
+                timeout
+            )
+            .await
+        );
+        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+    }
+
+    /// Two profile-less WebDAV tabs on the same host, path and configured port,
+    /// one `http://` and one `https://`, are two servers: the request of each
+    /// goes to its own scheme's port, so a switch must not reuse the other's
+    /// connection.
+    #[tokio::test(start_paused = true)]
+    async fn profileless_webdav_tabs_that_differ_only_by_scheme_are_not_the_same_target() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("http://dav.example.test/dav", 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(probe_alive_inner(&state, &tab("http://dav.example.test/dav"), timeout).await);
+        assert!(!probe_alive_inner(&state, &tab("https://dav.example.test/dav"), timeout).await);
+        // The same written port on both: only the scheme tells them apart.
+        let mut port_slot = probe_config("http://dav.example.test:8443/dav", 8443, "u");
+        port_slot.provider_type = ProviderType::WebDav;
+        let written_port_tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 8443, "u", None)
+        };
+        assert!(slot_matches_identity(
+            &port_slot,
+            None,
+            &written_port_tab("http://dav.example.test:8443/dav")
+        ));
+        assert!(!slot_matches_identity(
+            &port_slot,
+            None,
+            &written_port_tab("https://dav.example.test:8443/dav")
+        ));
+        // Only a written scheme tells targets apart: a scheme-less host's also
+        // depends on a TLS choice the tab does not carry.
+        let mut https_slot = probe_config("dav.example.test/dav", 8443, "u");
+        https_slot.provider_type = ProviderType::WebDav;
+        https_slot
+            .extra
+            .insert("tls_mode".to_string(), "http".to_string());
+        assert!(slot_matches_identity(
+            &https_slot,
+            None,
+            &ProbeIdentity {
+                protocol: Some("webdav"),
+                ..probe_for("http://dav.example.test:8443/dav", 8443, "u", None)
+            }
+        ));
+    }
+
+    /// A tab whose URL writes the default port, with a different separate
+    /// port, requests that written port: a live slot on the separate port is
+    /// another server.
+    #[tokio::test(start_paused = true)]
+    async fn a_written_default_port_is_the_port_compared_not_the_separate_one() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("https://dav.example.test:8443/dav", 8443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg);
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |host: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            ..probe_for(host, 8443, "u", None)
+        };
+        assert!(
+            probe_alive_inner(&state, &tab("https://dav.example.test:8443/dav"), timeout).await
+        );
+        assert!(
+            !probe_alive_inner(&state, &tab("https://dav.example.test:443/dav"), timeout).await
+        );
+    }
+
+    /// A host written with `/./` takes the base path, as the connect does: two
+    /// base paths on it are two targets, and the probe's target is the
+    /// connect's.
+    #[tokio::test(start_paused = true)]
+    async fn a_dot_segment_host_takes_the_base_path_as_the_connect_does() {
+        let timeout = Duration::from_secs(5);
+        let host = "https://dav.example.test/./";
+        let mut slot_cfg = probe_config(host, 443, "u");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        slot_cfg
+            .extra
+            .insert("base_path".to_string(), "/dav/bob/".to_string());
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg.clone());
+        *state.connected_profile_id.lock().unwrap() = None;
+        let tab = |base_path: &'static str| ProbeIdentity {
+            protocol: Some("webdav"),
+            base_path: Some(base_path),
+            ..probe_for(host, 443, "u", None)
+        };
+        assert!(!probe_alive_inner(&state, &tab("/dav/alice/"), timeout).await);
+        assert!(probe_alive_inner(&state, &tab("/dav/bob/"), timeout).await);
+        // The probe's target is the URL the connect builds for the slot.
+        let connect =
+            crate::providers::types::WebDavConfig::from_provider_config(&slot_cfg).unwrap();
+        let probe = webdav_connect_target(host, Some(443), Some("u"), Some("/dav/bob/")).unwrap();
+        assert_eq!(probe, url::Url::parse(&connect.url).unwrap());
+        assert_eq!(probe.path().trim_end_matches('/'), "/dav/bob");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn two_profileless_webdav_tabs_with_different_base_paths_are_not_the_same_live_target() {
+        let timeout = Duration::from_secs(5);
+        let mut slot_cfg = probe_config("lifetimecloud.me", 443, "alice");
+        slot_cfg.provider_type = ProviderType::WebDav;
+        slot_cfg
+            .extra
+            .insert("base_path".to_string(), "/dav/alice/".to_string());
+        let state = stall_state(answering());
+        *state.config.try_lock().unwrap() = Some(slot_cfg.clone());
+        *state.connected_profile_id.lock().unwrap() = None;
+
+        let tab_with_base =
+            |host: &'static str, base_path: Option<&'static str>, profile| ProbeIdentity {
+                protocol: Some("webdav"),
+                base_path,
+                ..probe_for(host, 443, "alice", profile)
+            };
+
+        assert!(
+            probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", Some("/dav/alice/"), None),
+                timeout
+            )
+            .await,
+            "same profile-less WebDAV host and base_path must stay alive"
+        );
+        assert!(
+            probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", Some("dav/alice"), None),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", Some("/dav/bob/"), None),
+                timeout
+            )
+            .await,
+            "different WebDAV base_path on the same host and user must not be treated as alive"
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", None, None),
+                timeout
+            )
+            .await,
+            "missing base_path must not match a /dav/alice/ WebDAV slot"
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", Some("/"), None),
+                timeout
+            )
+            .await
+        );
+        assert!(
+            !probe_alive_inner(
+                &state,
+                &tab_with_base("lifetimecloud.me", Some("/dav/alice "), None),
+                timeout
+            )
+            .await
+        );
+
+        // Query slash on host must not hide base_path distinction.
+        let mut query_cfg = probe_config("https://cloud.example.test?view=1/a", 443, "alice");
+        query_cfg.provider_type = ProviderType::WebDav;
+        query_cfg
+            .extra
+            .insert("base_path".to_string(), "/dav/alice/".to_string());
+        assert!(slot_matches_identity(
+            &query_cfg,
+            None,
+            &tab_with_base(
+                "https://cloud.example.test?view=1/a",
+                Some("/dav/alice/"),
+                None
+            )
+        ));
+        assert!(!slot_matches_identity(
+            &query_cfg,
+            None,
+            &tab_with_base(
+                "https://cloud.example.test?view=1/a",
+                Some("/dav/bob/"),
+                None
+            )
+        ));
+
+        // Explicit path on host URL matches equivalent base_path and rejects another.
+        let mut path_cfg = probe_config("https://lifetimecloud.me/dav/alice", 443, "alice");
+        path_cfg.provider_type = ProviderType::WebDav;
+        assert!(slot_matches_identity(
+            &path_cfg,
+            None,
+            &tab_with_base("lifetimecloud.me", Some("/dav/alice/"), None)
+        ));
+        assert!(!slot_matches_identity(
+            &path_cfg,
+            None,
+            &tab_with_base("lifetimecloud.me", Some("/dav/bob/"), None)
+        ));
+
+        // Saved WebDAV profile whose base_path changed between tabs is not alive.
+        assert!(!slot_matches_identity(
+            &slot_cfg,
+            Some("srv_dav"),
+            &tab_with_base("lifetimecloud.me", Some("/dav/bob/"), Some("srv_dav"))
+        ));
+    }
+
+    #[test]
+    fn every_connect_and_probe_builder_handles_webdav_base_path() {
+        // Backend IPC / SpeedTest / GUI connect (`ProviderConnectionParams::to_provider_config`)
+        // and liveness probe (`provider_probe_alive` / `slot_matches_identity`).
+        let provider_cmds = include_str!("provider_commands.rs");
+        assert!(provider_cmds.contains("pub base_path: Option<String>,"));
+        assert!(
+            provider_cmds.contains("extra.insert(\"base_path\".to_string(), base_path.clone());")
+        );
+        assert!(provider_cmds.contains("pub async fn provider_probe_alive("));
+        assert!(provider_cmds.contains("fn webdav_connect_target("));
+        assert!(provider_cmds
+            .contains("crate::providers::types::WebDavConfig::from_provider_config(&config)"));
+
+        // Shared profile loader normalizes `basePath` -> `base_path`.
+        let mut normalized = std::collections::HashMap::new();
+        crate::profile_loader::insert_profile_option(
+            &mut normalized,
+            "basePath",
+            &serde_json::json!("/dav/alice/"),
+        );
+        assert_eq!(
+            normalized.get("base_path").map(String::as_str),
+            Some("/dav/alice/")
+        );
+
+        // SpeedTest (`request.connection.to_provider_config()`).
+        let speedtest = include_str!("speedtest.rs");
+        assert!(speedtest.contains("request.connection.to_provider_config()?"));
+
+        // AeroCloud factory (`connection_extra` -> `profile_connection_extra`).
+        let cloud_factory = include_str!("cloud_provider_factory.rs");
+        assert!(cloud_factory.contains("profile_loader::profile_connection_extra("));
+
+        // MCP pool (`profile_connection_extra`).
+        let mcp_pool = include_str!("mcp/pool.rs");
+        assert!(mcp_pool.contains("profile_connection_extra(matched, provider_type, host)"));
+
+        // AI tools (`apply_profile_options`).
+        let ai_tools = include_str!("ai_tools.rs");
+        assert!(ai_tools.contains("profile_loader::apply_profile_options(&mut extra, profile)"));
+
+        // Bridge export (`apply_profile_options`).
+        let bridge_shared = include_str!("bridge_shared.rs");
+        assert!(
+            bridge_shared.contains("profile_loader::apply_profile_options(&mut extra, &profile)")
+        );
+
+        // Agent session (`flatten_options` -> `insert_profile_option`).
+        let agent_session = include_str!("agent_session.rs");
+        assert!(agent_session.contains("profile_loader::insert_profile_option(&mut out, k, v)"));
+
+        // CLI (`profile_value_to_provider_config` -> `profile_connection_extra`, `server_exec` -> `apply_profile_options`).
+        let cli_src = include_str!("bin/aeroftp_cli.rs");
+        assert!(cli_src
+            .contains("profile_loader::profile_connection_extra(profile, provider_type, &host)"));
+        assert!(cli_src.contains("apply_profile_options(&mut extra, matched);"));
     }
 
     // #960 review M1: the per-read deadline used to include the wait for the
@@ -23185,6 +23656,156 @@ mod restored_transfer_owner_tests {
             clear_crypt_overlay_with_wait(&state, true, Duration::from_millis(10))
                 .await
                 .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_webdav_server_written_with_its_port_probes_the_slot_its_connect_built() {
+        for server in ["dav.example.test:8443", "https://dav.example.test:8443"] {
+            let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+                "protocol": "webdav",
+                "server": server,
+                "port": 8443,
+                "username": "alice",
+                "password": "secret",
+                "tlsMode": "https",
+                "basePath": "/files/",
+            }))
+            .unwrap();
+            let slot = params.to_provider_config().unwrap();
+            let tab = |host: &'static str| ProbeIdentity {
+                protocol: Some("webdav"),
+                username: Some("alice"),
+                profile_id: None,
+                host: Some(host),
+                port: Some(8443),
+                bucket: None,
+                endpoint: None,
+                region: None,
+                base_path: Some("/files/"),
+            };
+            assert!(
+                slot_matches_identity(&slot, None, &tab(server)),
+                "{server}: the connect's own slot failed its liveness check"
+            );
+            assert!(
+                !slot_matches_identity(&slot, None, &tab("other.example.test:8443")),
+                "{server}: another server passed for the slot"
+            );
+        }
+        assert_eq!(without_port_suffix("127.0.0.1:2121"), "127.0.0.1");
+        assert_eq!(without_port_suffix("https://h.test:8443"), "https://h.test");
+        assert_eq!(
+            without_port_suffix("https://h.test:8443/dav"),
+            "https://h.test:8443/dav"
+        );
+        assert_eq!(without_port_suffix("h.test"), "h.test");
+    }
+
+    #[test]
+    fn webdav_params_deserializes_base_path_and_forwards_to_webdav_url() {
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice/",
+        }))
+        .expect("ProviderConnectionParams should deserialize");
+        let cfg = params.to_provider_config().unwrap();
+        assert_eq!(
+            cfg.extra.get("base_path").map(String::as_str),
+            Some("/dav/alice/")
+        );
+        let dav = crate::providers::types::WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(dav.url, "https://lifetimecloud.me/dav/alice/");
+
+        let space_params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice ",
+        }))
+        .expect("ProviderConnectionParams with trailing space should deserialize");
+        let space_cfg = space_params.to_provider_config().unwrap();
+        assert_eq!(
+            space_cfg.extra.get("base_path").map(String::as_str),
+            Some("/dav/alice ")
+        );
+        let space_dav =
+            crate::providers::types::WebDavConfig::from_provider_config(&space_cfg).unwrap();
+        assert_eq!(space_dav.url, "https://lifetimecloud.me/dav/alice ");
+    }
+
+    #[test]
+    fn webdav_params_and_profile_loader_produce_identical_webdav_url() {
+        let mut options_map = serde_json::Map::new();
+        options_map.insert("webdavScheme".to_string(), serde_json::json!("https"));
+        options_map.insert("basePath".to_string(), serde_json::json!("/dav/alice/"));
+        let params: ProviderConnectionParams = serde_json::from_value(serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "server": "lifetimecloud.me",
+            "port": 443,
+            "username": "alice",
+            "password": "secret",
+            "tlsMode": "https",
+            "basePath": "/dav/alice/",
+        }))
+        .expect("ProviderConnectionParams should deserialize");
+        let gui_cfg = params.to_provider_config().unwrap();
+
+        let profile_json = serde_json::json!({
+            "protocol": "webdav",
+            "providerId": "custom-webdav",
+            "options": options_map.clone(),
+        });
+        let (loader_extra, loader_host) = crate::profile_loader::profile_connection_extra(
+            &profile_json,
+            ProviderType::WebDav,
+            "lifetimecloud.me",
+        );
+        let loader_cfg = ProviderConfig {
+            name: "cli-ltc".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: loader_host,
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("secret".to_string()),
+            initial_path: None,
+            extra: loader_extra,
+        };
+
+        let mut direct_extra = std::collections::HashMap::new();
+        crate::profile_loader::apply_profile_options(&mut direct_extra, &profile_json);
+        let direct_cfg = ProviderConfig {
+            extra: direct_extra,
+            ..loader_cfg.clone()
+        };
+
+        let expected = "https://lifetimecloud.me/dav/alice/";
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&gui_cfg)
+                .unwrap()
+                .url,
+            expected
+        );
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&loader_cfg)
+                .unwrap()
+                .url,
+            expected
+        );
+        assert_eq!(
+            crate::providers::types::WebDavConfig::from_provider_config(&direct_cfg)
+                .unwrap()
+                .url,
+            expected
         );
     }
 }

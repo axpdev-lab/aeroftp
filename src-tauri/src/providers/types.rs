@@ -461,6 +461,39 @@ pub struct WebDavConfig {
     pub anonymous: bool,
 }
 
+fn parse_webdav_url_for_inspection(raw: &str) -> Option<url::Url> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let normalized = if let Some((scheme, rest)) = trimmed.split_once("://") {
+        match scheme.to_ascii_lowercase().as_str() {
+            "http" | "webdav" | "dav" => format!("http://{rest}"),
+            "https" | "webdavs" | "davs" => format!("https://{rest}"),
+            _ => trimmed.to_string(),
+        }
+    } else {
+        format!("http://{trimmed}")
+    };
+    url::Url::parse(&normalized).ok()
+}
+
+/// Whether a WebDAV host or URL string already carries a non-root path
+/// segment after the authority (e.g. `https://dav.example/dav`, not `/`).
+pub(crate) fn webdav_host_has_own_path(host: &str) -> bool {
+    if let Some(parsed) = parse_webdav_url_for_inspection(host) {
+        return !parsed.path().trim().trim_matches('/').is_empty();
+    }
+    let after_scheme = host.split_once("://").map(|(_, rest)| rest).unwrap_or(host);
+    let before_query = after_scheme
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    before_query
+        .find('/')
+        .is_some_and(|idx| !before_query[idx..].trim().trim_matches('/').is_empty())
+}
+
 impl WebDavConfig {
     pub fn from_provider_config(config: &ProviderConfig) -> Result<Self, ProviderError> {
         // Build WebDAV URL from host. Three knobs decide the scheme, in order:
@@ -504,16 +537,57 @@ impl WebDavConfig {
             _ => format!(":{}", port),
         };
 
-        let raw_url = if config.host.starts_with("http://") || config.host.starts_with("https://") {
-            config.host.clone()
+        let trimmed_host = config.host.trim();
+        let mut raw_url = if let Some((scheme, rest)) = trimmed_host.split_once("://") {
+            match scheme.to_ascii_lowercase().as_str() {
+                "http" | "webdav" | "dav" => format!("http://{rest}"),
+                "https" | "webdavs" | "davs" => format!("https://{rest}"),
+                _ => format!("{}://{}{}", resolved_scheme, trimmed_host, port_suffix),
+            }
         } else {
-            format!("{}://{}{}", resolved_scheme, config.host, port_suffix)
+            let path_sep = trimmed_host.find(['/', '?', '#']);
+            match path_sep {
+                Some(idx) if trimmed_host.as_bytes()[idx] == b'/' => {
+                    let (h, rest_with_slash) = trimmed_host.split_at(idx);
+                    let rest = &rest_with_slash[1..];
+                    if rest.trim_matches('/').is_empty() {
+                        format!("{}://{}{}", resolved_scheme, h, port_suffix)
+                    } else {
+                        format!("{}://{}{}/{}", resolved_scheme, h, port_suffix, rest)
+                    }
+                }
+                Some(idx) => {
+                    let (h, suffix_qf) = trimmed_host.split_at(idx);
+                    format!("{}://{}{}{}", resolved_scheme, h, port_suffix, suffix_qf)
+                }
+                None => format!("{}://{}{}", resolved_scheme, trimmed_host, port_suffix),
+            }
         };
 
-        // Resolve {username} template in URL and initial_path (used by
-        // CloudMe, Nextcloud, Tab.digital presets that pin to the per-user
-        // WebDAV root `/remote.php/dav/files/{username}`).
+        // Keep {username} placeholders untouched through URL inspection and
+        // `base_path` splicing, then expand URL and path placeholders ONCE.
         let username = config.username.clone().unwrap_or_default();
+        let has_own_path = webdav_host_has_own_path(&raw_url);
+
+        if !has_own_path {
+            if let Some(base) = config
+                .extra
+                .get("base_path")
+                .or_else(|| config.extra.get("basePath"))
+                .map(String::as_str)
+                .filter(|s| !s.trim().trim_matches('/').is_empty())
+            {
+                let suffix = if base.starts_with('/') {
+                    base.to_string()
+                } else {
+                    format!("/{base}")
+                };
+                let qf_idx = raw_url.find(['?', '#']).unwrap_or(raw_url.len());
+                let (base_part, qf_tail) = raw_url.split_at(qf_idx);
+                raw_url = format!("{}{}{}", base_part.trim_end_matches('/'), suffix, qf_tail);
+            }
+        }
+
         let url = crate::connection_manifest::expand_username_in_url(&raw_url, &username)
             .map_err(ProviderError::InvalidConfig)?;
         let initial_path = config
@@ -813,6 +887,333 @@ mod webdav_config_tests {
         };
         let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
         assert_eq!(resolved.initial_path.as_deref(), Some("/Documents"));
+    }
+
+    #[test]
+    fn extra_base_path_is_appended_when_host_has_no_path() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("base_path".to_string(), "/dav/alice/".to_string());
+        let cfg = ProviderConfig {
+            name: "ltc".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "lifetimecloud.me".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://lifetimecloud.me/dav/alice/");
+    }
+
+    #[test]
+    fn camel_case_base_path_is_honored_and_substitutes_username() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("basePath".to_string(), "/dav/{username}/".to_string());
+        let cfg = ProviderConfig {
+            name: "ltc-template".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "lifetimecloud.me".to_string(),
+            port: Some(8443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://lifetimecloud.me:8443/dav/alice/");
+    }
+
+    #[test]
+    fn username_expansion_handles_special_chars_and_rejects_unsafe_values() {
+        let make_cfg = |host: &str, base_path: Option<&str>, user: &str| {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("tls_mode".to_string(), "https".to_string());
+            if let Some(bp) = base_path {
+                extra.insert("basePath".to_string(), bp.to_string());
+            }
+            ProviderConfig {
+                name: "u-test".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: host.to_string(),
+                port: Some(443),
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            }
+        };
+
+        // 1. Host URL carrying `{username}` in path segment, with and without `?query`.
+        for suffix in ["", "?view=1"] {
+            let tpl = format!("https://webdav.cloudme.com/{{username}}{suffix}");
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "a b"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/a%20b{suffix}")
+            );
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "x?y"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/x%3Fy{suffix}")
+            );
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "x#y"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/x%23y{suffix}")
+            );
+            // A `/` stays inside its segment, encoded (the shared helper's
+            // rule, pinned on the wire by `a_username_template_reaches_the_server_encoded_exactly_once`).
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/a%2Fb{suffix}")
+            );
+            for bad in ["..", ".", ""] {
+                assert!(
+                    WebDavConfig::from_provider_config(&make_cfg(&tpl, None, bad)).is_err(),
+                    "expected `{bad}` to fail in `{tpl}`"
+                );
+            }
+        }
+
+        // 2. Host carrying `{username}` in hostname label, with and without `?query`.
+        for suffix in ["", "?view=1"] {
+            let tpl = format!("https://{{username}}.example.com{suffix}");
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "alice"))
+                    .unwrap()
+                    .url,
+                format!("https://alice.example.com{suffix}")
+            );
+            for bad in ["a b", "a/b", "x?y", "x#y", "..", ""] {
+                assert!(
+                    WebDavConfig::from_provider_config(&make_cfg(&tpl, None, bad)).is_err(),
+                    "expected `{bad}` to fail in host label `{tpl}`"
+                );
+            }
+        }
+
+        // 3. `basePath` carrying `{username}`, with and without `?query` on host.
+        for (host, suffix) in [
+            ("lifetimecloud.me", ""),
+            ("https://lifetimecloud.me?view=1", "?view=1"),
+        ] {
+            let bp = "/dav/{username}/";
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "a b"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/a%20b/{suffix}")
+            );
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "x?y"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/x%3Fy/{suffix}")
+            );
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "x#y"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/x%23y/{suffix}")
+            );
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/a%2Fb/{suffix}")
+            );
+            for bad in ["..", ".", ""] {
+                assert!(
+                    WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), bad)).is_err(),
+                    "expected `{bad}` to fail in basePath with host `{host}`"
+                );
+            }
+        }
+
+        // 4. `{username}` in `initial_path` rejects blank / traversal / slash and avoids double-encoding.
+        let mut space_cfg = make_cfg("https://cloud.example.com", None, "a b");
+        space_cfg.initial_path = Some("/remote.php/dav/files/{username}".to_string());
+        assert_eq!(
+            WebDavConfig::from_provider_config(&space_cfg)
+                .unwrap()
+                .initial_path
+                .as_deref(),
+            Some("/remote.php/dav/files/a b")
+        );
+        for bad in ["a/b", "..", ""] {
+            let mut bad_cfg = make_cfg("https://cloud.example.com", None, bad);
+            bad_cfg.initial_path = Some("/remote.php/dav/files/{username}".to_string());
+            assert!(WebDavConfig::from_provider_config(&bad_cfg).is_err());
+        }
+    }
+
+    #[test]
+    fn root_or_absent_base_path_leaves_bare_url_untouched_for_nextcloud_autodetect() {
+        let bare = build("nc.example.test", Some(443), Some("https"));
+        assert_eq!(bare.url, "https://nc.example.test");
+
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("base_path".to_string(), "/".to_string());
+        let cfg = ProviderConfig {
+            name: "nc-root".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "nc.example.test".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://nc.example.test");
+    }
+
+    #[test]
+    fn host_with_path_stays_unchanged_even_when_base_path_is_also_present() {
+        let solo = build(
+            "https://dav.example.test/custom/root/",
+            Some(443),
+            Some("https"),
+        );
+        assert_eq!(solo.url, "https://dav.example.test/custom/root/");
+
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("base_path".to_string(), "/dav/alice/".to_string());
+        let cfg = ProviderConfig {
+            name: "both".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://dav.example.test/custom/root/".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://dav.example.test/custom/root/");
+    }
+
+    #[test]
+    fn trailing_space_in_base_path_is_preserved_verbatim() {
+        let mut extra = std::collections::HashMap::new();
+        extra.insert("base_path".to_string(), "/dav/alice ".to_string());
+        let cfg = ProviderConfig {
+            name: "ltc-space".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "lifetimecloud.me".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra,
+        };
+        let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+        assert_eq!(resolved.url, "https://lifetimecloud.me/dav/alice ");
+
+        let mut blank_extra = std::collections::HashMap::new();
+        blank_extra.insert("base_path".to_string(), "   ".to_string());
+        let blank_cfg = ProviderConfig {
+            name: "ltc-blank".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "lifetimecloud.me".to_string(),
+            port: Some(443),
+            username: Some("alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: None,
+            extra: blank_extra,
+        };
+        let blank_resolved = WebDavConfig::from_provider_config(&blank_cfg).unwrap();
+        assert_eq!(blank_resolved.url, "https://lifetimecloud.me");
+    }
+
+    #[test]
+    fn uppercase_and_webdav_scheme_host_prefixes_preserve_path_over_base_path() {
+        for (raw, expected) in [
+            (
+                "HTTPS://dav.example.test/custom/",
+                "https://dav.example.test/custom/",
+            ),
+            (
+                "HTTP://dav.example.test:8080/dav",
+                "http://dav.example.test:8080/dav",
+            ),
+            (
+                "webdavs://dav.example.test/share",
+                "https://dav.example.test/share",
+            ),
+            (
+                "webdav://dav.example.test:8080/share",
+                "http://dav.example.test:8080/share",
+            ),
+        ] {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("base_path".to_string(), "/ignored/".to_string());
+            let cfg = ProviderConfig {
+                name: "scheme-test".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: raw.to_string(),
+                port: Some(443),
+                username: Some("alice".to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            };
+            let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+            assert_eq!(resolved.url, expected);
+        }
+    }
+
+    #[test]
+    fn query_or_fragment_slash_does_not_suppress_base_path_or_corrupt_url() {
+        assert!(!webdav_host_has_own_path(
+            "https://cloud.example.test?view=1/a"
+        ));
+        assert!(!webdav_host_has_own_path(
+            "https://cloud.example.test#frag/x"
+        ));
+        assert!(webdav_host_has_own_path(
+            "https://cloud.example.test/dav?view=1"
+        ));
+
+        for (raw_host, base_path, expected) in [
+            (
+                "https://cloud.example.test?view=1/a",
+                "/dav/alice/",
+                "https://cloud.example.test/dav/alice/?view=1/a",
+            ),
+            (
+                "https://cloud.example.test?view=1",
+                "/dav/{username}/",
+                "https://cloud.example.test/dav/alice/?view=1",
+            ),
+            (
+                "https://cloud.example.test#frag/a",
+                "/dav/alice/",
+                "https://cloud.example.test/dav/alice/#frag/a",
+            ),
+        ] {
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("basePath".to_string(), base_path.to_string());
+            let cfg = ProviderConfig {
+                name: "query-test".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: raw_host.to_string(),
+                port: Some(443),
+                username: Some("alice".to_string()),
+                password: Some("p".to_string()),
+                initial_path: None,
+                extra,
+            };
+            let resolved = WebDavConfig::from_provider_config(&cfg).unwrap();
+            assert_eq!(resolved.url, expected, "{raw_host} + {base_path}");
+        }
     }
 }
 

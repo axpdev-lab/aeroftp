@@ -91,11 +91,14 @@ const USERNAME_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROL
     .add(b'|')
     .add(b'}');
 
-/// Fill the `{username}` placeholder of a server URL with the user name as
-/// one percent-encoded path segment, exactly as stored (never trimmed: the
-/// login sends it that way). A template without the placeholder is returned
-/// unchanged; one that needs it with a blank user name, or a name of `.` or
-/// `..`, is an error.
+/// Fill the `{username}` placeholder of a server URL with the user name,
+/// exactly as stored (never trimmed: the login sends it that way). In a path,
+/// a query or the userinfo it goes in as one percent-encoded segment, so a
+/// `/` stays inside its segment (`a/b` is `a%2Fb`). In the host name it goes
+/// in as written, and only a name that is a valid host label is accepted.
+/// A template without the placeholder is returned unchanged. A blank user
+/// name, one of `.` or `..`, or one holding `\` or a control character is an
+/// error wherever the placeholder sits.
 pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, String> {
     if !template.contains(USERNAME_TEMPLATE) {
         return Ok(template.to_string());
@@ -108,16 +111,53 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
         return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
     }
     // `.` and `..` are no segment a URL keeps: the parser resolves them and
-    // the address climbs out of the user's folder.
-    if matches!(username.trim(), "." | "..") {
+    // the address climbs out of the user's folder. A `\` is read as a
+    // separator by some servers and clients, and a control character has no
+    // place in an address.
+    if matches!(username.trim(), "." | "..")
+        || username.contains('\\')
+        || username.chars().any(char::is_control)
+    {
         return Err(
-            "This user name cannot be used in a server address: it is '.' or '..'; enter the \
-             address in full instead of the {username} placeholder"
+            "This user name cannot be used in a server address: it is '.' or '..', or it \
+             contains '\\' or a control character; enter the address in full instead of the \
+             {username} placeholder"
                 .to_string(),
         );
     }
     let segment = percent_encoding::utf8_percent_encode(username, USERNAME_SEGMENT).to_string();
-    Ok(template.replace(USERNAME_TEMPLATE, &segment))
+    // The host name, between the scheme (or the start), the userinfo's `@`
+    // and the end of the authority: a label there is not percent-encoded.
+    let rest_at = template.find("://").map_or(0, |at| at + 3);
+    let authority_end = template[rest_at..]
+        .find(['/', '?', '#'])
+        .map_or(template.len(), |at| rest_at + at);
+    let host_at = template[rest_at..authority_end]
+        .rfind('@')
+        .map_or(rest_at, |at| rest_at + at + 1);
+    let host = &template[host_at..authority_end];
+    if !host.contains(USERNAME_TEMPLATE) {
+        return Ok(template.replace(USERNAME_TEMPLATE, &segment));
+    }
+    let is_label = !username.starts_with('.')
+        && !username.ends_with('.')
+        && !username.contains("..")
+        && username
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+    if !is_label {
+        return Err(
+            "This user name cannot be used in a server host name: only letters, digits, '-' and \
+             '.' can stand there; enter the address in full instead of the {username} placeholder"
+                .to_string(),
+        );
+    }
+    Ok(format!(
+        "{}{}{}",
+        template[..host_at].replace(USERNAME_TEMPLATE, &segment),
+        host.replace(USERNAME_TEMPLATE, username),
+        template[authority_end..].replace(USERNAME_TEMPLATE, &segment)
+    ))
 }
 
 /// What a location derived from a profile still holding the `{username}`
@@ -127,8 +167,8 @@ pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, 
 /// message instead of acting on a folder named after the placeholder.
 pub const USERNAME_TEMPLATE_UNRESOLVED: &str = "This location still holds the {username} \
      placeholder because the profile's user name cannot fill it (it is blank, contains '/', \
-     '\\' or NUL, is '.' or '..', or is literally {username}): set the user name, or write the \
-     folder in full instead of the placeholder";
+     '\\' or a control character, is '.' or '..', or is literally {username}): set the user \
+     name, or write the folder in full instead of the placeholder";
 
 /// Refuse a derived location that still holds the `{username}` placeholder.
 /// The readers keep the template when the user name cannot fill it, so that
@@ -145,7 +185,8 @@ pub fn refuse_unresolved_username_template(location: &str) -> Result<(), String>
 /// Fill the `{username}` placeholder of a folder path with the user name as
 /// it is (a path is a decoded string; the WebDAV client encodes it on the
 /// wire). A blank user name is an error, and so is one that could move the
-/// folder: a `/`, `\\` or NUL inside it, or a name of `.` or `..`.
+/// folder: a `/`, `\\` or a control character inside it, or a name of `.` or
+/// `..`.
 ///
 /// Nothing is trimmed, before or after: the folder is filled as written, and
 /// a folder's edge spaces are part of its name (`/reports ` is its own
@@ -164,9 +205,12 @@ pub fn expand_username_in_path(template: &str, username: &str) -> Result<String,
     if username.contains(USERNAME_TEMPLATE) {
         return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
     }
-    if username.contains(['/', '\\', '\0']) || matches!(username.trim(), "." | "..") {
+    if username.contains(['/', '\\'])
+        || username.chars().any(char::is_control)
+        || matches!(username.trim(), "." | "..")
+    {
         return Err(
-            "This user name cannot be used in a folder path: it contains '/', '\\', a NUL \
+            "This user name cannot be used in a folder path: it contains '/', '\\' or a control \
              character, or is '.' or '..'; enter the folder path in full instead of the \
              {username} placeholder"
                 .to_string(),
@@ -497,6 +541,41 @@ mod tests {
         assert_eq!(
             expand_username_in_url("https://h/dav/", "").unwrap(),
             "https://h/dav/"
+        );
+    }
+
+    /// The shared table's host cases: a user name placed in the server's host
+    /// name goes in as written, and only as a valid host label; the userinfo
+    /// and the path of the same address still take it encoded.
+    #[test]
+    fn a_user_name_in_the_host_name_is_filled_only_as_a_host_label() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let host_t = table["hostTemplate"].as_str().unwrap();
+        let cases = table["hostCases"].as_array().unwrap();
+        assert!(cases.len() >= 10);
+        for case in cases {
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_url(host_t, user).ok(),
+                case["url"].as_str().map(str::to_string),
+                "{user:?}"
+            );
+        }
+        assert_eq!(
+            expand_username_in_url(
+                "https://{username}@{username}.example.test:8443/u/{username}?q={username}",
+                "a-1"
+            )
+            .unwrap(),
+            "https://a-1@a-1.example.test:8443/u/a-1?q=a-1"
+        );
+        assert_eq!(
+            expand_username_in_url("https://{username}@dav.example.test/u/{username}", "a b")
+                .unwrap(),
+            "https://a%20b@dav.example.test/u/a%20b"
         );
     }
 

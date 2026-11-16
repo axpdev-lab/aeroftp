@@ -216,3 +216,29 @@ export const makeSafe = <T extends ProfileSecurityInput>(profile: T, keep: reado
     }
     return { profile: { ...profile, host, options }, removed };
 };
+
+/** Canonical WebDAV base path connect parameter, or null outside WebDAV. */
+export const webdavConnectBasePath = (
+    protocol: string | undefined,
+    options: object | null | undefined,
+): string | null => {
+    if (protocol !== 'webdav') return null;
+    const raw = options && typeof options === 'object' ? (options as Record<string, unknown>).basePath : undefined;
+    return typeof raw === 'string' && raw.length > 0 ? raw : null;
+};
+
+/** Effective TLS/scheme connect parameter shared by GUI connect and Speed Test. */
+export const connectTlsMode = (
+    protocol: string | undefined,
+    options: object | null | undefined,
+): string | undefined => {
+    if (protocol === 'webdav') {
+        const scheme = loadedOption(options, 'webdavScheme');
+        return typeof scheme === 'string' ? scheme : undefined;
+    }
+    const opts = options && typeof options === 'object' ? (options as Record<string, unknown>) : undefined;
+    const explicit = (typeof opts?.tlsMode === 'string' && opts.tlsMode)
+        || (typeof opts?.ftpsMode === 'string' && opts.ftpsMode)
+        || undefined;
+    return explicit ?? (protocol === 'ftps' ? 'implicit' : protocol === 'ftp' ? 'explicit' : undefined);
+};
