@@ -40,14 +40,17 @@ describe('AboutDialog frontend dependency versions', () => {
         expect(viteConfig).toContain('__FRONTEND_VERSIONS__');
     });
 
-    it('lockfile resolves Vite 8.3.7', () => {
-        const viteLock = lock?.packages?.['node_modules/vite']?.version;
-        expect(viteLock).toBe('8.3.7');
+    // Read from the repo files, never written here: a Vite bump changes the
+    // lockfile and the manifest together, and these checks must hold for it.
+    const viteLock = lock?.packages?.['node_modules/vite']?.version;
+
+    it('lockfile resolves Vite to a concrete version', () => {
+        expect(viteLock).toMatch(/^\d+\.\d+\.\d+$/);
     });
 
     it('package.json vite dependency is aligned with lockfile', () => {
         const viteManifest = pkg?.devDependencies?.['vite'];
-        expect(viteManifest).toBe('^8.3.7');
+        expect(viteManifest).toBe(`^${viteLock}`);
     });
 
     it('shared resolver prioritizes lockfile version when manifest range differs', () => {
@@ -132,8 +135,8 @@ describe('AboutDialog frontend dependency versions', () => {
             vite: resolveInstalledVersion('vite', undefined, rootDir, lock, pkg),
         };
 
-        // Vite must report the build version 8.3.7
-        expect(frontDeps.vite).toBe('8.3.7');
+        // Vite must report the version the lockfile resolves for the build
+        expect(frontDeps.vite).toBe(viteLock);
 
         // All frontend deps must be concrete semver, no range prefixes or question marks
         for (const [dep, ver] of Object.entries(frontDeps)) {
