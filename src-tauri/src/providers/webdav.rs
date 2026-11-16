@@ -1470,7 +1470,7 @@ impl WebDavProvider {
     /// broke strict path-matching servers"). `/` is never in the set:
     /// segments are encoded individually and rejoined, so a trailing
     /// slash (collection form) is preserved.
-    fn encode_path(path: &str) -> String {
+    pub(crate) fn encode_path(path: &str) -> String {
         const WEBDAV_SEGMENT: &AsciiSet = &CONTROLS
             .add(b' ')
             .add(b'"')

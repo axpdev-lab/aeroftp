@@ -20016,10 +20016,14 @@ pub fn per_profile_vault_keys_for_target_reset(
 /// a one-shot fallback to the legacy singleton key. The export bundle copies
 /// the value verbatim so the destination device can write it back without
 /// re-parsing. Issue #214.
+///
+/// The singleton is read only when the profile's own key is absent; a key
+/// that cannot be read fails the export (`Err`), because the singleton may
+/// be another profile's account.
 fn collect_provider_secrets_for_server(
     store: &credential_store::CredentialStore,
     server: &profile_export::ServerProfileExport,
-) -> profile_export::ProviderSecrets {
+) -> Result<profile_export::ProviderSecrets, String> {
     let mut out = profile_export::ProviderSecrets::default();
     let protocol = server.protocol.as_deref().unwrap_or("").to_lowercase();
 
@@ -20027,18 +20031,18 @@ fn collect_provider_secrets_for_server(
     // fallback inside resolve), then the legacy singleton key from the vault.
     if let Some(slug) = oauth_vault_slug_for_protocol(&protocol) {
         let per_profile = format!("oauth_{}_{}", slug, server.id);
-        if let Ok(Some(value)) =
-            user_partitions::resolve_active_credential_owner_aware(store, &per_profile)
-        {
+        let read = |key: &str| {
+            user_partitions::resolve_active_credential_owner_aware(store, key)
+                .map_err(|e| format!("{}: cannot read its OAuth token: {e}", server.name))
+        };
+        if let Some(value) = read(&per_profile)? {
             out.oauth = Some(value.to_string());
         } else {
             // Legacy singleton key path: only honoured when nothing has been
             // migrated yet for this provider on this device, and only for its
             // owner (owner-aware: another user never exports it).
             let legacy = format!("oauth_{}", slug);
-            if let Ok(Some(value)) =
-                user_partitions::resolve_active_credential_owner_aware(store, &legacy)
-            {
+            if let Some(value) = read(&legacy)? {
                 out.oauth = Some(value.to_string());
             }
         }
@@ -20048,11 +20052,13 @@ fn collect_provider_secrets_for_server(
         let per_profile = format!("jottacloud_refresh_{}", server.id);
         let read = |key: &str| {
             user_partitions::resolve_active_credential_owner_aware(store, key)
-                .ok()
-                .flatten()
-                .map(|value| value.to_string())
+                .map(|value| value.map(|value| value.to_string()))
+                .map_err(|e| format!("{}: cannot read its Jottacloud token: {e}", server.name))
         };
-        out.jotta_refresh = read(&per_profile).or_else(|| read("jottacloud_refresh"));
+        out.jotta_refresh = match read(&per_profile)? {
+            Some(value) => Some(value),
+            None => read("jottacloud_refresh")?,
+        };
     }
 
     // Bundle the BYO OAuth app `client_id`/`client_secret` (global vault
@@ -20181,7 +20187,7 @@ fn collect_provider_secrets_for_server(
         out.profile_auth = Some(auth);
     }
 
-    out
+    Ok(out)
 }
 
 #[tauri::command]
@@ -20227,7 +20233,7 @@ pub async fn export_server_profiles_core(
                     // Issue #214: bundle OAuth / Jotta tokens alongside the
                     // per-profile password so an import on a fresh device
                     // reconnects without a browser re-auth.
-                    let secrets = collect_provider_secrets_for_server(&store, server);
+                    let secrets = collect_provider_secrets_for_server(&store, server)?;
                     if secrets.oauth.is_some()
                         || secrets.jotta_refresh.is_some()
                         || secrets.aerocrypt_overlay_pw.is_some()

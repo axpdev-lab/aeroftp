@@ -43865,17 +43865,23 @@ async fn cmd_export_rclone(
     }
 
     let mut exportable: Vec<RcloneExportServer> = Vec::with_capacity(collected.profiles.len());
+    let mut unreadable: Vec<(String, String)> = Vec::new();
     for p in &collected.profiles {
         // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
         // OAuth remotes export usable (refreshable) from the CLI too, using
         // the exact same helper the GUI bridge calls.
         let mut options = p.options.clone();
-        ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+        // A token that cannot be read skips the profile: exporting it bare, or
+        // with the legacy singleton, would hand rclone another account's token.
+        if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             &store,
             &p.protocol,
             &p.id,
-        );
+        ) {
+            unreadable.push((p.name.clone(), reason));
+            continue;
+        }
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
             &mut options,
             &store,
@@ -43941,6 +43947,7 @@ async fn cmd_export_rclone(
             // could not write (an unaddressable Zoho region, a Zoho whose
             // root folder is unknown, a crypt name already taken).
             let mut skipped = collected.skipped.clone();
+            skipped.extend(unreadable.iter().cloned());
             skipped.extend(
                 outcome
                     .skipped

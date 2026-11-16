@@ -1072,24 +1072,27 @@ pub fn oauth_client_cred_key(protocol: &str) -> Option<&'static str> {
 /// never resolve to different vault entries.
 ///
 /// The singleton fallback is what keeps an install that authorised before the
-/// per-profile layout existed connecting without re-authorising.
+/// per-profile layout existed connecting without re-authorising. It is taken
+/// only when the profile's own key is absent: a key that cannot be read is an
+/// error, not a missing token, and the singleton may be another profile's
+/// account.
 pub fn resolve_profile_oauth_token(
     store: &CredentialStore,
     slug: &str,
     profile_id: &str,
-) -> Option<String> {
+) -> Result<Option<String>, String> {
     // Owner-aware: only the legacy owner falls back to the shared vault, so a
     // profile id or singleton shared with another user never lends its token.
-    let read = |key: String| {
-        crate::user_partitions::resolve_active_credential_owner_aware(store, &key)
-            .ok()
-            .flatten()
-            .map(|value| value.to_string())
-            .filter(|value| !value.is_empty())
+    let read = |key: String| -> Result<Option<String>, String> {
+        Ok(
+            crate::user_partitions::resolve_active_credential_owner_aware(store, &key)?
+                .map(|value| value.to_string())
+                .filter(|value| !value.is_empty()),
+        )
     };
     if !profile_id.is_empty() {
-        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id)) {
-            return Some(value);
+        if let Some(value) = read(format!("oauth_{}_{}", slug, profile_id))? {
+            return Ok(Some(value));
         }
     }
     read(format!("oauth_{}", slug))
@@ -1153,23 +1156,26 @@ pub fn resolve_oauth_client_config(store: &CredentialStore, slug: &str) -> (Stri
 /// export arm emits a `rclone config reconnect` comment instead of a broken
 /// remote when any piece is missing. Shared by the GUI bridge export and the
 /// CLI `cmd_export_rclone` so the two paths never diverge.
+///
+/// `Err` when the profile's token cannot be read: the caller skips the
+/// profile rather than export it with another profile's token.
 pub fn inject_rclone_oauth_export_options(
     options: &mut Option<Value>,
     store: &CredentialStore,
     protocol: &str,
     id: &str,
-) {
+) -> Result<(), String> {
     let slug = match crate::oauth_vault_slug_for_protocol(protocol) {
         Some(s) => s,
-        None => return,
+        None => return Ok(()),
     };
     // Only the providers we actually export to rclone get the client-cred keys.
     let cred_key = match rclone_oauth_client_cred_key(protocol) {
         Some(k) => k,
-        None => return,
+        None => return Ok(()),
     };
 
-    let token = resolve_profile_oauth_token(store, slug, id);
+    let token = resolve_profile_oauth_token(store, slug, id)?;
 
     let client_id = store
         .get(&format!("oauth_{}_client_id", cred_key))
@@ -1181,7 +1187,7 @@ pub fn inject_rclone_oauth_export_options(
         .filter(|s| !s.is_empty());
 
     if token.is_none() && client_id.is_none() && client_secret.is_none() {
-        return;
+        return Ok(());
     }
 
     // Ensure options is an object we can write the private keys into.
@@ -1232,6 +1238,7 @@ pub fn inject_rclone_oauth_export_options(
             opts.insert("region".into(), Value::String(region));
         }
     }
+    Ok(())
 }
 
 /// #128-D: for an rclone `filen` export, pull the per-profile Filen CLI API key
@@ -1839,7 +1846,12 @@ async fn export_bridge_profiles(
                             .to_string();
                         let mut opts = e.get("options").cloned();
                         let before = opts.clone();
-                        inject_rclone_oauth_export_options(&mut opts, st, &proto, &id);
+                        if let Err(reason) =
+                            inject_rclone_oauth_export_options(&mut opts, st, &proto, &id)
+                        {
+                            skipped.push(json!({ "name": name, "reason": reason }));
+                            continue;
+                        }
                         inject_rclone_filen_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_proton_export_options(&mut opts, st, &proto, &id);
                         inject_rclone_onedrive_export_options(&mut opts, st, &proto, &id);

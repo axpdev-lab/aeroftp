@@ -10063,7 +10063,7 @@ fn store_fourshared_tokens(
 pub(crate) fn load_fourshared_tokens(profile_id: &str) -> Result<(String, String), String> {
     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
         if let Some(data) =
-            crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)
+            crate::bridge_commands::resolve_profile_oauth_token(&store, "fourshared", profile_id)?
         {
             if let Some((token, secret)) = data.split_once(':') {
                 return Ok((token.to_string(), secret.to_string()));

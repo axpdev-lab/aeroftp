@@ -2533,6 +2533,20 @@ impl CredentialStore {
         Ok(())
     }
 
+    /// Flip one ciphertext byte of `account`'s entry, so reading it fails
+    /// with an `Encryption` error while every other entry still reads.
+    #[cfg(test)]
+    pub(crate) fn corrupt_entry_for_test(&self, account: &str) {
+        let guard = VaultWriteGuard::acquire(Self::lock_dir(&self.vault_path).unwrap()).unwrap();
+        let mut vault = Self::read_vault(&self.vault_path).unwrap();
+        vault
+            .entries
+            .get_mut(account)
+            .expect("entry to corrupt")
+            .data[0] ^= 0xff;
+        Self::write_vault(&self.vault_path, &vault, &guard).unwrap();
+    }
+
     /// List all stored account names
     pub fn list_accounts(&self) -> Result<Vec<String>, CredentialError> {
         let vault = Self::read_vault(&self.vault_path)?;
