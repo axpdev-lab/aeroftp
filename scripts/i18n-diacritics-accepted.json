@@ -683,6 +683,20 @@
       "folded": "kortele",
       "twin": "kortelė",
       "reason": "Paaukoti kortele is donate by card, the instrumental case of kortelė (card); the nominative kortelė is the other form and the two are different cases, not a stripped letter."
+    },
+    "da\u001fsettings.templateSharedSecretsFailed\u001fNogle delte legitimationsoplysninger kunne ikke gemmes for {names}.": {
+      "locale": "da",
+      "key": "settings.templateSharedSecretsFailed",
+      "folded": "nogle",
+      "twin": "nøgle",
+      "reason": "Nogle means some in Danish (nogle delte legitimationsoplysninger = some shared credentials), whereas nøgle means key."
+    },
+    "no\u001fsettings.templateCardDesc\u001fOpprett enkelt- eller gruppeprofiler fra innlimte INI-maler eller malfiler": {
+      "locale": "no",
+      "key": "settings.templateCardDesc",
+      "folded": "malfiler",
+      "twin": "målfiler",
+      "reason": "Malfiler means template files in Norwegian (mal = template), whereas mål = target/goal."
     }
   }
 }

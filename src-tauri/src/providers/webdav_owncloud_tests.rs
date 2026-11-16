@@ -179,3 +179,27 @@ fn unknown_entity_cannot_turn_another_exception_into_not_found() {
         Err(ProviderError::ParseError(_))
     ));
 }
+
+/// A URL with a query and no path has no path component, so its root is the
+/// server's and a real `/a/` child collection stays in the listing, also when
+/// the query holds `/a`.
+#[test]
+fn a_query_url_without_a_path_keeps_a_real_child_collection_in_the_listing() {
+    assert_eq!(
+        WebDavProvider::url_path_component("https://dav.example.test?view=1/a"),
+        ""
+    );
+    assert_eq!(
+        WebDavProvider::url_path_component("https://dav.example.test/dav?view=1/a"),
+        "/dav"
+    );
+    let mut p = provider();
+    p.config.url = "https://dav.example.test?view=1/a".into();
+    let xml = format!(
+        r#"{HEAD}><d:response><d:href>/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response><d:response><d:href>/a/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response></d:multistatus>"#
+    );
+    let entries = p.parse_propfind_response(&xml, "/").unwrap();
+    let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+    assert_eq!(names, ["a"], "{entries:?}");
+    assert!(entries[0].is_dir);
+}

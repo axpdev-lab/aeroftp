@@ -2,11 +2,11 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { pickFile, pickSave } from '../utils/pickPath';
-import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput } from 'lucide-react';
+import { Upload, Download, Shield, AlertCircle, CheckCircle2, X, Eye, EyeOff, Lock, FolderInput, FileText } from 'lucide-react';
 import { PasswordStrengthBar } from './vault/PasswordStrengthBar';
 import { PasswordMatchHint } from './common/PasswordMatchHint';
 import { ServerProfile } from '../types';
@@ -14,6 +14,7 @@ import { useTranslation } from '../i18n';
 import { SearchBox } from './SearchBox';
 import { Checkbox } from './ui/Checkbox';
 import { BridgeSourcePanel } from './BridgeSourcePanel';
+import { ConfigurationTemplatePanel } from './ConfigurationTemplatePanel';
 import { bridgeProfileKey } from './bridge/bridgeImportCommit';
 import { BridgeSourceDescriptor, GENERIC_BRIDGE_SOURCES } from './bridge/bridgeSources';
 import { useDraggableModal } from '../hooks/useDraggableModal';
@@ -41,7 +42,7 @@ interface ExportImportDialogProps {
     // Optional starting mode so callers (e.g. the Settings Backup table) can
     // open the dialog straight into a specific action. Undefined preserves the
     // existing landing-page behavior (My Servers export/import flow).
-    initialMode?: 'export' | 'import' | 'bridge-import' | 'bridge-export';
+    initialMode?: 'export' | 'import' | 'template-import' | 'bridge-import' | 'bridge-export';
     // Optional bridge-config file to import on open (AeroFile "Import to
     // AeroFTP"). When set, the dialog runs the same identify+route flow as a
     // drag-and-drop so it lands straight on that source's preview.
@@ -106,7 +107,13 @@ interface ImportResult {
 export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers, onImport, onProfilesStored, onClose, initialMode, initialBridgeFilePath, initialSelectedServerIds }) => {
     const t = useTranslation();
     const modalDrag = useDraggableModal();
-    const [mode, setMode] = useState<'export' | 'import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
+    const [mode, setMode] = useState<'export' | 'import' | 'template-import' | 'bridge-import' | 'bridge-export' | 'bridge-src' | null>(initialMode ?? null);
+    const modeRef = useRef(mode);
+    useLayoutEffect(() => {
+        modeRef.current = mode;
+    });
+    const [droppedTemplateFile, setDroppedTemplateFile] = useState<string | null>(null);
+    const [templateBusy, setTemplateBusy] = useState(false);
     // Generic bridge source (the 12 expansion sources routed through BridgeSourcePanel)
     const [bridgeSrc, setBridgeSrc] = useState<BridgeSourceDescriptor | null>(null);
     const [bridgeSrcDir, setBridgeSrcDir] = useState<'import' | 'export'>('import');
@@ -415,6 +422,8 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
         setImportWarning(null);
         setBridgeSrc(null);
         setBridgePresetPath(null);
+        setDroppedTemplateFile(null);
+        setTemplateBusy(false);
         exportFilter.setQuery('');
     };
 
@@ -476,7 +485,11 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
             const webview = getCurrentWebview();
             const un = await webview.onDragDropEvent((event) => {
                 if (event.payload.type === 'drop' && event.payload.paths.length > 0) {
-                    void handleBridgeDrop(event.payload.paths[0]);
+                    if (modeRef.current === 'template-import') {
+                        setDroppedTemplateFile(event.payload.paths[0]);
+                    } else {
+                        void handleBridgeDrop(event.payload.paths[0]);
+                    }
                 }
             });
             if (cancelled) un();
@@ -492,7 +505,7 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
     // export or import password would have to be typed again: the backdrop
     // is inert then and the X asks first (Discussion #1527).
     const guarded = useGuardedClose({
-        guard: loading ? 'busy' : (password || confirmPassword) && success === null ? 'dirty' : null,
+        guard: loading || templateBusy ? 'busy' : (password || confirmPassword) && success === null ? 'dirty' : null,
         onClose,
     });
 
@@ -508,12 +521,13 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
 
     return (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={guarded.onBackdropClick}>
-            <div {...modalDrag.panelProps} className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[480px] max-h-[85vh] overflow-hidden animate-scale-in flex flex-col">
+            <div {...modalDrag.panelProps} className={`bg-white dark:bg-gray-800 rounded-lg shadow-2xl ${mode === 'template-import' ? 'w-[560px]' : 'w-[480px]'} max-h-[85vh] overflow-hidden animate-scale-in flex flex-col`}>
                 {/* Header */}
                 <div {...modalDrag.dragHandleProps} className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 cursor-grab active:cursor-grabbing">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                         <Shield size={20} className="text-blue-500" />
-                        {mode === 'bridge-import' ? t('settings.bridgeImport')
+                        {mode === 'template-import' ? t('settings.templateTitle')
+                            : mode === 'bridge-import' ? t('settings.bridgeImport')
                             : mode === 'bridge-export' ? t('settings.bridgeExport')
                             : mode === 'bridge-src' && bridgeSrc ? `${bridgeSrc.label} ${bridgeSrcDir === 'import' ? t('settings.bridgeImport') : t('settings.bridgeExport')}`
                             : t('settings.exportImport')}
@@ -556,6 +570,22 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                     </div>
                                 </div>
                             </button>
+                            <button
+                                type="button"
+                                data-testid="export-import-template-card"
+                                onClick={() => setMode('template-import')}
+                                className="w-full p-4 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 flex items-center gap-3 transition-colors"
+                            >
+                                <div className="w-10 h-10 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                                    <FileText size={20} className="text-indigo-600 dark:text-indigo-400" />
+                                </div>
+                                <div className="text-left">
+                                    <div className="font-medium">{t('settings.templateTitle')}</div>
+                                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                                        {t('settings.templateCardDesc')}
+                                    </div>
+                                </div>
+                            </button>
                             {/* Bridge section - unified import/export for third-party clients */}
                             <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-3">
                                 <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-medium">{t('settings.bridgeTitle')}</div>
@@ -590,6 +620,15 @@ export const ExportImportDialog: React.FC<ExportImportDialogProps> = ({ servers,
                                 </button>
                             </div>
                         </div>
+                    ) : mode === 'template-import' ? (
+                        <ConfigurationTemplatePanel
+                            droppedFilePath={droppedTemplateFile}
+                            onConsumeDroppedFile={() => setDroppedTemplateFile(null)}
+                            onProfilesStored={onProfilesStored}
+                            onBack={resetMode}
+                            onClose={onClose}
+                            onBusyChange={setTemplateBusy}
+                        />
                     ) : (mode === 'bridge-import' || mode === 'bridge-export') ? (
                         /* ---- Bridge: select source/target app (all 15) ---- */
                         (() => {

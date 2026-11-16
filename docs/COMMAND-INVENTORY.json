@@ -160,7 +160,7 @@
       }
     ]
   },
-  "app_version": "4.2.6",
+  "app_version": "4.2.7",
   "cli": {
     "count": 99,
     "subcommands": [
@@ -574,7 +574,7 @@
     "mcp_tools_aliases": 38,
     "mcp_tools_primary": 40,
     "mcp_tools_total": 78,
-    "tauri_commands": 801
+    "tauri_commands": 803
   },
   "mcp": {
     "count": 78,
@@ -972,7 +972,7 @@
     ]
   },
   "parity": {
-    "name_matched_count": 468,
+    "name_matched_count": 469,
     "name_unmatched": [
       "app_ready",
       "set_close_to_tray",
@@ -1074,6 +1074,7 @@
       "detect_bridge_config",
       "bridge_source_meta",
       "bridge_identify",
+      "preview_configuration_template",
       "get_dependencies",
       "ensure_ui_tokens_file",
       "debug_test_connectivity",
@@ -1308,7 +1309,7 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "name_unmatched_count": 333,
+    "name_unmatched_count": 334,
     "note": "Name-based structural diff, not a semantic one. `name_matched` are Tauri commands whose token set matches a CLI/MCP/agent command (a LOWER bound on real coverage, since differently-named equivalents are missed). `name_unmatched` is the remainder: an UPPER bound for manual triage, dominated by GUI, OS-integration and internal commands with no command-line meaning, plus real capabilities named differently. Neither figure is a capability-gap count; curating genuine gaps stays manual (tracker #9)."
   },
   "schema_version": 1,
@@ -1582,6 +1583,8 @@
       "bridge_identify",
       "import_bridge_config",
       "export_bridge_config",
+      "preview_configuration_template",
+      "import_configuration_template",
       "export_keystore",
       "import_keystore",
       "read_keystore_metadata",
@@ -2116,6 +2119,6 @@
       "checkpoint_endpoints",
       "checkpoint_forget_endpoint"
     ],
-    "count": 801
+    "count": 803
   }
 }
