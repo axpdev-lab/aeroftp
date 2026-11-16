@@ -8901,6 +8901,10 @@ const App: React.FC = () => {
           // A newer connect began meanwhile: it owns the workspace.
           if (connectPhase !== remoteConnectPhaseVersionRef.current) return;
           if (backendReplacementSeqRef.current !== probedAt) alive = false;
+          // A connect that replaces the backend is still running: it may have
+          // installed already, under an identity the probe cannot tell apart
+          // (a GitHub branch), so the tab is not reused on its answer.
+          if (backendTeardownsRef.current !== 0) alive = false;
           if (alive) {
             logger.debug('[connectToFtp] #128-C: backend session still alive, reusing tab without reconnect (no 2FA)');
             setActiveSessionId(reusable.id);
@@ -9618,6 +9622,10 @@ const App: React.FC = () => {
           stillAlive = false;
         }
       }
+      // A connect that replaces the backend is still running: it may have
+      // installed already, under an identity the probe cannot tell apart (a
+      // GitHub branch), so the switch reconnects instead of reusing.
+      if (backendTeardownsRef.current !== 0) stillAlive = false;
       // Each connect of this switch fills it as its own replacement ends.
       const switchReceipt: ConnectReceipt = {};
 
@@ -10215,6 +10223,16 @@ const App: React.FC = () => {
     const connectionAtEntry = quotaConnectionRef.current;
     const ownsPhase = () => phaseVersion === remoteConnectPhaseVersionRef.current
       && connectionAtEntry === quotaConnectionRef.current;
+    // The backend serves the tab on screen only while no invoke that replaces
+    // it runs, none ended since the open began, and no teardown left it
+    // uncertain. A connect that installed before the open read anything (a
+    // branch switch whose answer is still on its way) moves no generation the
+    // open can see, but it is still running or it ended: either way the open
+    // neither reuses the backend nor gives the tab back as connected.
+    const replacementsAtEntry = backendReplacementSeqRef.current;
+    const backendServesTabOnScreen = () => backendTeardownsRef.current === 0
+      && !backendUncertainRef.current
+      && backendReplacementSeqRef.current === replacementsAtEntry;
     // The connection this open made when none was on screen (scenario 2):
     // a failure after it leaves no row or folder of it actionable.
     let connectedHere = false;
@@ -10524,6 +10542,24 @@ const App: React.FC = () => {
 
         // Deselect current session tab since we're going to AeroCloud
         setActiveSessionId(null);
+        // An open that takes nothing gives the parked tab back as connected
+        // only while the backend still serves it; otherwise the tab stays
+        // cached, to reconnect with a click, and the workspace is
+        // disconnected, as after a session the open ended.
+        const restoreTabOnScreen = () => {
+          if (backendServesTabOnScreen()) {
+            if (capturedSessionId) {
+              setActiveSessionId(capturedSessionId);
+              setSessions(prev => prev.map(s =>
+                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
+              ));
+            }
+            return;
+          }
+          setIsConnected(false);
+          setRemoteFiles([]);
+          setShowConnectionScreen(true);
+        };
 
         // The live backend is reused only while it still serves the live
         // connection once the connects this open supersedes are cancelled: a
@@ -10548,15 +10584,11 @@ const App: React.FC = () => {
           // fails closed and the previous session stays as it was.
           if (uncancelledOlderConnectRuns()) {
             notify.error(t('toast.connectionFailedTitle'), t('toast.connectEarlierNotStopped'));
-            if (capturedSessionId) {
-              setActiveSessionId(capturedSessionId);
-              setSessions(prev => prev.map(s =>
-                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
-              ));
-            }
+            restoreTabOnScreen();
             return;
           }
-          reusesLiveServer = generationsBefore.every((generation, i) => generation === generationsAfter[i]);
+          reusesLiveServer = backendServesTabOnScreen()
+            && generationsBefore.every((generation, i) => generation === generationsAfter[i]);
           if (reusesLiveServer) {
             // The AeroCloud tab has no session of its own, so
             // with the tab deselected the form state is what names its
@@ -10605,12 +10637,10 @@ const App: React.FC = () => {
               setIsConnected(false);
               setRemoteFiles([]);
               setShowConnectionScreen(true);
-            } else if (capturedSessionId) {
-              // Nothing was ended: the previous session is still live.
-              setActiveSessionId(capturedSessionId);
-              setSessions(prev => prev.map(s =>
-                s.id === capturedSessionId ? { ...s, status: 'connected' } : s
-              ));
+            } else {
+              // Nothing was ended: the previous session is still live, if the
+              // backend still serves it.
+              restoreTabOnScreen();
             }
             setLoading(false);
             return;

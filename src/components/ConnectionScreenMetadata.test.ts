@@ -2379,6 +2379,115 @@ describe('Reviewed ownership of a connect', () => {
     });
 
     it.each([
+        ['A answers after its late cancel, before the reuse decides: the open reconnects', 'answered'],
+        ["A's answer is still on its way when the reuse decides: the open reconnects", 'pending'],
+        ["A's cancel fails twice and A still runs: the parked tab is not given back as connected", 'undelivered'],
+        ['the cancel refuses A before its install: the open reuses the live backend', 'refused'],
+        ["the host key is refused while A's answer is on its way: the parked tab is not given back as connected", 'hostKeyRefused'],
+        ['the host key is refused and nothing replaced the backend: the parked tab is connected again', 'hostKeyRefusedAlone'],
+    ] as const)('checks that the backend still serves the tab on screen when an earlier connect installed before the first generation read (%s)', async (_label, a) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        // A connect that began before the open (a GitHub branch switch) and is
+        // still in flight replaces the backend. It installed before the open
+        // read anything, unless the cancel refuses it, or there is none.
+        const endA = a === 'hostKeyRefusedAlone' ? null : accounting.replacingBackend();
+        if (a !== 'refused' && a !== 'hostKeyRefusedAlone') { fake.backend.provider = 'A'; fake.backend.providerGeneration += 1; }
+        const hostKeyRefused = a === 'hostKeyRefused' || a === 'hostKeyRefusedAlone';
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud' };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        let sendCancels!: () => void;
+        let deliverCancels!: () => void;
+        const cancelsSent = new Promise<void>(resolve => { sendCancels = resolve; });
+        const cancelsDelivered = new Promise<void>(resolve => { deliverCancels = resolve; });
+        let supersedes = 0;
+        const supersedeOlderConnects = vi.fn(async () => {
+            if (++supersedes > 1) return;
+            sendCancels();
+            await cancelsDelivered;
+        });
+        const runConnect = vi.fn(async () => { fake.backend.provider = 'cloud'; fake.backend.providerGeneration += 1; });
+        const notify = { error: vi.fn(), success: vi.fn() };
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const setIsConnected = vi.fn();
+        const setShowConnectionScreen = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, runConnect, remoteConnectPhaseRef: { current: false },
+            uncancelledOlderConnectRuns: () => a === 'undelivered',
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_CANCELLED',
+            isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: hostKeyRefused ? 'sftp' : 'webdav', providerId: null, host: 'dav.example.test', port: hostKeyRefused ? 22 : 443, username: 'u', options: {} }],
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV',
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => false,
+            // The live tab is the cloud's own server, except where the open
+            // reconnects to check a host key.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => !hostKeyRefused, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId, setShowCloudPanel: vi.fn(),
+            setSessions, setIsConnected, setShowConnectionScreen, setConnectionParams: vi.fn(),
+            remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify,
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const open = handleCloudTabClick();
+        if (!hostKeyRefused) {
+            await cancelsSent;
+            // A's answer: an install the late cancel no longer stops, or the
+            // refusal of one the cancel reached in time.
+            if (a === 'answered') endA!();
+            if (a === 'refused') endA!(false);
+            deliverCancels();
+        }
+        await open;
+        if (a === 'pending' || a === 'hostKeyRefused') endA!();
+        const listed = invoke.mock.calls.some(([command]) => command === 'get_local_files');
+        // What the parked tab ends as, after every update the open made.
+        const parkedTab = setSessions.mock.calls.reduce(
+            (tabs: { id: string; status: string }[], [update]) => update(tabs),
+            [{ id: 'old-tab', status: 'connected' }],
+        )[0];
+        if (a === 'answered' || a === 'pending') {
+            // The backend serves A, whatever the generations said: the open
+            // connects the cloud's own before it lists.
+            expect(runConnect).toHaveBeenCalledWith('provider_connect', expect.objectContaining({ server: 'dav.example.test' }));
+            expect(fake.backend.provider).toBe('cloud');
+            expect(listed).toBe(true);
+        } else if (a === 'refused') {
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(fake.backend.provider).toBe('old');
+            expect(listed).toBe(true);
+        } else if (a === 'hostKeyRefusedAlone') {
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(setActiveSessionId).toHaveBeenLastCalledWith('old-tab');
+            expect(parkedTab.status).toBe('connected');
+            expect(setIsConnected).not.toHaveBeenCalledWith(false);
+        } else {
+            // The backend may hold A: the tab stays cached, to reconnect with
+            // a click, and the workspace is disconnected.
+            if (a === 'undelivered') expect(notify.error).toHaveBeenCalledWith('toast.connectionFailedTitle', 'toast.connectEarlierNotStopped');
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(listed).toBe(false);
+            expect(setActiveSessionId).not.toHaveBeenCalledWith('old-tab');
+            expect(parkedTab.status).toBe('cached');
+            expect(setIsConnected).toHaveBeenCalledWith(false);
+            expect(setShowConnectionScreen).toHaveBeenCalledWith(true);
+        }
+    });
+
+    it.each([
         ['superseded', 'AEROCLOUD_OPEN_SUPERSEDED', 1, 1],
         ['refused after a newer connect began', 'refused', 1, 1],
         ['refused', 'refused', 0, 0],
@@ -2524,10 +2633,11 @@ describe('A tab switch that probes the live backend', () => {
         expect(from, 'switchSession probe').toBeGreaterThan(-1);
         expect(to).toBeGreaterThan(from);
         const { code } = await transformWithOxc(`async () => {\n${APP.slice(from, to)}\nreturn { stillAlive, switchReplacedAt };\n}\n`, 'switch-probe.ts');
-        const run = async (replacedDuringProbe: boolean) => {
+        const run = async (replacedDuringProbe: boolean, replacementRunning = false) => {
             const backendReplacementSeqRef = { current: 3 };
             const ctx: Record<string, unknown> = {
                 backendReplacementSeqRef,
+                backendTeardownsRef: { current: replacementRunning ? 1 : 0 },
                 targetSession: { cryptOverlay: null, connectionParams: {} },
                 protocol: 'webdav',
                 probeAliveArgs: () => ({}),
@@ -2542,6 +2652,22 @@ describe('A tab switch that probes the live backend', () => {
         };
         expect(await run(false)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: false });
         expect(await run(true)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: true });
+    });
+
+    it('reconnects while a connect that replaces the backend is still running', async () => {
+        // A connect that began before the switch (a GitHub branch switch)
+        // installed under the same identity and has not answered yet: the
+        // probe says alive for it, and the switch must not reuse it.
+        const from = APP.indexOf('      // Read before the probe (a replacement');
+        const to = APP.indexOf('      // Each connect of this switch fills it as its own replacement ends.', from);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(from, to)}\nreturn stillAlive;\n}\n`, 'switch-probe-running.ts');
+        const probe = (running: number) => (new Function('backendReplacementSeqRef', 'backendTeardownsRef', 'targetSession', 'protocol', 'probeAliveArgs', 'connectScope', 'invoke',
+            `return (${code.trim().replace(/;$/, '')})()`)(
+            { current: 0 }, { current: running }, { cryptOverlay: null, connectionParams: {} }, 'github', () => ({}),
+            { step: (fn: () => unknown) => fn(), assert: () => undefined }, async () => true,
+        ) as Promise<boolean>);
+        expect(await probe(0)).toBe(true);
+        expect(await probe(1)).toBe(false);
     });
 });
 
@@ -2623,6 +2749,7 @@ describe('A provider connect that could reuse a live session', () => {
             connectPhase: 1,
             remoteConnectPhaseVersionRef: { current: 1 },
             backendReplacementSeqRef: { current: 0 },
+            backendTeardownsRef: { current: 0 },
         };
         const run = async (remoteDirInput: string) => {
             ctx.remoteDirInput = remoteDirInput;
@@ -2647,6 +2774,7 @@ describe('A provider connect that reuses a live session after a probe', () => {
         ['nothing happens meanwhile', 'none', true],
         ['a sign-in swap replaces the backend', 'replaced', false],
         ['a newer connect begins', 'overtaken', false],
+        ['a connect that replaces the backend is still running', 'running', false],
     ] as const)('reuses the tab only if %s', async (_label, during, reuses) => {
         const start = APP.indexOf('    if (isProvider) {\n', APP.indexOf('  const connectToFtpImpl = async ('));
         const end = APP.indexOf('      setLoading(true);\n', start);
@@ -2667,6 +2795,9 @@ describe('A provider connect that reuses a live session after a probe', () => {
             reusesOpenTab: () => true, confirmBackendConnection: vi.fn(), fetchStorageQuota: vi.fn(), showHiddenFiles: false,
             logger: { debug: () => undefined },
             connectPhase: 1, remoteConnectPhaseVersionRef, backendReplacementSeqRef,
+            // A GitHub branch switch that installed before the probe and has
+            // not answered yet: the probe says alive for it.
+            backendTeardownsRef: { current: during === 'running' ? 1 : 0 },
         };
         for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
         const outcome = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<unknown>);
@@ -2676,8 +2807,9 @@ describe('A provider connect that reuses a live session after a probe', () => {
         } else {
             expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
             expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
-            // Replaced: it reconnects; overtaken: it ends, leaving B alone.
-            expect(outcome).toBe(during === 'replaced' ? 'reconnects' : undefined);
+            // Replaced or still being replaced: it reconnects; overtaken: it
+            // ends, leaving B alone.
+            expect(outcome).toBe(during === 'overtaken' ? undefined : 'reconnects');
         }
     });
 });

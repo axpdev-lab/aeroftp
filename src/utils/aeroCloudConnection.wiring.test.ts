@@ -417,6 +417,11 @@ async function cloudTabApp(overrides: Record<string, unknown> = {}) {
     ConnectScope: class { assert() {} step<T>(fn: () => T) { return fn(); } },
     remoteConnectPhaseVersionRef: { current: 0 },
     remoteConnectPhaseRef: { current: false },
+    // The backend accounting as App starts it: nothing replaces the backend,
+    // so it serves the tab on screen.
+    backendTeardownsRef: { current: 0 },
+    backendUncertainRef: { current: false },
+    backendReplacementSeqRef: { current: 0 },
     isConnected: true,
     liveConnectionParams: {},
     sessions: [], activeSessionId: 'tab-a',
