@@ -9210,8 +9210,9 @@ async fn copy_local_file_with(
 /// what `std::fs::copy` gives on the platform:
 /// - Windows: `CopyFileExW`, as std uses, so NTFS alternate data streams and
 ///   the file attributes come along; its progress routine stops the copy.
-/// - macOS: `fcopyfile` with `COPYFILE_ALL`, as std uses, so extended
-///   attributes, ACLs and the mode come along; its status callback stops it.
+/// - macOS: what `fcopyfile` with `COPYFILE_ALL` gives (std's fallback when
+///   it cannot clone), so extended attributes, ACLs and the mode come along;
+///   its status callback stops it.
 /// - Linux and the other Unix systems: std copies only the data and the
 ///   permission bits there, and so does the chunked copy.
 fn copy_file_cancellable(
@@ -9240,20 +9241,32 @@ fn copy_file_cancellable(
         // ([`macos_acl::PrivateFolder`]): made next to `to`, it would hold
         // the folder's inherited ACL entries from its creation until they
         // were removed, and a descriptor opened in between keeps reading.
-        // What a new file there inherits is given back once it is published.
+        // Inside it the copy takes, and is checked to hold, the access it
+        // ends with (`secure_macos_copy`) before it is published, so no
+        // state wider than the final one is ever reachable.
         let private = |e: std::io::Error| {
             crate::sync::IpcError::from(format!(
                 "Failed to copy file: the copy could not be kept private next to {}: {e}",
                 to.display()
             ))
         };
-        let inherited = macos_acl::inherited_by_a_new_file(to).map_err(private)?;
+        let inherits = macos_acl::inherited_by_a_new_file(to).map_err(private)?;
         let folder = macos_acl::PrivateFolder::create(to).map_err(private)?;
         let temp = folder.path().join("copy");
         let permissions = metadata.permissions();
-        let written = native_copy_macos(&source, &permissions, &temp, cancel);
-        let published = publish_local_copy(&temp, to, written, cancel, publish, |(target, _)| {
-            finish_macos_copy(&source, &target, inherited, permissions)
+        let written = native_copy_macos(&source, &permissions, &temp, cancel).and_then(
+            |(target, _)| {
+                secure_macos_copy(&source, &target, inherits, &permissions)
+                    .map(|()| target)
+                    .map_err(|e| {
+                        crate::sync::IpcError::from(format!(
+                            "Failed to copy file: the copy's access could not be set, so nothing was published: {e}"
+                        ))
+                    })
+            },
+        );
+        let published = publish_local_copy(&temp, to, written, cancel, publish, |target| {
+            stamp_macos_copy(&source, &target)
         });
         drop(folder);
         published
@@ -9390,8 +9403,9 @@ fn open_local_copy_temp(
 
 /// What a temporary inherited from its folder: on macOS its ACL entries
 /// ([`macos_acl::withhold`]), nothing elsewhere. The chunked copy gives them
-/// back once published; the platform copy gives back what a new file next
-/// to the destination inherits ([`macos_acl::inherited_by_a_new_file`]).
+/// back once published; the platform copy merges what a new file next to
+/// the destination inherits ([`macos_acl::inherited_by_a_new_file`]) into
+/// its access list before it is published ([`macos_acl::copy_from`]).
 #[cfg(target_os = "macos")]
 type InheritedAccess = Option<macos_acl::Acl>;
 #[cfg(not(target_os = "macos"))]
@@ -9404,15 +9418,24 @@ mod macos_acl {
 
     type AclT = *mut libc::c_void;
     type AclEntryT = *mut libc::c_void;
+    type AclFlagsetT = *mut libc::c_void;
     /// `ACL_TYPE_EXTENDED` of `acl_type_t`.
     const ACL_TYPE_EXTENDED: libc::c_int = 0x0000_0100;
     const ACL_FIRST_ENTRY: libc::c_int = 0;
+    const ACL_NEXT_ENTRY: libc::c_int = -1;
+    /// `ACL_ENTRY_INHERITED` of `acl_flag_t`.
+    const ACL_ENTRY_INHERITED: libc::c_int = 1 << 4;
 
     extern "C" {
         fn acl_init(count: libc::c_int) -> AclT;
         fn acl_get_fd_np(fd: libc::c_int, kind: libc::c_int) -> AclT;
         fn acl_set_fd_np(fd: libc::c_int, acl: AclT, kind: libc::c_int) -> libc::c_int;
         fn acl_get_entry(acl: AclT, entry_id: libc::c_int, entry: *mut AclEntryT) -> libc::c_int;
+        fn acl_get_flagset_np(object: *mut libc::c_void, flags: *mut AclFlagsetT) -> libc::c_int;
+        fn acl_get_flag_np(flags: AclFlagsetT, flag: libc::c_int) -> libc::c_int;
+        fn acl_create_entry(acl: *mut AclT, entry: *mut AclEntryT) -> libc::c_int;
+        fn acl_copy_entry(dest: AclEntryT, src: AclEntryT) -> libc::c_int;
+        fn acl_to_text(acl: AclT, len: *mut libc::ssize_t) -> *mut libc::c_char;
         fn acl_free(object: *mut libc::c_void) -> libc::c_int;
     }
 
@@ -9469,6 +9492,99 @@ mod macos_acl {
         Ok(())
     }
 
+    /// The entries of `from` that were inherited (`inherited`) or that are
+    /// its own, added to `into` in their order.
+    fn append(into: &mut Acl, from: Option<&Acl>, inherited: bool) -> std::io::Result<()> {
+        let Some(from) = from else {
+            return Ok(());
+        };
+        let mut entry: AclEntryT = std::ptr::null_mut();
+        let mut which = ACL_FIRST_ENTRY;
+        // SAFETY: two live ACLs; each entry read from `from` is copied into
+        // a new entry of `into`, which `acl_create_entry` may reallocate.
+        unsafe {
+            while acl_get_entry(from.0, which, &mut entry) == 0 {
+                which = ACL_NEXT_ENTRY;
+                let mut flags: AclFlagsetT = std::ptr::null_mut();
+                if acl_get_flagset_np(entry, &mut flags) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                match acl_get_flag_np(flags, ACL_ENTRY_INHERITED) {
+                    flagged @ (0 | 1) if (flagged == 1) != inherited => continue,
+                    0 | 1 => {}
+                    _ => return Err(std::io::Error::last_os_error()),
+                }
+                let mut copy: AclEntryT = std::ptr::null_mut();
+                if acl_create_entry(&mut into.0, &mut copy) != 0 || acl_copy_entry(copy, entry) != 0
+                {
+                    return Err(std::io::Error::last_os_error());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The text form of `acl`, to compare two of them.
+    pub(super) fn text(acl: &Acl) -> std::io::Result<String> {
+        let mut len: libc::ssize_t = 0;
+        // SAFETY: a live ACL; the text is copied, then freed once.
+        unsafe {
+            let text = acl_to_text(acl.0, &mut len);
+            if text.is_null() {
+                return Err(std::io::Error::last_os_error());
+            }
+            let owned = std::ffi::CStr::from_ptr(text)
+                .to_string_lossy()
+                .into_owned();
+            acl_free(text.cast());
+            Ok(owned)
+        }
+    }
+
+    /// Give `target` the access list `fcopyfile` with `COPYFILE_ALL` gives a
+    /// new file next to the destination, as the copy did before it was
+    /// staged (`copyfile_security` in Apple's copyfile.c): the source's own entries,
+    /// then the entries a new file next to the destination inherits
+    /// (`inherits`). Read back: an entry that did not take is an error, never
+    /// a copy wider than its source (`copyfile` only logs it).
+    pub(super) fn copy_from(
+        source: &std::fs::File,
+        target: &std::fs::File,
+        inherits: Option<Acl>,
+    ) -> std::io::Result<()> {
+        // SAFETY: a new, empty ACL, freed by `Acl`.
+        let empty = unsafe { acl_init(4) };
+        if empty.is_null() {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut merged = Acl(empty);
+        append(&mut merged, read(source)?.as_ref(), false)?;
+        append(&mut merged, inherits.as_ref(), true)?;
+        let mut first: AclEntryT = std::ptr::null_mut();
+        // SAFETY: a live ACL and a writable entry pointer.
+        if unsafe { acl_get_entry(merged.0, ACL_FIRST_ENTRY, &mut first) } != 0 {
+            return clear(target);
+        }
+        #[cfg(test)]
+        let skipped = ACL_NOT_SET.with(std::cell::Cell::get);
+        #[cfg(not(test))]
+        let skipped = false;
+        // SAFETY: `target` owns the descriptor; `merged` is a live ACL.
+        if !skipped
+            && unsafe { acl_set_fd_np(target.as_raw_fd(), merged.0, ACL_TYPE_EXTENDED) } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        let want = text(&merged)?;
+        let held = read(target)?.map(|acl| text(&acl)).transpose()?;
+        if held.as_deref() != Some(want.as_str()) {
+            return Err(std::io::Error::other(format!(
+                "its access list reads back as {held:?}, not {want:?}"
+            )));
+        }
+        Ok(())
+    }
+
     /// Remove the entries `file` inherited, before any byte reaches it, and
     /// return them for [`restore`] ([`clear`]).
     pub(super) fn withhold(file: &std::fs::File) -> std::io::Result<Option<Acl>> {
@@ -9480,9 +9596,9 @@ mod macos_acl {
     }
 
     /// The entries a new file made next to `to` inherits, read from a probe:
-    /// a file made there, never written, and removed at once. They are what
-    /// the copy is given back once published, so it ends as
-    /// `std::fs::copy`'s new file does.
+    /// a file made there, never written, and removed at once. They are the
+    /// inherited part of the copy's access list ([`copy_from`]), so it ends
+    /// as a new file `COPYFILE_ALL` fills there does.
     pub(super) fn inherited_by_a_new_file(to: &std::path::Path) -> std::io::Result<Option<Acl>> {
         use std::os::unix::fs::OpenOptionsExt;
         let probe = super::local_copy_temp(to);
@@ -9514,6 +9630,12 @@ mod macos_acl {
             let path = super::local_copy_temp(to);
             std::fs::DirBuilder::new().mode(0o700).create(&path)?;
             let folder = Self(path);
+            #[cfg(test)]
+            if FOLDER_CLEAR_FAILS.with(std::cell::Cell::get) {
+                return Err(std::io::Error::other(
+                    "the folder's access list stayed (test)",
+                ));
+            }
             clear(&std::fs::File::open(&folder.0)?)?;
             #[cfg(test)]
             FOLDER_MADE.with(|hook| {
@@ -9544,8 +9666,15 @@ mod macos_acl {
         /// made in it.
         pub(super) static FOLDER_MADE: std::cell::RefCell<Option<FolderHook>> =
             const { std::cell::RefCell::new(None) };
-        /// `COPYFILE_SECURITY` fails in [`super::finish_macos_copy`].
-        pub(super) static SECURITY_COPY_FAILS: std::cell::Cell<bool> =
+        /// [`clear`] fails on a private folder.
+        pub(super) static FOLDER_CLEAR_FAILS: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+        /// [`copy_from`] sets nothing, as an `acl_set_fd_np` that does not
+        /// take: its read-back must refuse the copy.
+        pub(super) static ACL_NOT_SET: std::cell::Cell<bool> =
+            const { std::cell::Cell::new(false) };
+        /// `COPYFILE_STAT` fails in [`super::stamp_macos_copy`].
+        pub(super) static STAMP_FAILS: std::cell::Cell<bool> =
             const { std::cell::Cell::new(false) };
     }
 
@@ -9637,11 +9766,11 @@ impl LocalPublish {
 /// stays as it was. With [`LocalPublish::NoReplace`] the move refuses an
 /// existing `to` in the same step that takes the name.
 ///
-/// The temporary stays owner-only until it holds its name: `finish` gives it
-/// what could open it to others (its mode, on macOS its ACL) through its
-/// handle, after the publication. A `finish` that fails leaves the published
-/// copy narrower than its source, never wider; it is logged, not undone,
-/// since the destination it replaced is gone.
+/// `finish` runs through the published copy's handle once it holds its
+/// name: on Linux its mode (the temporary stays owner-only until then), on
+/// macOS its dates and flags. A `finish` that fails is the copy's error: it
+/// is not undone, since the destination it replaced is gone, and the copy it
+/// leaves is narrower than its source, never wider.
 fn publish_local_copy<T>(
     temp: &std::path::Path,
     to: &std::path::Path,
@@ -9681,15 +9810,12 @@ fn publish_local_copy<T>(
         }
     });
     match (published, target) {
-        (Ok(()), Some(target)) => {
-            if let Err(e) = finish(target) {
-                tracing::warn!(
-                    "{} was copied owner-only: its permissions could not be applied: {e}",
-                    to.display()
-                );
-            }
-            Ok(())
-        }
+        (Ok(()), Some(target)) => finish(target).map_err(|e| {
+            crate::sync::IpcError::from(format!(
+                "Failed to copy file: {} holds the copy, but {e}",
+                to.display()
+            ))
+        }),
         (published, _) => {
             #[cfg(all(test, unix))]
             local_copy_publication::observe("removing", temp);
@@ -9767,11 +9893,16 @@ pub(crate) fn copy_into_place(
         #[cfg(unix)]
         {
             let (target, inherited) = published;
+            let owner_only = |e: std::io::Error| {
+                std::io::Error::other(format!(
+                    "it was left owner-only: its permissions could not be applied: {e}"
+                ))
+            };
             #[cfg(target_os = "macos")]
-            macos_acl::restore(&target, inherited)?;
+            macos_acl::restore(&target, inherited).map_err(owner_only)?;
             #[cfg(not(target_os = "macos"))]
             let () = inherited;
-            target.set_permissions(permissions)
+            target.set_permissions(permissions).map_err(owner_only)
         }
         #[cfg(not(unix))]
         {
@@ -10077,9 +10208,9 @@ mod macos_data_pass {
 /// Copy `source` into the new owner-only file `temp` with `fcopyfile`, its
 /// data and extended attributes, stopped through [`macos_copy_status`], and
 /// return its handle. The rest of what `COPYFILE_ALL` covers, the flags
-/// `std::fs::copy` uses (mode, ACL), opens a file to other accounts: it
-/// comes with [`finish_macos_copy`] once the copy is published, so an
-/// unpublished one is never open to them.
+/// `std::fs::copy` uses: the access (mode, ACL, owner) with
+/// [`secure_macos_copy`] once the data is in, the dates and flags with
+/// [`stamp_macos_copy`] once the copy is published.
 #[cfg(target_os = "macos")]
 fn native_copy_macos(
     source: &std::fs::File,
@@ -10123,8 +10254,7 @@ fn native_copy_macos(
             }
         };
         // The extended attributes open nothing to other accounts; the mode
-        // and the ACL do, and wait for the publication
-        // ([`finish_macos_copy`]).
+        // and the ACL do, and wait for the data ([`secure_macos_copy`]).
         let result = if set {
             copy(libc::COPYFILE_DATA)
                 .and_then(|()| target.set_permissions(staged_permissions(permissions)))
@@ -10142,51 +10272,62 @@ fn native_copy_macos(
     }
 }
 
-/// What `COPYFILE_ALL` adds once the copy holds its name, through the
-/// published copy's handle: first the entries it inherited from its folder,
-/// so the file is as `std::fs::copy`'s new file is, then the source's mode,
-/// ownership and ACL (`COPYFILE_SECURITY`), then its permissions.
+/// What `COPYFILE_ALL` adds that decides who can open the copy, given to
+/// the unpublished copy inside its private folder and read back, so the
+/// publication makes reachable only the state the copy ends with: the
+/// access list `COPYFILE_ALL` gives a new file there ([`macos_acl::copy_from`]),
+/// the source's owner and group where this account may set them (as
+/// `copyfile` tries, and ignores), then the source's mode.
 #[cfg(target_os = "macos")]
-fn finish_macos_copy(
+fn secure_macos_copy(
     source: &std::fs::File,
     target: &std::fs::File,
-    inherited: InheritedAccess,
-    permissions: std::fs::Permissions,
+    inherits: InheritedAccess,
+    permissions: &std::fs::Permissions,
 ) -> std::io::Result<()> {
-    use std::os::fd::AsRawFd;
-    macos_acl::restore(target, inherited)?;
-    let security = || {
-        #[cfg(test)]
-        if macos_acl::SECURITY_COPY_FAILS.with(std::cell::Cell::get) {
-            return Err(std::io::Error::other("COPYFILE_SECURITY refused (test)"));
-        }
-        // SAFETY: both descriptors are open for the call; no state is passed.
-        let copied = unsafe {
-            libc::fcopyfile(
-                source.as_raw_fd(),
-                target.as_raw_fd(),
-                std::ptr::null_mut(),
-                libc::COPYFILE_SECURITY,
-            )
-        };
-        if copied == 0 {
-            Ok(())
-        } else {
-            Err(std::io::Error::last_os_error())
-        }
-    };
-    if let Err(error) = security() {
-        // The inherited entries came back for `COPYFILE_SECURITY` to merge
-        // with the source's; without it they may grant more than the source
-        // does. They go again: narrower than the source, never wider.
-        return Err(match macos_acl::clear(target) {
-            Ok(()) => error,
-            Err(left) => std::io::Error::other(format!(
-                "{error}; its inherited access list stayed on it: {left}"
-            )),
-        });
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    macos_acl::copy_from(source, target, inherits)?;
+    let owner = source.metadata()?;
+    let _ = std::os::unix::fs::fchown(target, Some(owner.uid()), Some(owner.gid()));
+    target.set_permissions(permissions.clone())?;
+    let held = target.metadata()?.permissions().mode() & 0o7777;
+    let want = permissions.mode() & 0o7777;
+    if held != want {
+        return Err(std::io::Error::other(format!(
+            "its mode reads back as {held:o}, not {want:o}"
+        )));
     }
-    target.set_permissions(permissions)
+    Ok(())
+}
+
+/// The rest of `COPYFILE_ALL`, once the copy holds its name: the source's
+/// dates and file flags (`COPYFILE_STAT`). They open the copy to no one, and
+/// a locked (`uchg`) copy could be neither renamed nor removed from its
+/// private folder.
+#[cfg(target_os = "macos")]
+fn stamp_macos_copy(source: &std::fs::File, target: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    #[cfg(test)]
+    if macos_acl::STAMP_FAILS.with(std::cell::Cell::get) {
+        return Err(std::io::Error::other("COPYFILE_STAT refused (test)"));
+    }
+    // SAFETY: both descriptors are open for the call; no state is passed.
+    let copied = unsafe {
+        libc::fcopyfile(
+            source.as_raw_fd(),
+            target.as_raw_fd(),
+            std::ptr::null_mut(),
+            libc::COPYFILE_STAT,
+        )
+    };
+    if copied == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "its dates and flags could not be copied: {}",
+            std::io::Error::last_os_error()
+        )))
+    }
 }
 
 #[cfg(test)]
@@ -10215,8 +10356,8 @@ mod native_local_copy_tests {
     }
 
     /// The macOS copy writes its data while the temporary is owner-only, and
-    /// stays so until `finish_macos_copy` gives it the source's mode (after
-    /// the publication). Observed from `fcopyfile`'s own
+    /// stays so until `secure_macos_copy` gives it the source's mode (inside
+    /// its private folder, once the data is in). Observed from `fcopyfile`'s own
     /// data reports, so a report that never comes fails by name.
     #[cfg(target_os = "macos")]
     #[test]
@@ -10261,7 +10402,7 @@ mod native_local_copy_tests {
             staged, 0o600,
             "the written copy is not owner-only before its publication: {staged:o}"
         );
-        finish_macos_copy(&source, &target, inherited, permissions).unwrap();
+        secure_macos_copy(&source, &target, inherited, &permissions).unwrap();
         let published = std::fs::metadata(&temp).unwrap().permissions().mode() & 0o777;
         assert_eq!(
             published, 0o644,
@@ -10322,9 +10463,12 @@ mod native_local_copy_tests {
                     "{case}: observed {stages:?}, expected {expected:?}"
                 ));
             }
+            // The macOS copy takes its final mode inside a folder no other
+            // account can enter, which
+            // `a_copy_gets_no_inherited_acl_until_it_is_published` checks.
             let open: Vec<String> = seen
                 .iter()
-                .filter(|(_, mode)| *mode & 0o077 != 0)
+                .filter(|(_, mode)| !cfg!(target_os = "macos") && *mode & 0o077 != 0)
                 .map(|(stage, mode)| format!("{stage} {mode:o}"))
                 .collect();
             if !open.is_empty() {
@@ -10502,21 +10646,58 @@ mod native_local_copy_tests {
         assert!(wrong.is_empty(), "{wrong:#?}");
     }
 
+    /// A step that fails once the copy holds its name (its mode on Linux,
+    /// its dates and flags on macOS) is the copy's error: it was logged and
+    /// the copy reported done. The copy is not undone, since what it replaced
+    /// is gone, and keeps its data under its name.
+    #[cfg(unix)]
+    #[test]
+    fn a_step_that_fails_after_the_publication_fails_the_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let temp = dir.path().join(".aeroftp-copy-test");
+        let to = dir.path().join("copy.bin");
+        std::fs::write(&temp, b"data").unwrap();
+        let copied = publish_local_copy(
+            &temp,
+            &to,
+            Ok(()),
+            &AtomicBool::new(false),
+            LocalPublish::Replace,
+            |()| Err(std::io::Error::other("its mode did not take (test)")),
+        );
+        let text = match &copied {
+            Err(crate::sync::IpcError::Other(text)) => text.clone(),
+            other => panic!("a failed step after the publication was reported as {other:?}"),
+        };
+        assert!(
+            text.contains("holds the copy") && text.contains("its mode did not take (test)"),
+            "{text}"
+        );
+        assert_eq!(std::fs::read(&to).unwrap(), b"data");
+        assert!(!temp.exists());
+    }
+
     /// On macOS a folder's inheritable ACL entries reach what is made in it,
     /// and ACL entries are evaluated before the mode bits: an "everyone allow
     /// read" one opened the 0600 temporary to every account, and one removed
     /// after the creation still left a descriptor opened in between. The
     /// temporary is made in a private folder whose inherited entries are gone
-    /// before anything is made in it: none on the folder then, none on the
-    /// folder or the temporary as the publication begins or before a refused
-    /// one is removed, nothing left after, and the published copy has the
-    /// entry a new file made there has (the controls also prove a new file
-    /// and a new folder inherit it). When `COPYFILE_SECURITY` fails after the
-    /// publication, the copy keeps no inherited entry: narrower than its
-    /// source, never wider.
+    /// before anything is made in it, and there it takes the access it ends
+    /// with, checked against `COPYFILE_ALL` onto a new file in the same
+    /// folder (the control, what the copy gave before): an access list
+    /// restored first and merged
+    /// after the publication was reachable wider than a restrictive source's
+    /// in between. Checked: the folder has no entry when ready; as the
+    /// publication begins and before a refused one is removed, the folder is
+    /// still private and the temporary already holds the control's access
+    /// list and mode; nothing is left after; the published copy holds them.
+    /// A folder that stays open or an access list that does not take refuse
+    /// the copy before anything is published; dates and flags that fail after
+    /// the publication are the copy's error, its access already final.
     #[cfg(target_os = "macos")]
     #[test]
     fn a_copy_gets_no_inherited_acl_until_it_is_published() {
+        use std::os::unix::fs::PermissionsExt;
         use std::sync::Arc;
         fn private_folder(dir: &std::path::Path) -> Option<std::path::PathBuf> {
             std::fs::read_dir(dir).ok()?.find_map(|entry| {
@@ -10528,52 +10709,108 @@ mod native_local_copy_tests {
                     .then(|| entry.path())
             })
         }
-        fn has_acl(path: &std::path::Path) -> Result<bool, String> {
+        fn access(path: &std::path::Path) -> Result<(Option<String>, u32), String> {
             let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            macos_acl::read(&file)
-                .map(|acl| acl.is_some())
-                .map_err(|e| e.to_string())
+            let acl = macos_acl::read(&file)
+                .and_then(|acl| acl.map(|acl| macos_acl::text(&acl)).transpose())
+                .map_err(|e| e.to_string())?;
+            let mode = file
+                .metadata()
+                .map_err(|e| e.to_string())?
+                .permissions()
+                .mode()
+                & 0o7777;
+            Ok((acl, mode))
+        }
+        // What the copy gave before it was staged: `COPYFILE_ALL` onto a new
+        // file made next to the destination (`std::fs::copy` clones instead
+        // where it can, and a clone takes the source's access list as is).
+        fn copyfile_all(from: &std::path::Path, to: &std::path::Path) {
+            use std::os::fd::AsRawFd;
+            use std::os::unix::fs::OpenOptionsExt;
+            let source = std::fs::File::open(from).unwrap();
+            let target = std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .open(to)
+                .unwrap();
+            // SAFETY: both descriptors are open for the call; no state is passed.
+            let copied = unsafe {
+                libc::fcopyfile(
+                    source.as_raw_fd(),
+                    target.as_raw_fd(),
+                    std::ptr::null_mut(),
+                    // `COPYFILE_ALL`, which the libc crate does not define.
+                    libc::COPYFILE_METADATA | libc::COPYFILE_DATA,
+                )
+            };
+            assert_eq!(copied, 0, "{}", std::io::Error::last_os_error());
+        }
+        fn chmod_a(path: &std::path::Path, entry: &str) {
+            let granted = std::process::Command::new("/bin/chmod")
+                .args(["+a", entry])
+                .arg(path)
+                .output()
+                .unwrap();
+            assert!(
+                granted.status.success(),
+                "chmod +a {entry} refused: {}",
+                String::from_utf8_lossy(&granted.stderr)
+            );
         }
         let sources = tempfile::tempdir().unwrap();
-        let from = sources.path().join("source.bin");
-        std::fs::write(&from, vec![7u8; 3 << 20]).unwrap();
-        assert_eq!(
-            has_acl(&from),
-            Ok(false),
-            "the source has an ACL of its own"
+        let plain = sources.path().join("plain.bin");
+        std::fs::write(&plain, vec![7u8; 3 << 20]).unwrap();
+        std::fs::set_permissions(&plain, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let restrictive = sources.path().join("restrictive.bin");
+        std::fs::write(&restrictive, vec![7u8; 3 << 20]).unwrap();
+        std::fs::set_permissions(&restrictive, std::fs::Permissions::from_mode(0o640)).unwrap();
+        chmod_a(&restrictive, "nobody deny read");
+        assert!(
+            matches!(access(&plain), Ok((None, _))),
+            "the plain source has an ACL of its own"
+        );
+        assert!(
+            matches!(access(&restrictive), Ok((Some(_), _))),
+            "the restrictive source has no ACL entry, so the case proves nothing"
         );
         let mut wrong = Vec::new();
         for case in [
             "stop after the last read",
             "name taken",
             "published",
-            "security copy fails",
+            "restrictive source",
+            "folder stays open",
+            "access list does not take",
+            "dates and flags fail",
         ] {
+            let from = if case == "restrictive source" {
+                &restrictive
+            } else {
+                &plain
+            };
             let dir = tempfile::tempdir().unwrap();
-            let granted = std::process::Command::new("/bin/chmod")
-                .args([
-                    "+a",
-                    "everyone allow read,list,search,file_inherit,directory_inherit",
-                ])
-                .arg(dir.path())
-                .output()
-                .unwrap();
-            assert!(
-                granted.status.success(),
-                "chmod +a refused: {}",
-                String::from_utf8_lossy(&granted.stderr)
+            chmod_a(
+                dir.path(),
+                "everyone allow read,list,search,file_inherit,directory_inherit",
             );
             let control_file = dir.path().join("control");
             std::fs::write(&control_file, b"x").unwrap();
             let control_folder = dir.path().join("control-folder");
             std::fs::create_dir(&control_folder).unwrap();
-            assert_eq!(
-                (has_acl(&control_file), has_acl(&control_folder)),
-                (Ok(true), Ok(true)),
-                "a new file and a new folder must inherit the entry, or the test proves nothing"
-            );
+            if !matches!(
+                (access(&control_file), access(&control_folder)),
+                (Ok((Some(_), _)), Ok((Some(_), _)))
+            ) {
+                panic!("a new file and a new folder must inherit the entry, or the test proves nothing");
+            }
             std::fs::remove_file(&control_file).unwrap();
             std::fs::remove_dir(&control_folder).unwrap();
+            let control_copy = dir.path().join("control-copy");
+            copyfile_all(from, &control_copy);
+            let control = access(&control_copy);
+            std::fs::remove_file(&control_copy).unwrap();
             let to = dir.path().join("copy.bin");
             if case == "name taken" {
                 std::fs::write(&to, b"theirs").unwrap();
@@ -10584,9 +10821,10 @@ mod native_local_copy_tests {
                 *hook.borrow_mut() = Some(Box::new(move |folder: &std::path::Path| {
                     let empty =
                         std::fs::read_dir(folder).map(|mut entries| entries.next().is_none());
-                    noted
-                        .borrow_mut()
-                        .push((has_acl(folder), empty.map_err(|e| e.to_string())));
+                    noted.borrow_mut().push((
+                        access(folder).map(|(acl, mode)| (acl.is_some(), mode)),
+                        empty.map_err(|e| e.to_string()),
+                    ));
                 }));
             });
             let cancel = Arc::new(AtomicBool::new(false));
@@ -10595,57 +10833,97 @@ mod native_local_copy_tests {
             let stops = case == "stop after the last read";
             local_copy_publication::OBSERVER.with(|observer| {
                 *observer.borrow_mut() = Some(Box::new(move |stage, _| {
-                    let acl = private_folder(&parent)
+                    let held = private_folder(&parent)
                         .ok_or_else(|| "no private folder".to_string())
-                        .and_then(|folder| Ok((has_acl(&folder)?, has_acl(&folder.join("copy"))?)));
-                    observed.borrow_mut().push((stage, acl));
+                        .and_then(|folder| Ok((access(&folder)?, access(&folder.join("copy"))?)));
+                    observed.borrow_mut().push((stage, held));
                     if stops && stage == "publishing" {
                         stop.store(true, Ordering::Relaxed);
                     }
                 }));
             });
-            macos_acl::SECURITY_COPY_FAILS.with(|fails| fails.set(case == "security copy fails"));
+            macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(case == "folder stays open"));
+            macos_acl::ACL_NOT_SET.with(|fails| fails.set(case == "access list does not take"));
+            macos_acl::STAMP_FAILS.with(|fails| fails.set(case == "dates and flags fail"));
             let publish = if case == "name taken" {
                 LocalPublish::NoReplace
             } else {
                 LocalPublish::Replace
             };
-            let copied = copy_file_cancellable(&from, &to, &cancel, publish);
-            macos_acl::SECURITY_COPY_FAILS.with(|fails| fails.set(false));
+            let copied = copy_file_cancellable(from, &to, &cancel, publish);
+            macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(false));
+            macos_acl::ACL_NOT_SET.with(|fails| fails.set(false));
+            macos_acl::STAMP_FAILS.with(|fails| fails.set(false));
             local_copy_publication::OBSERVER.with(|observer| observer.borrow_mut().take());
             macos_acl::FOLDER_MADE.with(|hook| hook.borrow_mut().take());
             let made = made.borrow().clone();
-            if made != [(Ok(false), Ok(true))] {
+            let want_made: &[_] = if case == "folder stays open" {
+                &[]
+            } else {
+                &[(Ok((false, 0o700)), Ok(true))]
+            };
+            if made != want_made {
                 wrong.push(format!(
-                    "{case}: the private folder when ready (ACL, empty): {made:?}"
+                    "{case}: the private folder when ready ((ACL, mode), empty): {made:?}"
                 ));
             }
             let seen = seen.borrow().clone();
-            let open: Vec<_> = seen
-                .iter()
-                .filter(|(_, acl)| *acl != Ok((false, false)))
-                .collect();
-            if seen.is_empty() || !open.is_empty() {
-                wrong.push(format!(
-                    "{case}: (folder, temporary) ACL at {seen:?} (want none)"
-                ));
+            let stages: Vec<&str> = seen.iter().map(|(stage, _)| *stage).collect();
+            let want_stages: &[&str] = match case {
+                "published" | "restrictive source" | "dates and flags fail" => &["publishing"],
+                "stop after the last read" | "name taken" => &["publishing", "removing"],
+                "access list does not take" => &["removing"],
+                _ => &[],
+            };
+            if stages != want_stages {
+                wrong.push(format!("{case}: observed {stages:?}, want {want_stages:?}"));
+            }
+            for (stage, held) in &seen {
+                let (folder, temporary) = match held {
+                    Ok(held) => held,
+                    Err(e) => {
+                        wrong.push(format!("{case}: {stage}: {e}"));
+                        continue;
+                    }
+                };
+                if *folder != (None, 0o700) {
+                    wrong.push(format!(
+                        "{case}: {stage}: the private folder is (ACL, mode) {folder:?}"
+                    ));
+                }
+                let want = if case == "access list does not take" {
+                    None
+                } else {
+                    control.as_ref().ok()
+                };
+                if want.is_some_and(|want| temporary != want) {
+                    wrong.push(format!(
+                        "{case}: {stage}: the temporary holds {temporary:?}, the control {control:?}"
+                    ));
+                }
             }
             if let Some(left) = private_folder(dir.path()) {
                 wrong.push(format!("{case}: {} is left", left.display()));
             }
             match case {
-                "published" | "security copy fails" => {
-                    let published = has_acl(&to);
-                    let want = Ok(case == "published");
-                    if copied.is_err() || published != want {
+                "published" | "restrictive source" | "dates and flags fail" => {
+                    let published = access(&to);
+                    let failed = case == "dates and flags fail";
+                    if copied.is_err() != failed || published != control {
                         wrong.push(format!(
-                            "{case}: {copied:?}, the published copy has an inherited entry: {published:?} (want {want:?})"
+                            "{case}: {copied:?}, the published copy holds {published:?}, the control {control:?}"
                         ));
                     }
                 }
+                "name taken" => {
+                    if copied.is_ok() || std::fs::read(&to).ok().as_deref() != Some(&b"theirs"[..])
+                    {
+                        wrong.push(format!("{case}: {copied:?}, or the taken name changed"));
+                    }
+                }
                 _ => {
-                    if copied.is_ok() {
-                        wrong.push(format!("{case}: {copied:?}"));
+                    if copied.is_ok() || to.exists() {
+                        wrong.push(format!("{case}: {copied:?}, published: {}", to.exists()));
                     }
                 }
             }
@@ -12885,14 +13163,24 @@ where
         parent
             .rename(&tmp_name, parent, name)
             .map_err(destination_error)?;
+        // A mode that does not take is the entry's error: it holds its name,
+        // owner-only, narrower than the file it replaced, never wider.
         #[cfg(unix)]
         if let Some(kept) = kept {
-            if let Err(e) = file.set_permissions(kept) {
-                tracing::warn!(
+            #[cfg(test)]
+            let applied = if archive_entry_mode::FAILS.with(std::cell::Cell::get) {
+                Err(std::io::Error::other("fchmod refused (test)"))
+            } else {
+                file.set_permissions(kept)
+            };
+            #[cfg(not(test))]
+            let applied = file.set_permissions(kept);
+            applied.map_err(|e| {
+                std::io::Error::other(format!(
                     "{} was extracted owner-only: its permissions could not be applied: {e}",
                     std::path::Path::new(name).display()
-                );
-            }
+                ))
+            })?;
         }
         Ok(written)
     });
@@ -12900,6 +13188,14 @@ where
         let _ = parent.remove_file(&tmp_name);
     }
     outcome
+}
+
+/// The kept mode of an extracted entry fails to apply once it holds its name.
+#[cfg(all(test, unix))]
+pub(crate) mod archive_entry_mode {
+    std::thread_local! {
+        pub(crate) static FAILS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
 }
 
 #[cfg(test)]

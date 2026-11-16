@@ -328,3 +328,35 @@ fn an_entry_takes_the_mode_it_keeps_only_once_published() {
         "the kept mode after the publication: {after:o}"
     );
 }
+
+/// A kept mode that fails to apply once the entry holds its name is the
+/// entry's error, not a warning behind a done extraction: the entry keeps
+/// its new data, owner-only, narrower than the file it replaced.
+#[cfg(unix)]
+#[test]
+fn an_entry_whose_kept_mode_fails_is_an_error() {
+    use std::os::unix::fs::PermissionsExt;
+    let directory = tempfile::tempdir().unwrap();
+    let existing = directory.path().join("shared");
+    std::fs::write(&existing, b"old").unwrap();
+    std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+    let root = super::open_archive_output(directory.path(), directory.path()).unwrap();
+    let (parent, name) = super::archive_destination_parent(&root, Path::new("shared")).unwrap();
+    super::archive_entry_mode::FAILS.with(|fails| fails.set(true));
+    let written = super::write_archive_entry_in_parent(&parent, &name, |file| {
+        file.write_all(b"new")?;
+        Ok(3)
+    });
+    super::archive_entry_mode::FAILS.with(|fails| fails.set(false));
+    let error = written.expect_err("a kept mode that failed was reported as done");
+    assert!(
+        error.to_string().contains("could not be applied"),
+        "{error}"
+    );
+    assert_eq!(std::fs::read(&existing).unwrap(), b"new");
+    let after = std::fs::metadata(&existing).unwrap().permissions().mode() & 0o777;
+    assert_eq!(
+        after, 0o600,
+        "the entry after a failed kept mode: {after:o}"
+    );
+}
