@@ -743,21 +743,114 @@ struct VersionResource {
     attributes: VersionAttributes,
 }
 
+/// A version as the WorkDrive API answers it (documented, and measured live
+/// 2026-11-16): `version_number` (`2.0`, a string in older answers) is what
+/// a download (`?version=`) and a restore (`revert_to`) take; the resource
+/// `id` is neither.
 #[derive(Debug, Deserialize)]
 struct VersionAttributes {
+    /// Epoch milliseconds of the upload that made this version.
     #[serde(default)]
-    modified_time: Option<String>,
+    created_time_in_milliseconds: Option<serde_json::Value>,
+    /// Bytes: the size of this version in the live answer.
     #[serde(default)]
-    modified_time_in_millisecond: Option<i64>,
-    #[serde(rename = "storage_info", default)]
-    storage_info: Option<StorageInfoAttr>,
+    file_size: Option<serde_json::Value>,
+    /// Named in the documented sample, `0` in the live answer of 2026-11-16:
+    /// read only when `file_size` is missing.
     #[serde(default)]
-    modified_by: Option<String>,
+    size_in_bytes: Option<serde_json::Value>,
+    /// Display name of who uploaded this version.
     #[serde(default)]
-    version_number: Option<String>,
-    /// author display name (some API responses use "author_name")
+    created_by: Option<serde_json::Value>,
     #[serde(default)]
-    author_name: Option<String>,
+    version_number: Option<serde_json::Value>,
+}
+
+/// A JSON number, or a number written as a string.
+fn json_number(value: &serde_json::Value) -> Option<f64> {
+    match value {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(text) => text.trim().parse::<f64>().ok(),
+        _ => None,
+    }
+}
+
+/// The version number as WorkDrive writes it in `revert_to` (`"5.0"`): a
+/// whole number keeps its `.0`.
+fn version_label(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) if !text.trim().is_empty() => Some(text.trim().to_string()),
+        serde_json::Value::Number(n) if n.is_f64() => Some(n.to_string()),
+        serde_json::Value::Number(n) => Some(format!("{n}.0")),
+        _ => None,
+    }
+}
+
+/// A versions answer in the order every `list_versions` answers in
+/// ([`super::versions_current_first`]). Zoho lists the current version too,
+/// as the highest `version_number`, and promises no order: the highest
+/// number first, then the others by number, newest first. A row's id is its
+/// version number, the one download and restore take.
+fn versions_in_dialog_order(mut data: Vec<VersionResource>) -> Vec<FileVersion> {
+    let number = |v: &VersionResource| v.attributes.version_number.as_ref().and_then(json_number);
+    let millis = |v: &VersionResource| {
+        v.attributes
+            .created_time_in_milliseconds
+            .as_ref()
+            .and_then(json_number)
+            .unwrap_or(0.0)
+    };
+    data.sort_by(|a, b| {
+        number(b)
+            .unwrap_or(f64::MIN)
+            .total_cmp(&number(a).unwrap_or(f64::MIN))
+            .then(millis(b).total_cmp(&millis(a)))
+    });
+    data.into_iter()
+        .map(|v| {
+            let attributes = v.attributes;
+            let modified = attributes
+                .created_time_in_milliseconds
+                .as_ref()
+                .and_then(json_number)
+                .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms as i64))
+                .map(|at| at.format("%Y-%m-%d %H:%M:%SZ").to_string());
+            let size = attributes
+                .file_size
+                .as_ref()
+                .or(attributes.size_in_bytes.as_ref())
+                .and_then(json_number)
+                .map(|bytes| bytes as u64)
+                .unwrap_or(0);
+            let modified_by = match attributes.created_by {
+                Some(serde_json::Value::String(name)) if !name.trim().is_empty() => Some(name),
+                _ => None,
+            };
+            FileVersion {
+                id: attributes
+                    .version_number
+                    .as_ref()
+                    .and_then(version_label)
+                    .unwrap_or(v.id),
+                modified,
+                size,
+                modified_by,
+                deleted: false,
+            }
+        })
+        .collect()
+}
+
+/// The documented restore body: `revert_to` is the version number, the file
+/// is named by `resource_id`.
+fn restore_version_body(file_id: &str, version: &str) -> String {
+    serde_json::json!({
+        "data": {
+            "attributes": { "revert_to": version, "resource_id": file_id },
+            "type": "versions",
+        }
+    })
+    .to_string()
 }
 
 // ── Zoho native document export map ───────────────────────────────────────
@@ -4242,39 +4335,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 ))
             })?;
 
-        let versions = parsed
-            .data
-            .into_iter()
-            .map(|v| {
-                let modified = v.attributes.modified_time.or_else(|| {
-                    v.attributes.modified_time_in_millisecond.map(|ms| {
-                        chrono::DateTime::from_timestamp_millis(ms)
-                            .unwrap_or_default()
-                            .format("%Y-%m-%d %H:%M:%SZ")
-                            .to_string()
-                    })
-                });
-                let size = v
-                    .attributes
-                    .storage_info
-                    .and_then(|si| si.size_in_bytes)
-                    .unwrap_or(0);
-                let modified_by = v
-                    .attributes
-                    .author_name
-                    .or(v.attributes.modified_by)
-                    .or(v.attributes.version_number.map(|n| format!("v{}", n)));
-
-                FileVersion {
-                    id: v.id,
-                    modified,
-                    size,
-                    modified_by,
-                }
-            })
-            .collect();
-
-        Ok(versions)
+        Ok(versions_in_dialog_order(parsed.data))
     }
 
     async fn download_version(
@@ -4290,7 +4351,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
             "https://{}/v1/workdrive/download/{}?version={}",
             self.config.download_domain(),
             file_id,
-            version_id
+            urlencoding::encode(version_id)
         );
         info!("Zoho WorkDrive download version: GET {}", download_url);
 
@@ -4341,13 +4402,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         let file_id = self.resolve_file_id(path).await?;
 
-        // Promote version to current via POST
-        let url = format!(
-            "{}/files/{}/versions/{}/promote",
-            self.api_base(),
-            file_id,
-            version_id
-        );
+        // The documented route: POST /versions, `revert_to` the version number.
+        let url = format!("{}/versions", self.api_base());
         info!("Zoho WorkDrive restore version: POST {}", url);
 
         let resp = self
@@ -4358,7 +4414,7 @@ impl StorageProvider for ZohoWorkdriveProvider {
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/vnd.api+json"),
             )
-            .body("{}")
+            .body(restore_version_body(&file_id, version_id))
             .send()
             .await
             .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
@@ -7220,6 +7276,67 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             ["DELETE /workdrive/api/v1/links/abc123"]
+        );
+    }
+
+    /// The live answer of 2026-11-16, anonymised: numeric `version_number`,
+    /// `file_size` and `created_time_in_milliseconds`, the current version
+    /// listed among the others, no order promised.
+    #[test]
+    fn zoho_versions_read_the_live_fields_and_come_back_current_first() {
+        let row = |id: &str, number: &str, ms: u64, size: u64| {
+            format!(
+                r#"{{"id":"{id}","type":"versions","attributes":{{"is_locked":false,"created_time":"nov 16, 9:08 PM","notes":"Updated through upload action","capabilities":{{"can_read":true,"can_edit":true,"can_delete":true}},"property_bits":0,"del_time":-1,"created_time_in_milliseconds":{ms},"version_number":{number},"version_id":5947404000000143015,"watermarked":0,"is_minor_version":false,"created_by":"Test User","file_size":{size},"is_hidden_version":false,"size_in_bytes":0}}}}"#
+            )
+        };
+        let body = format!(
+            r#"{{"data":[{},{},{}]}}"#,
+            row("res-2", "2.0", 1_794_859_702_423, 11),
+            row("res-3", "3.0", 1_794_859_732_000, 16),
+            row("res-1", "1.0", 1_794_859_672_000, 7),
+        );
+        let parsed: super::JsonApiListResponse<super::VersionResource> =
+            serde_json::from_str(&body).expect("the live answer parses");
+        let versions = super::versions_in_dialog_order(parsed.data);
+        let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        // The id is the version number, the one download and restore take.
+        assert_eq!(rows, [("3.0", 16), ("2.0", 11), ("1.0", 7)]);
+        assert_eq!(
+            versions[1].modified.as_deref(),
+            Some("2026-11-16 20:08:22Z")
+        );
+        assert_eq!(versions[0].modified_by.as_deref(), Some("Test User"));
+    }
+
+    /// An older answer: the number and the size as strings, the size only
+    /// under the documented `size_in_bytes`; the current one is the highest
+    /// number even when another row carries a later time.
+    #[test]
+    fn zoho_versions_read_string_numbers_and_size_in_bytes() {
+        let parsed: super::JsonApiListResponse<super::VersionResource> = serde_json::from_str(
+            r#"{"data":[
+                {"id":"r2","attributes":{"version_number":"2.0","created_time_in_milliseconds":1794841300000,"size_in_bytes":"11"}},
+                {"id":"r3","attributes":{"version_number":"3.0","created_time_in_milliseconds":1794841250000,"size_in_bytes":"16"}},
+                {"id":"r1","attributes":{"version_number":1,"created_time_in_milliseconds":"1794841200000","file_size":7}}
+            ]}"#,
+        )
+        .expect("string numbers parse");
+        let versions = super::versions_in_dialog_order(parsed.data);
+        let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        assert_eq!(rows, [("3.0", 16), ("2.0", 11), ("1.0", 7)]);
+        assert!(versions
+            .iter()
+            .all(|v| v.modified.is_some() && v.modified_by.is_none()));
+    }
+
+    /// The documented restore body: `revert_to` carries the version number.
+    #[test]
+    fn a_zoho_restore_names_the_version_number_and_the_file() {
+        let body: serde_json::Value =
+            serde_json::from_str(&super::restore_version_body("file-1", "2.0")).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"data":{"attributes":{"revert_to":"2.0","resource_id":"file-1"},"type":"versions"}})
         );
     }
 }

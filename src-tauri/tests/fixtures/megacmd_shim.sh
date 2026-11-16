@@ -1,6 +1,6 @@
 #!/bin/sh
-# Stand-in for MEGAcmd's `mega-ls`, `mega-mv`, `mega-rm`, `mega-put` and
-# `mega-get`, used by the tests in src/providers/mega.rs, which link the names
+# Stand-in for MEGAcmd's `mega-ls`, `mega-mv`, `mega-rm`, `mega-put`, `mega-get` and
+# `mega-thumbnail`, used by the tests in src/providers/mega.rs, which link the names
 # to this one file. It is a
 # checked-in executable on purpose: a test that writes a script and then runs
 # it can fail with ETXTBSY (see `link_shim` in src/providers/proton.rs).
@@ -15,6 +15,13 @@
 # `mega-ls -l /f.dat` lists that one 1000-byte file, as MEGAcmd 2.6 lists a
 # file path; `mega-ls -l /same` lists a folder holding a file of its own name,
 # opened by the `path:` line MEGAcmd 2.6 writes before a folder's listing.
+# `mega-ls -l --versions /v.txt` lists v.txt and its chain of three, the
+# current one first, as MEGAcmd 2.6.0 lists it (measured 2026-11-16). Every
+# mega-get source is appended to get.log, its local target to
+# get-targets.log, and every mega-put target to put.log; a file
+# get-writes-then-fails makes mega-get write 500 bytes and then refuse. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
+# to <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
+# exits 9 with MEGAcmd's "Not found", as measured the same day.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
@@ -36,6 +43,16 @@ case "$(basename "$0")" in
             echo "$3: "
             echo 'FLAGS VERS SIZE DATE HANDLE NAME'
             [ -f "$here/$listing" ] && cat "$here/$listing"
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/v.txt" ]; then
+            echo 'FLAGS VERS      SIZE            DATE       NAME'
+            echo '----    3           13 16Nov2026 15:53:00 v.txt'
+            echo ''
+            echo 'Versions of v.txt:'
+            echo '----    3           13 16Nov2026 15:53:00 v.txt#1794840780'
+            echo '----    2           12 16Nov2026 15:52:57 v.txt#1794840777'
+            echo '----    1            8 16Nov2026 15:52:55 v.txt#1794840775'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then
@@ -101,6 +118,7 @@ case "$(basename "$0")" in
                 printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
             done
         fi
+        echo "$2" >> "$here/put.log"
         printf '\nUpload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;
@@ -116,12 +134,27 @@ case "$(basename "$0")" in
             echo "Download failed: Access denied" >&2
             exit 2
         fi
+        echo "$1" >> "$here/get.log"
+        echo "$2" >> "$here/get-targets.log"
+        if [ -f "$here/get-writes-then-fails" ]; then
+            dd if=/dev/zero of="$2" bs=500 count=1 2>/dev/null
+            # Not a transient text: the provider would retry a reset.
+            echo "Download failed: Write error" >&2
+            exit 2
+        fi
         for p in 10.00 50.00 90.00; do
             printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
         done
         dd if=/dev/zero of="$2" bs=1000 count=1 2>/dev/null
         printf '\nDownload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
+        ;;
+    mega-thumbnail)
+        case "$1" in
+            /photo.jpg) printf '\377\330\377\340thumb' > "$2" ;;
+            /plain.txt) echo "Failed to get thumbnail $1 to $2: Not found" >&2; exit 9 ;;
+            *) echo "Couldn't find $1" >&2; exit 53 ;;
+        esac
         ;;
     *)
         echo "unhandled $0 $*" >&2

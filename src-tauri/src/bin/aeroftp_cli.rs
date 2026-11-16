@@ -3902,7 +3902,7 @@ enum Commands {
     /// List, download, or restore previous versions of a file
     ///
     /// Only providers that expose versioning answer (e.g. Filen, Dropbox,
-    /// Google Drive, OneDrive, pCloud, kDrive). Use `versions list` to get a
+    /// Google Drive, OneDrive, kDrive, Nextcloud). Use `versions list` to get a
     /// version id, then `versions get` to download it or `versions restore`
     /// to make it current.
     Versions {
@@ -41538,13 +41538,16 @@ fn print_versions(versions: &[FileVersion], path: &str, format: OutputFormat) {
                     .as_deref()
                     .map(|m| format!("  by {}", m))
                     .unwrap_or_default();
+                // A delete or hide marker: the file was deleted then.
+                let deleted = if v.deleted { "  [deleted]" } else { "" };
                 println!(
-                    "  {:>3}. {}  {:>10}  {}{}",
+                    "  {:>3}. {}  {:>10}  {}{}{}",
                     i + 1,
                     v.id,
                     format_size(v.size),
                     modified,
-                    by
+                    by,
+                    deleted
                 );
             }
         }

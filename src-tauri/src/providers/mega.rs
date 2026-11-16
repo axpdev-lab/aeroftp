@@ -17,8 +17,8 @@ use tokio::process::Command;
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 use super::{
-    MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions, ShareLinkResult,
-    StorageInfo, StorageProvider,
+    FileVersion, MegaConfig, ProviderError, ProviderType, RemoteEntry, ShareLinkOptions,
+    ShareLinkResult, StorageInfo, StorageProvider,
 };
 
 mod bulk;
@@ -1400,6 +1400,81 @@ impl StorageProvider for MegaCmdProvider {
         Ok(())
     }
 
+    fn supports_versions(&self) -> bool {
+        true
+    }
+
+    /// The version chain MEGA keeps of the file at `path`, the current one
+    /// first, from `mega-ls -l --versions`; a file never overwritten has none.
+    async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
+        let abs_path = self.resolve_path(path);
+        refuse_mega_wildcard_name(&abs_path)?;
+        let output = self
+            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--versions", &abs_path])
+            .await?;
+        // Each id is the epoch that version was written; the current one,
+        // listed by MEGAcmd too, is the latest.
+        let versions = super::mega_df::parse_mega_ls_versions(&output);
+        let epoch = |v: &FileVersion| v.id.parse::<i64>().unwrap_or(0);
+        let latest = versions.iter().map(epoch).max();
+        Ok(super::versions_current_first(
+            versions,
+            |v| Some(epoch(v)) == latest,
+            || None,
+            epoch,
+        ))
+    }
+
+    async fn download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        let temp = self.fetch_version_to_temp(path, version_id).await?;
+        // Rename into place, or copy where the temp folder is on another
+        // file system; the guard removes whatever is left.
+        if tokio::fs::rename(&temp.0, local_path).await.is_err() {
+            tokio::fs::copy(&temp.0, local_path)
+                .await
+                .map_err(ProviderError::IoError)?;
+        }
+        Ok(())
+    }
+
+    /// MEGAcmd has no restore verb: the version is fetched and uploaded over
+    /// the file, which MEGA keeps as the new current version, with the old
+    /// chain intact.
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let abs_path = self.resolve_path(path);
+        let temp = self.fetch_version_to_temp(path, version_id).await?;
+        let local_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
+        self.run_mega_transfer_with_reauth("mega-put", &[&local_arg, &abs_path], Some(&|_| {}))
+            .await
+            .map_err(|e| ProviderError::TransferFailed(format!("Version restore failed: {}", e)))?;
+        Ok(())
+    }
+
+    fn supports_thumbnails(&self) -> bool {
+        true
+    }
+
+    /// The thumbnail MEGA keeps for the file at `path` (`mega-thumbnail`), as
+    /// a data URL.
+    async fn get_thumbnail(&mut self, path: &str) -> Result<String, ProviderError> {
+        use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+        let abs_path = self.resolve_path(path);
+        let address = self.node_address(&abs_path).await?;
+        let temp = MegaTempFile::new("aeroftp_mega_thumb");
+        let temp_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
+        self.run_mega_cmd_with_reauth("mega-thumbnail", &[&address, &temp_arg])
+            .await?;
+        let no_thumbnail = || ProviderError::NotFound(format!("{path} has no thumbnail"));
+        let bytes = tokio::fs::read(&temp.0).await.map_err(|_| no_thumbnail())?;
+        let mime = thumbnail_mime(&bytes).ok_or_else(no_thumbnail)?;
+        Ok(format!("data:{mime};base64,{}", BASE64.encode(&bytes)))
+    }
+
     fn supports_import_link(&self) -> bool {
         true
     }
@@ -1620,6 +1695,31 @@ impl MegaCmdProvider {
         Ok(())
     }
 
+    /// Fetch one version of `path` (`mega-get "<path>#<id>"`) to a fresh
+    /// temp file, removed when the returned guard goes. `mega-get` never
+    /// overwrites a local file, so the target is a new name that MEGAcmd
+    /// creates (0600, measured on 2.6.0); the id is the epoch MEGAcmd lists,
+    /// digits only, so nothing else can ride on the `#` address.
+    async fn fetch_version_to_temp(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<MegaTempFile, ProviderError> {
+        if version_id.is_empty() || !version_id.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(ProviderError::InvalidPath(format!(
+                "'{version_id}' is not a MEGA version id"
+            )));
+        }
+        let abs_path = self.resolve_path(path);
+        refuse_mega_wildcard_name(&abs_path)?;
+        let temp = MegaTempFile::new("aeroftp_mega_version");
+        let temp_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
+        let versioned = format!("{abs_path}#{version_id}");
+        self.run_mega_transfer_with_reauth("mega-get", &[&versioned, &temp_arg], Some(&|_| {}))
+            .await?;
+        Ok(temp)
+    }
+
     /// The argument that names the existing node at `path` for MEGAcmd: the
     /// path itself, or, when it holds a wildcard character, `H:<handle>`
     /// resolved one level at a time from the root, each level listed by its
@@ -1831,6 +1931,21 @@ fn map_mega_exists(result: Result<String, ProviderError>) -> Result<bool, Provid
 /// `//bin/*` empties the whole rubbish bin (#1506 Requested 189).
 fn mega_wildcard(path: &str) -> bool {
     path.contains(['*', '?'])
+}
+
+/// A local temp path MEGAcmd writes to ([`super::VersionTempFile`]).
+type MegaTempFile = super::VersionTempFile;
+
+/// The image type of a thumbnail MEGA returned, from its first bytes; `None`
+/// when the bytes are no image (an empty file for a node without one).
+fn thumbnail_mime(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else {
+        None
+    }
 }
 
 /// Refuse to create or name a node whose path holds a MEGAcmd wildcard: the
@@ -3006,5 +3121,146 @@ mod tests {
         assert!(!out.is_empty());
         // Either a full path (if something was found) or the plain name.
         assert!(out.contains("mega-ls") || out.ends_with("mega-ls"));
+    }
+
+    /// A provider whose `mega-ls`, `mega-get`, `mega-put` and
+    /// `mega-thumbnail` are links to the stand-in, plus the folder that
+    /// keeps the links and the stand-in's get.log and put.log.
+    #[cfg(unix)]
+    fn provider_with_stand_in_versions() -> (MegaCmdProvider, tempfile::TempDir) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        for name in ["mega-ls", "mega-get", "mega-put", "mega-thumbnail"] {
+            std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
+        }
+        let mut provider = test_provider();
+        provider.cmd_dir = Some(dir.path().to_path_buf());
+        (provider, dir)
+    }
+
+    #[cfg(unix)]
+    fn stand_in_log(dir: &tempfile::TempDir, name: &str) -> Vec<String> {
+        std::fs::read_to_string(dir.path().join(name))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn megacmd_opens_the_versions_and_thumbnails_gates() {
+        let provider = test_provider();
+        assert!(provider.supports_versions());
+        assert!(provider.supports_thumbnails());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn megacmd_lists_the_version_chain_of_a_file() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let versions = provider.list_versions("/v.txt").await.expect("versions");
+        let ids: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
+        assert_eq!(
+            ids,
+            [("1794840780", 13), ("1794840777", 12), ("1794840775", 8)]
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_version_is_downloaded_from_its_epoch_address() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("old.txt");
+        provider
+            .download_version("/v.txt", "1794840775", target.to_str().unwrap())
+            .await
+            .expect("download");
+        assert_eq!(std::fs::metadata(&target).unwrap().len(), 1000);
+        assert_eq!(stand_in_log(&dir, "get.log"), ["/v.txt#1794840775"]);
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_version_is_restored_by_uploading_it_over_the_file() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        provider
+            .restore_version("/v.txt", "1794840777")
+            .await
+            .expect("restore");
+        assert_eq!(stand_in_log(&dir, "get.log"), ["/v.txt#1794840777"]);
+        assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_version_id_that_is_not_an_epoch_is_refused_before_any_command() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        for id in ["", "1#2", "../1794840775", "17948 40775"] {
+            let outcome = provider.restore_version("/v.txt", id).await;
+            assert!(
+                matches!(outcome, Err(ProviderError::InvalidPath(_))),
+                "{id:?}: {outcome:?}"
+            );
+        }
+        assert!(stand_in_log(&dir, "get.log").is_empty());
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+    }
+
+    /// The local temp path the stand-in mega-get was handed.
+    #[cfg(unix)]
+    fn stand_in_get_target(dir: &tempfile::TempDir) -> std::path::PathBuf {
+        let targets = stand_in_log(dir, "get-targets.log");
+        assert_eq!(targets.len(), 1, "{targets:?}");
+        std::path::PathBuf::from(&targets[0])
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_megacmd_version_download_leaves_no_temp_file() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("get-writes-then-fails"), "").unwrap();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("old.txt");
+        let downloaded = provider
+            .download_version("/v.txt", "1794840775", target.to_str().unwrap())
+            .await;
+        assert!(downloaded.is_err(), "{downloaded:?}");
+        assert!(!stand_in_get_target(&dir).exists());
+        assert!(!target.exists());
+        let restored = provider.restore_version("/v.txt", "1794840775").await;
+        assert!(restored.is_err(), "{restored:?}");
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stopped_megacmd_restore_leaves_no_temp_file() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("put-slow"), "").unwrap();
+        let stopped = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.restore_version("/v.txt", "1794840777"),
+        )
+        .await;
+        assert!(stopped.is_err(), "the restore ended before the stop");
+        assert!(!stand_in_get_target(&dir).exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_thumbnail_comes_back_as_an_image_data_url() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let url = provider
+            .get_thumbnail("/photo.jpg")
+            .await
+            .expect("thumbnail");
+        assert_eq!(url, "data:image/jpeg;base64,/9j/4HRodW1i");
+        let none = provider.get_thumbnail("/plain.txt").await;
+        assert!(matches!(none, Err(ProviderError::NotFound(_))), "{none:?}");
+        let missing = provider.get_thumbnail("/gone.jpg").await;
+        assert!(missing.is_err());
     }
 }

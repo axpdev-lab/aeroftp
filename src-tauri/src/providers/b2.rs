@@ -3759,8 +3759,9 @@ impl StorageProvider for B2Provider {
                 }
                 if f.action == "hide" {
                     // Hide markers are versions, but they don't have downloadable
-                    // content: surface them with size 0 and an explicit modified
-                    // timestamp so the UI can render them as "deleted" markers.
+                    // content: surface them with size 0, their timestamp and
+                    // `deleted`, which the versions dialog shows as Deleted
+                    // with no download or restore (on top: the file is deleted).
                     if let Some(fid) = &f.file_id {
                         versions.push(FileVersion {
                             id: fid.clone(),
@@ -3770,6 +3771,7 @@ impl StorageProvider for B2Provider {
                                 .map(|dt| dt.to_rfc3339()),
                             size: 0,
                             modified_by: None,
+                            deleted: true,
                         });
                     }
                     continue;
@@ -3783,6 +3785,7 @@ impl StorageProvider for B2Provider {
                             .map(|dt| dt.to_rfc3339()),
                         size: f.content_length,
                         modified_by: None,
+                        deleted: false,
                     });
                 }
             }
@@ -3804,18 +3807,19 @@ impl StorageProvider for B2Provider {
         if versions.is_empty() {
             return Err(ProviderError::NotFound(format!("file {}", abs)));
         }
-        Ok(versions)
+        Ok(super::versions_latest_first(versions))
     }
 
     async fn download_version(
         &mut self,
-        _path: &str,
+        path: &str,
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
         let local_pb = std::path::PathBuf::from(local_path);
         // `_path` is unused here: the fileId is the canonical reference; B2
         // routes by id, not name. We still accept the parameter to match the
@@ -3837,6 +3841,7 @@ impl StorageProvider for B2Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
         let abs = self.resolved_path(path);
         let key = self.b2_key(&abs);
         // B2 has no "restore" verb: we replay the chosen version as a fresh
@@ -7530,5 +7535,58 @@ mod tests {
             SIZE as u64,
             "the single-stream fallback must keep reporting progress"
         );
+    }
+
+    /// A hidden file: B2 lists the hide marker on top. Row 0 is that marker,
+    /// marked deleted (the dialog shows Deleted, no download, no restore),
+    /// and the last contents follow, newest first.
+    #[tokio::test]
+    async fn a_hide_marker_on_top_is_a_deleted_row_zero() {
+        let app = axum::Router::new().fallback(axum::routing::any(|| async {
+            serde_json::json!({
+                "files": [
+                    {"fileName": "v.txt", "fileId": "hide-3", "action": "hide",
+                     "uploadTimestamp": 1_794_841_600_000u64, "contentLength": 0},
+                    {"fileName": "v.txt", "fileId": "up-1", "action": "upload",
+                     "uploadTimestamp": 1_794_841_500_000u64, "contentLength": 8},
+                    {"fileName": "v.txt", "fileId": "up-2", "action": "upload",
+                     "uploadTimestamp": 1_794_841_545_000u64, "contentLength": 16}
+                ],
+                "nextFileName": null,
+                "nextFileId": null
+            })
+            .to_string()
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = empty_provider();
+        provider.api_url = address;
+        provider.auth_token = SecretString::new("master-token".into());
+        provider.bucket_id = "bucket".into();
+        provider.connected = true;
+        let versions = provider.list_versions("/v.txt").await.expect("versions");
+        let rows: Vec<(&str, bool)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted))
+            .collect();
+        assert_eq!(rows, [("hide-3", true), ("up-2", false), ("up-1", false)]);
+        // The backend refuses the marker too, not only the dialog.
+        let restored = provider.restore_version("/v.txt", "hide-3").await;
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("hide-3");
+        let downloaded = provider
+            .download_version("/v.txt", "hide-3", target.to_str().unwrap())
+            .await;
+        server.abort();
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert!(
+            matches!(downloaded, Err(ProviderError::NotSupported(_))),
+            "{downloaded:?}"
+        );
+        assert!(!target.exists());
     }
 }

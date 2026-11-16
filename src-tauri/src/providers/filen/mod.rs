@@ -2890,6 +2890,7 @@ impl StorageProvider for FilenProvider {
                 modified,
                 size,
                 modified_by: None,
+                deleted: false,
             });
         }
         Ok(out)

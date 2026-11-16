@@ -257,6 +257,29 @@ struct BoxVersionCollection {
     entries: Vec<BoxFileVersion>,
 }
 
+/// A `GET /files/:id/versions` answer in the order every `list_versions`
+/// answers in ([`super::versions_current_first`]): Box lists only the past
+/// versions, so the file as it is now becomes row 0.
+fn versions_in_dialog_order(
+    versions: BoxVersionCollection,
+    file: &RemoteEntry,
+) -> Vec<FileVersion> {
+    super::versions_after_the_file(
+        versions
+            .entries
+            .into_iter()
+            .map(|v| FileVersion {
+                id: v.id,
+                modified: v.modified_at,
+                size: v.size.unwrap_or(0),
+                modified_by: v.modified_by.and_then(|u| u.name),
+                deleted: false,
+            })
+            .collect(),
+        file,
+    )
+}
+
 /// Box trash item (includes trashed_at)
 #[derive(Debug, Deserialize)]
 #[allow(dead_code)]
@@ -2779,16 +2802,8 @@ impl StorageProvider for BoxProvider {
             .await
             .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
 
-        Ok(versions
-            .entries
-            .into_iter()
-            .map(|v| FileVersion {
-                id: v.id,
-                modified: v.modified_at,
-                size: v.size.unwrap_or(0),
-                modified_by: v.modified_by.and_then(|u| u.name),
-            })
-            .collect())
+        let file = self.stat(path).await?;
+        Ok(versions_in_dialog_order(versions, &file))
     }
 
     async fn download_version(
@@ -2797,6 +2812,9 @@ impl StorageProvider for BoxProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
+        }
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
@@ -2834,6 +2852,11 @@ impl StorageProvider for BoxProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         let file_id = self.resolve_file_id(path).await?;
         let token = self.get_token().await?;
 
@@ -5021,5 +5044,25 @@ mod tests {
         assert!(err.is_err());
         assert!(primary.is_connected());
         server.abort();
+    }
+
+    /// Box lists only past versions; the versions dialog reads row 0 as the
+    /// current one, so the file itself comes first.
+    #[test]
+    fn box_versions_come_back_after_the_file_itself() {
+        let listed: super::BoxVersionCollection = serde_json::from_str(
+            r#"{"entries":[
+                {"id":"11","type":"file_version","size":8,"modified_at":"2026-11-16T15:00:00-08:00"},
+                {"id":"12","type":"file_version","size":12,"modified_at":"2026-11-16T15:01:00-08:00"}
+            ]}"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 16;
+        let versions = super::versions_in_dialog_order(listed, &file);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "12", "11"]);
+        assert_eq!(versions[0].size, 16);
     }
 }

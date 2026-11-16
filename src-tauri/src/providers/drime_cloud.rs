@@ -2421,6 +2421,7 @@ impl StorageProvider for DrimeCloudProvider {
                     modified: entry.created_at.as_deref().and_then(Self::parse_date),
                     size: entry.file_size.unwrap_or(0),
                     modified_by: entry.name,
+                    deleted: false,
                 })
             })
             .collect();

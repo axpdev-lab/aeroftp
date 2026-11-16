@@ -21208,7 +21208,7 @@ const App: React.FC = () => {
         )}
         {showNextcloudTrash && (
           <NextcloudTrashManager
-            providerName={(liveConnectionParams.providerId) === 'felicloud' ? 'Felicloud' : 'Nextcloud'}
+            providerName={getProviderById(liveConnectionParams.providerId ?? '')?.name ?? 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
@@ -22519,10 +22519,12 @@ const App: React.FC = () => {
                       if (isAzure) {
                         handler = () => setShowAzureTrash(true);
                       }
-                      // Nextcloud trash API only works on Nextcloud/FeliCloud WebDAV servers
+                      // The Nextcloud trash API: offered on the WebDAV presets whose
+                      // registry entry declares trash (the Nextcloud family), so the
+                      // flag and the button cannot disagree (versioningClaims.test.ts).
                       if (proto === 'webdav') {
                         const pid = liveConnectionParams.providerId;
-                        if (pid === 'nextcloud' || pid === 'felicloud') {
+                        if (pid && getProviderById(pid)?.features?.trash) {
                           handler = () => setShowNextcloudTrash(true);
                         }
                       }

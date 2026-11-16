@@ -386,3 +386,26 @@ it('SharePermissionsDialog: the guard stays busy until every remove finishes', a
     await click(closeButton()!);
     expect(onClose).toHaveBeenCalledTimes(1);
 });
+
+it('FileVersionsDialog: a deleted marker on top is Deleted, with no download and no restore', async () => {
+    vi.mocked(invoke).mockImplementation(async (cmd) => {
+        if (cmd === 'provider_list_versions') return [
+            { id: 'hide-3', modified: null, size: 0, modified_by: null, deleted: true },
+            { id: 'v2', modified: null, size: 16, modified_by: null },
+            { id: 'v1', modified: null, size: 8, modified_by: null },
+        ];
+        return {};
+    });
+    await render(createElement(FileVersionsDialog, { filePath: '/f.txt', fileName: 'f.txt', onClose: vi.fn() }));
+    await flush();
+    const rows = [...host.querySelectorAll('tbody tr')];
+    expect(rows).toHaveLength(3);
+    expect(rows[0].textContent).toContain(english.translations.contextMenu.s3TrashDeleteMarker);
+    expect(rows[0].textContent).not.toContain(english.translations.versions.current);
+    const titled = (row: Element, word: string) =>
+        row.querySelectorAll(`button[title*="${word}"], button[title*="${word.toLowerCase()}"]`).length;
+    expect(titled(rows[0], 'Download')).toBe(0);
+    expect(titled(rows[0], 'Restore')).toBe(0);
+    expect(titled(rows[1], 'Download')).toBe(1);
+    expect(titled(rows[1], 'Restore')).toBe(1);
+});

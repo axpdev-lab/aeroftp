@@ -2066,32 +2066,18 @@ impl StorageProvider for DropboxProvider {
             )));
         }
 
-        #[derive(Deserialize)]
-        struct RevisionEntry {
-            rev: String,
-            size: u64,
-            server_modified: String,
-        }
-        #[derive(Deserialize)]
-        struct RevisionList {
-            entries: Vec<RevisionEntry>,
-        }
-
-        let list: RevisionList = response
-            .json()
+        let body = response
+            .text()
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(list
-            .entries
-            .iter()
-            .map(|r| super::FileVersion {
-                id: r.rev.clone(),
-                modified: Some(r.server_modified.clone()),
-                size: r.size,
-                modified_by: None,
-            })
-            .collect())
+        // The current revision is the file's own `rev`.
+        let meta: DropboxMetadata = self
+            .rpc_call(
+                "files/get_metadata",
+                &serde_json::json!({ "path": full_path }),
+            )
+            .await?;
+        revisions_in_dialog_order(&body, meta.rev.as_deref())
     }
 
     async fn download_version(
@@ -2684,6 +2670,43 @@ impl StorageProvider for DropboxProvider {
         // mask the original transfer error.
         Ok(())
     }
+}
+
+/// A `files/list_revisions` answer in the order every `list_versions`
+/// answers in ([`super::versions_current_first`]). Dropbox lists the current
+/// revision too and leaves the order unspecified; the file's own `rev` names
+/// the current one.
+fn revisions_in_dialog_order(
+    body: &str,
+    current_rev: Option<&str>,
+) -> Result<Vec<super::FileVersion>, ProviderError> {
+    #[derive(Deserialize)]
+    struct RevisionEntry {
+        rev: String,
+        size: u64,
+        server_modified: String,
+    }
+    #[derive(Deserialize)]
+    struct RevisionList {
+        entries: Vec<RevisionEntry>,
+    }
+    let list: RevisionList = serde_json::from_str(body)
+        .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+    Ok(super::versions_current_first(
+        list.entries
+            .into_iter()
+            .map(|r| super::FileVersion {
+                id: r.rev,
+                modified: Some(r.server_modified),
+                size: r.size,
+                modified_by: None,
+                deleted: false,
+            })
+            .collect(),
+        |v| Some(v.id.as_str()) == current_rev,
+        || None,
+        |v| super::version_time_secs(v.modified.as_deref()),
+    ))
 }
 
 #[cfg(test)]
@@ -4396,5 +4419,22 @@ mod tests {
         assert!(err.is_err());
         assert!(primary.is_connected());
         server.abort();
+    }
+
+    /// Dropbox leaves the order of `list_revisions` unspecified; the
+    /// versions dialog reads row 0 as the current revision.
+    #[test]
+    fn dropbox_revisions_come_back_current_first_then_newest_first() {
+        let body = r#"{"is_deleted":false,"entries":[
+            {"rev":"a2","size":12,"server_modified":"2026-11-16T15:01:00Z"},
+            {"rev":"a1","size":8,"server_modified":"2026-11-16T15:00:00Z"},
+            {"rev":"a3","size":16,"server_modified":"2026-11-16T15:02:00Z"}
+        ]}"#;
+        let versions = super::revisions_in_dialog_order(body, Some("a3")).expect("parse");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["a3", "a2", "a1"]);
+        // The current revision is told by the file's rev, not by its time.
+        let versions = super::revisions_in_dialog_order(body, Some("a2")).expect("parse");
+        assert_eq!(versions[0].id, "a2");
     }
 }

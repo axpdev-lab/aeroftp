@@ -9,16 +9,19 @@ const sources = import.meta.glob('./ProvidersDialog.tsx', {
 
 /**
  * #397: pCloud OAuth cannot honour trash endpoints. The GUI hid the button
- * in #642; Help > Providers must not keep advertising the column.
+ * in #642; Help > Providers must not keep advertising the column. The same
+ * refusal on `listrevisions` (measured 2026-11-16) shut the versions gate, so
+ * the row lists no versioning either.
  */
-describe('Help > Providers pCloud Drive trash', () => {
+describe('Help > Providers pCloud Drive trash and versions', () => {
     const src = Object.values(sources)[0] ?? '';
 
-    it('does not list trash on the pCloud Drive row', () => {
+    it('lists neither trash nor versioning on the pCloud Drive row', () => {
         const start = src.indexOf("{ name: 'pCloud Drive'");
         expect(start).toBeGreaterThan(-1);
         const block = src.slice(start, src.indexOf('advanced:', start));
         expect(block).not.toMatch(/'trash'/);
-        expect(block).toMatch(/'versioning'/);
+        expect(block).not.toMatch(/'versioning'/);
+        expect(block).toMatch(/'shareLink'/);
     });
 });

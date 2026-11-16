@@ -922,6 +922,156 @@ fn propfind_document_is_complete(
     }
 }
 
+/// Depth-1 listing of a file's versions collection
+/// (`/remote.php/dav/versions/<user>/versions/<fileid>/`). Each version is a
+/// child named by the Unix time it was superseded; `nc:version-author` is
+/// present from Nextcloud 28 on.
+/// What a Nextcloud with the Versions app off answers: 404 on the
+/// versions collection of a file it lists (measured on Murena and Felicloud,
+/// 2026-11-16, while their trashbin answered).
+const NEXTCLOUD_VERSIONS_OFF: &str =
+    "Versions are not enabled on this Nextcloud server: /remote.php/dav/versions/ answers 404 (the Versions app is off)";
+
+const NEXTCLOUD_VERSIONS_PROPFIND: &str = r#"<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">
+    <d:prop>
+        <d:getcontentlength/>
+        <d:getlastmodified/>
+        <d:resourcetype/>
+        <nc:version-author/>
+    </d:prop>
+</d:propfind>"#;
+
+/// One response of a versions PROPFIND, with only what a successful
+/// propstat reported.
+#[derive(Debug, Default, PartialEq)]
+struct ListedVersion {
+    href: String,
+    size: Option<u64>,
+    modified: Option<String>,
+    author: Option<String>,
+    is_collection: bool,
+}
+
+/// Parse a versions PROPFIND. A 404 propstat (a property the server does
+/// not have, such as `version-author` before Nextcloud 28) contributes
+/// nothing; a reader error or a body that ends before `</multistatus>` fails
+/// the listing, so a partial parse is never read as "fewer versions".
+fn parse_nextcloud_versions_listing(xml: &str) -> Result<Vec<ListedVersion>, ProviderError> {
+    let mut found = Vec::new();
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    let mut in_response = false;
+    let mut in_propstat = false;
+    let mut current_tag: Option<String> = None;
+    let mut row = ListedVersion::default();
+    let mut staged = ListedVersion::default();
+    let mut propstat_status = String::new();
+    let mut text = String::new();
+    let mut depth = 0u32;
+    let mut saw_multistatus_end = false;
+
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(error) => return Err(ProviderError::ParseError(error.to_string())),
+            Ok(Event::Eof) => {
+                propfind_document_is_complete(depth, saw_multistatus_end)?;
+                break;
+            }
+            Ok(Event::Start(ref event)) => {
+                depth = depth.saturating_add(1);
+                let tag = event.local_name().as_ref().to_string();
+                text.clear();
+                match tag.as_str() {
+                    "response" => {
+                        in_response = true;
+                        row = ListedVersion::default();
+                        current_tag = None;
+                    }
+                    "propstat" if in_response => {
+                        in_propstat = true;
+                        staged = ListedVersion::default();
+                        propstat_status.clear();
+                    }
+                    "collection" if in_propstat => staged.is_collection = true,
+                    _ if in_response => current_tag = Some(tag),
+                    _ => {}
+                }
+            }
+            Ok(Event::Empty(ref event)) => {
+                if in_propstat && event.local_name().as_ref() == "collection" {
+                    staged.is_collection = true;
+                }
+            }
+            // An element's text arrives as Text pieces around GeneralRef ones
+            // (`&amp;` in an href or an author), so it is gathered whole and
+            // read when the element ends.
+            Ok(Event::Text(ref event)) => {
+                if current_tag.is_some() {
+                    text.push_str(event.as_ref());
+                }
+            }
+            Ok(Event::GeneralRef(ref event)) => {
+                if current_tag.is_some() {
+                    if let Some(ch) = super::xml_text::xml_entity_to_str(event.as_ref()) {
+                        text.push_str(&ch);
+                    }
+                }
+            }
+            Ok(Event::End(ref event)) => {
+                let tag = event.local_name().as_ref().to_string();
+                depth = depth.saturating_sub(1);
+                if current_tag.as_deref() == Some(tag.as_str()) {
+                    let raw = std::mem::take(&mut text);
+                    let value = Some(raw.trim().to_string()).filter(|v| !v.is_empty());
+                    match tag.as_str() {
+                        "href" if !in_propstat => row.href.push_str(&raw),
+                        "status" if in_propstat => propstat_status.push_str(&raw),
+                        "getcontentlength" if in_propstat => {
+                            staged.size = raw.trim().parse::<u64>().ok();
+                        }
+                        "getlastmodified" if in_propstat => staged.modified = value,
+                        "version-author" if in_propstat => staged.author = value,
+                        _ => {}
+                    }
+                }
+                text.clear();
+                match tag.as_str() {
+                    "multistatus" => saw_multistatus_end = true,
+                    "propstat" if in_propstat => {
+                        in_propstat = false;
+                        if trash_propstat_succeeded(&propstat_status) {
+                            let staged = std::mem::take(&mut staged);
+                            row.size = row.size.or(staged.size);
+                            row.modified = row.modified.take().or(staged.modified);
+                            row.author = row.author.take().or(staged.author);
+                            row.is_collection |= staged.is_collection;
+                        }
+                    }
+                    "response" if in_response => {
+                        in_response = false;
+                        found.push(std::mem::take(&mut row));
+                    }
+                    _ => {}
+                }
+                current_tag = None;
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
+    }
+    Ok(found)
+}
+
+/// The version id of a versions listing href: its last decoded segment.
+fn nextcloud_version_id_of_href(href: &str) -> Option<String> {
+    let path = href.split(['?', '#']).next().unwrap_or("");
+    let last = path.trim_end_matches('/').rsplit('/').next()?;
+    let id = decode_one_segment(last);
+    nextcloud_trash_id_is_one_segment(&id).then_some(id)
+}
+
 /// Depth-1 file-id listing. A 404 propstat's file id is ignored. A reader
 /// error, or a body that ends before `</multistatus>`, fails the listing:
 /// a partial parse would look like "no file id".
@@ -2962,6 +3112,281 @@ impl WebDavProvider {
             return Err(ProviderError::ServerError(format!(
                 "Empty trash failed: HTTP {}",
                 status
+            )));
+        }
+        Ok(())
+    }
+
+    /// Whether this server keeps file versions AeroFTP can read: the
+    /// Nextcloud versions DAV collection. ownCloud, also Nextcloud-class for
+    /// the file root, keeps versions under another path, so it is left out.
+    fn supports_nextcloud_versions(&self) -> bool {
+        let owncloud = self
+            .config
+            .provider_id
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|id| {
+                id.eq_ignore_ascii_case("owncloud") || id.eq_ignore_ascii_case("owncloud-webdav")
+            });
+        self.is_nextcloud_for_dav() && !owncloud
+    }
+
+    /// `oc:fileid` of `path`, read from a listing of its parent. Versions are
+    /// kept per file id, not per path.
+    async fn nextcloud_file_id_of(&mut self, path: &str) -> Result<String, ProviderError> {
+        let (parent, name) = nextcloud_parent_and_name(path)
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        let ids: Vec<String> = self
+            .nextcloud_list_file_ids(&parent)
+            .await?
+            .into_iter()
+            .filter(|(leaf, _)| *leaf == name)
+            .map(|(_, id)| id)
+            .collect();
+        match ids.as_slice() {
+            [id] => Ok(id.clone()),
+            [] => Err(ProviderError::NotFound(path.to_string())),
+            _ => Err(ProviderError::ServerError(format!(
+                "Two entries are named {path}: its versions cannot be told apart"
+            ))),
+        }
+    }
+
+    /// `<base>/remote.php/dav/versions/<user>/` with a trailing slash.
+    fn nextcloud_versions_root(&self) -> Result<String, ProviderError> {
+        let base = self
+            .nextcloud_base_url()
+            .ok_or_else(|| ProviderError::NotSupported("Not a Nextcloud instance".into()))?;
+        let user = self.nextcloud_userid().ok_or_else(|| {
+            ProviderError::Other(
+                "Cannot resolve Nextcloud user id from server_root / config".into(),
+            )
+        })?;
+        Ok(format!(
+            "{}/remote.php/dav/versions/{}/",
+            base,
+            encode_nextcloud_trash_segment(&decode_one_segment(&user))
+        ))
+    }
+
+    /// URL of one version of `path`, after refusing a version id that is not
+    /// a single segment (it would address another file's versions).
+    async fn nextcloud_version_url(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<String, ProviderError> {
+        if !nextcloud_trash_id_is_one_segment(version_id) {
+            return Err(ProviderError::InvalidConfig(format!(
+                "Version id {version_id:?} is not a single path segment"
+            )));
+        }
+        let root = self.nextcloud_versions_root()?;
+        let file_id = self.nextcloud_file_id_of(path).await?;
+        Ok(format!(
+            "{}versions/{}/{}",
+            root,
+            encode_nextcloud_trash_segment(&file_id),
+            encode_nextcloud_trash_segment(version_id)
+        ))
+    }
+
+    /// Nextcloud versions: the earlier contents of `path`, newest first. The
+    /// current contents are the file itself and are not listed.
+    async fn nextcloud_list_versions(
+        &mut self,
+        path: &str,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        let root = self.nextcloud_versions_root()?;
+        let file_id = self.nextcloud_file_id_of(path).await?;
+        let url = format!(
+            "{}versions/{}/",
+            root,
+            encode_nextcloud_trash_segment(&file_id)
+        );
+        let resp = self
+            .request_url(webdav_methods::propfind(), &url)
+            .header("Depth", "1")
+            .header("Content-Type", "application/xml")
+            .body(NEXTCLOUD_VERSIONS_PROPFIND)
+            .send()
+            .await
+            .map_err(send_error)?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotSupported(NEXTCLOUD_VERSIONS_OFF.into()));
+        }
+        if !status.is_success() && status != StatusCode::MULTI_STATUS {
+            return Err(ProviderError::ServerError(format!(
+                "Versions PROPFIND failed: HTTP {status}"
+            )));
+        }
+        let xml = resp
+            .text()
+            .await
+            .map_http_err(|e| ProviderError::ParseError(e.to_string()))?;
+        let versions: Vec<super::FileVersion> = parse_nextcloud_versions_listing(&xml)?
+            .into_iter()
+            .filter(|row| !row.is_collection)
+            .filter_map(|row| {
+                let id = nextcloud_version_id_of_href(&row.href)?;
+                Some(super::FileVersion {
+                    id,
+                    modified: row.modified,
+                    size: row.size.unwrap_or(0),
+                    modified_by: row.author,
+                    deleted: false,
+                })
+            })
+            .collect();
+        // Ids are the Unix time each version was written. Nextcloud 26 and
+        // later list the current contents too, under the file's own mtime;
+        // Nextcloud 25 leaves them out, and the file itself becomes row 0.
+        let current = self.stat(path).await?;
+        let mtime = super::version_time_secs(current.modified.as_deref());
+        let epoch = |v: &super::FileVersion| v.id.parse::<i64>().unwrap_or(0);
+        let versions = super::versions_current_first(
+            versions,
+            |v| mtime > 0 && epoch(v) == mtime,
+            || {
+                Some(super::FileVersion {
+                    id: super::CURRENT_VERSION_ID.to_string(),
+                    modified: current.modified.clone(),
+                    size: current.size,
+                    modified_by: None,
+                    deleted: false,
+                })
+            },
+            |v| {
+                if v.id == super::CURRENT_VERSION_ID {
+                    i64::MAX
+                } else {
+                    epoch(v)
+                }
+            },
+        );
+        Ok(versions)
+    }
+
+    /// Nextcloud versions: write one earlier version of `path` to
+    /// `local_path`, streamed and committed only when complete.
+    async fn nextcloud_download_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
+        }
+        let url = self.nextcloud_version_url(path, version_id).await?;
+        let resp = self
+            .request_url(Method::GET, &url)
+            .send()
+            .await
+            .map_err(send_error)?;
+        match resp.status() {
+            StatusCode::OK => {}
+            StatusCode::NOT_FOUND => {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} has no version {version_id}"
+                )))
+            }
+            status => {
+                return Err(ProviderError::TransferFailed(format!(
+                    "Version download failed: HTTP {status}"
+                )))
+            }
+        }
+        let expected = resp.content_length();
+        let mut stream = resp.bytes_stream();
+        let mut atomic = super::atomic_write::AtomicFile::new(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut written: u64 = 0;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            atomic
+                .write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            written += chunk.len() as u64;
+        }
+        if let Some(expected) = expected.filter(|expected| *expected != written) {
+            return Err(ProviderError::TransferFailed(format!(
+                "Version download cut short: received {written} of {expected} bytes"
+            )));
+        }
+        atomic.commit().await.map_err(ProviderError::IoError)
+    }
+
+    /// Nextcloud versions: permanently delete one earlier version. A server
+    /// that does not allow it (403, 405, 501) answers NotSupported.
+    async fn nextcloud_delete_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "The current version is the file itself: delete the file instead".into(),
+            ));
+        }
+        let url = self.nextcloud_version_url(path, version_id).await?;
+        let resp = self
+            .request_url(Method::DELETE, &url)
+            .send()
+            .await
+            .map_err(send_error)?;
+        match resp.status() {
+            status if status.is_success() => Ok(()),
+            StatusCode::NOT_FOUND => Err(ProviderError::NotFound(format!(
+                "{path} has no version {version_id}"
+            ))),
+            StatusCode::FORBIDDEN
+            | StatusCode::METHOD_NOT_ALLOWED
+            | StatusCode::NOT_IMPLEMENTED => Err(ProviderError::NotSupported(
+                "This Nextcloud server does not allow deleting a version".into(),
+            )),
+            status => Err(ProviderError::ServerError(format!(
+                "Version delete failed: HTTP {status}"
+            ))),
+        }
+    }
+
+    /// Nextcloud versions: make one earlier version the current contents of
+    /// `path`. Nextcloud keeps the contents it replaces as a new version.
+    async fn nextcloud_restore_version(
+        &mut self,
+        path: &str,
+        version_id: &str,
+    ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
+        let url = self.nextcloud_version_url(path, version_id).await?;
+        let dest = format!("{}restore/target", self.nextcloud_versions_root()?);
+        let resp = self
+            .request_url(Method::from_bytes(b"MOVE").unwrap(), &url)
+            .header("Destination", &dest)
+            .send()
+            .await
+            .map_err(send_error)?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Err(ProviderError::NotFound(format!(
+                "{path} has no version {version_id}"
+            )));
+        }
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(ProviderError::ServerError(format!(
+                "Version restore failed: HTTP {}: {}",
+                status,
+                &body[..body.floor_char_boundary(200)]
             )));
         }
         Ok(())
@@ -5576,17 +6001,29 @@ impl StorageProvider for WebDavProvider {
         })
     }
 
-    // File versioning for the local MEGAcmd WebDAV bridge (#270). Plain WebDAV
-    // has no version API, but when the preset is the MEGAcmd bridge we shell out
-    // to the same `mega-*` CLI that backs the quota bar: `mega-ls --versions` to
-    // list, `mega-get "<path>#<epoch>"` to fetch a version, and download+re-put
-    // to restore. Non-MEGA WebDAV servers keep the trait default (NotSupported).
+    // File versioning for the local MEGAcmd WebDAV bridge (#270) and for
+    // Nextcloud. Plain WebDAV has no version API. On the MEGAcmd bridge we shell
+    // out to the same `mega-*` CLI that backs the quota bar: `mega-ls --versions`
+    // to list, `mega-get "<path>#<epoch>"` to fetch a version, and download+re-put
+    // to restore. On Nextcloud the versions DAV collection answers. Other WebDAV
+    // servers keep the trait default (NotSupported).
+    // The versions the GUI, CLI and MCP reach only through this answer: the
+    // MEGAcmd bridge above (#270, unreachable while this said false) and the
+    // Nextcloud versions collection.
+    fn supports_versions(&self) -> bool {
+        super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref())
+            || self.supports_nextcloud_versions()
+    }
+
     async fn list_versions(
         &mut self,
         path: &str,
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             return super::mega_df::mega_list_versions(path).await;
+        }
+        if self.supports_nextcloud_versions() {
+            return self.nextcloud_list_versions(path).await;
         }
         Err(ProviderError::NotSupported("list_versions".to_string()))
     }
@@ -5600,6 +6037,11 @@ impl StorageProvider for WebDavProvider {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             return super::mega_df::mega_download_version(path, version_id, local_path).await;
         }
+        if self.supports_nextcloud_versions() {
+            return self
+                .nextcloud_download_version(path, version_id, local_path)
+                .await;
+        }
         Err(ProviderError::NotSupported("download_version".to_string()))
     }
 
@@ -5607,7 +6049,17 @@ impl StorageProvider for WebDavProvider {
         if super::mega_df::is_megacmd_webdav_provider_id(self.config.provider_id.as_deref()) {
             return super::mega_df::mega_restore_version(path, version_id).await;
         }
+        if self.supports_nextcloud_versions() {
+            return self.nextcloud_restore_version(path, version_id).await;
+        }
         Err(ProviderError::NotSupported("restore_version".to_string()))
+    }
+
+    async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if self.supports_nextcloud_versions() {
+            return self.nextcloud_delete_version(path, version_id).await;
+        }
+        Err(ProviderError::NotSupported("delete_version".to_string()))
     }
 
     fn supports_locking(&self) -> bool {
@@ -7023,6 +7475,295 @@ mod tests {
         server.abort();
         assert!(outcome.is_err());
         assert_eq!(posts, vec![false]);
+    }
+
+    /// A Nextcloud double for the versions of `/a.txt` (file id 42, 20 bytes
+    /// now, as Nextcloud 25 lists: no row for the current contents) and of
+    /// `/b.txt` (file id 43, whose current contents are listed under its
+    /// mtime, oldest first, as Nextcloud 26 and later may list): the parent
+    /// listing gives the ids, a GET of an `a.txt` version returns `old body`, a MOVE to `restore/target`
+    /// answers 201, and a DELETE answers 204 for the newer version and 405
+    /// for the older. Every request is logged as
+    /// `METHOD path [Destination]`.
+    async fn serve_nextcloud_versions() -> (
+        String,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let log: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen = log.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let method = req.method().to_string();
+                    let path = req.uri().path().to_string();
+                    let destination = req
+                        .headers()
+                        .get("Destination")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|d| format!(" -> {d}"))
+                        .unwrap_or_default();
+                    seen.lock().unwrap().push(format!("{method} {path}{destination}"));
+                    let reply = |status: u16, body: &str| {
+                        axum::response::Response::builder()
+                            .status(status)
+                            .body(axum::body::Body::from(body.to_string()))
+                            .unwrap()
+                    };
+                    match (method.as_str(), path.as_str()) {
+                        ("PROPFIND", "/remote.php/dav/files/user/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/</d:href><d:propstat><d:prop><oc:fileid>1</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><oc:fileid>42</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><oc:fileid>43</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/off.txt</d:href><d:propstat><d:prop><oc:fileid>44</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/42/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">
+<d:response><d:href>/remote.php/dav/versions/user/versions/42/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/42/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:13:20 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat><d:propstat><d:prop><nc:version-author/></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/42/1700000500</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength><d:resourcetype/><nc:version-author>alice</nc:version-author></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/files/user/a.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/files/user/a.txt</d:href><d:propstat><d:prop><d:getcontentlength>20</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("GET", "/remote.php/dav/files/user/a.txt") => reply(200, "the body of now"),
+                        ("PROPFIND", "/remote.php/dav/files/user/b.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength><d:getlastmodified>Tue, 14 Nov 2023 22:21:40 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/43/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/versions/user/versions/43/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/43/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/43/1700000500</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("GET", "/remote.php/dav/versions/user/versions/42/1700000000") => {
+                            reply(200, "old body")
+                        }
+                        ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000000") => {
+                            reply(201, "")
+                        }
+                        ("DELETE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
+                            reply(204, "")
+                        }
+                        ("DELETE", "/remote.php/dav/versions/user/versions/42/1700000000") => {
+                            reply(405, "")
+                        }
+                        _ => reply(404, ""),
+                    }
+                }
+            }));
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        (base, log, server)
+    }
+
+    /// A provider past `connect`: the file itself (row 0, version "current")
+    /// is read by `stat` and `download`, which refuse an unconnected one.
+    fn nextcloud_versions_provider(base: &str) -> WebDavProvider {
+        let mut provider =
+            WebDavProvider::new(test_config(&format!("{base}/remote.php/dav/files/user/")))
+                .unwrap();
+        provider.connected = true;
+        provider
+    }
+
+    /// An author with an entity in it arrives as Text pieces around a
+    /// GeneralRef; the parser keeps the whole name.
+    #[test]
+    fn a_nextcloud_version_author_with_an_entity_is_read_whole() {
+        let xml = r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns"><d:response><d:href>/remote.php/dav/versions/user/versions/42/1700000500</d:href><d:propstat><d:prop><d:getcontentlength>12</d:getcontentlength><d:resourcetype/><nc:version-author>Tom &amp; Jerry</nc:version-author></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"#;
+        let rows = super::parse_nextcloud_versions_listing(xml).expect("parse");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].author.as_deref(), Some("Tom & Jerry"));
+        assert_eq!(rows[0].size, Some(12));
+        assert!(rows[0].href.ends_with("/42/1700000500"), "{}", rows[0].href);
+    }
+
+    #[tokio::test]
+    async fn nextcloud_versions_are_listed_current_first_then_newest_from_the_file_id() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        assert!(provider.supports_versions());
+        let versions = provider.list_versions("/a.txt").await.expect("versions");
+        server.abort();
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        // The file as it is now first, as the versions dialog reads the list.
+        assert_eq!(ids, ["current", "1700000500", "1700000000"]);
+        assert_eq!(versions[0].size, 20);
+        assert!(versions[0].modified.is_some());
+        assert_eq!(versions[1].size, 12);
+        assert_eq!(versions[1].modified_by.as_deref(), Some("alice"));
+        // A 404 propstat (no author before Nextcloud 28) adds nothing.
+        assert_eq!(versions[2].size, 8);
+        assert_eq!(versions[2].modified_by, None);
+        assert!(versions[2].modified.is_some());
+    }
+
+    /// The versions collection of a listed file answers 404 (no route for
+    /// file 44 in the fixture): the Versions app is off, and the error says so.
+    #[tokio::test]
+    async fn a_nextcloud_without_the_versions_app_says_versions_are_not_enabled() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let outcome = provider.list_versions("/off.txt").await;
+        server.abort();
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotSupported(m)) if m == super::NEXTCLOUD_VERSIONS_OFF),
+            "{outcome:?}"
+        );
+        assert!(super::NEXTCLOUD_VERSIONS_OFF.contains("not enabled"));
+    }
+
+    #[tokio::test]
+    async fn a_listed_current_nextcloud_version_is_row_zero_and_no_row_is_added() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let versions = provider.list_versions("/b.txt").await.expect("versions");
+        server.abort();
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        // 1700000500 is the file's mtime: the current contents, first.
+        assert_eq!(ids, ["1700000500", "1700000000"]);
+    }
+
+    #[tokio::test]
+    async fn a_nextcloud_version_is_downloaded_to_the_local_path() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a-old.txt");
+        let mut provider = nextcloud_versions_provider(&base);
+        provider
+            .download_version("/a.txt", "1700000000", local.to_str().unwrap())
+            .await
+            .expect("download");
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "old body");
+    }
+
+    #[tokio::test]
+    async fn a_nextcloud_version_is_restored_by_a_move_to_restore_target() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        provider
+            .restore_version("/a.txt", "1700000000")
+            .await
+            .expect("restore");
+        server.abort();
+        let log = log.lock().unwrap().clone();
+        assert_eq!(
+            log.last().map(String::as_str),
+            Some(
+                format!(
+                    "MOVE /remote.php/dav/versions/user/versions/42/1700000000 -> \
+                     {base}/remote.php/dav/versions/user/restore/target"
+                )
+                .as_str()
+            ),
+            "{log:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_nextcloud_version_is_deleted_and_a_refusal_is_not_supported() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        provider
+            .delete_version("/a.txt", "1700000500")
+            .await
+            .expect("delete");
+        let refused = provider.delete_version("/a.txt", "1700000000").await;
+        server.abort();
+        assert!(
+            matches!(refused, Err(ProviderError::NotSupported(_))),
+            "{refused:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_current_nextcloud_version_is_the_file_and_is_never_restored_or_deleted() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let dir = tempfile::tempdir().unwrap();
+        let local = dir.path().join("a-now.txt");
+        let mut provider = nextcloud_versions_provider(&base);
+        provider
+            .download_version("/a.txt", "current", local.to_str().unwrap())
+            .await
+            .expect("download current");
+        let restored = provider.restore_version("/a.txt", "current").await;
+        let deleted = provider.delete_version("/a.txt", "current").await;
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&local).unwrap(), "the body of now");
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
+        );
+        assert!(
+            matches!(deleted, Err(ProviderError::NotSupported(_))),
+            "{deleted:?}"
+        );
+        let log = log.lock().unwrap().clone();
+        assert!(
+            !log.iter()
+                .any(|l| l.starts_with("MOVE") || l.starts_with("DELETE")),
+            "{log:?}"
+        );
+    }
+
+    /// A version id that is not one segment could address another file's
+    /// versions; it is refused before any request.
+    #[tokio::test]
+    async fn a_nextcloud_version_id_with_a_slash_is_refused_before_any_request() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        for id in ["../43/1700000000", "", ".."] {
+            assert!(
+                provider.restore_version("/a.txt", id).await.is_err(),
+                "{id:?}"
+            );
+        }
+        server.abort();
+        assert!(log.lock().unwrap().is_empty());
+    }
+
+    /// The versions gate is the one the GUI, CLI and MCP read. It opens for
+    /// Nextcloud and for the MEGAcmd bridge (#270), and stays shut for plain
+    /// WebDAV and ownCloud, whose versions live elsewhere.
+    #[test]
+    fn versions_gate_opens_for_nextcloud_and_the_megacmd_bridge_only() {
+        let gate = |url: &str, provider_id: Option<&str>| {
+            let mut cfg = test_config(url);
+            cfg.provider_id = provider_id.map(String::from);
+            WebDavProvider::new(cfg).unwrap().supports_versions()
+        };
+        assert!(gate(
+            "https://cloud.example.com/remote.php/dav/files/u/",
+            None
+        ));
+        assert!(gate("https://cloud.example.com", Some("nextcloud")));
+        assert!(gate("http://127.0.0.1:4443", Some("megacmd-webdav")));
+        assert!(!gate("https://dav.example.com/webdav/", None));
+        assert!(!gate("https://oc.example.com", Some("owncloud")));
+    }
+
+    #[test]
+    fn a_truncated_versions_listing_is_an_error_not_fewer_versions() {
+        let xml = r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/versions/u/versions/42/1700000000</d:href>"#;
+        assert!(parse_nextcloud_versions_listing(xml).is_err());
     }
 
     fn test_config(url: &str) -> WebDavConfig {

@@ -17,6 +17,8 @@ interface FileVersion {
   modified: string | null;
   size: number;
   modified_by: string | null;
+  /** A delete or hide marker (S3, B2): no contents to download or restore. */
+  deleted?: boolean;
 }
 
 interface Props {
@@ -156,12 +158,15 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                   <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-2 text-xs whitespace-nowrap">
                       {v.modified || '-'}
-                      {i === 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{t('versions.current') || 'Current'}</span>}
+                      {v.deleted
+                        ? <span className="ml-1.5 text-[10px] bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded">{t('contextMenu.s3TrashDeleteMarker') || 'Deleted'}</span>
+                        : i === 0 && <span className="ml-1.5 text-[10px] bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">{t('versions.current') || 'Current'}</span>}
                     </td>
                     <td className="px-4 py-2 text-xs text-gray-500">{formatBytes(v.size)}</td>
                     <td className="px-4 py-2 text-xs text-gray-500 truncate max-w-[120px]">{v.modified_by || '-'}</td>
                     <td className="px-4 py-2 text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {!v.deleted && (
                         <button
                           onClick={() => handleDownload(v)}
                           disabled={ops.has(v.id)}
@@ -170,7 +175,8 @@ export function FileVersionsDialog({ filePath, fileName, onClose, onRestore }: P
                         >
                           {ops.has(v.id) ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                         </button>
-                        {i > 0 && (
+                        )}
+                        {i > 0 && !v.deleted && (
                           <button
                             onClick={() => handleRestore(v)}
                             disabled={ops.has(v.id)}

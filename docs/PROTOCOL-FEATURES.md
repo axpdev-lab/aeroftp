@@ -249,8 +249,8 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 | **Server Copy** | - | - | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | - | - | - | Yes | - | Yes | Yes† | Yes | - |
 | **Remote Search** | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
 | **Storage Quota** | - | - | Yes | Yes | - | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes | Yes |
-| **File Versions** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | Yes | - | - | Yes | - | - |
-| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | - | Yes | Yes | - | - | - | - | - | - | - | - | - |
+| **File Versions** | - | - | - | Yes¶ | - | Yes | Yes | Yes | Yes¶ | Yes | - | - | - | - | Yes | - | - | Yes | - | - |
+| **Thumbnails** | - | - | - | - | - | Yes | Yes | Yes | Yes¶ | Yes | Yes | - | - | - | - | - | - | - | - | - |
 | **Permissions** | - | - | - | - | - | Yes | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
 | **Locking** | - | - | - | - | - | - | - | - | - | Yes‡ | - | - | - | - | - | - | - | - | - | - |
 | **Resume Transfer** | Yes | Yes | - | - | - | - | - | Yes | - | - | - | - | - | - | - | - | - | - | - | - |
@@ -272,6 +272,7 @@ buckets, rclone uploads or mkdir may also need `--s3-no-check-bucket`.
 
 †FileLu Server Copy = server-side clone (`filelu_clone_file`)
 ‡Box Enterprise only (Business/Enterprise plan required)
+¶WebDAV versions: Nextcloud servers (not ownCloud) with the Versions app on, and the MEGAcmd WebDAV bridge; a server with it off (Felicloud and Murena, measured 2026-11-16) answers 404 and AeroFTP says versions are not enabled there. MEGA versions and thumbnails: the MEGAcmd backend, not the native API. pCloud has no versions: it refuses `listrevisions` to the OAuth token AeroFTP signs in with (measured 2026-11-16)
 §`SITE <command>` through the open session (Connection > SITE Command..., `aeroftp-cli site`, `:site` in the TUI): the reply is shown whole with its code; a command is never sent twice; arguments and replies are not logged. A saved profile can keep named templates (`aeroftp-cli site-template`, `site --template`, `:site @name`): a password position is a `{name:secret}` hole and is never stored.
 
 ---

@@ -290,6 +290,25 @@ struct VersionEntry {
     uploaded: Option<String>,
 }
 
+/// FileLu lists only past versions (live 2026-11-16: three uploads, two
+/// versions); the versions dialog reads row 0 as the current one, so the
+/// file comes first, then the versions newest first.
+fn versions_in_dialog_order(versions: Vec<VersionEntry>, file: &RemoteEntry) -> Vec<FileVersion> {
+    let past = versions
+        .into_iter()
+        .filter_map(|v| {
+            Some(FileVersion {
+                id: v.code?,
+                modified: v.uploaded,
+                size: v.size,
+                modified_by: None,
+                deleted: false,
+            })
+        })
+        .collect();
+    super::versions_after_the_file(past, file)
+}
+
 /// Folder create response. FileLu inconsistently returns `fld_id` either as a
 /// JSON number or as a string (same as `deleted_ago_sec`, `size`, etc.), so we
 /// use the same tolerant deserializer to accept both shapes.
@@ -2317,17 +2336,8 @@ impl StorageProvider for FileLuProvider {
     /// itself and is not listed.
     async fn list_versions(&mut self, path: &str) -> Result<Vec<FileVersion>, ProviderError> {
         let (_, _, versions) = self.versions_of(path).await?;
-        Ok(versions
-            .into_iter()
-            .filter_map(|v| {
-                Some(FileVersion {
-                    id: v.code?,
-                    modified: v.uploaded,
-                    size: v.size,
-                    modified_by: None,
-                })
-            })
-            .collect())
+        let file = self.stat(path).await?;
+        Ok(versions_in_dialog_order(versions, &file))
     }
 
     async fn download_version(
@@ -2336,6 +2346,9 @@ impl StorageProvider for FileLuProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
+        }
         self.version_of(path, version_id).await?;
         let url = self.direct_url_by_code(version_id).await?;
         self.fetch_to_file(&url, local_path, None).await
@@ -2344,6 +2357,11 @@ impl StorageProvider for FileLuProvider {
     /// The version becomes the current file, under its own file code, and the
     /// content it replaces becomes a version.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself".into(),
+            ));
+        }
         let (norm, entry) = self.version_of(path, version_id).await?;
         let url = self.api_url_with(
             "file/version_restore",
@@ -2364,6 +2382,11 @@ impl StorageProvider for FileLuProvider {
     /// takes the code alone, so the versions are read again to confirm the
     /// deletion rather than trusting the OK.
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is the current version: it is the file itself".into(),
+            ));
+        }
         self.version_of(path, version_id).await?;
         let url = self.api_url_with("file/version_delete", &[("version_code", version_id)]);
         // Same contract as restore: the GET deletes a version, so a 503 is
@@ -3306,6 +3329,24 @@ fn mime_from_ext(ext: &str) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    /// FileLu lists only past versions; the versions dialog reads row 0 as
+    /// the current one, so the file comes first, then newest first.
+    #[test]
+    fn filelu_versions_come_back_after_the_file_newest_first() {
+        let listed: Vec<super::VersionEntry> = serde_json::from_str(
+            r#"[{"code":"old1","size":7,"uploaded":"2026-11-16 10:32:35"},
+                {"code":"old2","size":11,"uploaded":"2026-11-16 10:32:55"}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 16;
+        let versions = super::versions_in_dialog_order(listed, &file);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "old2", "old1"]);
+        assert_eq!(versions[0].size, 16);
+    }
+
     /// Retry a fixed-ID update, but never reinterpret a path after an
     /// ambiguous move/rename: it may then refer to a different occupant.
     #[tokio::test]
@@ -6301,8 +6342,8 @@ mod tests {
         .await
     }
 
-    /// Versions are listed newest first, each by its own code, with its upload
-    /// time as a UTC instant.
+    /// Versions are listed after the file itself, newest first, each by its
+    /// own code, with its upload time as a UTC instant.
     #[tokio::test]
     async fn versions_are_listed_newest_first_by_their_own_codes() {
         let (mut provider, _) = provider_with_versions(AfterDelete::Removes).await;
@@ -6310,8 +6351,11 @@ mod tests {
         let versions = provider.list_versions("/d/f.txt").await.unwrap();
         let listed: Vec<(&str, Option<&str>, u64)> = versions
             .iter()
+            .skip(1)
             .map(|v| (v.id.as_str(), v.modified.as_deref(), v.size))
             .collect();
+        assert_eq!(versions[0].id, super::super::CURRENT_VERSION_ID);
+        assert_eq!(versions[0].size, 9);
         assert_eq!(
             listed,
             [
@@ -6658,7 +6702,8 @@ mod tests {
             },
         );
         let versions = provider.list_versions("/d/f.txt").await.unwrap();
-        assert_eq!(versions.len(), 2, "{versions:?}");
+        // The file itself, then its two past versions.
+        assert_eq!(versions.len(), 3, "{versions:?}");
     }
 
     /// A parent folder too large to list whole still finds the file it
@@ -6697,7 +6742,8 @@ mod tests {
         .await;
         let versions = provider.list_versions("/d/f.txt").await;
         assert!(
-            matches!(versions, Ok(ref v) if v.len() == 1),
+            // The file itself, then its one past version.
+            matches!(versions, Ok(ref v) if v.len() == 2),
             "{versions:?}"
         );
         let calls = calls.lock().unwrap();

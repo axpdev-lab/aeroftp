@@ -2542,6 +2542,7 @@ impl StorageProvider for OneDriveProvider {
                     .as_ref()
                     .and_then(|u| u.user.as_ref())
                     .and_then(|i| i.display_name.clone()),
+                deleted: false,
             })
             .collect())
     }

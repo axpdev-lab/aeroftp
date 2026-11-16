@@ -2043,7 +2043,9 @@ export const PROVIDERS: ProviderConfig[] = [
         features: {
             shareLink: true,
             sync: true,
-            versioning: true,
+            // No versions: cloud.felicloud.com answers 404 on /remote.php/dav/versions/
+            // (the versions app is off; measured 2026-11-16 next to a working trashbin).
+            versioning: false,
             trash: true,
         },
         healthCheckUrl: 'https://cloud.felicloud.com',
@@ -2125,9 +2127,13 @@ export const PROVIDERS: ProviderConfig[] = [
             }
         ],
         features: {
-            shareLink: true, // Assuming MEGA supports it
+            // Both MEGA backends (MEGAcmd and the native API) answer
+            // supports_share_links. Thumbnails and versions come only from
+            // MEGAcmd, and a new MEGA connection opens the native API
+            // (providerConnectionMeta.ts), so the preset claims neither; a
+            // MEGAcmd connection shows both through its gates.
+            shareLink: true,
             sync: true,
-            thumbnails: true, // Special feature
         },
         healthCheckUrl: 'https://g.api.mega.co.nz',
         helpUrl: 'https://mega.io/help',

@@ -124,7 +124,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     // trash omitted: pCloud refuses trash endpoints to OAuth tokens
     // (result 1000 "Log in required."), so the GUI no longer offers View Trash
     // (#397 / #642). Help must match that, not advertise a button the app hides.
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'versioning'],
+    // versioning omitted for the same refusal on listrevisions (measured
+    // 2026-11-16 with the token as query parameter and as Bearer header).
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink'],
     advanced: ['checksum'] },
   { name: 'MEGA (API)', logoId: 'mega',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
@@ -270,8 +272,10 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Nextcloud', logoId: 'nextcloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
     advanced: [] },
+  // versioning omitted: Felicloud answers 404 on the Nextcloud versions endpoint
+  // (the versions app is off; measured 2026-11-16).
   { name: 'Felicloud', logoId: 'felicloud',
-    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash'],
     advanced: [] },
   { name: 'LifetimeCloud', logoId: 'lifetimecloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],

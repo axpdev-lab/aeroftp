@@ -195,6 +195,25 @@ struct KoofrVersionsResponse {
     versions: Vec<KoofrVersion>,
 }
 
+/// Koofr lists only past versions, oldest first (live 2026-11-16: three
+/// uploads, two versions); the versions dialog reads row 0 as the current
+/// one, so the file comes first, then the versions newest first.
+fn versions_in_dialog_order(
+    mut versions: Vec<KoofrVersion>,
+    file: &RemoteEntry,
+) -> Vec<FileVersion> {
+    versions.sort_by_key(|v| std::cmp::Reverse(v.modified));
+    std::iter::once(super::current_version_of(file))
+        .chain(versions.iter().map(|v| FileVersion {
+            id: v.id.clone(),
+            modified: KoofrProvider::format_timestamp(v.modified),
+            size: v.size.max(0) as u64,
+            modified_by: None,
+            deleted: false,
+        }))
+        .collect()
+}
+
 #[derive(Debug, Deserialize)]
 struct KoofrVersion {
     id: String,
@@ -1779,18 +1798,8 @@ impl StorageProvider for KoofrProvider {
             ProviderError::ServerError(format!("Failed to parse versions: {}", e))
         })?;
 
-        let result: Vec<FileVersion> = versions
-            .versions
-            .iter()
-            .map(|v| FileVersion {
-                id: v.id.clone(),
-                modified: Self::format_timestamp(v.modified),
-                size: v.size.max(0) as u64,
-                modified_by: None,
-            })
-            .collect();
-
-        Ok(result)
+        let file = self.stat(path).await?;
+        Ok(versions_in_dialog_order(versions.versions, &file))
     }
 
     async fn download_version(
@@ -1799,6 +1808,9 @@ impl StorageProvider for KoofrProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
+        }
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -1857,6 +1869,11 @@ impl StorageProvider for KoofrProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
@@ -2153,6 +2170,24 @@ pub async fn koofr_empty_trash(
 
 #[cfg(test)]
 mod tests {
+    /// Koofr lists only past versions, oldest first; the versions dialog
+    /// reads row 0 as the current one, so the file comes first.
+    #[test]
+    fn koofr_versions_come_back_after_the_file_newest_first() {
+        let listed: Vec<super::KoofrVersion> = serde_json::from_str(
+            r#"[{"id":"k1","modified":1794841119000,"size":7},
+                {"id":"k2","modified":1794841133000,"size":11}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 16;
+        let versions = super::versions_in_dialog_order(listed, &file);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "k2", "k1"]);
+        assert_eq!(versions[0].size, 16);
+    }
+
     #[test]
     fn a_name_keeps_its_leading_and_trailing_spaces() {
         // A name with a leading or trailing space is a name of its own, and a

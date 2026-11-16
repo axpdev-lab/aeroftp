@@ -163,6 +163,37 @@ struct KDriveVersion {
     version_number: Option<i64>,
 }
 
+/// A versions answer in the order every `list_versions` answers in
+/// ([`super::versions_current_first`]): the API answers oldest first by
+/// default (`order=asc`), the dialog reads newest first.
+/// kDrive lists only past versions (live 2026-11-16: three uploads, two
+/// versions), oldest first; the versions dialog reads row 0 as the current
+/// one, so the file comes first, then the versions newest first.
+fn versions_in_dialog_order(
+    mut versions: Vec<KDriveVersion>,
+    file: &RemoteEntry,
+) -> Vec<FileVersion> {
+    versions.sort_by_key(|v| std::cmp::Reverse(v.created_at.unwrap_or(0)));
+    let past = versions.iter().map(|v| {
+        let modified = v.created_at.map(|ts| {
+            chrono::DateTime::from_timestamp(ts, 0)
+                .unwrap_or_default()
+                .format("%Y-%m-%d %H:%M:%SZ")
+                .to_string()
+        });
+        FileVersion {
+            id: v.id.to_string(),
+            modified,
+            size: v.size.unwrap_or(0).max(0) as u64,
+            modified_by: v.version_number.map(|n| format!("v{}", n)),
+            deleted: false,
+        }
+    });
+    std::iter::once(super::current_version_of(file))
+        .chain(past)
+        .collect()
+}
+
 // KD-010: Trash types: ready for use when StorageProvider trait adds trash methods.
 // See docs/dev/guides/kDrive/14-trash.md for API details.
 #[allow(dead_code)]
@@ -1917,24 +1948,11 @@ impl StorageProvider for KDriveProvider {
             ProviderError::ServerError(format!("Parse versions response failed: {}", e))
         })?;
 
-        let versions = api_resp.data.unwrap_or_default();
-        Ok(versions
-            .iter()
-            .map(|v| {
-                let modified = v.created_at.map(|ts| {
-                    chrono::DateTime::from_timestamp(ts, 0)
-                        .unwrap_or_default()
-                        .format("%Y-%m-%d %H:%M:%SZ")
-                        .to_string()
-                });
-                FileVersion {
-                    id: v.id.to_string(),
-                    modified,
-                    size: v.size.unwrap_or(0).max(0) as u64,
-                    modified_by: v.version_number.map(|n| format!("v{}", n)),
-                }
-            })
-            .collect())
+        let file = self.stat(path).await?;
+        Ok(versions_in_dialog_order(
+            api_resp.data.unwrap_or_default(),
+            &file,
+        ))
     }
 
     async fn download_version(
@@ -1943,6 +1961,9 @@ impl StorageProvider for KDriveProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return self.download(path, local_path, None).await;
+        }
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id(parent_path).await?;
@@ -1989,6 +2010,11 @@ impl StorageProvider for KDriveProvider {
     }
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        if version_id == super::CURRENT_VERSION_ID {
+            return Err(ProviderError::NotSupported(
+                "This is already the current version".into(),
+            ));
+        }
         let resolved = self.resolve_path(path);
         let (parent_path, filename) = Self::split_path(&resolved);
         let parent_id = self.resolve_folder_id_exact(parent_path).await?;
@@ -3424,5 +3450,24 @@ mod tests {
         let mut p2 = test_provider();
         p2.current_path = "/".to_string();
         assert_eq!(p2.resolve_path("child"), "/child");
+    }
+
+    /// kDrive answers past versions oldest first; the versions dialog reads
+    /// row 0 as the current one, then newest first.
+    #[test]
+    fn kdrive_versions_come_back_after_the_file_newest_first() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":1,"size":7,"created_at":1794841200,"version_number":1},
+                {"id":2,"size":11,"created_at":1794841300,"version_number":2},
+                {"id":3,"size":16,"created_at":1794841400,"version_number":3}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        file.size = 20;
+        let versions = super::versions_in_dialog_order(listed, &file);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, [super::super::CURRENT_VERSION_ID, "3", "2", "1"]);
+        assert_eq!(versions[0].size, 20);
     }
 }

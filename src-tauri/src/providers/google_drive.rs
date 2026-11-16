@@ -2493,42 +2493,41 @@ impl StorageProvider for GoogleDriveProvider {
             )));
         }
 
-        #[derive(Deserialize)]
-        #[serde(rename_all = "camelCase")]
-        struct User {
-            display_name: Option<String>,
+        let body = response
+            .text()
+            .await
+            .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+        // The head revision is the current contents (Drive lists it among
+        // the others, oldest first).
+        let head_url = format!(
+            "{}/files/{}?fields=headRevisionId",
+            self.drive_api(),
+            file.id
+        );
+        let head = self
+            .client
+            .get(&head_url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+        if !head.status().is_success() {
+            let text = head.text().await.unwrap_or_default();
+            return Err(ProviderError::Other(format!(
+                "Reading the head revision failed: {}",
+                sanitize_api_error(&text)
+            )));
         }
         #[derive(Deserialize)]
         #[serde(rename_all = "camelCase")]
-        struct Revision {
-            id: String,
-            modified_time: Option<String>,
-            size: Option<String>,
-            last_modifying_user: Option<User>,
+        struct Head {
+            head_revision_id: Option<String>,
         }
-        #[derive(Deserialize)]
-        struct RevisionList {
-            revisions: Vec<Revision>,
-        }
-
-        let list: RevisionList = response
+        let head: Head = head
             .json()
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-
-        Ok(list
-            .revisions
-            .iter()
-            .map(|r| super::FileVersion {
-                id: r.id.clone(),
-                modified: r.modified_time.clone(),
-                size: r.size.as_ref().and_then(|s| s.parse().ok()).unwrap_or(0),
-                modified_by: r
-                    .last_modifying_user
-                    .as_ref()
-                    .and_then(|u| u.display_name.clone()),
-            })
-            .collect())
+        revisions_in_dialog_order(&body, head.head_revision_id.as_deref())
     }
 
     async fn download_version(
@@ -2590,6 +2589,17 @@ impl StorageProvider for GoogleDriveProvider {
             .map_err(ProviderError::IoError)?;
 
         Ok(())
+    }
+
+    /// Drive has no call that makes a revision current: the revision is
+    /// fetched to a private temp file (0600, removed on every exit) and sent
+    /// as a new revision of the same file, which keeps its id and history.
+    async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        let temp = super::VersionTempFile::create_private("aeroftp_drive_version")
+            .map_err(ProviderError::IoError)?;
+        let local = temp.0.to_string_lossy().into_owned();
+        self.download_version(path, version_id, &local).await?;
+        self.upload(&local, path, None).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -3186,6 +3196,51 @@ impl StorageProvider for GoogleDriveProvider {
         let _ = self.client.delete(&meta.url).send().await;
         Ok(())
     }
+}
+
+/// A `revisions.list` answer in the order every `list_versions` answers in
+/// ([`super::versions_current_first`]). Drive lists the head revision too,
+/// oldest first: the file's `headRevisionId` names it.
+fn revisions_in_dialog_order(
+    body: &str,
+    head: Option<&str>,
+) -> Result<Vec<super::FileVersion>, ProviderError> {
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct User {
+        display_name: Option<String>,
+    }
+    #[derive(Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Revision {
+        id: String,
+        modified_time: Option<String>,
+        size: Option<String>,
+        last_modifying_user: Option<User>,
+    }
+    #[derive(Deserialize)]
+    struct RevisionList {
+        revisions: Vec<Revision>,
+    }
+    let list: RevisionList = serde_json::from_str(body)
+        .map_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
+    let versions: Vec<super::FileVersion> = list
+        .revisions
+        .into_iter()
+        .map(|r| super::FileVersion {
+            id: r.id,
+            modified: r.modified_time,
+            size: r.size.as_deref().and_then(|s| s.parse().ok()).unwrap_or(0),
+            modified_by: r.last_modifying_user.and_then(|u| u.display_name),
+            deleted: false,
+        })
+        .collect();
+    Ok(super::versions_current_first(
+        versions,
+        |v| Some(v.id.as_str()) == head,
+        || None,
+        |v| super::version_time_secs(v.modified.as_deref()),
+    ))
 }
 
 #[cfg(test)]
@@ -3861,6 +3916,33 @@ mod tests {
         );
     }
 
+    /// Drive cannot make a revision current: a restore fetches it and sends
+    /// it as a new revision of the same file id, and leaves no temp file.
+    #[tokio::test]
+    async fn a_drive_revision_is_restored_as_a_new_revision_of_the_same_file() {
+        let temps = || {
+            std::fs::read_dir(std::env::temp_dir())
+                .unwrap()
+                .filter_map(Result::ok)
+                .filter(|e| {
+                    e.file_name()
+                        .to_string_lossy()
+                        .starts_with("aeroftp_drive_version_")
+                })
+                .count()
+        };
+        let before = temps();
+        let (mut p, changes) = provider_on_drive(&[("F1", "a.txt", "root")]).await;
+        p.restore_version("/a.txt", "r1").await.expect("restore");
+        let changes = changes.lock().unwrap().clone();
+        assert_eq!(changes.len(), 1, "{changes:?}");
+        assert!(
+            changes[0].starts_with("F1 ") && changes[0].contains("content of r1"),
+            "{changes:?}"
+        );
+        assert_eq!(temps(), before);
+    }
+
     /// Drive keeps `photos` beside `Photos` as two folders, and the exact
     /// name decides: `mkdir /photos` there creates it, where it answered
     /// AlreadyExists for `Photos`.
@@ -4334,5 +4416,26 @@ mod tests {
 
         p.set_acknowledge_abuse(false);
         assert_eq!(p.acknowledge_abuse_suffix(), "");
+    }
+
+    /// Drive lists revisions oldest first with the head among them; the
+    /// versions dialog reads row 0 as the current one.
+    #[test]
+    fn drive_revisions_come_back_head_first_then_newest_first() {
+        let body = r#"{"revisions":[
+            {"id":"r1","modifiedTime":"2026-11-16T15:00:00.000Z","size":"8"},
+            {"id":"r2","modifiedTime":"2026-11-16T15:01:00.000Z","size":"12"},
+            {"id":"r3","modifiedTime":"2026-11-16T15:02:00.000Z","size":"16",
+             "lastModifyingUser":{"displayName":"Ale"}}
+        ]}"#;
+        let versions = super::revisions_in_dialog_order(body, Some("r3")).expect("parse");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["r3", "r2", "r1"]);
+        // The head is told by its id, not by its time.
+        let versions = super::revisions_in_dialog_order(body, Some("r2")).expect("parse");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["r2", "r3", "r1"]);
+        assert_eq!(versions[0].size, 12);
+        assert_eq!(versions[1].modified_by.as_deref(), Some("Ale"));
     }
 }

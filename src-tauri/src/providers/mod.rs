@@ -376,6 +376,242 @@ pub(crate) fn local_modified_rfc3339(path: &str) -> Option<String> {
 /// For larger files, use the streaming download() method instead.
 pub const MAX_DOWNLOAD_TO_BYTES: u64 = 500 * 1024 * 1024;
 
+/// The id of the row a version list gains when its API leaves the current
+/// version out: the file as it is now. A provider that adds it downloads it
+/// as the file and refuses to restore or delete it.
+pub const CURRENT_VERSION_ID: &str = "current";
+
+/// Put a version list in the order every `list_versions` answers in, the one
+/// the versions dialog reads (FileVersionsDialog.tsx labels row 0 Current and
+/// offers no Restore on it): the current version first, then the others
+/// newest first by `newest`.
+///
+/// `is_current` tells the current version by the file's own metadata (a
+/// revision id, an mtime), never by its place in the API's answer, whose
+/// order most APIs leave unspecified. When no row is current, `current` (the
+/// file as it is now, or `None` for a file with no current state) becomes
+/// row 0.
+pub fn versions_current_first(
+    versions: Vec<FileVersion>,
+    is_current: impl Fn(&FileVersion) -> bool,
+    current: impl FnOnce() -> Option<FileVersion>,
+    newest: impl Fn(&FileVersion) -> i64,
+) -> Vec<FileVersion> {
+    let (mut head, mut rest): (Vec<_>, Vec<_>) = versions.into_iter().partition(|v| is_current(v));
+    head.sort_by_key(|v| std::cmp::Reverse(newest(v)));
+    let mut head = head.into_iter();
+    let first = head.next().or_else(current);
+    rest.extend(head);
+    rest.sort_by_key(|v| std::cmp::Reverse(newest(v)));
+    first.into_iter().chain(rest).collect()
+}
+
+/// [`versions_current_first`] for an API whose current version is, by its
+/// own definition, the latest one written (B2: a download by name serves the
+/// most recent upload); `modified` is the server's upload time.
+pub fn versions_latest_first(versions: Vec<FileVersion>) -> Vec<FileVersion> {
+    let time = |v: &FileVersion| version_time_secs(v.modified.as_deref());
+    let latest = versions.iter().map(time).max();
+    versions_current_first(versions, |v| Some(time(v)) == latest, || None, time)
+}
+
+/// [`versions_current_first`] for an API that lists only the versions a
+/// change replaced: the file as it is now becomes row 0, under
+/// [`CURRENT_VERSION_ID`], and the listed ones follow newest first.
+pub fn versions_after_the_file(versions: Vec<FileVersion>, file: &RemoteEntry) -> Vec<FileVersion> {
+    versions_current_first(
+        versions,
+        |_| false,
+        || Some(current_version_of(file)),
+        |v| version_time_secs(v.modified.as_deref()),
+    )
+}
+
+/// A local temp path a version passes through (a MEGAcmd download, a Drive
+/// revision on its way back up), removed when the guard goes: after success,
+/// on an error, and when the operation is dropped (Stop).
+pub(crate) struct VersionTempFile(pub(crate) std::path::PathBuf);
+
+impl VersionTempFile {
+    /// A path under the temp folder that does not exist yet.
+    pub(crate) fn new(prefix: &str) -> Self {
+        Self(std::env::temp_dir().join(format!("{prefix}_{}", uuid::Uuid::new_v4())))
+    }
+
+    /// [`Self::new`], created empty and readable by its owner only (0600 on
+    /// Unix) before any byte of the version is written to it.
+    pub(crate) fn create_private(prefix: &str) -> std::io::Result<Self> {
+        let temp = Self::new(prefix);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        options.open(&temp.0)?;
+        Ok(temp)
+    }
+}
+
+impl Drop for VersionTempFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
+#[cfg(test)]
+mod version_temp_file_tests {
+    #[test]
+    fn a_private_version_temp_file_is_owner_only_and_gone_on_drop() {
+        let temp = super::VersionTempFile::create_private("aeroftp_temp_test").unwrap();
+        let path = temp.0.clone();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
+        assert!(path.exists());
+        drop(temp);
+        assert!(!path.exists());
+    }
+}
+
+/// The row [`CURRENT_VERSION_ID`] a provider that lists only past versions
+/// puts first: the file as it is now.
+pub fn current_version_of(file: &RemoteEntry) -> FileVersion {
+    FileVersion {
+        id: CURRENT_VERSION_ID.to_string(),
+        modified: file.modified.clone(),
+        size: file.size,
+        modified_by: None,
+        deleted: false,
+    }
+}
+
+/// Refuse to download or restore `version_id` of `path` when the list marks
+/// it [`FileVersion::deleted`]: a delete or hide marker has no contents, and
+/// the dialog hides both buttons on it, so the CLI and the agent tools get
+/// the same answer from the backend.
+pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
+    provider: &mut P,
+    path: &str,
+    version_id: &str,
+) -> Result<(), ProviderError> {
+    let versions = provider.list_versions(path).await?;
+    if versions.iter().any(|v| v.id == version_id && v.deleted) {
+        return Err(ProviderError::NotSupported(
+            "This version is a delete marker: the file was deleted then and it has no \
+             contents. Restore the version below it."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Seconds since the epoch of a provider version time, read by the single
+/// parser [`crate::parse_remote_mtime`] (RFC 3339, RFC 2822 HTTP dates, naive
+/// UTC), for [`versions_current_first`]'s `newest`; 0 when it reads none.
+pub fn version_time_secs(modified: Option<&str>) -> i64 {
+    modified.and_then(crate::parse_remote_mtime).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod versions_order_tests {
+    use super::*;
+
+    fn row(id: &str, secs: i64) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: chrono::DateTime::from_timestamp(secs, 0).map(|t| t.to_rfc3339()),
+            size: secs as u64,
+            modified_by: None,
+            deleted: false,
+        }
+    }
+
+    fn ids(versions: &[FileVersion]) -> Vec<&str> {
+        versions.iter().map(|v| v.id.as_str()).collect()
+    }
+
+    fn newest(v: &FileVersion) -> i64 {
+        version_time_secs(v.modified.as_deref())
+    }
+
+    #[test]
+    fn the_current_version_is_told_by_metadata_not_by_its_place() {
+        let listed = vec![row("old", 10), row("head", 30), row("mid", 20)];
+        let ordered = versions_current_first(listed, |v| v.id == "head", || None, newest);
+        assert_eq!(ids(&ordered), ["head", "mid", "old"]);
+    }
+
+    #[test]
+    fn a_list_without_the_current_version_gains_the_file_as_row_zero() {
+        let listed = vec![row("v1", 10), row("v2", 20)];
+        let ordered = versions_current_first(
+            listed,
+            |_| false,
+            || Some(row(CURRENT_VERSION_ID, 40)),
+            newest,
+        );
+        assert_eq!(ids(&ordered), [CURRENT_VERSION_ID, "v2", "v1"]);
+    }
+
+    #[test]
+    fn the_current_row_is_built_only_when_no_listed_row_is_current() {
+        let listed = vec![row("v1", 10), row("head", 20)];
+        let ordered = versions_current_first(
+            listed,
+            |v| v.id == "head",
+            || panic!("the listed current row is enough"),
+            newest,
+        );
+        assert_eq!(ids(&ordered), ["head", "v1"]);
+    }
+
+    #[test]
+    fn a_list_holding_the_current_version_puts_the_latest_first() {
+        let listed = vec![row("v1", 10), row("v3", 30), row("v2", 20)];
+        assert_eq!(ids(&versions_latest_first(listed)), ["v3", "v2", "v1"]);
+    }
+
+    #[test]
+    fn a_list_of_past_versions_gains_the_file_as_row_zero() {
+        let file = RemoteEntry {
+            name: "v.txt".into(),
+            path: "/v.txt".into(),
+            is_dir: false,
+            size: 16,
+            modified: Some("2026-11-16T15:02:00Z".into()),
+            permissions: None,
+            owner: None,
+            group: None,
+            is_symlink: false,
+            link_target: None,
+            mime_type: None,
+            metadata: Default::default(),
+        };
+        let ordered = versions_after_the_file(vec![row("v1", 10), row("v2", 20)], &file);
+        assert_eq!(ids(&ordered), [CURRENT_VERSION_ID, "v2", "v1"]);
+        assert_eq!(ordered[0].size, 16);
+    }
+
+    #[test]
+    fn version_times_read_rfc3339_and_http_dates() {
+        assert_eq!(
+            version_time_secs(Some("2023-11-14T22:13:20Z")),
+            1_700_000_000
+        );
+        assert_eq!(
+            version_time_secs(Some("Tue, 14 Nov 2023 22:13:20 GMT")),
+            1_700_000_000
+        );
+        assert_eq!(version_time_secs(Some("16Nov2026 15:53:00")), 0);
+        assert_eq!(version_time_secs(None), 0);
+    }
+}
+
 /// Defense-in-depth helper for the rare case where a server hands the full
 /// `Content-Length` body to the TLS layer and *then* closes the connection
 /// without sending a `close_notify` alert.

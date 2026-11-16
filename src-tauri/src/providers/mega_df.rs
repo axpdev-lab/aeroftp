@@ -215,6 +215,7 @@ pub(crate) fn parse_mega_ls_versions(output: &str) -> Vec<FileVersion> {
             modified: Some(modified),
             size,
             modified_by: None,
+            deleted: false,
         });
     }
     out

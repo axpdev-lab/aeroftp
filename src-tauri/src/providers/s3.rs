@@ -7992,6 +7992,8 @@ impl StorageProvider for S3Provider {
 
         let key = path.trim_start_matches('/');
         let mut all_versions = Vec::new();
+        // Version ids S3 flags `IsLatest`: the current state of the key.
+        let mut latest_ids = std::collections::HashSet::new();
         let mut key_marker: Option<String> = None;
         let mut version_id_marker: Option<String> = None;
         let mut sent_markers: HashSet<(String, Option<String>)> = HashSet::new();
@@ -8042,8 +8044,10 @@ impl StorageProvider for S3Provider {
             reader.config_mut().trim_text(false);
             let mut buf = Vec::new();
 
+            // A <DeleteMarker> is read like a <Version>: on top it is the
+            // file's current state, deleted.
             let mut in_version = false;
-            let mut _in_delete_marker = false;
+            let mut in_delete_marker = false;
             let mut current_tag = String::new();
 
             // Fields for <Version> elements
@@ -8068,17 +8072,15 @@ impl StorageProvider for S3Provider {
                     Ok(Event::Start(ref e)) => {
                         let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
-                            "Version" => {
+                            "Version" | "DeleteMarker" => {
                                 in_version = true;
+                                in_delete_marker = tag_name == "DeleteMarker";
                                 v_key = None;
                                 v_version_id = None;
                                 v_is_latest = None;
                                 v_last_modified = None;
                                 v_size = None;
                                 v_soft_deleted = false;
-                            }
-                            "DeleteMarker" => {
-                                _in_delete_marker = true;
                             }
                             "IsTruncated" => in_is_truncated = true,
                             "NextKeyMarker" => in_next_key_marker = true,
@@ -8170,7 +8172,7 @@ impl StorageProvider for S3Provider {
                     Ok(Event::End(ref e)) => {
                         let tag_name = e.name().as_ref().to_string();
                         match tag_name.as_str() {
-                            "Version" => {
+                            "Version" | "DeleteMarker" => {
                                 // Only include versions whose key exactly matches.
                                 // A soft-deleted entry (Tigris) is a deleted object:
                                 // it is neither the current object nor a previous
@@ -8191,8 +8193,11 @@ impl StorageProvider for S3Provider {
                                             .and_then(|s| s.trim().parse().ok())
                                             .unwrap_or(0);
 
-                                        let mut modified_by_str = None;
                                         if is_latest {
+                                            latest_ids.insert(version_id.clone());
+                                        }
+                                        let mut modified_by_str = None;
+                                        if is_latest && !in_delete_marker {
                                             modified_by_str = Some("(latest)".to_string());
                                         }
 
@@ -8201,15 +8206,14 @@ impl StorageProvider for S3Provider {
                                             modified: v_last_modified
                                                 .as_ref()
                                                 .map(|m| m.trim().to_string()),
-                                            size,
+                                            size: if in_delete_marker { 0 } else { size },
                                             modified_by: modified_by_str,
+                                            deleted: in_delete_marker,
                                         });
                                     }
                                 }
                                 in_version = false;
-                            }
-                            "DeleteMarker" => {
-                                _in_delete_marker = false;
+                                in_delete_marker = false;
                             }
                             "IsTruncated" => in_is_truncated = false,
                             "NextKeyMarker" => in_next_key_marker = false,
@@ -8246,7 +8250,17 @@ impl StorageProvider for S3Provider {
             all_versions.len(),
             key
         );
-        Ok(all_versions)
+        // Markers alone leave nothing to restore (a key whose only version
+        // sits in a soft-delete bin): no versions.
+        if all_versions.iter().all(|v| v.deleted) {
+            all_versions.clear();
+        }
+        Ok(super::versions_current_first(
+            all_versions,
+            |v| latest_ids.contains(&v.id),
+            || None,
+            |v| super::version_time_secs(v.modified.as_deref()),
+        ))
     }
 
     async fn download_version(
@@ -8259,6 +8273,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
 
         let key = path.trim_start_matches('/');
         let response = self
@@ -8315,6 +8330,7 @@ impl StorageProvider for S3Provider {
         if !self.connected {
             return Err(ProviderError::NotConnected);
         }
+        super::refuse_a_deleted_version(self, path, version_id).await?;
         self.ensure_fresh_credentials().await?;
 
         let key = path.trim_start_matches('/');
@@ -15141,6 +15157,70 @@ mod tests {
             purges.iter().filter(|r| r.uri.contains("delete")).count(),
             1,
             "{purges:?}"
+        );
+    }
+
+    /// A deleted key on a versioned bucket: the delete marker on top, two
+    /// versions under it, listed versions first as some servers do.
+    const DELETED_KEY_VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v1</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T10:00:00.000Z</LastModified>
+    <Size>8</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>false</IsLatest>
+    <LastModified>2026-11-05T11:00:00.000Z</LastModified>
+    <Size>16</Size>
+  </Version>
+  <DeleteMarker>
+    <Key>docs/a.txt</Key>
+    <VersionId>m3</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+
+    /// The versions dialog reads row 0 as the current state: for a deleted
+    /// key that is its delete marker, marked deleted, then the contents it
+    /// had, newest first.
+    #[tokio::test]
+    async fn a_delete_marker_on_top_is_a_deleted_row_zero() {
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(DELETED_KEY_VERSIONS),
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let rows: Vec<(&str, bool, u64)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted, v.size))
+            .collect();
+        assert_eq!(rows, [("m3", true, 0), ("v2", false, 16), ("v1", false, 8)]);
+        // The backend refuses the marker too, not only the dialog.
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("m3");
+        let downloaded = provider
+            .download_version("/docs/a.txt", "m3", target.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(downloaded, Err(ProviderError::NotSupported(_))),
+            "{downloaded:?}"
+        );
+        assert!(!target.exists());
+        let restored = provider.restore_version("/docs/a.txt", "m3").await;
+        assert!(
+            matches!(restored, Err(ProviderError::NotSupported(_))),
+            "{restored:?}"
         );
     }
 
