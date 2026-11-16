@@ -10307,6 +10307,12 @@ mod native_local_copy_tests {
                 .arg(dir.path())
                 .output();
             if !set.as_ref().is_ok_and(|out| out.status.success()) {
+                // A CI runner has setfacl: there a skip would be a green
+                // that proved nothing.
+                assert!(
+                    std::env::var_os("CI").is_none(),
+                    "setfacl could not give the folder a default ACL on CI: {set:?}"
+                );
                 eprintln!("SKIPPED: setfacl could not give the folder a default ACL: {set:?}");
                 return;
             }
