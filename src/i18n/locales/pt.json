@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} não tem SFTP, então o AeroFTP está usando SCP na mesma conexão.",
             "saveOnAnotherServer": "Não guardado: este ficheiro foi aberto a partir de um servidor, conta ou sobreposição cifrada que não está ativa agora. Volte ao separador dele e guarde novamente.",
             "openedOnAnotherServer": "Não aberto: o servidor mudou durante a leitura do ficheiro. Abra-o novamente.",
-            "remoteTargetChanged": "Nada foi alterado: o servidor, a conta ou a camada cifrada mudou desde que a ação começou, ou ainda está a reconectar. Tente novamente na ligação atual."
+            "remoteTargetChanged": "Nada foi alterado: o servidor, a conta ou a camada cifrada mudou desde que a ação começou, ou ainda está a reconectar. Tente novamente na ligação atual.",
+            "connectEarlierNotStopped": "Não foi possível parar uma tentativa de ligação anterior e ela ainda está em execução, por isso esta ligação não foi iniciada. Tente novamente quando terminar."
         },
         "about": {
             "tagline": "Mais que FTP. Um kit de ferramentas completo para desenvolvedores.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: armazenamento distribuído globalmente compatível com S3, sem taxas de saída de dados (5 GB grátis)",
             "trustPasvAddress": "Usar o endereço passivo indicado pelo servidor",
             "trustPasvAddressHelp": "Desativado: as ligações de dados vão para o host ao qual se ligou, como faz o curl. Ative apenas para um servidor que envia os dados a partir de outro endereço.",
-            "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis, cartão necessário)"
+            "discoverFastly": "Fastly Object Storage: armazenamento compatível com S3 em 12 regiões (5 GB grátis, cartão necessário)",
+            "discoverNeon": "Neon Object Storage: armazenamento compatível com S3 por ramificação de projeto (5 GB grátis por projeto)",
+            "discoverPuter": "Armazenamento em nuvem Puter via WebDAV (25 MB grátis, sem cartão)",
+            "discoverLifetimeCloud": "Armazenamento LifetimeCloud via WebDAV (1 GB grátis, sem cartão)"
         },
         "shortcuts": {
             "title": "Atalhos de Teclado",

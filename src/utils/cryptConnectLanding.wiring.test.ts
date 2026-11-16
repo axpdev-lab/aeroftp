@@ -486,11 +486,13 @@ describe('OAuth landing probe recovers the current provider directory', () => {
             const variable = saved ? 'savedOauthResp' : 'oauthResponse';
             const start = app.indexOf(`let ${variable}: FileListResponse | null = null;`);
             const end = app.indexOf(saved ? 'const savedOverlayAnchor =' : 'const overlayAnchor =', start);
-            const sessionStart = app.indexOf(saved ? 'await connectScope.step(() => createSession(' : 'await createSession(', start);
-            const sessionEnd = app.indexOf(saved ? '));' : ');', sessionStart) + (saved ? 3 : 2);
+            const sessionStart = app.indexOf(saved ? 'if (await connectScope.step(() => createSession(' : 'if (await createSession(', start);
+            const stop = saved ? "=== 'stale') return 'failed' as const;" : "=== 'stale') return;";
+            const sessionEnd = app.indexOf(stop, sessionStart) + stop.length;
             if (start < 0 || end < 0 || sessionStart < 0 || sessionEnd <= sessionStart) throw new Error('OAuth probe/session block missing');
             const current = { current_path: fallback, files: [{ name: 'actual-file' }] };
-            const createSession = vi.fn();
+            const createSession = vi.fn(async () => 'live');
+            const mark = { replacements: 4, confirmations: 0 };
             const invoke = vi.fn(async (command: string) => {
                 if (command === 'provider_change_dir') throw new Error('stale Remote Path');
                 return current;
@@ -506,9 +508,11 @@ describe('OAuth landing probe recovers the current provider directory', () => {
                 connectScope: { step: (op: () => Promise<unknown>) => op(), assert: vi.fn() },
                 oauthTabName: 'Profile', providerName: 'Profile', effectiveParams: {}, normalizedParams: {},
                 oauthLocalDir: '/local', currentLocalPath: '/local', resolvedLocalPath: '/local',
+                // The backend mark the branch read when it started.
+                oauthReplacedAt: mark, savedOAuthReplacedAt: mark,
             }, `return ${saved ? 'savedOverlayHint' : 'overlayHint'};`);
             expect(hint.opensOutside).toBe(outside);
-            expect(createSession).toHaveBeenCalledWith('Profile', {}, fallback, '/local', outside ? current.files : [], undefined, fallback);
+            expect(createSession).toHaveBeenCalledWith('Profile', {}, fallback, '/local', outside ? current.files : [], undefined, fallback, mark);
         });
 
         it(`${saved ? 'saved' : 'Quick Connect'} falls back to a usable current listing after landing failure`, async () => {

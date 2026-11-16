@@ -4,14 +4,14 @@
   "counts": {
     "transport_protocols": 8,
     "native_integrations": 26,
-    "presets": 49,
-    "presets_over_transport": 45,
-    "connection_forms": 54,
+    "presets": 52,
+    "presets_over_transport": 48,
+    "connection_forms": 57,
     "connection_forms_generic": 2,
     "connection_forms_named_without_defaults": 3,
-    "providers": 58,
-    "connection_methods": 72,
-    "catalog_services": 81
+    "providers": 61,
+    "connection_methods": 75,
+    "catalog_services": 84
   },
   "transport_protocols": [
     "ftp",
@@ -81,6 +81,7 @@
       "idrive-e2",
       "mega-s4",
       "minio",
+      "neon-s3",
       "oracle-cloud",
       "quotaless-s3",
       "s3drive",
@@ -103,11 +104,13 @@
       "infinicloud",
       "jianguoyun",
       "koofr",
+      "lifetimecloud",
       "mailru-cloud",
       "megacmd-webdav",
       "nextcloud",
       "opendrive-webdav",
       "pcloud-webdav",
+      "puter-webdav",
       "quotaless-webdav",
       "seafile",
       "tabdigital",
@@ -125,8 +128,8 @@
   ],
   "catalog_categories": {
     "protocols": 8,
-    "object-storage": 24,
-    "webdav": 19,
+    "object-storage": 25,
+    "webdav": 21,
     "cloud-storage": 21,
     "media-services": 5,
     "developer": 3
@@ -345,6 +348,12 @@
       ]
     },
     {
+      "id": "lifetimecloud",
+      "protocols": [
+        "webdav"
+      ]
+    },
+    {
       "id": "mailru-cloud",
       "protocols": [
         "webdav"
@@ -360,6 +369,12 @@
     },
     {
       "id": "minio",
+      "protocols": [
+        "s3"
+      ]
+    },
+    {
+      "id": "neon",
       "protocols": [
         "s3"
       ]
@@ -406,6 +421,12 @@
       "id": "proton",
       "protocols": [
         "proton"
+      ]
+    },
+    {
+      "id": "puter",
+      "protocols": [
+        "webdav"
       ]
     },
     {

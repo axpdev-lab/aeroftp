@@ -56,6 +56,194 @@ pub struct ConnectionManifest {
     pub identities: HashMap<String, String>,
 }
 
+/// The `{username}` placeholder some presets keep in their server URL or
+/// starting folder (CloudMe, Puter, LifetimeCloud, Nextcloud and its hosted
+/// relatives). These two functions are the only places that fill it in,
+/// pinned by `the_username_template_is_expanded_only_by_the_two_helpers`.
+pub const USERNAME_TEMPLATE: &str = "{username}";
+
+/// What every surface reports when a template needs a user name and the
+/// profile has none: a server URL or folder with an empty segment
+/// (`/dav//`) or the literal placeholder would otherwise be dialled.
+pub const USERNAME_TEMPLATE_MISSING: &str =
+    "This server address needs a user name: set the profile's user name";
+
+/// The characters a user name is percent-encoded for when it fills one path
+/// segment of a URL: controls, space and every character that would end the
+/// segment (`/`), start a query or a fragment (`?`, `#`), or start an
+/// encoding of its own (`%`). `@` and `:` are valid in a segment and stay as
+/// they are, so `alice@example.com` reaches the server unchanged.
+const USERNAME_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'[')
+    .add(b'\\')
+    .add(b']')
+    .add(b'^')
+    .add(b'`')
+    .add(b'{')
+    .add(b'|')
+    .add(b'}');
+
+/// [`USERNAME_SEGMENT`] for a user name that fills a value in the query: also
+/// every character that would end the value or the parameter, or read as a
+/// space (`&`, `+`, `;`, `=`), so `alice&mode=other` stays one value.
+const USERNAME_QUERY_VALUE: &percent_encoding::AsciiSet =
+    &USERNAME_SEGMENT.add(b'&').add(b'+').add(b';').add(b'=');
+
+/// Fill the `{username}` placeholder of a server URL with the user name,
+/// exactly as stored (never trimmed: the login sends it that way). In a path,
+/// the userinfo or the fragment it goes in as one percent-encoded segment, so
+/// a `/` stays inside its segment (`a/b` is `a%2Fb`). In the query it goes in
+/// as one value, also encoded for `&`, `+`, `;` and `=`, so it cannot add or
+/// change a parameter (`alice&mode=other` is `alice%26mode%3Dother`). In the
+/// host name it goes
+/// in as written, and only a name that is a valid host label is accepted.
+/// A template without the placeholder is returned unchanged. A blank user
+/// name, one of `.` or `..`, or one holding `\` or a control character is an
+/// error wherever the placeholder sits.
+pub fn expand_username_in_url(template: &str, username: &str) -> Result<String, String> {
+    if !template.contains(USERNAME_TEMPLATE) {
+        return Ok(template.to_string());
+    }
+    if username.trim().is_empty() {
+        return Err(USERNAME_TEMPLATE_MISSING.to_string());
+    }
+    // A user name holding the placeholder itself would leave it in place.
+    if username.contains(USERNAME_TEMPLATE) {
+        return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
+    }
+    // `.` and `..` are no segment a URL keeps: the parser resolves them and
+    // the address climbs out of the user's folder. A `\` is read as a
+    // separator by some servers and clients, and a control character has no
+    // place in an address.
+    if matches!(username.trim(), "." | "..")
+        || username.contains('\\')
+        || username.chars().any(char::is_control)
+    {
+        return Err(
+            "This user name cannot be used in a server address: it is '.' or '..', or it \
+             contains '\\' or a control character; enter the address in full instead of the \
+             {username} placeholder"
+                .to_string(),
+        );
+    }
+    let segment = percent_encoding::utf8_percent_encode(username, USERNAME_SEGMENT).to_string();
+    // The host name, between the scheme (or the start), the userinfo's `@`
+    // and the end of the authority: a label there is not percent-encoded.
+    let rest_at = template.find("://").map_or(0, |at| at + 3);
+    let authority_end = template[rest_at..]
+        .find(['/', '?', '#'])
+        .map_or(template.len(), |at| rest_at + at);
+    let host_at = template[rest_at..authority_end]
+        .rfind('@')
+        .map_or(rest_at, |at| rest_at + at + 1);
+    let host = &template[host_at..authority_end];
+    // After the authority: the path, then the query from its `?` to the
+    // fragment's `#` (a `?` inside the fragment starts no query).
+    let tail = &template[authority_end..];
+    let fragment_at = tail.find('#').unwrap_or(tail.len());
+    let query_at = tail[..fragment_at].find('?').unwrap_or(fragment_at);
+    let value = percent_encoding::utf8_percent_encode(username, USERNAME_QUERY_VALUE).to_string();
+    let tail = format!(
+        "{}{}{}",
+        tail[..query_at].replace(USERNAME_TEMPLATE, &segment),
+        tail[query_at..fragment_at].replace(USERNAME_TEMPLATE, &value),
+        tail[fragment_at..].replace(USERNAME_TEMPLATE, &segment)
+    );
+    if !host.contains(USERNAME_TEMPLATE) {
+        return Ok(format!(
+            "{}{}",
+            template[..authority_end].replace(USERNAME_TEMPLATE, &segment),
+            tail
+        ));
+    }
+    let is_label = !username.starts_with('.')
+        && !username.ends_with('.')
+        && !username.contains("..")
+        && username
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
+    if !is_label {
+        return Err(
+            "This user name cannot be used in a server host name: only letters, digits, '-' and \
+             '.' can stand there; enter the address in full instead of the {username} placeholder"
+                .to_string(),
+        );
+    }
+    Ok(format!(
+        "{}{}{}",
+        template[..host_at].replace(USERNAME_TEMPLATE, &segment),
+        host.replace(USERNAME_TEMPLATE, username),
+        tail
+    ))
+}
+
+/// What a location derived from a profile still holding the `{username}`
+/// placeholder means: the user name could not fill it (blank, refused, or
+/// literally `{username}`). Every user of a derived location (the crypt
+/// overlay unlock, the AeroCloud root, the window) refuses it with this
+/// message instead of acting on a folder named after the placeholder.
+pub const USERNAME_TEMPLATE_UNRESOLVED: &str = "This location still holds the {username} \
+     placeholder because the profile's user name cannot fill it (it is blank, contains '/', \
+     '\\' or a control character, is '.' or '..', or is literally {username}): set the user \
+     name, or write the folder in full instead of the placeholder";
+
+/// Refuse a derived location that still holds the `{username}` placeholder.
+/// The readers keep the template when the user name cannot fill it, so that
+/// nothing climbs out of the user's folder; this is the check every user of
+/// such a location runs before any request or write.
+pub fn refuse_unresolved_username_template(location: &str) -> Result<(), String> {
+    if location.contains(USERNAME_TEMPLATE) {
+        Err(USERNAME_TEMPLATE_UNRESOLVED.to_string())
+    } else {
+        Ok(())
+    }
+}
+
+/// Fill the `{username}` placeholder of a folder path with the user name as
+/// it is (a path is a decoded string; the WebDAV client encodes it on the
+/// wire). A blank user name is an error, and so is one that could move the
+/// folder: a `/`, `\\` or a control character inside it, or a name of `.` or
+/// `..`.
+///
+/// Nothing is trimmed, before or after: the folder is filled as written, and
+/// a folder's edge spaces are part of its name (`/reports ` is its own
+/// folder, #1449), as are the user name's. Every reader of a location gets
+/// this from here, so two readers of one profile (the AeroCloud root and the
+/// crypt overlay anchor) name one folder; a trim on either side put the
+/// AeroCloud folder outside the encrypted one. The shared table's
+/// `compositions` cases fail if the helper or a reader trims.
+pub fn expand_username_in_path(template: &str, username: &str) -> Result<String, String> {
+    if !template.contains(USERNAME_TEMPLATE) {
+        return Ok(template.to_string());
+    }
+    if username.trim().is_empty() {
+        return Err(USERNAME_TEMPLATE_MISSING.to_string());
+    }
+    if username.contains(USERNAME_TEMPLATE) {
+        return Err(USERNAME_TEMPLATE_UNRESOLVED.to_string());
+    }
+    if username.contains(['/', '\\'])
+        || username.chars().any(char::is_control)
+        || matches!(username.trim(), "." | "..")
+    {
+        return Err(
+            "This user name cannot be used in a folder path: it contains '/', '\\' or a control \
+             character, or is '.' or '..'; enter the folder path in full instead of the \
+             {username} placeholder"
+                .to_string(),
+        );
+    }
+    Ok(template.replace(USERNAME_TEMPLATE, username))
+}
+
 pub fn manifest() -> &'static ConnectionManifest {
     static MANIFEST: LazyLock<ConnectionManifest> = LazyLock::new(|| {
         serde_json::from_str(include_str!("../../src/shared/connection-manifest.json"))
@@ -308,14 +496,15 @@ pub fn resolve_profile(
     let explicit_host = host.is_some_and(|host| !host.trim().is_empty());
     let username = username.or(spec.default_username.as_deref()).unwrap_or("");
     let host = host
+        .filter(|host| !host.trim().is_empty())
         .or_else(|| defaults?.get("server")?.as_str())
         .or(spec.default_host.as_deref())
-        .unwrap_or("")
-        .replace("{username}", username);
+        .unwrap_or("");
+    let host = expand_username_in_url(host, username)?;
     let path = initial_path
         .or_else(|| defaults?.get("basePath")?.as_str())
-        .unwrap_or("/")
-        .replace("{username}", username);
+        .unwrap_or("/");
+    let path = expand_username_in_path(path, username)?;
     let mut profile = serde_json::json!({"protocol":spec.token,"host":host,"port":port,"username":username,"initialPath":if path.is_empty(){"/"}else{&path},"options":merged});
     if let Some(id) = provider_id.filter(|_| !preset.is_some_and(|p| p.generic)) {
         profile["providerId"] = Value::String(id.into());
@@ -350,6 +539,356 @@ pub fn resolve_profile(
 
 #[cfg(test)]
 mod tests {
+    use super::{
+        expand_username_in_path, expand_username_in_url, resolve_profile, USERNAME_TEMPLATE,
+        USERNAME_TEMPLATE_MISSING,
+    };
+
+    #[test]
+    fn a_user_name_fills_a_url_template_as_one_encoded_segment() {
+        let t = "https://dav.example.test/dav/{username}/";
+        for (user, segment) in [
+            ("alice", "alice"),
+            ("alice@example.com", "alice@example.com"),
+            ("a b", "a%20b"),
+            ("50%", "50%25"),
+            ("a/b", "a%2Fb"),
+            ("a?b", "a%3Fb"),
+            ("a#b", "a%23b"),
+        ] {
+            assert_eq!(
+                expand_username_in_url(t, user).unwrap(),
+                format!("https://dav.example.test/dav/{segment}/"),
+                "{user}"
+            );
+        }
+        // No placeholder: unchanged, whatever the user name.
+        assert_eq!(
+            expand_username_in_url("https://h/dav/", "").unwrap(),
+            "https://h/dav/"
+        );
+    }
+
+    /// The shared table's host cases: a user name placed in the server's host
+    /// name goes in as written, and only as a valid host label; the userinfo
+    /// and the path of the same address still take it encoded.
+    #[test]
+    fn a_user_name_in_the_host_name_is_filled_only_as_a_host_label() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let host_t = table["hostTemplate"].as_str().unwrap();
+        let cases = table["hostCases"].as_array().unwrap();
+        assert!(cases.len() >= 10);
+        for case in cases {
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_url(host_t, user).ok(),
+                case["url"].as_str().map(str::to_string),
+                "{user:?}"
+            );
+        }
+        assert_eq!(
+            expand_username_in_url(
+                "https://{username}@{username}.example.test:8443/u/{username}?q={username}",
+                "a-1"
+            )
+            .unwrap(),
+            "https://a-1@a-1.example.test:8443/u/a-1?q=a-1"
+        );
+        assert_eq!(
+            expand_username_in_url("https://{username}@dav.example.test/u/{username}", "a b")
+                .unwrap(),
+            "https://a%20b@dav.example.test/u/a%20b"
+        );
+    }
+
+    /// Greptile 4583669546: a user name that fills a query value goes in as
+    /// one value, so `&`, `+`, `;` and `=` cannot add or change a parameter;
+    /// in the path and the fragment it keeps the segment encoding (`/` is
+    /// `%2F`, `&` and `=` stay as they are), and a `?` inside the fragment
+    /// starts no query.
+    #[test]
+    fn a_user_name_in_the_query_is_filled_as_one_value() {
+        let full = "https://dav.example.test/u/{username}?account={username}&x=1#{username}";
+        for (user, path, value) in [
+            (
+                "alice&mode=other",
+                "alice&mode=other",
+                "alice%26mode%3Dother",
+            ),
+            ("a+b", "a+b", "a%2Bb"),
+            ("k;v", "k;v", "k%3Bv"),
+            ("a=b", "a=b", "a%3Db"),
+            ("a/b", "a%2Fb", "a%2Fb"),
+            ("a b", "a%20b", "a%20b"),
+            ("a#b?c", "a%23b%3Fc", "a%23b%3Fc"),
+            (
+                "alice@example.com",
+                "alice@example.com",
+                "alice@example.com",
+            ),
+        ] {
+            assert_eq!(
+                expand_username_in_url(full, user).unwrap(),
+                format!("https://dav.example.test/u/{path}?account={value}&x=1#{path}"),
+                "{user:?}"
+            );
+        }
+        // A query straight after the host, and a host label with a query.
+        assert_eq!(
+            expand_username_in_url("https://dav.example.test?account={username}", "a&b").unwrap(),
+            "https://dav.example.test?account=a%26b"
+        );
+        assert_eq!(
+            expand_username_in_url("https://{username}.example.test/?q={username}", "a-1").unwrap(),
+            "https://a-1.example.test/?q=a-1"
+        );
+        // A `?` in the fragment is the fragment's.
+        assert_eq!(
+            expand_username_in_url("https://dav.example.test/x#f?{username}", "a&b").unwrap(),
+            "https://dav.example.test/x#f?a&b"
+        );
+    }
+
+    /// The shared case table the frontend runs too: the user name goes in as
+    /// stored (never trimmed), `$&` and `$1` are no pattern, `{username}` as a
+    /// user name is filled once, and `.`/`..` never reach a URL.
+    #[test]
+    fn the_shared_username_template_cases_hold_untrimmed_and_literal() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let path_t = table["pathTemplate"].as_str().unwrap();
+        let url_t = table["urlTemplate"].as_str().unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_path(path_t, user).ok(),
+                case["path"].as_str().map(str::to_string),
+                "path {user:?}"
+            );
+            assert_eq!(
+                expand_username_in_url(url_t, user).ok(),
+                case["url"].as_str().map(str::to_string),
+                "url {user:?}"
+            );
+        }
+    }
+
+    /// The window shows the same refusal text as the backend: it reads it from
+    /// the shared table, and this pins the backend constant to it.
+    #[test]
+    fn the_unresolved_template_message_matches_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        assert_eq!(
+            table["unresolvedMessage"].as_str().unwrap(),
+            super::USERNAME_TEMPLATE_UNRESOLVED
+        );
+        assert_eq!(
+            super::refuse_unresolved_username_template("/users/{username}/vault"),
+            Err(super::USERNAME_TEMPLATE_UNRESOLVED.to_string())
+        );
+        assert_eq!(
+            super::refuse_unresolved_username_template("/users/alice/vault"),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn a_template_that_needs_a_user_name_refuses_a_blank_one() {
+        for user in ["", "   "] {
+            assert_eq!(
+                expand_username_in_url("https://h/dav/{username}/", user).unwrap_err(),
+                USERNAME_TEMPLATE_MISSING
+            );
+            assert_eq!(
+                expand_username_in_path("/remote.php/dav/files/{username}/", user).unwrap_err(),
+                USERNAME_TEMPLATE_MISSING
+            );
+        }
+    }
+
+    #[test]
+    fn a_user_name_that_could_move_the_folder_is_refused_in_a_path() {
+        let t = "/remote.php/dav/files/{username}/";
+        for user in ["a/b", "/abs", "..", ".", "a\\b", "a\0b"] {
+            let err = expand_username_in_path(t, user).unwrap_err();
+            assert!(
+                err.contains("cannot be used in a folder path"),
+                "{user:?}: {err}"
+            );
+        }
+        // Valid names go in as written: a path is a decoded string.
+        assert_eq!(
+            expand_username_in_path(t, "alice@example.com").unwrap(),
+            "/remote.php/dav/files/alice@example.com/"
+        );
+        assert_eq!(
+            expand_username_in_path(t, "a b").unwrap(),
+            "/remote.php/dav/files/a b/"
+        );
+    }
+
+    #[test]
+    fn a_profile_created_with_a_blank_user_name_on_a_template_preset_is_refused() {
+        for preset in ["cloudme", "lifetimecloud", "tabdigital", "felicloud"] {
+            let err = resolve_profile(
+                "webdav",
+                Some(preset),
+                None,
+                None,
+                Some(""),
+                None,
+                &serde_json::json!({}),
+            )
+            .unwrap_err();
+            assert_eq!(err, USERNAME_TEMPLATE_MISSING, "{preset}");
+        }
+    }
+
+    /// The two helpers above are the only places `{username}` is filled in:
+    /// every other site calls them, so a twelfth hand-written expansion with
+    /// its own encoding and its own blank-user behaviour cannot reappear.
+    #[test]
+    fn the_username_template_is_expanded_only_by_the_two_helpers() {
+        let placeholder = ["{", "username", "}"].concat();
+        let forbidden = [
+            format!("replace(\"{placeholder}\""),
+            format!("replacen(\"{placeholder}\""),
+            format!("split(\"{placeholder}\")"),
+        ];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut offenders = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs")
+                    && !path.ends_with("connection_manifest.rs")
+                {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    for (n, line) in text.lines().enumerate() {
+                        if forbidden.iter().any(|f| line.contains(f.as_str())) {
+                            offenders.push(format!("{}:{}", path.display(), n + 1));
+                        }
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "expand {placeholder} through connection_manifest::expand_username_in_url / \
+             expand_username_in_path, not by hand: {offenders:?}"
+        );
+    }
+
+    /// No caller hands the helpers a trimmed user name: the login sends the
+    /// name as stored, and a trimmed one put the encrypted folder of the CLI
+    /// and AeroCloud somewhere else than the window's (plaintext uploads).
+    /// Blankness is judged inside the helpers only. The check reads every call
+    /// site's user-name argument and the `let` that binds it in the 40 lines
+    /// above the call.
+    #[test]
+    fn the_path_helper_fills_the_folder_as_written_and_never_trims() {
+        // The shared table's templated compositions, which hold a folder and
+        // user names with edge spaces: each fails if the helper trims the
+        // folder or the filled result. The TS twin runs the same cases.
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        let mut padded = false;
+        for case in table["compositions"].as_array().unwrap() {
+            let (Some(folder), Some(root)) = (case["initialPath"].as_str(), case["root"].as_str())
+            else {
+                continue;
+            };
+            if !folder.contains(USERNAME_TEMPLATE) {
+                continue;
+            }
+            padded |= folder != folder.trim();
+            let user = case["user"].as_str().unwrap();
+            assert_eq!(
+                expand_username_in_path(folder, user)
+                    .unwrap()
+                    .trim_end_matches('/'),
+                root.trim_end_matches('/'),
+                "{}",
+                case["case"]
+            );
+        }
+        assert!(
+            padded,
+            "the table keeps a templated folder with an edge space"
+        );
+    }
+
+    #[test]
+    fn no_caller_trims_the_user_name_it_passes_to_the_helpers() {
+        let call = regex::Regex::new(
+            r"(?s)expand_username_in_(?:url|path)\(\s*[^,]+?,\s*(&?[A-Za-z_][A-Za-z0-9_.]*)\s*\)",
+        )
+        .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![root];
+        let mut offenders = Vec::new();
+        let mut calls = 0;
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs")
+                    || path.ends_with("connection_manifest.rs")
+                {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                for m in call.captures_iter(&text) {
+                    calls += 1;
+                    let arg = m[1].trim_start_matches('&');
+                    let at = m.get(0).unwrap().start();
+                    let line = text[..at].lines().count();
+                    let above: Vec<&str> = text[..at].lines().rev().take(40).collect();
+                    let ident = arg.rsplit('.').next().unwrap();
+                    let binding = format!("let {ident} =");
+                    let traced = above.iter().position(|l| l.contains(&binding)).map(|i| {
+                        above[..=i]
+                            .iter()
+                            .rev()
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    });
+                    let trimmed = arg.contains("trim")
+                        || traced.as_deref().is_some_and(|b| {
+                            let stmt = &b[b.find(&binding).unwrap()..];
+                            let stmt = &stmt[..stmt.find(';').unwrap_or(stmt.len())];
+                            stmt.contains("trim")
+                        });
+                    if trimmed {
+                        offenders.push(format!("{}:{line}", path.display()));
+                    }
+                }
+            }
+        }
+        assert!(calls >= 8, "the guard found only {calls} call sites");
+        assert!(
+            offenders.is_empty(),
+            "a trimmed user name reaches the helpers: {offenders:?}"
+        );
+    }
+
     use crate::providers::{FtpConfig, FtpTlsMode, ProviderConfig, ProviderType};
     use serde_json::json;
 
@@ -565,5 +1104,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(created["options"]["proton_mode"], "native");
+    }
+
+    #[test]
+    fn lifetimecloud_preset_resolves_username_template_with_omitted_or_blank_host() {
+        for host in [None, Some(""), Some("   ")] {
+            let created = super::resolve_profile(
+                "webdav",
+                Some("lifetimecloud"),
+                host,
+                None,
+                Some("alice"),
+                None,
+                &json!({}),
+            )
+            .expect("lifetimecloud preset should resolve");
+            assert_eq!(created["protocol"], "webdav");
+            assert_eq!(created["providerId"], "lifetimecloud");
+            assert_eq!(created["host"], "https://lifetimecloud.me/dav/alice/");
+            assert_eq!(created["port"], 443);
+            assert_eq!(created["username"], "alice");
+        }
     }
 }

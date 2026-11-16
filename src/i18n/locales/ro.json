@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} nu are SFTP, așa că AeroFTP folosește SCP pe aceeași conexiune.",
             "saveOnAnotherServer": "Nu a fost salvat: acest fișier a fost deschis dintr-un server, cont sau strat criptat care nu este activ acum. Reveniți la fila lui, apoi salvați din nou.",
             "openedOnAnotherServer": "Nedeschis: serverul s-a schimbat în timpul citirii fișierului. Deschide-l din nou.",
-            "remoteTargetChanged": "Nu s-a modificat nimic: serverul, contul sau stratul criptat s-a schimbat de când a început acțiunea sau se reconectează încă. Încearcă din nou pe conexiunea curentă."
+            "remoteTargetChanged": "Nu s-a modificat nimic: serverul, contul sau stratul criptat s-a schimbat de când a început acțiunea sau se reconectează încă. Încearcă din nou pe conexiunea curentă.",
+            "connectEarlierNotStopped": "O încercare de conectare anterioară nu a putut fi oprită și încă rulează, așa că această conexiune nu a fost pornită. Încercați din nou după ce se termină."
         },
         "about": {
             "tagline": "Mai mult decât FTP. Un set complet de instrumente pentru dezvoltatori.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: stocare distribuită global, compatibilă cu S3, fără taxe pentru traficul de ieșire (5 GB gratuit)",
             "trustPasvAddress": "Folosește adresa pasivă indicată de server",
             "trustPasvAddressHelp": "Dezactivat: conexiunile de date merg la gazda la care te-ai conectat, ca la curl. Activează doar pentru un server care trimite datele de la altă adresă.",
-            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)"
+            "discoverFastly": "Fastly Object Storage: stocare compatibilă S3 în 12 regiuni (5 GB gratuit, card necesar)",
+            "discoverNeon": "Neon Object Storage: stocare compatibilă cu S3 pentru fiecare ramură de proiect (5 GB gratuite pe proiect)",
+            "discoverPuter": "Stocare cloud Puter prin WebDAV (25 MB gratuit, fără card)",
+            "discoverLifetimeCloud": "Stocare LifetimeCloud prin WebDAV (1 GB gratuit, fără card)"
         },
         "shortcuts": {
             "title": "Scurtături tastatură",

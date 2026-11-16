@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} hefur ekki SFTP, svo AeroFTP notar SCP á sömu tengingu.",
             "saveOnAnotherServer": "Ekki vistað: þessi skrá var opnuð frá netþjóni, reikningi eða dulkóðuðu yfirlagi sem er ekki virkt núna. Farðu aftur á flipa þess og vistaðu aftur.",
             "openedOnAnotherServer": "Ekki opnað: þjóninum var breytt meðan skráin var lesin. Opnaðu hana aftur.",
-            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu."
+            "remoteTargetChanged": "Engu var breytt: þjónninn, reikningurinn eða dulkóðaða lagið hefur breyst frá því aðgerðin hófst, eða er enn að tengjast aftur. Reyndu aftur á núverandi tengingu.",
+            "connectEarlierNotStopped": "Ekki tókst að stöðva fyrri tengingartilraun og hún er enn í gangi, því var þessi tenging ekki ræst. Reyndu aftur þegar henni lýkur."
         },
         "about": {
             "tagline": "Meira en FTP. Heildarverkfærapakki fyrir þróunaraðila.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: dreifð geymsla á heimsvísu samhæf S3, án gjalda fyrir útgöngugögn (5 GB ókeypis)",
             "trustPasvAddress": "Nota óvirka vistfangið sem þjónninn gefur upp",
             "trustPasvAddressHelp": "Slökkt: gagnatengingar fara á gestgjafann sem þú tengdist, eins og curl gerir. Kveiktu aðeins fyrir þjón sem sendir gögn frá öðru vistfangi.",
-            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)"
+            "discoverFastly": "Fastly Object Storage: S3-samhæfð geymsla á 12 svæðum (5 GB ókeypis, greiðslukort nauðsynlegt)",
+            "discoverNeon": "Neon Object Storage: S3-samhæft geymslupláss fyrir hverja verkgrein (5 GB ókeypis á verk)",
+            "discoverPuter": "Puter skýgeymsla í gegnum WebDAV (25 MB ókeypis, engin kort)",
+            "discoverLifetimeCloud": "LifetimeCloud geymsla í gegnum WebDAV (1 GB ókeypis, ekkert kort)"
         },
         "shortcuts": {
             "title": "Keyboard Shortcuts",

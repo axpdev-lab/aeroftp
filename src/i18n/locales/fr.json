@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} n'a pas de SFTP, AeroFTP utilise donc SCP sur la même connexion.",
             "saveOnAnotherServer": "Non enregistré : ce fichier a été ouvert depuis un serveur, compte ou surcouche chiffrée qui n'est pas actif actuellement. Revenez à son onglet, puis enregistrez à nouveau.",
             "openedOnAnotherServer": "Non ouvert : le serveur a changé pendant la lecture du fichier. Ouvrez-le à nouveau.",
-            "remoteTargetChanged": "Rien n'a été modifié : le serveur, le compte ou la couche chiffrée a changé depuis le début de l'action, ou se reconnecte encore. Réessayez sur la connexion actuelle."
+            "remoteTargetChanged": "Rien n'a été modifié : le serveur, le compte ou la couche chiffrée a changé depuis le début de l'action, ou se reconnecte encore. Réessayez sur la connexion actuelle.",
+            "connectEarlierNotStopped": "Une tentative de connexion précédente n'a pas pu être arrêtée et est toujours en cours, donc cette connexion n'a pas été lancée. Réessayez une fois qu'elle sera terminée."
         },
         "about": {
             "tagline": "Plus que FTP. Une boîte à outils complète pour développeurs.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris : stockage compatible S3 distribué à l'échelle mondiale, sans frais de sortie de données (5 GB gratuits)",
             "trustPasvAddress": "Utiliser l'adresse passive fournie par le serveur",
             "trustPasvAddressHelp": "Désactivé : les connexions de données vont vers l'hôte auquel vous vous êtes connecté, comme le fait curl. N'activez que pour un serveur qui envoie les données depuis une autre adresse.",
-            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)"
+            "discoverFastly": "Fastly Object Storage : stockage compatible S3 dans 12 régions (5 GB gratuits, carte requise)",
+            "discoverNeon": "Neon Object Storage : stockage compatible avec S3 par branche de projet (5 GB gratuits par projet)",
+            "discoverPuter": "Stockage cloud Puter via WebDAV (25 Mo gratuits, sans carte)",
+            "discoverLifetimeCloud": "Stockage LifetimeCloud via WebDAV (1 GB gratuit, sans carte)"
         },
         "shortcuts": {
             "title": "Raccourcis clavier",

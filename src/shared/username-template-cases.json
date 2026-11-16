@@ -1,42 +1,234 @@
 {
-  "_comment": "How a saved user name fills the {username} placeholder of a folder. Read by the frontend (src/components/CloudSetupWizard.test.ts: resolveUsernameTemplate, profileOverlayScope, the setup wizard's profileRoot and aeroCloudBase) and by the backend (cloud_provider_factory.rs profile_root, crypt_overlay_provider.rs profile_overlay_scope), so both insert the same folder name. The user name goes in exactly as saved, in one literal pass; a null path means a blank user name, which leaves the template as written.",
+  "_doc": [
+    "One case table for filling the {username} placeholder, run by the Rust tests (src-tauri/src/connection_manifest.rs) and the TS tests (src/utils/usernameTemplate.test.ts), so the two sides cannot drift.",
+    "The user name goes in exactly as stored, never trimmed: the WebDAV connect sends the stored user name untrimmed in its login and URL. Blankness is decided on the trimmed value. The placeholder is filled in one literal pass (no pattern syntax: `$&` and `$1` stay as written).",
+    "path: the folder template filled as written (null = refused, and the TS helper keeps the template). url: the server URL template filled as one percent-encoded path segment (Rust only; null = refused).",
+    "A user name of '.' or '..' is refused in both forms: in a URL the parser would resolve it and climb out of the user's folder.",
+    "unresolvedMessage: what every user of a derived location (the crypt overlay unlock, the AeroCloud root, the window) shows instead of acting on a location still holding the placeholder; the Rust constant USERNAME_TEMPLATE_UNRESOLVED must equal it.",
+    "A user name that contains {username} itself is refused by both helpers with unresolvedMessage: filled, it would leave the placeholder in place.",
+    "compositions: one profile per case, read by every pair of twin readers of a derived location: the AeroCloud root (Rust profile_root, TS profileRoot), the crypt overlay anchor (Rust profile_overlay_scope, TS profileOverlayScope) and the AeroCloud base (TS aeroCloudBase); overlayInputs are what the form's Overlays Path may hold, and each must save as remoteScope (TS resolveOverlayScope). root and scope are compared without a trailing slash; null means refused (the root) or still holding the placeholder (the scope). Nothing is trimmed, before or after the fill: a folder's edge spaces are part of its name (#1449), as are the user name's; the edge space cases fail if the helper or a reader trims.",
+    "The rows ' alice ', 'al ice' and \"$$x$'\" come from #1568's table, merged into this one: both tables were read by the same twins.",
+    "A '\\\\' or a control character is refused in both forms, as '/' is in a path; in a URL a '/' is encoded and stays inside its segment (a%2Fb). hostTemplate and hostCases: the user name placed in the server's host name, filled as written and only as a valid host label (letters, digits, '-' and '.', no leading or trailing '.', no '..'); null = refused (Rust only: the TS side fills no URL)."
+  ],
   "pathTemplate": "/remote.php/dav/files/{username}/",
+  "urlTemplate": "https://dav.example.test/dav/{username}/",
+  "hostTemplate": "https://{username}.dav.example.test/files/",
   "cases": [
     {
       "user": "alice",
-      "path": "/remote.php/dav/files/alice/"
+      "path": "/remote.php/dav/files/alice/",
+      "url": "https://dav.example.test/dav/alice/"
+    },
+    {
+      "user": " alice",
+      "path": "/remote.php/dav/files/ alice/",
+      "url": "https://dav.example.test/dav/%20alice/"
+    },
+    {
+      "user": "alice ",
+      "path": "/remote.php/dav/files/alice /",
+      "url": "https://dav.example.test/dav/alice%20/"
     },
     {
       "user": " alice ",
-      "path": "/remote.php/dav/files/ alice /"
+      "path": "/remote.php/dav/files/ alice /",
+      "url": "https://dav.example.test/dav/%20alice%20/"
     },
     {
       "user": "al ice",
-      "path": "/remote.php/dav/files/al ice/"
+      "path": "/remote.php/dav/files/al ice/",
+      "url": "https://dav.example.test/dav/al%20ice/"
+    },
+    {
+      "user": "a b",
+      "path": "/remote.php/dav/files/a b/",
+      "url": "https://dav.example.test/dav/a%20b/"
     },
     {
       "user": "$&",
-      "path": "/remote.php/dav/files/$&/"
+      "path": "/remote.php/dav/files/$&/",
+      "url": "https://dav.example.test/dav/$&/"
     },
     {
       "user": "$1",
-      "path": "/remote.php/dav/files/$1/"
+      "path": "/remote.php/dav/files/$1/",
+      "url": "https://dav.example.test/dav/$1/"
     },
     {
       "user": "$$x$'",
-      "path": "/remote.php/dav/files/$$x$'/"
+      "path": "/remote.php/dav/files/$$x$'/",
+      "url": "https://dav.example.test/dav/$$x$'/"
     },
     {
       "user": "{username}",
-      "path": "/remote.php/dav/files/{username}/"
+      "path": null,
+      "url": null
+    },
+    {
+      "user": "alice@example.com",
+      "path": "/remote.php/dav/files/alice@example.com/",
+      "url": "https://dav.example.test/dav/alice@example.com/"
     },
     {
       "user": "",
-      "path": null
+      "path": null,
+      "url": null
     },
     {
       "user": "   ",
-      "path": null
+      "path": null,
+      "url": null
+    },
+    {
+      "user": "a/b",
+      "path": null,
+      "url": "https://dav.example.test/dav/a%2Fb/"
+    },
+    {
+      "user": "a\\b",
+      "path": null,
+      "url": null
+    },
+    {
+      "user": "a\u0007b",
+      "path": null,
+      "url": null
+    },
+    {
+      "user": "..",
+      "path": null,
+      "url": null
+    },
+    {
+      "user": ".",
+      "path": null,
+      "url": null
     }
-  ]
+  ],
+  "hostCases": [
+    {
+      "user": "alice",
+      "url": "https://alice.dav.example.test/files/"
+    },
+    {
+      "user": "team-1.eu",
+      "url": "https://team-1.eu.dav.example.test/files/"
+    },
+    {
+      "user": "a b",
+      "url": null
+    },
+    {
+      "user": "a/b",
+      "url": null
+    },
+    {
+      "user": "x?y",
+      "url": null
+    },
+    {
+      "user": "x#y",
+      "url": null
+    },
+    {
+      "user": "alice@example.com",
+      "url": null
+    },
+    {
+      "user": ".alice",
+      "url": null
+    },
+    {
+      "user": "a..b",
+      "url": null
+    },
+    {
+      "user": "..",
+      "url": null
+    },
+    {
+      "user": "",
+      "url": null
+    }
+  ],
+  "compositions": [
+    {
+      "case": "edge space in the user name, template at the end",
+      "initialPath": "/users/{username}",
+      "user": "alice ",
+      "root": "/users/alice ",
+      "scope": "/users/alice "
+    },
+    {
+      "case": "folder with a trailing space, filled as written",
+      "initialPath": "/users/{username}/reports ",
+      "user": " bob",
+      "root": "/users/ bob/reports ",
+      "scope": "/users/ bob/reports "
+    },
+    {
+      "case": "template in the middle, leading space in the user name",
+      "initialPath": "/a/{username}/b/",
+      "user": " bob",
+      "root": "/a/ bob/b",
+      "scope": "/a/ bob/b"
+    },
+    {
+      "case": "scope under the templated folder, given relative or absolute, with or without a trailing slash",
+      "initialPath": "/files/{username}/",
+      "remoteScope": "/files/{username}/crypt",
+      "overlayInputs": [
+        "crypt",
+        "crypt/",
+        "/files/{username}/crypt",
+        "/files/{username}/crypt/"
+      ],
+      "user": "bob",
+      "root": "/files/bob",
+      "scope": "/files/bob/crypt"
+    },
+    {
+      "case": "template in the middle of the scope only",
+      "initialPath": "/vault",
+      "remoteScope": "/vault/{username}/in",
+      "overlayInputs": [
+        "{username}/in",
+        "/vault/{username}/in"
+      ],
+      "user": "carol",
+      "root": "/vault",
+      "scope": "/vault/carol/in"
+    },
+    {
+      "case": "relative scope under a folder ending in the user name with an edge space",
+      "initialPath": "/users/{username}",
+      "remoteScope": "/users/{username}/vault",
+      "overlayInputs": [
+        "vault",
+        "vault/"
+      ],
+      "user": "alice ",
+      "root": "/users/alice ",
+      "scope": "/users/alice /vault"
+    },
+    {
+      "case": "a user name the folder refuses",
+      "initialPath": "/files/{username}/",
+      "remoteScope": "/files/{username}/crypt",
+      "overlayInputs": [
+        "crypt"
+      ],
+      "user": "DOMAIN\\alice",
+      "root": null,
+      "scope": null
+    },
+    {
+      "case": "folder with a trailing space and no template, its own folder",
+      "initialPath": "/reports ",
+      "user": "x",
+      "root": "/reports ",
+      "scope": "/reports "
+    }
+  ],
+  "unresolvedMessage": "This location still holds the {username} placeholder because the profile's user name cannot fill it (it is blank, contains '/', '\\' or a control character, is '.' or '..', or is literally {username}): set the user name, or write the folder in full instead of the placeholder"
 }

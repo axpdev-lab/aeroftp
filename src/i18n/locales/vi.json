@@ -1819,7 +1819,8 @@
             "scpModeBody": "{host} không có SFTP, nên AeroFTP đang dùng SCP trên cùng kết nối.",
             "saveOnAnotherServer": "Chưa lưu: tệp này đã được mở từ máy chủ, tài khoản hoặc lớp phủ mã hóa hiện không hoạt động. Hãy quay lại tab của nó, rồi lưu lại.",
             "openedOnAnotherServer": "Chưa mở: máy chủ đã thay đổi trong khi đọc tệp. Hãy mở lại.",
-            "remoteTargetChanged": "Không có gì được thay đổi: máy chủ, tài khoản hoặc lớp mã hóa đã thay đổi kể từ khi thao tác bắt đầu, hoặc vẫn đang kết nối lại. Hãy thử lại trên kết nối hiện tại."
+            "remoteTargetChanged": "Không có gì được thay đổi: máy chủ, tài khoản hoặc lớp mã hóa đã thay đổi kể từ khi thao tác bắt đầu, hoặc vẫn đang kết nối lại. Hãy thử lại trên kết nối hiện tại.",
+            "connectEarlierNotStopped": "Không thể dừng một lần thử kết nối trước đó và nó vẫn đang chạy, nên kết nối này chưa được bắt đầu. Hãy thử lại sau khi nó kết thúc."
         },
         "about": {
             "tagline": "Hơn cả FTP. Bộ công cụ hoàn chỉnh cho nhà phát triển.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: lưu trữ phân tán toàn cầu tương thích S3, không tính phí băng thông ra (5 GB miễn phí)",
             "trustPasvAddress": "Dùng địa chỉ passive do máy chủ cung cấp",
             "trustPasvAddressHelp": "Tắt: kết nối dữ liệu đi tới máy chủ bạn đã kết nối, như curl. Chỉ bật cho máy chủ gửi dữ liệu từ một địa chỉ khác.",
-            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)"
+            "discoverFastly": "Fastly Object Storage: lưu trữ tương thích S3 tại 12 khu vực (miễn phí 5 GB, cần thẻ)",
+            "discoverNeon": "Neon Object Storage: bộ lưu trữ tương thích S3 theo từng nhánh dự án (5 GB miễn phí cho mỗi dự án)",
+            "discoverPuter": "Lưu trữ đám mây Puter qua WebDAV (25 MB miễn phí, không cần thẻ)",
+            "discoverLifetimeCloud": "Lưu trữ LifetimeCloud qua WebDAV (1 GB miễn phí, không cần thẻ)"
         },
         "shortcuts": {
             "title": "Phím tắt",

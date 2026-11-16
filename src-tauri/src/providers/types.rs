@@ -478,122 +478,6 @@ fn parse_webdav_url_for_inspection(raw: &str) -> Option<url::Url> {
     url::Url::parse(&normalized).ok()
 }
 
-const USERNAME_URL_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'#')
-    .add(b'%')
-    .add(b'&')
-    .add(b'+')
-    .add(b'/')
-    .add(b':')
-    .add(b';')
-    .add(b'<')
-    .add(b'=')
-    .add(b'>')
-    .add(b'?')
-    .add(b'[')
-    .add(b'\\')
-    .add(b']')
-    .add(b'^')
-    .add(b'`')
-    .add(b'{')
-    .add(b'|')
-    .add(b'}');
-
-fn validate_username_segment(username: &str) -> Result<(), ProviderError> {
-    if username.trim().is_empty() {
-        return Err(ProviderError::InvalidConfig(
-            "Username cannot be blank when expanding {username}".into(),
-        ));
-    }
-    if username == "." || username == ".." {
-        return Err(ProviderError::InvalidConfig(
-            "Username cannot be '.' or '..' when expanding {username}".into(),
-        ));
-    }
-    if username.contains(['/', '\\', '\0']) || username.chars().any(char::is_control) {
-        return Err(ProviderError::InvalidConfig(
-            "Username contains a forbidden path separator or control character for {username}"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_username_host_label(username: &str) -> Result<(), ProviderError> {
-    validate_username_segment(username)?;
-    if username.starts_with('.')
-        || username.ends_with('.')
-        || username.contains("..")
-        || !username
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-    {
-        return Err(ProviderError::InvalidConfig(
-            "Username contains characters invalid in a hostname for {username}".into(),
-        ));
-    }
-    Ok(())
-}
-
-/// Expand `{username}` placeholders inside a logical path template (e.g. `initial_path`).
-/// Refuses blank, traversal (`..`), and separator/control usernames without double-encoding.
-pub(crate) fn expand_username_in_path(
-    template: &str,
-    username: &str,
-) -> Result<String, ProviderError> {
-    if !template.contains("{username}") {
-        return Ok(template.to_string());
-    }
-    validate_username_segment(username)?;
-    Ok(template.replace("{username}", username))
-}
-
-/// Expand `{username}` placeholders inside a URL template (`scheme://authority/path?query#frag`).
-/// Keeps URL structure intact by validating host placeholders and percent-encoding path/query
-/// placeholders once as a single URL segment.
-pub(crate) fn expand_username_in_url(
-    template: &str,
-    username: &str,
-) -> Result<String, ProviderError> {
-    if !template.contains("{username}") {
-        return Ok(template.to_string());
-    }
-    validate_username_segment(username)?;
-    let (scheme_prefix, rest) = match template.split_once("://") {
-        Some((scheme, rest)) => (Some(scheme), rest),
-        None => (None, template),
-    };
-    let auth_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let (authority, tail) = rest.split_at(auth_end);
-    let encoded = percent_encoding::utf8_percent_encode(username, USERNAME_URL_SEGMENT).to_string();
-    let expanded_authority = if authority.contains("{username}") {
-        let (userinfo, host_part) = match authority.rsplit_once('@') {
-            Some((u, h)) => (Some(u), h),
-            None => (None, authority),
-        };
-        if host_part.contains("{username}") {
-            validate_username_host_label(username)?;
-        }
-        match userinfo {
-            Some(u) => format!(
-                "{}@{}",
-                u.replace("{username}", &encoded),
-                host_part.replace("{username}", username)
-            ),
-            None => host_part.replace("{username}", username),
-        }
-    } else {
-        authority.to_string()
-    };
-    let expanded_tail = tail.replace("{username}", &encoded);
-    Ok(match scheme_prefix {
-        Some(scheme) => format!("{scheme}://{expanded_authority}{expanded_tail}"),
-        None => format!("{expanded_authority}{expanded_tail}"),
-    })
-}
-
 /// Whether a WebDAV host or URL string already carries a non-root path
 /// segment after the authority (e.g. `https://dav.example/dav`, not `/`).
 pub(crate) fn webdav_host_has_own_path(host: &str) -> bool {
@@ -704,12 +588,14 @@ impl WebDavConfig {
             }
         }
 
-        let url = expand_username_in_url(&raw_url, &username)?;
+        let url = crate::connection_manifest::expand_username_in_url(&raw_url, &username)
+            .map_err(ProviderError::InvalidConfig)?;
         let initial_path = config
             .initial_path
-            .as_deref()
-            .map(|p| expand_username_in_path(p, &username))
-            .transpose()?;
+            .as_ref()
+            .map(|p| crate::connection_manifest::expand_username_in_path(p, &username))
+            .transpose()
+            .map_err(ProviderError::InvalidConfig)?;
         let provider_id = config
             .extra
             .get("provider_id")
@@ -881,6 +767,73 @@ mod webdav_config_tests {
         );
     }
 
+    /// The connect reads the server URL and the start folder from the shared
+    /// case table: both filled as the table says, or the profile refused.
+    #[test]
+    fn the_connect_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let cfg = ProviderConfig {
+                name: "template".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: table["urlTemplate"].as_str().unwrap().to_string(),
+                port: Some(443),
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: Some(table["pathTemplate"].as_str().unwrap().to_string()),
+                extra: std::collections::HashMap::new(),
+            };
+            let resolved = WebDavConfig::from_provider_config(&cfg).ok();
+            match (case["url"].as_str(), case["path"].as_str()) {
+                (Some(url), Some(path)) => {
+                    let resolved = resolved.unwrap_or_else(|| panic!("{user:?} refused"));
+                    assert_eq!(resolved.url, url, "{user:?}");
+                    assert_eq!(resolved.initial_path.as_deref(), Some(path), "{user:?}");
+                }
+                _ => assert!(resolved.is_none(), "{user:?} must be refused"),
+            }
+        }
+    }
+
+    /// A user name that cannot fill a folder template (a directory login such
+    /// as `DOMAIN\alice`) is refused with the way out in the message, and the
+    /// way out works: the same folder written in full, without the
+    /// placeholder, connects.
+    #[test]
+    fn a_folder_written_in_full_takes_a_user_name_the_template_refuses() {
+        let cfg = |initial_path: &str| ProviderConfig {
+            name: "nextcloud".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://cloud.example.test".to_string(),
+            port: Some(443),
+            username: Some("DOMAIN\\alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some(initial_path.to_string()),
+            extra: std::collections::HashMap::new(),
+        };
+        let refused = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/{username}/"))
+            .expect_err("a template the user name cannot fill is refused")
+            .to_string();
+        assert!(
+            refused.contains("cannot be used in a folder path"),
+            "{refused}"
+        );
+        assert!(
+            refused.contains("enter the folder path in full"),
+            "{refused}"
+        );
+        let full = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/DOMAIN\\alice/"))
+            .expect("a folder written in full connects");
+        assert_eq!(
+            full.initial_path.as_deref(),
+            Some("/remote.php/dav/files/DOMAIN\\alice/")
+        );
+    }
+
     #[test]
     fn username_placeholder_is_substituted_in_url_too() {
         let mut extra = std::collections::HashMap::new();
@@ -1013,7 +966,15 @@ mod webdav_config_tests {
                     .url,
                 format!("https://webdav.cloudme.com/x%23y{suffix}")
             );
-            for bad in ["a/b", "..", ".", ""] {
+            // A `/` stays inside its segment, encoded (the shared helper's
+            // rule, pinned on the wire by `a_username_template_reaches_the_server_encoded_exactly_once`).
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/a%2Fb{suffix}")
+            );
+            for bad in ["..", ".", ""] {
                 assert!(
                     WebDavConfig::from_provider_config(&make_cfg(&tpl, None, bad)).is_err(),
                     "expected `{bad}` to fail in `{tpl}`"
@@ -1062,7 +1023,13 @@ mod webdav_config_tests {
                     .url,
                 format!("https://lifetimecloud.me/dav/x%23y/{suffix}")
             );
-            for bad in ["a/b", "..", ".", ""] {
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/a%2Fb/{suffix}")
+            );
+            for bad in ["..", ".", ""] {
                 assert!(
                     WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), bad)).is_err(),
                     "expected `{bad}` to fail in basePath with host `{host}`"

@@ -8,7 +8,7 @@ import { useTranslation, type TranslationFunction } from '../i18n';
 import { PROVIDER_LOGOS } from './ProviderLogos';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { CountryFlag } from './CountryFlag';
-import { findCatalogByLogo, findCatalogByProviderId, hasFreeTier, isDevOnlyProvider, isPaidProvider } from './providerCatalog';
+import { findCatalogByLogo, findCatalogByProviderId, formatFreeStorage, hasFreeTier, isDevOnlyProvider, isPaidProvider } from './providerCatalog';
 
 interface ProvidersDialogProps {
   isOpen: boolean;
@@ -214,6 +214,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'Fastly Object Storage', logoId: 'fastly',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
+  { name: 'Neon', logoId: 'neon',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
   { name: 'Storj', logoId: 'storj',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
@@ -243,6 +246,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
   { name: 'CloudMe', logoId: 'cloudme', section: 'webdav',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
+  { name: 'Puter', logoId: 'puter',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
+    advanced: [] },
   { name: 'DriveHQ', logoId: 'drivehq',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
@@ -266,6 +272,9 @@ const ALL_PROVIDERS: ProviderFeatures[] = [
     advanced: [] },
   { name: 'Felicloud', logoId: 'felicloud',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
+    advanced: [] },
+  { name: 'LifetimeCloud', logoId: 'lifetimecloud',
+    base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search'],
     advanced: [] },
   { name: 'TAB.DIGITAL', logoId: 'tabdigital',
     base: ['upload', 'download', 'delete', 'rename', 'move', 'mkdir', 'search', 'shareLink', 'trash', 'versioning'],
@@ -430,7 +439,7 @@ export function ProvidersDialog({ isOpen, onClose }: ProvidersDialogProps) {
                           {catalog && (
                             isFree ? (
                               <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap shrink-0">
-                                {catalog.freeStorageGb != null ? `${catalog.freeStorageGb} GB` : t('providers.freeTier')}
+                                {catalog.freeStorageGb != null ? formatFreeStorage(catalog.freeStorageGb) : t('providers.freeTier')}
                               </span>
                             ) : (
                               <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap shrink-0">

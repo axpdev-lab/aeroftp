@@ -10,7 +10,7 @@
 use serde::Serialize;
 use tauri::State;
 
-use crate::provider_commands::ProviderState;
+use crate::provider_commands::{ConnectRegistration, ConnectionCancelRegistry, ProviderState};
 use crate::providers::directory::DirectoryProvider;
 use crate::providers::mtp::backend::{
     list_mtp_devices as list_mtp_devices_coalesced, MtpDeviceInfo, MtpStorage,
@@ -18,6 +18,7 @@ use crate::providers::mtp::backend::{
 use crate::providers::mtp::provider::MtpProvider;
 use crate::providers::types::{ProviderConfig, ProviderError, ProviderType};
 use crate::providers::StorageProvider;
+use tokio_util::sync::CancellationToken;
 
 /// Marker in `ProviderConfig.extra` when the gvfs-mount backend is installed.
 pub const MTP_EXTRA_BACKEND: &str = "mtp_backend";
@@ -121,12 +122,15 @@ pub async fn list_mtp_devices() -> Result<Vec<MtpDeviceInfoDto>, String> {
 }
 
 /// Install `provider` into `ProviderState`, disconnecting any previous slot.
+/// `cancel` is the open's connect token: a cancelled open (a newer connect
+/// began) is refused under the provider lock and never takes the slot.
 async fn install_provider(
     state: &ProviderState,
     provider: Box<dyn crate::providers::StorageProvider>,
     config: ProviderConfig,
+    cancel: Option<&CancellationToken>,
 ) -> Result<(), String> {
-    state.install_mtp_provider(provider, config).await
+    state.install_mtp_provider(provider, config, cancel).await
 }
 
 async fn clear_mtp_provider_slot(
@@ -143,6 +147,7 @@ async fn clear_mtp_provider_slot(
 pub async fn mtp_open_device_inner(
     state: &ProviderState,
     device_id: String,
+    cancel: Option<&CancellationToken>,
 ) -> Result<MtpSessionInfoDto, String> {
     if device_id.trim().is_empty() {
         return Err("MTP device_id is required".into());
@@ -174,7 +179,7 @@ pub async fn mtp_open_device_inner(
         extra: Default::default(),
     };
 
-    install_provider(state, Box::new(mtp), config).await?;
+    install_provider(state, Box::new(mtp), config, cancel).await?;
 
     Ok(MtpSessionInfoDto {
         device_id,
@@ -186,12 +191,16 @@ pub async fn mtp_open_device_inner(
 }
 
 /// Open an MTP device session. Closes any previous provider first.
+/// `connect_token` registers the open for `cancel_connection`.
 #[tauri::command]
 pub async fn mtp_open_device(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     device_id: String,
+    connect_token: Option<String>,
 ) -> Result<MtpSessionInfoDto, String> {
-    mtp_open_device_inner(&state, device_id).await
+    let registration = ConnectRegistration::new(&cancel_registry, connect_token.as_deref());
+    mtp_open_device_inner(&state, device_id, registration.token()).await
 }
 
 /// Open a portable device by riding an existing desktop MTP mount (gvfs FUSE).
@@ -203,11 +212,21 @@ pub async fn mtp_open_device(
 #[tauri::command]
 pub async fn mtp_open_gvfs_mount(
     state: State<'_, ProviderState>,
+    cancel_registry: State<'_, ConnectionCancelRegistry>,
     mount_path: String,
     device_id: String,
     display_name: Option<String>,
+    connect_token: Option<String>,
 ) -> Result<MtpSessionInfoDto, String> {
-    mtp_open_gvfs_mount_inner(&state, mount_path, device_id, display_name).await
+    let registration = ConnectRegistration::new(&cancel_registry, connect_token.as_deref());
+    mtp_open_gvfs_mount_inner(
+        &state,
+        mount_path,
+        device_id,
+        display_name,
+        registration.token(),
+    )
+    .await
 }
 
 pub async fn mtp_open_gvfs_mount_inner(
@@ -215,6 +234,7 @@ pub async fn mtp_open_gvfs_mount_inner(
     mount_path: String,
     device_id: String,
     display_name: Option<String>,
+    cancel: Option<&CancellationToken>,
 ) -> Result<MtpSessionInfoDto, String> {
     let mount_path = mount_path.trim().to_string();
     if mount_path.is_empty() {
@@ -279,7 +299,7 @@ pub async fn mtp_open_gvfs_mount_inner(
         extra,
     };
 
-    install_provider(state, Box::new(provider), config).await?;
+    install_provider(state, Box::new(provider), config, cancel).await?;
 
     Ok(MtpSessionInfoDto {
         device_id,
@@ -472,11 +492,13 @@ mod tests {
     #[tokio::test]
     async fn open_installs_into_provider_state() {
         let state = ProviderState::new();
-        assert!(mtp_open_device_inner(&state, String::new()).await.is_err());
+        assert!(mtp_open_device_inner(&state, String::new(), None)
+            .await
+            .is_err());
 
         // Null / unlinked: open still installs the session shell so FE can
         // clear it via close; list may be empty or NotSupported.
-        let open = mtp_open_device_inner(&state, "usb:0:0".into()).await;
+        let open = mtp_open_device_inner(&state, "usb:0:0".into(), None).await;
         match open {
             Ok(info) => {
                 assert_eq!(info.device_id, "usb:0:0");
@@ -542,7 +564,7 @@ mod tests {
             initial_path: Some("/".into()),
             extra: Default::default(),
         };
-        install_provider(&state, Box::new(mtp), config)
+        install_provider(&state, Box::new(mtp), config, None)
             .await
             .unwrap();
         {
@@ -571,7 +593,7 @@ mod tests {
             initial_path: Some("/".into()),
             extra: Default::default(),
         };
-        install_provider(&state, Box::new(mtp), config)
+        install_provider(&state, Box::new(mtp), config, None)
             .await
             .unwrap();
         let err = mtp_close_device_inner(&state, Some("dev-b".into()))
@@ -682,7 +704,7 @@ mod tests {
         eprintln!("opening {} ({id})", d0.display_name);
 
         let state = ProviderState::new();
-        let session = mtp_open_device_inner(&state, id.clone())
+        let session = mtp_open_device_inner(&state, id.clone(), None)
             .await
             .expect("mtp_open_device");
         eprintln!("session: {session:#?}");

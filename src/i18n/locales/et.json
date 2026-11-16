@@ -1819,7 +1819,8 @@
             "scpModeBody": "Serveril {host} pole SFTP-d, seega kasutab AeroFTP sama ühenduse kaudu SCP-d.",
             "saveOnAnotherServer": "Pole salvestatud: see fail avati serverist, kontolt või krüpteeritud kihilt, mis pole praegu aktiivne. Minge tagasi selle vahekaardile ja salvestage uuesti.",
             "openedOnAnotherServer": "Avamata: server muutus faili lugemise ajal. Ava see uuesti.",
-            "remoteTargetChanged": "Midagi ei muudetud: server, konto või krüptitud kiht on pärast toimingu algust muutunud või ühendub veel uuesti. Proovige uuesti praeguse ühenduse kaudu."
+            "remoteTargetChanged": "Midagi ei muudetud: server, konto või krüptitud kiht on pärast toimingu algust muutunud või ühendub veel uuesti. Proovige uuesti praeguse ühenduse kaudu.",
+            "connectEarlierNotStopped": "Varasemat ühendumiskatset ei õnnestunud peatada ja see on endiselt käimas, seega seda ühendust ei alustatud. Proovige uuesti, kui see on lõppenud."
         },
         "about": {
             "tagline": "Rohkem kui FTP. Täielik arendustööriistade komplekt.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: ülemaailmselt hajutatud S3-ühilduv salvestusruum, ilma väljuva andmeliikluse tasudeta (5 GB tasuta)",
             "trustPasvAddress": "Kasuta serveri antud passiivset aadressi",
             "trustPasvAddressHelp": "Väljas: andmeühendused lähevad hostile, millega ühendusid, nagu curl teeb. Lülita sisse ainult serveri jaoks, mis saadab andmeid mujalt aadressilt.",
-            "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)"
+            "discoverFastly": "Fastly Object Storage: S3-ühilduv salvestusruum 12 piirkonnas (5 GB tasuta, vajalik on kaart)",
+            "discoverNeon": "Neon Object Storage: S3-ga ühilduv salvestusruum iga projekti haru jaoks (5 GB tasuta projekti kohta)",
+            "discoverPuter": "Puter pilvesalvestus WebDAV-i kaudu (25 MB tasuta, kaarti pole vaja)",
+            "discoverLifetimeCloud": "LifetimeCloud salvestusruum WebDAV-i kaudu (1 GB tasuta, kaardita)"
         },
         "shortcuts": {
             "title": "Kiirklahvid",
