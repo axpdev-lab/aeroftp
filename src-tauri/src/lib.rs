@@ -9220,18 +9220,15 @@ fn copy_file_cancellable(
     cancel: &AtomicBool,
     publish: LocalPublish,
 ) -> Result<(), crate::sync::IpcError> {
-    // Opened first, then checked through the handle, in the order
-    // `std::fs::copy` follows: the check is on the file read, not on a path
-    // that could change between the two.
-    let source = std::fs::File::open(from).map_err(local_copy_failed)?;
-    let metadata = source.metadata().map_err(local_copy_failed)?;
-    if !metadata.is_file() {
-        return Err("Failed to copy file: the source is not a regular file".into());
-    }
+    #[cfg(test)]
+    held_local_copy::wait(from);
+    let (source, metadata) = open_regular_file(from).map_err(local_copy_failed)?;
     #[cfg(windows)]
     {
         // `CopyFileExW` opens the source by its path, as `std::fs::copy`
-        // does on Windows; the handle above stays open across the copy.
+        // does on Windows; the handle above stays open across the copy, and
+        // the attributes come with the data.
+        let _ = metadata;
         let temp = local_copy_temp(to);
         let written = native_copy_windows(from, &temp, cancel);
         drop(source);
@@ -9248,6 +9245,73 @@ fn copy_file_cancellable(
         let mut source = source;
         copy_into_place(&mut source, metadata.permissions(), to, cancel, publish)
     }
+}
+
+/// A copy whose source is held here waits before it opens it, as one held by
+/// a source that does not answer. A FIFO no longer holds a copy (it is
+/// refused at once), so the tests that need a copy in flight hold it here.
+#[cfg(test)]
+pub(crate) mod held_local_copy {
+    use std::collections::HashSet;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Condvar, LazyLock, Mutex};
+
+    static HELD: LazyLock<(Mutex<HashSet<PathBuf>>, Condvar)> = LazyLock::new(Default::default);
+
+    pub(crate) fn hold(source: &Path) {
+        HELD.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(source.to_path_buf());
+    }
+
+    pub(crate) fn release(source: &Path) {
+        HELD.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(source);
+        HELD.1.notify_all();
+    }
+
+    pub(super) fn wait(source: &Path) {
+        let mut held = HELD.0.lock().unwrap_or_else(|e| e.into_inner());
+        while held.contains(source) {
+            held = HELD.1.wait(held).unwrap_or_else(|e| e.into_inner());
+        }
+    }
+}
+
+/// Open `path` for reading only when it is a regular file. Opened first,
+/// then checked through the handle, in the order `std::fs::copy` follows:
+/// the check is on the file read, not on a path that could change between
+/// the two. On Unix the open does not wait: a FIFO with no writer would
+/// hold `open` itself, before the check or a Stop could run. The handle
+/// reads normally once it is known to be a file.
+fn open_regular_file(
+    path: &std::path::Path,
+) -> std::io::Result<(std::fs::File, std::fs::Metadata)> {
+    let mut options = std::fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::custom_flags(&mut options, libc::O_NONBLOCK);
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    if !metadata.is_file() {
+        return Err(std::io::Error::other("the source is not a regular file"));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::fd::AsRawFd;
+        // SAFETY: `file` owns the descriptor for both calls.
+        let flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFL) };
+        if flags < 0
+            || unsafe { libc::fcntl(file.as_raw_fd(), libc::F_SETFL, flags & !libc::O_NONBLOCK) }
+                < 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+    }
+    Ok((file, metadata))
 }
 
 fn local_copy_failed(e: std::io::Error) -> crate::sync::IpcError {
@@ -9354,8 +9418,9 @@ fn remove_local_copy_temp(temp: &std::path::Path) {
 
 /// Write `source` to a temporary name next to `to`, a chunk at a time,
 /// observing `cancel` before each chunk, then publish it with
-/// [`publish_local_copy`]. The temporary is created owner-only and gets the
-/// source's permissions through its own handle before any byte is written.
+/// [`publish_local_copy`]. The temporary is created owner-only and stays so
+/// while the data arrives; it gets the source's permissions through its own
+/// handle after the last byte.
 // The platform copy in Windows and macOS builds; the chunked copy is still
 // what the Stop and publication tests drive there.
 #[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
@@ -9370,12 +9435,6 @@ pub(crate) fn copy_into_place(
     let temp = local_copy_temp(to);
     let mut target = open_local_copy_temp(&temp)?;
     let written = (|| {
-        // The source's mode, never more open than 0600 on the way: a
-        // narrower source mode applies before the data, a wider one only
-        // relaxes what the owner already holds.
-        target
-            .set_permissions(permissions)
-            .map_err(local_copy_failed)?;
         let mut chunk = vec![0u8; 1 << 20];
         loop {
             if cancel.load(Ordering::Relaxed) {
@@ -9389,7 +9448,12 @@ pub(crate) fn copy_into_place(
                 .write_all(&chunk[..read])
                 .map_err(local_copy_failed)?;
         }
-        target.flush().map_err(local_copy_failed)
+        target.flush().map_err(local_copy_failed)?;
+        // The source's mode once the data is in: a wider one applied before
+        // would open the partial copy to other accounts.
+        target
+            .set_permissions(permissions)
+            .map_err(local_copy_failed)
     })();
     drop(target);
     publish_local_copy(&temp, to, written, cancel, publish)
@@ -9652,8 +9716,11 @@ extern "C" fn macos_copy_status(
 }
 
 /// Copy `source` into the new owner-only file `temp` with `fcopyfile` and
-/// `COPYFILE_ALL` (data, extended attributes, ACL, mode), the flags
-/// `std::fs::copy` uses, stopped through [`macos_copy_status`].
+/// what `COPYFILE_ALL` covers (data, extended attributes, ACL, mode), the
+/// flags `std::fs::copy` uses, stopped through [`macos_copy_status`]. The data
+/// goes first, while the temporary is still owner-only; the source's mode
+/// and the metadata follow it, so a partial copy is never open to other
+/// accounts.
 #[cfg(target_os = "macos")]
 fn native_copy_macos(
     source: &std::fs::File,
@@ -9663,12 +9730,8 @@ fn native_copy_macos(
 ) -> Result<(), crate::sync::IpcError> {
     use std::os::fd::AsRawFd;
     let target = open_local_copy_temp(temp)?;
-    target
-        .set_permissions(permissions)
-        .map_err(local_copy_failed)?;
-    let all = libc::COPYFILE_METADATA | libc::COPYFILE_DATA;
     // SAFETY: the state is freed on every path below; the callback and its
-    // context (`cancel`) outlive the `fcopyfile` call that uses them; both
+    // context (`cancel`) outlive the `fcopyfile` calls that use them; both
     // descriptors are open for the whole call.
     let copied = unsafe {
         let state = libc::copyfile_state_alloc();
@@ -9693,12 +9756,17 @@ fn native_copy_macos(
                 libc::COPYFILE_STATE_STATUS_CTX as u32,
                 std::ptr::from_ref(cancel).cast(),
             ) == 0;
-        let result = if set {
-            if libc::fcopyfile(source.as_raw_fd(), target.as_raw_fd(), state, all) == 0 {
+        let copy = |flags| {
+            if libc::fcopyfile(source.as_raw_fd(), target.as_raw_fd(), state, flags) == 0 {
                 Ok(())
             } else {
                 Err(std::io::Error::last_os_error())
             }
+        };
+        let result = if set {
+            copy(libc::COPYFILE_DATA)
+                .and_then(|()| target.set_permissions(permissions))
+                .and_then(|()| copy(libc::COPYFILE_METADATA))
         } else {
             Err(std::io::Error::last_os_error())
         };
@@ -9964,6 +10032,88 @@ mod native_local_copy_tests {
         assert!(copied.contains(NO_REPLACE_UNAVAILABLE_MARKER), "{copied}");
         assert_eq!(contents, b"theirs");
         assert_eq!(names, ["copy.txt"]);
+    }
+
+    /// The temporary of a copy stays owner-only while the data arrives and
+    /// takes the source's mode after it: applied first, a wider mode opened
+    /// the partial copy to other accounts.
+    #[cfg(unix)]
+    #[test]
+    fn a_copy_stays_owner_only_until_its_data_is_in() {
+        use std::os::unix::fs::PermissionsExt;
+        struct ModeAtFirstRead {
+            dir: std::path::PathBuf,
+            seen: Option<u32>,
+        }
+        impl std::io::Read for ModeAtFirstRead {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                if self.seen.is_some() {
+                    return Ok(0);
+                }
+                let temp = names_in(&self.dir)
+                    .into_iter()
+                    .find(|name| name.starts_with(".aeroftp-copy-"))
+                    .expect("the temporary");
+                let mode = std::fs::metadata(self.dir.join(temp))?.permissions().mode();
+                self.seen = Some(mode & 0o777);
+                buf[..4].copy_from_slice(b"data");
+                Ok(4)
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let to = dir.path().join("copy.txt");
+        let mut source = ModeAtFirstRead {
+            dir: dir.path().to_path_buf(),
+            seen: None,
+        };
+        copy_into_place(
+            &mut source,
+            std::fs::Permissions::from_mode(0o644),
+            &to,
+            &AtomicBool::new(false),
+            LocalPublish::Replace,
+        )
+        .unwrap();
+        let during = source.seen.unwrap();
+        assert_eq!(during & 0o077, 0, "the temporary was {during:o}");
+        assert_eq!(std::fs::read(&to).unwrap(), b"data");
+        let after = std::fs::metadata(&to).unwrap().permissions().mode() & 0o777;
+        assert_eq!(after, 0o644, "{after:o}");
+    }
+
+    /// A FIFO with no writer held the copy inside `open`, before the check
+    /// that refuses it and before any Stop could be seen. It is refused at
+    /// once now.
+    #[cfg(unix)]
+    #[test]
+    fn a_fifo_source_is_refused_without_waiting_for_a_writer() {
+        use std::os::unix::ffi::OsStrExt;
+        let dir = tempfile::tempdir().unwrap();
+        let fifo = dir.path().join("pipe");
+        let path = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        // SAFETY: a NUL-terminated path that lives for the call.
+        assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+        let to = dir.path().join("copy");
+        let (sent, received) = std::sync::mpsc::channel();
+        let (from, target) = (fifo.clone(), to.clone());
+        let worker = std::thread::spawn(move || {
+            let copied = copy_file_cancellable(
+                &from,
+                &target,
+                &AtomicBool::new(false),
+                LocalPublish::Replace,
+            );
+            let _ = sent.send(format!("{copied:?}"));
+        });
+        let copied = received.recv_timeout(std::time::Duration::from_secs(5));
+        if copied.is_err() {
+            // The copy waits in `open`: a writer lets it go, so the test ends.
+            drop(std::fs::OpenOptions::new().write(true).open(&fifo));
+        }
+        worker.join().unwrap();
+        let copied = copied.expect("the copy waited for a writer to open the FIFO");
+        assert!(copied.contains("not a regular file"), "{copied}");
+        assert!(!to.exists());
     }
 
     /// Where neither atomic step exists, another writer puts its own bytes at
@@ -11739,6 +11889,21 @@ pub(crate) fn copy_entry_bounded<R: std::io::Read + ?Sized, W: std::io::Write>(
     Ok(written)
 }
 
+/// Copy `reader` into the new entry `writer`, owner-only (0600 on Unix)
+/// while the data arrives, then give it `permissions`: a wider mode applied
+/// first would open the partial entry to other accounts.
+fn copy_then_apply_permissions(
+    reader: &mut impl std::io::Read,
+    writer: &mut std::fs::File,
+    permissions: std::fs::Permissions,
+) -> std::io::Result<u64> {
+    #[cfg(unix)]
+    writer.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+    let copied = std::io::copy(reader, writer)?;
+    writer.set_permissions(permissions)?;
+    Ok(copied)
+}
+
 /// Writes one extracted entry to `out_path` through a sibling temporary file
 /// that is renamed into place only when `fill` succeeds. Extraction can fail
 /// half way through an entry (a wrong 7z password is only detected while
@@ -11859,6 +12024,15 @@ where
     // create_new: never reuse or follow something already at the temporary path.
     let mut options = cap_std::fs::OpenOptions::new();
     options.write(true).create_new(true);
+    // A file it replaces may be narrower than a new file's default mode: the
+    // new contents stay owner-only until they take its permissions below.
+    #[cfg(unix)]
+    if parent
+        .symlink_metadata(name)
+        .is_ok_and(|existing| existing.is_file())
+    {
+        cap_std::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    }
     let mut file = parent
         .open_with(&tmp_name, &options)
         .map_err(destination_error)?
@@ -13653,9 +13827,8 @@ fn materialize_rar_reference(
         // A failed copy must leave no partial entry for move_staged_tree to
         // publish when the archive loop returns its error.
         write_entry_atomically(&destination, |writer| {
-            let mut reader = std::fs::File::open(&canonical_source)?;
-            writer.set_permissions(metadata.permissions())?;
-            std::io::copy(&mut reader, writer)
+            let (mut reader, _) = open_regular_file(&canonical_source)?;
+            copy_then_apply_permissions(&mut reader, writer, metadata.permissions())
         })
         .map_err(|e| format!("Failed to copy RAR reference: {}", e))?;
     }

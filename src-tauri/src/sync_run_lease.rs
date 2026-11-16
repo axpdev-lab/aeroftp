@@ -1416,6 +1416,27 @@ mod tests {
         release(&replacement).unwrap();
     }
 
+    /// Holds the copies of a source ([`crate::held_local_copy`]) until
+    /// dropped, so a failed assertion does not leave a copy waiting for the
+    /// rest of the process.
+    #[cfg(unix)]
+    struct HeldCopy(std::path::PathBuf);
+
+    #[cfg(unix)]
+    impl HeldCopy {
+        fn hold(source: std::path::PathBuf) -> Self {
+            crate::held_local_copy::hold(&source);
+            Self(source)
+        }
+    }
+
+    #[cfg(unix)]
+    impl Drop for HeldCopy {
+        fn drop(&mut self) {
+            crate::held_local_copy::release(&self.0);
+        }
+    }
+
     /// The copy runs on the blocking pool and owns the admission: dropping
     /// the command's future (the task awaiting it is aborted) does not end the
     /// count while the copy itself still runs, so a lost page's pair stays
@@ -1423,23 +1444,12 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn an_abandoned_copy_keeps_its_admission_until_the_copy_ends() {
-        struct Unblock(std::path::PathBuf);
-        impl Drop for Unblock {
-            fn drop(&mut self) {
-                use std::os::unix::fs::OpenOptionsExt;
-                let _ = std::fs::OpenOptions::new()
-                    .write(true)
-                    .custom_flags(libc::O_NONBLOCK)
-                    .open(&self.0);
-            }
-        }
         let dir = tempfile::tempdir().unwrap();
         let pair = crate::sync::index_filename("/abandoned-copy", "/abandoned-copy-right");
         let lost = acquire_now(dir.path(), pair.clone(), "abandoned-window").unwrap();
-        let source = dir.path().join("source.fifo");
-        let c_source = std::ffi::CString::new(source.to_str().unwrap()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(c_source.as_ptr(), 0o600) }, 0);
-        let unblock = Unblock(source.clone());
+        let source = dir.path().join("source.bin");
+        std::fs::write(&source, b"held").unwrap();
+        let unblock = HeldCopy::hold(source.clone());
         let destination = dir.path().join("copied.bin");
         let copy = tokio::spawn(crate::copy_local_file_with(
             std::sync::Arc::default(),
@@ -1460,12 +1470,7 @@ mod tests {
             !waiter.is_finished(),
             "the abandoned copy still runs and still counts"
         );
-        // A writer appears: the copy's open returns and the count ends.
-        tokio::task::spawn_blocking(move || {
-            let _writer = std::fs::OpenOptions::new().write(true).open(&source);
-        })
-        .await
-        .unwrap();
+        // The source answers: the copy ends and so does the count.
         drop(unblock);
         tokio::time::timeout(std::time::Duration::from_secs(30), waiter)
             .await
@@ -1696,33 +1701,18 @@ mod tests {
     /// A local-local run gives its commands no expected target, so a copy it
     /// started holds no pin. The pair of its lost page stays locked while
     /// the real `copy_local_file` is still in flight, and is released once
-    /// the command returns. The source is a FIFO no one has opened for
-    /// writing, so the copy waits in its `open`; once a writer appears the
-    /// standard library refuses a source that is not a regular file, and the
-    /// command returns that error. Only how long it ran matters here.
+    /// the command returns. The copy's source is held
+    /// ([`crate::held_local_copy`]), so the copy waits before its open
+    /// until the test lets it go. Only how long it ran matters here.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_lost_local_run_keeps_its_pair_locked_until_an_unpinned_copy_returns() {
-        /// Opens the FIFO for writing on drop, so a failed assertion does not
-        /// leave the copy blocked in its open for the rest of the process.
-        struct Unblock(std::path::PathBuf);
-        impl Drop for Unblock {
-            fn drop(&mut self) {
-                use std::os::unix::fs::OpenOptionsExt;
-                let _ = std::fs::OpenOptions::new()
-                    .write(true)
-                    .custom_flags(libc::O_NONBLOCK)
-                    .open(&self.0);
-            }
-        }
-
         let dir = tempfile::tempdir().unwrap();
         let pair = crate::sync::index_filename("/local-copy", "/local-copy-right");
         let lost = acquire_now(dir.path(), pair.clone(), "lost-local-window").unwrap();
-        let source = dir.path().join("source.fifo");
-        let c_source = std::ffi::CString::new(source.to_str().unwrap()).unwrap();
-        assert_eq!(unsafe { libc::mkfifo(c_source.as_ptr(), 0o600) }, 0);
-        let unblock = Unblock(source.clone());
+        let source = dir.path().join("source.bin");
+        std::fs::write(&source, b"held").unwrap();
+        let unblock = HeldCopy::hold(source.clone());
         let destination = dir.path().join("copied.bin");
 
         // No target pin anywhere: the same state a local-local run leaves.
@@ -1755,22 +1745,14 @@ mod tests {
             "a replacement run must wait for the running copy"
         );
 
-        // A writer appears: the copy's `open` returns, the command ends (with
-        // the refusal of a non-regular source) and the pair is released.
-        tokio::task::spawn_blocking(move || {
-            let _writer = std::fs::OpenOptions::new().write(true).open(&source);
-        })
-        .await
-        .unwrap();
+        // The source answers: the command ends and the pair is released.
+        drop(unblock);
         let outcome = tokio::time::timeout(std::time::Duration::from_secs(30), copy)
             .await
-            .expect("the copy returns once its source is opened")
+            .expect("the copy returns once its source answers")
             .unwrap();
-        assert!(
-            outcome.is_err(),
-            "a FIFO is not a regular file: {outcome:?}"
-        );
-        drop(unblock);
+        assert!(outcome.is_ok(), "{outcome:?}");
+        assert_eq!(std::fs::read(&destination).unwrap(), b"held");
         // Other tests of this process may hold their own native work for a
         // moment; the waiter returns as soon as all of it is over.
         tokio::time::timeout(std::time::Duration::from_secs(30), waiter)
