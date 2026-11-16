@@ -978,7 +978,7 @@ it('sends every legacy FTP path as a folder the tab means, never one the server 
     'download_file { params }', // remote_path from the listing entry
     'upload_folder { params }', // remote_path joined onto the folder the tab shows
     'upload_file { params: { local_path: localFilePath, remote_path: remotePath, expected_gui_target: expectedGuiTarget } as UploadParams }',
-    'save_remote_file { path: file.path, content, expectedGeneration }',
+    'save_remote_file { path: file.path, content, expectedGeneration, expectedGuiTarget }',
     'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',
     'rename_remote_file { from: file.path, to: destPath, expectedGuiTarget }',
     'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',

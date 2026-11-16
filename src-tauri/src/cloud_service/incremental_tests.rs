@@ -3275,3 +3275,115 @@ async fn a_new_twin_of_a_mapped_implicit_parent_waits_for_the_full_scan() {
         b"remote independent"
     );
 }
+
+/// CodeRabbit 4580537989: AeroCloud's full and incremental index constructors
+/// carry the loaded `read_seq` until `save_sync_index`. When a GUI sync
+/// deletes and retires a path after AeroCloud loaded its baseline, the later
+/// AeroCloud save is refused and does not restore the retired baseline.
+#[test]
+fn an_aerocloud_save_after_a_gui_sync_retires_a_path_is_refused() {
+    let _env = crate::test_env::lock();
+    let data = tempfile::tempdir().unwrap();
+    let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+    std::env::set_var("XDG_CONFIG_HOME", data.path());
+    let outcome = std::panic::catch_unwind(|| {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+            .block_on(async {
+                for incremental in [false, true] {
+                    let root = tempfile::tempdir().unwrap();
+                    let config = pair(root.path());
+                    let local_str = config.local_folder.to_string_lossy().to_string();
+                    let mut remote = MemRemote::new();
+                    let mut initial = empty_index(&config);
+                    synced(&mut initial, &remote, root.path(), "kept.txt", b"v1");
+                    synced(&mut initial, &remote, root.path(), "retired.txt", b"gone");
+                    save_sync_index(&initial).unwrap();
+
+                    let svc = CloudService::new();
+                    svc.init(config.clone()).await;
+
+                    if !incremental {
+                        let plan = svc
+                            .build_sync_plan_with_provider(&mut remote, &config, true)
+                            .await
+                            .unwrap();
+                        assert!(
+                            plan.index.as_ref().and_then(|i| i.read_seq).is_some(),
+                            "full plan loaded read_seq"
+                        );
+                        let tokens = crate::sync::begin_sync_intents(
+                            &local_str,
+                            &config.remote_folder,
+                            &["retired.txt".to_string()],
+                        )
+                        .unwrap();
+                        let mut gui_index = initial.clone();
+                        gui_index.files.remove("retired.txt");
+                        crate::sync::save_sync_index_with_intents(&gui_index, &tokens).unwrap();
+
+                        let clean = super::super::SyncOperationResult {
+                            uploaded: 0,
+                            downloaded: 0,
+                            deleted: 0,
+                            skipped: 0,
+                            skipped_details: Vec::new(),
+                            conflicts: 0,
+                            errors: Vec::new(),
+                            duration_secs: 0,
+                            file_details: Vec::new(),
+                        };
+                        svc.save_post_sync_index(&plan, &clean, &config);
+                    } else {
+                        std::fs::write(root.path().join("kept.txt"), b"v2").unwrap();
+                        set_mtime(&root.path().join("kept.txt"), SYNCED_AT + 10);
+                        let plan = work(
+                            prepare_incremental(
+                                &config,
+                                &changes(root.path(), &["kept.txt"], &[]),
+                                EXACT,
+                            )
+                            .unwrap(),
+                        );
+                        assert!(
+                            plan.index.read_seq.is_some(),
+                            "incremental plan loaded read_seq"
+                        );
+                        let tokens = crate::sync::begin_sync_intents(
+                            &local_str,
+                            &config.remote_folder,
+                            &["retired.txt".to_string()],
+                        )
+                        .unwrap();
+                        let mut gui_index = initial.clone();
+                        gui_index.files.remove("retired.txt");
+                        crate::sync::save_sync_index_with_intents(&gui_index, &tokens).unwrap();
+
+                        let (_, saved) = execute(&config, plan, &mut remote, None).await;
+                        let refused = save_sync_index(&saved);
+                        assert!(
+                            matches!(&refused, Err(msg) if msg.contains("compare again")),
+                            "incremental stale save must fail: {refused:?}"
+                        );
+                    }
+
+                    let stored = crate::sync::load_sync_index(&local_str, &config.remote_folder)
+                        .unwrap()
+                        .unwrap();
+                    assert!(
+                        !stored.files.contains_key("retired.txt"),
+                        "incremental={incremental}: stale AeroCloud save restored retired.txt"
+                    );
+                }
+            })
+    });
+    match prev_xdg {
+        Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+        None => std::env::remove_var("XDG_CONFIG_HOME"),
+    }
+    if let Err(panic) = outcome {
+        std::panic::resume_unwind(panic);
+    }
+}

@@ -4408,11 +4408,12 @@ async fn reconnect_ftp_in_folder(ftp_manager: &mut FtpManager) -> Result<(), Str
         .reconnect()
         .await
         .map_err(|e| format!("Reconnection failed: {}", e))?;
-    if ftp_manager.current_path() == folder {
+    if ftp_manager.current_path() == folder && providers::ftp::names_one_folder(&folder) {
         return Ok(());
     }
-    if let Err(e) = ftp_manager.change_dir(&folder).await {
-        warn!("FTP reconnected, but the previous folder could not be opened again: {e}");
+    if !providers::ftp::names_one_folder(&folder) || ftp_manager.change_dir(&folder).await.is_err()
+    {
+        warn!("FTP reconnected, but the previous folder could not be opened again");
         let _ = ftp_manager.disconnect().await;
         return Err(
             "Reconnected, but the folder could not be opened again; the connection was closed, reconnect to continue"
@@ -14931,8 +14932,17 @@ async fn save_remote_file(
     path: String,
     content: String,
     expected_generation: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
-    write_remote_file_from_editor(&state, &provider_state, path, content, expected_generation).await
+    write_remote_file_from_editor(
+        &state,
+        &provider_state,
+        path,
+        content,
+        expected_generation,
+        expected_gui_target,
+    )
+    .await
 }
 
 /// [`save_remote_file`] without the Tauri state wrappers, so a test can run
@@ -14943,15 +14953,15 @@ async fn write_remote_file_from_editor(
     path: String,
     content: String,
     expected_generation: Option<u64>,
+    expected_gui_target: Option<u64>,
 ) -> Result<(), String> {
-    // The editor's save, bound to the connection read just before it: held
-    // through the write, so a switch waits for it, and refused if one came
-    // first (Greptile on #1526: the frontend check alone left the gap
-    // between it and the provider lock).
-    let _pin = match expected_generation {
-        Some(expected) => Some(provider_state.pin_connection_generation(expected).await?),
-        None => None,
-    };
+    // The editor's save, bound to the connection and GUI target read just
+    // before it: held through the write, so a switch or overlay replacement
+    // waits for it, and refused if one came first (Greptile on #1526,
+    // CodeRabbit 4580538013).
+    let _pin = provider_state
+        .pin_editor_save_target(expected_generation, expected_gui_target)
+        .await?;
     // Fail-closed: the remote editor save is a direct provider write, so it must
     // refuse when the session has a crypt overlay that is currently unwrapped
     // (badge locked / stepped outside the encrypted scope). Without this an
@@ -32206,6 +32216,57 @@ mod legacy_ftp_walk_tests {
             }
         }
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// CodeRabbit 4580537992: when the server reports relative `PWD` paths
+    /// (`shown` for `/shown`) and `/x/shown` exists, a scan or probe of `/x`
+    /// refuses to restore `shown` via `CWD`, closes the session, and never
+    /// leaves it in `/x/shown` where a relative delete would act.
+    #[tokio::test]
+    async fn a_relative_saved_folder_is_refused_before_restoration_even_when_a_matching_subfolder_exists(
+    ) {
+        static TREE: Listings = &[
+            ("/", &["shown/", "x/"]),
+            ("/shown", &["s.txt"]),
+            ("/x", &["a.txt", "shown/"]),
+            ("/x/shown", &["a.txt"]),
+        ];
+        let (port, log) =
+            crate::providers::ftp::walk_scope_tests::tree_server_with_relative_pwd(TREE).await;
+        let mut session = ftp::FtpManager::new();
+        session
+            .connect(&format!("127.0.0.1:{port}"))
+            .await
+            .expect("connect to the tree server");
+        session.login("u", "p").await.expect("log in");
+        session.change_dir("/shown").await.expect("open /shown");
+        assert_eq!(session.current_path(), "shown");
+
+        let outcome = crate::transfer_queue_scan::walk_remote_ftp(
+            &mut session,
+            &Arc::new(AtomicBool::new(false)),
+            "/x",
+            1,
+            100,
+        )
+        .await;
+        let Err(error) = outcome else {
+            panic!("relative saved folder must refuse restoration");
+        };
+        assert!(error.contains("connection was closed"), "{error}");
+        assert!(!session.is_connected(), "session must be closed");
+        assert!(
+            session.remove("a.txt").await.is_err(),
+            "relative delete must not run in /x/shown"
+        );
+        assert!(
+            !log.lock()
+                .unwrap()
+                .iter()
+                .any(|line| line.starts_with("DELE")),
+            "no DELE may reach the server: {:?}",
+            log.lock().unwrap()
+        );
     }
 }
 

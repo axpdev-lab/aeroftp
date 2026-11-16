@@ -357,6 +357,44 @@ impl ProviderState {
         Ok(pin)
     }
 
+    /// Holds the connection whose generation is `expected_generation` and,
+    /// when given, the GUI target whose epoch is `expected_gui_target` until
+    /// the guard is dropped: swaps, disconnects and overlay replacements take
+    /// the write side of the gate first, so they wait. Taking one read guard
+    /// for both avoids a fair-RwLock self-deadlock when a writer is waiting.
+    pub(crate) async fn pin_editor_save_target(
+        &self,
+        expected_generation: Option<u64>,
+        expected_gui_target: Option<u64>,
+    ) -> Result<Option<RwLockReadGuard<'_, ()>>, String> {
+        if expected_generation.is_none() && expected_gui_target.is_none() {
+            return Ok(None);
+        }
+        let pin = self.transfer_owner_gate.read().await;
+        if let Some(expected) = expected_generation {
+            // Read under the provider lock, which every bump also holds.
+            let live = {
+                let _slot = self.provider.lock().await;
+                self.connection_generation.load(Ordering::SeqCst)
+            };
+            if live != expected {
+                return Err(format!(
+                    "{CONNECTION_CHANGED_MARKER}: the server changed while the file was open; nothing was done"
+                ));
+            }
+        }
+        if let Some(expected) = expected_gui_target {
+            self.validate_gui_owner()?;
+            self.observe_target_poison();
+            if self.gui_target_epoch.load(Ordering::SeqCst) != expected {
+                return Err(format!(
+                    "{CONNECTION_CHANGED_MARKER}: the remote target changed; nothing was done"
+                ));
+            }
+        }
+        Ok(Some(pin))
+    }
+
     /// Pin a GUI operation to the transport and overlay observed by its caller.
     /// Every writer of that target holds the write side while advancing the epoch.
     pub(crate) async fn pin_gui_target(
@@ -5538,7 +5576,7 @@ pub async fn provider_download_folder(
     .await;
 
     // Restore provider pwd (folder scan traverses subdirectories via cd)
-    if !original_pwd.is_empty() {
+    if crate::providers::ftp::names_one_folder(&original_pwd) {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
             let _ = p.cd(&original_pwd).await;
@@ -5617,7 +5655,7 @@ pub async fn provider_upload_folder(
     .await;
 
     // Restore provider pwd (upload may change it via mkdir/cd)
-    if !original_pwd.is_empty() {
+    if crate::providers::ftp::names_one_folder(&original_pwd) {
         let mut lock = state.provider.lock().await;
         if let Some(p) = lock.as_mut() {
             let _ = p.cd(&original_pwd).await;
@@ -17233,12 +17271,14 @@ mod tests {
         let state = ProviderState::new();
         let checked_on = state.connection_generation.load(Ordering::SeqCst);
         state.invalidate_overlay_key_cache();
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
         let refused = crate::write_remote_file_from_editor(
             &app,
             &state,
             "/a.txt".into(),
             "sentinel".into(),
             Some(checked_on),
+            Some(epoch),
         )
         .await
         .unwrap_err();
@@ -17250,6 +17290,7 @@ mod tests {
             "/a.txt".into(),
             "sentinel".into(),
             Some(live),
+            Some(epoch),
         )
         .await;
         assert!(
@@ -17257,6 +17298,47 @@ mod tests {
                 .as_ref()
                 .is_err_and(|e| !e.contains(CONNECTION_CHANGED_MARKER)),
             "{saved:?}"
+        );
+    }
+
+    /// CodeRabbit 4580538013: an overlay replacement on the same connection
+    /// advances `gui_target_epoch` without changing `connection_generation`.
+    /// When that happens after the epoch was read, the editor save is refused
+    /// with `CONNECTION_CHANGED` and writes nothing to the provider.
+    #[tokio::test]
+    async fn an_overlay_change_that_advances_the_gui_target_refuses_an_editor_save() {
+        let app = crate::AppState::new();
+        let state = ProviderState::new();
+        let started = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        *state.provider.lock().await = Some(Box::new(PausedUpload {
+            started: Arc::clone(&started),
+            release: Arc::clone(&release),
+        }));
+        let live_gen = state.connection_generation.load(Ordering::SeqCst);
+        let checked_epoch = state.gui_target_epoch.load(Ordering::SeqCst);
+        state.advance_gui_target();
+        assert_eq!(
+            state.connection_generation.load(Ordering::SeqCst),
+            live_gen,
+            "overlay target change keeps connection_generation unchanged"
+        );
+        let refused = crate::write_remote_file_from_editor(
+            &app,
+            &state,
+            "/a.txt".into(),
+            "sentinel".into(),
+            Some(live_gen),
+            Some(checked_epoch),
+        )
+        .await
+        .expect_err("stale gui_target_epoch must refuse the editor save");
+        assert!(refused.contains(CONNECTION_CHANGED_MARKER), "{refused}");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), started.notified())
+                .await
+                .is_err(),
+            "provider.upload must not be called when the GUI target epoch changed"
         );
     }
 
@@ -17368,12 +17450,14 @@ mod tests {
             release: Arc::clone(&release),
         }));
         let live = state.connection_generation.load(Ordering::SeqCst);
+        let epoch = state.gui_target_epoch.load(Ordering::SeqCst);
         let save = crate::write_remote_file_from_editor(
             &app,
             &state,
             "/a.txt".into(),
             "sentinel".into(),
             Some(live),
+            Some(epoch),
         );
         tokio::pin!(save);
         tokio::select! {

@@ -1518,7 +1518,7 @@ impl CloudService {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
-            read_seq: None,
+            read_seq: plan.index.as_ref().and_then(|index| index.read_seq),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);

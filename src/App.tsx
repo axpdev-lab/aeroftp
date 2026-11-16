@@ -11960,15 +11960,17 @@ const App: React.FC = () => {
     const logId = humanLog.logStart('UPLOAD', { filename: file.name, size: formatBytes(content.length) });
     try {
       if (file.isRemote) {
-        // The connection read now, between two checks, and held by the
-        // backend through the write: a switch that comes first gets the
-        // save refused, never written to the server now in the slot. Read
-        // at save time, not at open, so a reconnect to the same server in
-        // between does not refuse the save.
+        // The connection and GUI target read now, between two checks, and held
+        // by the backend through the write: a switch or overlay replacement
+        // that comes first gets the save refused, never written to the target
+        // now in the slot. Read at save time, not at open, so a reconnect to
+        // the same server in between does not refuse the save.
         const expectedGeneration = await invoke<number>('provider_connection_generation');
-        if (!file.target || editorTargetProblem(file.target)) refuse();
+        const expectedGuiTarget = await captureGuiTarget(() => {
+          if (!file.target || editorTargetProblem(file.target)) refuse();
+        });
         try {
-          await invoke('save_remote_file', { path: file.path, content, expectedGeneration });
+          await invoke('save_remote_file', { path: file.path, content, expectedGeneration, expectedGuiTarget });
         } catch (error) {
           if (isTargetChangedRefusal(error)) refuse();
           throw error;
@@ -14143,12 +14145,12 @@ const App: React.FC = () => {
       let moved = 0;
       if (operation === 'cut' && landed.length > 0) {
         // Delete source after successful transfer, and only those sources.
-        if (sourceIsRemote && aeroVaultOverlaySession?.sessionId) {
+        if (sourceIsRemote && aeroVaultSessionRef.current?.sessionId) {
           // H5: no source of the vault goes after a Stop.
           if (!pasteStopped() && !pasteRetargeted()) {
             try {
               await invoke<number>('aerovault_overlay_delete_entries', {
-                sessionId: aeroVaultOverlaySession?.sessionId,
+                sessionId: aeroVaultSessionRef.current?.sessionId,
                 entryPaths: landed.map((f) => f.path),
                 recursive: true,
               });
@@ -14203,7 +14205,7 @@ const App: React.FC = () => {
         // Move files to target directory
         const protocol = liveConnectionParams.protocol;
         const useProvider = usesProviderApi(protocol);
-        const isAeroVaultOverlay = targetIsRemote && !!aeroVaultOverlaySession?.sessionId;
+        const isAeroVaultOverlay = targetIsRemote && !!aeroVaultSessionRef.current?.sessionId;
 
         for (const file of files) {
           // This gesture's Stop starts no further move (K4 twin).
@@ -14215,7 +14217,7 @@ const App: React.FC = () => {
             if (targetIsRemote) {
               if (isAeroVaultOverlay) {
                 await invoke<string>('aerovault_overlay_move_entry', {
-                  sessionId: aeroVaultOverlaySession?.sessionId,
+                  sessionId: aeroVaultSessionRef.current?.sessionId,
                   fromPath: file.path,
                   toPath: destPath,
                 });
@@ -14274,7 +14276,7 @@ const App: React.FC = () => {
           }
           await refreshLocalPanelForPath(targetDir);
         } else {
-          const isAeroVaultOverlay = !!aeroVaultOverlaySession?.sessionId;
+          const isAeroVaultOverlay = !!aeroVaultSessionRef.current?.sessionId;
           // Remote copy via server-side copy API
           let anyFailed = false;
           for (const file of files) {
@@ -14300,7 +14302,7 @@ const App: React.FC = () => {
             try {
               if (isAeroVaultOverlay) {
                 await invoke<string>('aerovault_overlay_copy_entry', {
-                  sessionId: aeroVaultOverlaySession?.sessionId,
+                  sessionId: aeroVaultSessionRef.current?.sessionId,
                   fromPath: from,
                   toPath: finalDest,
                 });
@@ -14699,9 +14701,18 @@ const App: React.FC = () => {
       const landedIds = new Set<string>();
       const attempt = { epoch: expectedGuiTarget, changed: false };
       if (userAction) {
-        try { attempt.epoch = await captureGuiTarget(onQueuedTarget); }
-        catch (error) {
-          for (const id of queueIds) transferQueue.failTransfer(id, String(error));
+        try {
+          attempt.epoch = await rearmNativeCancelForRow(() => {
+            onQueuedTarget();
+            if (stopCountRef.current !== stops) throw new Error('Transfer cancelled');
+          });
+        } catch (error) {
+          if (stopCountRef.current !== stops) {
+            result.aborted = true;
+            for (const id of queueIds) transferQueue.cancelTransfer(id, t('transfer.cancelledByUser'));
+          } else {
+            for (const id of queueIds) transferQueue.failTransfer(id, String(error));
+          }
           return landedIds;
         }
       }

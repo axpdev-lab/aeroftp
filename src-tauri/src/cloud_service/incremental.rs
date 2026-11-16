@@ -1141,7 +1141,7 @@ impl CloudService {
             pending_recovery_keys: Default::default(),
             target_identity: None,
             history_only_keys: Default::default(),
-            read_seq: None,
+            read_seq: index.read_seq,
         };
 
         result.duration_secs = start.elapsed().as_secs();

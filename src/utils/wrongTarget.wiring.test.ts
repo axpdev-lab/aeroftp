@@ -934,7 +934,7 @@ describe('a local file pasted into a remote folder', () => {
     // A macrotask: every microtask the Paste can run without the epoch has run.
     const settle = () => new Promise(resolve => setTimeout(resolve, 0));
     const sourceDeletes = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
-        .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'delete_local_file');
+        .map(([command, args], index) => ({ command, args, index })).filter(({ command }) => command === 'delete_local_file');
     const uploads = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
         .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'provider_upload_file');
 
@@ -951,7 +951,9 @@ describe('a local file pasted into a remote folder', () => {
         await paste;
         expect(f.written()).toEqual([`${INBOX}/up.txt`]);
         expect(uploads(f)).toHaveLength(1);
-        for (const { index } of sourceDeletes(f)) expect(index).toBeGreaterThan(uploads(f)[0].index);
+        expect(sourceDeletes(f)).toHaveLength(1);
+        expect(sourceDeletes(f)[0].args).toMatchObject({ path: `${LOCAL}/up.txt` });
+        expect(sourceDeletes(f)[0].index).toBeGreaterThan(uploads(f)[0].index);
         expect(f.fileClipboardRef.current).toBeNull();
     });
 
@@ -1066,9 +1068,9 @@ describe('the editor\'s save of a remote file', () => {
         expect(f.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
         f.switchServer({ server: 'a.example' });
         await f.saveDevToolsFile('new', file);
-        // Bound to the connection read just before the write, held by the
-        // backend through it (Greptile on #1526).
-        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7 }]]);
+        // Bound to the connection and GUI target read just before the write,
+        // held by the backend through it (Greptile on #1526, CodeRabbit 4580538013).
+        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7, expectedGuiTarget: 7 }]]);
     });
 
     it('rejects a save the backend refused or failed, saying why once', async () => {

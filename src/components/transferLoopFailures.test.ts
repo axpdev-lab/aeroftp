@@ -324,6 +324,58 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     expect(f.nativeCancel.current).toBe(false);
   });
 
+  // CodeRabbit 4580538010: a file routed through runFileBatch's singleDispatcher
+  // (e.g. a resumed upload alongside a batch file) rearms native cancellation
+  // on Retry or Start after a hard Stop, and cancels if a Stop lands during its
+  // epoch read without clearing the native flag raised by that Stop.
+  it('a batch-dispatched single-file Retry after a hard Stop rearms native cancellation and sends the file', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'No such file or directory' });
+
+    f.hardStop();
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(2);
+    expect(f.row('q1')).toMatchObject({ status: 'completed' });
+    expect(f.nativeCancel.current).toBe(false);
+  });
+
+  it('a Stop during a batch-dispatched single-file Retry epoch read cancels without clearing native cancellation', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+
+    const original = f.invoke.getMockImplementation()!;
+    f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+      if (command === 'provider_gui_target_epoch') f.hardStop();
+      return original(command, args);
+    });
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.nativeCancel.current).toBe(true);
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
+  });
+
   // CodeRabbit 4579437718: a staged single file started after an intervening
   // Stop is a new gesture, sent; a Stop during that Start still cancels it.
   const stagedSingle = async (direction: 'upload' | 'download', extra: Partial<Parameters<typeof fixture>[0]> = {}) => {

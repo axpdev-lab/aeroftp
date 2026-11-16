@@ -293,7 +293,7 @@ fn server_path(reply: String) -> String {
 /// entered again with a `CWD`: a relative one (`home/u`, from a server whose
 /// `PWD` answers relative paths) is resolved from where the server stands
 /// now, and names another folder.
-fn names_one_folder(path: &str) -> bool {
+pub(crate) fn names_one_folder(path: &str) -> bool {
     let bytes = path.as_bytes();
     path.starts_with('/')
         || (bytes.len() >= 3
@@ -728,7 +728,7 @@ impl FtpProvider {
                 code: response.status.code() as u16,
                 during: AT_THE_END_OF_THE_TRANSFER.to_string(),
             },
-            other => ProviderError::TransferFailed(other.to_string()),
+            other => ProviderError::TransferFailed(format!("{other}{AT_THE_END_OF_THE_TRANSFER}")),
         }
     }
 
@@ -812,6 +812,9 @@ impl FtpProvider {
             | ProviderError::Other(msg) => msg,
             _ => return false,
         };
+        if message.ends_with(AT_THE_END_OF_THE_TRANSFER) {
+            return false;
+        }
         let lower = message.to_lowercase();
         lower.contains("data connection is already open")
             || (lower.contains("425") && lower.contains("data connection"))
@@ -1377,6 +1380,14 @@ impl FtpProvider {
     /// [`Self::abandoned_command`], so the next command redials to the folder
     /// still owed instead of running a relative path there.
     async fn restore_cwd(&mut self, saved: &str) -> Result<(), ProviderError> {
+        if !names_one_folder(saved) {
+            self.abandoned_command.store(true, Ordering::Relaxed);
+            return Err(ProviderError::InvalidPath(Self::doing(
+                "restoring the working directory to",
+                saved,
+                "it is a relative folder",
+            )));
+        }
         let stream = self.stream_mut()?;
         let back = stream.cwd(saved).await;
         if back.is_err() {
@@ -6815,7 +6826,7 @@ mod tests {
                 "a local rustls configuration error",
             ),
             (
-                "other => ProviderError::TransferFailed(other.to_string()),",
+                r#"other => ProviderError::TransferFailed(format!("{other}{AT_THE_END_OF_THE_TRANSFER}")),"#,
                 "transfer_verdict_error: not a reply (that arm is above)",
             ),
             (
@@ -9103,6 +9114,9 @@ mod rename_contract_tests {
         /// STOR stores the bytes and ends with `200`, a positive reply that
         /// is not the `226` the transfer waits for.
         stor_ends_with_200: bool,
+        /// STOR stores the bytes and ends with a malformed status line that
+        /// suppaftp rejects as `BadResponse` ("Response contains an invalid syntax").
+        stor_ends_with_malformed_reply: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -9265,6 +9279,8 @@ mod rename_contract_tests {
                     files.lock().unwrap().push(target);
                     if quirks.stor_ends_with_200 {
                         "200 Command okay\r\n".to_string()
+                    } else if quirks.stor_ends_with_malformed_reply {
+                        "malformed completion line\r\n".to_string()
                     } else {
                         "226 Transfer complete\r\n".to_string()
                     }
@@ -10399,6 +10415,37 @@ mod rename_contract_tests {
             list_only: true,
             log_commands: true,
             stor_ends_with_200: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(&[], quirks, None).await;
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/up.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(files.lock().unwrap().contains(&"/up.txt".to_string()));
+    }
+
+    /// CodeRabbit 4580537998: a server that stores the upload and sends a
+    /// malformed completion line makes suppaftp return `BadResponse` ("Response
+    /// contains an invalid syntax"). `transfer_verdict_error` preserves the
+    /// post-data phase for every finalization failure, so `upload` sends
+    /// `STOR` once instead of reconnecting and overwriting the file.
+    #[tokio::test]
+    async fn an_upload_ended_by_a_malformed_completion_reply_is_sent_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_malformed_reply: true,
             ..Quirks::default()
         };
         let (mut provider, log, files) = provider_on_server_holding(&[], quirks, None).await;
@@ -12047,6 +12094,8 @@ pub(crate) mod walk_scope_tests {
         CloseAfter421,
         /// `/shown` opens once; every later CWD into it is refused with 550.
         RefuseReturnToShown,
+        /// `PWD` reports the current folder without its leading `/`.
+        RelativePwd,
     }
 
     /// One control connection of a server without MLSD that holds
@@ -12086,7 +12135,14 @@ pub(crate) mod walk_scope_tests {
                 "PASS" => "230 logged in\r\n".to_string(),
                 "FEAT" => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
                 "MLST" | "MLSD" => "500 Unknown command\r\n".to_string(),
-                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "PWD" => {
+                    let reported = if matches!(mode, FindFailureMode::RelativePwd) && cwd != "/" {
+                        cwd.trim_start_matches('/')
+                    } else {
+                        cwd.as_str()
+                    };
+                    format!("257 \"{reported}\" is current\r\n")
+                }
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
                     if matches!(mode, FindFailureMode::StallRestore) && find_failed && target == "/"
@@ -12189,6 +12245,13 @@ pub(crate) mod walk_scope_tests {
         listings: Listings,
     ) -> (u16, Arc<Mutex<Vec<String>>>) {
         tree_server_with_restore_mode(listings, FindFailureMode::RefuseReturnToShown).await
+    }
+
+    /// A [`tree_server`] whose `PWD` reports relative paths (`shown` for `/shown`).
+    pub(crate) async fn tree_server_with_relative_pwd(
+        listings: Listings,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, FindFailureMode::RelativePwd).await
     }
 
     async fn tree_server_with_restore_mode(

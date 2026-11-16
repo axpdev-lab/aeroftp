@@ -38,6 +38,10 @@ fn legacy_revision(provider: OAuthProvider) -> &'static std::sync::atomic::Atomi
     &MEMORY_TOKEN_REVISIONS[index]
 }
 
+fn adopted_destination_key(key: &str) -> String {
+    format!("\0adopted:{key}")
+}
+
 fn invalidate_memory_tokens(
     cache: &mut Option<HashMap<String, String>>,
     revision: &std::sync::atomic::AtomicU64,
@@ -46,6 +50,10 @@ fn invalidate_memory_tokens(
     revision.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     if let Some(map) = cache.as_mut() {
         map.remove(account);
+        let from_account = adopted_destination_key(account);
+        map.retain(|key, val| {
+            key != &from_account && !(key.starts_with("\0adopted:") && val == account)
+        });
     }
 }
 
@@ -73,6 +81,7 @@ fn adopt_memory_record(
     let json = map.remove(legacy).expect("the singleton read above");
     let adopted = Zeroizing::new(json.clone());
     map.insert(account.to_owned(), json);
+    map.insert(adopted_destination_key(legacy), account.to_owned());
     Ok(Some(adopted))
 }
 
@@ -91,9 +100,9 @@ fn replace_memory_record(
     let at = if map.get(key).is_some_and(|raw| raw == observed) {
         Some(key.to_owned())
     } else {
-        map.iter()
-            .find(|(_, raw)| raw.as_str() == observed)
-            .map(|(moved, _)| moved.clone())
+        map.get(&adopted_destination_key(key))
+            .filter(|moved| map.get(moved.as_str()).is_some_and(|raw| raw == observed))
+            .cloned()
     };
     let Some(at) = at else {
         return false;
@@ -2883,6 +2892,30 @@ mod tests {
             &mut map, &account, "rotated", "late"
         ));
         assert_eq!(map.get(&account).map(String::as_str), Some("again"));
+    }
+
+    /// CodeRabbit 4580538002: when profiles P and Q hold the same raw token
+    /// record and P is deleted during P's refresh, persistence must fail and
+    /// leave Q unchanged because Q was never an adoption destination of P.
+    #[test]
+    fn a_refresh_for_a_deleted_profile_never_overwrites_another_profile_holding_the_same_record() {
+        let p = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "p");
+        let q = OAuth2Manager::token_account_key(OAuthProvider::Dropbox, "q");
+        let mut cache = Some(HashMap::from([
+            (p.clone(), "same-raw-record".to_string()),
+            (q.clone(), "same-raw-record".to_string()),
+        ]));
+        invalidate_memory_tokens(&mut cache, legacy_revision(OAuthProvider::Dropbox), &p);
+        let map = cache.as_mut().unwrap();
+        assert!(
+            !replace_memory_record(map, &p, "same-raw-record", "rotated-by-p"),
+            "deleted profile P's refresh must be refused"
+        );
+        assert_eq!(
+            map.get(&q).map(String::as_str),
+            Some("same-raw-record"),
+            "profile Q must remain unchanged"
+        );
     }
 
     #[test]

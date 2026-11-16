@@ -3874,6 +3874,7 @@ fn recovery_only_view(mut index: SyncIndex) -> Option<SyncIndex> {
     kept.profile_id = index.profile_id.clone();
     kept.unverified_keys = recovery.clone();
     kept.pending_recovery_keys = recovery;
+    kept.read_seq = index.read_seq;
     Some(kept)
 }
 

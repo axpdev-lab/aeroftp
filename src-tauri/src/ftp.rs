@@ -531,7 +531,9 @@ impl FtpManager {
     /// shows `folder`: when the folder cannot be opened again the session is
     /// closed, as `reconnect_ftp_in_folder` does after a reconnect.
     pub async fn return_to_folder(&mut self, folder: &str) -> Result<()> {
-        if self.change_dir(folder).await.is_err() {
+        if !crate::providers::ftp::names_one_folder(folder)
+            || self.change_dir(folder).await.is_err()
+        {
             warn!("FTP session could not return to the folder it was in; closing it");
             let _ = self.disconnect().await;
             return Err(FtpManagerError::OperationFailed(
@@ -634,6 +636,12 @@ impl FtpManager {
             }
         }
         let previous = self.current_path.clone();
+        if !crate::providers::ftp::names_one_folder(&previous) {
+            return Err(FtpManagerError::OperationFailed(
+                "the folder the session was in could not be opened again; the connection was closed, reconnect to continue".into(),
+            )
+            .into());
+        }
         tokio::time::timeout(self.timeouts.command_timeout, stream.cwd(&previous))
             .await
             .context("CWD timeout")?
@@ -670,7 +678,7 @@ impl FtpManager {
                     .err()
                     .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
             }
-            let restored = self.change_dir(&previous).await;
+            let restored = self.return_to_folder(&previous).await;
             restored?;
             return listed.map(|items| items.iter().any(|entry| entry.name == name));
         }
@@ -747,7 +755,7 @@ impl FtpManager {
                 .err()
                 .unwrap_or_else(|| FtpManagerError::NotConnected.into()));
         }
-        let restored = self.change_dir(&original).await;
+        let restored = self.return_to_folder(&original).await;
         restored?;
         Ok(listed?.iter().any(|entry| {
             entry.name == name
