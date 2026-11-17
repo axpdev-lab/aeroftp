@@ -1019,6 +1019,10 @@ test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', 
   assert.ok(mitSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in MIT standard license section');
 
   assert.match(noticesContent, /Eric Kidd <git@randomhacks\.net>/);
+  // The holder line of its source header, with Eric Kidd and the 2012-2014 range, under both licenses.
+  const cesu8Holder = '`cesu8@1.1.0` - SPDX: `Apache-2.0/MIT` (authors: Eric Kidd <git@randomhacks.net>)\n  - Copyright 2012-2014 The Rust Project Developers and Eric Kidd. (src/lib.rs)';
+  assert.ok(apacheSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the Apache-2.0 section');
+  assert.ok(mitSection.includes(cesu8Holder), 'the cesu8 holder line must appear in the MIT section');
 });
 
 test('groupLicenseTexts: COPYRIGHT-only component receives both notice entry and standard license fallback', () => {
