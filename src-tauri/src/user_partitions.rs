@@ -4802,6 +4802,34 @@ pub fn delete_credential_for_user_dual(
     })
 }
 
+/// Remove `credential_id` from `user_id`'s partition and return the error, for a
+/// caller whose report must name what is left; the best-effort unmirror drops it.
+pub fn delete_partition_credential_checked(
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    delete_user_credential_for(&open_or_init_cli()?, user_id, credential_id)
+}
+
+/// [`delete_credential_for_user_dual`] that reports both halves: the vault entry
+/// and the partition row are both attempted, and each failure is returned. For a
+/// rollback that must say which secrets it could not remove.
+pub fn delete_credential_for_user_checked(
+    store: &CredentialStore,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    let vault = store
+        .delete(credential_id)
+        .map_err(|e| format!("Delete credential from vault: {e}"));
+    let partition = delete_partition_credential_checked(user_id, credential_id);
+    match (vault, partition) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(vault), Err(partition)) => Err(format!("{vault}; {partition}")),
+    }
+}
+
 // --- MUV-4: OAuth / Jottacloud token cutover (explicit-type dual-write) ------
 //
 // OAuth tokens (`oauth_<provider>_<id>`) and Jottacloud refresh tokens

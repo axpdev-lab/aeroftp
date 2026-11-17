@@ -3187,6 +3187,124 @@ type CryptSecretForms = (
     Option<crate::rclone_crypt::CryptSecretForm>,
 );
 
+/// The AeroCrypt record an overlay unlock reads from the local keystore: only
+/// for an `aerocrypt` overlay of a saved profile. An `rclone-crypt` unlock does
+/// not use it, so a keystore error on an AeroCrypt record left by an earlier
+/// binding must not block it.
+fn overlay_record_for_unlock<Read>(
+    kind: &str,
+    profile_id: Option<&str>,
+    read: Read,
+) -> Result<(Option<String>, Option<String>), String>
+where
+    Read: FnMut(&str) -> Result<Option<zeroize::Zeroizing<String>>, String>,
+{
+    match profile_id {
+        Some(id) if kind == "aerocrypt" => overlay_record_from_keystore(id, read),
+        _ => Ok((None, None)),
+    }
+}
+
+/// The public AeroCrypt configuration and salt of record a profile keeps in
+/// the local keystore, each read with `read`: `None` for one the keystore does
+/// not have, so the caller keeps its own message for a profile never opened.
+/// A read that fails is an error, never `None`: it would tell the user to
+/// connect again for a recovery kit, or report a missing salt of record (a
+/// partial restore or tampering), when the keystore only could not be read.
+fn overlay_record_from_keystore<Read>(
+    profile_id: &str,
+    mut read: Read,
+) -> Result<(Option<String>, Option<String>), String>
+where
+    Read: FnMut(&str) -> Result<Option<zeroize::Zeroizing<String>>, String>,
+{
+    let config = read(&format!("aerocrypt_overlay_config_{profile_id}"))
+        .map_err(|error| {
+            format!("The AeroCrypt configuration of this profile could not be read from the local keystore: {error}")
+        })?
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    let salt = read(&format!("aerocrypt_overlay_salt_{profile_id}"))
+        .map_err(|error| {
+            format!("The AeroCrypt salt of record of this profile could not be read from the local keystore: {error}")
+        })?
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
+    Ok((config, salt))
+}
+
+#[cfg(test)]
+mod overlay_record_tests {
+    use super::{overlay_record_for_unlock, overlay_record_from_keystore};
+    use zeroize::Zeroizing;
+
+    const CONFIG: &str = "aerocrypt_overlay_config_srv_1";
+    const SALT: &str = "aerocrypt_overlay_salt_srv_1";
+
+    #[test]
+    fn an_rclone_crypt_unlock_does_not_read_the_aerocrypt_record() {
+        let mut reads = 0;
+        let record = overlay_record_for_unlock("rclone-crypt", Some("srv_1"), |_| {
+            reads += 1;
+            Err("keystore locked".to_string())
+        });
+        assert_eq!(record, Ok((None, None)));
+        assert_eq!(reads, 0);
+    }
+
+    #[test]
+    fn an_aerocrypt_unlock_still_reports_a_record_that_cannot_be_read() {
+        let record = overlay_record_for_unlock("aerocrypt", Some("srv_1"), |_| {
+            Err("keystore locked".to_string())
+        });
+        assert!(record.unwrap_err().contains("keystore locked"));
+    }
+
+    fn record(
+        config: Result<Option<&str>, &str>,
+        salt: Result<Option<&str>, &str>,
+    ) -> Result<(Option<String>, Option<String>), String> {
+        overlay_record_from_keystore("srv_1", |key| {
+            let answer = match key {
+                CONFIG => config,
+                SALT => salt,
+                other => panic!("unexpected key {other}"),
+            };
+            answer
+                .map(|value| value.map(|v| Zeroizing::new(v.to_string())))
+                .map_err(str::to_string)
+        })
+    }
+
+    #[test]
+    fn a_profile_with_its_record_gives_both() {
+        assert_eq!(
+            record(Ok(Some("cfg")), Ok(Some("salt"))).unwrap(),
+            (Some("cfg".to_string()), Some("salt".to_string()))
+        );
+    }
+
+    #[test]
+    fn a_profile_without_a_record_gives_none_so_the_caller_keeps_its_message() {
+        assert_eq!(record(Ok(None), Ok(None)).unwrap(), (None, None));
+        assert_eq!(record(Ok(Some("")), Ok(Some(""))).unwrap(), (None, None));
+    }
+
+    #[test]
+    fn a_configuration_that_cannot_be_read_is_an_error_not_a_missing_recovery_kit() {
+        let error = record(Err("keystore locked"), Ok(Some("salt"))).unwrap_err();
+        assert!(error.contains("configuration"), "{error}");
+        assert!(error.contains("keystore locked"), "{error}");
+    }
+
+    #[test]
+    fn a_salt_that_cannot_be_read_is_an_error_not_a_missing_salt_of_record() {
+        let error = record(Ok(Some("cfg")), Err("keystore locked")).unwrap_err();
+        assert!(error.contains("salt"), "{error}");
+        assert!(error.contains("keystore locked"), "{error}");
+    }
+}
+
 /// A saved profile by id from the open vault, `None` when the vault is not
 /// open or no profile has that id.
 fn saved_profile_by_id(profile_id: &str) -> Option<serde_json::Value> {
@@ -3251,33 +3369,15 @@ async fn provider_apply_crypt_overlay_inner(
     state: &ProviderState,
     params: ApplyCryptOverlayParams,
 ) -> Result<crate::crypt_overlay_provider::ApplyOverlayResult, String> {
-    let (local_config_json, local_config_salt) = if let Some(id) = &params.profile_id {
-        if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            let json = crate::user_partitions::resolve_active_credential(
-                &store,
-                &format!("aerocrypt_overlay_config_{}", id),
-            )
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .filter(|s| !s.is_empty());
-
-            let salt = crate::user_partitions::resolve_active_credential(
-                &store,
-                &format!("aerocrypt_overlay_salt_{}", id),
-            )
-            .ok()
-            .flatten()
-            .map(|s| s.to_string())
-            .filter(|s| !s.is_empty());
-
-            (json, salt)
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
+    let (local_config_json, local_config_salt) =
+        match crate::credential_store::CredentialStore::from_cache() {
+            Some(store) => {
+                overlay_record_for_unlock(&params.kind, params.profile_id.as_deref(), |key| {
+                    crate::user_partitions::resolve_active_credential(&store, key)
+                })?
+            }
+            None => (None, None),
+        };
 
     let with_header = params.with_header.unwrap_or(false);
     let (password_form, salt_form) = apply_overlay_secret_forms(
@@ -3396,27 +3496,15 @@ fn aerocrypt_profile_recovery_kit_blocking(
 ) -> Result<crate::aerocrypt::emergency_kit::EmergencyKit, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "The local keystore is unavailable.".to_string())?;
-    let config_json = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("aerocrypt_overlay_config_{profile_id}"),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .filter(|s| !s.is_empty())
-    .ok_or_else(|| {
+    let (config_json, salt) = overlay_record_from_keystore(&profile_id, |key| {
+        crate::user_partitions::resolve_active_credential(&store, key)
+    })?;
+    let config_json = config_json.ok_or_else(|| {
         "No recovery kit cached for this profile yet. Connect to its vault once so its \
          public configuration is stored locally (this happens automatically on connect \
          for headerless, headed and keyfile vaults), then reopen the recovery kit."
             .to_string()
     })?;
-    let salt = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("aerocrypt_overlay_salt_{profile_id}"),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string());
     // Same salt-of-record integrity check the unlock path uses: a mismatch means
     // a partial restore or local tampering, so fail closed rather than hand back
     // a kit that would not actually reconstruct the vault.
@@ -3454,26 +3542,14 @@ fn aerocrypt_verify_recovery_kit_blocking(
 ) -> Result<crate::aerocrypt::emergency_kit::KitVerifyReport, String> {
     let store = crate::credential_store::CredentialStore::from_cache()
         .ok_or_else(|| "The local keystore is unavailable.".to_string())?;
-    let config_json = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("aerocrypt_overlay_config_{profile_id}"),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string())
-    .filter(|s| !s.is_empty())
-    .ok_or_else(|| {
+    let (config_json, salt) = overlay_record_from_keystore(&profile_id, |key| {
+        crate::user_partitions::resolve_active_credential(&store, key)
+    })?;
+    let config_json = config_json.ok_or_else(|| {
         "No recovery kit cached for this profile yet. Connect to its vault once so its \
          public configuration is stored locally, then reopen Verify."
             .to_string()
     })?;
-    let salt = crate::user_partitions::resolve_active_credential(
-        &store,
-        &format!("aerocrypt_overlay_salt_{profile_id}"),
-    )
-    .ok()
-    .flatten()
-    .map(|s| s.to_string());
     crate::crypt_overlay_provider::validate_headerless_config_salt(
         &profile_id,
         &config_json,
