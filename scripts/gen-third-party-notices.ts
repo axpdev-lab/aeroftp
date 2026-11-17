@@ -109,7 +109,7 @@ export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> =
   },
   'cx448@0.1.1': {
     author: 'Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn',
-    source: 'https://github.com/dignifiedquire/cx448 (README: based on crate-crypto/x448 by Kevaundray Wedderburn, BSD-3-Clause, and RustCrypto/elliptic-curves#1121; no copyright notice in repo)',
+    source: 'https://github.com/dignifiedquire/cx448 (README: based on crate-crypto/x448 by Kevaundray Wedderburn, BSD-3-Clause, and RustCrypto/elliptic-curves#1121)',
   },
   'dispatch2@0.3.1': {
     author: 'Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>',
@@ -1098,6 +1098,8 @@ export function generateNoticesMarkdown(
           for (const n of pkgNotices) {
             lines.push(`  - ${n.notice} (${n.file})`);
           }
+        } else if (comp.noticeFiles.length > 0) {
+          lines.push(`  - Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')}`);
         } else {
           lines.push(`  - No copyright notice is shipped in the package`);
         }
@@ -1121,8 +1123,18 @@ export function generateNoticesMarkdown(
           }
           const author = pinned?.author || ((comp.authors && comp.authors.length > 0) ? comp.authors.join(', ') : 'Unknown Author');
           const holder = pinned?.copyrightHolder || author;
+
+          const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
+          const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded);
+
           if (pinned?.year) {
             attributionLines.push(`Copyright (c) ${pinned.year} ${holder} (${comp.name})`);
+          } else if (pkgNotices.length > 0) {
+            for (const n of pkgNotices) {
+              attributionLines.push(`${n.notice} (${comp.name})`);
+            }
+          } else if (comp.noticeFiles.length > 0) {
+            attributionLines.push(`Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')} (${comp.name})`);
           } else {
             const srcStr = pinned?.source ? ` per ${pinned.source}` : '';
             attributionLines.push(`No copyright notice is shipped upstream; authors${srcStr}: ${author} (${comp.name})`);

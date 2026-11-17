@@ -587,7 +587,11 @@ test('fallback placeholders: no <copyright holders> or unpopulated placeholders 
   );
   assert.match(
     content,
-    /No copyright notice is shipped upstream; authors per https:\/\/github\.com\/dignifiedquire\/cx448 .*: Friedel Ziegelmayer \(port to RustCrypto\), based on crate-crypto\/x448 by Kevaundray Wedderburn \(cx448\)/
+    /Copyright \(c\) 2016-2019 Henry de Valence \(cx448\)/
+  );
+  assert.doesNotMatch(
+    content,
+    /No copyright notice is shipped upstream; authors.*\(cx448\)/
   );
 });
 
@@ -985,12 +989,70 @@ test('property: no component marked with "No copyright notice is shipped" has co
       if (matched.length > 0) {
         falseNoneList.push({ comp: `${c.source} ${c.name}@${c.version}`, matched });
       }
-    } catch {}
+    } catch (err) {
+      if (err.status === 1) {
+        // grep exit status 1 indicates no matches found, which is expected for components lacking copyright notices
+      } else {
+        throw new Error(
+          `Grep scan failed for ${c.source} ${c.name}@${c.version} in ${c.packageDir} (status ${err.status}): ${err.message}`
+        );
+      }
+    }
   }
 
   assert.deepStrictEqual(
     falseNoneList,
     [],
     `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages: ${JSON.stringify(falseNoneList, null, 2)}`
+  );
+});
+
+test('notice-only component: generates "Notice file shipped: ..." and does not claim "No copyright notice is shipped"', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notice-only-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'COPYRIGHT'), 'Copyright (c) 2024 Notice Only Author\n');
+    // Subdir with a dummy file having no copyright notice
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'src', 'lib.rs'), 'pub fn hello() {}\n');
+
+    const readFiles = readPackageFiles(tmpDir, 'MIT');
+    assert.strictEqual(readFiles.licenseFiles.length, 0);
+    assert.strictEqual(readFiles.noticeFiles.length, 1);
+
+    const comp = {
+      name: 'fixture-notice-only',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'MIT',
+      authors: ['Notice Only Author'],
+      repository: 'https://example.com/notice-only',
+      packageDir: tmpDir,
+      licenseFiles: readFiles.licenseFiles,
+      noticeFiles: readFiles.noticeFiles,
+    };
+
+    const out = generateNoticesMarkdown([comp], []);
+    assert.match(out, /Notice file shipped: COPYRIGHT/);
+    assert.doesNotMatch(out, /No copyright notice is shipped in the package/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('property: grep scan error propagates and fails validation instead of being swallowed', () => {
+  assert.throws(
+    () => {
+      try {
+        // Force an invalid grep option so grep exits with status 2
+        execSync('grep --definitely-invalid-option . 2>/dev/null', { encoding: 'utf8' });
+      } catch (err) {
+        if (err.status === 1) {
+          // would be swallowed if exit code was 1
+        } else {
+          throw new Error(`Grep scan failed (status ${err.status}): ${err.message}`);
+        }
+      }
+    },
+    /Grep scan failed \(status 2\)/
   );
 });

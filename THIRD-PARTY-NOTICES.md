@@ -42053,7 +42053,10 @@ Authors for the following components as listed in package manifests or reviewed 
 
 ```text
 Copyright (c) 2016 Dropbox, Inc. (alloc-stdlib)
-No copyright notice is shipped upstream; authors per https://github.com/dignifiedquire/cx448 (README: based on crate-crypto/x448 by Kevaundray Wedderburn, BSD-3-Clause, and RustCrypto/elliptic-curves#1121; no copyright notice in repo): Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn (cx448)
+Copyright (c) 2016-2019 Henry de Valence (cx448)
+Copyright (c) 2016-2019 Isis Lovecruft, Henry de Valence (cx448)
+Copyright (c) 2016-2021 isis agora lovecruft (cx448)
+Copyright (c) 2020 Kevaundray Wedderburn (cx448)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
