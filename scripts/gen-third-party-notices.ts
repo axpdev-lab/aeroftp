@@ -90,6 +90,7 @@ export const KNOWN_NON_FREE_EXCEPTIONS: NonFreeException[] = [
 
 export interface FallbackAttribution {
   author: string;
+  copyrightHolder?: string;
   year?: string;
   source: string;
 }
@@ -100,7 +101,8 @@ export interface FallbackAttribution {
  */
 export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> = {
   'alloc-stdlib@0.2.4': {
-    author: 'Dropbox, Inc., Daniel Reiter Horn <danielrh@dropbox.com>',
+    author: 'Daniel Reiter Horn <danielrh@dropbox.com>',
+    copyrightHolder: 'Dropbox, Inc.',
     year: '2016',
     source: 'https://github.com/dropbox/rust-alloc-no-stdlib/blob/master/LICENSE (repository LICENSE: Copyright (c) 2016 Dropbox, Inc.; Cargo.toml authors: Daniel Reiter Horn)',
   },
@@ -202,11 +204,13 @@ export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> =
   },
   'r-efi@5.3.0': {
     author: 'David Rheinsberg, Red Hat, Inc., Microsoft Corporation',
+    copyrightHolder: 'Red Hat, Inc., Microsoft Corporation, David Rheinsberg',
     year: '2017-2023',
     source: 'https://github.com/r-efi/r-efi/blob/master/AUTHORS (AUTHORS file COPYRIGHT section: Copyright (C) 2017-2023 Red Hat, Inc., 2019-2023 Microsoft Corporation, 2022-2023 David Rheinsberg)',
   },
   'r-efi@6.0.0': {
     author: 'David Rheinsberg, Red Hat, Inc., Microsoft Corporation',
+    copyrightHolder: 'Red Hat, Inc., Microsoft Corporation, David Rheinsberg',
     year: '2017-2023',
     source: 'https://github.com/r-efi/r-efi/blob/master/AUTHORS (AUTHORS file COPYRIGHT section: Copyright (C) 2017-2023 Red Hat, Inc., 2019-2023 Microsoft Corporation, 2022-2023 David Rheinsberg)',
   },
@@ -902,7 +906,9 @@ export function generateNoticesMarkdown(
     lines.push('The following crates declare standard open-source licenses in their crate manifests without bundling');
     lines.push('a dedicated physical license text file in their published crate archives.');
     lines.push('In accordance with licensing requirements, the standard verbatim text for each applicable license is');
-    lines.push('provided below. The copyright holders for these components are the authors listed in their respective manifests or reviewed attributions.');
+    lines.push(
+      'provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.'
+    );
     lines.push('');
 
     // Map each component to its required standard license texts using exact parsed SPDX identifiers
@@ -958,7 +964,7 @@ export function generateNoticesMarkdown(
 
       lines.push(`### Standard License: ${licKey}`);
       lines.push('');
-      lines.push('The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:');
+      lines.push('Authors for the following components as listed in package manifests or reviewed attributions:');
       for (const comp of comps) {
         const key = `${comp.name}@${comp.version}`;
         const author = (comp.authors && comp.authors.length > 0)
@@ -984,8 +990,9 @@ export function generateNoticesMarkdown(
             throw new Error(`Component ${key} has no source specified in PINNED_FALLBACK_ATTRIBUTIONS`);
           }
           const author = pinned?.author || ((comp.authors && comp.authors.length > 0) ? comp.authors.join(', ') : 'Unknown Author');
+          const holder = pinned?.copyrightHolder || author;
           if (pinned?.year) {
-            attributionLines.push(`Copyright (c) ${pinned.year} ${author} (${comp.name})`);
+            attributionLines.push(`Copyright (c) ${pinned.year} ${holder} (${comp.name})`);
           } else {
             const srcStr = pinned?.source ? ` per ${pinned.source}` : '';
             attributionLines.push(`No copyright notice is shipped upstream; authors${srcStr}: ${author} (${comp.name})`);

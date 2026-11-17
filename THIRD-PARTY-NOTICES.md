@@ -41447,11 +41447,11 @@ freely, subject to the following restrictions:
 The following crates declare standard open-source licenses in their crate manifests without bundling
 a dedicated physical license text file in their published crate archives.
 In accordance with licensing requirements, the standard verbatim text for each applicable license is
-provided below. The copyright holders for these components are the authors listed in their respective manifests or reviewed attributions.
+provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.
 
 ### Standard License: Apache-2.0
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
 - `binary-merge@0.1.2` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
@@ -41727,12 +41727,12 @@ limitations under the License.
 
 ### Standard License: BSD-3-Clause
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `alloc-stdlib@0.2.4` - SPDX: `BSD-3-Clause` (authors: Daniel Reiter Horn <danielrh@dropbox.com>)
 - `cx448@0.1.1` - SPDX: `BSD-3-Clause` (authors: Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn)
 
 ```text
-Copyright (c) 2016 Dropbox, Inc., Daniel Reiter Horn <danielrh@dropbox.com> (alloc-stdlib)
+Copyright (c) 2016 Dropbox, Inc. (alloc-stdlib)
 No copyright notice is shipped upstream; authors per https://github.com/dignifiedquire/cx448 (README: based on crate-crypto/x448 by Kevaundray Wedderburn, BSD-3-Clause, and RustCrypto/elliptic-curves#1121; no copyright notice in repo): Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn (cx448)
 All rights reserved.
 
@@ -41749,7 +41749,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 ### Standard License: BSL-1.0
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `clipboard-win@5.4.3` - SPDX: `BSL-1.0` (authors: Douman <douman@gmx.se>)
 
 ```text
@@ -41780,7 +41780,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### Standard License: LGPL-2.1-or-later
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `r-efi@5.3.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
 - `r-efi@6.0.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
 
@@ -42291,7 +42291,7 @@ That's all there is to it!
 
 ### Standard License: MIT
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
 - `binary-merge@0.1.2` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
@@ -42399,7 +42399,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### Standard License: MPL-2.0
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `selectors@0.36.1` - SPDX: `MPL-2.0` (authors: The Servo Project Developers)
 
 ```text
@@ -42780,7 +42780,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 ### Standard License: Unlicense
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `pharos@0.5.3` - SPDX: `Unlicense` (authors: Naja Melan <najamelan@autistici.org>)
 
 ```text
@@ -42812,7 +42812,7 @@ For more information, please refer to <http://unlicense.org/>
 
 ### Standard License: Zlib
 
-The copyright holders for the following components are the authors listed in their package manifests or pinned reviewed attributions:
+Authors for the following components as listed in package manifests or reviewed attributions:
 - `dispatch2@0.3.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>)
 - `objc2-app-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
 - `objc2-cloud-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)

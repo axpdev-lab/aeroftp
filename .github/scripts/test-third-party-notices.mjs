@@ -660,9 +660,10 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   assert.match(content, /## Third-Party License Texts, Copyright Notices, and Files/);
   assert.match(content, /### Notice Entry/);
 
-  // Standard declarations for crates without physical files
+  // Standard declarations for crates without physical files (asserts source statement and NO ownership claim)
   assert.match(content, /## Standard License Texts for Components without Dedicated License Files/);
-  assert.match(content, /The copyright holders for the following components are the authors listed in their package manifests/);
+  assert.match(content, /Authors for the following components as listed in package manifests or reviewed attributions:/);
+  assert.doesNotMatch(content, /The copyright holders for (?:the following|these) components are the authors/);
 
   // Exclusions (dev deps and unused optional crates like aws-lc-fips-sys)
   assert.doesNotMatch(content, /\| vitest \|/);
@@ -843,4 +844,14 @@ test('anchor validation: excludes fenced code blocks from duplicate anchor detec
   // and an embedded <a id="..."> matching the component anchor.
   const out = generateNoticesMarkdown([compA], [], SPDX_STANDARD_LICENSES_FILE, []);
   assert.match(out, /<a id="notice-crate-with-id-in-license"><\/a>/);
+});
+
+test('alloc-stdlib: copyright line matches upstream license and separates author from copyright holder', () => {
+  const content = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  assert.match(content, /Copyright \(c\) 2016 Dropbox, Inc\. \(alloc-stdlib\)/);
+  assert.doesNotMatch(content, /Copyright \(c\) 2016 Dropbox, Inc\., Daniel Reiter Horn/);
+  assert.match(
+    content,
+    /- `alloc-stdlib@0\.2\.4` - SPDX: `BSD-3-Clause` \(authors: Daniel Reiter Horn <danielrh@dropbox\.com>\)/
+  );
 });
