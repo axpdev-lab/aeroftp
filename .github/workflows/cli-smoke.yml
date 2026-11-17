@@ -381,6 +381,9 @@ jobs:
       - name: Generate coverage
         working-directory: src-tauri
         shell: bash
+        env:
+          CARGO_PROFILE_DEV_DEBUG: line-tables-only
+          CARGO_PROFILE_TEST_DEBUG: line-tables-only
         # Baseline at T8 Fase A (2026-04-21): 11.73% lines, 9.59% functions.
         # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
         # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
