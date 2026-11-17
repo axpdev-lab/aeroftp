@@ -7382,11 +7382,123 @@ fn shell_quote_bash(s: &str) -> String {
     format!("'{}'", escaped)
 }
 
-/// Escape a string so it can be safely placed inside a PowerShell single-quoted literal.
+/// A string as a PowerShell expression that evaluates to it, in printable
+/// ASCII only.
+///
+/// A printable ASCII string is a single-quoted literal, as it always was
+/// (`'it''s'`). Any other character is written outside the literal, as
+/// `[char]::ConvertFromUtf32(0x...)`, and the parts are joined with `+`
+/// inside parentheses, which also works as a command argument. Inside the
+/// literal it could close it, and what followed ran as code when the script
+/// did. PowerShell closes a single-quoted literal on the typographic quotes
+/// U+2018 to U+201B as on `'`. And Windows PowerShell 5.1 reads a script
+/// with no byte order mark as Windows-1252, where a byte of the UTF-8 of an
+/// ordinary letter is such a quote: `ё` is `D1 91`, and `0x91` is U+2018.
+/// No literal keeps a byte that a code page can turn into a quote (the
+/// comments may, where a quote closes nothing), and the shebang line stays
+/// the first bytes.
 fn shell_quote_pwsh(s: &str) -> String {
-    // PowerShell single-quote rule: a literal ' is written as ''.
-    let escaped = s.replace('\'', "''");
-    format!("'{}'", escaped)
+    let mut parts: Vec<String> = Vec::new();
+    let mut literal = String::new();
+    for c in s.chars() {
+        if (' '..='~').contains(&c) {
+            if c == '\'' {
+                literal.push('\'');
+            }
+            literal.push(c);
+        } else {
+            if !literal.is_empty() {
+                parts.push(format!("'{}'", std::mem::take(&mut literal)));
+            }
+            parts.push(format!("[char]::ConvertFromUtf32(0x{:X})", u32::from(c)));
+        }
+    }
+    if parts.is_empty() {
+        return format!("'{literal}'");
+    }
+    if !literal.is_empty() {
+        parts.push(format!("'{literal}'"));
+    }
+    // `ConvertFromUtf32` returns a string, so `+` joins whichever part
+    // comes first.
+    format!("({})", parts.join(" + "))
+}
+
+/// A name or a description as the text of one `#` comment line. A comment
+/// ends at the end of its line, and PowerShell ends a line at a bare CR as
+/// at a LF: a CR used to stay, and what followed it ran as code. Every
+/// control character and line or paragraph separator becomes a space.
+fn script_comment_text(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// `value` as one argument of a native command in a PowerShell script.
+///
+/// PowerShell on Unix expands an argument that is not a quoted string as a
+/// wildcard (`*`, `?`, `[`) when it matches files in the working directory,
+/// and a leading `~` as the home folder; a variable or a parenthesized
+/// expression counts as not quoted. A printable ASCII value is its
+/// single-quoted literal, as before; any other value is bound to `var` in
+/// `assignments` and passed as `"$var"`, a quoted string.
+fn pwsh_native_arg(value: &str, var: &str, assignments: &mut String) -> String {
+    let quoted = shell_quote_pwsh(value);
+    if quoted.starts_with('\'') {
+        return quoted;
+    }
+    assignments.push_str(&format!("${var} = {quoted}\n"));
+    format!("\"${var}\"")
+}
+
+/// Whether PowerShell's tokenizer would take the `#` comment line `line` for
+/// the start of a signature block, after which the script does not run: it
+/// lowercases the comment, drops its whitespace, and takes a text of 14 to 34
+/// characters within an edit distance of 10 of `sig#beginsignatureblock\n`.
+/// Checked with and without the leading `#`, and one step wider each way.
+fn pwsh_reads_as_signature_start(line: &str) -> bool {
+    const BEGIN: &str = "sig#beginsignatureblock\n";
+    let text: Vec<char> = line
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        // .NET's `ToLowerInvariant` maps one char to one: `İ` is `i`, where
+        // Rust's `to_lowercase` adds a combining dot.
+        .map(|c| c.to_lowercase().next().unwrap_or(c))
+        .collect();
+    let target: Vec<char> = BEGIN.chars().collect();
+    let distance = |a: &[char]| {
+        let mut row: Vec<usize> = (0..=target.len()).collect();
+        for (i, ca) in a.iter().enumerate() {
+            let mut prev = row[0];
+            row[0] = i + 1;
+            for (j, cb) in target.iter().enumerate() {
+                let cur = row[j + 1];
+                row[j + 1] = (prev + usize::from(ca != cb)).min(row[j] + 1).min(cur + 1);
+                prev = cur;
+            }
+        }
+        row[target.len()]
+    };
+    let close = |a: &[char]| (13..=35).contains(&a.len()) && distance(a) < 11;
+    close(&text) || text.strip_prefix(&['#']).is_some_and(close)
+}
+
+/// A header comment of a PowerShell script that shows `text` after `label`,
+/// or names the metadata line when PowerShell would read the comment as the
+/// start of a signature block and refuse to run the script.
+fn pwsh_header_comment(label: &str, text: &str) -> String {
+    let line = format!("# {label}: {}", script_comment_text(text));
+    if pwsh_reads_as_signature_start(&line) {
+        format!("# {label}: (see the AEROFTP-META line)\n")
+    } else {
+        format!("{line}\n")
+    }
 }
 
 fn direction_cli_value(direction: CompareDirection) -> &'static str {
@@ -7447,7 +7559,14 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
         retries_sleep: retries_sleep.clone(),
         backup_dir: backup_dir.map(str::to_string),
     };
-    let meta_json = serde_json::to_string(&meta).map_err(|e| e.to_string())?;
+    // The metadata line is a comment too. JSON escapes CR and LF in a
+    // string, but leaves NEL and the line and paragraph separators as they
+    // are: they are escaped here, which still reads back as the same string.
+    let meta_json = serde_json::to_string(&meta)
+        .map_err(|e| e.to_string())?
+        .replace('\u{0085}', "\\u0085")
+        .replace('\u{2028}', "\\u2028")
+        .replace('\u{2029}', "\\u2029");
 
     let generated_at = Utc::now().to_rfc3339();
     let direction = direction_cli_value(profile.direction);
@@ -7461,18 +7580,18 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             if !template_name.is_empty() {
                 out.push_str(&format!(
                     "# Template: {}\n",
-                    template_name.replace('\n', " ")
+                    script_comment_text(template_name)
                 ));
             }
             if !template_description.is_empty() {
                 out.push_str(&format!(
                     "# Description: {}\n",
-                    template_description.replace('\n', " ")
+                    script_comment_text(template_description)
                 ));
             }
             out.push_str(&format!(
                 "# Profile: {}\n",
-                profile_display_name.replace('\n', " ")
+                script_comment_text(profile_display_name)
             ));
             out.push_str("# Re-import via AeroSync > Templates > Import.\n");
             out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
@@ -7521,21 +7640,12 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
             out.push_str("# AeroFTP sync script (auto-generated)\n");
             out.push_str(&format!("# Generated: {}\n", generated_at));
             if !template_name.is_empty() {
-                out.push_str(&format!(
-                    "# Template: {}\n",
-                    template_name.replace('\n', " ")
-                ));
+                out.push_str(&pwsh_header_comment("Template", template_name));
             }
             if !template_description.is_empty() {
-                out.push_str(&format!(
-                    "# Description: {}\n",
-                    template_description.replace('\n', " ")
-                ));
+                out.push_str(&pwsh_header_comment("Description", template_description));
             }
-            out.push_str(&format!(
-                "# Profile: {}\n",
-                profile_display_name.replace('\n', " ")
-            ));
+            out.push_str(&pwsh_header_comment("Profile", profile_display_name));
             out.push_str("# Re-import via AeroSync > Templates > Import.\n");
             out.push_str(&format!("# {}{}\n", SYNC_SCRIPT_META_PREFIX, meta_json));
             out.push_str("$ErrorActionPreference = 'Stop'\n\n");
@@ -7544,38 +7654,42 @@ pub fn export_sync_script(opts: SyncScriptExportOptions<'_>) -> Result<String, S
                 shell_quote_pwsh(profile_display_name)
             ));
             out.push_str(&format!("$Local   = {}\n", shell_quote_pwsh(local_path)));
-            out.push_str(&format!("$Remote  = {}\n\n", shell_quote_pwsh(remote_path)));
-            out.push_str("aeroftp-cli sync `\n");
-            out.push_str("  --profile $Profile `\n");
-            out.push_str("  $Local `\n");
-            out.push_str("  $Remote `\n");
-            out.push_str(&format!("  --direction {} `\n", direction));
+            out.push_str(&format!("$Remote  = {}\n", shell_quote_pwsh(remote_path)));
+            // Every argument is a quoted string: see `pwsh_native_arg`.
+            let mut assignments = String::new();
+            let mut cmd = String::from("aeroftp-cli sync `\n");
+            cmd.push_str("  --profile \"$Profile\" `\n");
+            cmd.push_str("  \"$Local\" `\n");
+            cmd.push_str("  \"$Remote\" `\n");
+            cmd.push_str(&format!("  --direction {} `\n", direction));
             if profile.delete_orphans {
-                out.push_str("  --delete `\n");
-                out.push_str(&format!("  --max-delete {} `\n", UNATTENDED_MAX_DELETE));
+                cmd.push_str("  --delete `\n");
+                cmd.push_str(&format!("  --max-delete {} `\n", UNATTENDED_MAX_DELETE));
             }
             if profile.update_only && profile.direction != CompareDirection::Bidirectional {
-                out.push_str("  --update `\n");
+                cmd.push_str("  --update `\n");
                 if let Some(secs) = modify_window {
-                    out.push_str(&format!("  --modify-window {} `\n", secs));
+                    cmd.push_str(&format!("  --modify-window {} `\n", secs));
                 }
             }
-            for pattern in exclude_patterns {
-                out.push_str(&format!("  --exclude {} `\n", shell_quote_pwsh(pattern)));
+            for (n, pattern) in exclude_patterns.iter().enumerate() {
+                let arg = pwsh_native_arg(pattern, &format!("Exclude{}", n + 1), &mut assignments);
+                cmd.push_str(&format!("  --exclude {arg} `\n"));
             }
             if let Some(retries) = max_retries {
-                out.push_str(&format!("  --retries {} `\n", retries));
+                cmd.push_str(&format!("  --retries {} `\n", retries));
             }
             if let Some(sleep) = &retries_sleep {
-                out.push_str(&format!(
-                    "  --retries-sleep {} `\n",
-                    shell_quote_pwsh(sleep)
-                ));
+                let arg = pwsh_native_arg(sleep, "RetriesSleep", &mut assignments);
+                cmd.push_str(&format!("  --retries-sleep {arg} `\n"));
             }
-            if out.ends_with(" `\n") {
-                out.truncate(out.len() - 3);
-                out.push('\n');
+            if cmd.ends_with(" `\n") {
+                cmd.truncate(cmd.len() - 3);
+                cmd.push('\n');
             }
+            out.push_str(&assignments);
+            out.push('\n');
+            out.push_str(&cmd);
         }
     }
     Ok(out)
@@ -7803,6 +7917,589 @@ mod sync_script_tests {
     #[test]
     fn shell_quote_pwsh_doubles_apostrophe() {
         assert_eq!(shell_quote_pwsh("it's"), "'it''s'");
+    }
+
+    /// JSON leaves NEL, U+2028 and U+2029 raw in a string, and editors and
+    /// line-based tools may end a line at them: the metadata line of either
+    /// format carries them as JSON escapes, and the import reads the
+    /// original values back.
+    #[test]
+    fn the_metadata_line_escapes_every_line_end_and_reads_back_the_values() {
+        let profile = sample_profile();
+        let local = "C:\\proj\u{0085}a\u{2028}b\u{2029}c";
+        let remote = "/backups/\u{2028}x\u{0085}\u{2029}";
+        for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+            let script = export_sync_script(SyncScriptExportOptions {
+                profile: &profile,
+                profile_display_name: "My Server",
+                template_name: "t",
+                template_description: "",
+                local_path: local,
+                remote_path: remote,
+                exclude_patterns: &profile.exclude_patterns,
+                backup_dir: None,
+                modify_window: None,
+                format,
+            })
+            .unwrap();
+            let meta_line = script
+                .split('\n')
+                .find(|l| l.starts_with("# AEROFTP-META: "))
+                .expect("metadata line");
+            for (raw, escape) in [
+                ('\u{0085}', "\\u0085"),
+                ('\u{2028}', "\\u2028"),
+                ('\u{2029}', "\\u2029"),
+            ] {
+                assert!(!meta_line.contains(raw), "{format:?}: {meta_line:?}");
+                assert!(meta_line.contains(escape), "{format:?}: {meta_line:?}");
+            }
+            let meta = import_sync_script(&script).unwrap();
+            assert_eq!(meta.local_path, local, "{format:?}");
+            assert_eq!(meta.remote_path, remote, "{format:?}");
+        }
+    }
+
+    /// Every header field (template name, description, profile name) of
+    /// either format stays on its own comment line whatever line end or
+    /// separator it holds, and the script that follows is the one written.
+    #[test]
+    fn every_header_field_stays_one_comment_line_in_both_formats() {
+        let profile = sample_profile();
+        let breaks = ["\r", "\n", "\r\n", "\u{0085}", "\u{2028}", "\u{2029}"];
+        for format in [SyncScriptFormat::Bash, SyncScriptFormat::PowerShell] {
+            for field in 0..3 {
+                for brk in breaks {
+                    let text = format!("a{brk}echo pwned{brk}b");
+                    let pick = |n: usize, default: &'static str| {
+                        if n == field {
+                            text.clone()
+                        } else {
+                            default.to_string()
+                        }
+                    };
+                    let (template, description, name) =
+                        (pick(0, "t"), pick(1, "d"), pick(2, "My Server"));
+                    let script = export_sync_script(SyncScriptExportOptions {
+                        profile: &profile,
+                        profile_display_name: &name,
+                        template_name: &template,
+                        template_description: &description,
+                        local_path: "/l",
+                        remote_path: "/r",
+                        exclude_patterns: &[],
+                        backup_dir: None,
+                        modify_window: None,
+                        format,
+                    })
+                    .unwrap();
+                    // The header: every line up to the metadata line.
+                    let meta = script.find("# AEROFTP-META: ").expect("metadata line");
+                    let header = &script[..meta];
+                    assert!(
+                        !header.contains(['\r', '\u{0085}', '\u{2028}', '\u{2029}']),
+                        "{format:?} field {field} {brk:?}:\n{script}"
+                    );
+                    assert!(
+                        header.lines().all(|l| l.starts_with('#')),
+                        "{format:?} field {field} {brk:?}:\n{script}"
+                    );
+                    let label = ["# Template: ", "# Description: ", "# Profile: "][field];
+                    let shown = header
+                        .lines()
+                        .find(|l| l.starts_with(label))
+                        .unwrap_or_else(|| panic!("{format:?} {label}:\n{script}"));
+                    assert!(shown.contains("echo pwned"), "{shown:?}");
+                }
+            }
+        }
+    }
+
+    /// A header field that PowerShell's tokenizer would read as the start of
+    /// a signature block (it then refuses to run the script) is not shown:
+    /// the comment names the metadata line, which keeps the value.
+    #[test]
+    fn a_header_field_never_reads_as_a_signature_block() {
+        assert!(pwsh_reads_as_signature_start(
+            "# SIG # Begin signature block"
+        ));
+        assert!(pwsh_reads_as_signature_start(
+            "# Profile: SIG # Begin signature block"
+        ));
+        assert!(pwsh_reads_as_signature_start(
+            "# Profile: S\u{130}G # Beg\u{130}n signature block"
+        ));
+        assert!(!pwsh_reads_as_signature_start("# Profile: My Server"));
+        assert!(!pwsh_reads_as_signature_start(
+            "# Profile: (see the AEROFTP-META line)"
+        ));
+        let profile = sample_profile();
+        for name in [
+            "SIG # Begin signature block",
+            "sig#beginsignatureblock",
+            "SIG # Begin signatur\u{7}e block",
+            "SIG # Begin signature",
+            "S\u{130}G # Beg\u{130}n signature block",
+        ] {
+            let script = export_sync_script(SyncScriptExportOptions {
+                profile: &profile,
+                profile_display_name: name,
+                template_name: name,
+                template_description: name,
+                local_path: "/l",
+                remote_path: "/r",
+                exclude_patterns: &[],
+                backup_dir: None,
+                modify_window: None,
+                format: SyncScriptFormat::PowerShell,
+            })
+            .unwrap();
+            for line in script.lines().filter(|l| l.starts_with('#')) {
+                if line.starts_with("# AEROFTP-META: ") {
+                    continue;
+                }
+                assert!(!pwsh_reads_as_signature_start(line), "{line:?}");
+            }
+            assert_eq!(import_sync_script(&script).unwrap().profile_name, name);
+        }
+    }
+
+    /// PowerShell on Unix expands a native argument that is not a quoted
+    /// string when it matches files: with `$Local` or an expression the
+    /// command got `proj1` for `proj?` and `café-one` for `café*`. Run from
+    /// a folder holding such files, the real `aeroftp-cli` (a native stub
+    /// here) gets every value as written.
+    #[cfg(unix)]
+    #[test]
+    fn a_wildcard_value_reaches_the_native_command_as_written() {
+        let Ok(run) = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+            .output()
+        else {
+            assert!(
+                std::env::var_os("GITHUB_ACTIONS").is_none(),
+                "pwsh not found on the CI runner"
+            );
+            eprintln!("no pwsh here: the native-argument test did not run");
+            return;
+        };
+        assert!(run.status.success());
+        let dir = tempfile::tempdir().unwrap();
+        let work = dir.path().join("work");
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::create_dir_all(&bin).unwrap();
+        for file in ["proj1", "rem-x", "caf\u{e9}-one", "a.log", "My-file"] {
+            std::fs::write(work.join(file), b"").unwrap();
+        }
+        crate::util::script_stub::install(
+            bin.join("aeroftp-cli"),
+            "for a in \"$@\"; do printf '%s\\n' \"$a\"; done > \"$AEROFTP_ARGS_OUT\"\n",
+        );
+        let mut profile = sample_profile();
+        profile.exclude_patterns = vec!["caf\u{e9}*".into(), "*.log".into()];
+        let script = export_sync_script(SyncScriptExportOptions {
+            profile: &profile,
+            profile_display_name: "My*",
+            template_name: "t",
+            template_description: "",
+            local_path: "proj?",
+            remote_path: "rem*",
+            exclude_patterns: &profile.exclude_patterns,
+            backup_dir: None,
+            modify_window: None,
+            format: SyncScriptFormat::PowerShell,
+        })
+        .unwrap();
+        let script_path = dir.path().join("sync.ps1");
+        std::fs::write(&script_path, script.as_bytes()).unwrap();
+        let out = dir.path().join("args.txt");
+        let path = format!(
+            "{}:{}",
+            bin.display(),
+            std::env::var("PATH").unwrap_or_default()
+        );
+        let run = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-NonInteractive", "-File"])
+            .arg(&script_path)
+            .current_dir(&work)
+            .env("PATH", path)
+            .env("AEROFTP_ARGS_OUT", &out)
+            .output()
+            .unwrap();
+        let args = std::fs::read_to_string(&out).unwrap_or_else(|_| {
+            panic!(
+                "the script did not reach aeroftp-cli: {}",
+                String::from_utf8_lossy(&run.stderr)
+            )
+        });
+        let args: Vec<&str> = args.lines().collect();
+        for value in ["My*", "proj?", "rem*", "caf\u{e9}*", "*.log"] {
+            assert!(args.contains(&value), "{value:?} -> {args:?}\n{script}");
+        }
+        for expanded in ["proj1", "rem-x", "caf\u{e9}-one", "a.log", "My-file"] {
+            assert!(!args.contains(&expanded), "{expanded:?} -> {args:?}");
+        }
+    }
+
+    /// The PowerShell script of `local` as the local folder, `template` as
+    /// the template name: the one place both a value and a comment go.
+    fn pwsh_script_of(local: &str, template: &str) -> String {
+        let profile = sample_profile();
+        export_sync_script(SyncScriptExportOptions {
+            profile: &profile,
+            profile_display_name: "My Server",
+            template_name: template,
+            template_description: "",
+            local_path: local,
+            remote_path: "/backups/proj",
+            exclude_patterns: &profile.exclude_patterns,
+            backup_dir: None,
+            modify_window: None,
+            format: SyncScriptFormat::PowerShell,
+        })
+        .unwrap()
+    }
+
+    /// Strings a script must carry unchanged: typographic quotes, letters
+    /// whose UTF-8 holds a byte Windows-1252 reads as a quote (`ё` is
+    /// `D1 91`), a character outside the BMP, an apostrophe, a bare CR.
+    const PWSH_VALUES: [&str; 6] = [
+        "C:\\Users\\Me\\proj",
+        "it's ‘mine’ ‚or‛ yours",
+        "Документы\\ёлка",
+        "😀 emoji",
+        "a\rb",
+        "’; New-Item -ItemType File -Path $env:AEROFTP_PWSH_MARKER #",
+    ];
+
+    /// For an ASCII value the script is what it always was: one
+    /// single-quoted literal, the ASCII apostrophe doubled.
+    #[test]
+    fn a_printable_ascii_value_is_the_same_single_quoted_literal_as_before() {
+        let script = pwsh_script_of("C:\\Users\\Me\\it's", "Nightly");
+        let lines: Vec<&str> = script
+            .lines()
+            .filter(|l| !l.starts_with("# Generated: ") && !l.starts_with("# AEROFTP-META: "))
+            .collect();
+        assert_eq!(
+            lines[..8],
+            [
+                "#!/usr/bin/env pwsh",
+                "# AeroFTP sync script (auto-generated)",
+                "# Template: Nightly",
+                "# Profile: My Server",
+                "# Re-import via AeroSync > Templates > Import.",
+                "$ErrorActionPreference = 'Stop'",
+                "",
+                "$Profile = 'My Server'",
+            ]
+        );
+        assert!(
+            script.contains("\n$Local   = 'C:\\Users\\Me\\it''s'\n$Remote  = '/backups/proj'\n"),
+            "{script}"
+        );
+    }
+
+    /// Evaluate the expression `shell_quote_pwsh` writes, by the language's
+    /// documented rules: a literal opens and closes on any of the five single
+    /// quotes (U+0027, U+2018 to U+201B), and inside it two quotes in a row
+    /// stand for the second. A value must come back whole, with nothing left
+    /// after it: anything left would be code.
+    fn eval_pwsh_expression(text: &str) -> Option<(String, &str)> {
+        const QUOTES: [char; 5] = ['\'', '\u{2018}', '\u{2019}', '\u{201A}', '\u{201B}'];
+        fn literal(text: &str) -> Option<(String, &str)> {
+            let mut chars = text.char_indices().peekable();
+            let (_, open) = chars.next()?;
+            if !QUOTES.contains(&open) {
+                return None;
+            }
+            let mut value = String::new();
+            while let Some((i, c)) = chars.next() {
+                if !QUOTES.contains(&c) {
+                    value.push(c);
+                    continue;
+                }
+                match chars.peek() {
+                    Some(&(_, next)) if QUOTES.contains(&next) => {
+                        value.push(next);
+                        chars.next();
+                    }
+                    _ => return Some((value, &text[i + c.len_utf8()..])),
+                }
+            }
+            None
+        }
+        fn part(text: &str) -> Option<(String, &str)> {
+            if let Some(rest) = text.strip_prefix("[char]::ConvertFromUtf32(0x") {
+                let end = rest.find(')')?;
+                let c = char::from_u32(u32::from_str_radix(&rest[..end], 16).ok()?)?;
+                return Some((c.to_string(), &rest[end + 1..]));
+            }
+            literal(text)
+        }
+        let Some(mut rest) = text.strip_prefix('(') else {
+            return literal(text);
+        };
+        let mut value = String::new();
+        loop {
+            let (piece, after) = part(rest)?;
+            value.push_str(&piece);
+            if let Some(after) = after.strip_prefix(" + ") {
+                rest = after;
+            } else {
+                return Some((value, after.strip_prefix(')')?));
+            }
+        }
+    }
+
+    /// #56's sibling (PowerShell): every value comes back whole from the
+    /// expression written for it, the script is printable ASCII but for its
+    /// line ends and its comments, and a CR in a name stays in its comment.
+    /// Today's quoting fails the first: a typographic quote closed the
+    /// literal, and the rest of the value was left as code.
+    #[test]
+    fn every_value_reads_back_whole_and_nothing_follows_it() {
+        for value in PWSH_VALUES {
+            let quoted = shell_quote_pwsh(value);
+            assert_eq!(
+                eval_pwsh_expression(&quoted),
+                Some((value.to_string(), "")),
+                "{quoted}"
+            );
+            let script = pwsh_script_of(value, "t\r$(New-Item -ItemType File -Path x)\u{2028}y");
+            for line in script.split(['\r', '\n']) {
+                if !line.starts_with('#') {
+                    assert!(line.chars().all(|c| (' '..='~').contains(&c)), "{line:?}");
+                    assert!(
+                        !line.contains("New-Item") || line.starts_with("$Local   = "),
+                        "{line:?}"
+                    );
+                }
+            }
+            let local = script
+                .lines()
+                .find_map(|l| l.strip_prefix("$Local   = "))
+                .unwrap();
+            assert_eq!(eval_pwsh_expression(local), Some((value.to_string(), "")));
+            assert_eq!(import_sync_script(&script).unwrap().local_path, value);
+        }
+        // The old quoting, for the record: the literal closes early.
+        let old = format!("'{}'", PWSH_VALUES[5].replace('\'', "''"));
+        assert_ne!(eval_pwsh_expression(&old).unwrap().1, "");
+    }
+
+    /// The PowerShells on this machine (on Windows, Windows PowerShell 5.1 is
+    /// always there; `pwsh` is on the CI runners).
+    fn powershells() -> Vec<&'static str> {
+        let found: Vec<&str> = ["pwsh", "powershell"]
+            .into_iter()
+            .filter(|exe| {
+                std::process::Command::new(exe)
+                    .args(["-NoProfile", "-NonInteractive", "-Command", "exit 0"])
+                    .output()
+                    .is_ok_and(|o| o.status.success())
+            })
+            .collect();
+        if cfg!(windows) {
+            assert!(
+                found.contains(&"powershell"),
+                "Windows PowerShell 5.1 not found"
+            );
+        }
+        // The GitHub runners that run this test (Linux and Windows) ship
+        // `pwsh`: there a pass means it ran, not that it found nothing.
+        if std::env::var_os("GITHUB_ACTIONS").is_some() {
+            assert!(found.contains(&"pwsh"), "pwsh not found on the CI runner");
+        }
+        found
+    }
+
+    /// Run `script` (written as the app writes it: UTF-8, no byte order
+    /// mark) in `shell`, with `aeroftp-cli` replaced by a function that
+    /// records its arguments. The arguments, and whether the marker file a
+    /// value's code would create exists.
+    fn run_pwsh_script(shell: &str, script: &str) -> (Vec<String>, bool) {
+        let dir = tempfile::tempdir().unwrap();
+        let script_path = dir.path().join("sync.ps1");
+        std::fs::write(&script_path, script.as_bytes()).unwrap();
+        let probe = dir.path().join("probe.ps1");
+        std::fs::write(
+            &probe,
+            "param($Script, $Out)\n\
+             function aeroftp-cli { ConvertTo-Json -InputObject @($args) -Compress | Set-Content -LiteralPath $Out -Encoding UTF8 }\n\
+             . $Script\n",
+        )
+        .unwrap();
+        let out = dir.path().join("args.json");
+        let marker = dir.path().join("marker");
+        let run = std::process::Command::new(shell)
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(&probe)
+            .arg(&script_path)
+            .arg(&out)
+            .env("AEROFTP_PWSH_MARKER", &marker)
+            .output()
+            .unwrap();
+        let args = std::fs::read_to_string(&out)
+            .ok()
+            .and_then(|json| serde_json::from_str(json.trim_start_matches('\u{feff}')).ok())
+            .unwrap_or_else(|| {
+                panic!(
+                    "{shell} did not run the script: {}",
+                    String::from_utf8_lossy(&run.stderr)
+                )
+            });
+        (args, marker.exists())
+    }
+
+    /// Whether PowerShell ends a single-quoted literal on one of `chars`.
+    fn closes_a_single_quote(chars: &[char]) -> bool {
+        chars
+            .iter()
+            .any(|c| matches!(c, '\'' | '\u{2018}'..='\u{201B}'))
+    }
+
+    /// How `shell` reads a script with no byte order mark: the characters it
+    /// sees for the UTF-8 bytes of `ё` and of `’`, each probed on its own (in
+    /// a double-byte code page such as 932 a trailing byte of one can pair
+    /// with the next byte). `pwsh` reads UTF-8; Windows PowerShell 5.1 reads
+    /// the active ANSI code page, Windows-1252 on the runners, or UTF-8.
+    fn pwsh_source_decoding(shell: &str) -> (Vec<char>, Vec<char>) {
+        (pwsh_decodes(shell, "ё"), pwsh_decodes(shell, "’"))
+    }
+
+    /// The characters `shell` reads for the UTF-8 bytes of `text` in a
+    /// script with no byte order mark.
+    fn pwsh_decodes(shell: &str, text: &str) -> Vec<char> {
+        let dir = tempfile::tempdir().unwrap();
+        let probe = dir.path().join("decoding.ps1");
+        // A double-quoted string, closed by an ASCII space first: none of
+        // these bytes reads as a double quote under UTF-8 or Windows-1252.
+        std::fs::write(
+            &probe,
+            format!(
+                "Set-Content -LiteralPath $args[0] -Encoding ASCII -Value ((\"{text} \".ToCharArray() | ForEach-Object {{ [int]$_ }}) -join ',')\n"
+            ),
+        )
+        .unwrap();
+        let out = dir.path().join("decoding.txt");
+        let run = std::process::Command::new(shell)
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+            ])
+            .arg(&probe)
+            .arg(&out)
+            .output()
+            .unwrap();
+        let text = std::fs::read_to_string(&out).unwrap_or_else(|_| {
+            panic!(
+                "{shell} did not run the decoding probe: {}",
+                String::from_utf8_lossy(&run.stderr)
+            )
+        });
+        let mut chars: Vec<char> = text
+            .trim()
+            .split(',')
+            .map(|n| char::from_u32(n.parse().unwrap()).unwrap())
+            .collect();
+        // The space that closes the probe's text, which a lead byte may
+        // have taken with it.
+        if chars.last() == Some(&' ') {
+            chars.pop();
+        }
+        chars
+    }
+
+    /// The hole of the old quoting follows the source decoding: under UTF-8
+    /// it is the typographic quote, under Windows-1252 the `0x91` inside the
+    /// UTF-8 of `ё` (only the five bytes involved are mapped here).
+    #[test]
+    fn the_old_quoting_hole_follows_the_source_decoding() {
+        let utf8 = |s: &str| s.chars().collect::<Vec<_>>();
+        let cp1252 = |s: &str| {
+            s.bytes()
+                .map(|b| match b {
+                    0x80 => '\u{20AC}',
+                    0x91 => '\u{2018}',
+                    0x99 => '\u{2122}',
+                    b => char::from(b),
+                })
+                .collect::<Vec<_>>()
+        };
+        assert!(!closes_a_single_quote(&utf8("ё")));
+        assert!(closes_a_single_quote(&utf8("’")));
+        assert_eq!(cp1252("ё"), ['\u{d1}', '\u{2018}']);
+        assert!(closes_a_single_quote(&cp1252("ё")));
+        assert_eq!(cp1252("’"), ['\u{e2}', '\u{20AC}', '\u{2122}']);
+        assert!(!closes_a_single_quote(&cp1252("’")));
+    }
+
+    /// The same on the real thing: every PowerShell on the machine runs the
+    /// script with each value as one argument, and runs no code of it. With
+    /// today's quoting it ran the code after a character the shell reads as a
+    /// single quote: the typographic quote in `pwsh`, which reads the script
+    /// as UTF-8, and the `0x91` of `ё` in Windows PowerShell 5.1 under
+    /// Windows-1252. The test measures each shell's decoding, shows the hole
+    /// it leaves, then the fix.
+    #[test]
+    fn every_powershell_runs_the_script_with_the_values_it_was_given() {
+        let shells = powershells();
+        if shells.is_empty() {
+            eprintln!("no PowerShell here: only the tokenizer test ran");
+            return;
+        }
+        let attack = "; New-Item -ItemType File -Path $env:AEROFTP_PWSH_MARKER #";
+        for shell in shells {
+            for value in PWSH_VALUES {
+                let script = pwsh_script_of(
+                    value,
+                    "t\rNew-Item -ItemType File -Path $env:AEROFTP_PWSH_MARKER",
+                );
+                let (args, ran) = run_pwsh_script(shell, &script);
+                assert!(!ran, "{shell}: a value or a comment ran as code: {value:?}");
+                assert_eq!(
+                    args.iter().filter(|a| *a == value).count(),
+                    1,
+                    "{shell}: {value:?} -> {args:?}"
+                );
+            }
+            // Today's quoting, on the same shell: the hole it leaves.
+            let old = |value: &str| {
+                format!(
+                    "$ErrorActionPreference = 'Stop'\n$Local = '{}'\naeroftp-cli $Local\n",
+                    value.replace('\'', "''")
+                )
+            };
+            // What the shell reads for those bytes decides where the old
+            // literal closes; `pwsh` always reads UTF-8, so it shows the hole.
+            let (yo, quote) = pwsh_source_decoding(shell);
+            if shell == "pwsh" {
+                assert_eq!(quote, ['’'], "pwsh reads a script as UTF-8");
+            }
+            let (_, ran) = run_pwsh_script(shell, &old(&format!("’{attack}")));
+            assert_eq!(
+                ran,
+                closes_a_single_quote(&quote),
+                "{shell}: a typographic quote read as {quote:?}"
+            );
+            let (_, ran) = run_pwsh_script(shell, &old(&format!("ё{attack}")));
+            assert_eq!(
+                ran,
+                closes_a_single_quote(&yo),
+                "{shell}: `ё` read as {yo:?}"
+            );
+        }
     }
 
     #[test]
