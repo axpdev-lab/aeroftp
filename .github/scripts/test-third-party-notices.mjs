@@ -28,6 +28,8 @@ import {
   licenseTermsOf,
   vendoredFolders,
   isSpdxHeaderLine,
+  assertNoGeneratedPlaceholders,
+  KNOWN_SPDX_TAG_MENTIONS,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -920,6 +922,8 @@ test('bundled code: a header under the declared license with its own terms is re
     const batTerms = 'You may use, copy, modify and distribute this script provided you keep this notice.';
     write('lib/build.bat', `@echo off\nREM -- Copyright (c) 2016 Batch Vendor\nREM -- ${batTerms}\nREM -- SPDX-License-Identifier: MIT\n`);
     write('lib/tpl.js', '/*\n * Copyright (c) <year> <copyright holders>\n * SPDX-License-Identifier: MIT\n */\n');
+    const tplTerms = 'Permission is granted to use this file only within the Foo engine.';
+    write('lib/tplterms.js', `/*\n * Copyright (c) <year> <copyright holders>\n * ${tplTerms}\n * SPDX-License-Identifier: MIT\n */\n`);
     write('lib/std.js', `/*\n * Copyright (c) 2019 Standard Vendor\n${mitTerms.map((l) => (l ? ` * ${l}` : ' *')).join('\n')}\n * SPDX-License-Identifier: MIT\n */\n`);
     const comp = { name: 'own-terms-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'own-terms-pkg@1.0.0') };
     const md = generateNoticesMarkdown([comp], []);
@@ -930,6 +934,8 @@ test('bundled code: a header under the declared license with its own terms is re
     assert.ok(section.includes(mayTerms), 'permission text in other words is reproduced too');
     // Every accepted comment style keeps its block: holder and terms of a `REM --` header.
     assert.ok(section.includes(batTerms), 'the terms of a REM header are reproduced');
+    // A header reproduced as shipped keeps its template line, and generation does not fail on it.
+    assert.ok(section.includes(`Copyright (c) <year> <copyright holders>\n${tplTerms}`), 'the template header is reproduced verbatim');
     assert.match(md, /^ {2}- Copyright \(c\) 2016 Batch Vendor \(/m);
     assert.doesNotMatch(section, /^echo off$/m, 'a batch command is no comment line');
     assert.doesNotMatch(section, /lib\/std\.js/, 'a header with the standard terms is not repeated');
@@ -972,6 +978,14 @@ test('bundled code: a header covered by a license text shipped beside the code i
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('assertNoGeneratedPlaceholders: a placeholder fails in generated text, not in a block reproduced as shipped', () => {
+  const block = '```text\nCopyright (c) <year> <copyright holders>\nPermission is granted.\n```';
+  assert.doesNotThrow(() => assertNoGeneratedPlaceholders(`# Notices\n\n${block}\n`, [block]));
+  assert.throws(() => assertNoGeneratedPlaceholders(`# Notices\n\n${block}\n`, []), /unpopulated placeholders/);
+  assert.throws(() => assertNoGeneratedPlaceholders(`- Copyright (c) <copyright holders>\n\n${block}\n`, [block]), /unpopulated placeholders/);
+  assert.throws(() => assertNoGeneratedPlaceholders('- authors: see repository maintainers\n', []), /unpopulated placeholders/);
 });
 
 test('isSpdxHeaderLine: a comment line is a header whatever precedes the tag, prose and list items are not', () => {
@@ -1023,7 +1037,18 @@ test('bundled code: a header expression made of SPDX tokens that does not parse 
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
     write('lib/broken.c', '/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'/);
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'\. If the line only mentions the tag, add 'malformed-pkg:lib\/broken\.c' with the reason to KNOWN_SPDX_TAG_MENTIONS/);
+    fs.rmSync(path.join(tmpDir, 'lib/broken.c'));
+    // A comment that mentions the tag fails like a malformed header: the remedy
+    // is a reviewed entry, never a guess from the words before the tag.
+    write('lib/example.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /in lib\/example\.js: 'MIT \(preferred\)'/);
+    const listed = { 'malformed-pkg:lib/example.js': 'a usage example in a comment, not a header' };
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known, listed).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
+    // Only the listed file is skipped: the same line elsewhere still fails.
+    write('lib/other.js', '// Example: SPDX-License-Identifier: MIT (preferred)\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known, listed), /in lib\/other\.js/);
+    assert.deepStrictEqual(KNOWN_SPDX_TAG_MENTIONS, {}, 'no reviewed mention is needed on the current tree');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -1017,6 +1017,17 @@ export const UNREPRODUCIBLE_HEADER_IDS: Record<string, string> = {
   'Apache-2.inner': 'muda 0.19 (src/menu.rs, src/items/*.rs): a typo of Apache-2.0, which muda declares (Apache-2.0 OR MIT)',
 };
 
+/**
+ * Reviewed lines that carry an SPDX-License-Identifier tag in a header's
+ * position but only mention it (`// Example: SPDX-License-Identifier: MIT
+ * (preferred)`), keyed by `<package>:<file>` with the reason. A tag that does
+ * not parse fails the generation unless its line is listed here: it is never
+ * skipped by guessing from the words around it, because that guess would also
+ * skip real headers (measured: a rule on the comment leader alone skipped 258
+ * of the 3727 tag lines of the dependency tree).
+ */
+export const KNOWN_SPDX_TAG_MENTIONS: Record<string, string> = {};
+
 // A comment leader: C and C++ (`//`, `/*`, ` *`), shell and Python (`#`),
 // Lisp and INI (`;`), Lua, SQL and Haskell (`--`, `{-`), TeX (`%`), ARM
 // assembly (`@`), DCL (`$!`), HTML (`<!--`), OCaml (`(*`), batch and m4
@@ -1058,7 +1069,8 @@ export function isSpdxHeaderLine(line: string, rel: string, at: number): boolean
  */
 export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
-  knownLicenseIds: Set<string>
+  knownLicenseIds: Set<string>,
+  knownMentions: Record<string, string> = KNOWN_SPDX_TAG_MENTIONS
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
   // The license texts a REUSE folder of vendored code ships, by identifier
@@ -1105,7 +1117,10 @@ export function findBundledCodeUnderOtherLicenses(
         if (tokenizeSpdx(m[1]).length === 0) return;
         const parsed = spdxAlternatives(m[1]);
         if (!parsed) {
-          throw new Error(`${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'`);
+          if (`${comp.name}:${entryRel}` in knownMentions) return;
+          throw new Error(
+            `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add '${comp.name}:${entryRel}' with the reason to KNOWN_SPDX_TAG_MENTIONS`
+          );
         }
         const alternatives = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
         if (alternatives.length === 0) return;
@@ -1226,11 +1241,6 @@ export function findBundledCodeUnderOtherLicenses(
   });
 }
 
-/**
- * Fails on a placeholder left in a standard text's terms. The GPL-family
- * appendix after the terms ("How to Apply These Terms") is a template for
- * other works and keeps its placeholders verbatim.
- */
 /** The permission text of a license or header, without copyright lines, the SPDX tag or line breaks. */
 export function licenseTermsOf(text: string): string {
   return text
@@ -1241,6 +1251,11 @@ export function licenseTermsOf(text: string): string {
     .trim();
 }
 
+/**
+ * Fails on a placeholder left in a standard text's terms. The GPL-family
+ * appendix after the terms ("How to Apply These Terms") is a template for
+ * other works and keeps its placeholders verbatim.
+ */
 export function assertNoTermsPlaceholders(licKey: string, licText: string): void {
   const terms = licText.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms/i)[0];
   if (/<(?:copyright holders?|author|owner)>/i.test(terms) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(terms)) {
@@ -1298,6 +1313,20 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
           (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
       )
   );
+}
+
+/**
+ * Fails on a holder placeholder left in what the notices generate (a fallback
+ * text, a holder line). The blocks reproduced as shipped are left out: an
+ * upstream header or license file that keeps `<copyright holders>` is quoted,
+ * not filled in by us.
+ */
+export function assertNoGeneratedPlaceholders(output: string, verbatimBlocks: string[]): void {
+  let generated = output;
+  for (const block of verbatimBlocks) generated = generated.split(block).join('');
+  if (generated.includes('<copyright holders>') || generated.includes('see repository maintainers')) {
+    throw new Error('Generated notices contain unpopulated placeholders (<copyright holders> or see repository maintainers)');
+  }
 }
 
 export function generateNoticesMarkdown(
@@ -1465,6 +1494,15 @@ export function generateNoticesMarkdown(
   lines.push('from the bundled dependencies as extracted from their source distributions.');
   lines.push('');
 
+  // Texts reproduced as shipped (license files, source headers) keep their
+  // placeholders; the final check reads only what the notices generate.
+  const verbatimBlocks: string[] = [];
+  function makeVerbatimBlock(content: string): string {
+    const block = makeCodeBlock(content);
+    verbatimBlocks.push(block);
+    return block;
+  }
+
   function makeCodeBlock(content: string, lang = 'text'): string {
     const matches = content.match(/`+/g);
     let maxBackticks = 2;
@@ -1561,7 +1599,7 @@ export function generateNoticesMarkdown(
       }
     }
     lines.push('');
-    lines.push(makeCodeBlock(group.text));
+    lines.push(makeVerbatimBlock(group.text));
     lines.push('');
     groupIndex++;
   }
@@ -1764,7 +1802,7 @@ export function generateNoticesMarkdown(
             ownTermHeaders.push(
               `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) ships a header tagged \`${b.license}\` whose permission text differs from it, in ${h.files.map((f) => `\`${f}\``).join(', ')}:`,
               '',
-              makeCodeBlock(h.text),
+              makeVerbatimBlock(h.text),
               ''
             );
           }
@@ -1780,7 +1818,7 @@ export function generateNoticesMarkdown(
         // A header is reproduced only when its terms differ from the standard text's.
         const standardTerms = licenseTermsOf(standardLicenses[b.license.split(' WITH ')[0]] ?? '');
         for (const h of b.headers.filter((x) => licenseTermsOf(x.text) !== standardTerms)) {
-          byLicense.get(b.license)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeCodeBlock(h.text), '');
+          byLicense.get(b.license)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeVerbatimBlock(h.text), '');
         }
       }
     }
@@ -1817,9 +1855,7 @@ export function generateNoticesMarkdown(
   }
 
   const output = lines.join('\n') + '\n';
-  if (output.includes('<copyright holders>') || output.includes('see repository maintainers')) {
-    throw new Error('Generated notices contain unpopulated placeholders (<copyright holders> or see repository maintainers)');
-  }
+  assertNoGeneratedPlaceholders(output, verbatimBlocks);
 
   // Exclude fenced code blocks from anchor validation so license texts containing id="..." don't trigger false positives.
   // Match any markdown fenced block starting with 3 or more backticks and ending with a matching-length closing fence.
