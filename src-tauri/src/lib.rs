@@ -889,6 +889,7 @@ pub mod proc_stats;
 pub mod profile_auth_state;
 pub mod profile_export;
 pub mod profile_import_plan;
+pub mod profile_secret_copy;
 pub mod profile_security;
 mod trash_guard;
 // The CLI's import listings mark a profile whose endpoint would need cleartext
@@ -19660,8 +19661,10 @@ where
 /// duplicating a profile carries all of its credentials (the copy is complete,
 /// not just the password). Same [`per_profile_vault_keys`] source of truth as
 /// delete/export. Returns a map `base_prefix -> bool` of which secrets were
-/// copied, so the caller can set the duplicate's `hasStored*` flags. Best-effort
-/// per key.
+/// copied, so the caller can set the duplicate's `hasStored*` flags. All or
+/// nothing ([`profile_secret_copy::copy_profile_secret_keys`]): a secret that
+/// cannot be read or written fails the command with nothing left under
+/// `target_id`, so the caller saves no duplicate.
 #[tauri::command]
 async fn copy_profile_secrets(
     source_id: String,
@@ -19677,31 +19680,23 @@ async fn copy_profile_secrets(
     if expected_user_id.is_some() && expected_user_id != user_id {
         return Err(user_partitions::ACCOUNT_CHANGED.to_string());
     }
-    let mut copied = std::collections::HashMap::new();
-    let source_suffix = format!("_{}", source_id);
-    for source_key in per_profile_vault_keys(&source_id, protocol.as_deref()) {
-        // Derive the base prefix (everything before the trailing `_<source_id>`)
-        // and rebuild the target key for the same base under the new id.
-        let base = match source_key.strip_suffix(&source_suffix) {
-            Some(b) => b,
-            None => continue,
-        };
-        let target_key = format!("{}_{}", base, target_id);
-        let value = match user_id {
-            Some(user) => user_partitions::resolve_credential_for_user(&store, user, &source_key),
-            None => Ok(store.get(&source_key).ok().map(zeroize::Zeroizing::new)),
-        };
-        if let Ok(Some(value)) = value {
+    profile_secret_copy::copy_profile_secret_keys(
+        &source_id,
+        &target_id,
+        per_profile_vault_keys(&source_id, protocol.as_deref()),
+        |key| match user_id {
+            Some(user) => user_partitions::resolve_credential_for_user(&store, user, key),
+            None => profile_secret_copy::read_vault_secret(&store, key),
+        },
+        |base, target_key, value| {
             #[cfg(feature = "proton-native")]
             if base == "proton_native_session" {
-                let ok = providers::proton_native::vault::restore_session_blocking(
+                return providers::proton_native::vault::restore_session_blocking(
                     providers::proton_native::vault::SessionOwner::for_user(user_id),
                     &target_id,
-                    &value,
+                    value,
                 )
-                .is_ok();
-                copied.insert(base.to_string(), ok);
-                continue;
+                .map_err(|error| error.to_string());
             }
             let kind = if profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
                 Some("oauth")
@@ -19710,31 +19705,44 @@ async fn copy_profile_secrets(
             } else {
                 None
             };
-            let ok = match (user_id, kind) {
+            match (user_id, kind) {
                 (Some(user), Some(kind)) => user_partitions::store_credential_for_user_typed_dual(
-                    &store,
-                    user,
-                    &target_key,
-                    kind,
-                    &value,
+                    &store, user, target_key, kind, value,
                 ),
-                (Some(user), None) => user_partitions::store_credential_for_user_dual(
-                    &store,
-                    user,
-                    &target_key,
-                    &value,
-                ),
+                (Some(user), None) => {
+                    user_partitions::store_credential_for_user_dual(&store, user, target_key, value)
+                }
                 (None, _) => store
-                    .store(&target_key, &value)
+                    .store(target_key, value)
                     .map_err(|error| error.to_string()),
             }
-            .is_ok();
-            copied.insert(base.to_string(), ok);
-        } else {
-            copied.entry(base.to_string()).or_insert(false);
-        }
-    }
-    Ok(copied)
+        },
+        |base, target_key| {
+            #[cfg(feature = "proton-native")]
+            if base == "proton_native_session" {
+                let _ = providers::proton_native::vault::discard_session_blocking(
+                    providers::proton_native::vault::SessionOwner::for_user(user_id),
+                    &target_id,
+                );
+                return;
+            }
+            let _ = base;
+            match user_id {
+                Some(user) => {
+                    if user_partitions::delete_credential_for_user_dual(&store, user, target_key)
+                        .is_ok()
+                    {
+                        user_partitions::unmirror_credential_for_user_best_effort_any(
+                            user, target_key,
+                        );
+                    }
+                }
+                None => {
+                    let _ = store.delete(target_key);
+                }
+            }
+        },
+    )
 }
 
 #[tauri::command]

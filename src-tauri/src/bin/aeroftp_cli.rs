@@ -27843,12 +27843,6 @@ fn interactive_new_profile(
     Ok(Some(id))
 }
 
-/// Duplicate a vault profile under a fresh id. Mirrors the GUI's
-/// `handleDuplicate` in `MyServersPanel.tsx`: appends ` (copy)` to the
-/// name (unless `new_name` is provided), drops `lastConnected`, clones any
-/// stored credential, and prepends the copy to the profile list so it
-/// surfaces at the top of the table. Always emits the new id on stdout
-/// in text mode for scripting (the JSON path wraps it in a struct).
 /// PASS-01: resolve the optional override password for profile mode conversion
 /// from at most one of --password / --password-env / --password-stdin. Inline
 /// --password is honoured but warned about (it lands in argv/shell history).
@@ -27898,6 +27892,101 @@ fn resolve_mode_password(
     Ok(None)
 }
 
+/// Copy every per-profile secret of `source_id` onto `new_id`, in the vault and
+/// the scoped user's partition, all or nothing
+/// ([`ftp_client_gui_lib::profile_secret_copy::copy_profile_secret_keys`]).
+fn copy_duplicate_secrets(
+    store: &CredentialStore,
+    scoped_uid: Option<i64>,
+    source_id: &str,
+    new_id: &str,
+    protocol: Option<&str>,
+) -> Result<(), String> {
+    use ftp_client_gui_lib::profile_secret_copy;
+    profile_secret_copy::copy_profile_secret_keys(
+        source_id,
+        new_id,
+        ftp_client_gui_lib::per_profile_vault_keys(source_id, protocol),
+        |key| match scoped_uid {
+            Some(uid) => ftp_client_gui_lib::user_partitions::cli_read_credential_with_fallback(
+                store, uid, key,
+            ),
+            None => profile_secret_copy::read_vault_secret(store, key),
+        },
+        |base, target_key, value| {
+            #[cfg(feature = "proton-native")]
+            if base == "proton_native_session" {
+                use ftp_client_gui_lib::providers::proton_native::vault;
+                return vault::restore_session_blocking(
+                    vault::SessionOwner::for_user(scoped_uid),
+                    new_id,
+                    value,
+                )
+                .map_err(|error| error.to_string());
+            }
+            if ftp_client_gui_lib::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
+                dual_store_typed_cred_checked(store, scoped_uid, target_key, "oauth", value)
+            } else if base == "proton_native_session" {
+                dual_store_typed_cred_checked(
+                    store,
+                    scoped_uid,
+                    target_key,
+                    "proton_native_session",
+                    value,
+                )
+            } else {
+                dual_store_server_cred_checked(store, scoped_uid, target_key, value)
+            }
+        },
+        |base, target_key| {
+            #[cfg(feature = "proton-native")]
+            if base == "proton_native_session" {
+                use ftp_client_gui_lib::providers::proton_native::vault;
+                let _ = vault::discard_session_blocking(
+                    vault::SessionOwner::for_user(scoped_uid),
+                    new_id,
+                );
+                return;
+            }
+            let _ = base;
+            dual_delete_server_cred(store, scoped_uid, target_key);
+        },
+    )
+    .map(|_| ())
+}
+
+/// Remove a duplicate whose secrets could not be copied, never its source, and
+/// return `error` with what the removal could not do.
+fn remove_incomplete_duplicate(
+    cli: &Cli,
+    store: &CredentialStore,
+    new_id: &str,
+    error: String,
+) -> String {
+    let removed = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            profiles.retain(|profile| profile.get("id").and_then(|id| id.as_str()) != Some(new_id));
+            Ok(())
+        },
+    );
+    match removed {
+        Ok(_) => error,
+        Err(rollback) => {
+            format!("{error}; removing incomplete profile {new_id} failed: {rollback}")
+        }
+    }
+}
+
+/// Duplicate a vault profile under a fresh id. Mirrors the GUI's
+/// `handleDuplicate` in `MyServersPanel.tsx`: appends ` (copy)` to the
+/// name (unless `new_name` is provided), drops `lastConnected`, clones every
+/// stored secret of the profile (or removes the copy when one cannot be
+/// cloned), and prepends the copy to the profile list so it surfaces at the
+/// top of the table. Always emits the new id on stdout in text mode for
+/// scripting (the JSON path wraps it in a struct).
 fn cmd_profile_duplicate(
     cli: &Cli,
     format: OutputFormat,
@@ -28010,86 +28099,24 @@ fn cmd_profile_duplicate(
         .map(str::to_string)
         .unwrap_or(resolved_name);
 
-    // Best-effort clone of EVERY vault secret scoped to the source profile so a
-    // duplicate is a complete working copy, not just the password (crypt overlay,
-    // Filen key, OAuth/Jotta token, per-mode snapshots, OneDrive hints). Same
-    // single source of truth (`per_profile_vault_keys`) the GUI copy command and
-    // delete/export use. Missing keys are valid for many protocols, so a missing
-    // source key is skipped, never an error. MUV-3: same scoped user, dual-write.
+    // Clone EVERY vault secret scoped to the source profile so a duplicate is a
+    // complete working copy, not just the password (crypt overlay, Filen key,
+    // OAuth/Jotta token, per-mode snapshots, OneDrive hints), by the same rule
+    // as the app's copy. A secret the source does not have is skipped; one that
+    // cannot be read or written removes the copy, so no duplicate is left
+    // without a secret its source has.
     if !source_id.is_empty() {
         let scoped_uid = scoped_credential_user_id(cli, &store);
         let protocol = source.get("protocol").and_then(|v| v.as_str());
-        let source_suffix = format!("_{}", source_id);
-        for source_key in ftp_client_gui_lib::per_profile_vault_keys(&source_id, protocol) {
-            if let Some(base) = source_key.strip_suffix(&source_suffix) {
-                if let Some(value) = read_server_cred(&store, scoped_uid, &source_key) {
-                    let target_key = format!("{}_{}", base, new_id);
-                    #[cfg(feature = "proton-native")]
-                    if base == "proton_native_session" {
-                        use ftp_client_gui_lib::providers::proton_native::vault;
-                        let owner = vault::SessionOwner::for_user(scoped_uid);
-                        if let Err(error) = vault::restore_session_blocking(owner, &new_id, &value)
-                        {
-                            // Roll back the copy, never its source. Cleanup is
-                            // local: remote revocation could sign the source out.
-                            let profile_rollback = match scoped_uid {
-                                Some(user_id) => ftp_client_gui_lib::user_partitions::cli_update_server_profiles_for_user(
-                                    &store,
-                                    user_id,
-                                    |current| {
-                                        let before = current.len();
-                                        current.retain(|profile| profile.get("id").and_then(|id| id.as_str()) != Some(new_id.as_str()));
-                                        current.len() != before
-                                    },
-                                ).map(|(stored, _)| mirror_profiles_to_legacy_blob_if_active(&store, user_id, &stored)),
-                                None => Err("COPY_ROLLBACK_OWNER_UNKNOWN".to_string()),
-                            };
-                            let session_rollback = vault::discard_session_blocking(owner, &new_id);
-                            for key in ftp_client_gui_lib::per_profile_vault_keys_for_delete(
-                                &new_id, protocol,
-                            ) {
-                                if key != format!("proton_native_session_{new_id}") {
-                                    dual_delete_server_cred(&store, scoped_uid, &key);
-                                }
-                            }
-                            let mut message =
-                                format!("Failed to restore the copied Proton session: {error}");
-                            if let Err(rollback) = profile_rollback {
-                                message.push_str(&format!(
-                                    "; removing incomplete profile {new_id} failed: {rollback}"
-                                ));
-                            }
-                            if let Err(rollback) = session_rollback {
-                                message.push_str(&format!(
-                                    "; local session cleanup failed: {rollback}"
-                                ));
-                            }
-                            print_error(format, &message, 5);
-                            return 5;
-                        }
-                        continue;
-                    }
-                    let kind =
-                        if ftp_client_gui_lib::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
-                            Some("oauth")
-                        } else if base == "proton_native_session" {
-                            Some("proton_native_session")
-                        } else {
-                            None
-                        };
-                    if let Some(kind) = kind {
-                        let _ = dual_store_typed_cred_checked(
-                            &store,
-                            scoped_uid,
-                            &target_key,
-                            kind,
-                            &value,
-                        );
-                    } else {
-                        dual_store_server_cred(&store, scoped_uid, &target_key, &value);
-                    }
-                }
-            }
+        if let Err(error) =
+            copy_duplicate_secrets(&store, scoped_uid, &source_id, &new_id, protocol)
+        {
+            print_error(
+                format,
+                &remove_incomplete_duplicate(cli, &store, &new_id, error),
+                5,
+            );
+            return 5;
         }
     }
 
@@ -29852,11 +29879,16 @@ fn duplicate_profile_in_vault(
             Ok((new_id, resolved_name))
         },
     )?;
-    // MUV-3: clone the credential into vault + the scoped user's partition.
+    // MUV-3: clone every secret into vault + the scoped user's partition, as
+    // `profile duplicate` does; a copy that cannot be completed is removed.
     let scoped_uid = scoped_credential_user_id(cli, store);
-    if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
-        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
-    }
+    let protocol = stored
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(new_id.as_str()))
+        .and_then(|p| p.get("protocol"))
+        .and_then(|v| v.as_str());
+    copy_duplicate_secrets(store, scoped_uid, source_id, &new_id, protocol)
+        .map_err(|error| remove_incomplete_duplicate(cli, store, &new_id, error))?;
     // The name that selects the copy: " (1)", ... when it was taken.
     let resolved_name = name_of(&stored, &new_id)
         .map(str::to_string)

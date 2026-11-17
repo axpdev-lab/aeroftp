@@ -400,6 +400,17 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
     });
 
+    it('IntroHub stores no duplicate when its secrets cannot be copied, and shows why', async () => {
+        const f = fixture('none');
+        f.context.copyProfileVaultSecrets = vi.fn(async () => { throw 'The server secret could not be written to the copy, so the copy was not created: disk full'; });
+        const fn = await execute(hub, ['handleDuplicate'], f.context);
+        await fn.handleDuplicate(f.servers[0]);
+        expect(f.context.copyProfileVaultSecrets).toHaveBeenCalledWith('old', expect.stringMatching(/^srv_/), 'ftp', 7);
+        expect(f.store).not.toHaveBeenCalled();
+        expect(f.context.setServers).not.toHaveBeenCalled();
+        expect(f.events).toContainEqual({ type: 'aeroftp-toast', detail: expect.objectContaining({ type: 'error', message: expect.stringContaining('disk full') }) });
+    });
+
     it('IntroHub preserves profiles that appeared since the last render', async () => {
         const f = fixture('none');
         const unseen = { ...f.servers[0], id: 'unseen' };
