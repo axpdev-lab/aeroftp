@@ -7,11 +7,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import {
   isGplCompatible,
   tokenizeSpdx,
   extractSpdxLicenseIds,
+  collectCargoDependencies,
   collectNpmDependencies,
   readPackageFiles,
   groupLicenseTexts,
@@ -886,7 +887,110 @@ test('componentsWithoutFiles copyright notices: extracts upstream source header 
   assert.match(mitSection, /`qrcodegen@1\.8\.0` - SPDX: `MIT`/);
   assert.match(mitSection, /Copyright \(c\) Project Nayuki\. \(src\/lib\.rs\)/);
 
+  // r-efi@5.3.0 must retain its upstream copyright notices from AUTHORS
+  assert.match(mitSection, /`r-efi@5\.3\.0`/);
+  assert.match(mitSection, /Copyright \(C\) 2017-2023 Red Hat, Inc\. \(AUTHORS\)/);
+  assert.match(mitSection, /Copyright \(C\) 2019-2023 Microsoft Corporation \(AUTHORS\)/);
+  assert.match(mitSection, /Copyright \(C\) 2022-2023 David Rheinsberg \(AUTHORS\)/);
+
   // A component without copyright notice shipped in its package must show the explicit line
   assert.match(mitSection, /`qrcodegen-image@1\.5\.2` - SPDX: `MIT`/);
   assert.match(mitSection, /No copyright notice is shipped in the package/);
+
+  // crc-catalog@2.5.0 has dedicated LICENSES/ files, so it is in physical notice entries and NOT in componentsWithoutFiles
+  assert.match(noticesContent, /<a id="notice-crc-catalog"><\/a>/);
+  assert.match(noticesContent, /`crc-catalog@2\.5\.0` \(cargo, file: `LICENSES\/Apache-2\.0\.txt`\)/);
+  assert.match(noticesContent, /`crc-catalog@2\.5\.0` \(cargo, file: `LICENSES\/MIT\.txt`\)/);
+});
+
+test('readPackageFiles: REUSE LICENSES directory collects license files so component is not in componentsWithoutFiles', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reuse-licenses-fixture-'));
+  try {
+    const licensesDir = path.join(tmpDir, 'LICENSES');
+    fs.mkdirSync(licensesDir, { recursive: true });
+    fs.writeFileSync(path.join(licensesDir, 'MIT.txt'), 'MIT License text with Copyright (c) 2024 Test Author');
+
+    const res = readPackageFiles(tmpDir, 'test-reuse-pkg@1.0.0');
+    assert.strictEqual(res.licenseFiles.length, 1);
+    assert.strictEqual(res.licenseFiles[0].filename, 'LICENSES/MIT.txt');
+
+    const dummyComp = {
+      name: 'test-reuse-pkg',
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'cargo',
+      licenseFiles: res.licenseFiles,
+      noticeFiles: res.noticeFiles,
+      packageDir: tmpDir,
+    };
+    const { componentsWithoutFiles, groupedTexts } = groupLicenseTexts([dummyComp]);
+    assert.strictEqual(componentsWithoutFiles.length, 0, 'Component with LICENSES/ file must not be in componentsWithoutFiles');
+    assert.strictEqual(groupedTexts.length, 1);
+    assert.strictEqual(groupedTexts[0].components[0].filename, 'LICENSES/MIT.txt');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('findPackageCopyrightNotices: root AUTHORS copyright lines are extracted as notices', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'authors-notice-fixture-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, 'AUTHORS'),
+      'COPYRIGHT:\n        Copyright (C) 2017-2023 Red Hat, Inc.\n        Copyright (C) 2019-2023 Microsoft Corporation\n'
+    );
+    const notices = findPackageCopyrightNotices(tmpDir);
+    assert.strictEqual(notices.length, 2);
+    assert.strictEqual(notices[0].notice, 'Copyright (C) 2017-2023 Red Hat, Inc.');
+    assert.strictEqual(notices[0].file, 'AUTHORS');
+    assert.strictEqual(notices[1].notice, 'Copyright (C) 2019-2023 Microsoft Corporation');
+    assert.strictEqual(notices[1].file, 'AUTHORS');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('property: no component marked with "No copyright notice is shipped" has copyright lines in its package sources', () => {
+  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const cargo = collectCargoDependencies();
+  const npm = collectNpmDependencies();
+  const { componentsWithoutFiles } = groupLicenseTexts([...cargo, ...npm]);
+
+  const copyrightPattern = /(?:copyright\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4})\s+[A-Za-z0-9]/i;
+  const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright law|copyright (license|and|or|to|in|is|of|for|statement)|copyrighted|copyright_|copyright:? *$/i;
+  const cocoaApiRegex = /NSCopyright|kMDItemCopyright|kFontCopyright|AuthorizationCopyRights/i;
+
+  const falseNoneList = [];
+
+  for (const c of componentsWithoutFiles) {
+    if (!c.packageDir || !fs.existsSync(c.packageDir)) continue;
+
+    // Check if component has "No copyright notice is shipped in the package"
+    const escaped = c.name.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&') + '@' + c.version.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
+    const reg = new RegExp(`- \`${escaped}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`);
+    if (!reg.test(noticesContent)) {
+      continue;
+    }
+
+    let hits = '';
+    try {
+      hits = execSync(
+        `grep -rIhi -E "(copyright|©|\\(c\\))" ${JSON.stringify(c.packageDir)}`,
+        { encoding: 'utf8' }
+      );
+      const matched = hits
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0 && copyrightPattern.test(l) && !boilerplateRegex.test(l) && !cocoaApiRegex.test(l));
+      if (matched.length > 0) {
+        falseNoneList.push({ comp: `${c.source} ${c.name}@${c.version}`, matched });
+      }
+    } catch {}
+  }
+
+  assert.deepStrictEqual(
+    falseNoneList,
+    [],
+    `Components marked with "No copyright notice is shipped" contain real copyright lines in their packages: ${JSON.stringify(falseNoneList, null, 2)}`
+  );
 });
