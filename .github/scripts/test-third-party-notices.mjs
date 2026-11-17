@@ -23,6 +23,7 @@ import {
   PINNED_FALLBACK_ATTRIBUTIONS,
   formatDiff,
   findPackageCopyrightNotices,
+  hasCopyrightHolderInFiles,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -958,7 +959,7 @@ test('property: no component marked with "No copyright notice is shipped" has co
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
   const cargo = collectCargoDependencies();
   const npm = collectNpmDependencies();
-  const { componentsWithoutFiles } = groupLicenseTexts([...cargo, ...npm]);
+  const allComponents = [...cargo, ...npm];
 
   const copyrightPattern = /(?:copyright\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4})\s+[A-Za-z0-9]/i;
   const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright law|copyright (license|and|or|to|in|is|of|for|statement)|copyrighted|copyright_|copyright:? *$/i;
@@ -966,7 +967,7 @@ test('property: no component marked with "No copyright notice is shipped" has co
 
   const falseNoneList = [];
 
-  for (const c of componentsWithoutFiles) {
+  for (const c of allComponents) {
     if (!c.packageDir || !fs.existsSync(c.packageDir)) continue;
 
     // Check if component has "No copyright notice is shipped in the package"
@@ -1054,5 +1055,54 @@ test('property: grep scan error propagates and fails validation instead of being
       }
     },
     /Grep scan failed \(status 2\)/
+  );
+});
+
+test('holder-free license: extracts source notices for components with holder-free license files', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'holder-free-fixture-'));
+  try {
+    // Holder-free MIT license file (Permission is hereby granted...)
+    fs.writeFileSync(
+      path.join(tmpDir, 'LICENSE'),
+      'MIT License\n\nPermission is hereby granted, free of charge, to any person obtaining a copy...\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'lib.rs'),
+      '// Copyright 2024 Fixture Holder Developers\n\npub fn fixture() {}\n'
+    );
+
+    const readFiles = readPackageFiles(tmpDir, 'MIT');
+    assert.strictEqual(readFiles.licenseFiles.length, 1);
+    assert.strictEqual(hasCopyrightHolderInFiles({ licenseFiles: readFiles.licenseFiles, noticeFiles: [] }), false);
+
+    const comp = {
+      name: 'fixture-holder-free',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'MIT',
+      authors: ['Fixture Author'],
+      repository: 'https://example.com/fixture',
+      packageDir: tmpDir,
+      licenseFiles: readFiles.licenseFiles,
+      noticeFiles: readFiles.noticeFiles,
+    };
+
+    const out = generateNoticesMarkdown([comp], []);
+    assert.match(
+      out,
+      /- `fixture-holder-free@1\.0\.0` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2024 Fixture Holder Developers \(src\/lib\.rs\)/
+    );
+    assert.doesNotMatch(out, /fixture-holder-free.*No copyright notice is shipped in the package/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  // Also assert ident_case@1.0.1 in the generated THIRD-PARTY-NOTICES.md
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const noticesContent = fs.readFileSync(noticesFile, 'utf8');
+  assert.match(
+    noticesContent,
+    /- `ident_case@1\.0\.1` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2017 Serde Developers \(src\/lib\.rs\)/
   );
 });

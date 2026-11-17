@@ -2880,6 +2880,7 @@ limitations under the License.
 - `cap-std@4.0.3` (cargo, file: `LICENSE-MIT`)
 - `cargo-platform@0.1.9` (cargo, file: `LICENSE-MIT`)
 - `cargo_metadata@0.19.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-MIT`)
 - `ctrlc@3.5.2` (cargo, file: `LICENSE-MIT`)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-MIT`)
@@ -2887,6 +2888,7 @@ limitations under the License.
 - `dtoa@1.0.11` (cargo, file: `LICENSE-MIT`)
 - `dyn-clone@1.0.20` (cargo, file: `LICENSE-MIT`)
 - `endi@1.1.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `erased-serde@0.3.31` (cargo, file: `LICENSE-MIT`)
 - `erased-serde@0.4.10` (cargo, file: `LICENSE-MIT`)
 - `event-listener@5.4.2` (cargo, file: `LICENSE-MIT`)
@@ -2970,9 +2972,13 @@ limitations under the License.
 - `wit-bindgen@0.57.1` (cargo, file: `LICENSE-MIT`)
 - `wmi@0.18.4` (cargo, file: `LICENSE-MIT`)
 - `x11@2.21.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `x11-dl@2.21.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `zmij@1.0.23` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `zvariant_utils@4.2.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any
@@ -6784,26 +6790,37 @@ library.
 **Used by component(s):**
 - `atk@0.18.2` (cargo, file: `LICENSE`)
 - `atk-sys@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `cairo-rs@0.18.5` (cargo, file: `LICENSE`)
 - `cairo-sys-rs@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gdk@0.18.2` (cargo, file: `LICENSE`)
 - `gdk-pixbuf@0.18.5` (cargo, file: `LICENSE`)
 - `gdk-pixbuf-sys@0.18.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gdk-sys@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gdkwayland-sys@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gdkx11@0.18.2` (cargo, file: `LICENSE`)
 - `gdkx11-sys@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gio@0.18.4` (cargo, file: `LICENSE`)
 - `gio-sys@0.18.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `glib@0.18.5` (cargo, file: `LICENSE`)
 - `glib-macros@0.18.5` (cargo, file: `LICENSE`)
 - `glib-sys@0.18.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gobject-sys@0.18.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gtk@0.18.2` (cargo, file: `LICENSE`)
 - `gtk-sys@0.18.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `gtk3-macros@0.18.2` (cargo, file: `LICENSE`)
 - `pango@0.18.3` (cargo, file: `LICENSE`)
 - `pango-sys@0.18.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18470,9 +18487,11 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `error-code@3.4.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `ryu@1.0.23` (cargo, file: `LICENSE-BOOST`)
 - `ryu-js@1.0.3` (cargo, file: `LICENSE-BOOST`)
 - `xxhash-rust@0.8.19` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -20599,7 +20618,9 @@ DEALINGS IN THE SOFTWARE.
 **Used by component(s):**
 - `half@2.7.1` (cargo, file: `LICENSE-MIT`)
 - `ident_case@1.0.1` (cargo, file: `LICENSE`)
+  - Copyright 2017 Serde Developers (src/lib.rs)
 - `papaya@0.2.5` (cargo, file: `LICENSE.md`)
+  - No copyright notice is shipped in the package
 - `simdutf8@0.1.5` (cargo, file: `LICENSE-MIT`)
 - `widestring@1.2.1` (cargo, file: `LICENSE-MIT`)
 
@@ -28035,10 +28056,15 @@ SOFTWARE.
 
 **Used by component(s):**
 - `netlink-packet-core@0.8.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `netlink-packet-core@0.9.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `netlink-proto@0.12.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `netlink-sys@0.8.8` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `netlink-sys@0.9.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -28074,7 +28100,9 @@ SOFTWARE.
 
 **Used by component(s):**
 - `netlink-packet-route@0.31.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `netlink-packet-route@0.33.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a copy of
@@ -28933,6 +28961,7 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `open@5.4.5` (cargo, file: `LICENSE.md`)
+  - No copyright notice is shipped in the package
 
 ```text
 The MIT License (MIT)
@@ -29433,7 +29462,9 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 **Used by component(s):**
 - `os_pipe@1.2.3` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `shared_child@1.1.2` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 The MIT License (MIT)
@@ -35620,6 +35651,7 @@ limitations under the License.
 
 **Used by component(s):**
 - `simd-adler32@0.3.10` (cargo, file: `LICENSE.md`)
+  - No copyright notice is shipped in the package
 
 ```text
 MIT License
@@ -40068,7 +40100,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `webpki-root-certs@1.0.11` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `webpki-roots@1.0.12` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 # Community Data License Agreement - Permissive - Version 2.0
@@ -40622,8 +40656,11 @@ Apache License
 
 **Used by component(s):**
 - `winnow@0.5.40` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `winnow@0.7.15` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `winnow@1.0.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining
