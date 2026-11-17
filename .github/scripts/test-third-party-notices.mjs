@@ -25,6 +25,7 @@ import {
   findPackageCopyrightNotices,
   hasCopyrightHolderInFiles,
   findBundledCodeUnderOtherLicenses,
+  licenseTermsOf,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -530,8 +531,8 @@ test('bundled code under a license the package does not declare: its header lice
     // A license file in the same folder does not hide a header: which license
     // libbar/COPYING grants is not known.
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
-      { license: 'BSD-3-Clause', notices: ['Copyright (c) 2004 Bar Project'], files: ['libbar/src/bar.c'] },
-      { license: 'MIT', notices: ['Copyright (c) Project Nayuki.'], files: ['lib/index.js'] },
+      { license: 'BSD-3-Clause', notices: ['Copyright (c) 2004 Bar Project'], files: ['libbar/src/bar.c'], headers: [] },
+      { license: 'MIT', notices: ['Copyright (c) Project Nayuki.'], files: ['lib/index.js'], headers: [] },
     ]);
     const md = generateNoticesMarkdown([comp], []);
     const section = md.slice(md.indexOf('### Bundled Code: MIT'));
@@ -640,8 +641,125 @@ test('bundled code headers: the copyright may follow the identifier or be an SPD
           'Copyright (c) 2023 Slash Vendor Two',
         ],
         files: ['covered/c.js', 'spdx/s.js', 'src/index.js', 'src/two.js'],
+        headers: [],
       },
     ]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code headers: own permission text, an exception, and holder lines only', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-terms-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    // An ISC-style header tagged BSD-2-Clause, its holder on the first line and
+    // the tag more than ten lines below.
+    const isc = [
+      'Copyright (c) 2013 Header Holder <holder@example.org>',
+      '',
+      'Adapted by Someone Else for this project',
+      '',
+      'Permission to use, copy, modify, and distribute this software for any',
+      'purpose with or without fee is hereby granted, provided that the above',
+      'copyright notice and this permission notice appear in all copies.',
+      '',
+      'THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES',
+      'WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF',
+      'MERCHANTABILITY AND FITNESS.',
+      '',
+      'SPDX-License-Identifier: BSD-2-Clause',
+    ];
+    write('vendor/chacha.c', `/*\n${isc.map((l) => (l ? ` * ${l}` : ' *')).join('\n')}\n */\nint x;\n`);
+    // A header whose terms are the standard BSD-2-Clause text is not repeated.
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    const std = standard['BSD-2-Clause'].replace(/^Copyright \(c\) <year> <copyright holders>/, 'Copyright (c) 2010 Standard Holder');
+    write('vendor/std.c', `/*\n${std.split('\n').map((l) => (l ? ` * ${l}` : ' *')).join('\n')}\n * SPDX-License-Identifier: BSD-2-Clause\n */\n`);
+    write('ggml/backend.hpp', '//\n// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.\n// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception\n//\n');
+    const comp = {
+      name: 'terms-pkg',
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'cargo',
+      packageDir: tmpDir,
+      authors: ['Wrapper Author'],
+      ...readPackageFiles(tmpDir, 'terms-pkg@1.0.0'),
+    };
+    const found = findBundledCodeUnderOtherLicenses(comp, new Set(Object.keys(standard)));
+    assert.deepStrictEqual(
+      found.map((b) => [b.license, b.notices, b.files, b.headers.map((h) => h.files)]),
+      [
+        ['Apache-2.0 WITH LLVM-exception', [], ['ggml/backend.hpp'], []],
+        ['BSD-2-Clause', ['Copyright (c) 2013 Header Holder <holder@example.org>', 'Copyright (c) 2010 Standard Holder'], ['vendor/chacha.c', 'vendor/std.c'], [['vendor/chacha.c'], ['vendor/std.c']]],
+      ]
+    );
+    assert.strictEqual(found[1].headers[0].text, isc.join('\n'));
+    assert.strictEqual(licenseTermsOf(found[1].headers[1].text), licenseTermsOf(standard['BSD-2-Clause']));
+
+    const md = generateNoticesMarkdown([comp], []);
+    const apache = md.slice(md.indexOf('### Bundled Code: Apache-2.0 WITH LLVM-exception'), md.indexOf('### Bundled Code: BSD-2-Clause'));
+    assert.match(apache, /\n {2}- No copyright line in the header that declares this license\n/);
+    assert.ok(apache.includes(standard['Apache-2.0']) && apache.includes(standard['LLVM-exception']), 'the license text and then the exception text');
+    assert.ok(apache.indexOf(standard['Apache-2.0']) < apache.indexOf(standard['LLVM-exception']));
+    const bsd = md.slice(md.indexOf('### Bundled Code: BSD-2-Clause'));
+    assert.ok(bsd.includes('```text\n' + isc.join('\n') + '\n```'), 'the ISC-style header is reproduced as shipped');
+    assert.strictEqual((bsd.match(/Header with its own terms/g) || []).length, 1, 'a header with the standard terms is not repeated');
+    assert.doesNotMatch(bsd, /^ {2}- copyright notice and this permission notice/m, 'license prose is no notice');
+    assert.match(bsd, /```text\nCopyright \(c\) 2013 Header Holder <holder@example\.org> \(terms-pkg\)\nCopyright \(c\) 2010 Standard Holder \(terms-pkg\)\n/);
+
+    // An exception with no standard text fails instead of dropping it.
+    write('ggml/other.hpp', '// SPDX-License-Identifier: Apache-2.0 WITH Unknown-exception\n');
+    assert.throws(() => generateNoticesMarkdown([comp], []), /Bundled code under Apache-2\.0 WITH Unknown-exception needs the text of 'Unknown-exception'/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a leftover placeholder in the reproduced text fails', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-placeholder-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    fs.writeFileSync(path.join(tmpDir, 'a.c'), '/* Copyright (c) 2001 A Holder\n * SPDX-License-Identifier: ISC */\n');
+    const comp = { name: 'ph-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'ph-pkg@1.0.0') };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    const lic = path.join(tmpDir, 'licenses.json');
+    fs.writeFileSync(lic, JSON.stringify({ ...standard, ISC: 'ISC License\n\nCopyright <author>\n\nPermission to use.' }));
+    assert.throws(() => generateNoticesMarkdown([comp], [], lic), /Standard license text for ISC contains unpopulated placeholders/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('SPDX document: a NOASSERTION supplier names no author, so the reviewed attribution is required', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spdx-noassertion-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE.spdx'), 'SPDXVersion: SPDX-2.1\nPackageName: noassert\nPackageSupplier: NOASSERTION\nPackageLicenseDeclared: MIT\nPackageCopyrightText: NOASSERTION\n');
+    const comp = { name: 'noassert-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'noassert-pkg@1.0.0') };
+    assert.throws(() => generateNoticesMarkdown([comp], []), /Component noassert-pkg@1\.0\.0 has no manifest authors and is missing reviewed attribution in PINNED_FALLBACK_ATTRIBUTIONS/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('readPackageFiles: a declared license_file in a subfolder is read once, as the package license', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nested-license-file-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'legal'));
+    fs.writeFileSync(path.join(tmpDir, 'legal', 'LICENSE.txt'), 'Custom terms');
+    fs.mkdirSync(path.join(tmpDir, 'third_party'));
+    fs.writeFileSync(path.join(tmpDir, 'third_party', 'LICENSE'), 'Vendored terms');
+    const result = readPackageFiles(tmpDir, 'nested-crate@1.0.0', 'legal/LICENSE.txt');
+    assert.deepStrictEqual(
+      result.licenseFiles.map((f) => [f.filename, f.content, Boolean(f.vendored)]),
+      [
+        ['LICENSE.txt', 'Custom terms', false],
+        ['third_party/LICENSE', 'Vendored terms', true],
+      ]
+    );
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

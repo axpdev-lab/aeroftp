@@ -549,7 +549,13 @@ export function readPackageFiles(
             const filename = `${rel}/${sub.name}`;
             if (sub.isDirectory()) {
               if (!VENDORED_SKIP_DIR.test(sub.name)) walkVendored(path.join(d, sub.name), filename);
-            } else if (sub.isFile() && VENDORED_LICENSE_FILE.test(sub.name) && !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name)) {
+            } else if (
+              sub.isFile() &&
+              VENDORED_LICENSE_FILE.test(sub.name) &&
+              !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name) &&
+              // The declared license_file is the package's own, read by step 1.
+              !(declaredLicenseFile && path.resolve(d, sub.name) === path.resolve(dir, declaredLicenseFile))
+            ) {
               const content = fs.readFileSync(path.join(d, sub.name), 'utf8').replace(/\r\n/g, '\n').trim();
               if (content.length === 0) continue;
               // A vendored file describes the vendored code, not the package.
@@ -868,7 +874,9 @@ export function spdxDocumentAttribution(comp: ComponentInfo): { author: string |
     const m = doc.content.match(new RegExp(`^${name}:[ \\t]*(<text>[\\s\\S]*?</text>|.+)$`, 'm'));
     return m ? m[1].replace(/^<text>|<\/text>$/g, '').replace(/\s+/g, ' ').trim() || null : null;
   };
-  const author = field('PackageSupplier')?.replace(/^(?:Organization|Person):\s*/, '') || null;
+  // NOASSERTION and NONE name no supplier, as for the copyright field.
+  const supplier = field('PackageSupplier');
+  const author = supplier && !/^(?:NOASSERTION|NONE)$/i.test(supplier) ? supplier.replace(/^(?:Organization|Person):\s*/, '') || null : null;
   const copyright = field('PackageCopyrightText');
   const notice = copyright && /[A-Za-z0-9]/.test(copyright) && !/^NOASSERTION|^NONE$/.test(copyright)
     ? (/^(?:copyright\b|\(c\)|©)/i.test(copyright) ? copyright : `Copyright ${copyright}`)
@@ -898,22 +906,25 @@ export function noOwnNoticeLine(comp: ComponentInfo): string {
 
 /**
  * Code a package bundles under a license it does not declare, found by the
- * SPDX-License-Identifier header of the bundled file when no license file of
- * its own ships with it: qrcode.react (ISC) bundles the QR Code generator
- * (MIT) in lib/index.js. Returns one entry per license, with the copyright
- * lines of the header and the files that carry it. A license file in the
- * same folder does not cover it: which license a text grants is not known
- * here, and libssh2's ChaCha files are BSD-2-Clause beside its BSD-3-Clause
- * COPYING. An identifier
- * with no standard text (a typo such as "Apache-2.inner") is not a license
- * the notices can reproduce and is left out.
+ * SPDX-License-Identifier header of the bundled file: qrcode.react (ISC)
+ * bundles the QR Code generator (MIT) in lib/index.js. Returns one entry per
+ * license expression (an exception stays with its license, as in
+ * "Apache-2.0 WITH LLVM-exception"), with the holder lines of the header, the
+ * header itself when it carries its own permission text, and the files. A
+ * license file in the same folder does not cover a header: which license a
+ * text grants is not known here, and libssh2's ChaCha files are BSD-2-Clause
+ * beside its BSD-3-Clause COPYING. An identifier with no standard text (a typo
+ * such as "Apache-2.inner") is not a license the notices can reproduce and is
+ * left out.
  */
 export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
   knownLicenseIds: Set<string>
-): { license: string; notices: string[]; files: string[] }[] {
+): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
-  const found = new Map<string, { notices: string[]; files: string[] }>();
+  const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
+  const isCommentLine = (l: string) => /^\s*(?:\/\*|\*|\/\/|#)/.test(l);
+  const stripLeader = (l: string) => l.replace(/^\s*(?:\/\*+!?|\*+\/?|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trimEnd();
   const walk = (dir: string, rel: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
@@ -938,40 +949,72 @@ export function findBundledCodeUnderOtherLicenses(
         const isOr = !/\bAND\b/.test(m[1]) && /\bOR\b|\//.test(m[1]);
         const undeclared = offered.filter((id) => !declared.has(id));
         if (undeclared.length === 0 || (isOr && undeclared.length < offered.length)) return;
-        // The copyright lines of the same header, before or after the
-        // identifier: the comment lines around it, up to the comment's start
-        // and end, never into the next header.
-        const isCommentLine = (l: string) => /^\s*(?:\/\*|\*|\/\/|#)/.test(l);
+        // The whole comment block around the identifier, up to its start and
+        // end, never into the next header.
         let start = i;
-        while (start > 0 && start > i - 10 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
+        while (start > 0 && start > i - 80 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
+          if (/\*\//.test(lines[start - 1])) break;
           start--;
-          if (/\*\//.test(lines[start])) {
-            start++;
-            break;
-          }
         }
         let end = i;
-        while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 10 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
+        while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 80 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
           end++;
         }
+        const block = lines.slice(start, end + 1).map(stripLeader);
+        // Only a line that names a holder is a notice: "copyright notice and
+        // this permission notice appear in all copies" is license prose.
         const notices: string[] = [];
-        for (let j = start; j <= end; j++) {
-          let text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trim();
+        for (const raw of block) {
+          let text = raw.trim();
           const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
           if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
-          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) notices.push(text);
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text) && hasCopyrightHolderInFiles({ licenseFiles: [{ filename: 'header', content: text }], noticeFiles: [] } as unknown as ComponentInfo)) {
+            notices.push(text);
+          }
         }
+        // A header with its own permission text is reproduced as shipped.
+        const blockText = block.join('\n').replace(/^\n+|\n+$/g, '');
+        const carriesTerms = /permission to use|permission is hereby granted|redistribution and use/i.test(blockText);
         for (const id of isOr ? undeclared.slice(0, 1) : undeclared) {
-          if (!found.has(id)) found.set(id, { notices: [], files: [] });
-          const entryFound = found.get(id)!;
+          const exception = m[1].match(new RegExp(`(?:^|[\\s(])${id.replace(/[.+]/g, '\\$&')}\\s+WITH\\s+([A-Za-z0-9.+-]+)`))?.[1];
+          const key = exception ? `${id} WITH ${exception}` : id;
+          if (!found.has(key)) found.set(key, { notices: [], files: [], headers: [] });
+          const entryFound = found.get(key)!;
           for (const n of notices) if (!entryFound.notices.includes(n)) entryFound.notices.push(n);
           if (!entryFound.files.includes(entryRel)) entryFound.files.push(entryRel);
+          if (carriesTerms) {
+            const same = entryFound.headers.find((h) => h.text === blockText);
+            if (same) same.files.push(entryRel);
+            else entryFound.headers.push({ text: blockText, files: [entryRel] });
+          }
         }
       });
     }
   };
   walk(comp.packageDir, '');
   return [...found.keys()].sort(compareStrings).map((license) => ({ license, ...found.get(license)! }));
+}
+
+/**
+ * Fails on a placeholder left in a standard text's terms. The GPL-family
+ * appendix after the terms ("How to Apply These Terms") is a template for
+ * other works and keeps its placeholders verbatim.
+ */
+/** The permission text of a license or header, without copyright lines, the SPDX tag or line breaks. */
+export function licenseTermsOf(text: string): string {
+  return text
+    .split('\n')
+    .filter((l) => !/^\s*(?:copyright\b|all rights reserved|spdx-license-identifier:)/i.test(l))
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function assertNoTermsPlaceholders(licKey: string, licText: string): void {
+  const terms = licText.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms/i)[0];
+  if (/<(?:copyright holders?|author|owner)>/i.test(terms) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(terms)) {
+    throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders>, <year>, or <author>)`);
+  }
 }
 
 // The first words of license prose: a bare "Copyright (c)" followed by
@@ -1401,12 +1444,7 @@ export function generateNoticesMarkdown(
       }
       // Any placeholder left in the terms, also one the replacement above does
       // not know (a "Copyright (C) <year>" with no author placeholder), fails.
-      // The GPL-family appendix after the terms ("How to Apply These Terms")
-      // is a template for other works and keeps its placeholders verbatim.
-      const terms = licText.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms/i)[0];
-      if (/<(?:copyright holders|author)>/i.test(terms) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(terms)) {
-        throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders>, <year>, or <author>)`);
-      }
+      assertNoTermsPlaceholders(licKey, licText);
 
       lines.push(makeCodeBlock(licText));
       lines.push('');
@@ -1422,35 +1460,45 @@ export function generateNoticesMarkdown(
     const standardLicenses: Record<string, string> = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'));
     const byLicense = new Map<string, string[]>();
     const holdersByLicense = new Map<string, string[]>();
+    const noHolder = 'No copyright line in the header that declares this license';
     for (const comp of bundledComponents) {
       for (const b of findBundledCodeUnderOtherLicenses(comp, new Set(Object.keys(standardLicenses)))) {
         if (!byLicense.has(b.license)) byLicense.set(b.license, []);
         if (!holdersByLicense.has(b.license)) holdersByLicense.set(b.license, []);
-        holdersByLicense.get(b.license)!.push(
-          ...(b.notices.length > 0 ? b.notices : [`No copyright notice is shipped with the bundled code`]).map((n) => `${n} (${comp.name})`)
-        );
+        holdersByLicense.get(b.license)!.push(...(b.notices.length > 0 ? b.notices : [noHolder]).map((n) => `${n} (${comp.name})`));
         byLicense.get(b.license)!.push(
           `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) bundles code under ${b.license} in ${b.files.map((f) => `\`${f}\``).join(', ')}`,
-          ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : ['  - No copyright notice is shipped with the bundled code'])
+          ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : [`  - ${noHolder}`])
         );
+        // A header is reproduced only when its terms differ from the standard text's.
+        const standardTerms = licenseTermsOf(standardLicenses[b.license.split(' WITH ')[0]] ?? '');
+        for (const h of b.headers.filter((x) => licenseTermsOf(x.text) !== standardTerms)) {
+          byLicense.get(b.license)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeCodeBlock(h.text), '');
+        }
       }
     }
     if (byLicense.size > 0) {
       lines.push('## Bundled Code Under Other Licenses');
       lines.push('');
-      lines.push('These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header and ship no license file of their own, so the standard text is reproduced with the copyright lines of the header.');
+      lines.push('These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.');
       lines.push('');
       for (const licKey of [...byLicense.keys()].sort(compareStrings)) {
         lines.push(`### Bundled Code: ${licKey}`);
         lines.push('');
         lines.push(...byLicense.get(licKey)!);
         lines.push('');
+        // "Apache-2.0 WITH LLVM-exception": the license text, then the exception's.
+        const [licenseId, exceptionId] = licKey.split(' WITH ');
+        if (exceptionId && !standardLicenses[exceptionId]) {
+          throw new Error(`Bundled code under ${licKey} needs the text of '${exceptionId}', but no entry exists in ${spdxLicensesFile}`);
+        }
         // A text with a holder placeholder (BSD) takes the header's copyright lines.
-        const text = standardLicenses[licKey].replace(
+        const text = standardLicenses[licenseId].replace(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|owner|author|authors)>/g,
           () => holdersByLicense.get(licKey)!.join('\n')
         );
-        lines.push(makeCodeBlock(text));
+        assertNoTermsPlaceholders(licKey, text);
+        lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardLicenses[exceptionId]}` : text));
         lines.push('');
       }
     }

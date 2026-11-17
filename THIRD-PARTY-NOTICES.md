@@ -46451,12 +46451,12 @@ freely, subject to the following restrictions:
 
 ## Bundled Code Under Other Licenses
 
-These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header and ship no license file of their own, so the standard text is reproduced with the copyright lines of the header.
+These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header. The standard text is reproduced with the copyright lines of the header, and the header itself when its permission text differs from the standard text.
 
-### Bundled Code: Apache-2.0
+### Bundled Code: Apache-2.0 WITH LLVM-exception
 
-- `whisper-rs-sys@0.15.0` (cargo, SPDX: `Unlicense`) bundles code under Apache-2.0 in `whisper.cpp/ggml/src/ggml-sycl/backend.hpp`, `whisper.cpp/ggml/src/ggml-sycl/common.cpp`, `whisper.cpp/ggml/src/ggml-sycl/common.hpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.cpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.hpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.cpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/convert.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dequantize.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dmmv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dpct/helper.hpp`, `whisper.cpp/ggml/src/ggml-sycl/gemm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.cpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.hpp`, `whisper.cpp/ggml/src/ggml-sycl/ggml-sycl.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.cpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmvq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/norm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.cpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.hpp`, `whisper.cpp/ggml/src/ggml-sycl/presets.hpp`, `whisper.cpp/ggml/src/ggml-sycl/quants.hpp`, `whisper.cpp/ggml/src/ggml-sycl/roll.hpp`, `whisper.cpp/ggml/src/ggml-sycl/rope.hpp`, `whisper.cpp/ggml/src/ggml-sycl/softmax.hpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.cpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.hpp`, `whisper.cpp/ggml/src/ggml-sycl/vecdotq.hpp`
-  - No copyright notice is shipped with the bundled code
+- `whisper-rs-sys@0.15.0` (cargo, SPDX: `Unlicense`) bundles code under Apache-2.0 WITH LLVM-exception in `whisper.cpp/ggml/src/ggml-sycl/backend.hpp`, `whisper.cpp/ggml/src/ggml-sycl/common.cpp`, `whisper.cpp/ggml/src/ggml-sycl/common.hpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.cpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.hpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.cpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/convert.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dequantize.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dmmv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dpct/helper.hpp`, `whisper.cpp/ggml/src/ggml-sycl/gemm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.cpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.hpp`, `whisper.cpp/ggml/src/ggml-sycl/ggml-sycl.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.cpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmvq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/norm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.cpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.hpp`, `whisper.cpp/ggml/src/ggml-sycl/presets.hpp`, `whisper.cpp/ggml/src/ggml-sycl/quants.hpp`, `whisper.cpp/ggml/src/ggml-sycl/roll.hpp`, `whisper.cpp/ggml/src/ggml-sycl/rope.hpp`, `whisper.cpp/ggml/src/ggml-sycl/softmax.hpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.cpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.hpp`, `whisper.cpp/ggml/src/ggml-sycl/vecdotq.hpp`
+  - No copyright line in the header that declares this license
 
 ```text
 Apache License
@@ -46660,15 +46660,77 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
+
+---- LLVM Exceptions to the Apache 2.0 License ----
+
+   As an exception, if, as a result of your compiling your source code, portions
+   of this Software are embedded into an Object form of such source code, you
+   may redistribute such embedded portions in such Object form without complying
+   with the conditions of Sections 4(a), 4(b) and 4(d) of the License.
+
+   In addition, if you combine or link compiled forms of this Software with
+   software that is licensed under the GPLv2 ("Combined Software") and if a
+   court of competent jurisdiction determines that the patent provision (Section
+   3), the indemnity provision (Section 9) or other Section of the License
+   conflicts with the conditions of the GPLv2, you may retroactively and
+   prospectively choose to deem waived or otherwise exclude such Section(s) of
+   the License, but only in their entirety and only with respect to the Combined
+   Software.
 ```
 
 ### Bundled Code: BSD-2-Clause
 
 - `libssh2-sys@0.3.4` (cargo, SPDX: `MIT OR Apache-2.0`) bundles code under BSD-2-Clause in `libssh2/src/cipher-chachapoly.c`, `libssh2/src/cipher-chachapoly.h`
-  - copyright notice and this permission notice appear in all copies.
+  - Copyright (c) 2013 Damien Miller <djm@mindrot.org>
+  - Copyright (c) Damien Miller 2013 <djm@mindrot.org>
+
+  Header with its own terms, as shipped in `libssh2/src/cipher-chachapoly.c`:
 
 ```text
-copyright notice and this permission notice appear in all copies. (libssh2-sys)
+Copyright (c) 2013 Damien Miller <djm@mindrot.org>
+
+Adapted by Will Cosgrove <will@panic.com> for libssh2
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+SPDX-License-Identifier: BSD-2-Clause
+```
+
+
+  Header with its own terms, as shipped in `libssh2/src/cipher-chachapoly.h`:
+
+```text
+Copyright (c) Damien Miller 2013 <djm@mindrot.org>
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+SPDX-License-Identifier: BSD-2-Clause
+```
+
+
+```text
+Copyright (c) 2013 Damien Miller <djm@mindrot.org> (libssh2-sys)
+Copyright (c) Damien Miller 2013 <djm@mindrot.org> (libssh2-sys)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -46700,15 +46762,127 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 - `libssh2-sys@0.3.4` (cargo, SPDX: `MIT OR Apache-2.0`) bundles code under BSD-3-Clause in `libssh2/.clang-tidy.yml`, `libssh2/.editorconfig`, `libssh2/.gitignore`, `libssh2/CMakeLists.txt`, `libssh2/Makefile.am`, `libssh2/README.md`, `libssh2/REUSE.toml`, `libssh2/acinclude.m4`, `libssh2/appveyor.sh`, `libssh2/appveyor.yml`, `libssh2/cmake/CheckFunctionExistsMayNeedLibrary.cmake`, `libssh2/cmake/CheckNonblockingSocketSupport.cmake`, `libssh2/cmake/FindLibgcrypt.cmake`, `libssh2/cmake/FindMbedTLS.cmake`, `libssh2/cmake/FindWolfSSL.cmake`, `libssh2/cmake/PickyWarnings.cmake`, `libssh2/cmake/libssh2-config.in.cmake`, `libssh2/configure.ac`, `libssh2/docs/.gitignore`, `libssh2/docs/BINDINGS.md`, `libssh2/docs/CMakeLists.txt`, `libssh2/docs/DEPENDENCIES.md`, `libssh2/docs/HACKING.md`, `libssh2/docs/INSTALL-CMAKE.md`, `libssh2/docs/Makefile.am`, `libssh2/docs/Makefile.inc`, `libssh2/docs/SECURITY.md`, `libssh2/docs/TODO.md`, `libssh2/docs/libssh2_agent_connect.md`, `libssh2/docs/libssh2_agent_disconnect.md`, `libssh2/docs/libssh2_agent_free.md`, `libssh2/docs/libssh2_agent_get_identity.md`, `libssh2/docs/libssh2_agent_get_identity_path.md`, `libssh2/docs/libssh2_agent_init.md`, `libssh2/docs/libssh2_agent_list_identities.md`, `libssh2/docs/libssh2_agent_set_identity_path.md`, `libssh2/docs/libssh2_agent_sign.md`, `libssh2/docs/libssh2_agent_userauth.md`, `libssh2/docs/libssh2_banner_set.md`, `libssh2/docs/libssh2_base64_decode.md`, `libssh2/docs/libssh2_build_options.md`, `libssh2/docs/libssh2_channel_close.md`, `libssh2/docs/libssh2_channel_direct_streamlocal_ex.md`, `libssh2/docs/libssh2_channel_direct_tcpip.md`, `libssh2/docs/libssh2_channel_direct_tcpip_ex.md`, `libssh2/docs/libssh2_channel_eof.md`, `libssh2/docs/libssh2_channel_exec.md`, `libssh2/docs/libssh2_channel_flush.md`, `libssh2/docs/libssh2_channel_flush_ex.md`, `libssh2/docs/libssh2_channel_flush_stderr.md`, `libssh2/docs/libssh2_channel_forward_accept.md`, `libssh2/docs/libssh2_channel_forward_cancel.md`, `libssh2/docs/libssh2_channel_forward_listen.md`, `libssh2/docs/libssh2_channel_forward_listen_ex.md`, `libssh2/docs/libssh2_channel_free.md`, `libssh2/docs/libssh2_channel_get_exit_signal.md`, `libssh2/docs/libssh2_channel_get_exit_status.md`, `libssh2/docs/libssh2_channel_handle_extended_data.md`, `libssh2/docs/libssh2_channel_handle_extended_data2.md`, `libssh2/docs/libssh2_channel_has_exit_status.md`, `libssh2/docs/libssh2_channel_ignore_extended_data.md`, `libssh2/docs/libssh2_channel_open_ex.md`, `libssh2/docs/libssh2_channel_open_session.md`, `libssh2/docs/libssh2_channel_process_startup.md`, `libssh2/docs/libssh2_channel_read.md`, `libssh2/docs/libssh2_channel_read_ex.md`, `libssh2/docs/libssh2_channel_read_stderr.md`, `libssh2/docs/libssh2_channel_receive_window_adjust.md`, `libssh2/docs/libssh2_channel_receive_window_adjust2.md`, `libssh2/docs/libssh2_channel_request_auth_agent.md`, `libssh2/docs/libssh2_channel_request_pty.md`, `libssh2/docs/libssh2_channel_request_pty_ex.md`, `libssh2/docs/libssh2_channel_request_pty_size.md`, `libssh2/docs/libssh2_channel_request_pty_size_ex.md`, `libssh2/docs/libssh2_channel_send_eof.md`, `libssh2/docs/libssh2_channel_set_blocking.md`, `libssh2/docs/libssh2_channel_setenv.md`, `libssh2/docs/libssh2_channel_setenv_ex.md`, `libssh2/docs/libssh2_channel_shell.md`, `libssh2/docs/libssh2_channel_signal.md`, `libssh2/docs/libssh2_channel_signal_ex.md`, `libssh2/docs/libssh2_channel_subsystem.md`, `libssh2/docs/libssh2_channel_wait_closed.md`, `libssh2/docs/libssh2_channel_wait_eof.md`, `libssh2/docs/libssh2_channel_window_read.md`, `libssh2/docs/libssh2_channel_window_read_ex.md`, `libssh2/docs/libssh2_channel_window_write.md`, `libssh2/docs/libssh2_channel_window_write_ex.md`, `libssh2/docs/libssh2_channel_write.md`, `libssh2/docs/libssh2_channel_write_ex.md`, `libssh2/docs/libssh2_channel_write_stderr.md`, `libssh2/docs/libssh2_channel_x11_req.md`, `libssh2/docs/libssh2_channel_x11_req_ex.md`, `libssh2/docs/libssh2_crypto_engine.md`, `libssh2/docs/libssh2_exit.md`, `libssh2/docs/libssh2_free.md`, `libssh2/docs/libssh2_hostkey_hash.md`, `libssh2/docs/libssh2_init.md`, `libssh2/docs/libssh2_keepalive_config.md`, `libssh2/docs/libssh2_keepalive_send.md`, `libssh2/docs/libssh2_knownhost_add.md`, `libssh2/docs/libssh2_knownhost_addc.md`, `libssh2/docs/libssh2_knownhost_check.md`, `libssh2/docs/libssh2_knownhost_checkp.md`, `libssh2/docs/libssh2_knownhost_del.md`, `libssh2/docs/libssh2_knownhost_free.md`, `libssh2/docs/libssh2_knownhost_get.md`, `libssh2/docs/libssh2_knownhost_init.md`, `libssh2/docs/libssh2_knownhost_readfile.md`, `libssh2/docs/libssh2_knownhost_readline.md`, `libssh2/docs/libssh2_knownhost_writefile.md`, `libssh2/docs/libssh2_knownhost_writeline.md`, `libssh2/docs/libssh2_poll.md`, `libssh2/docs/libssh2_poll_channel_read.md`, `libssh2/docs/libssh2_publickey_add.md`, `libssh2/docs/libssh2_publickey_add_ex.md`, `libssh2/docs/libssh2_publickey_init.md`, `libssh2/docs/libssh2_publickey_list_fetch.md`, `libssh2/docs/libssh2_publickey_list_free.md`, `libssh2/docs/libssh2_publickey_remove.md`, `libssh2/docs/libssh2_publickey_remove_ex.md`, `libssh2/docs/libssh2_publickey_shutdown.md`, `libssh2/docs/libssh2_scp_recv.md`, `libssh2/docs/libssh2_scp_recv2.md`, `libssh2/docs/libssh2_scp_send.md`, `libssh2/docs/libssh2_scp_send64.md`, `libssh2/docs/libssh2_scp_send_ex.md`, `libssh2/docs/libssh2_session_abstract.md`, `libssh2/docs/libssh2_session_banner_get.md`, `libssh2/docs/libssh2_session_banner_set.md`, `libssh2/docs/libssh2_session_block_directions.md`, `libssh2/docs/libssh2_session_callback_set.md`, `libssh2/docs/libssh2_session_callback_set2.md`, `libssh2/docs/libssh2_session_disconnect.md`, `libssh2/docs/libssh2_session_disconnect_ex.md`, `libssh2/docs/libssh2_session_flag.md`, `libssh2/docs/libssh2_session_free.md`, `libssh2/docs/libssh2_session_get_blocking.md`, `libssh2/docs/libssh2_session_get_read_timeout.md`, `libssh2/docs/libssh2_session_get_timeout.md`, `libssh2/docs/libssh2_session_handshake.md`, `libssh2/docs/libssh2_session_hostkey.md`, `libssh2/docs/libssh2_session_init.md`, `libssh2/docs/libssh2_session_init_ex.md`, `libssh2/docs/libssh2_session_last_errno.md`, `libssh2/docs/libssh2_session_last_error.md`, `libssh2/docs/libssh2_session_method_pref.md`, `libssh2/docs/libssh2_session_methods.md`, `libssh2/docs/libssh2_session_set_blocking.md`, `libssh2/docs/libssh2_session_set_last_error.md`, `libssh2/docs/libssh2_session_set_read_timeout.md`, `libssh2/docs/libssh2_session_set_timeout.md`, `libssh2/docs/libssh2_session_startup.md`, `libssh2/docs/libssh2_session_supported_algs.md`, `libssh2/docs/libssh2_sftp_close.md`, `libssh2/docs/libssh2_sftp_close_handle.md`, `libssh2/docs/libssh2_sftp_closedir.md`, `libssh2/docs/libssh2_sftp_fsetstat.md`, `libssh2/docs/libssh2_sftp_fstat.md`, `libssh2/docs/libssh2_sftp_fstat_ex.md`, `libssh2/docs/libssh2_sftp_fstatvfs.md`, `libssh2/docs/libssh2_sftp_fsync.md`, `libssh2/docs/libssh2_sftp_get_channel.md`, `libssh2/docs/libssh2_sftp_init.md`, `libssh2/docs/libssh2_sftp_last_error.md`, `libssh2/docs/libssh2_sftp_lstat.md`, `libssh2/docs/libssh2_sftp_mkdir.md`, `libssh2/docs/libssh2_sftp_mkdir_ex.md`, `libssh2/docs/libssh2_sftp_open.md`, `libssh2/docs/libssh2_sftp_open_ex.md`, `libssh2/docs/libssh2_sftp_open_ex_r.md`, `libssh2/docs/libssh2_sftp_open_r.md`, `libssh2/docs/libssh2_sftp_opendir.md`, `libssh2/docs/libssh2_sftp_posix_rename.md`, `libssh2/docs/libssh2_sftp_posix_rename_ex.md`, `libssh2/docs/libssh2_sftp_read.md`, `libssh2/docs/libssh2_sftp_readdir.md`, `libssh2/docs/libssh2_sftp_readdir_ex.md`, `libssh2/docs/libssh2_sftp_readlink.md`, `libssh2/docs/libssh2_sftp_realpath.md`, `libssh2/docs/libssh2_sftp_rename.md`, `libssh2/docs/libssh2_sftp_rename_ex.md`, `libssh2/docs/libssh2_sftp_rewind.md`, `libssh2/docs/libssh2_sftp_rmdir.md`, `libssh2/docs/libssh2_sftp_rmdir_ex.md`, `libssh2/docs/libssh2_sftp_seek.md`, `libssh2/docs/libssh2_sftp_seek64.md`, `libssh2/docs/libssh2_sftp_setstat.md`, `libssh2/docs/libssh2_sftp_shutdown.md`, `libssh2/docs/libssh2_sftp_stat.md`, `libssh2/docs/libssh2_sftp_stat_ex.md`, `libssh2/docs/libssh2_sftp_statvfs.md`, `libssh2/docs/libssh2_sftp_symlink.md`, `libssh2/docs/libssh2_sftp_symlink_ex.md`, `libssh2/docs/libssh2_sftp_tell.md`, `libssh2/docs/libssh2_sftp_tell64.md`, `libssh2/docs/libssh2_sftp_unlink.md`, `libssh2/docs/libssh2_sftp_unlink_ex.md`, `libssh2/docs/libssh2_sftp_write.md`, `libssh2/docs/libssh2_sign_sk.md`, `libssh2/docs/libssh2_trace.md`, `libssh2/docs/libssh2_trace_sethandler.md`, `libssh2/docs/libssh2_userauth_authenticated.md`, `libssh2/docs/libssh2_userauth_banner.md`, `libssh2/docs/libssh2_userauth_hostbased_fromfile.md`, `libssh2/docs/libssh2_userauth_hostbased_fromfile_ex.md`, `libssh2/docs/libssh2_userauth_keyboard_interactive.md`, `libssh2/docs/libssh2_userauth_keyboard_interactive_ex.md`, `libssh2/docs/libssh2_userauth_list.md`, `libssh2/docs/libssh2_userauth_password.md`, `libssh2/docs/libssh2_userauth_password_ex.md`, `libssh2/docs/libssh2_userauth_publickey.md`, `libssh2/docs/libssh2_userauth_publickey_fromfile.md`, `libssh2/docs/libssh2_userauth_publickey_fromfile_ex.md`, `libssh2/docs/libssh2_userauth_publickey_frommemory.md`, `libssh2/docs/libssh2_userauth_publickey_sk.md`, `libssh2/docs/libssh2_version.md`, `libssh2/docs/template.md`, `libssh2/include/libssh2.h`, `libssh2/include/libssh2_publickey.h`, `libssh2/include/libssh2_sftp.h`, `libssh2/libssh2-style.el`, `libssh2/libssh2.pc.in`, `libssh2/m4/.gitignore`, `libssh2/os400/ccsid.c`, `libssh2/os400/config400.default`, `libssh2/os400/include/alloca.h`, `libssh2/os400/include/assert.h`, `libssh2/os400/include/sys/socket.h`, `libssh2/os400/initscript.sh`, `libssh2/os400/libssh2_ccsid.h`, `libssh2/os400/libssh2_config.h`, `libssh2/os400/libssh2rpg/libssh2.rpgle.in`, `libssh2/os400/libssh2rpg/libssh2_ccsid.rpgle.in`, `libssh2/os400/libssh2rpg/libssh2_publickey.rpgle`, `libssh2/os400/libssh2rpg/libssh2_sftp.rpgle`, `libssh2/os400/macros.h`, `libssh2/os400/make-include.sh`, `libssh2/os400/make-rpg.sh`, `libssh2/os400/make-src.sh`, `libssh2/os400/make.sh`, `libssh2/os400/os400sys.c`, `libssh2/os400/rpg-examples/SFTPXMPLE`, `libssh2/scripts/appveyor/docker-bridge.ps1`, `libssh2/scripts/appveyor/docker-bridge.sh`, `libssh2/scripts/codespell-ignore.words`, `libssh2/scripts/git2news.pl`, `libssh2/scripts/maketgz`, `libssh2/scripts/spellcheck.sh`, `libssh2/src/.gitignore`, `libssh2/src/CMakeLists.txt`, `libssh2/src/HACKING-CRYPTO.md`, `libssh2/src/Makefile.am`, `libssh2/src/Makefile.inc`, `libssh2/src/agent.c`, `libssh2/src/agent.h`, `libssh2/src/blowfish.c`, `libssh2/src/channel.c`, `libssh2/src/channel.h`, `libssh2/src/comp.c`, `libssh2/src/comp.h`, `libssh2/src/crypt.c`, `libssh2/src/crypto.h`, `libssh2/src/crypto_config.h`, `libssh2/src/global.c`, `libssh2/src/hostkey.c`, `libssh2/src/keepalive.c`, `libssh2/src/kex.c`, `libssh2/src/knownhost.c`, `libssh2/src/libgcrypt.c`, `libssh2/src/libgcrypt.h`, `libssh2/src/libssh2.rc`, `libssh2/src/libssh2_config_cmake.h.in`, `libssh2/src/libssh2_priv.h`, `libssh2/src/libssh2_setup.h`, `libssh2/src/mac.c`, `libssh2/src/mac.h`, `libssh2/src/mbedtls.c`, `libssh2/src/mbedtls.h`, `libssh2/src/misc.c`, `libssh2/src/misc.h`, `libssh2/src/openssl.c`, `libssh2/src/openssl.h`, `libssh2/src/os400qc3.c`, `libssh2/src/os400qc3.h`, `libssh2/src/packet.c`, `libssh2/src/packet.h`, `libssh2/src/pem.c`, `libssh2/src/publickey.c`, `libssh2/src/scp.c`, `libssh2/src/session.c`, `libssh2/src/session.h`, `libssh2/src/sftp.c`, `libssh2/src/sftp.h`, `libssh2/src/transport.c`, `libssh2/src/transport.h`, `libssh2/src/userauth.c`, `libssh2/src/userauth.h`, `libssh2/src/userauth_kbd_packet.c`, `libssh2/src/userauth_kbd_packet.h`, `libssh2/src/version.c`, `libssh2/src/wincng.c`, `libssh2/src/wincng.h`, `libssh2/vms/.checksrc`, `libssh2/vms/libssh2_config.h`, `libssh2/vms/libssh2_make_example.dcl`, `libssh2/vms/libssh2_make_help.dcl`, `libssh2/vms/libssh2_make_kit.dcl`, `libssh2/vms/libssh2_make_lib.dcl`, `libssh2/vms/man2help.c`
   - Copyright (C) The libssh2 project and its contributors.
+  - Copyright (C) Alexander Lamaison <alexander.lamaison@gmail.com>
   - Copyright (C) Viktor Szakats
-  - Copyright (C) Daiki Ueno
+  - Copyright (C) Ruslan Baratov
+  - Copyright (C) Alexander Lamaison
+  - Copyright (C) Marc Hoersken
+  - Copyright (C) Sara Golemon <sarag@libssh2.org>
   - Copyright (C) Daniel Stenberg
+  - Copyright (C) Simon Josefsson <simon@josefsson.org>
+  - Copyright (C) Patrick Monnerat <patrick@monnerat.net>
+  - Copyright (C) Daiki Ueno
+  - Copyright (C) Niels Provos <provos@physnet.uni-hamburg.de>
+  - Copyright (C) Mikhail Gusarov <dottedmag@dottedmag.net>
+  - Copyright (C) Daniel Stenberg <daniel@haxx.se>
+  - Copyright (C) Simon Josefsson
+  - Copyright (C) The Written Word, Inc.
+  - Copyright (C) Lars Nordin <Lars.Nordin@SDlabs.se>
+  - Copyright (C) Douglas Gilbert
+  - Copyright (C) Art <https://github.com/wildart>
+  - Copyright (C) Mikhail Gusarov
+  - Copyright (C) Eli Fant <elifantu@mail.ru>
+  - Copyright (C) Xaver Loppenstedt <xaver@loppenstedt.de>
+  - Copyright (C) Marc Hoersken <info@marc-hoersken.de>
+
+  Header with its own terms, as shipped in `libssh2/appveyor.yml`:
+
+```text
+Copyright (C) Ruslan Baratov
+Copyright (C) Alexander Lamaison
+Copyright (C) Marc Hoersken
+Copyright (C) Viktor Szakats
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this
+  list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+SPDX-License-Identifier: BSD-3-Clause
+```
+
+
+  Header with its own terms, as shipped in `libssh2/src/blowfish.c`:
+
+```text
+Blowfish for OpenBSD - a fast block cipher designed by Bruce Schneier
+
+Copyright (C) Niels Provos <provos@physnet.uni-hamburg.de>
+All rights reserved.
+
+Implementation advice by David Mazieres <dm@lcs.mit.edu>.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from this
+   software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+
+SPDX-License-Identifier: BSD-3-Clause
+```
+
 
 ```text
 Copyright (C) The libssh2 project and its contributors. (libssh2-sys)
+Copyright (C) Alexander Lamaison <alexander.lamaison@gmail.com> (libssh2-sys)
 Copyright (C) Viktor Szakats (libssh2-sys)
-Copyright (C) Daiki Ueno (libssh2-sys)
+Copyright (C) Ruslan Baratov (libssh2-sys)
+Copyright (C) Alexander Lamaison (libssh2-sys)
+Copyright (C) Marc Hoersken (libssh2-sys)
+Copyright (C) Sara Golemon <sarag@libssh2.org> (libssh2-sys)
 Copyright (C) Daniel Stenberg (libssh2-sys)
+Copyright (C) Simon Josefsson <simon@josefsson.org> (libssh2-sys)
+Copyright (C) Patrick Monnerat <patrick@monnerat.net> (libssh2-sys)
+Copyright (C) Daiki Ueno (libssh2-sys)
+Copyright (C) Niels Provos <provos@physnet.uni-hamburg.de> (libssh2-sys)
+Copyright (C) Mikhail Gusarov <dottedmag@dottedmag.net> (libssh2-sys)
+Copyright (C) Daniel Stenberg <daniel@haxx.se> (libssh2-sys)
+Copyright (C) Simon Josefsson (libssh2-sys)
+Copyright (C) The Written Word, Inc. (libssh2-sys)
+Copyright (C) Lars Nordin <Lars.Nordin@SDlabs.se> (libssh2-sys)
+Copyright (C) Douglas Gilbert (libssh2-sys)
+Copyright (C) Art <https://github.com/wildart> (libssh2-sys)
+Copyright (C) Mikhail Gusarov (libssh2-sys)
+Copyright (C) Eli Fant <elifantu@mail.ru> (libssh2-sys)
+Copyright (C) Xaver Loppenstedt <xaver@loppenstedt.de> (libssh2-sys)
+Copyright (C) Marc Hoersken <info@marc-hoersken.de> (libssh2-sys)
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
