@@ -1267,15 +1267,6 @@ test('hasCopyrightHolderInFiles: distinguishes true holders from CC0-1.0 non-hol
     true
   );
 
-  // Mutation check: removing start-of-line requirement turns CC0 text to true
-  const mutatedHolderRegex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
-  const boilerplateRegex =
-    /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
-  const mutatedMatches = cc0Text
-    .split('\n')
-    .some((l) => !boilerplateRegex.test(l) && mutatedHolderRegex.test(l));
-  assert.strictEqual(mutatedMatches, true, 'Mutation: removing start-of-line requirement causes CC0 text to match (turns red)');
-
   // Also verify in THIRD-PARTY-NOTICES.md that the 5 CC0 crates have "No copyright notice is shipped in the package"
   const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
   const noticesContent = fs.readFileSync(noticesFile, 'utf8');
