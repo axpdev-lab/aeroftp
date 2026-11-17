@@ -178,9 +178,6 @@ pub fn default_ssh_config_path() -> Option<PathBuf> {
 struct HostBlock {
     aliases: Vec<String>,
     kv: HashMap<String, String>,
-    /// Why ssh would not read this block as written, from the first line
-    /// that says so; the host is skipped with it.
-    error: Option<String>,
 }
 
 /// One ssh_config line as OpenSSH reads it (`process_config_line` in
@@ -246,10 +243,7 @@ fn ssh_words(s: &str) -> Result<Vec<String>, String> {
             }
         }
         if quote.is_some() {
-            return Err(
-                "a quote on one of its lines is never closed, so ssh refuses the whole file"
-                    .to_string(),
-            );
+            return Err("leaves a quote open".to_string());
         }
         words.push(word);
     }
@@ -259,6 +253,31 @@ fn ssh_words(s: &str) -> Result<Vec<String>, String> {
 /// rest of its line, see [`split_directive`]).
 const IMPORTED_KEYS: [&str; 4] = ["hostname", "port", "user", "identityfile"];
 
+/// Why ssh refuses a whole file for this line, for the keywords this import
+/// reads: a quote left open, a second value, no value, or a port that is not
+/// a number from 1 to 65535 (`ssh -G` on 10.2p1: "invalid quotes", "garbage
+/// at end of line", "Missing argument", "Bad port"). ssh checks every line,
+/// before the first `Host` and inside a `Match` block too, and then reads
+/// none of the hosts. A keyword this import does not read is left to ssh:
+/// which ones exist, and how many values each takes, depends on its version.
+fn ssh_line_error(key: &str, words: &[String]) -> Option<String> {
+    let reads = IMPORTED_KEYS.contains(&key) || key == "proxyjump" || key == "host";
+    let first = words.first().map(String::as_str).unwrap_or("");
+    if !reads {
+        None
+    } else if first.is_empty() && words.len() <= 1 {
+        Some(format!("gives `{key}` no value"))
+    } else if words.len() > 1 && IMPORTED_KEYS.contains(&key) {
+        Some(format!("gives `{key}` more than one value"))
+    } else if key == "port" && !first.parse::<u16>().is_ok_and(|p| p != 0) {
+        Some(format!(
+            "gives `port` the value `{first}`, which is not a port from 1 to 65535"
+        ))
+    } else {
+        None
+    }
+}
+
 /// Maximum number of `Host` blocks to parse, matching the other importers:
 /// each imported profile with a credential costs a whole-vault rewrite, so an
 /// uncapped parse of a large config is a self-inflicted write storm.
@@ -266,12 +285,16 @@ const MAX_HOSTS: usize = 10_000;
 
 /// Parse the ssh config into ordered `Host` blocks. Comments (`#`) and blank
 /// lines are ignored. Directives before the first `Host` (rare global block)
-/// are discarded since they cannot produce a concrete profile.
-fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
+/// are discarded since they cannot produce a concrete profile. The second
+/// value is the first line for which ssh refuses the whole file
+/// ([`ssh_line_error`], or a quote left open), wherever it sits.
+fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
     let mut blocks: Vec<HostBlock> = Vec::new();
     let mut current: Option<HostBlock> = None;
+    let mut error: Option<String> = None;
+    let mut capped = false;
 
-    for raw in content.lines() {
+    for (index, raw) in content.lines().enumerate() {
         let line = raw.trim();
         if line.is_empty() || line.starts_with('#') {
             continue;
@@ -280,14 +303,20 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
         let Some(parsed) = split_directive(line) else {
             continue;
         };
-        let (key, words) = match parsed {
-            Ok(parsed) => parsed,
-            Err(reason) => {
-                if let Some(block) = current.as_mut() {
-                    block.error.get_or_insert(reason);
-                }
-                continue;
-            }
+        // ssh refuses the whole file for one such line, wherever it is, so
+        // it is recorded for the file and every host is skipped with it.
+        let line_error = match &parsed {
+            Ok((key, words)) => ssh_line_error(key, words),
+            Err(reason) => Some(reason.clone()),
+        };
+        if let Some(reason) = line_error {
+            error.get_or_insert(format!(
+                "line {} of the file {reason}, so ssh refuses the whole file and reads none of its hosts",
+                index + 1
+            ));
+        }
+        let Ok((key, words)) = parsed else {
+            continue;
         };
 
         if key == "match" {
@@ -302,24 +331,21 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
             if let Some(block) = current.take() {
                 blocks.push(block);
             }
+            // Past the cap the lines are still read for an error, which
+            // would make ssh refuse the hosts already taken.
             if blocks.len() >= MAX_HOSTS {
-                log::warn!("ssh config import: stopped at the {MAX_HOSTS}-host cap");
-                return blocks;
+                if !capped {
+                    log::warn!("ssh config import: stopped at the {MAX_HOSTS}-host cap");
+                }
+                capped = true;
+                continue;
             }
             let aliases: Vec<String> = words.into_iter().filter(|s| !s.is_empty()).collect();
             current = Some(HostBlock {
                 aliases,
                 kv: HashMap::new(),
-                error: None,
             });
         } else if let Some(block) = current.as_mut() {
-            // The keywords this import reads take one value; ssh refuses a
-            // line with more ("garbage at end of line").
-            if words.len() > 1 && IMPORTED_KEYS.contains(&key.as_str()) {
-                block.error.get_or_insert(format!(
-                    "its {key} line holds more than one value, which ssh refuses"
-                ));
-            }
             let value = words.into_iter().next().unwrap_or_default();
             // First occurrence wins, matching ssh's own precedence.
             block.kv.entry(key).or_insert(value);
@@ -330,7 +356,7 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
         blocks.push(block);
     }
 
-    blocks
+    (blocks, error)
 }
 
 /// Convert one `Host` block to a profile, or `None` (with a skip reason) when
@@ -345,9 +371,6 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
 
     if block.aliases.iter().any(|a| is_wildcard_pattern(a)) {
         return Err("wildcard host pattern".to_string());
-    }
-    if let Some(reason) = &block.error {
-        return Err(reason.clone());
     }
 
     let kv = &block.kv;
@@ -443,14 +466,18 @@ pub struct SshImportResult {
 pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
     let content = std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
 
-    let blocks = parse_ssh_config(&content);
+    let (blocks, error) = parse_ssh_config(&content);
     let total_remotes = blocks.len();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
 
     for block in &blocks {
         let display_name = block.aliases.first().cloned().unwrap_or_default();
-        match map_host_block(block) {
+        let mapped = match &error {
+            Some(reason) => Err(reason.clone()),
+            None => map_host_block(block),
+        };
+        match mapped {
             Ok(profile) => servers.push(profile),
             Err(reason) => skipped.push(SshSkippedRemote {
                 name: display_name,
@@ -564,7 +591,12 @@ fn ssh_escapes(value: &str, quoted: bool) -> bool {
 /// with "unknown key %e", `User u%hx` reads as `u<host>x`; a jump host goes
 /// into a `ProxyCommand`, which ssh expands too). Where ssh also expands
 /// `${VAR}` (`dollar`: `User`), a value holding `${` is refused, since ssh
-/// has no escape for it.
+/// has no escape for it. A `User` holding `%` is refused too: OpenSSH reads
+/// `%` tokens there only from 10.0 (its release notes: "allow %-token and
+/// environment variable expansion in the ssh_config User directive"), and
+/// earlier versions read `%%` as two characters, so no spelling reads the
+/// same on both (`ssh -G` gives `user u%%hx` on the 9.6 of Ubuntu 24.04 and
+/// `user u%hx` on 10.2).
 fn ssh_word(field: &str, value: &str, dollar: bool) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains(char::is_whitespace) || value.contains(['"', '\'']) {
@@ -583,6 +615,11 @@ fn ssh_word(field: &str, value: &str, dollar: bool) -> Result<String, String> {
         ));
     }
     ssh_no_dollar(field, value, dollar)?;
+    if dollar && value.contains('%') {
+        return Err(format!(
+            "its {field} holds `%`, which OpenSSH reads as a token from version 10.0 and as itself before, so no spelling reads the same on both; correct the profile and export again"
+        ));
+    }
     Ok(value.replace('%', "%%"))
 }
 
@@ -774,7 +811,7 @@ Host web-?
 
     #[test]
     fn test_parse_ssh_config_fixture() {
-        let blocks = parse_ssh_config(FIXTURE);
+        let blocks = parse_ssh_config(FIXTURE).0;
         // basic, nas, Host *, web-?
         assert_eq!(blocks.len(), 4);
         assert_eq!(blocks[0].aliases, vec!["basic".to_string()]);
@@ -819,7 +856,7 @@ Host web-?
 
     #[test]
     fn test_host_without_hostname_uses_alias() {
-        let blocks = parse_ssh_config("Host fallbackhost\n  User bob\n");
+        let blocks = parse_ssh_config("Host fallbackhost\n  User bob\n").0;
         let profile = map_host_block(&blocks[0]).expect("should map");
         assert_eq!(profile.host, "fallbackhost");
         assert_eq!(profile.username, "bob");
@@ -829,7 +866,8 @@ Host web-?
     fn test_secret_policy_never_credential() {
         let blocks = parse_ssh_config(
             "Host keyed\n  HostName h.example.com\n  IdentityFile ~/.ssh/id_rsa\n",
-        );
+        )
+        .0;
         let profile = map_host_block(&blocks[0]).expect("should map");
         // Key referenced by path only: never a credential.
         assert!(profile.credential.is_none());
@@ -1236,6 +1274,7 @@ Host roundtrip
                 "u",
                 serde_json::json!({"private_key_path": "/keys/${HOME}/id"}),
             ),
+            sftp("percent user", "h.example.com", "u%x", none.clone()),
             sftp(
                 "percent",
                 "h.example.com",
@@ -1275,6 +1314,7 @@ Host roundtrip
             ("inner hash jump", "its jump host holds `#`"),
             ("dollar user", "its user name holds `${`"),
             ("dollar key", "its key file path holds `${`"),
+            ("percent user", "its user name holds `%`"),
             ("\n", "its name holds a line break"),
             ("   ", "its name is empty"),
         ];
@@ -1377,7 +1417,7 @@ Host roundtrip
             sftp("ssh://box", "l.example.com", "u", serde_json::json!({})),
             sftp("box", "m.example.com", "u", serde_json::json!({})),
             sftp("#tag", "n.example.com", "u", serde_json::json!({})),
-            sftp("zone", "fe80::1%eth0", "u%hx", serde_json::json!({})),
+            sftp("zone", "fe80::1%eth0", "u", serde_json::json!({})),
         ];
         let outcome = export_ssh_config(&named, &HashMap::new(), &config).unwrap();
         assert_eq!(outcome.exported, named.len(), "{:?}", outcome.skipped);
@@ -1409,6 +1449,24 @@ Host roundtrip
                 String::from_utf8_lossy(&read.stderr)
             );
         }
+    }
+
+    /// Whether this `ssh` expands `%` tokens in `User`, as OpenSSH does from
+    /// 10.0: `User %n` reads as the alias there, and as `%n` before.
+    fn ssh_expands_user_tokens(dir: &Path) -> bool {
+        let probe = dir.join("probe");
+        std::fs::write(&probe, "Host probe\n  User %n\n").unwrap();
+        std::process::Command::new("ssh")
+            .arg("-G")
+            .arg("-F")
+            .arg(&probe)
+            .arg("probe")
+            .output()
+            .is_ok_and(|out| {
+                String::from_utf8_lossy(&out.stdout)
+                    .lines()
+                    .any(|l| l == "user probe")
+            })
     }
 
     /// A config's `%` tokens and `${VAR}` references are imported as the
@@ -1496,6 +1554,14 @@ Host roundtrip
         {
             return;
         }
+        // OpenSSH expands `%` tokens in `User` only from 10.0; an earlier
+        // ssh (9.6 on the Ubuntu 24.04 CI runner, and the Windows one) reads
+        // `User %n-x` as written. The import reads it as 10.0 does, so the
+        // user is compared only where this ssh does too.
+        let user_tokens = ssh_expands_user_tokens(dir.path());
+        if !user_tokens {
+            eprintln!("this ssh reads `User` tokens as written (before 10.0): the user is not compared with ssh -G");
+        }
         let read = |config: &Path| {
             let out = std::process::Command::new("ssh")
                 .arg("-G")
@@ -1507,7 +1573,9 @@ Host roundtrip
             String::from_utf8_lossy(&out.stdout)
                 .lines()
                 .filter(|l| {
-                    l.starts_with("hostname ") || l.starts_with("user ") || l.starts_with("port ")
+                    l.starts_with("hostname ")
+                        || l.starts_with("port ")
+                        || (user_tokens && l.starts_with("user "))
                 })
                 .map(str::to_string)
                 .collect::<Vec<_>>()
@@ -1517,10 +1585,10 @@ Host roundtrip
 
     /// Each line is read as OpenSSH reads it: a trailing comment, `Key=value`,
     /// escapes, an apostrophe quote, and `ProxyJump` up to its comment. Every
-    /// imported value is the one `ssh -G` reports for the same file. A host
-    /// ssh would refuse (two values for one keyword, a quote left open) is
-    /// skipped with the reason, and what a `Match` block sets is not taken
-    /// for the host before it.
+    /// imported value is the one `ssh -G` reports for the same file. A line
+    /// ssh refuses (two values or none, a quote left open, a bad port) makes
+    /// it refuse the whole file, so every host is skipped with that line,
+    /// and what a `Match` block sets is not taken for the host before it.
     #[test]
     fn each_imported_value_is_what_openssh_reads() {
         let dir = tempfile::tempdir().unwrap();
@@ -1559,32 +1627,110 @@ Host roundtrip
             "jump.example.com"
         );
 
+        // A line ssh refuses makes it refuse the whole file, wherever the
+        // line is: every host is skipped with that line's reason.
+        let refused = [
+            (
+                "Host fine\n  HostName f.example.com\nHost two\n  HostName a b\n",
+                4,
+                "gives `hostname` more than one value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nHost open\n  User \"x\n",
+                4,
+                "leaves a quote open",
+            ),
+            (
+                "User \"x\nHost fine\n  HostName f.example.com\n",
+                1,
+                "leaves a quote open",
+            ),
+            (
+                "HostName a b\nHost fine\n  HostName f.example.com\n",
+                1,
+                "gives `hostname` more than one value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch host zzz\n  User a b\n",
+                4,
+                "gives `user` more than one value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch host zzz\n  User 'x\n",
+                4,
+                "leaves a quote open",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nHost o\n  User\n",
+                4,
+                "gives `user` no value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nHost o\n  User #x\n",
+                4,
+                "gives `user` no value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nHost o\n  ProxyJump #x\n",
+                4,
+                "gives `proxyjump` no value",
+            ),
+            (
+                "Host\nHost fine\n  HostName f.example.com\n",
+                1,
+                "gives `host` no value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\n  Port 0\n",
+                3,
+                "gives `port` the value `0`",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\n  Port 65536\n",
+                3,
+                "gives `port` the value `65536`",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\n  Port 22x\n",
+                3,
+                "gives `port` the value `22x`",
+            ),
+        ];
         let bad = dir.path().join("bad");
+        for (config, line, reason) in refused {
+            std::fs::write(&bad, config).unwrap();
+            let result = import_ssh_config(&bad).unwrap();
+            assert_eq!(result.servers.len(), 0, "{config:?}");
+            assert!(
+                result.skipped.iter().any(|s| s.name == "fine"),
+                "{config:?}"
+            );
+            for skip in &result.skipped {
+                assert!(
+                    skip.reason
+                        .starts_with(&format!("line {line} of the file {reason}")),
+                    "{config:?}: {}",
+                    skip.reason
+                );
+                assert!(skip
+                    .reason
+                    .ends_with("so ssh refuses the whole file and reads none of its hosts"));
+            }
+        }
+        // A port ssh reads as a number: `+22` and `022` are port 22.
         std::fs::write(
             &bad,
-            "Host two\n  HostName a b\n\nHost open\n  User \"x\n\nHost fine\n  HostName f.example.com\n",
+            "Host fine\n  HostName f.example.com\n  Port +22\nHost z\n  Port 022\n",
         )
         .unwrap();
         let result = import_ssh_config(&bad).unwrap();
-        let skipped: Vec<(&str, &str)> = result
-            .skipped
-            .iter()
-            .map(|s| (s.name.as_str(), s.reason.as_str()))
-            .collect();
         assert_eq!(
-            skipped,
-            [
-                (
-                    "two",
-                    "its hostname line holds more than one value, which ssh refuses"
-                ),
-                (
-                    "open",
-                    "a quote on one of its lines is never closed, so ssh refuses the whole file"
-                ),
-            ]
+            result.servers.len(),
+            2,
+            "{:?}",
+            result.skipped.iter().map(|s| &s.reason).collect::<Vec<_>>()
         );
-        assert_eq!(result.servers.len(), 1);
+        assert!(result.servers.iter().all(|s| s.port == 22));
 
         if std::process::Command::new("ssh")
             .arg("-V")
@@ -1592,6 +1738,17 @@ Host roundtrip
             .is_err()
         {
             return;
+        }
+        for (config, _, _) in refused {
+            std::fs::write(&bad, config).unwrap();
+            let out = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(&bad)
+                .arg("fine")
+                .output()
+                .unwrap();
+            assert!(!out.status.success(), "ssh read {config:?}");
         }
         // `ssh -G` on the good file: the same values for each host (a host
         // without `User` gets the local user from ssh, so it is not compared).
