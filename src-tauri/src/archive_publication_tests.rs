@@ -353,6 +353,9 @@ fn an_entry_whose_kept_mode_fails_is_an_error() {
         error.to_string().contains("could not be applied"),
         "{error}"
     );
+    // The destination's error, for every format: a 7z under a password
+    // reported an unmarked one as a wrong password.
+    assert!(super::is_destination_error(&error), "{error:?}");
     assert_eq!(std::fs::read(&existing).unwrap(), b"new");
     let after = std::fs::metadata(&existing).unwrap().permissions().mode() & 0o777;
     assert_eq!(

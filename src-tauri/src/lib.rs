@@ -9852,6 +9852,8 @@ mod macos_acl {
 
     #[cfg(test)]
     type FolderHook = Box<dyn FnMut(&std::path::Path)>;
+    #[cfg(test)]
+    type FinishHook = Box<dyn Fn(&std::fs::File)>;
 
     #[cfg(test)]
     std::thread_local! {
@@ -9866,9 +9868,23 @@ mod macos_acl {
         /// take: its read-back must refuse the copy.
         pub(super) static ACL_NOT_SET: std::cell::Cell<bool> =
             const { std::cell::Cell::new(false) };
-        /// `COPYFILE_STAT` fails in [`super::stamp_macos_copy`].
+        /// `fchflags` fails in [`super::stamp_macos_copy`].
         pub(super) static STAMP_FAILS: std::cell::Cell<bool> =
             const { std::cell::Cell::new(false) };
+        /// Called with the published copy as [`super::stamp_macos_copy`]
+        /// begins and as it ends.
+        pub(super) static FINISHING: std::cell::RefCell<Option<FinishHook>> =
+            const { std::cell::RefCell::new(None) };
+    }
+
+    /// Show the published copy to the [`FINISHING`] hook.
+    #[cfg(test)]
+    pub(super) fn observe_finish(target: &std::fs::File) {
+        FINISHING.with(|hook| {
+            if let Some(hook) = hook.borrow().as_ref() {
+                hook(target);
+            }
+        });
     }
 
     /// Give `file` back the entries [`withhold`] removed.
@@ -10470,7 +10486,11 @@ fn native_copy_macos(
 /// publication makes reachable only the state the copy ends with: the
 /// access list `COPYFILE_ALL` gives a new file there ([`macos_acl::copy_from`]),
 /// the source's owner and group where this account may set them (as
-/// `copyfile` tries, and ignores), then the source's mode.
+/// `copyfile` tries, and ignores), then the source's mode. The source's
+/// dates are set here too, as `COPYFILE_STAT` sets them (access and
+/// modification): after the publication nothing may reach the access state
+/// again, and `fcopyfile` would, even for `COPYFILE_STAT` alone (it gives
+/// the owner read and write first, then sets the mode and owner once more).
 #[cfg(target_os = "macos")]
 fn secure_macos_copy(
     source: &std::fs::File,
@@ -10480,8 +10500,8 @@ fn secure_macos_copy(
 ) -> std::io::Result<()> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     macos_acl::copy_from(source, target, inherits)?;
-    let owner = source.metadata()?;
-    let _ = std::os::unix::fs::fchown(target, Some(owner.uid()), Some(owner.gid()));
+    let original = source.metadata()?;
+    let _ = std::os::unix::fs::fchown(target, Some(original.uid()), Some(original.gid()));
     target.set_permissions(permissions.clone())?;
     let held = target.metadata()?.permissions().mode() & 0o7777;
     let want = permissions.mode() & 0o7777;
@@ -10490,37 +10510,54 @@ fn secure_macos_copy(
             "its mode reads back as {held:o}, not {want:o}"
         )));
     }
-    Ok(())
+    target
+        .set_times(
+            std::fs::FileTimes::new()
+                .set_accessed(original.accessed()?)
+                .set_modified(original.modified()?),
+        )
+        .map_err(|e| std::io::Error::other(format!("its dates could not be copied: {e}")))
 }
 
+/// The file flags a copy takes from its source: the ones the owner may set,
+/// as `copyfile` copies them, less those that describe the source's own
+/// storage. `UF_COMPRESSED` says the data is in a compressed resource, and
+/// the copy's data is written plain; `UF_TRACKED` and `UF_DATAVAULT`
+/// (`0x80`, which the libc crate does not define) `copyfile` leaves out too.
+/// The system flags need root, which this process does not have.
+#[cfg(target_os = "macos")]
+const COPIED_FILE_FLAGS: libc::c_uint =
+    libc::UF_SETTABLE & !(libc::UF_COMPRESSED | libc::UF_TRACKED | 0x80);
+
 /// The rest of `COPYFILE_ALL`, once the copy holds its name: the source's
-/// dates and file flags (`COPYFILE_STAT`). They open the copy to no one, and
-/// a locked (`uchg`) copy could be neither renamed nor removed from its
-/// private folder.
+/// file flags ([`COPIED_FILE_FLAGS`]), with `fchflags` alone. A locked
+/// (`uchg`) copy could be neither renamed nor removed from its private
+/// folder, so they wait for the publication; and they change neither the
+/// mode, the owner nor the access list, which `fcopyfile` would reach on a
+/// copy already published (see [`secure_macos_copy`]).
 #[cfg(target_os = "macos")]
 fn stamp_macos_copy(source: &std::fs::File, target: &std::fs::File) -> std::io::Result<()> {
     use std::os::fd::AsRawFd;
+    use std::os::macos::fs::MetadataExt;
+    #[cfg(test)]
+    macos_acl::observe_finish(target);
     #[cfg(test)]
     if macos_acl::STAMP_FAILS.with(std::cell::Cell::get) {
-        return Err(std::io::Error::other("COPYFILE_STAT refused (test)"));
+        return Err(std::io::Error::other("fchflags refused (test)"));
     }
-    // SAFETY: both descriptors are open for the call; no state is passed.
-    let copied = unsafe {
-        libc::fcopyfile(
-            source.as_raw_fd(),
-            target.as_raw_fd(),
-            std::ptr::null_mut(),
-            libc::COPYFILE_STAT,
-        )
-    };
-    if copied == 0 {
-        Ok(())
-    } else {
-        Err(std::io::Error::other(format!(
-            "its dates and flags could not be copied: {}",
-            std::io::Error::last_os_error()
-        )))
+    let flags = source.metadata()?.st_flags() & COPIED_FILE_FLAGS;
+    if flags != 0 {
+        // SAFETY: `target` owns the descriptor for the call.
+        if unsafe { libc::fchflags(target.as_raw_fd(), flags) } != 0 {
+            return Err(std::io::Error::other(format!(
+                "its file flags could not be copied: {}",
+                std::io::Error::last_os_error()
+            )));
+        }
     }
+    #[cfg(test)]
+    macos_acl::observe_finish(target);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -10885,8 +10922,13 @@ mod native_local_copy_tests {
     /// still private and the temporary already holds the control's access
     /// list and mode; nothing is left after; the published copy holds them.
     /// A folder that stays open or an access list that does not take refuse
-    /// the copy before anything is published; dates and flags that fail after
-    /// the publication are the copy's error, its access already final.
+    /// the copy before anything is published; flags that fail after the
+    /// publication are the copy's error, its access already final. A
+    /// read-only source with a flag and an old date: as the finish begins
+    /// and as it ends, the published copy holds the control's access (the
+    /// finish used `fcopyfile`, which gave the owner read and write and set
+    /// the mode again on the published copy), and it ends with the source's
+    /// flag and date.
     #[cfg(target_os = "macos")]
     #[test]
     fn a_copy_gets_no_inherited_acl_until_it_is_published() {
@@ -10904,7 +10946,10 @@ mod native_local_copy_tests {
         }
         fn access(path: &std::path::Path) -> Result<(Option<String>, u32), String> {
             let file = std::fs::File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-            let acl = macos_acl::read(&file)
+            access_of(&file)
+        }
+        fn access_of(file: &std::fs::File) -> Result<(Option<String>, u32), String> {
+            let acl = macos_acl::read(file)
                 .and_then(|acl| acl.map(|acl| macos_acl::text(&acl)).transpose())
                 .map_err(|e| e.to_string())?;
             let mode = file
@@ -10960,6 +11005,32 @@ mod native_local_copy_tests {
         std::fs::write(&restrictive, vec![7u8; 3 << 20]).unwrap();
         std::fs::set_permissions(&restrictive, std::fs::Permissions::from_mode(0o640)).unwrap();
         chmod_a(&restrictive, "nobody deny read");
+        // Read-only, with a user flag and an old date: what the finish must
+        // copy without reaching the access state of the published copy.
+        let read_only = sources.path().join("read-only.bin");
+        std::fs::write(&read_only, vec![7u8; 3 << 20]).unwrap();
+        let old = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+        std::fs::File::options()
+            .write(true)
+            .open(&read_only)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_accessed(old)
+                    .set_modified(old),
+            )
+            .unwrap();
+        std::fs::set_permissions(&read_only, std::fs::Permissions::from_mode(0o400)).unwrap();
+        let flagged = std::process::Command::new("/usr/bin/chflags")
+            .arg("nodump")
+            .arg(&read_only)
+            .output()
+            .unwrap();
+        assert!(
+            flagged.status.success(),
+            "{}",
+            String::from_utf8_lossy(&flagged.stderr)
+        );
         assert!(
             matches!(access(&plain), Ok((None, _))),
             "the plain source has an ACL of its own"
@@ -10976,12 +11047,13 @@ mod native_local_copy_tests {
             "restrictive source",
             "folder stays open",
             "access list does not take",
-            "dates and flags fail",
+            "flags fail",
+            "read-only source",
         ] {
-            let from = if case == "restrictive source" {
-                &restrictive
-            } else {
-                &plain
+            let from = match case {
+                "restrictive source" => &restrictive,
+                "read-only source" => &read_only,
+                _ => &plain,
             };
             let dir = tempfile::tempdir().unwrap();
             chmod_a(
@@ -11037,7 +11109,14 @@ mod native_local_copy_tests {
             });
             macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(case == "folder stays open"));
             macos_acl::ACL_NOT_SET.with(|fails| fails.set(case == "access list does not take"));
-            macos_acl::STAMP_FAILS.with(|fails| fails.set(case == "dates and flags fail"));
+            macos_acl::STAMP_FAILS.with(|fails| fails.set(case == "flags fail"));
+            let finishing = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+            let finished = finishing.clone();
+            macos_acl::FINISHING.with(|hook| {
+                *hook.borrow_mut() = Some(Box::new(move |target: &std::fs::File| {
+                    finished.borrow_mut().push(access_of(target));
+                }));
+            });
             let publish = if case == "name taken" {
                 LocalPublish::NoReplace
             } else {
@@ -11047,6 +11126,7 @@ mod native_local_copy_tests {
             macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(false));
             macos_acl::ACL_NOT_SET.with(|fails| fails.set(false));
             macos_acl::STAMP_FAILS.with(|fails| fails.set(false));
+            macos_acl::FINISHING.with(|hook| hook.borrow_mut().take());
             local_copy_publication::OBSERVER.with(|observer| observer.borrow_mut().take());
             macos_acl::FOLDER_MADE.with(|hook| hook.borrow_mut().take());
             let made = made.borrow().clone();
@@ -11063,7 +11143,9 @@ mod native_local_copy_tests {
             let seen = seen.borrow().clone();
             let stages: Vec<&str> = seen.iter().map(|(stage, _)| *stage).collect();
             let want_stages: &[&str] = match case {
-                "published" | "restrictive source" | "dates and flags fail" => &["publishing"],
+                "published" | "restrictive source" | "read-only source" | "flags fail" => {
+                    &["publishing"]
+                }
                 "stop after the last read" | "name taken" => &["publishing", "removing"],
                 "access list does not take" => &["removing"],
                 _ => &[],
@@ -11098,10 +11180,39 @@ mod native_local_copy_tests {
             if let Some(left) = private_folder(dir.path()) {
                 wrong.push(format!("{case}: {} is left", left.display()));
             }
+            // After the rename, as the finish begins and as it ends, the
+            // published copy already holds its final access: the finish
+            // reaches neither its mode, its owner nor its access list.
+            let finishing = finishing.borrow().clone();
+            let want_finishing = match case {
+                "published" | "restrictive source" | "read-only source" => 2,
+                "flags fail" => 1,
+                _ => 0,
+            };
+            if finishing.len() != want_finishing
+                || finishing
+                    .iter()
+                    .any(|held| held.as_ref().ok() != control.as_ref().ok())
+            {
+                wrong.push(format!(
+                    "{case}: during the finish the copy held {finishing:?}, the control {control:?}"
+                ));
+            }
+            if case == "read-only source" {
+                use std::os::macos::fs::MetadataExt;
+                let copy = std::fs::metadata(&to).unwrap();
+                if copy.st_flags() & libc::UF_NODUMP == 0 || copy.modified().ok() != Some(old) {
+                    wrong.push(format!(
+                        "{case}: flags {:#x}, modified {:?}, not the source's",
+                        copy.st_flags(),
+                        copy.modified()
+                    ));
+                }
+            }
             match case {
-                "published" | "restrictive source" | "dates and flags fail" => {
+                "published" | "restrictive source" | "read-only source" | "flags fail" => {
                     let published = access(&to);
-                    let failed = case == "dates and flags fail";
+                    let failed = case == "flags fail";
                     if copied.is_err() != failed || published != control {
                         wrong.push(format!(
                             "{case}: {copied:?}, the published copy holds {published:?}, the control {control:?}"
@@ -11122,6 +11233,38 @@ mod native_local_copy_tests {
             }
         }
         assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// Once a macOS copy holds its name, the finish copies its file flags and
+    /// nothing else: no call that sets a mode, an owner or an access list,
+    /// and no `fcopyfile`, which gives the owner read and write first and,
+    /// for `COPYFILE_STAT`, sets the mode and the owner once more. Read from
+    /// the source, so it holds on every platform the suite runs on.
+    #[test]
+    fn the_finish_of_a_published_macos_copy_reaches_no_access_state() {
+        let source = include_str!("lib.rs");
+        let start = source.find("\nfn stamp_macos_copy(").expect("the finish");
+        let end = start + source[start..].find("\n}\n").expect("its end");
+        let finish = &source[start..end];
+        for call in [
+            "fcopyfile",
+            "fchmod",
+            "set_permissions",
+            "fchown",
+            "acl_set",
+            "macos_acl::copy_from",
+            "set_times",
+        ] {
+            assert!(!finish.contains(call), "the finish calls {call}:\n{finish}");
+        }
+        assert_eq!(finish.matches("libc::fchflags(").count(), 1, "{finish}");
+        assert_eq!(
+            source
+                .matches("publish_local_copy(&temp, to, written, cancel, publish, |target| {\n            stamp_macos_copy(&source, &target)\n        });")
+                .count(),
+            1,
+            "the publication of a macOS copy runs the finish, and only it"
+        );
     }
 
     /// The Windows copy is stopped by `CopyFileExW` itself: with the flag set,
@@ -13368,10 +13511,17 @@ where
             };
             #[cfg(not(test))]
             let applied = file.set_permissions(kept);
+            // A destination error, as every other failure here: under a
+            // password, sevenz-rust2 reported a plain one as a wrong password
+            // for an entry already in place. It names no path: the GUI takes
+            // an error that mentions "password" for a wrong password, and an
+            // entry's name can.
             applied.map_err(|e| {
-                std::io::Error::other(format!(
-                    "{} was extracted owner-only: its permissions could not be applied: {e}",
-                    std::path::Path::new(name).display()
+                destination_error(std::io::Error::new(
+                    e.kind(),
+                    format!(
+                        "the entry was extracted owner-only: its permissions could not be applied: {e}"
+                    ),
                 ))
             })?;
         }
@@ -30105,6 +30255,61 @@ mod sevenz_mhe_tests {
             super::describe_7z_error(&err),
             "Cannot write to the destination: no space left (simulated)"
         );
+    }
+
+    /// An encrypted 7z entry that replaced a file and then failed to take its
+    /// kept mode was reported as a wrong password: the error went back to
+    /// sevenz-rust2 unmarked. It reads as the destination's error, names no
+    /// password, and the entry stays owner-only. The same writer serves the
+    /// zip, tar and rar extractors, which take this error as it is.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_7z_entry_whose_kept_mode_fails_under_a_password_is_not_a_wrong_password() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.txt");
+        std::fs::write(&src, b"alpha").unwrap();
+        let archive = dir.path().join("pw.7z").to_string_lossy().to_string();
+        compress_7z_core(
+            vec![src.to_string_lossy().to_string()],
+            archive.clone(),
+            Some("Test123!".to_string()),
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("compress");
+        let dest = dir.path().join("dest");
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("a.txt"), b"old").unwrap();
+        std::fs::set_permissions(dest.join("a.txt"), std::fs::Permissions::from_mode(0o644))
+            .unwrap();
+
+        super::archive_entry_mode::FAILS.with(|fails| fails.set(true));
+        let result = extract_7z_core(
+            archive,
+            dest.to_string_lossy().to_string(),
+            Some("Test123!".to_string()),
+            false,
+        )
+        .await;
+        super::archive_entry_mode::FAILS.with(|fails| fails.set(false));
+
+        let error = result.expect_err("a kept mode that failed was reported as done");
+        assert!(
+            error.starts_with("Failed to extract 7z archive: Cannot write to the destination: ")
+                && error.contains("its permissions could not be applied")
+                && !error.to_lowercase().contains("password"),
+            "{error}"
+        );
+        assert_eq!(std::fs::read(dest.join("a.txt")).unwrap(), b"alpha");
+        let mode = std::fs::metadata(dest.join("a.txt"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(mode, 0o600, "{mode:o}");
     }
 
     // Overwriting a file that already exists keeps its permissions: before the
