@@ -146,10 +146,20 @@ async fn session(
 }
 
 async fn provider_with(script: Script) -> (FtpProvider, Arc<Mutex<Wire>>) {
+    let (provider, wire, _server) = provider_with_server(script).await;
+    (provider, wire)
+}
+
+/// As [`provider_with`], with the server task, for a test that runs many
+/// exchanges and stops each server when its exchange is done: a detached one
+/// keeps its listener until the test ends.
+async fn provider_with_server(
+    script: Script,
+) -> (FtpProvider, Arc<Mutex<Wire>>, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let wire = Arc::new(Mutex::new(Wire::default()));
-    tokio::spawn(serve(listener, Arc::clone(&wire), script));
+    let server = tokio::spawn(serve(listener, Arc::clone(&wire), script));
     let config = FtpConfig {
         host: "127.0.0.1".to_string(),
         port,
@@ -165,7 +175,7 @@ async fn provider_with(script: Script) -> (FtpProvider, Arc<Mutex<Wire>>) {
         .connect()
         .await
         .expect("connect to the scripted server");
-    (provider, wire)
+    (provider, wire, server)
 }
 
 /// A server whose first connection answers `SITE` with `on_first`, and every
@@ -500,31 +510,59 @@ async fn a_reply_over_the_cap_is_abandoned_and_the_session_rebuilt() {
 // T18
 /// Many preliminary replies in one burst: the follow-up loop decodes only the
 /// reply it just read, so the cost is linear. Decoding the whole accumulated
-/// body on every turn made 128 KiB of `150` lines take about 16 s.
+/// body on every turn made 128 KiB of `150` lines take about 16 s. The burst
+/// is followed as fast whole as cut into ten exchanges (best of five, the two
+/// sides interleaved): a loaded runner slows both alike, where a fixed bound
+/// measured the runner.
 #[tokio::test]
 async fn a_burst_of_preliminary_replies_is_followed_in_linear_time() {
-    let mut burst = Vec::new();
-    while burst.len() <= 128 * 1024 {
-        burst.extend_from_slice(b"150 x\r\n");
+    async fn follow(bytes: usize) -> Duration {
+        let mut burst = Vec::new();
+        while burst.len() <= bytes {
+            burst.extend_from_slice(b"150 x\r\n");
+        }
+        burst.extend_from_slice(b"200 Done\r\n");
+        let (mut provider, wire, server) = provider_with_server(reply(&burst)).await;
+        let started = std::time::Instant::now();
+        let run = run_site_command(
+            &mut provider,
+            "RESCAN",
+            // No settle window: it is a fixed wait per exchange, paid once
+            // whole and ten times in parts, and would hide the reading.
+            &SiteOptions::with_reply_timeout_secs(60).with_settle(Duration::ZERO),
+        )
+        .await;
+        let elapsed = started.elapsed();
+        let (code, lines, _, _) = replied(run.outcome);
+        assert_eq!(code, 200);
+        assert_eq!(lines.last().map(String::as_str), Some("200 Done"));
+        assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
+        // 55 exchanges: each server is stopped with its exchange, so none
+        // keeps its listener for the rest of the test. The task owns the
+        // listener: cancelled and dropped means the listener is closed.
+        server.abort();
+        let stopped = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .expect("server still running");
+        assert!(stopped.unwrap_err().is_cancelled());
+        elapsed
     }
-    burst.extend_from_slice(b"200 Done\r\n");
-    let (mut provider, wire) = provider_with(reply(&burst)).await;
-    let started = std::time::Instant::now();
-    let run = run_site_command(
-        &mut provider,
-        "RESCAN",
-        &SiteOptions::with_reply_timeout_secs(60),
-    )
-    .await;
-    let elapsed = started.elapsed();
-    let (code, lines, _, _) = replied(run.outcome);
-    assert_eq!(code, 200);
-    assert_eq!(lines.last().map(String::as_str), Some("200 Done"));
+    const WHOLE: usize = 128 * 1024;
+    const PARTS: usize = 10;
+    let mut best_whole = Duration::MAX;
+    let mut best_parts = Duration::MAX;
+    for _ in 0..5 {
+        best_whole = best_whole.min(follow(WHOLE).await);
+        let mut parts = Duration::ZERO;
+        for _ in 0..PARTS {
+            parts += follow(WHOLE / PARTS).await;
+        }
+        best_parts = best_parts.min(parts);
+    }
     assert!(
-        elapsed < Duration::from_secs(8),
-        "following the 1xx replies took {elapsed:?}"
+        best_whole < best_parts * 3,
+        "following the 1xx replies is not linear: {best_whole:?} whole, {best_parts:?} in {PARTS} parts"
     );
-    assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
 }
 
 // T19
