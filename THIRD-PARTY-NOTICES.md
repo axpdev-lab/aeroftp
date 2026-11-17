@@ -14,7 +14,7 @@ All bundled components are distributed in accordance with their respective licen
 
 ## Licensing Exceptions
 
-- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 609](#notice-unrar-sys).
+- **UnRAR (`unrar_sys`):** RAR extraction uses the UnRAR source code by Alexander Roshal (through the unrar crate, vendored unrar_sys), distributed under its own license, which allows it to be used and redistributed but forbids using it to re-create the RAR compression algorithm. AeroFTP only extracts RAR archives and never creates them. The UnRAR license is not a free-software license, and it is not GPL-compatible. For the full text of the UnRAR license, see [Notice Entry 608](#notice-unrar-sys).
 
 ---
 
@@ -2029,6 +2029,29 @@ THE SOFTWARE.
 **Used by component(s):**
 - `acl-sys@1.2.2` (cargo, file: `LICENSE`)
 - `lzma-sys@0.1.20` (cargo, file: `xz-5.2/COPYING.LGPLv2.1`)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 (xz-5.2/lib/getopt.c)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 (xz-5.2/lib/getopt1.c)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 (xz-5.2/lib/getopt_int.h)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 (xz-5.2/lib/getopt.in.h)
+  - Copyright (C) 1992, 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software (xz-5.2/INSTALL.generic)
+  - Copyright (C) 1997-2007 by Dimitri van Heesch (xz-5.2/Doxyfile.in)
+  - Copyright (C) 1998, 1999, 2001  Henry Spencer. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 1998, 2001, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzgrep.in)
+  - Copyright (C) 1998, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 2001, 2002, 2007 Free Software Foundation (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 2002-2006, 2008 Free Software Foundation, Inc. (xz-5.2/m4/getopt.m4)
+  - Copyright (C) 2004-2007 Free Software Foundation, Inc. (xz-5.2/lib/Makefile.am)
+  - Copyright (C) 2005 Philipp Benner. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2005, 2008, 2010-2020 Free Software Foundation, Inc. (xz-5.2/m4/visibility.m4)
+  - Copyright (C) 2006 Timo Lindfors (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2007-2008 Free Software Foundation, Inc. (xz-5.2/m4/posix-shell.m4)
+  - Copyright (c) 2008 Steven G. Johnson <stevenj@alum.mit.edu> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2011 Daniel Richard G. <skunk@iSKUNK.ORG> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2014 Google Inc. (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2015 Lasse Collin <lasse.collin@tukaani.org> (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2019 Marc Stevens <marc.stevens@cwi.nl> (xz-5.2/m4/ax_pthread.m4)
 
 ```text
 GNU LESSER GENERAL PUBLIC LICENSE
@@ -7799,6 +7822,138 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 **Used by component(s):**
 - `aws-lc-sys@0.46.0` (cargo, file: `LICENSE`)
 - `aws-lc-sys@0.46.0` (cargo, file: `aws-lc/LICENSE`)
+  - Copyright (C) 1995-1997 Eric Young (eay@cryptsoft.com) (aws-lc/crypto/fipsmodule/bn/internal.h)
+  - Copyright (C) 1995-1997 Eric Young (eay@cryptsoft.com) All rights reserved. (aws-lc/crypto/obj/obj_dat.h)
+  - Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com) (aws-lc/crypto/decrepit/cast/cast.c)
+  - Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com) All rights reserved. (aws-lc/crypto/asn1/a_bitstr.c)
+  - Copyright (C) 2006, Network Resonance, Inc. (aws-lc/ssl/d1_srtp.cc)
+  - Copyright (C) 2011, RTFM, Inc. (aws-lc/ssl/d1_srtp.cc)
+  - Copyright (C) 2021 - 2025, Joshua E. Hill <josh@keypair.us> (aws-lc/third_party/jitterentropy/jitterentropy-library/src/jitterentropy-gcd.c)
+  - Copyright (C) 2021 - 2025, Stephan Mueller <smueller@chronox.de> (aws-lc/third_party/jitterentropy/jitterentropy-library/src/jitterentropy-base.h)
+  - Copyright (C) 2022 Intel Corporation (aws-lc/crypto/fipsmodule/modes/asm/aesni-gcm-avx512.pl)
+  - Copyright (C) 2023 Intel Corporation (aws-lc/crypto/fipsmodule/aes/asm/aesni-xts-avx512.pl)
+  - Copyright (c) 1998-2000 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/bn/jacobi.c)
+  - Copyright (c) 1998-2001 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/ex_data.c)
+  - Copyright (c) 1998-2002 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/decrepit/dh/dh_decrepit.c)
+  - Copyright (c) 1998-2002 The OpenSSL Project. All rights reserved. (aws-lc/include/openssl/ssl3.h)
+  - Copyright (c) 1998-2003 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/bio/pair.c)
+  - Copyright (c) 1998-2004 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/bn/ctx.c)
+  - Copyright (c) 1998-2005 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/ecdsa_extra/ecdsa_asn1.c)
+  - Copyright (c) 1998-2006 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/err/err.c)
+  - Copyright (c) 1998-2007 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/tls/kdf.c)
+  - Copyright (c) 1998-2007 The OpenSSL Project. All rights reserved. (aws-lc/ssl/handshake_client.cc)
+  - Copyright (c) 1998-2011 The OpenSSL Project.  All rights reserved. (aws-lc/include/openssl/arm_arch.h)
+  - Copyright (c) 1999 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/pbkdf/pbkdf.c)
+  - Copyright (c) 1999-2002 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/v3_conf.c)
+  - Copyright (c) 1999-2003 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/v3_alt.c)
+  - Copyright (c) 1999-2004 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/pkcs8/p5_pbev2.c)
+  - Copyright (c) 1999-2005 The OpenSSL Project.  All rights reserved. (aws-lc/ssl/d1_lib.cc)
+  - Copyright (c) 1999-2007 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/digest/md32_common.h)
+  - Copyright (c) 1999-2008 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/v3_crld.c)
+  - Copyright (c) 2000 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/x_algor.c)
+  - Copyright (c) 2000-2002 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/ecdh_extra/ecdh_extra.c)
+  - Copyright (c) 2000-2003 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/ec_extra/ec_asn1.c)
+  - Copyright (c) 2000-2005 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/dh_extra/dh_asn1.c)
+  - Copyright (c) 2001 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/pem/pem_x509.c)
+  - Copyright (c) 2001-2011 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/aes/key_wrap.c)
+  - Copyright (c) 2002-2006 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/aes/aes.c)
+  - Copyright (c) 2003 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/v3_ncons.c)
+  - Copyright (c) 2004 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/x509/x509_vpm.c)
+  - Copyright (c) 2005 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/rsa/padding.c)
+  - Copyright (c) 2006 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/asn1/internal.h)
+  - Copyright (c) 2006,2007 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/evp/digestsign.c)
+  - Copyright (c) 2007 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/evp_extra/p_hmac_asn1.c)
+  - Copyright (c) 2008 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/cipher/e_aesccm.c)
+  - Copyright (c) 2008-2016 The OpenSSL Project. All rights reserved. (aws-lc/crypto/cipher_extra/cts.c)
+  - Copyright (c) 2010 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/fipsmodule/cmac/cmac.c)
+  - Copyright (c) 2011 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/dh_extra/params.c)
+  - Copyright (c) 2012 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/cipher_extra/tls_cbc.c)
+  - Copyright (c) 2012, Intel Corporation. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/rsaz-avx2.pl)
+  - Copyright (c) 2013 The OpenSSL Project. All rights reserved. (aws-lc/crypto/x509/internal.h)
+  - Copyright (c) 2014 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/constant_time_test.cc)
+  - Copyright (c) 2014, Google Inc. (aws-lc/crypto/base64/base64_test.cc)
+  - Copyright (c) 2014, Intel Corporation. All Rights Reserved. (aws-lc/crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl)
+  - Copyright (c) 2015 CloudFlare, Inc. (aws-lc/crypto/fipsmodule/ec/asm/p256-x86_64-asm.pl)
+  - Copyright (c) 2015 The OpenSSL Project.  All rights reserved. (aws-lc/crypto/cipher_extra/cipher_test.cc)
+  - Copyright (c) 2015, CloudFlare Ltd. (aws-lc/crypto/cipher_extra/asm/chacha20_poly1305_x86_64.pl)
+  - Copyright (c) 2015, Google Inc. (aws-lc/crypto/bn_extra/bn_asn1.c)
+  - Copyright (c) 2015, Intel Inc. (aws-lc/crypto/fipsmodule/ec/p256-nistz-table.h)
+  - Copyright (c) 2016 Google Inc. (aws-lc/crypto/spake25519/internal.h)
+  - Copyright (c) 2016, Google Inc. (aws-lc/crypto/asn1/asn1_test.cc)
+  - Copyright (c) 2017, Google Inc. (aws-lc/crypto/buf/buf_test.cc)
+  - Copyright (c) 2017, Shay Gueron. (aws-lc/crypto/cipher_extra/asm/aes128gcmsiv-x86_64.pl)
+  - Copyright (c) 2017, the HRSS authors. (aws-lc/crypto/hrss/asm/poly_rq_mul.S)
+  - Copyright (c) 2017-2024 The OpenSSL Project Authors (aws-lc/third_party/s2n-bignum/s2n-bignum-imported/x86_att/sha3/sha3_keccak_f1600.S)
+  - Copyright (c) 2018, Amazon Inc. (aws-lc/crypto/fipsmodule/ec/asm/p256_beeu-x86_64-asm.pl)
+  - Copyright (c) 2018, Google Inc. (aws-lc/crypto/abi_self_test.cc)
+  - Copyright (c) 2019 Google Inc. (aws-lc/ssl/ssl_c_test.c)
+  - Copyright (c) 2019, Google Inc. (aws-lc/crypto/decrepit/blowfish/blowfish_test.cc)
+  - Copyright (c) 2020, Arm Ltd. (aws-lc/crypto/fipsmodule/cpucap/cpu_aarch64_win.c)
+  - Copyright (c) 2020, CloudFlare Ltd. (aws-lc/crypto/cipher_extra/asm/chacha20_poly1305_armv8.pl)
+  - Copyright (c) 2020, Google Inc. (aws-lc/crypto/crypto_test.cc)
+  - Copyright (c) 2020, Intel Corporation. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/rsaz-2k-avx512.pl)
+  - Copyright (c) 2020-2021, Intel Corporation. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/rsaz_exp_x2.c)
+  - Copyright (c) 2021, Google Inc. (aws-lc/crypto/blake2/blake2.c)
+  - Copyright (c) 2021, Intel Corporation. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/rsaz-3k-avx512.pl)
+  - Copyright (c) 2021-2022 Arm Limited (aws-lc/third_party/s2n-bignum/s2n-bignum-imported/arm/sha3/sha3_keccak2_f1600.S)
+  - Copyright (c) 2022 Arm Limited (aws-lc/crypto/fipsmodule/ml_dsa/mldsa/native/aarch64/src/mldsa_intt_aarch64_asm.S)
+  - Copyright (c) 2022 Hanno Becker (aws-lc/crypto/fipsmodule/ml_dsa/mldsa/native/aarch64/src/mldsa_intt_aarch64_asm.S)
+  - Copyright (c) 2022 Matthias Kannwischer (aws-lc/third_party/s2n-bignum/s2n-bignum-imported/arm/sha3/sha3_keccak2_f1600.S)
+  - Copyright (c) 2022, ARM Inc. (aws-lc/crypto/fipsmodule/modes/asm/aesv8-gcm-armv8.pl)
+  - Copyright (c) 2022, Google Inc. (aws-lc/crypto/asn1/posix_time.c)
+  - Copyright (c) 2022, Robert Nagy <robert@openbsd.org> (aws-lc/crypto/fipsmodule/cpucap/cpu_aarch64_openbsd.c)
+  - Copyright (c) 2023 Amin Abdulrahman, Matthias Kannwischer (aws-lc/crypto/fipsmodule/ml_dsa/mldsa/native/aarch64/src/mldsa_intt_aarch64_asm.S)
+  - Copyright (c) 2023, Google Inc. (aws-lc/crypto/fipsmodule/bn/asm/bn-armv8.pl)
+  - Copyright (c) 2024 The mlkem-native project authors (aws-lc/third_party/s2n-bignum/s2n-bignum-imported/arm/mlkem/mlkem_basemul_k2.S)
+  - Copyright (c) 2024, Google Inc. (aws-lc/include/openssl/time.h)
+  - Copyright (c) The mldsa-native project authors (aws-lc/crypto/fipsmodule/ml_dsa/mldsa/cbmc.h)
+  - Copyright (c) The mlkem-native project authors (aws-lc/crypto/fipsmodule/ml_dsa/mldsa/common.h)
+  - Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/bn-586.pl)
+  - Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/perlasm/x86asm.pl)
+  - Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/md5/asm/md5-586.pl)
+  - Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/ssl/ssl_text.cc)
+  - Copyright 1998-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/sha/asm/sha1-586.pl)
+  - Copyright 1999-2018 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/perlasm/x86nasm.pl)
+  - Copyright 2000-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/ocsp/ocsp_print.c)
+  - Copyright 2001-2017 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/ocsp/ocsp_http.c)
+  - Copyright 2002 Sun Microsystems, Inc. ALL RIGHTS RESERVED. (aws-lc/crypto/ecdh_extra/ecdh_extra.c)
+  - Copyright 2005 Nokia. All rights reserved. (aws-lc/include/openssl/ssl.h)
+  - Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/x86-mont.pl)
+  - Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/sha/asm/sha1-x86_64.pl)
+  - Copyright 2006-2017 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/rsa_extra/rsa_print.c)
+  - Copyright 2006-2019 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/evp_extra/p_dh.c)
+  - Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/evp_extra/p_dh_asn1.c)
+  - Copyright 2007-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/armv4-mont.pl)
+  - Copyright 2009-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/aes/asm/aesni-x86.pl)
+  - Copyright 2010-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/modes/asm/ghash-neon-armv8.pl)
+  - Copyright 2010-2018 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/modes/asm/ghash-armv4.pl)
+  - Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/cipher_extra/e_aes_cbc_hmac_sha1.c)
+  - Copyright 2011-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/cipher_extra/asm/aesni-sha1-x86_64.pl)
+  - Copyright 2012-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/aes/asm/bsaes-armv7.pl)
+  - Copyright 2013-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/cipher_extra/e_aes_cbc_hmac_sha256.c)
+  - Copyright 2013-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/cipher_extra/asm/aesni-sha256-x86_64.pl)
+  - Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/aes/asm/aesv8-armx.pl)
+  - Copyright 2014-2018 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/aes/asm/aesp8-ppc.pl)
+  - Copyright 2014-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/modes/asm/ghashv8-armx.pl)
+  - Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/evp_extra/scrypt.c)
+  - Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/ec/asm/p256-armv8-asm.pl)
+  - Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/ocsp/internal.h)
+  - Copyright 2016 Brian Smith. (aws-lc/crypto/fipsmodule/bn/montgomery_inv.c)
+  - Copyright 2016 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/chacha/asm/chacha-armv4.pl)
+  - Copyright 2017 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/x509/x509_time_test.cc)
+  - Copyright 2017-2020 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/sha/sha3.c)
+  - Copyright 2017-2022 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/sha/asm/keccak1600-armv8.pl)
+  - Copyright 2018-2022 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/sshkdf/sshkdf.c)
+  - Copyright 2020 Jan Tojnar (aws-lc/cmake/JoinPaths.cmake)
+  - Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/rsaz_exp_x2.c)
+  - Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/modes/asm/aesv8-gcm-armv8-unroll8.pl)
+  - Copyright 2020-2023 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/rsaz-2k-avx512.pl)
+  - Copyright 2021-2022 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/md5/asm/md5-armv8.pl)
+  - Copyright 2021-2023 The OpenSSL Project Authors. All Rights Reserved. (aws-lc/crypto/fipsmodule/bn/asm/rsaz-3k-avx512.pl)
+  - Copyright Amazon.com Inc. or its affiliates. All Rights Reserved. (aws-lc/cmake/GenerateVersionScript.cmake)
+  - Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved. (aws-lc/cmake/rust_bindings.cmake)
+  - Copyright Stephan Mueller <smueller@chronox.de>, 2013 - 2025 (aws-lc/third_party/jitterentropy/jitterentropy-library/arch/jitterentropy-base-power.h)
+  - Copyright Stephan Mueller <smueller@chronox.de>, 2014 - 2025 (aws-lc/third_party/jitterentropy/jitterentropy-library/jitterentropy.h)
 
 ````text
 AWS Libcrypto (AWS-LC)
@@ -17265,16 +17420,6 @@ developed by Chen Jiaju, licensed under the MIT License and the Apache License 2
 ### Notice Entry 188
 
 **Used by component(s):**
-- `dompurify@3.4.17` (npm, file: `src/license_header`)
-  - Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE (dist/purify.cjs.js)
-
-```text
-/*! @license DOMPurify VERSION | (c) Cure53 and other contributors | Released under the Apache license 2.0 and Mozilla Public License 2.0 | github.com/cure53/DOMPurify/blob/VERSION/LICENSE */
-```
-
-### Notice Entry 189
-
-**Used by component(s):**
 - `downcast-rs@1.2.1` (cargo, file: `LICENSE-MIT`)
 
 ```text
@@ -17305,7 +17450,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 190
+### Notice Entry 189
 
 **Used by component(s):**
 - `dpi@0.1.2` (cargo, file: `LICENSE-LIBM-MIT`)
@@ -17369,7 +17514,7 @@ have been licensed under extremely permissive terms.
 <a id="notice-ed25519"></a>
 <a id="notice-rfc6979"></a>
 
-### Notice Entry 191
+### Notice Entry 190
 
 **Used by component(s):**
 - `dsa@0.6.3` (cargo, file: `LICENSE-APACHE`)
@@ -17584,7 +17729,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 192
+### Notice Entry 191
 
 **Used by component(s):**
 - `dsa@0.6.3` (cargo, file: `LICENSE-MIT`)
@@ -17621,7 +17766,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-dtoa-short"></a>
 
-### Notice Entry 193
+### Notice Entry 192
 
 **Used by component(s):**
 - `dtoa-short@0.3.5` (cargo, file: `LICENSE`)
@@ -18003,7 +18148,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   defined by the Mozilla Public License, v. 2.0.
 ```
 
-### Notice Entry 194
+### Notice Entry 193
 
 **Used by component(s):**
 - `eax@0.5.0` (cargo, file: `LICENSE-MIT`)
@@ -18038,7 +18183,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 195
+### Notice Entry 194
 
 **Used by component(s):**
 - `ecdsa@0.16.9` (cargo, file: `LICENSE-MIT`)
@@ -18073,7 +18218,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 196
+### Notice Entry 195
 
 **Used by component(s):**
 - `ecdsa@0.17.0` (cargo, file: `LICENSE-MIT`)
@@ -18111,7 +18256,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-ed25519-dalek"></a>
 
-### Notice Entry 197
+### Notice Entry 196
 
 **Used by component(s):**
 - `ed25519-dalek@2.2.0` (cargo, file: `LICENSE`)
@@ -18148,7 +18293,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 198
+### Notice Entry 197
 
 **Used by component(s):**
 - `either@1.18.0` (cargo, file: `LICENSE-MIT`)
@@ -18186,7 +18331,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 199
+### Notice Entry 198
 
 **Used by component(s):**
 - `elliptic-curve@0.13.8` (cargo, file: `LICENSE-MIT`)
@@ -18220,7 +18365,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 200
+### Notice Entry 199
 
 **Used by component(s):**
 - `elliptic-curve@0.14.1` (cargo, file: `LICENSE-MIT`)
@@ -18258,7 +18403,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-embed-resource"></a>
 
-### Notice Entry 201
+### Notice Entry 200
 
 **Used by component(s):**
 - `embed-resource@3.0.11` (cargo, file: `LICENSE`)
@@ -18287,7 +18432,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 202
+### Notice Entry 201
 
 **Used by component(s):**
 - `embed_plist@1.2.2` (cargo, file: `LICENSE-MIT`)
@@ -18316,7 +18461,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 203
+### Notice Entry 202
 
 **Used by component(s):**
 - `encode_unicode@1.0.0` (cargo, file: `LICENSE-MIT`)
@@ -18347,7 +18492,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE
 ```
 
-### Notice Entry 204
+### Notice Entry 203
 
 **Used by component(s):**
 - `encoding_rs@0.8.41` (cargo, file: `COPYRIGHT`)
@@ -18372,7 +18517,7 @@ Test code within encoding_rs is dedicated to the Public Domain when so
 designated (see the individual files for PD/CC0-dedicated sections).
 ```
 
-### Notice Entry 205
+### Notice Entry 204
 
 **Used by component(s):**
 - `encoding_rs@0.8.41` (cargo, file: `LICENSE-MIT`)
@@ -18407,7 +18552,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 206
+### Notice Entry 205
 
 **Used by component(s):**
 - `encoding_rs@0.8.41` (cargo, file: `LICENSE-WHATWG`)
@@ -18443,7 +18588,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-enum-dispatch"></a>
 
-### Notice Entry 207
+### Notice Entry 206
 
 **Used by component(s):**
 - `enum_dispatch@0.3.13` (cargo, file: `LICENSE`)
@@ -18474,7 +18619,7 @@ SOFTWARE.
 
 <a id="notice-enumflags2"></a>
 
-### Notice Entry 208
+### Notice Entry 207
 
 **Used by component(s):**
 - `enumflags2@0.7.12` (cargo, file: `LICENSE-APACHE`)
@@ -18550,7 +18695,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 209
+### Notice Entry 208
 
 **Used by component(s):**
 - `enumflags2@0.7.12` (cargo, file: `LICENSE-MIT`)
@@ -18585,7 +18730,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-enumflags2-derive"></a>
 
-### Notice Entry 210
+### Notice Entry 209
 
 **Used by component(s):**
 - `enumflags2_derive@0.7.12` (cargo, file: `LICENSE-APACHE`)
@@ -18661,7 +18806,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 211
+### Notice Entry 210
 
 **Used by component(s):**
 - `enumflags2_derive@0.7.12` (cargo, file: `LICENSE-MIT`)
@@ -18694,7 +18839,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 212
+### Notice Entry 211
 
 **Used by component(s):**
 - `equivalent@1.0.2` (cargo, file: `LICENSE-MIT`)
@@ -18727,7 +18872,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 213
+### Notice Entry 212
 
 **Used by component(s):**
 - `errno@0.3.14` (cargo, file: `LICENSE-MIT`)
@@ -18763,7 +18908,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-error-code"></a>
 <a id="notice-xxhash-rust"></a>
 
-### Notice Entry 214
+### Notice Entry 213
 
 **Used by component(s):**
 - `error-code@3.4.0` (cargo, file: `LICENSE`)
@@ -18805,7 +18950,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-escape-string-regexp"></a>
 <a id="notice-is-plain-obj"></a>
 
-### Notice Entry 215
+### Notice Entry 214
 
 **Used by component(s):**
 - `escape-string-regexp@5.0.0` (npm, file: `license`)
@@ -18837,7 +18982,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-micromark-extension-gfm-tagfilter"></a>
 <a id="notice-micromark-extension-gfm-task-list-item"></a>
 
-### Notice Entry 216
+### Notice Entry 215
 
 **Used by component(s):**
 - `estree-util-is-identifier-name@3.0.0` (npm, file: `license`)
@@ -18881,7 +19026,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-extend"></a>
 
-### Notice Entry 217
+### Notice Entry 216
 
 **Used by component(s):**
 - `extend@3.0.2` (npm, file: `LICENSE`)
@@ -18911,7 +19056,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 218
+### Notice Entry 217
 
 **Used by component(s):**
 - `fallible-iterator@0.3.0` (cargo, file: `LICENSE-MIT`)
@@ -18938,7 +19083,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 219
+### Notice Entry 218
 
 **Used by component(s):**
 - `fallible-streaming-iterator@0.1.9` (cargo, file: `LICENSE-MIT`)
@@ -18965,7 +19110,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 220
+### Notice Entry 219
 
 **Used by component(s):**
 - `fastbloom@0.17.0` (cargo, file: `LICENSE-MIT`)
@@ -19000,7 +19145,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-fax"></a>
 
-### Notice Entry 221
+### Notice Entry 220
 
 **Used by component(s):**
 - `fax@0.2.7` (cargo, file: `LICENSE`)
@@ -19015,7 +19160,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 222
+### Notice Entry 221
 
 **Used by component(s):**
 - `fdeflate@0.3.7` (cargo, file: `LICENSE-MIT`)
@@ -19056,7 +19201,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-fern"></a>
 
-### Notice Entry 223
+### Notice Entry 222
 
 **Used by component(s):**
 - `fern@0.7.1` (cargo, file: `LICENSE`)
@@ -19071,7 +19216,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 224
+### Notice Entry 223
 
 **Used by component(s):**
 - `ff@0.13.1` (cargo, file: `LICENSE-MIT`)
@@ -19101,7 +19246,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 225
+### Notice Entry 224
 
 **Used by component(s):**
 - `fiat-crypto@0.2.9` (cargo, file: `COPYRIGHT`)
@@ -19119,7 +19264,7 @@ the BSD 1-Clause License <LICENSE-BSD-1> or
 
 <a id="notice-fiat-crypto"></a>
 
-### Notice Entry 226
+### Notice Entry 225
 
 **Used by component(s):**
 - `fiat-crypto@0.2.9` (cargo, file: `LICENSE-APACHE`)
@@ -19144,7 +19289,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 227
+### Notice Entry 226
 
 **Used by component(s):**
 - `fiat-crypto@0.2.9` (cargo, file: `LICENSE-BSD-1`)
@@ -19176,7 +19321,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 228
+### Notice Entry 227
 
 **Used by component(s):**
 - `fiat-crypto@0.2.9` (cargo, file: `LICENSE-MIT`)
@@ -19206,7 +19351,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 229
+### Notice Entry 228
 
 **Used by component(s):**
 - `field-offset@0.3.6` (cargo, file: `LICENSE-MIT`)
@@ -19239,7 +19384,7 @@ SOFTWARE.
 <a id="notice-notify-debouncer-full"></a>
 <a id="notice-notify-types"></a>
 
-### Notice Entry 230
+### Notice Entry 229
 
 **Used by component(s):**
 - `file-id@0.2.3` (cargo, file: `LICENSE-APACHE`)
@@ -19450,7 +19595,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 231
+### Notice Entry 230
 
 **Used by component(s):**
 - `file-id@0.2.3` (cargo, file: `LICENSE-MIT`)
@@ -19488,7 +19633,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-filedescriptor"></a>
 <a id="notice-portable-pty"></a>
 
-### Notice Entry 232
+### Notice Entry 231
 
 **Used by component(s):**
 - `filedescriptor@0.8.3` (cargo, file: `LICENSE.md`)
@@ -19518,7 +19663,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 233
+### Notice Entry 232
 
 **Used by component(s):**
 - `fixedbitset@0.5.7` (cargo, file: `LICENSE-MIT`)
@@ -19551,7 +19696,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 234
+### Notice Entry 233
 
 **Used by component(s):**
 - `flate2@1.1.10` (cargo, file: `LICENSE-MIT`)
@@ -19584,7 +19729,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 235
+### Notice Entry 234
 
 **Used by component(s):**
 - `fnv@1.0.7` (cargo, file: `LICENSE-MIT`)
@@ -19619,7 +19764,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-foldhash"></a>
 
-### Notice Entry 236
+### Notice Entry 235
 
 **Used by component(s):**
 - `foldhash@0.1.5` (cargo, file: `LICENSE`)
@@ -19647,7 +19792,7 @@ the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### Notice Entry 237
+### Notice Entry 236
 
 **Used by component(s):**
 - `foreign-types@0.3.2` (cargo, file: `LICENSE-MIT`)
@@ -19678,7 +19823,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 238
+### Notice Entry 237
 
 **Used by component(s):**
 - `form_urlencoded@1.2.2` (cargo, file: `LICENSE-MIT`)
@@ -19711,7 +19856,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 239
+### Notice Entry 238
 
 **Used by component(s):**
 - `fs-set-times@0.20.3` (cargo, file: `COPYRIGHT`)
@@ -19750,7 +19895,7 @@ at your option.
 
 <a id="notice-fs-extra"></a>
 
-### Notice Entry 240
+### Notice Entry 239
 
 **Used by component(s):**
 - `fs_extra@1.3.0` (cargo, file: `LICENSE`)
@@ -19781,7 +19926,7 @@ SOFTWARE.
 
 <a id="notice-funty"></a>
 
-### Notice Entry 241
+### Notice Entry 240
 
 **Used by component(s):**
 - `funty@2.0.0` (cargo, file: `LICENSE.txt`)
@@ -19812,7 +19957,7 @@ SOFTWARE.
 
 <a id="notice-fuser"></a>
 
-### Notice Entry 242
+### Notice Entry 241
 
 **Used by component(s):**
 - `fuser@0.17.0` (cargo, file: `LICENSE.md`)
@@ -19853,7 +19998,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-futures-task"></a>
 <a id="notice-futures-util"></a>
 
-### Notice Entry 243
+### Notice Entry 242
 
 **Used by component(s):**
 - `futures@0.3.34` (cargo, file: `LICENSE-APACHE`)
@@ -20071,7 +20216,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 244
+### Notice Entry 243
 
 **Used by component(s):**
 - `futures@0.3.34` (cargo, file: `LICENSE-MIT`)
@@ -20115,7 +20260,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-futures-buffered"></a>
 
-### Notice Entry 245
+### Notice Entry 244
 
 **Used by component(s):**
 - `futures-buffered@0.2.13` (cargo, file: `LICENSE`)
@@ -20147,7 +20292,7 @@ THE SOFTWARE.
 <a id="notice-generator"></a>
 <a id="notice-kasuari"></a>
 
-### Notice Entry 246
+### Notice Entry 245
 
 **Used by component(s):**
 - `generator@0.8.9` (cargo, file: `LICENSE-APACHE`)
@@ -20357,7 +20502,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 247
+### Notice Entry 246
 
 **Used by component(s):**
 - `generator@0.8.9` (cargo, file: `LICENSE-MIT`)
@@ -20392,7 +20537,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-generic-array"></a>
 
-### Notice Entry 248
+### Notice Entry 247
 
 **Used by component(s):**
 - `generic-array@0.14.7` (cargo, file: `LICENSE`)
@@ -20425,7 +20570,7 @@ SOFTWARE.
 <a id="notice-getrandom"></a>
 <a id="notice-rand-chacha"></a>
 
-### Notice Entry 249
+### Notice Entry 248
 
 **Used by component(s):**
 - `getrandom@0.2.17` (cargo, file: `LICENSE-APACHE`)
@@ -20637,7 +20782,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 250
+### Notice Entry 249
 
 **Used by component(s):**
 - `getrandom@0.2.17` (cargo, file: `LICENSE-MIT`)
@@ -20671,7 +20816,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 251
+### Notice Entry 250
 
 **Used by component(s):**
 - `getrandom@0.3.4` (cargo, file: `LICENSE-MIT`)
@@ -20705,7 +20850,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 252
+### Notice Entry 251
 
 **Used by component(s):**
 - `getrandom@0.4.3` (cargo, file: `LICENSE-MIT`)
@@ -20739,7 +20884,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 253
+### Notice Entry 252
 
 **Used by component(s):**
 - `ghash@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -20772,7 +20917,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 254
+### Notice Entry 253
 
 **Used by component(s):**
 - `gif@0.14.2` (cargo, file: `LICENSE-MIT`)
@@ -20807,7 +20952,7 @@ SOFTWARE.
 <a id="notice-proton-rpgp"></a>
 <a id="notice-proton-srp"></a>
 
-### Notice Entry 255
+### Notice Entry 254
 
 **Used by component(s):**
 - `gopenpgp-sys@0.3.9` (cargo, file: `LICENSE`)
@@ -20840,10 +20985,24 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
 
-### Notice Entry 256
+### Notice Entry 255
 
 **Used by component(s):**
 - `gopenpgp-sys@0.3.9` (cargo, file: `go/vendor/github.com/ProtonMail/go-crypto/LICENSE`)
+  - Copyright (C) 2019 ProtonTech AG (go/vendor/github.com/ProtonMail/go-crypto/eax/eax.go)
+  - Copyright (c) 2017 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/internal/ecc/curve25519/field/fe.go)
+  - Copyright (c) 2019 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/internal/ecc/curve25519/field/fe_amd64_noasm.go)
+  - Copyright (c) 2020 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/internal/ecc/curve25519/field/fe_arm64.go)
+  - Copyright (c) 2021 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/internal/ecc/curve25519/field/fe_arm64_noasm.go)
+  - Copyright 2010 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/bitcurves/bitcurve.go)
+  - Copyright 2011 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/canonical_text.go)
+  - Copyright 2011 ThePiachu. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/bitcurves/bitcurve.go)
+  - Copyright 2012 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/clearsign/clearsign.go)
+  - Copyright 2013 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/packet/userattribute.go)
+  - Copyright 2014 Matthew Endsley (go/vendor/github.com/ProtonMail/go-crypto/openpgp/aes/keywrap/keywrap.go)
+  - Copyright 2017 The Go Authors. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/ecdh/ecdh.go)
+  - Copyright 2023 Proton AG. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/packet/symmetrically_encrypted_aead.go)
+  - Copyright 2026 Proton AG. All rights reserved. (go/vendor/github.com/ProtonMail/go-crypto/openpgp/packet/persistent_symmetric_key.go)
 
 ```text
 Copyright (c) 2009 The Go Authors. All rights reserved.
@@ -20875,7 +21034,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 257
+### Notice Entry 256
 
 **Used by component(s):**
 - `gopenpgp-sys@0.3.9` (cargo, file: `go/vendor/github.com/ProtonMail/gopenpgp/v3/LICENSE`)
@@ -20904,10 +21063,13 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
 ```
 
-### Notice Entry 258
+### Notice Entry 257
 
 **Used by component(s):**
 - `gopenpgp-sys@0.3.9` (cargo, file: `go/vendor/github.com/cloudflare/circl/LICENSE`)
+  - Copyright 2014 The Go Authors. All rights reserved. (go/vendor/github.com/cloudflare/circl/internal/sha3/doc.go)
+  - Copyright 2015 The Go Authors. All rights reserved. (go/vendor/github.com/cloudflare/circl/internal/sha3/xor.go)
+  - Copyright 2017 The Go Authors. All rights reserved. (go/vendor/github.com/cloudflare/circl/internal/sha3/sha3_s390x.s)
 
 ```text
 Copyright (c) 2019 Cloudflare. All rights reserved.
@@ -20969,11 +21131,25 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 259
+### Notice Entry 258
 
 **Used by component(s):**
 - `gopenpgp-sys@0.3.9` (cargo, file: `go/vendor/golang.org/x/crypto/LICENSE`)
+  - Copyright 2010 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/cast5/cast5.go)
+  - Copyright 2014 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/hkdf/hkdf.go)
+  - Copyright 2015 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/sha3/keccakf_amd64.go)
+  - Copyright 2016 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/blake2b/blake2b.go)
+  - Copyright 2017 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/argon2/argon2.go)
+  - Copyright 2023 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/sha3/hashes_noasm.go)
+  - Copyright 2025 The Go Authors. All rights reserved. (go/vendor/golang.org/x/crypto/blake2b/go125.go)
 - `gopenpgp-sys@0.3.9` (cargo, file: `go/vendor/golang.org/x/sys/LICENSE`)
+  - Copyright 2018 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/asm_aix_ppc64.s)
+  - Copyright 2019 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/byteorder.go)
+  - Copyright 2020 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/cpu_linux_mips64x.go)
+  - Copyright 2022 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/cpu_loong64.go)
+  - Copyright 2023 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/endian_big.go)
+  - Copyright 2024 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/asm_darwin_x86_gc.s)
+  - Copyright 2025 The Go Authors. All rights reserved. (go/vendor/golang.org/x/sys/cpu/cpu_linux_loong64.go)
 
 ```text
 Copyright 2009 The Go Authors.
@@ -21005,7 +21181,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 260
+### Notice Entry 259
 
 **Used by component(s):**
 - `group@0.13.0` (cargo, file: `COPYRIGHT`)
@@ -21030,7 +21206,7 @@ conditions.
 
 <a id="notice-h2"></a>
 
-### Notice Entry 261
+### Notice Entry 260
 
 **Used by component(s):**
 - `h2@0.4.20` (cargo, file: `LICENSE`)
@@ -21066,7 +21242,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-ident-case"></a>
 <a id="notice-papaya"></a>
 
-### Notice Entry 262
+### Notice Entry 261
 
 **Used by component(s):**
 - `half@2.7.1` (cargo, file: `LICENSE-MIT`)
@@ -21104,7 +21280,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 263
+### Notice Entry 262
 
 **Used by component(s):**
 - `hash32@0.2.1` (cargo, file: `LICENSE-MIT`)
@@ -21137,7 +21313,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 264
+### Notice Entry 263
 
 **Used by component(s):**
 - `hashlink@0.9.1` (cargo, file: `LICENSE-MIT`)
@@ -21171,7 +21347,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 265
+### Notice Entry 264
 
 **Used by component(s):**
 - `heapless@0.7.17` (cargo, file: `LICENSE-MIT`)
@@ -21204,7 +21380,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 266
+### Notice Entry 265
 
 **Used by component(s):**
 - `heck@0.4.1` (cargo, file: `LICENSE-MIT`)
@@ -21242,7 +21418,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 267
+### Notice Entry 266
 
 **Used by component(s):**
 - `hex@0.4.3` (cargo, file: `LICENSE-MIT`)
@@ -21270,7 +21446,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 268
+### Notice Entry 267
 
 **Used by component(s):**
 - `hex-literal@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -21306,7 +21482,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-hickory-proto"></a>
 
-### Notice Entry 269
+### Notice Entry 268
 
 **Used by component(s):**
 - `hickory-proto@0.26.3` (cargo, file: `LICENSE-APACHE`)
@@ -21515,7 +21691,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 270
+### Notice Entry 269
 
 **Used by component(s):**
 - `hickory-proto@0.26.3` (cargo, file: `LICENSE-MIT`)
@@ -21543,7 +21719,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 271
+### Notice Entry 270
 
 **Used by component(s):**
 - `hkdf@0.12.4` (cargo, file: `LICENSE-MIT`)
@@ -21580,7 +21756,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-html-url-attributes"></a>
 
-### Notice Entry 272
+### Notice Entry 271
 
 **Used by component(s):**
 - `html-url-attributes@3.0.1` (npm, file: `license`)
@@ -21609,7 +21785,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 273
+### Notice Entry 272
 
 **Used by component(s):**
 - `html5ever@0.38.0` (cargo, file: `LICENSE-MIT`)
@@ -21646,7 +21822,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-http"></a>
 
-### Notice Entry 274
+### Notice Entry 273
 
 **Used by component(s):**
 - `http@1.5.0` (cargo, file: `LICENSE-APACHE`)
@@ -21855,7 +22031,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 275
+### Notice Entry 274
 
 **Used by component(s):**
 - `http@1.5.0` (cargo, file: `LICENSE-MIT`)
@@ -21891,7 +22067,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-http-body"></a>
 <a id="notice-http-body-util"></a>
 
-### Notice Entry 276
+### Notice Entry 275
 
 **Used by component(s):**
 - `http-body@1.1.0` (cargo, file: `LICENSE`)
@@ -21927,7 +22103,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-http-range"></a>
 
-### Notice Entry 277
+### Notice Entry 276
 
 **Used by component(s):**
 - `http-range@0.1.5` (cargo, file: `LICENSE`)
@@ -21956,7 +22132,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 278
+### Notice Entry 277
 
 **Used by component(s):**
 - `httparse@1.10.1` (cargo, file: `LICENSE-MIT`)
@@ -21985,7 +22161,7 @@ THE SOFTWARE.
 
 <a id="notice-httpdate"></a>
 
-### Notice Entry 279
+### Notice Entry 278
 
 **Used by component(s):**
 - `httpdate@1.0.3` (cargo, file: `LICENSE-APACHE`)
@@ -22194,7 +22370,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 280
+### Notice Entry 279
 
 **Used by component(s):**
 - `httpdate@1.0.3` (cargo, file: `LICENSE-MIT`)
@@ -22223,7 +22399,7 @@ THE SOFTWARE.
 
 <a id="notice-hyper"></a>
 
-### Notice Entry 281
+### Notice Entry 280
 
 **Used by component(s):**
 - `hyper@1.12.0` (cargo, file: `LICENSE`)
@@ -22251,7 +22427,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 282
+### Notice Entry 281
 
 **Used by component(s):**
 - `hyper-rustls@0.27.9` (cargo, file: `LICENSE-ISC`)
@@ -22276,7 +22452,7 @@ ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### Notice Entry 283
+### Notice Entry 282
 
 **Used by component(s):**
 - `hyper-rustls@0.27.9` (cargo, file: `LICENSE-MIT`)
@@ -22311,7 +22487,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 284
+### Notice Entry 283
 
 **Used by component(s):**
 - `hyper-tls@0.6.0` (cargo, file: `LICENSE-MIT`)
@@ -22340,7 +22516,7 @@ THE SOFTWARE.
 
 <a id="notice-hyper-util"></a>
 
-### Notice Entry 285
+### Notice Entry 284
 
 **Used by component(s):**
 - `hyper-util@0.1.21` (cargo, file: `LICENSE`)
@@ -22370,7 +22546,7 @@ THE SOFTWARE.
 <a id="notice-iana-time-zone"></a>
 <a id="notice-iana-time-zone-haiku"></a>
 
-### Notice Entry 286
+### Notice Entry 285
 
 **Used by component(s):**
 - `iana-time-zone@0.1.65` (cargo, file: `LICENSE-APACHE`)
@@ -22580,7 +22756,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 287
+### Notice Entry 286
 
 **Used by component(s):**
 - `iana-time-zone@0.1.65` (cargo, file: `LICENSE-MIT`)
@@ -22616,7 +22792,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-ico"></a>
 
-### Notice Entry 288
+### Notice Entry 287
 
 **Used by component(s):**
 - `ico@0.5.0` (cargo, file: `LICENSE`)
@@ -22664,7 +22840,7 @@ SOFTWARE.
 <a id="notice-zerovec"></a>
 <a id="notice-zerovec-derive"></a>
 
-### Notice Entry 289
+### Notice Entry 288
 
 **Used by component(s):**
 - `icu_collections@2.3.0` (cargo, file: `LICENSE`)
@@ -22735,7 +22911,7 @@ Portions of ICU4X may have been adapted from ICU4C and/or ICU4J.
 ICU 1.8.1 to ICU 57.1 © 1995-2016 International Business Machines Corporation and others.
 ```
 
-### Notice Entry 290
+### Notice Entry 289
 
 **Used by component(s):**
 - `idea@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -22768,7 +22944,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 291
+### Notice Entry 290
 
 **Used by component(s):**
 - `identity-hash@0.1.0` (cargo, file: `LICENSE-MIT`)
@@ -22795,7 +22971,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 292
+### Notice Entry 291
 
 **Used by component(s):**
 - `idna@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -22830,7 +23006,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 293
+### Notice Entry 292
 
 **Used by component(s):**
 - `idna_adapter@1.2.2` (cargo, file: `LICENSE-MIT`)
@@ -22865,7 +23041,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-igd-next"></a>
 
-### Notice Entry 294
+### Notice Entry 293
 
 **Used by component(s):**
 - `igd-next@0.17.1` (cargo, file: `LICENSE`)
@@ -22894,7 +23070,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 295
+### Notice Entry 294
 
 **Used by component(s):**
 - `image_hasher@3.1.1` (cargo, file: `LICENSE-MIT`)
@@ -22927,7 +23103,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 296
+### Notice Entry 295
 
 **Used by component(s):**
 - `indexmap@1.9.3` (cargo, file: `LICENSE-MIT`)
@@ -22963,7 +23139,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-infer"></a>
 
-### Notice Entry 297
+### Notice Entry 296
 
 **Used by component(s):**
 - `infer@0.19.0` (cargo, file: `LICENSE`)
@@ -22994,7 +23170,7 @@ SOFTWARE.
 
 <a id="notice-inline-style-parser"></a>
 
-### Notice Entry 298
+### Notice Entry 297
 
 **Used by component(s):**
 - `inline-style-parser@0.2.7` (npm, file: `LICENSE`)
@@ -23014,7 +23190,7 @@ THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-inotify"></a>
 <a id="notice-inotify-sys"></a>
 
-### Notice Entry 299
+### Notice Entry 298
 
 **Used by component(s):**
 - `inotify@0.11.5` (cargo, file: `LICENSE`)
@@ -23036,7 +23212,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 ```
 
-### Notice Entry 300
+### Notice Entry 299
 
 **Used by component(s):**
 - `inout@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -23070,7 +23246,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 301
+### Notice Entry 300
 
 **Used by component(s):**
 - `inout@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -23106,7 +23282,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-instability"></a>
 
-### Notice Entry 302
+### Notice Entry 301
 
 **Used by component(s):**
 - `instability@0.3.13` (cargo, file: `LICENSE.md`)
@@ -23138,7 +23314,7 @@ SOFTWARE.
 
 <a id="notice-instant"></a>
 
-### Notice Entry 303
+### Notice Entry 302
 
 **Used by component(s):**
 - `instant@0.1.13` (cargo, file: `LICENSE`)
@@ -23173,7 +23349,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 304
+### Notice Entry 303
 
 **Used by component(s):**
 - `io-extras@0.19.0` (cargo, file: `COPYRIGHT`)
@@ -23210,7 +23386,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 305
+### Notice Entry 304
 
 **Used by component(s):**
 - `io-lifetimes@2.0.4` (cargo, file: `COPYRIGHT`)
@@ -23248,7 +23424,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 306
+### Notice Entry 305
 
 **Used by component(s):**
 - `ipconfig@0.3.4` (cargo, file: `LICENSE-MIT`)
@@ -23283,7 +23459,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-ipnet"></a>
 
-### Notice Entry 307
+### Notice Entry 306
 
 **Used by component(s):**
 - `ipnet@2.12.2` (cargo, file: `LICENSE-APACHE`)
@@ -23492,7 +23668,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 308
+### Notice Entry 307
 
 **Used by component(s):**
 - `ipnet@2.12.2` (cargo, file: `LICENSE-MIT`)
@@ -23509,7 +23685,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 <a id="notice-iroh"></a>
 
-### Notice Entry 309
+### Notice Entry 308
 
 **Used by component(s):**
 - `iroh@1.2.0` (cargo, file: `LICENSE-BSD3`)
@@ -23555,7 +23731,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <a id="notice-n0-future"></a>
 <a id="notice-nested-enum-utils"></a>
 
-### Notice Entry 310
+### Notice Entry 309
 
 **Used by component(s):**
 - `iroh-blobs@0.103.1` (cargo, file: `LICENSE-APACHE`)
@@ -23767,7 +23943,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 311
+### Notice Entry 310
 
 **Used by component(s):**
 - `iroh-blobs@0.103.1` (cargo, file: `LICENSE-MIT`)
@@ -23810,7 +23986,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-n0-error"></a>
 <a id="notice-n0-watcher"></a>
 
-### Notice Entry 312
+### Notice Entry 311
 
 **Used by component(s):**
 - `iroh-docs@0.101.0` (cargo, file: `LICENSE-APACHE`)
@@ -24024,7 +24200,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 313
+### Notice Entry 312
 
 **Used by component(s):**
 - `iroh-docs@0.101.0` (cargo, file: `LICENSE-MIT`)
@@ -24062,7 +24238,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 314
+### Notice Entry 313
 
 **Used by component(s):**
 - `iroh-io@0.6.2` (cargo, file: `LICENSE-MIT`)
@@ -24097,7 +24273,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-iroh-relay"></a>
 
-### Notice Entry 315
+### Notice Entry 314
 
 **Used by component(s):**
 - `iroh-relay@1.2.0` (cargo, file: `LICENSE-BSD3`)
@@ -24138,7 +24314,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <a id="notice-is-docker"></a>
 <a id="notice-is-wsl"></a>
 
-### Notice Entry 316
+### Notice Entry 315
 
 **Used by component(s):**
 - `is-docker@0.2.0` (cargo, file: `LICENSE`)
@@ -24170,7 +24346,7 @@ SOFTWARE.
 
 <a id="notice-javascriptcore-rs"></a>
 
-### Notice Entry 317
+### Notice Entry 316
 
 **Used by component(s):**
 - `javascriptcore-rs@1.1.2` (cargo, file: `LICENSE`)
@@ -24204,7 +24380,7 @@ SOFTWARE.
 <a id="notice-soup3"></a>
 <a id="notice-soup3-sys"></a>
 
-### Notice Entry 318
+### Notice Entry 317
 
 **Used by component(s):**
 - `javascriptcore-rs-sys@1.1.1` (cargo, file: `LICENSE`)
@@ -24235,7 +24411,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 319
+### Notice Entry 318
 
 **Used by component(s):**
 - `jni@0.21.1` (cargo, file: `LICENSE-MIT`)
@@ -24264,7 +24440,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 320
+### Notice Entry 319
 
 **Used by component(s):**
 - `jni-sys@0.3.1` (cargo, file: `LICENSE-MIT`)
@@ -24294,7 +24470,7 @@ SOFTWARE.
 
 <a id="notice-js-tokens"></a>
 
-### Notice Entry 321
+### Notice Entry 320
 
 **Used by component(s):**
 - `js-tokens@4.0.0` (npm, file: `LICENSE`)
@@ -24323,7 +24499,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 322
+### Notice Entry 321
 
 **Used by component(s):**
 - `json-patch@3.0.1` (cargo, file: `LICENSE-MIT`)
@@ -24354,7 +24530,7 @@ SOFTWARE.
 
 <a id="notice-jsonptr"></a>
 
-### Notice Entry 323
+### Notice Entry 322
 
 **Used by component(s):**
 - `jsonptr@0.6.3` (cargo, file: `LICENSE-APACHE`)
@@ -24563,7 +24739,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 324
+### Notice Entry 323
 
 **Used by component(s):**
 - `jsonptr@0.6.3` (cargo, file: `LICENSE-MIT`)
@@ -24594,7 +24770,7 @@ SOFTWARE.
 
 <a id="notice-jsonwebtoken"></a>
 
-### Notice Entry 325
+### Notice Entry 324
 
 **Used by component(s):**
 - `jsonwebtoken@10.4.0` (cargo, file: `LICENSE`)
@@ -24623,7 +24799,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 326
+### Notice Entry 325
 
 **Used by component(s):**
 - `k256@0.13.4` (cargo, file: `LICENSE-MIT`)
@@ -24656,7 +24832,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 327
+### Notice Entry 326
 
 **Used by component(s):**
 - `kasuari@0.4.12` (cargo, file: `LICENSE-MIT`)
@@ -24686,7 +24862,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 328
+### Notice Entry 327
 
 **Used by component(s):**
 - `keccak@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -24720,7 +24896,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 329
+### Notice Entry 328
 
 **Used by component(s):**
 - `kem@0.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -24741,7 +24917,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 330
+### Notice Entry 329
 
 **Used by component(s):**
 - `keyboard-types@0.7.0` (cargo, file: `LICENSE-MIT`)
@@ -24770,7 +24946,7 @@ THE SOFTWARE.
 
 <a id="notice-keyring"></a>
 
-### Notice Entry 331
+### Notice Entry 330
 
 **Used by component(s):**
 - `keyring@3.6.3` (cargo, file: `LICENSE-APACHE`)
@@ -24979,7 +25155,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 332
+### Notice Entry 331
 
 **Used by component(s):**
 - `keyring@3.6.3` (cargo, file: `LICENSE-MIT`)
@@ -25015,7 +25191,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-kqueue"></a>
 <a id="notice-kqueue-sys"></a>
 
-### Notice Entry 333
+### Notice Entry 332
 
 **Used by component(s):**
 - `kqueue@1.2.1` (cargo, file: `LICENSE`)
@@ -25045,7 +25221,7 @@ SOFTWARE.
 
 <a id="notice-lazy-regex"></a>
 
-### Notice Entry 334
+### Notice Entry 333
 
 **Used by component(s):**
 - `lazy-regex@3.6.1` (cargo, file: `LICENSE`)
@@ -25074,7 +25250,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 335
+### Notice Entry 334
 
 **Used by component(s):**
 - `libappindicator@0.9.0` (cargo, file: `LICENSE-MIT`)
@@ -25106,7 +25282,7 @@ SOFTWARE.
 
 <a id="notice-libbz2-rs-sys"></a>
 
-### Notice Entry 336
+### Notice Entry 335
 
 **Used by component(s):**
 - `libbz2-rs-sys@0.2.5` (cargo, file: `LICENSE`)
@@ -25161,7 +25337,7 @@ bzip2/libbzip2 version 1.1.0 of 6 September 2010
 --------------------------------------------------------------------------
 ```
 
-### Notice Entry 337
+### Notice Entry 336
 
 **Used by component(s):**
 - `libc@0.2.191` (cargo, file: `LICENSE-MIT`)
@@ -25194,10 +25370,140 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 338
+### Notice Entry 337
 
 **Used by component(s):**
 - `libdbus-sys@0.2.7` (cargo, file: `vendor/dbus/COPYING`)
+  - (C) 2003, 2004, 2005 Thomas Vander Stichele <thomas at apestaart dot org> (vendor/dbus/m4/as-ac-expand.m4)
+  - (C) 2005-02-02 David A. Wheeler; released under the D-Bus licenses, (vendor/dbus/doc/introspect.dtd)
+  - (c) 2006 Mandriva (vendor/dbus/bus/dir-watch-inotify.c)
+  - Copyright (C) 1995 A. M. Kuchling (vendor/dbus/dbus/dbus-sha.c)
+  - Copyright (C) 1995, A.M. Kuchling (vendor/dbus/dbus/dbus-sha.c)
+  - Copyright (C) 2002  CodeFactory AB (vendor/dbus/dbus/dbus-marshal-basic.h)
+  - Copyright (C) 2002  Red Hat Inc. (vendor/dbus/dbus/dbus-auth.h)
+  - Copyright (C) 2002  Red Hat, Inc. (vendor/dbus/dbus/dbus-hash.h)
+  - Copyright (C) 2002 CodeFactory AB (vendor/dbus/dbus/dbus-marshal-basic.c)
+  - Copyright (C) 2002, 2003  CodeFactory AB (vendor/dbus/dbus/dbus-message.c)
+  - Copyright (C) 2002, 2003  Red Hat Inc. (vendor/dbus/dbus/dbus-connection.h)
+  - Copyright (C) 2002, 2003  Red Hat, Inc. (vendor/dbus/dbus/dbus-file.h)
+  - Copyright (C) 2002, 2003 Red Hat Inc. (vendor/dbus/dbus/dbus-pending-call.c)
+  - Copyright (C) 2002, 2003 Red Hat, Inc. (vendor/dbus/dbus/dbus-list.h)
+  - Copyright (C) 2002, 2003 Red Hat, Inc., CodeFactory AB, and others (vendor/dbus/bus/main.c)
+  - Copyright (C) 2002, 2003, 2004  Red Hat Inc. (vendor/dbus/dbus/dbus-server-unix.c)
+  - Copyright (C) 2002, 2003, 2004  Red Hat, Inc. (vendor/dbus/dbus/dbus-spawn-unix.c)
+  - Copyright (C) 2002, 2003, 2004 Red Hat Inc. (vendor/dbus/dbus/dbus-auth.c)
+  - Copyright (C) 2002, 2003, 2004, 2005  Red Hat Inc. (vendor/dbus/dbus/dbus-message.c)
+  - Copyright (C) 2002, 2003, 2004, 2005  Red Hat, Inc. (vendor/dbus/dbus/dbus-sysdeps-util-unix.c)
+  - Copyright (C) 2002, 2003, 2004, 2005 Red Hat Inc. (vendor/dbus/dbus/dbus-server.c)
+  - Copyright (C) 2002, 2003, 2004, 2006  Red Hat Inc. (vendor/dbus/dbus/dbus-server-socket.c)
+  - Copyright (C) 2002, 2003, 2005 Red Hat Inc. (vendor/dbus/dbus/dbus-message.h)
+  - Copyright (C) 2002, 2003, 2006  Red Hat, Inc. (vendor/dbus/dbus/dbus-file-unix.c)
+  - Copyright (C) 2002, 2003, 2006 Red Hat Inc. (vendor/dbus/dbus/dbus-threads.c)
+  - Copyright (C) 2002, 2004  Red Hat Inc. (vendor/dbus/dbus/dbus-errors.c)
+  - Copyright (C) 2002, 2005 Red Hat Inc. (vendor/dbus/dbus/dbus-threads-internal.h)
+  - Copyright (C) 2002, 2006  Red Hat Inc. (vendor/dbus/dbus/dbus-server-socket.h)
+  - Copyright (C) 2002-2006  Red Hat Inc. (vendor/dbus/dbus/dbus-connection.c)
+  - Copyright (C) 2003  CodeFactory AB (vendor/dbus/bus/activation.c)
+  - Copyright (C) 2003  Red Hat Inc. (vendor/dbus/bus/desktop-file.c)
+  - Copyright (C) 2003  Red Hat, Inc. (vendor/dbus/bus/activation.c)
+  - Copyright (C) 2003 CodeFactory AB (vendor/dbus/bus/driver.c)
+  - Copyright (C) 2003 Red Hat Inc. (vendor/dbus/dbus/dbus-sha.c)
+  - Copyright (C) 2003 Red Hat, Inc. (vendor/dbus/bus/bus.h)
+  - Copyright (C) 2003, 2004  Red Hat Inc. (vendor/dbus/dbus/dbus-keyring.c)
+  - Copyright (C) 2003, 2004  Red Hat, Inc. (vendor/dbus/bus/connection.h)
+  - Copyright (C) 2003, 2004 Red Hat, Inc. (vendor/dbus/bus/bus.c)
+  - Copyright (C) 2003, 2004, 2005  Red Hat, Inc. (vendor/dbus/bus/dispatch.c)
+  - Copyright (C) 2003, 2004, 2005 Red Hat, Inc. (vendor/dbus/bus/driver.c)
+  - Copyright (C) 2003, 2004, 2007 Red Hat, Inc. (vendor/dbus/bus/config-parser-trivial.c)
+  - Copyright (C) 2003, 2005  Red Hat Inc. (vendor/dbus/dbus/dbus-object-tree.c)
+  - Copyright (C) 2003, 2005  Red Hat, Inc. (vendor/dbus/bus/signals.c)
+  - Copyright (C) 2003,2008 Red Hat, Inc. (vendor/dbus/doc/dbus-daemon.1.xml.in)
+  - Copyright (C) 2004  Imendio HB (vendor/dbus/bus/activation.c)
+  - Copyright (C) 2004 Red Hat, Inc. (vendor/dbus/dbus/dbus-shared.h)
+  - Copyright (C) 2004, 2005  Red Hat, Inc. (vendor/dbus/dbus/dbus-marshal-basic.h)
+  - Copyright (C) 2004, 2005 Red Hat, Inc. (vendor/dbus/dbus/dbus-marshal-recursive.c)
+  - Copyright (C) 2004-2007  Red Hat, Inc. (vendor/dbus/dbus/dbus-address.c)
+  - Copyright (C) 2005  Red Hat Inc. (vendor/dbus/dbus/dbus-message-private.h)
+  - Copyright (C) 2005  Red Hat, Inc. (vendor/dbus/dbus/dbus-marshal-header.c)
+  - Copyright (C) 2005 Lennart Poettering. (vendor/dbus/doc/introspect.xsl)
+  - Copyright (C) 2005 Novell, Inc. (vendor/dbus/dbus/dbus-sockets-win.h)
+  - Copyright (C) 2005 Red Hat Inc. (vendor/dbus/dbus/dbus-signature.h)
+  - Copyright (C) 2005 Red Hat, Inc. (vendor/dbus/bus/dir-watch.h)
+  - Copyright (C) 2005 g10 Code GmbH (vendor/dbus/dbus/versioninfo.rc.in)
+  - Copyright (C) 2005, 2008, 2010-2014 Free Software Foundation, Inc. (vendor/dbus/m4/visibility.m4)
+  - Copyright (C) 2006  Red Hat, Inc. (vendor/dbus/dbus/dbus-sysdeps-thread-win.c)
+  - Copyright (C) 2006 Christian Ehrlicher <ch.ehrlicher@gmx.de> (vendor/dbus/dbus/dbus-sysdeps-win.c)
+  - Copyright (C) 2006 Peter Kümmel  <syntheticpp@gmx.net> (vendor/dbus/dbus/dbus-sysdeps-win.c)
+  - Copyright (C) 2006 Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-string.h)
+  - Copyright (C) 2006 Red Hat, Inc. (vendor/dbus/dbus/dbus-misc.c)
+  - Copyright (C) 2006-2021 Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-sysdeps-win.c)
+  - Copyright (C) 2007  Ralf Habacker (vendor/dbus/dbus/dbus-address.c)
+  - Copyright (C) 2007  Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-server-win.h)
+  - Copyright (C) 2007 Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-server-win.c)
+  - Copyright (C) 2007 Red Hat Inc. (vendor/dbus/dbus/dbus-credentials.c)
+  - Copyright (C) 2007 Red Hat, Inc. (vendor/dbus/bus/activation-exit-codes.h)
+  - Copyright (C) 2007, Tanner Lovelace <lovelace@wayfarer.org> (vendor/dbus/dbus/dbus-server-launchd.c)
+  - Copyright (C) 2008, 2009 Free Software Foundation, Inc. (vendor/dbus/m4/ld-version-script.m4)
+  - Copyright (C) 2008, Benjamin Reed <rangerrick@befunk.com> (vendor/dbus/dbus/dbus-server-launchd.h)
+  - Copyright (C) 2008, Colin Walters <walters@verbum.org> (vendor/dbus/dbus/dbus-server-launchd.c)
+  - Copyright (C) 2008-2009, Benjamin Reed <rangerrick@befunk.com> (vendor/dbus/dbus/dbus-server-launchd.c)
+  - Copyright (C) 2009 Klaralvdalens Datakonsult AB, a KDAB Group company, info@kdab.net (vendor/dbus/dbus/dbus-nonce.c)
+  - Copyright (C) 2009, Jonas Bähr <jonas.baehr@web.de> (vendor/dbus/dbus/dbus-server-launchd.c)
+  - Copyright (C) 2011-2012  Collabora Ltd. (vendor/dbus/dbus/dbus-mempool.c)
+  - Copyright (C) 2013  Chengwei Yang / Intel (vendor/dbus/dbus/dbus-address.c)
+  - Copyright (c) 1991-1993 The Regents of the University of California. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright (c) 1994 Sun Microsystems, Inc. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright (c) 2008 Tom Howard <tomhoward@users.sf.net> (vendor/dbus/m4/ax_file_escapes.m4)
+  - Copyright (c) 2009 Allan Caffee <allan.caffee@gmail.com> (vendor/dbus/m4/ax_ac_append_to_file.m4)
+  - Copyright (c) 2009 Tom Howard <tomhoward@users.sf.net> (vendor/dbus/m4/ax_add_am_macro_static.m4)
+  - Copyright (c) 2012 Christian Persch (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright (c) 2012 Dan Winship (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright (c) 2012 Paolo Borelli (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright (c) 2012 Xan Lopez (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright (c) 2012, 2016 Philip Withnall (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright (c) 2015,2018 Bastien ROUCARIES (vendor/dbus/m4/ax_code_coverage.m4)
+  - Copyright 1991-1993 The Regents of the University of California. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 1994 Sun Microsystems, Inc. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2002-2005 Red Hat, Inc. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2002-2007 Red Hat, Inc. (vendor/dbus/dbus/dbus-string.c)
+  - Copyright 2002-2008 Red Hat, Inc. (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2003 CodeFactory AB (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2003 Joe Shaw (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2003 Mark McLoughlin (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2003-2004 Imendio (vendor/dbus/bus/test.h)
+  - Copyright 2003-2004 Red Hat, Inc. (vendor/dbus/bus/test.c)
+  - Copyright 2003-2007 Red Hat, Inc. (vendor/dbus/bus/test.h)
+  - Copyright 2004 Eric Poech (vendor/dbus/dbus/dbus-sysdeps-win.c)
+  - Copyright 2004 Michael Meeks (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2004 Robert Shearman (vendor/dbus/dbus/dbus-sysdeps-win.c)
+  - Copyright 2006 Ralf Habacker (vendor/dbus/dbus/dbus-sysdeps-util.c)
+  - Copyright 2006 Sjoerd Simons (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2006-2014 Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-string.c)
+  - Copyright 2006-2015 Ralf Habacker <ralf.habacker@freenet.de> (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2006-2018 Collabora Ltd. (vendor/dbus/dbus/dbus-string.c)
+  - Copyright 2007 Allison Lortie (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2009 Lennart Poettering (vendor/dbus/bus/test.h)
+  - Copyright 2010 Fridrich Štrba (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2011 Collabora Ltd. (vendor/dbus/bus/test.c)
+  - Copyright 2011 Roberto Guido (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2013 Chengwei Yang / Intel (vendor/dbus/dbus/dbus-string.c)
+  - Copyright 2016 Ralf Habacker (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2016-2018 Collabora Ltd. (vendor/dbus/dbus/dbus-string-util.c)
+  - Copyright 2017 Collabora Ltd. (vendor/dbus/dbus/dbus-message-util.c)
+  - Copyright 2017 Endless Mobile, Inc. (vendor/dbus/dbus/dbus-hash.c)
+  - Copyright 2018 Collabora Ltd. (vendor/dbus/bus/test.h)
+  - Copyright 2018 Laurent Bigonville (vendor/dbus/bus/test.c)
+  - Copyright © 1994-2020 dbus contributors, see dbus source code for details\0 (vendor/dbus/dbus/versioninfo.rc.in)
+  - Copyright © 2003, 2004  Red Hat, Inc. (vendor/dbus/dbus/dbus-mainloop.c)
+  - Copyright © 2004 Scott James Remnant <scott@netsplit.com>. (vendor/dbus/m4/pkg.m4)
+  - Copyright © 2011 Nokia Corporation (vendor/dbus/dbus/dbus-mainloop.c)
+  - Copyright © 2011-2012 Nokia Corporation (vendor/dbus/bus/stats.c)
+  - Copyright © 2012-2013 Collabora Ltd. (vendor/dbus/bus/stats.c)
+  - Copyright © 2013 Intel Corporation (vendor/dbus/dbus/dbus-init-win.cpp)
+  - Copyright © 2014-2015 Canonical, Ltd. (vendor/dbus/bus/apparmor.c)
+  - Copyright © 2015 Collabora Ltd. (vendor/dbus/bus/audit.c)
+  - Copyright © 2015-2018 Collabora Ltd. (vendor/dbus/.gitlab-ci.yml)
+  - Copyright © 2017 Collabora Ltd. (vendor/dbus/bus/containers.c)
 
 ```text
 dbus is licensed to you under your choice of the Academic Free
@@ -25754,10 +26060,14 @@ library.  If this is what you want to do, use the GNU Library General
 Public License instead of this License.
 ```
 
-### Notice Entry 339
+### Notice Entry 338
 
 **Used by component(s):**
 - `libdbus-sys@0.2.7` (cargo, file: `vendor/dbus/cmake/modules/COPYING-CMAKE-SCRIPTS`)
+  - Copyright (c) 2006-2007, Ralf Habacker (vendor/dbus/cmake/modules/Win32Macros.cmake)
+  - Copyright (c) 2008 Laurent Montel, <montel@kde.org> (vendor/dbus/cmake/modules/FindGLIB2.cmake)
+  - Copyright (c) 2010, Luigi Toscano, <luigi.toscano@tiscali.it> (vendor/dbus/cmake/modules/FindDocBookXSL.cmake)
+  - Copyright (c) 2013 Ralf Habacker, <ralf.habacker@freenet.de> (vendor/dbus/cmake/modules/FindGLIB2.cmake)
 
 ```text
 Redistribution and use in source and binary forms, with or without
@@ -25786,7 +26096,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-libloading"></a>
 
-### Notice Entry 340
+### Notice Entry 339
 
 **Used by component(s):**
 - `libloading@0.7.4` (cargo, file: `LICENSE`)
@@ -25809,7 +26119,7 @@ THIS SOFTWARE.
 
 <a id="notice-libm"></a>
 
-### Notice Entry 341
+### Notice Entry 340
 
 **Used by component(s):**
 - `libm@0.2.16` (cargo, file: `LICENSE.txt`)
@@ -26077,7 +26387,7 @@ Copyright notices are retained in src/* files where relevant.
 
 <a id="notice-libredox"></a>
 
-### Notice Entry 342
+### Notice Entry 341
 
 **Used by component(s):**
 - `libredox@0.1.23` (cargo, file: `LICENSE`)
@@ -26109,7 +26419,7 @@ SOFTWARE.
 <a id="notice-libsqlite3-sys"></a>
 <a id="notice-rusqlite"></a>
 
-### Notice Entry 343
+### Notice Entry 342
 
 **Used by component(s):**
 - `libsqlite3-sys@0.30.1` (cargo, file: `LICENSE`)
@@ -26137,10 +26447,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 344
+### Notice Entry 343
 
 **Used by component(s):**
 - `libsqlite3-sys@0.30.1` (cargo, file: `sqlcipher/LICENSE`)
+  - Copyright (c) 2008 - 2013, ZETETIC LLC (sqlcipher/sqlite3.c)
+  - Copyright (c) 2008, ZETETIC LLC (sqlcipher/sqlite3.c)
 
 ```text
 Copyright (c) 2008-2020 Zetetic LLC
@@ -26169,10 +26481,48 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 345
+### Notice Entry 344
 
 **Used by component(s):**
 - `libssh2-sys@0.3.4` (cargo, file: `libssh2/COPYING`)
+  - Copyright (C) 1994, 1995, 1996, 1999, 2000, 2001, 2002, 2004, 2005 Free (libssh2/docs/INSTALL-AUTOTOOLS.md)
+  - Copyright (C) 1995 Tatu Ylonen <ylo@cs.hut.fi>, Espoo, Finland (libssh2/src/agent.c)
+  - Copyright (C) 2000 Markus Friedl.  All rights reserved. (libssh2/src/agent.c)
+  - Copyright (C) 2001-2007 Free Software Foundation, Inc. (libssh2/m4/libssh2-link.m4)
+  - Copyright (C) 2015 Microsoft Corp. (libssh2/src/agent.c)
+  - Copyright (C) Alexander Lamaison (libssh2/appveyor.yml)
+  - Copyright (C) Alexander Lamaison <alexander.lamaison@gmail.com> (libssh2/CMakeLists.txt)
+  - Copyright (C) Art <https://github.com/wildart> (libssh2/src/mbedtls.c)
+  - Copyright (C) Daiki Ueno (libssh2/src/agent.c)
+  - Copyright (C) Dan Fandrich, <dan@coneharvesters.com>, Viktor Szakats, et al. (libssh2/scripts/cmakelint.sh)
+  - Copyright (C) Daniel Stenberg (libssh2/include/libssh2.h)
+  - Copyright (C) Daniel Stenberg <daniel@haxx.se> (libssh2/src/comp.c)
+  - Copyright (C) Daniel Stenberg, <daniel@haxx.se>, and many contributors. (libssh2/LICENSES/curl.txt)
+  - Copyright (C) Daniel Stenberg, <daniel@haxx.se>, et al. (libssh2/scripts/badwords)
+  - Copyright (C) Douglas Gilbert (libssh2/src/libssh2_config_cmake.h.in)
+  - Copyright (C) Eli Fant <elifantu@mail.ru> (libssh2/src/sftp.c)
+  - Copyright (C) Lars Nordin <Lars.Nordin@SDlabs.se> (libssh2/src/global.c)
+  - Copyright (C) Marc Hoersken (libssh2/.github/workflows/appveyor_docker.yml)
+  - Copyright (C) Marc Hoersken <info@marc-hoersken.de> (libssh2/src/wincng.c)
+  - Copyright (C) Mikhail Gusarov (libssh2/src/packet.c)
+  - Copyright (C) Mikhail Gusarov <dottedmag@dottedmag.net> (libssh2/src/channel.c)
+  - Copyright (C) Niels Provos <provos@physnet.uni-hamburg.de> (libssh2/src/blowfish.c)
+  - Copyright (C) Patrick Monnerat <patrick@monnerat.net> (libssh2/os400/ccsid.c)
+  - Copyright (C) Ruslan Baratov (libssh2/appveyor.yml)
+  - Copyright (C) Sara Golemon <sarag@libssh2.org> (libssh2/include/libssh2.h)
+  - Copyright (C) Simon Josefsson (libssh2/src/crypto.h)
+  - Copyright (C) Simon Josefsson <simon@josefsson.org> (libssh2/include/libssh2.h)
+  - Copyright (C) Ted Unangst <tedu@openbsd.org> (libssh2/src/bcrypt_pbkdf.c)
+  - Copyright (C) The Written Word, Inc. (libssh2/src/crypto.h)
+  - Copyright (C) The libssh2 project and its contributors. (libssh2/.clang-tidy.yml)
+  - Copyright (C) Viktor Szakats (libssh2/.github/actions/macos-fix-certs/action.yml)
+  - Copyright (C) Xaver Loppenstedt (libssh2/tests/test_auth_keyboard_info_request.c)
+  - Copyright (C) Xaver Loppenstedt <xaver@loppenstedt.de> (libssh2/src/userauth_kbd_packet.c)
+  - Copyright (c) 2013 Damien Miller <djm@mindrot.org> (libssh2/src/cipher-chachapoly.c)
+  - Copyright (c) <year> <owner>. (libssh2/LICENSES/BSD-3-Clause.txt)
+  - Copyright (c) Damien Miller 2013 <djm@mindrot.org> (libssh2/src/cipher-chachapoly.h)
+  - Copyright (c) [year] [fullname] (libssh2/LICENSES/MIT.txt)
+  - Copyright Free Software Foundation, Inc. (libssh2/LICENSES/FSFULLR.txt)
 
 ```text
 /* Copyright (C) 2004-2007 Sara Golemon <sarag@libssh2.org>
@@ -26213,7 +26563,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 ```
 
-### Notice Entry 346
+### Notice Entry 345
 
 **Used by component(s):**
 - `libunftp@0.24.0` (cargo, file: `COPYRIGHT`)
@@ -26234,7 +26584,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 347
+### Notice Entry 346
 
 **Used by component(s):**
 - `libz-sys@1.1.31` (cargo, file: `LICENSE-MIT`)
@@ -26268,10 +26618,63 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 348
+### Notice Entry 347
 
 **Used by component(s):**
 - `libz-sys@1.1.31` (cargo, file: `src/zlib-ng/LICENSE.md`)
+  - Copyright (C) 1995-2003, 2010, 2014, 2016 Jean-loup Gailly, Mark Adler. (src/zlib-ng/uncompr.c)
+  - Copyright (C) 1995-2005, 2014, 2016 Jean-loup Gailly, Mark Adler (src/zlib-ng/compress.c)
+  - Copyright (C) 1995-2006, 2010, 2011, 2012 Mark Adler (src/zlib-ng/arch/arm/crc32_armv8.c)
+  - Copyright (C) 1995-2011 Mark Adler (src/zlib-ng/arch/loongarch/adler32_lasx.c)
+  - Copyright (C) 1995-2011, 2016 Mark Adler (src/zlib-ng/adler32.c)
+  - Copyright (C) 1995-2016 Jean-loup Gailly (src/zlib-ng/deflate.h)
+  - Copyright (C) 1995-2017 Jean-loup Gailly (src/zlib-ng/zutil.c)
+  - Copyright (C) 1995-2017 Mark Adler (src/zlib-ng/inffast_tpl.h)
+  - Copyright (C) 1995-2019 Mark Adler (src/zlib-ng/inflate.h)
+  - Copyright (C) 1995-2022 Mark Adler (src/zlib-ng/arch/generic/crc32_braid_c.c)
+  - Copyright (C) 1995-2024 Jean-loup Gailly (src/zlib-ng/trees.c)
+  - Copyright (C) 1995-2024 Jean-loup Gailly and Mark Adler (src/zlib-ng/arch/generic/slide_hash_c.c)
+  - Copyright (C) 1995-2024 Jean-loup Gailly, Mark Adler (src/zlib-ng/zconf-ng.h.in)
+  - Copyright (C) 1995-2024 Mark Adler (src/zlib-ng/inftrees.c)
+  - Copyright (C) 2004-2017 Mark Adler (src/zlib-ng/gzread.c)
+  - Copyright (C) 2004-2019 Mark Adler (src/zlib-ng/gzwrite.c)
+  - Copyright (C) 2004-2024 Mark Adler (src/zlib-ng/gzguts.h)
+  - Copyright (C) 2013 Intel Corporation Jim Kukunas (src/zlib-ng/arch/x86/x86_features.h)
+  - Copyright (C) 2013 Intel Corporation. All rights reserved. (src/zlib-ng/arch/x86/crc32_fold_pclmulqdq_tpl.h)
+  - Copyright (C) 2016 12Sided Technology, LLC. (src/zlib-ng/deflate_quick.c)
+  - Copyright (C) 2016 Marian Beermann (support for initial value) (src/zlib-ng/arch/x86/crc32_fold_pclmulqdq_tpl.h)
+  - Copyright (C) 2016 Yang Zhang (src/zlib-ng/arch/arm/crc32_armv8.c)
+  - Copyright (C) 2017 ARM Holdings Inc. (src/zlib-ng/arch/arm/adler32_neon.c)
+  - Copyright (C) 2017 Hans Kristian Rosbach (src/zlib-ng/arch_functions.h)
+  - Copyright (C) 2017 Intel Corporation (src/zlib-ng/arch/loongarch/slide_hash_lasx.c)
+  - Copyright (C) 2017-2020 Mika T. Lindqvist (src/zlib-ng/arch/arm/slide_hash_neon.c)
+  - Copyright (C) 2017-2021 Mika T. Lindqvist <postmaster@raasu.org> (src/zlib-ng/arch/power/slide_hash_vmx.c)
+  - Copyright (C) 2017-2023 Mika T. Lindqvist <postmaster@raasu.org> (src/zlib-ng/arch/power/adler32_vmx.c)
+  - Copyright (C) 2019 Hans Kristian Rosbach (src/zlib-ng/cmake/detect-arch.c)
+  - Copyright (C) 2019 Matheus Castanho <msc@linux.ibm.com>, IBM (src/zlib-ng/arch/power/compare256_power9.c)
+  - Copyright (C) 2019-2020 IBM Corporation (src/zlib-ng/arch/power/slide_hash_power8.c)
+  - Copyright (C) 2020 IBM Corporation (src/zlib-ng/arch/power/adler32_power8.c)
+  - Copyright (C) 2020 Matheus Castanho <msc@linux.ibm.com>, IBM (src/zlib-ng/arch/power/power_features.c)
+  - Copyright (C) 2020 Nathan Moinvaziri (src/zlib-ng/arch/generic/compare256_c.c)
+  - Copyright (C) 2021 Adam Stylinski <kungfujesus06@gmail.com> (src/zlib-ng/arch/power/adler32_vmx.c)
+  - Copyright (C) 2021 Hans Kristian Rosbach (src/zlib-ng/cmake/detect-install-dirs.cmake)
+  - Copyright (C) 2021 IBM Corporation (src/zlib-ng/arch/power/crc32_constants.h)
+  - Copyright (C) 2021 Mika T. Lindqvist <postmaster@raasu.org> (src/zlib-ng/arch/power/power_features.h)
+  - Copyright (C) 2021 Nathan Moinvaziri (src/zlib-ng/arch/generic/crc32_fold_c.c)
+  - Copyright (C) 2021-2024 Mika T. Lindqvist <postmaster@raasu.org> (src/zlib-ng/arch/power/power_features.c)
+  - Copyright (C) 2022 Adam Stylinski (src/zlib-ng/arch/generic/adler32_fold_c.c)
+  - Copyright (C) 2022 Nathan Moinvaziri (src/zlib-ng/arch/arm/compare256_neon.c)
+  - Copyright (C) 2023 Cameron Cawley (src/zlib-ng/arch/arm/slide_hash_armv6.c)
+  - Copyright (C) 2023 SiFive, Inc. All rights reserved. (src/zlib-ng/arch/riscv/adler32_rvv.c)
+  - Copyright (C) 2025 ByteDance. All rights reserved. (src/zlib-ng/arch/riscv/crc32_zbc.c)
+  - Copyright (C) 2025 Hans Kristian Rosbach (src/zlib-ng/arch/x86/compare256_avx512.c)
+  - Copyright (C) 2025 Vladislav Shchapov <vladislav@shchapov.ru> (src/zlib-ng/arch/loongarch/adler32_lasx.c)
+  - Copyright 1995-2024 Jean-loup Gailly and Mark Adler (src/zlib-ng/deflate.c)
+  - Copyright 1995-2024 Mark Adler (src/zlib-ng/inftrees.c)
+  - Copyright Adam Stylinski <kungfujesus06@gmail.com> (src/zlib-ng/arch/loongarch/compare256_lsx.c)
+  - Copyright Mika T. Lindqvist  <postmaster@raasu.org> (src/zlib-ng/arch/loongarch/compare256_lasx.c)
+  - Copyright Wangyang Guo (wangyang.guo@intel.com) (src/zlib-ng/arch/x86/crc32_fold_vpclmulqdq_tpl.h)
+  - copyright (C) 2014-2021 Konstantin Nosov (src/zlib-ng/match_tpl.h)
 
 ```text
 (C) 1995-2024 Jean-loup Gailly and Mark Adler
@@ -26295,10 +26698,21 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### Notice Entry 349
+### Notice Entry 348
 
 **Used by component(s):**
 - `libz-sys@1.1.31` (cargo, file: `src/zlib/LICENSE`)
+  - Copyright (C) 1995-2003, 2010 Mark Adler (src/zlib/inffast.h)
+  - Copyright (C) 1995-2011, 2016 Mark Adler (src/zlib/adler32.c)
+  - Copyright (C) 1995-2019 Mark Adler (src/zlib/inflate.h)
+  - Copyright (C) 1995-2026 Jean-loup Gailly (src/zlib/deflate.h)
+  - Copyright (C) 1995-2026 Jean-loup Gailly and Mark Adler (src/zlib/deflate.c)
+  - Copyright (C) 1995-2026 Jean-loup Gailly, Mark Adler (src/zlib/compress.c)
+  - Copyright (C) 1995-2026 Mark Adler (src/zlib/crc32.c)
+  - Copyright (C) 2004, 2010 Mark Adler (src/zlib/gzclose.c)
+  - Copyright (C) 2004-2026 Mark Adler (src/zlib/gzguts.h)
+  - Copyright 1995-2026 Jean-loup Gailly and Mark Adler (src/zlib/deflate.c)
+  - Copyright 1995-2026 Mark Adler (src/zlib/inftrees.c)
 
 ```text
 Copyright notice:
@@ -26325,7 +26739,7 @@ Copyright notice:
   jloup@gzip.org          madler@alumni.caltech.edu
 ```
 
-### Notice Entry 350
+### Notice Entry 349
 
 **Used by component(s):**
 - `libz-sys@1.1.31` (cargo, file: `src/zlib/contrib/minizip/LICENSE.Info-Zip`)
@@ -26393,7 +26807,7 @@ the above disclaimer and the following restrictions:
 
 <a id="notice-line-clipping"></a>
 
-### Notice Entry 351
+### Notice Entry 350
 
 **Used by component(s):**
 - `line-clipping@0.3.8` (cargo, file: `LICENSE-APACHE`)
@@ -26602,7 +27016,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 352
+### Notice Entry 351
 
 **Used by component(s):**
 - `line-clipping@0.3.8` (cargo, file: `LICENSE-MIT`)
@@ -26631,7 +27045,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 353
+### Notice Entry 352
 
 **Used by component(s):**
 - `linux-raw-sys@0.12.1` (cargo, file: `COPYRIGHT`)
@@ -26668,7 +27082,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 354
+### Notice Entry 353
 
 **Used by component(s):**
 - `litrs@1.0.0` (cargo, file: `LICENSE-MIT`)
@@ -26701,7 +27115,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 355
+### Notice Entry 354
 
 **Used by component(s):**
 - `lock_api@0.4.14` (cargo, file: `LICENSE-MIT`)
@@ -26744,7 +27158,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-stringify-entities"></a>
 <a id="notice-trim-lines"></a>
 
-### Notice Entry 356
+### Notice Entry 355
 
 **Used by component(s):**
 - `longest-streak@3.1.0` (npm, file: `license`)
@@ -26779,7 +27193,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-loom"></a>
 <a id="notice-slab"></a>
 
-### Notice Entry 357
+### Notice Entry 356
 
 **Used by component(s):**
 - `loom@0.7.2` (cargo, file: `LICENSE`)
@@ -26815,7 +27229,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-loose-envify"></a>
 
-### Notice Entry 358
+### Notice Entry 357
 
 **Used by component(s):**
 - `loose-envify@1.4.0` (npm, file: `LICENSE`)
@@ -26846,7 +27260,7 @@ THE SOFTWARE.
 
 <a id="notice-lru"></a>
 
-### Notice Entry 359
+### Notice Entry 358
 
 **Used by component(s):**
 - `lru@0.18.4` (cargo, file: `LICENSE`)
@@ -26876,7 +27290,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 360
+### Notice Entry 359
 
 **Used by component(s):**
 - `lru-slab@0.1.2` (cargo, file: `LICENSE-MIT`)
@@ -26891,7 +27305,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 361
+### Notice Entry 360
 
 **Used by component(s):**
 - `lru-slab@0.1.2` (cargo, file: `LICENSE-ZLIB`)
@@ -26920,7 +27334,7 @@ the following restrictions:
 
 <a id="notice-lucide-react"></a>
 
-### Notice Entry 362
+### Notice Entry 361
 
 **Used by component(s):**
 - `lucide-react@1.43.0` (npm, file: `LICENSE`)
@@ -26971,7 +27385,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 363
+### Notice Entry 362
 
 **Used by component(s):**
 - `lzma-sys@0.1.20` (cargo, file: `LICENSE-MIT`)
@@ -27005,10 +27419,33 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 364
+### Notice Entry 363
 
 **Used by component(s):**
 - `lzma-sys@0.1.20` (cargo, file: `xz-5.2/COPYING`)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 (xz-5.2/lib/getopt.c)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 (xz-5.2/lib/getopt1.c)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 (xz-5.2/lib/getopt_int.h)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 (xz-5.2/lib/getopt.in.h)
+  - Copyright (C) 1992, 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software (xz-5.2/INSTALL.generic)
+  - Copyright (C) 1997-2007 by Dimitri van Heesch (xz-5.2/Doxyfile.in)
+  - Copyright (C) 1998, 1999, 2001  Henry Spencer. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 1998, 2001, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzgrep.in)
+  - Copyright (C) 1998, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 2001, 2002, 2007 Free Software Foundation (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 2002-2006, 2008 Free Software Foundation, Inc. (xz-5.2/m4/getopt.m4)
+  - Copyright (C) 2004-2007 Free Software Foundation, Inc. (xz-5.2/lib/Makefile.am)
+  - Copyright (C) 2005 Philipp Benner. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2005, 2008, 2010-2020 Free Software Foundation, Inc. (xz-5.2/m4/visibility.m4)
+  - Copyright (C) 2006 Timo Lindfors (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2007-2008 Free Software Foundation, Inc. (xz-5.2/m4/posix-shell.m4)
+  - Copyright (c) 2008 Steven G. Johnson <stevenj@alum.mit.edu> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2011 Daniel Richard G. <skunk@iSKUNK.ORG> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2014 Google Inc. (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2015 Lasse Collin <lasse.collin@tukaani.org> (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2019 Marc Stevens <marc.stevens@cwi.nl> (xz-5.2/m4/ax_pthread.m4)
 
 ```text
 XZ Utils Licensing
@@ -27076,12 +27513,50 @@ XZ Utils Licensing
     information.
 ```
 
-### Notice Entry 365
+### Notice Entry 364
 
 **Used by component(s):**
 - `lzma-sys@0.1.20` (cargo, file: `xz-5.2/COPYING.GPLv2`)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 (xz-5.2/lib/getopt.c)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 (xz-5.2/lib/getopt1.c)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 (xz-5.2/lib/getopt_int.h)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 (xz-5.2/lib/getopt.in.h)
+  - Copyright (C) 1992, 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software (xz-5.2/INSTALL.generic)
+  - Copyright (C) 1997-2007 by Dimitri van Heesch (xz-5.2/Doxyfile.in)
+  - Copyright (C) 1998, 1999, 2001  Henry Spencer. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 1998, 2001, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzgrep.in)
+  - Copyright (C) 1998, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 2001, 2002, 2007 Free Software Foundation (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 2002-2006, 2008 Free Software Foundation, Inc. (xz-5.2/m4/getopt.m4)
+  - Copyright (C) 2004-2007 Free Software Foundation, Inc. (xz-5.2/lib/Makefile.am)
+  - Copyright (C) 2005 Philipp Benner. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2005, 2008, 2010-2020 Free Software Foundation, Inc. (xz-5.2/m4/visibility.m4)
+  - Copyright (C) 2006 Timo Lindfors (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2007-2008 Free Software Foundation, Inc. (xz-5.2/m4/posix-shell.m4)
+  - Copyright (c) 2008 Steven G. Johnson <stevenj@alum.mit.edu> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2011 Daniel Richard G. <skunk@iSKUNK.ORG> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2014 Google Inc. (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2015 Lasse Collin <lasse.collin@tukaani.org> (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2019 Marc Stevens <marc.stevens@cwi.nl> (xz-5.2/m4/ax_pthread.m4)
 - `self_cell@1.3.0` (cargo, file: `LICENSE-GPLv2`)
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `zstd/COPYING`)
+  - Copyright (C) 2013-2015, Yann Collet (zstd/lib/legacy/zstd_v02.c)
+  - Copyright (C) 2013-2015, Yann Collet. (zstd/lib/legacy/zstd_v02.c)
+  - Copyright (C) 2013-2016, Yann Collet (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2013-2016, Yann Collet. (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2014-2015, Yann Collet. (zstd/lib/legacy/zstd_v01.c)
+  - Copyright (C) 2014-2016, Yann Collet. (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2015, Yann Collet. (zstd/lib/legacy/zstd_v04.c)
+  - Copyright (C) 2015-2016, Yann Collet. (zstd/lib/legacy/zstd_v04.c)
+  - Copyright (C) 2016, Yann Collet. (zstd/lib/legacy/zstd_v06.c)
+  - Copyright (c) 2003-2008 Yuta Mori All Rights Reserved. (zstd/lib/dictBuilder/divsufsort.c)
+  - Copyright (c) 2016 Tino Reichardt (zstd/lib/common/threading.c)
+  - Copyright (c) Meta Platforms, Inc. and affiliates. (zstd/build/cmake/CMakeLists.txt)
+  - Copyright (c) Yann Collet - Meta Platforms, Inc (zstd/lib/common/xxhash.c)
+  - Copyright (c) Yann Collet, Meta Platforms, Inc. and affiliates. (zstd/lib/legacy/zstd_v01.c)
+  - Copyright 2020 Jan Tojnar (zstd/build/cmake/CMakeModules/JoinPaths.cmake)
 
 ```text
 GNU GENERAL PUBLIC LICENSE
@@ -27425,10 +27900,33 @@ library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.
 ```
 
-### Notice Entry 366
+### Notice Entry 365
 
 **Used by component(s):**
 - `lzma-sys@0.1.20` (cargo, file: `xz-5.2/COPYING.GPLv3`)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,95,96,98,99,2000,2001,2002,2003,2004,2006 (xz-5.2/lib/getopt.c)
+  - Copyright (C) 1987,88,89,90,91,92,93,94,96,97,98,2004,2006 (xz-5.2/lib/getopt1.c)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004 (xz-5.2/lib/getopt_int.h)
+  - Copyright (C) 1989-1994,1996-1999,2001,2003,2004,2005,2006,2007 (xz-5.2/lib/getopt.in.h)
+  - Copyright (C) 1992, 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 1993 Jean-loup Gailly (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 1994-1996, 1999-2002, 2004-2016 Free Software (xz-5.2/INSTALL.generic)
+  - Copyright (C) 1997-2007 by Dimitri van Heesch (xz-5.2/Doxyfile.in)
+  - Copyright (C) 1998, 1999, 2001  Henry Spencer. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 1998, 2001, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzgrep.in)
+  - Copyright (C) 1998, 2002, 2006, 2007 Free Software Foundation (xz-5.2/src/scripts/xzdiff.in)
+  - Copyright (C) 2001, 2002, 2007 Free Software Foundation (xz-5.2/src/scripts/xzmore.in)
+  - Copyright (C) 2002-2006, 2008 Free Software Foundation, Inc. (xz-5.2/m4/getopt.m4)
+  - Copyright (C) 2004-2007 Free Software Foundation, Inc. (xz-5.2/lib/Makefile.am)
+  - Copyright (C) 2005 Philipp Benner. (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2005, 2008, 2010-2020 Free Software Foundation, Inc. (xz-5.2/m4/visibility.m4)
+  - Copyright (C) 2006 Timo Lindfors (xz-5.2/extra/scanlzma/scanlzma.c)
+  - Copyright (C) 2007-2008 Free Software Foundation, Inc. (xz-5.2/m4/posix-shell.m4)
+  - Copyright (c) 2008 Steven G. Johnson <stevenj@alum.mit.edu> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2011 Daniel Richard G. <skunk@iSKUNK.ORG> (xz-5.2/m4/ax_pthread.m4)
+  - Copyright (c) 2014 Google Inc. (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2015 Lasse Collin <lasse.collin@tukaani.org> (xz-5.2/m4/ax_check_capsicum.m4)
+  - Copyright (c) 2019 Marc Stevens <marc.stevens@cwi.nl> (xz-5.2/m4/ax_pthread.m4)
 
 ```text
 GNU GENERAL PUBLIC LICENSE
@@ -28109,7 +28607,7 @@ Public License instead of this License.  But first, please read
 
 <a id="notice-mac-addr"></a>
 
-### Notice Entry 367
+### Notice Entry 366
 
 **Used by component(s):**
 - `mac-addr@0.3.0` (cargo, file: `LICENSE`)
@@ -28140,7 +28638,7 @@ SOFTWARE.
 
 <a id="notice-marked"></a>
 
-### Notice Entry 368
+### Notice Entry 367
 
 **Used by component(s):**
 - `marked@14.0.0` (npm, file: `LICENSE.md`)
@@ -28194,7 +28692,7 @@ This software is provided by the copyright holders and contributors “as is” 
 
 <a id="notice-matchers"></a>
 
-### Notice Entry 369
+### Notice Entry 368
 
 **Used by component(s):**
 - `matchers@0.2.0` (cargo, file: `LICENSE`)
@@ -28224,7 +28722,7 @@ SOFTWARE.
 <a id="notice-matchit"></a>
 <a id="notice-seize"></a>
 
-### Notice Entry 370
+### Notice Entry 369
 
 **Used by component(s):**
 - `matchit@0.8.4` (cargo, file: `LICENSE`)
@@ -28254,7 +28752,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 371
+### Notice Entry 370
 
 **Used by component(s):**
 - `matchit@0.8.4` (cargo, file: `LICENSE.httprouter`)
@@ -28293,7 +28791,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-maybe-owned"></a>
 
-### Notice Entry 372
+### Notice Entry 371
 
 **Used by component(s):**
 - `maybe-owned@0.3.4` (cargo, file: `LICENSE-APACHE`)
@@ -28502,7 +29000,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 373
+### Notice Entry 372
 
 **Used by component(s):**
 - `maybe-owned@0.3.4` (cargo, file: `LICENSE-MIT`)
@@ -28535,7 +29033,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 374
+### Notice Entry 373
 
 **Used by component(s):**
 - `md-5@0.10.6` (cargo, file: `LICENSE-MIT`)
@@ -28572,7 +29070,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 375
+### Notice Entry 374
 
 **Used by component(s):**
 - `md-5@0.11.0` (cargo, file: `LICENSE-MIT`)
@@ -28610,7 +29108,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 376
+### Notice Entry 375
 
 **Used by component(s):**
 - `md4@0.10.2` (cargo, file: `LICENSE-MIT`)
@@ -28645,7 +29143,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-md5"></a>
 
-### Notice Entry 377
+### Notice Entry 376
 
 **Used by component(s):**
 - `md5@0.8.1` (cargo, file: `LICENSE.md`)
@@ -28704,7 +29202,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-mdast-util-phrasing"></a>
 
-### Notice Entry 378
+### Notice Entry 377
 
 **Used by component(s):**
 - `mdast-util-phrasing@4.1.0` (npm, file: `license`)
@@ -28737,7 +29235,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-memoffset"></a>
 
-### Notice Entry 379
+### Notice Entry 378
 
 **Used by component(s):**
 - `memoffset@0.9.1` (cargo, file: `LICENSE`)
@@ -28766,7 +29264,7 @@ SOFTWARE.
 
 <a id="notice-micromark-extension-gfm-footnote"></a>
 
-### Notice Entry 380
+### Notice Entry 379
 
 **Used by component(s):**
 - `micromark-extension-gfm-footnote@2.1.0` (npm, file: `license`)
@@ -28796,7 +29294,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 381
+### Notice Entry 380
 
 **Used by component(s):**
 - `mime@0.3.17` (cargo, file: `LICENSE-MIT`)
@@ -28825,7 +29323,7 @@ THE SOFTWARE.
 
 <a id="notice-mime-guess"></a>
 
-### Notice Entry 382
+### Notice Entry 381
 
 **Used by component(s):**
 - `mime_guess@2.0.5` (cargo, file: `LICENSE`)
@@ -28854,7 +29352,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 383
+### Notice Entry 382
 
 **Used by component(s):**
 - `minimal-lexical@0.2.1` (cargo, file: `LICENSE.md`)
@@ -28899,7 +29397,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 384
+### Notice Entry 383
 
 **Used by component(s):**
 - `miniz_oxide@0.8.9` (cargo, file: `LICENSE`)
@@ -28933,7 +29431,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 385
+### Notice Entry 384
 
 **Used by component(s):**
 - `miniz_oxide@0.8.9` (cargo, file: `LICENSE-MIT.md`)
@@ -28966,7 +29464,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 386
+### Notice Entry 385
 
 **Used by component(s):**
 - `miniz_oxide@0.8.9` (cargo, file: `LICENSE-ZLIB.md`)
@@ -28991,7 +29489,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 <a id="notice-mio"></a>
 
-### Notice Entry 387
+### Notice Entry 386
 
 **Used by component(s):**
 - `mio@1.2.4` (cargo, file: `LICENSE`)
@@ -29018,7 +29516,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 388
+### Notice Entry 387
 
 **Used by component(s):**
 - `ml-kem@0.3.2` (cargo, file: `LICENSE-MIT`)
@@ -29048,7 +29546,7 @@ SOFTWARE.
 
 <a id="notice-moka"></a>
 
-### Notice Entry 389
+### Notice Entry 388
 
 **Used by component(s):**
 - `moka@0.12.16` (cargo, file: `LICENSE-APACHE`)
@@ -29257,7 +29755,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 390
+### Notice Entry 389
 
 **Used by component(s):**
 - `moka@0.12.16` (cargo, file: `LICENSE-MIT`)
@@ -29286,7 +29784,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 391
+### Notice Entry 390
 
 **Used by component(s):**
 - `moka@0.12.16` (cargo, file: `NOTICE`)
@@ -29310,7 +29808,7 @@ Please refer to the LICENSE-APACHE file for more details on the Apache License 2
 
 <a id="notice-monaco-editor"></a>
 
-### Notice Entry 392
+### Notice Entry 391
 
 **Used by component(s):**
 - `monaco-editor@0.57.0` (npm, file: `LICENSE`)
@@ -29342,7 +29840,7 @@ SOFTWARE.
 <a id="notice-moxcms"></a>
 <a id="notice-pxfm"></a>
 
-### Notice Entry 393
+### Notice Entry 392
 
 **Used by component(s):**
 - `moxcms@0.8.1` (cargo, file: `LICENSE-APACHE.md`)
@@ -29552,7 +30050,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 394
+### Notice Entry 393
 
 **Used by component(s):**
 - `moxcms@0.8.1` (cargo, file: `LICENSE.md`)
@@ -29589,7 +30087,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-ms"></a>
 
-### Notice Entry 395
+### Notice Entry 394
 
 **Used by component(s):**
 - `ms@2.1.3` (npm, file: `license.md`)
@@ -29618,7 +30116,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 396
+### Notice Entry 395
 
 **Used by component(s):**
 - `muda@0.19.3` (cargo, file: `LICENSE-MIT`)
@@ -29648,7 +30146,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 397
+### Notice Entry 396
 
 **Used by component(s):**
 - `muda@0.19.3` (cargo, file: `LICENSE.spdx`)
@@ -29675,7 +30173,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/muda.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 398
+### Notice Entry 397
 
 **Used by component(s):**
 - `multimap@0.10.1` (cargo, file: `LICENSE-MIT`)
@@ -29708,7 +30206,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 399
+### Notice Entry 398
 
 **Used by component(s):**
 - `multiversion@0.9.0` (cargo, file: `LICENSE-MIT`)
@@ -29724,7 +30222,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 400
+### Notice Entry 399
 
 **Used by component(s):**
 - `multiversion_no_op@1.0.0` (cargo, file: `COPYRIGHT`)
@@ -29747,7 +30245,7 @@ See the Licenses for the specific language governing permissions and
 limitations under the Licenses.
 ```
 
-### Notice Entry 401
+### Notice Entry 400
 
 **Used by component(s):**
 - `n0-mainline@0.5.0` (cargo, file: `LICENSE-MIT`)
@@ -29778,7 +30276,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 402
+### Notice Entry 401
 
 **Used by component(s):**
 - `native-tls@0.2.18` (cargo, file: `LICENSE-MIT`)
@@ -29807,7 +30305,7 @@ SOFTWARE.
 
 <a id="notice-netdev"></a>
 
-### Notice Entry 403
+### Notice Entry 402
 
 **Used by component(s):**
 - `netdev@0.45.1` (cargo, file: `LICENSE`)
@@ -29841,7 +30339,7 @@ SOFTWARE.
 <a id="notice-netlink-proto"></a>
 <a id="notice-netlink-sys"></a>
 
-### Notice Entry 404
+### Notice Entry 403
 
 **Used by component(s):**
 - `netlink-packet-core@0.8.2` (cargo, file: `LICENSE-MIT`)
@@ -29885,7 +30383,7 @@ SOFTWARE.
 
 <a id="notice-netlink-packet-route"></a>
 
-### Notice Entry 405
+### Notice Entry 404
 
 **Used by component(s):**
 - `netlink-packet-route@0.31.0` (cargo, file: `LICENSE-MIT`)
@@ -29916,7 +30414,7 @@ SOFTWARE.
 <a id="notice-new-debug-unreachable"></a>
 <a id="notice-ordered-float"></a>
 
-### Notice Entry 406
+### Notice Entry 405
 
 **Used by component(s):**
 - `new_debug_unreachable@1.0.6` (cargo, file: `LICENSE-MIT`)
@@ -29952,7 +30450,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-nix"></a>
 
-### Notice Entry 407
+### Notice Entry 406
 
 **Used by component(s):**
 - `nix@0.28.0` (cargo, file: `LICENSE`)
@@ -29985,7 +30483,7 @@ THE SOFTWARE.
 
 <a id="notice-nom"></a>
 
-### Notice Entry 408
+### Notice Entry 407
 
 **Used by component(s):**
 - `nom@7.1.3` (cargo, file: `LICENSE`)
@@ -30018,7 +30516,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-noq-proto"></a>
 <a id="notice-noq-udp"></a>
 
-### Notice Entry 409
+### Notice Entry 408
 
 **Used by component(s):**
 - `noq@1.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -30230,7 +30728,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 410
+### Notice Entry 409
 
 **Used by component(s):**
 - `noq@1.3.0` (cargo, file: `LICENSE-MIT`)
@@ -30250,7 +30748,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 <a id="notice-notify"></a>
 
-### Notice Entry 411
+### Notice Entry 410
 
 **Used by component(s):**
 - `notify@8.2.1` (cargo, file: `LICENSE-CC0`)
@@ -30300,7 +30798,7 @@ For these and/or other purposes and motivations, and without any expectation of 
      d. Affirmer understands and acknowledges that Creative Commons is not a party to this document and has no duty or obligation with respect to this CC0 or use of the Work.
 ```
 
-### Notice Entry 412
+### Notice Entry 411
 
 **Used by component(s):**
 - `notify-rust@4.18.0` (cargo, file: `LICENSE-MIT`)
@@ -30331,7 +30829,7 @@ SOFTWARE.
 
 <a id="notice-nu-ansi-term"></a>
 
-### Notice Entry 413
+### Notice Entry 412
 
 **Used by component(s):**
 - `nu-ansi-term@0.50.3` (cargo, file: `LICENSE`)
@@ -30361,7 +30859,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 414
+### Notice Entry 413
 
 **Used by component(s):**
 - `num-conv@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -30388,7 +30886,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 415
+### Notice Entry 414
 
 **Used by component(s):**
 - `num_enum@0.7.6` (cargo, file: `LICENSE-BSD`)
@@ -30426,7 +30924,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-num-threads"></a>
 
-### Notice Entry 416
+### Notice Entry 415
 
 **Used by component(s):**
 - `num_threads@0.1.7` (cargo, file: `LICENSE-Apache`)
@@ -30635,7 +31133,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 417
+### Notice Entry 416
 
 **Used by component(s):**
 - `num_threads@0.1.7` (cargo, file: `LICENSE-MIT`)
@@ -30662,7 +31160,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 418
+### Notice Entry 417
 
 **Used by component(s):**
 - `ocb3@0.1.0` (cargo, file: `LICENSE-MIT`)
@@ -30695,7 +31193,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 419
+### Notice Entry 418
 
 **Used by component(s):**
 - `olpc-cjson@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -30712,7 +31210,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN  NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE  SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 420
+### Notice Entry 419
 
 **Used by component(s):**
 - `opaque-debug@0.3.1` (cargo, file: `LICENSE-MIT`)
@@ -30747,7 +31245,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-open"></a>
 
-### Notice Entry 421
+### Notice Entry 420
 
 **Used by component(s):**
 - `open@5.4.5` (cargo, file: `LICENSE.md`)
@@ -30782,7 +31280,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-openidconnect"></a>
 
-### Notice Entry 422
+### Notice Entry 421
 
 **Used by component(s):**
 - `openidconnect@4.0.1` (cargo, file: `LICENSE`)
@@ -30811,7 +31309,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 423
+### Notice Entry 422
 
 **Used by component(s):**
 - `openssl@0.10.81` (cargo, file: `LICENSE`)
@@ -30834,7 +31332,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 424
+### Notice Entry 423
 
 **Used by component(s):**
 - `openssl-macros@0.1.1` (cargo, file: `LICENSE-MIT`)
@@ -30861,10 +31359,269 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 425
+### Notice Entry 424
 
 **Used by component(s):**
 - `openssl-src@300.6.1+3.6.3` (cargo, file: `openssl/LICENSE.txt`)
+  - Copyright (C) 2006, Network Resonance, Inc. Copyright (C) 2011, RTFM, Inc. (openssl/include/openssl/srtp.h)
+  - Copyright (C) 2017 National Security Research Institute. All Rights Reserved. (openssl/crypto/aria/aria.c)
+  - Copyright (C) 2023 Intel Corporation (openssl/crypto/aes/asm/aesni-xts-avx512.pl)
+  - Copyright (C) Cavium networks Ltd. 2016. (openssl/crypto/aes/asm/aes-sha1-armv8.pl)
+  - Copyright (c) 2002 The OpenTSA Project. All rights reserved. (openssl/apps/tsget.in)
+  - Copyright (c) 2002, Oracle and/or its affiliates. All rights reserved (openssl/apps/ecparam.c)
+  - Copyright (c) 2004 Kungliga Tekniska Högskolan (openssl/crypto/x509/v3_pci.c)
+  - Copyright (c) 2004, 2018, Richard Levitte <richard@levitte.org> (openssl/crypto/LPdir_unix.c)
+  - Copyright (c) 2004, EdelKey Project. All Rights Reserved. (openssl/apps/srp.c)
+  - Copyright (c) 2004, Richard Levitte <richard@levitte.org> (openssl/crypto/LPdir_nyi.c)
+  - Copyright (c) 2007 KISA(Korea Information Security Agency). All rights reserved. (openssl/crypto/seed/seed.c)
+  - Copyright (c) 2008 Andy Polyakov <https://github.com/dot-asm> (openssl/crypto/camellia/asm/cmll-x86.pl)
+  - Copyright (c) 2012, Intel Corporation. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-avx2.pl)
+  - Copyright (c) 2012-2014 Daniel J. Bernstein (openssl/crypto/siphash/siphash.c)
+  - Copyright (c) 2012-2016 Jean-Philippe Aumasson (openssl/crypto/siphash/siphash.c)
+  - Copyright (c) 2013-2014 Timo Teräs <timo.teras@gmail.com> (openssl/apps/rehash.c)
+  - Copyright (c) 2014, Intel Corporation. All Rights Reserved. (openssl/crypto/ec/asm/ecp_nistz256-x86_64.pl)
+  - Copyright (c) 2015 CloudFlare, Inc. (openssl/crypto/ec/asm/ecp_nistz256-x86_64.pl)
+  - Copyright (c) 2015, CloudFlare, Inc. (openssl/crypto/ec/ecp_nistz256.c)
+  - Copyright (c) 2017 National Security Research Institute.  All rights reserved. (openssl/include/crypto/aria.h)
+  - Copyright (c) 2017, Oracle and/or its affiliates.  All rights reserved. (openssl/crypto/aria/aria.c)
+  - Copyright (c) 2018, Oracle and/or its affiliates.  All rights reserved. (openssl/include/crypto/sha.h)
+  - Copyright (c) 2018-2019, Oracle and/or its affiliates.  All rights reserved. (openssl/crypto/bn/bn_rsa_fips186_4.c)
+  - Copyright (c) 2019, Oracle and/or its affiliates.  All rights reserved. (openssl/crypto/param_build.c)
+  - Copyright (c) 2020, Intel Corporation. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-2k-avx512.pl)
+  - Copyright (c) 2020-2021, Intel Corporation. All Rights Reserved. (openssl/crypto/bn/rsaz_exp_x2.c)
+  - Copyright (c) 2021, Intel Corporation. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-3k-avx512.pl)
+  - Copyright (c) 2022, Hongren (Zenithal) Zheng <i@zenithal.me> (openssl/crypto/aes/asm/aes-riscv32-zkn.pl)
+  - Copyright (c) 2023, Christoph Müllner <christoph.muellner@vrull.eu> (openssl/crypto/aes/asm/aes-riscv64-zvkned.pl)
+  - Copyright (c) 2023, Jerry Shih <jerry.shih@sifive.com> (openssl/crypto/aes/asm/aes-riscv64-zvbb-zvkg-zvkned.pl)
+  - Copyright (c) 2023, Phoebe Chen <phoebe.chen@sifive.com> (openssl/crypto/aes/asm/aes-riscv64-zvkned.pl)
+  - Copyright (c) 2024, Intel Corporation. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-2k-avxifma.pl)
+  - Copyright (c) 2025, Intel Corporation. All Rights Reserved. (openssl/crypto/aes/asm/aes-cfb-avx512.pl)
+  - Copyright (c) 2025, Julian Zhu <julian.oerv@isrc.iscas.ac.cn> (openssl/crypto/md5/asm/md5-riscv64-zbb.pl)
+  - Copyright (c) 2025, Julian Zhu <jz531210@gmail.com> (openssl/crypto/sha/asm/sha256-loongarch64.pl)
+  - Copyright 1995-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/progs.pl)
+  - Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/a_octet.c)
+  - Copyright 1995-2017 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_print.c)
+  - Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/errstr.c)
+  - Copyright 1995-2019 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/kdf/kdf_err.c)
+  - Copyright 1995-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/x_info.c)
+  - Copyright 1995-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/app_libctx.c)
+  - Copyright 1995-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/ciphers.c)
+  - Copyright 1995-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/dhparam.c)
+  - Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/http_server.c)
+  - Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/asn1parse.c)
+  - Copyright 1995-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/dgst.c)
+  - Copyright 1998-$YEAR The OpenSSL Authors. All rights reserved.\\0 (openssl/util/mkrc.pl)
+  - Copyright 1998-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_prime.pl)
+  - Copyright 1998-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/ncbc_enc.c)
+  - Copyright 1998-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/rand_key.c)
+  - Copyright 1998-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_prime.h)
+  - Copyright 1998-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/x_algor.c)
+  - Copyright 1998-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/cpuid.c)
+  - Copyright 1998-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/rand.c)
+  - Copyright 1998-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/testdsa.h)
+  - Copyright 1999-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/timeouts.h)
+  - Copyright 1999-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/openssl/pem2.h)
+  - Copyright 1999-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/tbl_standard.h)
+  - Copyright 1999-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/nseq.c)
+  - Copyright 1999-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/x509/v3_akid.c)
+  - Copyright 1999-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/spkac.c)
+  - Copyright 1999-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/p5_pbev2.c)
+  - Copyright 1999-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkcs8.c)
+  - Copyright 1999-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkcs12.c)
+  - Copyright 2000-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/charmap.pl)
+  - Copyright 2000-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/tasn_typ.c)
+  - Copyright 2000-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/asm/des_enc.m4)
+  - Copyright 2000-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/x_long.c)
+  - Copyright 2000-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/charmap.h)
+  - Copyright 2000-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_sqrt.c)
+  - Copyright 2000-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/dso/dso_lib.c)
+  - Copyright 2000-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/asn1_item_list.c)
+  - Copyright 2000-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/CA.pl.in)
+  - Copyright 2000-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/tasn_dec.c)
+  - Copyright 2001-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/pem/pem_x509.c)
+  - Copyright 2001-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/engine/eng_all.c)
+  - Copyright 2001-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/engine/eng_fat.c)
+  - Copyright 2001-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/ecp_nist.c)
+  - Copyright 2001-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/engine/eng_dyn.c)
+  - Copyright 2001-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/engine/eng_init.c)
+  - Copyright 2001-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/ec_local.h)
+  - Copyright 2001-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/ia64.S)
+  - Copyright 2001-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/ocsp.c)
+  - Copyright 2002-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/mem_clr.c)
+  - Copyright 2002-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/tsget.in)
+  - Copyright 2002-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/aes_cbc.c)
+  - Copyright 2002-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/aes_local.h)
+  - Copyright 2002-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/aes_core.c)
+  - Copyright 2002-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ui/ui_util.c)
+  - Copyright 2002-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_nist.c)
+  - Copyright 2002-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/ec.c)
+  - Copyright 2002-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/asn1_gen.c)
+  - Copyright 2003-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/x509/v3_pcons.c)
+  - Copyright 2003-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/err/err_mark.c)
+  - Copyright 2003-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/x509/v3_ncons.c)
+  - Copyright 2003-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/o_str.c)
+  - Copyright 2004-2014, Akamai Technologies. All Rights Reserved. (openssl/crypto/mem_sec.c)
+  - Copyright 2004-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/VMS/VMSify-conf.pl)
+  - Copyright 2004-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/ppc.pl)
+  - Copyright 2004-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/srp.c)
+  - Copyright 2004-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/o_dir.c)
+  - Copyright 2004-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/LPdir_unix.c)
+  - Copyright 2004-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/sha/sha256.c)
+  - Copyright 2004-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/prime.c)
+  - Copyright 2004-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/x509/pcy_tree.c)
+  - Copyright 2005 Nokia. All rights reserved. (openssl/apps/lib/tlssrp_depr.c)
+  - Copyright 2005-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/whrlpool/wp_local.h)
+  - Copyright 2005-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/util/copy.pl)
+  - Copyright 2005-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/openssl/whrlpool.h)
+  - Copyright 2005-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/evp/legacy_wp.c)
+  - Copyright 2005-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/bio_local.h)
+  - Copyright 2005-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/rsa/rsa_pss.c)
+  - Copyright 2005-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-sparcv9.pl)
+  - Copyright 2005-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/bss_dgram.c)
+  - Copyright 2006 NTT (Nippon Telegraph and Telephone Corporation) . (openssl/crypto/camellia/camellia.c)
+  - Copyright 2006-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/aes_x86core.c)
+  - Copyright 2006-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/aes_ige.c)
+  - Copyright 2006-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkeyparam.c)
+  - Copyright 2006-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/camellia/camellia.c)
+  - Copyright 2006-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/dsa/dsa_ameth.c)
+  - Copyright 2006-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/genpkey.c)
+  - Copyright 2006-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkeyutl.c)
+  - Copyright 2007-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/s390x.S)
+  - Copyright 2007-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/evp/e_seed.c)
+  - Copyright 2007-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/dsa/dsa_local.h)
+  - Copyright 2007-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-armv4.pl)
+  - Copyright 2007-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/cmp.c)
+  - Copyright 2008-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/modes/cts128.c)
+  - Copyright 2008-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/ms/uplink-x86.pl)
+  - Copyright 2008-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/cms/cms_dd.c)
+  - Copyright 2008-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/cms/cms_cd.c)
+  - Copyright 2008-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/cms/cms_att.c)
+  - Copyright 2008-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/cms.c)
+  - Copyright 2008-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/asn_mime.c)
+  - Copyright 2009-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/ecp_ppc.c)
+  - Copyright 2009-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/chacha/chacha_ppc.c)
+  - Copyright 2009-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-parisc.pl)
+  - Copyright 2009-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_ppc.c)
+  - Copyright 2010-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/vms_decc_init.c)
+  - Copyright 2010-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/tasn_scn.c)
+  - Copyright 2010-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/crypto/modes.h)
+  - Copyright 2010-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/modes/gcm128.c)
+  - Copyright 2010-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-mips.pl)
+  - Copyright 2010-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/modes/asm/ghash-armv4.pl)
+  - Copyright 2011 Google Inc. (openssl/crypto/ec/ecp_nistp224.c)
+  - Copyright 2011-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/mips_arch.h)
+  - Copyright 2011-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/modes/ccm128.c)
+  - Copyright 2011-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_x931p.c)
+  - Copyright 2011-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/o_init.c)
+  - Copyright 2011-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/engine/eng_rdrand.c)
+  - Copyright 2011-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aesni-sha1-x86_64.pl)
+  - Copyright 2011-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/armcap.c)
+  - Copyright 2012, Samuel Neves <sneves@dei.uc.pt> (openssl/providers/implementations/digests/blake2_impl.h)
+  - Copyright 2012-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aest4-sparcv9.pl)
+  - Copyright 2012-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/ssl/record/methods/ssl3_cbc.c)
+  - Copyright 2012-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/asn_mstbl.c)
+  - Copyright 2012-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-c64xplus.pl)
+  - Copyright 2012-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/crypto/sparc_arch.h)
+  - Copyright 2013-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/asm/dest4-sparcv9.pl)
+  - Copyright 2013-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/dh/dh_kdf.c)
+  - Copyright 2013-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/rsaz_exp.c)
+  - Copyright 2013-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aesni-mb-x86_64.pl)
+  - Copyright 2013-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/modes/wrap128.c)
+  - Copyright 2014 Cryptography Research, Inc. (openssl/crypto/ec/curve448/arch_32/f_impl32.c)
+  - Copyright 2014-2016 Cryptography Research, Inc. (openssl/crypto/ec/curve448/arch_32/f_impl.h)
+  - Copyright 2014-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/ecp_nistz256_table.c)
+  - Copyright 2014-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_srp.c)
+  - Copyright 2014-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/crypto/ppc_arch.h)
+  - Copyright 2014-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aesp8-ppc.pl)
+  - Copyright 2014-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_dh.c)
+  - Copyright 2015 Cryptography Research, Inc. (openssl/crypto/ec/curve448/curve448utils.h)
+  - Copyright 2015-2016 Cryptography Research, Inc. (openssl/crypto/ec/curve448/curve448.c)
+  - Copyright 2015-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/comp/comp_local.h)
+  - Copyright 2015-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/async/async_local.h)
+  - Copyright 2015-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ct/ct_local.h)
+  - Copyright 2015-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/arm64cpuid.pl)
+  - Copyright 2015-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/evp/cmeth_lib.c)
+  - Copyright 2015-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/rehash.c)
+  - Copyright 2015-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/opt.c)
+  - Copyright 2015-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/p5_scrypt.c)
+  - Copyright 2016 Cryptography Research, Inc. (openssl/crypto/ec/curve448/arch_32/arch_intrinsics.h)
+  - Copyright 2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/VMS/translatesyms.pl)
+  - Copyright 2016 VMS Software, Inc. All Rights Reserved. (openssl/apps/include/vms_term_sock.h)
+  - Copyright 2016-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/config.com)
+  - Copyright 2016-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/__DECC_INCLUDE_EPILOGUE.H)
+  - Copyright 2016-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/vms_term_sock.c)
+  - Copyright 2016-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/Configurations/shared-info.pl)
+  - Copyright 2016-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/bio_meth.c)
+  - Copyright 2016-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/storeutl.c)
+  - Copyright 2016-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/Configure)
+  - Copyright 2017 BaishanCloud. All rights reserved. (openssl/crypto/rsa/rsa_mp.c)
+  - Copyright 2017 Ribose Inc. All Rights Reserved. (openssl/crypto/evp/e_sm4.c)
+  - Copyright 2017 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ui/ui_null.c)
+  - Copyright 2017-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/curve448/arch_32/arch_intrinsics.h)
+  - Copyright 2017-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aria/aria.c)
+  - Copyright 2017-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/dh/dh_group_params.c)
+  - Copyright 2017-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ctype.c)
+  - Copyright 2017-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/curve448/arch_64/f_impl64.c)
+  - Copyright 2017-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/columns.c)
+  - Copyright 2017-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/ec/curve448/scalar.c)
+  - Copyright 2018-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/apps_ui.h)
+  - Copyright 2018-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/fmt.h)
+  - Copyright 2018-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/engine_loader.h)
+  - Copyright 2018-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/crypto/sha.h)
+  - Copyright 2018-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/rsa/rsa_sp800_56b_check.c)
+  - Copyright 2018-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/opt.h)
+  - Copyright 2018-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/cmp_mock_srv.h)
+  - Copyright 2019 Red Hat, Inc. (openssl/providers/implementations/kdfs/kbkdf.c.in)
+  - Copyright 2019 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/names.h)
+  - Copyright 2019-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/app_params.h)
+  - Copyright 2019-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/d2i_param.c)
+  - Copyright 2019-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/bss_core.c)
+  - Copyright 2019-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/evp/legacy_blake2.c)
+  - Copyright 2019-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/platform.h)
+  - Copyright 2019-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/fipsinstall.c)
+  - Copyright 2019-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bsearch.c)
+  - Copyright 2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/config)
+  - Copyright 2020-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/ec_common.h)
+  - Copyright 2020-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/evp/ec_support.c)
+  - Copyright 2020-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/log.c)
+  - Copyright 2020-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-2k-avx512.pl)
+  - Copyright 2020-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/engine.c)
+  - Copyright 2020-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/app_provider.c)
+  - Copyright 2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/include/app_libctx.h)
+  - Copyright 2021-2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/ppc64-mont-fixed.pl)
+  - Copyright 2021-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/ossl_core_bio.c)
+  - Copyright 2021-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bio/bf_readbuff.c)
+  - Copyright 2021-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/bsaes-armv8.pl)
+  - Copyright 2021-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/x509/t_acert.c)
+  - Copyright 2022 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/apps_opt_printf.c)
+  - Copyright 2022-2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/loongarch_arch.h)
+  - Copyright 2022-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/include/crypto/riscv_arch.def)
+  - Copyright 2022-2025  The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/chacha/asm/chacha-armv8-sve.pl)
+  - Copyright 2022-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/deterministic_nonce.c)
+  - Copyright 2022-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-riscv32-zkn.pl)
+  - Copyright 2023 IBM Corp. (openssl/crypto/ec/ecp_nistp384.c)
+  - Copyright 2023 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-riscv64-zvbb-zvkg-zvkned.pl)
+  - Copyright 2023-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/chacha/asm/chacha-riscv64-v-zbb.pl)
+  - Copyright 2023-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-sha512-armv8.pl)
+  - Copyright 2023-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/aes/asm/aes-riscv64-zvkned.pl)
+  - Copyright 2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/comp_methods.c)
+  - Copyright 2024-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/hmac/hmac_s390x.c)
+  - Copyright 2024-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/asm/rsaz-2k-avxifma.pl)
+  - Copyright 2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/configutl.c)
+  - Copyright 2025- IBM Corp. (openssl/crypto/ec/asm/ecp_nistp384-ppc64.pl)
+  - Copyright 2025- IBM Corp. All rights reserved (openssl/crypto/modes/asm/aes-gcm-ppc.pl)
+  - Copyright 2025-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/skeyutl.c)
+  - Copyright IBM Corp. 2018 (openssl/crypto/chacha/asm/chacha-s390x.pl)
+  - Copyright IBM Corp. 2018-2019 (openssl/crypto/perlasm/s390x.pm)
+  - Copyright IBM Corp. 2019 (openssl/crypto/poly1305/asm/poly1305-s390x.pl)
+  - Copyright Nokia 2007-2018 (openssl/crypto/crmf/crmf_lib.c)
+  - Copyright Nokia 2007-2019 (openssl/apps/cmp.c)
+  - Copyright Nokia 2007-2020 (openssl/crypto/cmp/cmp_vfy.c)
+  - Copyright Patrick Powell 1995 (openssl/crypto/bio/bio_print.c)
+  - Copyright Siemens AG 2015-2019 (openssl/apps/cmp.c)
+  - Copyright Siemens AG 2015-2020 (openssl/crypto/cmp/cmp_vfy.c)
+  - Copyright Siemens AG 2018-2020 (openssl/apps/include/cmp_mock_srv.h)
+  - Copyright Siemens AG 2022 (openssl/crypto/cmp/cmp_genm.c)
 
 ```text
 Apache License
@@ -31045,10 +31802,12 @@ Apache License
    END OF TERMS AND CONDITIONS
 ```
 
-### Notice Entry 426
+### Notice Entry 425
 
 **Used by component(s):**
 - `openssl-src@300.6.1+3.6.3` (cargo, file: `openssl/external/perl/Text-Template-1.56/LICENSE`)
+  - Copyright 2013 M. J. Dominus. (openssl/external/perl/Text-Template-1.56/lib/Text/Template.pm)
+  - copyright (c) 2013 by Mark Jason Dominus <mjd@cpan.org>. (openssl/external/perl/Text-Template-1.56/lib/Text/Template.pm)
 
 ```text
 This software is copyright (c) 2013 by Mark Jason Dominus <mjd@cpan.org>.
@@ -31433,7 +32192,7 @@ The End
 
 <a id="notice-option-ext"></a>
 
-### Notice Entry 427
+### Notice Entry 426
 
 **Used by component(s):**
 - `option-ext@0.2.0` (cargo, file: `LICENSE.txt`)
@@ -31818,7 +32577,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 <a id="notice-os-pipe"></a>
 <a id="notice-shared-child"></a>
 
-### Notice Entry 428
+### Notice Entry 427
 
 **Used by component(s):**
 - `os_pipe@1.2.3` (cargo, file: `LICENSE`)
@@ -31848,7 +32607,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 429
+### Notice Entry 428
 
 **Used by component(s):**
 - `p256@0.13.2` (cargo, file: `LICENSE-MIT`)
@@ -31884,7 +32643,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 430
+### Notice Entry 429
 
 **Used by component(s):**
 - `p384@0.13.1` (cargo, file: `LICENSE-MIT`)
@@ -31918,7 +32677,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 431
+### Notice Entry 430
 
 **Used by component(s):**
 - `parking@2.2.1` (cargo, file: `LICENSE-THIRD-PARTY`)
@@ -31938,7 +32697,7 @@ copied, modified, or distributed except according to those terms.
 <a id="notice-parse-entities"></a>
 <a id="notice-property-information"></a>
 
-### Notice Entry 432
+### Notice Entry 431
 
 **Used by component(s):**
 - `parse-entities@4.0.2` (npm, file: `license`)
@@ -31969,7 +32728,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 433
+### Notice Entry 432
 
 **Used by component(s):**
 - `pbkdf2@0.12.2` (cargo, file: `LICENSE-MIT`)
@@ -32006,7 +32765,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-pem"></a>
 
-### Notice Entry 434
+### Notice Entry 433
 
 **Used by component(s):**
 - `pem@3.0.6` (cargo, file: `LICENSE.md`)
@@ -32036,7 +32795,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 435
+### Notice Entry 434
 
 **Used by component(s):**
 - `pem-rfc7468@1.0.0` (cargo, file: `LICENSE-MIT`)
@@ -32070,7 +32829,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 436
+### Notice Entry 435
 
 **Used by component(s):**
 - `petgraph@0.8.3` (cargo, file: `assets/images/LICENSE.md`)
@@ -32091,7 +32850,7 @@ work.  If not, see <http://creativecommons.org/licenses/by-sa/4.0/>.
 <a id="notice-phf-macros"></a>
 <a id="notice-phf-shared"></a>
 
-### Notice Entry 437
+### Notice Entry 436
 
 **Used by component(s):**
 - `phf@0.13.1` (cargo, file: `LICENSE`)
@@ -32123,7 +32882,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 438
+### Notice Entry 437
 
 **Used by component(s):**
 - `pkcs1@0.7.5` (cargo, file: `LICENSE-MIT`)
@@ -32161,7 +32920,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-plist"></a>
 
-### Notice Entry 439
+### Notice Entry 438
 
 **Used by component(s):**
 - `plist@1.10.1` (cargo, file: `LICENCE`)
@@ -32188,7 +32947,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 440
+### Notice Entry 439
 
 **Used by component(s):**
 - `png@0.17.16` (cargo, file: `LICENSE-MIT`)
@@ -32222,7 +32981,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 441
+### Notice Entry 440
 
 **Used by component(s):**
 - `poly1305@0.8.0` (cargo, file: `LICENSE-MIT`)
@@ -32255,7 +33014,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 442
+### Notice Entry 441
 
 **Used by component(s):**
 - `poly1305@0.9.1` (cargo, file: `LICENSE-MIT`)
@@ -32288,7 +33047,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 443
+### Notice Entry 442
 
 **Used by component(s):**
 - `polyval@0.6.2` (cargo, file: `LICENSE-MIT`)
@@ -32323,7 +33082,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-positioned-io"></a>
 
-### Notice Entry 444
+### Notice Entry 443
 
 **Used by component(s):**
 - `positioned-io@0.3.5` (cargo, file: `LICENSE-MIT`)
@@ -32354,7 +33113,7 @@ THE SOFTWARE.
 
 <a id="notice-posix-acl"></a>
 
-### Notice Entry 445
+### Notice Entry 444
 
 **Used by component(s):**
 - `posix-acl@1.2.0` (cargo, file: `LICENSE`)
@@ -32383,7 +33142,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 446
+### Notice Entry 445
 
 **Used by component(s):**
 - `postcard@1.1.3` (cargo, file: `LICENSE-MIT`)
@@ -32419,7 +33178,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-powerfmt"></a>
 
-### Notice Entry 447
+### Notice Entry 446
 
 **Used by component(s):**
 - `powerfmt@0.2.0` (cargo, file: `LICENSE-Apache`)
@@ -32628,7 +33387,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 448
+### Notice Entry 447
 
 **Used by component(s):**
 - `powerfmt@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -32657,7 +33416,7 @@ SOFTWARE.
 
 <a id="notice-ppmd-rust"></a>
 
-### Notice Entry 449
+### Notice Entry 448
 
 **Used by component(s):**
 - `ppmd-rust@1.4.1` (cargo, file: `LICENSE-CC0.md`)
@@ -32784,7 +33543,7 @@ party to this document and has no duty or obligation with respect to
 this CC0 or use of the Work.
 ```
 
-### Notice Entry 450
+### Notice Entry 449
 
 **Used by component(s):**
 - `ppmd-rust@1.4.1` (cargo, file: `LICENSE-MIT-0.md`)
@@ -32810,7 +33569,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-ppv-lite86"></a>
 
-### Notice Entry 451
+### Notice Entry 450
 
 **Used by component(s):**
 - `ppv-lite86@0.2.21` (cargo, file: `LICENSE-APACHE`)
@@ -33019,7 +33778,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 452
+### Notice Entry 451
 
 **Used by component(s):**
 - `ppv-lite86@0.2.21` (cargo, file: `LICENSE-MIT`)
@@ -33054,7 +33813,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-precomputed-hash"></a>
 
-### Notice Entry 453
+### Notice Entry 452
 
 **Used by component(s):**
 - `precomputed-hash@0.1.1` (cargo, file: `LICENSE`)
@@ -33083,7 +33842,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 454
+### Notice Entry 453
 
 **Used by component(s):**
 - `primal-check@0.3.4` (cargo, file: `LICENSE-MIT`)
@@ -33116,7 +33875,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 455
+### Notice Entry 454
 
 **Used by component(s):**
 - `primefield@0.14.0` (cargo, file: `LICENSE-MIT`)
@@ -33151,7 +33910,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-prismjs"></a>
 
-### Notice Entry 456
+### Notice Entry 455
 
 **Used by component(s):**
 - `prismjs@1.30.0` (npm, file: `LICENSE`)
@@ -33182,7 +33941,7 @@ THE SOFTWARE.
 
 <a id="notice-proc-macro-error"></a>
 
-### Notice Entry 457
+### Notice Entry 456
 
 **Used by component(s):**
 - `proc-macro-error@0.4.12` (cargo, file: `LICENSE-APACHE`)
@@ -33391,7 +34150,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 458
+### Notice Entry 457
 
 **Used by component(s):**
 - `proc-macro-error@0.4.12` (cargo, file: `LICENSE-MIT`)
@@ -33422,7 +34181,7 @@ SOFTWARE.
 
 <a id="notice-proc-macro-error-attr"></a>
 
-### Notice Entry 459
+### Notice Entry 458
 
 **Used by component(s):**
 - `proc-macro-error@1.0.4` (cargo, file: `LICENSE-APACHE`)
@@ -33633,7 +34392,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 460
+### Notice Entry 459
 
 **Used by component(s):**
 - `proc-macro-error@1.0.4` (cargo, file: `LICENSE-MIT`)
@@ -33664,7 +34423,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 461
+### Notice Entry 460
 
 **Used by component(s):**
 - `proc-macro-hack@0.5.20+deprecated` (cargo, file: `LICENSE-MIT`)
@@ -33699,7 +34458,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-prometheus"></a>
 
-### Notice Entry 462
+### Notice Entry 461
 
 **Used by component(s):**
 - `prometheus@0.14.0` (cargo, file: `LICENSE`)
@@ -33912,7 +34671,7 @@ Apache License
 <a id="notice-snafu"></a>
 <a id="notice-snafu-derive"></a>
 
-### Notice Entry 463
+### Notice Entry 462
 
 **Used by component(s):**
 - `proxy-protocol@0.5.0` (cargo, file: `LICENCE-APACHE-2.0`)
@@ -34127,7 +34886,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 464
+### Notice Entry 463
 
 **Used by component(s):**
 - `proxy-protocol@0.5.0` (cargo, file: `LICENCE-MIT`)
@@ -34158,7 +34917,7 @@ SOFTWARE.
 
 <a id="notice-qrcode.react"></a>
 
-### Notice Entry 465
+### Notice Entry 464
 
 **Used by component(s):**
 - `qrcode.react@4.2.0` (npm, file: `LICENSE`)
@@ -34184,7 +34943,7 @@ This product bundles QR Code Generator, which is available under a
 "MIT" license. For details, see src/third-party/qrcodegen.
 ```
 
-### Notice Entry 466
+### Notice Entry 465
 
 **Used by component(s):**
 - `quick-error@2.0.1` (cargo, file: `LICENSE-MIT`)
@@ -34213,7 +34972,7 @@ SOFTWARE.
 
 <a id="notice-quick-xml"></a>
 
-### Notice Entry 467
+### Notice Entry 466
 
 **Used by component(s):**
 - `quick-xml@0.42.0` (cargo, file: `LICENSE-MIT.md`)
@@ -34246,7 +35005,7 @@ THE SOFTWARE.
 
 <a id="notice-radium"></a>
 
-### Notice Entry 468
+### Notice Entry 467
 
 **Used by component(s):**
 - `radium@0.7.0` (cargo, file: `LICENSE.txt`)
@@ -34275,7 +35034,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 469
+### Notice Entry 468
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `COPYRIGHT`)
@@ -34304,7 +35063,7 @@ published under these same licenses.
 
 <a id="notice-rand"></a>
 
-### Notice Entry 470
+### Notice Entry 469
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `LICENSE-APACHE`)
@@ -34493,7 +35252,7 @@ END OF TERMS AND CONDITIONS
 
 <a id="notice-rand-core"></a>
 
-### Notice Entry 471
+### Notice Entry 470
 
 **Used by component(s):**
 - `rand@0.10.3` (cargo, file: `LICENSE-MIT`)
@@ -34533,7 +35292,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 472
+### Notice Entry 471
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `COPYRIGHT`)
@@ -34552,7 +35311,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 
 <a id="notice-rand-pcg"></a>
 
-### Notice Entry 473
+### Notice Entry 472
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `LICENSE-APACHE`)
@@ -34750,7 +35509,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 ```
 
-### Notice Entry 474
+### Notice Entry 473
 
 **Used by component(s):**
 - `rand_core@0.10.1` (cargo, file: `LICENSE-MIT`)
@@ -34783,7 +35542,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 475
+### Notice Entry 474
 
 **Used by component(s):**
 - `rand_pcg@0.10.2` (cargo, file: `LICENSE-MIT`)
@@ -34817,7 +35576,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 476
+### Notice Entry 475
 
 **Used by component(s):**
 - `range-collections@0.4.6` (cargo, file: `LICENSE-MIT.md`)
@@ -34851,7 +35610,7 @@ SOFTWARE.
 <a id="notice-ratatui-crossterm"></a>
 <a id="notice-ratatui-widgets"></a>
 
-### Notice Entry 477
+### Notice Entry 476
 
 **Used by component(s):**
 - `ratatui@0.30.2` (cargo, file: `LICENSE`)
@@ -34886,7 +35645,7 @@ SOFTWARE.
 
 <a id="notice-ratatui-macros"></a>
 
-### Notice Entry 478
+### Notice Entry 477
 
 **Used by component(s):**
 - `ratatui-macros@0.7.2` (cargo, file: `LICENSE`)
@@ -34914,7 +35673,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 479
+### Notice Entry 478
 
 **Used by component(s):**
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-MIT.md`)
@@ -34943,7 +35702,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 480
+### Notice Entry 479
 
 **Used by component(s):**
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-ZLIB.md`)
@@ -34964,7 +35723,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 <a id="notice-rcgen"></a>
 
-### Notice Entry 481
+### Notice Entry 480
 
 **Used by component(s):**
 - `rcgen@0.14.10` (cargo, file: `LICENSE`)
@@ -35190,7 +35949,7 @@ Apache License, version 2.0
 <a id="notice-react-dom"></a>
 <a id="notice-scheduler"></a>
 
-### Notice Entry 482
+### Notice Entry 481
 
 **Used by component(s):**
 - `react@18.3.1` (npm, file: `LICENSE`)
@@ -35223,7 +35982,7 @@ SOFTWARE.
 
 <a id="notice-react-markdown"></a>
 
-### Notice Entry 483
+### Notice Entry 482
 
 **Used by component(s):**
 - `react-markdown@10.1.0` (npm, file: `license`)
@@ -35254,7 +36013,7 @@ SOFTWARE.
 
 <a id="notice-react-virtuoso"></a>
 
-### Notice Entry 484
+### Notice Entry 483
 
 **Used by component(s):**
 - `react-virtuoso@4.18.22` (npm, file: `LICENSE`)
@@ -35285,7 +36044,7 @@ SOFTWARE.
 
 <a id="notice-react-window"></a>
 
-### Notice Entry 485
+### Notice Entry 484
 
 **Used by component(s):**
 - `react-window@2.5.3` (npm, file: `LICENSE.md`)
@@ -35314,7 +36073,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 486
+### Notice Entry 485
 
 **Used by component(s):**
 - `redb@3.1.3` (cargo, file: `LICENSE-MIT`)
@@ -35344,7 +36103,7 @@ SOFTWARE.
 
 <a id="notice-redox-syscall"></a>
 
-### Notice Entry 487
+### Notice Entry 486
 
 **Used by component(s):**
 - `redox_syscall@0.2.16` (cargo, file: `LICENSE`)
@@ -35377,7 +36136,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-redox-users"></a>
 
-### Notice Entry 488
+### Notice Entry 487
 
 **Used by component(s):**
 - `redox_users@0.4.6` (cargo, file: `LICENSE`)
@@ -35409,7 +36168,7 @@ SOFTWARE.
 
 <a id="notice-reed-solomon-erasure"></a>
 
-### Notice Entry 489
+### Notice Entry 488
 
 **Used by component(s):**
 - `reed-solomon-erasure@6.0.0` (cargo, file: `LICENSE`)
@@ -35441,7 +36200,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 490
+### Notice Entry 489
 
 **Used by component(s):**
 - `regex-syntax@0.8.11` (cargo, file: `src/unicode_tables/LICENSE-UNICODE`)
@@ -35509,7 +36268,7 @@ written authorization of the copyright holder.
 <a id="notice-remark-parse"></a>
 <a id="notice-remark-stringify"></a>
 
-### Notice Entry 491
+### Notice Entry 490
 
 **Used by component(s):**
 - `remark-parse@11.0.0` (npm, file: `license`)
@@ -35541,7 +36300,7 @@ THE SOFTWARE.
 
 <a id="notice-reqwest"></a>
 
-### Notice Entry 492
+### Notice Entry 491
 
 **Used by component(s):**
 - `reqwest@0.13.5` (cargo, file: `LICENSE-APACHE`)
@@ -35750,7 +36509,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 493
+### Notice Entry 492
 
 **Used by component(s):**
 - `reqwest@0.13.5` (cargo, file: `LICENSE-MIT`)
@@ -35779,7 +36538,7 @@ THE SOFTWARE.
 
 <a id="notice-rfd"></a>
 
-### Notice Entry 494
+### Notice Entry 493
 
 **Used by component(s):**
 - `rfd@0.16.0` (cargo, file: `LICENSE`)
@@ -35810,7 +36569,7 @@ SOFTWARE.
 
 <a id="notice-ring"></a>
 
-### Notice Entry 495
+### Notice Entry 494
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE`)
@@ -35827,7 +36586,7 @@ See src/polyfill/once_cell/LICENSE-APACHE and src/polyfill/once_cell/LICENSE-MIT
 for the license to code that was sourced from the once_cell project.
 ```
 
-### Notice Entry 496
+### Notice Entry 495
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE-BoringSSL`)
@@ -36106,7 +36865,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 497
+### Notice Entry 496
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `LICENSE-other-bits`)
@@ -36127,7 +36886,7 @@ OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
 CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 ```
 
-### Notice Entry 498
+### Notice Entry 497
 
 **Used by component(s):**
 - `ring@0.17.14` (cargo, file: `src/polyfill/once_cell/LICENSE-MIT`)
@@ -36158,7 +36917,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 499
+### Notice Entry 498
 
 **Used by component(s):**
 - `rustdct@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -36187,7 +36946,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 500
+### Notice Entry 499
 
 **Used by component(s):**
 - `rustix@1.1.6` (cargo, file: `COPYRIGHT`)
@@ -36224,7 +36983,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 501
+### Notice Entry 500
 
 **Used by component(s):**
 - `rustix-linux-procfs@0.1.1` (cargo, file: `COPYRIGHT`)
@@ -36261,7 +37020,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice Entry 502
+### Notice Entry 501
 
 **Used by component(s):**
 - `rustls-native-certs@0.8.5` (cargo, file: `LICENSE`)
@@ -36280,7 +37039,7 @@ of these licenses, at your option.
 
 <a id="notice-rustls-pki-types"></a>
 
-### Notice Entry 503
+### Notice Entry 502
 
 **Used by component(s):**
 - `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-APACHE`)
@@ -36489,7 +37248,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 504
+### Notice Entry 503
 
 **Used by component(s):**
 - `rustls-pki-types@1.15.1` (cargo, file: `LICENSE-MIT`)
@@ -36522,7 +37281,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 505
+### Notice Entry 504
 
 **Used by component(s):**
 - `rustls-platform-verifier@0.7.0` (cargo, file: `LICENSE-MIT`)
@@ -36553,7 +37312,7 @@ SOFTWARE.
 
 <a id="notice-rustls-webpki"></a>
 
-### Notice Entry 506
+### Notice Entry 505
 
 **Used by component(s):**
 - `rustls-webpki@0.103.16` (cargo, file: `LICENSE`)
@@ -36580,7 +37339,7 @@ The files under third-party/chromium are licensed as described in
 third-party/chromium/LICENSE.
 ```
 
-### Notice Entry 507
+### Notice Entry 506
 
 **Used by component(s):**
 - `salsa20@0.10.2` (cargo, file: `LICENSE-MIT`)
@@ -36613,7 +37372,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 508
+### Notice Entry 507
 
 **Used by component(s):**
 - `salsa20@0.11.0` (cargo, file: `LICENSE-MIT`)
@@ -36647,7 +37406,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 509
+### Notice Entry 508
 
 **Used by component(s):**
 - `same-file@1.0.6` (cargo, file: `LICENSE-MIT`)
@@ -36679,7 +37438,7 @@ THE SOFTWARE.
 
 <a id="notice-schannel"></a>
 
-### Notice Entry 510
+### Notice Entry 509
 
 **Used by component(s):**
 - `schannel@0.1.29` (cargo, file: `LICENSE.md`)
@@ -36697,7 +37456,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-schemars"></a>
 <a id="notice-schemars-derive"></a>
 
-### Notice Entry 511
+### Notice Entry 510
 
 **Used by component(s):**
 - `schemars@0.8.22` (cargo, file: `LICENSE`)
@@ -36727,7 +37486,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 512
+### Notice Entry 511
 
 **Used by component(s):**
 - `scopeguard@1.2.0` (cargo, file: `LICENSE-MIT`)
@@ -36760,7 +37519,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 513
+### Notice Entry 512
 
 **Used by component(s):**
 - `sec1@0.7.3` (cargo, file: `LICENSE-MIT`)
@@ -36793,7 +37552,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 514
+### Notice Entry 513
 
 **Used by component(s):**
 - `secrecy@0.10.3` (cargo, file: `LICENSE-MIT`)
@@ -36822,7 +37581,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 515
+### Notice Entry 514
 
 **Used by component(s):**
 - `secrecy@0.8.0` (cargo, file: `LICENSE-MIT`)
@@ -36851,7 +37610,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 516
+### Notice Entry 515
 
 **Used by component(s):**
 - `security-framework@2.11.1` (cargo, file: `LICENSE-MIT`)
@@ -36883,7 +37642,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-serde-error"></a>
 
-### Notice Entry 517
+### Notice Entry 516
 
 **Used by component(s):**
 - `serde-error@0.1.3` (cargo, file: `LICENSE`)
@@ -36911,7 +37670,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-serde-value"></a>
 
-### Notice Entry 518
+### Notice Entry 517
 
 **Used by component(s):**
 - `serde-value@0.7.0` (cargo, file: `COPYING`)
@@ -36940,7 +37699,7 @@ THE SOFTWARE.
 
 <a id="notice-serde-bencode"></a>
 
-### Notice Entry 519
+### Notice Entry 518
 
 **Used by component(s):**
 - `serde_bencode@0.2.4` (cargo, file: `LICENSE.md`)
@@ -36971,7 +37730,7 @@ SOFTWARE.
 
 <a id="notice-serde-json-canonicalizer"></a>
 
-### Notice Entry 520
+### Notice Entry 519
 
 **Used by component(s):**
 - `serde_json_canonicalizer@0.3.2` (cargo, file: `LICENSE`)
@@ -37000,7 +37759,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 521
+### Notice Entry 520
 
 **Used by component(s):**
 - `serde_urlencoded@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -37033,7 +37792,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 522
+### Notice Entry 521
 
 **Used by component(s):**
 - `serdect@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -37063,7 +37822,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 523
+### Notice Entry 522
 
 **Used by component(s):**
 - `serdect@0.4.3` (cargo, file: `LICENSE-MIT`)
@@ -37094,7 +37853,7 @@ SOFTWARE.
 
 <a id="notice-serial2"></a>
 
-### Notice Entry 524
+### Notice Entry 523
 
 **Used by component(s):**
 - `serial2@0.2.38` (cargo, file: `LICENSE-APACHE`)
@@ -37115,7 +37874,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 525
+### Notice Entry 524
 
 **Used by component(s):**
 - `serial2@0.2.38` (cargo, file: `LICENSE-BSD`)
@@ -37147,7 +37906,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 526
+### Notice Entry 525
 
 **Used by component(s):**
 - `serialize-to-javascript@0.1.2` (cargo, file: `LICENSE-MIT`)
@@ -37177,7 +37936,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 527
+### Notice Entry 526
 
 **Used by component(s):**
 - `sha1-checked@0.10.0` (cargo, file: `LICENSE-MIT`)
@@ -37212,7 +37971,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-sha1-smol"></a>
 
-### Notice Entry 528
+### Notice Entry 527
 
 **Used by component(s):**
 - `sha1_smol@1.0.1` (cargo, file: `LICENSE`)
@@ -37280,7 +38039,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 529
+### Notice Entry 528
 
 **Used by component(s):**
 - `sha3@0.10.9` (cargo, file: `LICENSE-MIT`)
@@ -37316,7 +38075,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 530
+### Notice Entry 529
 
 **Used by component(s):**
 - `sha3@0.11.0` (cargo, file: `LICENSE-MIT`)
@@ -37356,7 +38115,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-sharded-slab"></a>
 
-### Notice Entry 531
+### Notice Entry 530
 
 **Used by component(s):**
 - `sharded-slab@0.1.7` (cargo, file: `LICENSE`)
@@ -37383,7 +38142,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 532
+### Notice Entry 531
 
 **Used by component(s):**
 - `shared_library@0.1.9` (cargo, file: `LICENSE-MIT`)
@@ -37418,7 +38177,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-shell-words"></a>
 
-### Notice Entry 533
+### Notice Entry 532
 
 **Used by component(s):**
 - `shell-words@1.1.1` (cargo, file: `LICENSE-APACHE`)
@@ -37627,7 +38386,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 534
+### Notice Entry 533
 
 **Used by component(s):**
 - `shell-words@1.1.1` (cargo, file: `LICENSE-MIT`)
@@ -37662,7 +38421,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-shlex"></a>
 
-### Notice Entry 535
+### Notice Entry 534
 
 **Used by component(s):**
 - `shlex@1.3.0` (cargo, file: `LICENSE-APACHE`)
@@ -37684,7 +38443,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 536
+### Notice Entry 535
 
 **Used by component(s):**
 - `shlex@1.3.0` (cargo, file: `LICENSE-MIT`)
@@ -37714,7 +38473,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 537
+### Notice Entry 536
 
 **Used by component(s):**
 - `signal-hook@0.3.18` (cargo, file: `LICENSE-MIT`)
@@ -37750,7 +38509,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 538
+### Notice Entry 537
 
 **Used by component(s):**
 - `sigstore@0.14.0` (cargo, file: `COPYRIGHT.txt`)
@@ -37773,7 +38532,7 @@ limitations under the License.
 
 <a id="notice-simd-adler32"></a>
 
-### Notice Entry 539
+### Notice Entry 538
 
 **Used by component(s):**
 - `simd-adler32@0.3.10` (cargo, file: `LICENSE.md`)
@@ -37804,7 +38563,7 @@ SOFTWARE.
 
 <a id="notice-simple-dns"></a>
 
-### Notice Entry 540
+### Notice Entry 539
 
 **Used by component(s):**
 - `simple-dns@0.12.0` (cargo, file: `LICENSE`)
@@ -37835,7 +38594,7 @@ SOFTWARE.
 
 <a id="notice-simple-asn1"></a>
 
-### Notice Entry 541
+### Notice Entry 540
 
 **Used by component(s):**
 - `simple_asn1@0.6.4` (cargo, file: `LICENSE`)
@@ -37858,7 +38617,7 @@ THIS SOFTWARE.
 
 <a id="notice-siphasher"></a>
 
-### Notice Entry 542
+### Notice Entry 541
 
 **Used by component(s):**
 - `siphasher@1.0.3` (cargo, file: `COPYING`)
@@ -37873,7 +38632,7 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 ```
 
-### Notice Entry 543
+### Notice Entry 542
 
 **Used by component(s):**
 - `smallvec@1.16.0` (cargo, file: `LICENSE-MIT`)
@@ -37906,7 +38665,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 544
+### Notice Entry 543
 
 **Used by component(s):**
 - `snafu@0.6.10` (cargo, file: `LICENSE-MIT`)
@@ -37946,7 +38705,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-softbuffer"></a>
 
-### Notice Entry 545
+### Notice Entry 544
 
 **Used by component(s):**
 - `softbuffer@0.4.8` (cargo, file: `LICENSE-APACHE`)
@@ -38155,7 +38914,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 546
+### Notice Entry 545
 
 **Used by component(s):**
 - `softbuffer@0.4.8` (cargo, file: `LICENSE-MIT`)
@@ -38184,7 +38943,7 @@ SOFTWARE.
 
 <a id="notice-spez"></a>
 
-### Notice Entry 547
+### Notice Entry 546
 
 **Used by component(s):**
 - `spez@0.1.2` (cargo, file: `LICENSE`)
@@ -38219,7 +38978,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <a id="notice-spin"></a>
 <a id="notice-zip"></a>
 
-### Notice Entry 548
+### Notice Entry 547
 
 **Used by component(s):**
 - `spin@0.10.1` (cargo, file: `LICENSE`)
@@ -38251,7 +39010,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 549
+### Notice Entry 548
 
 **Used by component(s):**
 - `sponge-cursor@0.1.0` (cargo, file: `LICENSE-MIT`)
@@ -38284,7 +39043,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 550
+### Notice Entry 549
 
 **Used by component(s):**
 - `stable_deref_trait@1.2.1` (cargo, file: `LICENSE-MIT`)
@@ -38319,7 +39078,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-state-local"></a>
 
-### Notice Entry 551
+### Notice Entry 550
 
 **Used by component(s):**
 - `state-local@1.0.7` (npm, file: `LICENSE`)
@@ -38348,7 +39107,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 552
+### Notice Entry 551
 
 **Used by component(s):**
 - `static_assertions@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -38379,7 +39138,7 @@ SOFTWARE.
 
 <a id="notice-strsim"></a>
 
-### Notice Entry 553
+### Notice Entry 552
 
 **Used by component(s):**
 - `strsim@0.11.1` (cargo, file: `LICENSE`)
@@ -38413,7 +39172,7 @@ SOFTWARE.
 <a id="notice-strum"></a>
 <a id="notice-strum-macros"></a>
 
-### Notice Entry 554
+### Notice Entry 553
 
 **Used by component(s):**
 - `strum@0.28.0` (cargo, file: `LICENSE`)
@@ -38445,7 +39204,7 @@ SOFTWARE.
 
 <a id="notice-style-to-js"></a>
 
-### Notice Entry 555
+### Notice Entry 554
 
 **Used by component(s):**
 - `style-to-js@1.1.21` (npm, file: `LICENSE`)
@@ -38477,7 +39236,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-style-to-object"></a>
 
-### Notice Entry 556
+### Notice Entry 555
 
 **Used by component(s):**
 - `style-to-object@1.0.14` (npm, file: `LICENSE`)
@@ -38509,7 +39268,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-subtle"></a>
 
-### Notice Entry 557
+### Notice Entry 556
 
 **Used by component(s):**
 - `subtle@2.6.1` (cargo, file: `LICENSE`)
@@ -38548,7 +39307,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-swift-rs"></a>
 
-### Notice Entry 558
+### Notice Entry 557
 
 **Used by component(s):**
 - `swift-rs@1.0.8` (cargo, file: `LICENSE-APACHE`)
@@ -38757,7 +39516,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 559
+### Notice Entry 558
 
 **Used by component(s):**
 - `swift-rs@1.0.8` (cargo, file: `LICENSE-MIT`)
@@ -38786,7 +39545,7 @@ SOFTWARE.
 
 <a id="notice-synstructure"></a>
 
-### Notice Entry 560
+### Notice Entry 559
 
 **Used by component(s):**
 - `synstructure@0.13.2` (cargo, file: `LICENSE`)
@@ -38801,7 +39560,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 561
+### Notice Entry 560
 
 **Used by component(s):**
 - `system-configuration@0.7.0` (cargo, file: `LICENSE-MIT`)
@@ -38838,7 +39597,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tagptr"></a>
 
-### Notice Entry 562
+### Notice Entry 561
 
 **Used by component(s):**
 - `tagptr@0.2.0` (cargo, file: `LICENSE-APACHE`)
@@ -38859,7 +39618,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 563
+### Notice Entry 562
 
 **Used by component(s):**
 - `tagptr@0.2.0` (cargo, file: `LICENSE-MIT`)
@@ -38888,7 +39647,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 564
+### Notice Entry 563
 
 **Used by component(s):**
 - `tao@0.35.3` (cargo, file: `LICENSE.spdx`)
@@ -38914,7 +39673,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 565
+### Notice Entry 564
 
 **Used by component(s):**
 - `tao-macros@0.1.4` (cargo, file: `LICENSE-MIT`)
@@ -38943,7 +39702,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 566
+### Notice Entry 565
 
 **Used by component(s):**
 - `tao-macros@0.1.4` (cargo, file: `LICENSE.spdx`)
@@ -38972,7 +39731,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 <a id="notice-tap"></a>
 
-### Notice Entry 567
+### Notice Entry 566
 
 **Used by component(s):**
 - `tap@1.0.1` (cargo, file: `LICENSE.txt`)
@@ -39001,7 +39760,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 568
+### Notice Entry 567
 
 **Used by component(s):**
 - `tar@0.4.46` (cargo, file: `LICENSE-MIT`)
@@ -39034,7 +39793,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 569
+### Notice Entry 568
 
 **Used by component(s):**
 - `tauri-plugin-single-instance@2.4.5` (cargo, file: `LICENSE_MIT`)
@@ -39065,7 +39824,7 @@ SOFTWARE.
 
 <a id="notice-tauri-winres"></a>
 
-### Notice Entry 570
+### Notice Entry 569
 
 **Used by component(s):**
 - `tauri-winres@0.3.6` (cargo, file: `LICENSE`)
@@ -39101,7 +39860,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 571
+### Notice Entry 570
 
 **Used by component(s):**
 - `tauri-winrt-notification@0.7.3` (cargo, file: `LICENSE.spdx`)
@@ -39128,7 +39887,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/winrt-notification.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 572
+### Notice Entry 571
 
 **Used by component(s):**
 - `tempfile@3.27.0` (cargo, file: `LICENSE-MIT`)
@@ -39162,7 +39921,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 573
+### Notice Entry 572
 
 **Used by component(s):**
 - `tendril@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -39197,7 +39956,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tiff"></a>
 
-### Notice Entry 574
+### Notice Entry 573
 
 **Used by component(s):**
 - `tiff@0.11.3` (cargo, file: `LICENSE`)
@@ -39226,7 +39985,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 575
+### Notice Entry 574
 
 **Used by component(s):**
 - `time@0.3.55` (cargo, file: `LICENSE-MIT`)
@@ -39257,7 +40016,7 @@ SOFTWARE.
 
 <a id="notice-tinyvec-macros"></a>
 
-### Notice Entry 576
+### Notice Entry 575
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-APACHE.md`)
@@ -39466,7 +40225,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 577
+### Notice Entry 576
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-MIT.md`)
@@ -39495,7 +40254,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 578
+### Notice Entry 577
 
 **Used by component(s):**
 - `tinyvec_macros@0.1.1` (cargo, file: `LICENSE-ZLIB.md`)
@@ -39524,7 +40283,7 @@ freely, subject to the following restrictions:
 
 <a id="notice-tlsh2"></a>
 
-### Notice Entry 579
+### Notice Entry 578
 
 **Used by component(s):**
 - `tlsh2@1.1.0` (cargo, file: `LICENSE`)
@@ -39813,7 +40572,7 @@ freely, subject to the following restrictions:
    (stdin)= 11e8757af16132dd60979eacd73a525a40ff31f0
 ```
 
-### Notice Entry 580
+### Notice Entry 579
 
 **Used by component(s):**
 - `tlsh2@1.1.0` (cargo, file: `NOTICE.txt`)
@@ -39862,7 +40621,7 @@ freely, subject to the following restrictions:
 <a id="notice-tokio-stream"></a>
 <a id="notice-tokio-util"></a>
 
-### Notice Entry 581
+### Notice Entry 580
 
 **Used by component(s):**
 - `tokio@1.54.1` (cargo, file: `LICENSE`)
@@ -39895,7 +40654,7 @@ SOFTWARE.
 
 <a id="notice-tokio-macros"></a>
 
-### Notice Entry 582
+### Notice Entry 581
 
 **Used by component(s):**
 - `tokio-macros@2.7.2` (cargo, file: `LICENSE`)
@@ -39932,7 +40691,7 @@ SOFTWARE.
 <a id="notice-tracing-log"></a>
 <a id="notice-tracing-subscriber"></a>
 
-### Notice Entry 583
+### Notice Entry 582
 
 **Used by component(s):**
 - `tokio-native-tls@0.3.1` (cargo, file: `LICENSE`)
@@ -39972,7 +40731,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tokio-rustls"></a>
 
-### Notice Entry 584
+### Notice Entry 583
 
 **Used by component(s):**
 - `tokio-rustls@0.26.6` (cargo, file: `LICENSE-APACHE`)
@@ -40181,7 +40940,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 585
+### Notice Entry 584
 
 **Used by component(s):**
 - `tokio-rustls@0.26.6` (cargo, file: `LICENSE-MIT`)
@@ -40216,7 +40975,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tokio-websockets"></a>
 
-### Notice Entry 586
+### Notice Entry 585
 
 **Used by component(s):**
 - `tokio-websockets@0.13.3` (cargo, file: `LICENSE`)
@@ -40245,7 +41004,7 @@ THE SOFTWARE.
 
 <a id="notice-totp-rs"></a>
 
-### Notice Entry 587
+### Notice Entry 586
 
 **Used by component(s):**
 - `totp-rs@5.7.2` (cargo, file: `LICENSE`)
@@ -40278,7 +41037,7 @@ SOFTWARE.
 <a id="notice-tower-layer"></a>
 <a id="notice-tower-service"></a>
 
-### Notice Entry 588
+### Notice Entry 587
 
 **Used by component(s):**
 - `tower@0.5.3` (cargo, file: `LICENSE`)
@@ -40315,7 +41074,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-tower-http"></a>
 
-### Notice Entry 589
+### Notice Entry 588
 
 **Used by component(s):**
 - `tower-http@0.6.11` (cargo, file: `LICENSE`)
@@ -40350,7 +41109,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-transpose"></a>
 
-### Notice Entry 590
+### Notice Entry 589
 
 **Used by component(s):**
 - `transpose@0.2.3` (cargo, file: `LICENSE-APACHE`)
@@ -40559,7 +41318,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 591
+### Notice Entry 590
 
 **Used by component(s):**
 - `transpose@0.2.3` (cargo, file: `LICENSE-MIT`)
@@ -40594,7 +41353,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-trash"></a>
 
-### Notice Entry 592
+### Notice Entry 591
 
 **Used by component(s):**
 - `trash@5.3.0` (cargo, file: `LICENSE.txt`)
@@ -40618,7 +41377,7 @@ DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 593
+### Notice Entry 592
 
 **Used by component(s):**
 - `tray-icon@0.23.1` (cargo, file: `LICENSE.spdx`)
@@ -40647,7 +41406,7 @@ Creator: Person: Daniel Thompson-Yvetot
 
 <a id="notice-trough"></a>
 
-### Notice Entry 594
+### Notice Entry 593
 
 **Used by component(s):**
 - `trough@2.2.0` (npm, file: `license`)
@@ -40678,7 +41437,7 @@ THE SOFTWARE.
 
 <a id="notice-try-lock"></a>
 
-### Notice Entry 595
+### Notice Entry 594
 
 **Used by component(s):**
 - `try-lock@0.2.5` (cargo, file: `LICENSE`)
@@ -40706,7 +41465,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 596
+### Notice Entry 595
 
 **Used by component(s):**
 - `twofish@0.7.1` (cargo, file: `LICENSE-MIT`)
@@ -40741,7 +41500,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-typenum"></a>
 
-### Notice Entry 597
+### Notice Entry 596
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE`)
@@ -40750,7 +41509,7 @@ DEALINGS IN THE SOFTWARE.
 MIT OR Apache-2.0
 ```
 
-### Notice Entry 598
+### Notice Entry 597
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE-APACHE`)
@@ -40959,7 +41718,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 599
+### Notice Entry 598
 
 **Used by component(s):**
 - `typenum@1.20.1` (cargo, file: `LICENSE-MIT`)
@@ -40990,7 +41749,7 @@ SOFTWARE.
 
 <a id="notice-uds-windows"></a>
 
-### Notice Entry 600
+### Notice Entry 599
 
 **Used by component(s):**
 - `uds_windows@1.2.1` (cargo, file: `LICENSE`)
@@ -41019,7 +41778,7 @@ MIT License
     SOFTWARE
 ```
 
-### Notice Entry 601
+### Notice Entry 600
 
 **Used by component(s):**
 - `unicode-ident@1.0.24` (cargo, file: `LICENSE-UNICODE`)
@@ -41067,7 +41826,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
 
-### Notice Entry 602
+### Notice Entry 601
 
 **Used by component(s):**
 - `unicode-normalization@0.1.26` (cargo, file: `COPYRIGHT`)
@@ -41086,7 +41845,7 @@ notice may not be copied, modified, or distributed except
 according to those terms.
 ```
 
-### Notice Entry 603
+### Notice Entry 602
 
 **Used by component(s):**
 - `unicode-truncate@2.0.1` (cargo, file: `LICENSE-MIT`)
@@ -41122,7 +41881,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-unified"></a>
 <a id="notice-vfile"></a>
 
-### Notice Entry 604
+### Notice Entry 603
 
 **Used by component(s):**
 - `unified@11.0.5` (npm, file: `license`)
@@ -41154,7 +41913,7 @@ THE SOFTWARE.
 
 <a id="notice-unist-util-is"></a>
 
-### Notice Entry 605
+### Notice Entry 604
 
 **Used by component(s):**
 - `unist-util-is@6.0.1` (npm, file: `license`)
@@ -41186,7 +41945,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-unit-prefix"></a>
 
-### Notice Entry 606
+### Notice Entry 605
 
 **Used by component(s):**
 - `unit-prefix@0.5.2` (cargo, file: `LICENSE`)
@@ -41215,7 +41974,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 607
+### Notice Entry 606
 
 **Used by component(s):**
 - `universal-hash@0.5.1` (cargo, file: `LICENSE-MIT`)
@@ -41248,7 +42007,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 608
+### Notice Entry 607
 
 **Used by component(s):**
 - `universal-hash@0.6.1` (cargo, file: `LICENSE-MIT`)
@@ -41283,10 +42042,14 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-unrar-sys"></a>
 
-### Notice Entry 609
+### Notice Entry 608
 
 **Used by component(s):**
 - `unrar_sys@0.5.8` (cargo, file: `vendor/unrar/license.txt`)
+  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
+  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
+  - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
+  - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
 
 ```text
 ******    *****   ******   UnRAR - free utility for RAR archives
@@ -41335,7 +42098,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-untrusted"></a>
 
-### Notice Entry 610
+### Notice Entry 609
 
 **Used by component(s):**
 - `untrusted@0.7.1` (cargo, file: `LICENSE.txt`)
@@ -41359,7 +42122,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-urlencoding"></a>
 
-### Notice Entry 611
+### Notice Entry 610
 
 **Used by component(s):**
 - `urlencoding@2.1.3` (cargo, file: `LICENSE`)
@@ -41389,7 +42152,7 @@ THE SOFTWARE.
 
 <a id="notice-urlpattern"></a>
 
-### Notice Entry 612
+### Notice Entry 611
 
 **Used by component(s):**
 - `urlpattern@0.3.0` (cargo, file: `LICENSE`)
@@ -41418,7 +42181,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 613
+### Notice Entry 612
 
 **Used by component(s):**
 - `utf8_iter@1.0.4` (cargo, file: `COPYRIGHT`)
@@ -41468,7 +42231,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 ```
 
-### Notice Entry 614
+### Notice Entry 613
 
 **Used by component(s):**
 - `utf8parse@0.2.2` (cargo, file: `LICENSE-MIT`)
@@ -41501,7 +42264,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 615
+### Notice Entry 614
 
 **Used by component(s):**
 - `uuid@1.29.2` (cargo, file: `LICENSE-MIT`)
@@ -41535,7 +42298,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 616
+### Notice Entry 615
 
 **Used by component(s):**
 - `vcpkg@0.2.15` (cargo, file: `LICENSE-MIT`)
@@ -41570,7 +42333,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-version-compare"></a>
 
-### Notice Entry 617
+### Notice Entry 616
 
 **Used by component(s):**
 - `version-compare@0.2.1` (cargo, file: `LICENSE`)
@@ -41597,7 +42360,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 618
+### Notice Entry 617
 
 **Used by component(s):**
 - `version_check@0.9.5` (cargo, file: `LICENSE-MIT`)
@@ -41627,7 +42390,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-vswhom"></a>
 <a id="notice-vswhom-sys"></a>
 
-### Notice Entry 619
+### Notice Entry 618
 
 **Used by component(s):**
 - `vswhom@0.1.0` (cargo, file: `LICENSE`)
@@ -41659,7 +42422,7 @@ SOFTWARE.
 
 <a id="notice-want"></a>
 
-### Notice Entry 620
+### Notice Entry 619
 
 **Used by component(s):**
 - `want@0.3.2` (cargo, file: `LICENSE`)
@@ -41688,7 +42451,7 @@ THE SOFTWARE.
 
 <a id="notice-web-time"></a>
 
-### Notice Entry 621
+### Notice Entry 620
 
 **Used by component(s):**
 - `web-time@1.1.0` (cargo, file: `LICENSE-APACHE`)
@@ -41897,7 +42660,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 622
+### Notice Entry 621
 
 **Used by component(s):**
 - `web-time@1.1.0` (cargo, file: `LICENSE-MIT`)
@@ -41928,7 +42691,7 @@ SOFTWARE.
 
 <a id="notice-webbrowser"></a>
 
-### Notice Entry 623
+### Notice Entry 622
 
 **Used by component(s):**
 - `webbrowser@1.2.4` (cargo, file: `LICENSE-APACHE`)
@@ -42126,7 +42889,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### Notice Entry 624
+### Notice Entry 623
 
 **Used by component(s):**
 - `webbrowser@1.2.4` (cargo, file: `LICENSE-MIT`)
@@ -42163,7 +42926,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-webkit2gtk"></a>
 
-### Notice Entry 625
+### Notice Entry 624
 
 **Used by component(s):**
 - `webkit2gtk@2.0.2` (cargo, file: `LICENSE`)
@@ -42193,7 +42956,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-webkit2gtk-sys"></a>
 
-### Notice Entry 626
+### Notice Entry 625
 
 **Used by component(s):**
 - `webkit2gtk-sys@2.0.2` (cargo, file: `LICENSE`)
@@ -42222,7 +42985,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 <a id="notice-webpki-root-certs"></a>
 <a id="notice-webpki-roots"></a>
 
-### Notice Entry 627
+### Notice Entry 626
 
 **Used by component(s):**
 - `webpki-root-certs@1.0.11` (cargo, file: `LICENSE`)
@@ -42294,7 +43057,7 @@ of Data, including for example machine learning models and models'
 insights.
 ```
 
-### Notice Entry 628
+### Notice Entry 627
 
 **Used by component(s):**
 - `weezl@0.1.12` (cargo, file: `LICENSE-MIT`)
@@ -42325,7 +43088,7 @@ SOFTWARE.
 
 <a id="notice-which"></a>
 
-### Notice Entry 629
+### Notice Entry 628
 
 **Used by component(s):**
 - `which@8.0.6` (cargo, file: `LICENSE.txt`)
@@ -42354,7 +43117,7 @@ THE SOFTWARE.
 
 <a id="notice-whisper-rs"></a>
 
-### Notice Entry 630
+### Notice Entry 629
 
 **Used by component(s):**
 - `whisper-rs@0.16.0` (cargo, file: `LICENSE`)
@@ -42389,10 +43152,20 @@ For more information, please refer to <https://unlicense.org>
 
 <a id="notice-whisper-rs-sys"></a>
 
-### Notice Entry 631
+### Notice Entry 630
 
 **Used by component(s):**
 - `whisper-rs-sys@0.15.0` (cargo, file: `whisper.cpp/LICENSE`)
+  - Copyright (C) 2024 Intel Corporation (whisper.cpp/ggml/include/ggml-sycl.h)
+  - Copyright (C) 2025 Codeplay Software Ltd. (whisper.cpp/ggml/src/ggml-sycl/quantize.hpp)
+  - Copyright (C) 2025 Intel Corporation (whisper.cpp/ggml/src/ggml-sycl/convert.hpp)
+  - Copyright (c) 2006, Matthias Kretz, <kretz@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2008, Alexander Neundorf, <neundorf@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2011, Michael Jansen, <kde@michael-jansen.biz> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2023 Jeffrey Quesnelle and Bowen Peng. (whisper.cpp/ggml/src/ggml-cpu/ops.cpp)
+  - Copyright (c) 2023-2024 The ggml authors (whisper.cpp/ggml/include/ggml-cann.h)
+  - Copyright 2024 Mozilla Foundation (whisper.cpp/ggml/src/ggml-cpu/llamafile/sgemm.cpp)
+  - SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com> (whisper.cpp/ggml/src/ggml-cpu/kleidiai/kernels.cpp)
 
 ```text
 MIT License
@@ -42418,7 +43191,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 632
+### Notice Entry 631
 
 **Used by component(s):**
 - `winapi@0.3.9` (cargo, file: `LICENSE-MIT`)
@@ -42445,7 +43218,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 633
+### Notice Entry 632
 
 **Used by component(s):**
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE-MIT`)
@@ -42474,7 +43247,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 634
+### Notice Entry 633
 
 **Used by component(s):**
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE.spdx`)
@@ -42501,7 +43274,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 635
+### Notice Entry 634
 
 **Used by component(s):**
 - `windows@0.58.0` (cargo, file: `license-apache-2.0`)
@@ -42779,7 +43552,7 @@ Apache License
 
 <a id="notice-winnow"></a>
 
-### Notice Entry 636
+### Notice Entry 635
 
 **Used by component(s):**
 - `winnow@0.5.40` (cargo, file: `LICENSE-MIT`)
@@ -42812,7 +43585,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 <a id="notice-winreg"></a>
 
-### Notice Entry 637
+### Notice Entry 636
 
 **Used by component(s):**
 - `winreg@0.10.1` (cargo, file: `LICENSE`)
@@ -42841,7 +43614,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice Entry 638
+### Notice Entry 637
 
 **Used by component(s):**
 - `wnaf@0.14.1` (cargo, file: `LICENSE-MIT`)
@@ -42875,7 +43648,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 639
+### Notice Entry 638
 
 **Used by component(s):**
 - `wry@0.55.1` (cargo, file: `LICENSE-MIT`)
@@ -42904,7 +43677,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 640
+### Notice Entry 639
 
 **Used by component(s):**
 - `wry@0.55.1` (cargo, file: `LICENSE.spdx`)
@@ -42932,7 +43705,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice Entry 641
+### Notice Entry 640
 
 **Used by component(s):**
 - `x11rb@0.13.2` (cargo, file: `LICENSE-MIT`)
@@ -42968,7 +43741,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-x25519-dalek"></a>
 
-### Notice Entry 642
+### Notice Entry 641
 
 **Used by component(s):**
 - `x25519-dalek@2.0.1` (cargo, file: `LICENSE`)
@@ -43007,7 +43780,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 <a id="notice-xml-rs"></a>
 
-### Notice Entry 643
+### Notice Entry 642
 
 **Used by component(s):**
 - `xml-rs@0.8.29` (cargo, file: `LICENSE`)
@@ -43038,7 +43811,7 @@ SOFTWARE.
 
 <a id="notice-xmltree"></a>
 
-### Notice Entry 644
+### Notice Entry 643
 
 **Used by component(s):**
 - `xmltree@0.10.3` (cargo, file: `LICENSE`)
@@ -43054,7 +43827,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice Entry 645
+### Notice Entry 644
 
 **Used by component(s):**
 - `yasna@0.6.0` (cargo, file: `LICENSE-MIT`)
@@ -43075,7 +43848,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 <a id="notice-zvariant"></a>
 <a id="notice-zvariant-derive"></a>
 
-### Notice Entry 646
+### Notice Entry 645
 
 **Used by component(s):**
 - `zbus@5.19.0` (cargo, file: `LICENSE`)
@@ -43114,7 +43887,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-zcheapstr"></a>
 
-### Notice Entry 647
+### Notice Entry 646
 
 **Used by component(s):**
 - `zcheapstr@1.1.0` (cargo, file: `LICENSE`)
@@ -43150,7 +43923,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-zerocopy"></a>
 <a id="notice-zerocopy-derive"></a>
 
-### Notice Entry 648
+### Notice Entry 647
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-APACHE`)
@@ -43360,7 +44133,7 @@ Apache License
    limitations under the License.
 ```
 
-### Notice Entry 649
+### Notice Entry 648
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-BSD`)
@@ -43393,7 +44166,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 650
+### Notice Entry 649
 
 **Used by component(s):**
 - `zerocopy@0.8.63` (cargo, file: `LICENSE-MIT`)
@@ -43429,7 +44202,7 @@ DEALINGS IN THE SOFTWARE.
 
 <a id="notice-zlib-rs"></a>
 
-### Notice Entry 651
+### Notice Entry 650
 
 **Used by component(s):**
 - `zlib-rs@0.6.7` (cargo, file: `LICENSE`)
@@ -43458,7 +44231,7 @@ freely, subject to the following restrictions:
 
 <a id="notice-zopfli"></a>
 
-### Notice Entry 652
+### Notice Entry 651
 
 **Used by component(s):**
 - `zopfli@0.8.3` (cargo, file: `COPYING`)
@@ -43671,7 +44444,7 @@ Apache License
 <a id="notice-zstd-safe"></a>
 <a id="notice-zstd-sys"></a>
 
-### Notice Entry 653
+### Notice Entry 652
 
 **Used by component(s):**
 - `zstd@0.14.4` (cargo, file: `LICENSE`)
@@ -43709,7 +44482,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 654
+### Notice Entry 653
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `LICENSE.BSD-2-Clause`)
@@ -43746,7 +44519,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 655
+### Notice Entry 654
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `LICENSE.BSD-3-Clause`)
@@ -43786,10 +44559,25 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 656
+### Notice Entry 655
 
 **Used by component(s):**
 - `zstd-sys@2.1.3+zstd.1.5.7` (cargo, file: `zstd/LICENSE`)
+  - Copyright (C) 2013-2015, Yann Collet (zstd/lib/legacy/zstd_v02.c)
+  - Copyright (C) 2013-2015, Yann Collet. (zstd/lib/legacy/zstd_v02.c)
+  - Copyright (C) 2013-2016, Yann Collet (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2013-2016, Yann Collet. (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2014-2015, Yann Collet. (zstd/lib/legacy/zstd_v01.c)
+  - Copyright (C) 2014-2016, Yann Collet. (zstd/lib/legacy/zstd_v05.c)
+  - Copyright (C) 2015, Yann Collet. (zstd/lib/legacy/zstd_v04.c)
+  - Copyright (C) 2015-2016, Yann Collet. (zstd/lib/legacy/zstd_v04.c)
+  - Copyright (C) 2016, Yann Collet. (zstd/lib/legacy/zstd_v06.c)
+  - Copyright (c) 2003-2008 Yuta Mori All Rights Reserved. (zstd/lib/dictBuilder/divsufsort.c)
+  - Copyright (c) 2016 Tino Reichardt (zstd/lib/common/threading.c)
+  - Copyright (c) Meta Platforms, Inc. and affiliates. (zstd/build/cmake/CMakeLists.txt)
+  - Copyright (c) Yann Collet - Meta Platforms, Inc (zstd/lib/common/xxhash.c)
+  - Copyright (c) Yann Collet, Meta Platforms, Inc. and affiliates. (zstd/lib/legacy/zstd_v01.c)
+  - Copyright 2020 Jan Tojnar (zstd/build/cmake/CMakeModules/JoinPaths.cmake)
 
 ```text
 BSD License
@@ -43824,7 +44612,7 @@ ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-### Notice Entry 657
+### Notice Entry 656
 
 **Used by component(s):**
 - `zune-core@0.5.3` (cargo, file: `LICENSE-MIT`)
@@ -43854,7 +44642,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice Entry 658
+### Notice Entry 657
 
 **Used by component(s):**
 - `zune-core@0.5.3` (cargo, file: `LICENSE-ZLIB`)
@@ -44126,10 +44914,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unrar_sys@0.5.8` - SPDX: `MIT OR Apache-2.0` (authors: Danyel Bayraktar <rust@danyel.io>)
-  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
-  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
-  - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
-  - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
+  - No copyright notice of its own; the notices of its vendored code (`vendor/unrar/`) are listed with that code's license
 - `winapi-i686-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
   - Copyright © 2016 winapi-rs developers (src/lib.rs)
   - Copyright © 2016-2018 winapi-rs developers (build.rs)
@@ -45121,10 +45906,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unrar_sys@0.5.8` - SPDX: `MIT OR Apache-2.0` (authors: Danyel Bayraktar <rust@danyel.io>)
-  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
-  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
-  - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
-  - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
+  - No copyright notice of its own; the notices of its vendored code (`vendor/unrar/`) are listed with that code's license
 - `webview2-com@0.38.2` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
   - No copyright notice is shipped in the package
 - `webview2-com-macros@0.8.1` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
@@ -45556,16 +46338,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `pharos@0.5.3` - SPDX: `Unlicense` (authors: Naja Melan <najamelan@autistici.org>)
   - No copyright notice is shipped in the package
 - `whisper-rs-sys@0.15.0` - SPDX: `Unlicense` (authors: the whisper-rs project (codeberg.org/tazz4843/whisper-rs))
-  - Copyright (C) 2024 Intel Corporation (whisper.cpp/ggml/include/ggml-sycl.h)
-  - Copyright (C) 2025 Codeplay Software Ltd. (whisper.cpp/ggml/src/ggml-sycl/quantize.hpp)
-  - Copyright (C) 2025 Intel Corporation (whisper.cpp/ggml/src/ggml-sycl/convert.hpp)
-  - Copyright (c) 2006, Matthias Kretz, <kretz@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
-  - Copyright (c) 2008, Alexander Neundorf, <neundorf@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
-  - Copyright (c) 2011, Michael Jansen, <kde@michael-jansen.biz> (whisper.cpp/cmake/FindFFmpeg.cmake)
-  - Copyright (c) 2023 Jeffrey Quesnelle and Bowen Peng. (whisper.cpp/ggml/src/ggml-cpu/ops.cpp)
-  - Copyright (c) 2023-2024 The ggml authors (whisper.cpp/ggml/include/ggml-cann.h)
-  - Copyright 2024 Mozilla Foundation (whisper.cpp/ggml/src/ggml-cpu/llamafile/sgemm.cpp)
-  - SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com> (whisper.cpp/ggml/src/ggml-cpu/kleidiai/kernels.cpp)
+  - No copyright notice of its own; the notices of its vendored code (`whisper.cpp/`) are listed with that code's license
 
 ```text
 This is free and unencumbered software released into the public domain.
@@ -45680,8 +46453,284 @@ freely, subject to the following restrictions:
 
 These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header and ship no license file of their own, so the standard text is reproduced with the copyright lines of the header.
 
+### Bundled Code: Apache-2.0
+
+- `whisper-rs-sys@0.15.0` (cargo, SPDX: `Unlicense`) bundles code under Apache-2.0 in `whisper.cpp/ggml/src/ggml-sycl/backend.hpp`, `whisper.cpp/ggml/src/ggml-sycl/common.cpp`, `whisper.cpp/ggml/src/ggml-sycl/common.hpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.cpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.hpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.cpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/convert.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dequantize.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dmmv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dpct/helper.hpp`, `whisper.cpp/ggml/src/ggml-sycl/gemm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.cpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.hpp`, `whisper.cpp/ggml/src/ggml-sycl/ggml-sycl.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.cpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmvq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/norm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.cpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.hpp`, `whisper.cpp/ggml/src/ggml-sycl/presets.hpp`, `whisper.cpp/ggml/src/ggml-sycl/quants.hpp`, `whisper.cpp/ggml/src/ggml-sycl/roll.hpp`, `whisper.cpp/ggml/src/ggml-sycl/rope.hpp`, `whisper.cpp/ggml/src/ggml-sycl/softmax.hpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.cpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.hpp`, `whisper.cpp/ggml/src/ggml-sycl/vecdotq.hpp`
+  - No copyright notice is shipped with the bundled code
+
+```text
+Apache License
+                        Version 2.0, January 2004
+                     https://www.apache.org/licenses/LICENSE-2.0
+
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+
+1. Definitions.
+
+   "License" shall mean the terms and conditions for use, reproduction,
+   and distribution as defined by Sections 1 through 9 of this document.
+
+   "Licensor" shall mean the copyright owner or entity authorized by
+   the copyright owner that is granting the License.
+
+   "Legal Entity" shall mean the union of the acting entity and all
+   other entities that control, are controlled by, or are under common
+   control with that entity. For the purposes of this definition,
+   "control" means (i) the power, direct or indirect, to cause the
+   direction or management of such entity, whether by contract or
+   otherwise, or (ii) ownership of fifty percent (50%) or more of the
+   outstanding shares, or (iii) beneficial ownership of such entity.
+
+   "You" (or "Your") shall mean an individual or Legal Entity
+   exercising permissions granted by this License.
+
+   "Source" form shall mean the preferred form for making modifications,
+   including but not limited to software source code, documentation
+   source, and configuration files.
+
+   "Object" form shall mean any form resulting from mechanical
+   transformation or translation of a Source form, including but
+   not limited to compiled object code, generated documentation,
+   and conversions to other media types.
+
+   "Work" shall mean the work of authorship, whether in Source or
+   Object form, made available under the License, as indicated by a
+   copyright notice that is included in or attached to the work
+   (an example is provided in the Appendix below).
+
+   "Derivative Works" shall mean any work, whether in Source or Object
+   form, that is based on (or derived from) the Work and for which the
+   editorial revisions, annotations, elaborations, or other modifications
+   represent, as a whole, an original work of authorship. For the purposes
+   of this License, Derivative Works shall not include works that remain
+   separable from, or merely link (or bind by name) to the interfaces of,
+   the Work and Derivative Works thereof.
+
+   "Contribution" shall mean any work of authorship, including
+   the original version of the Work and any modifications or additions
+   to that Work or Derivative Works thereof, that is intentionally
+   submitted to Licensor for inclusion in the Work by the copyright owner
+   or by an individual or Legal Entity authorized to submit on behalf of
+   the copyright owner. For the purposes of this definition, "submitted"
+   means any form of electronic, verbal, or written communication sent
+   to the Licensor or its representatives, including but not limited to
+   communication on electronic mailing lists, source code control systems,
+   and issue tracking systems that are managed by, or on behalf of, the
+   Licensor for the purpose of discussing and improving the Work, but
+   excluding communication that is conspicuously marked or otherwise
+   designated in writing by the copyright owner as "Not a Contribution."
+
+   "Contributor" shall mean Licensor and any individual or Legal Entity
+   on behalf of whom a Contribution has been received by Licensor and
+   subsequently incorporated within the Work.
+
+2. Grant of Copyright License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   copyright license to reproduce, prepare Derivative Works of,
+   publicly display, publicly perform, sublicense, and distribute the
+   Work and such Derivative Works in Source or Object form.
+
+3. Grant of Patent License. Subject to the terms and conditions of
+   this License, each Contributor hereby grants to You a perpetual,
+   worldwide, non-exclusive, no-charge, royalty-free, irrevocable
+   (except as stated in this section) patent license to make, have made,
+   use, offer to sell, sell, import, and otherwise transfer the Work,
+   where such license applies only to those patent claims licensable
+   by such Contributor that are necessarily infringed by their
+   Contribution(s) alone or by combination of their Contribution(s)
+   with the Work to which such Contribution(s) was submitted. If You
+   institute patent litigation against any entity (including a
+   cross-claim or counterclaim in a lawsuit) alleging that the Work
+   or a Contribution incorporated within the Work constitutes direct
+   or contributory patent infringement, then any patent licenses
+   granted to You under this License for that Work shall terminate
+   as of the date such litigation is filed.
+
+4. Redistribution. You may reproduce and distribute copies of the
+   Work or Derivative Works thereof in any medium, with or without
+   modifications, and in Source or Object form, provided that You
+   meet the following conditions:
+
+   (a) You must give any other recipients of the Work or
+       Derivative Works a copy of this License; and
+
+   (b) You must cause any modified files to carry prominent notices
+       stating that You changed the files; and
+
+   (c) You must retain, in the Source form of any Derivative Works
+       that You distribute, all copyright, patent, trademark, and
+       attribution notices from the Source form of the Work,
+       excluding those notices that do not pertain to any part of
+       the Derivative Works; and
+
+   (d) If the Work includes a "NOTICE" text file as part of its
+       distribution, then any Derivative Works that You distribute must
+       include a readable copy of the attribution notices contained
+       within such NOTICE file, excluding those notices that do not
+       pertain to any part of the Derivative Works, in at least one
+       of the following places: within a NOTICE text file distributed
+       as part of the Derivative Works; within the Source form or
+       documentation, if provided along with the Derivative Works; or,
+       within a display generated by the Derivative Works, if and
+       wherever such third-party notices normally appear. The contents
+       of the NOTICE file are for informational purposes only and
+       do not modify the License. You may add Your own attribution
+       notices within Derivative Works that You distribute, alongside
+       or as an addendum to the NOTICE text from the Work, provided
+       that such additional attribution notices cannot be construed
+       as modifying the License.
+
+   You may add Your own copyright statement to Your modifications and
+   may provide additional or different license terms and conditions
+   for use, reproduction, or distribution of Your modifications, or
+   for any such Derivative Works as a whole, provided Your use,
+   reproduction, and distribution of the Work otherwise complies with
+   the conditions stated in this License.
+
+5. Submission of Contributions. Unless You explicitly state otherwise,
+   any Contribution intentionally submitted for inclusion in the Work
+   by You to the Licensor shall be under the terms and conditions of
+   this License, without any additional terms or conditions.
+   Notwithstanding the above, nothing herein shall supersede or modify
+   the terms of any separate license agreement you may have executed
+   with Licensor regarding such Contributions.
+
+6. Trademarks. This License does not grant permission to use the trade
+   names, trademarks, service marks, or product names of the Licensor,
+   except as required for reasonable and customary use in describing the
+   origin of the Work and reproducing the content of the NOTICE file.
+
+7. Disclaimer of Warranty. Unless required by applicable law or
+   agreed to in writing, Licensor provides the Work (and each
+   Contributor provides its Contributions) on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+   implied, including, without limitation, any warranties or conditions
+   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A
+   PARTICULAR PURPOSE. You are solely responsible for determining the
+   appropriateness of using or redistributing the Work and assume any
+   risks associated with Your exercise of permissions under this License.
+
+8. Limitation of Liability. In no event and under no legal theory,
+   whether in tort (including negligence), contract, or otherwise,
+   unless required by applicable law (such as deliberate and grossly
+   negligent acts) or agreed to in writing, shall any Contributor be
+   liable to You for damages, including any direct, indirect, special,
+   incidental, or consequential damages of any character arising as a
+   result of this License or out of the use or inability to use the
+   Work (including but not limited to damages for loss of goodwill,
+   work stoppage, computer failure or malfunction, or any and all
+   other commercial damages or losses), even if such Contributor
+   has been advised of the possibility of such damages.
+
+9. Accepting Warranty or Additional Liability. While redistributing
+   the Work or Derivative Works thereof, You may choose to offer,
+   and charge a fee for, acceptance of support, warranty, indemnity,
+   or other liability obligations and/or rights consistent with this
+   License. However, in accepting such obligations, You may act only
+   on Your own behalf and on Your sole responsibility, not on behalf
+   of any other Contributor, and only if You agree to indemnify,
+   defend, and hold each Contributor harmless for any liability
+   incurred by, or claims asserted against, such Contributor by reason
+   of your accepting any such warranty or additional liability.
+
+END OF TERMS AND CONDITIONS
+
+APPENDIX: How to apply the Apache License to your work.
+
+   To apply the Apache License to your work, attach the following
+   boilerplate notice, with the fields enclosed by brackets "[]"
+   replaced with your own identifying information. (Don't include
+   the brackets!)  The text should be enclosed in the appropriate
+   comment syntax for the file format. We also recommend that a
+   file or class name and description of purpose be included on the
+   same "printed page" as the copyright notice for easier
+   identification within third-party archives.
+
+Copyright [yyyy] [name of copyright owner]
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+	https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+### Bundled Code: BSD-2-Clause
+
+- `libssh2-sys@0.3.4` (cargo, SPDX: `MIT OR Apache-2.0`) bundles code under BSD-2-Clause in `libssh2/src/cipher-chachapoly.c`, `libssh2/src/cipher-chachapoly.h`
+  - copyright notice and this permission notice appear in all copies.
+
+```text
+copyright notice and this permission notice appear in all copies. (libssh2-sys)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the
+   distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+### Bundled Code: BSD-3-Clause
+
+- `libssh2-sys@0.3.4` (cargo, SPDX: `MIT OR Apache-2.0`) bundles code under BSD-3-Clause in `libssh2/.clang-tidy.yml`, `libssh2/.editorconfig`, `libssh2/.gitignore`, `libssh2/CMakeLists.txt`, `libssh2/Makefile.am`, `libssh2/README.md`, `libssh2/REUSE.toml`, `libssh2/acinclude.m4`, `libssh2/appveyor.sh`, `libssh2/appveyor.yml`, `libssh2/cmake/CheckFunctionExistsMayNeedLibrary.cmake`, `libssh2/cmake/CheckNonblockingSocketSupport.cmake`, `libssh2/cmake/FindLibgcrypt.cmake`, `libssh2/cmake/FindMbedTLS.cmake`, `libssh2/cmake/FindWolfSSL.cmake`, `libssh2/cmake/PickyWarnings.cmake`, `libssh2/cmake/libssh2-config.in.cmake`, `libssh2/configure.ac`, `libssh2/docs/.gitignore`, `libssh2/docs/BINDINGS.md`, `libssh2/docs/CMakeLists.txt`, `libssh2/docs/DEPENDENCIES.md`, `libssh2/docs/HACKING.md`, `libssh2/docs/INSTALL-CMAKE.md`, `libssh2/docs/Makefile.am`, `libssh2/docs/Makefile.inc`, `libssh2/docs/SECURITY.md`, `libssh2/docs/TODO.md`, `libssh2/docs/libssh2_agent_connect.md`, `libssh2/docs/libssh2_agent_disconnect.md`, `libssh2/docs/libssh2_agent_free.md`, `libssh2/docs/libssh2_agent_get_identity.md`, `libssh2/docs/libssh2_agent_get_identity_path.md`, `libssh2/docs/libssh2_agent_init.md`, `libssh2/docs/libssh2_agent_list_identities.md`, `libssh2/docs/libssh2_agent_set_identity_path.md`, `libssh2/docs/libssh2_agent_sign.md`, `libssh2/docs/libssh2_agent_userauth.md`, `libssh2/docs/libssh2_banner_set.md`, `libssh2/docs/libssh2_base64_decode.md`, `libssh2/docs/libssh2_build_options.md`, `libssh2/docs/libssh2_channel_close.md`, `libssh2/docs/libssh2_channel_direct_streamlocal_ex.md`, `libssh2/docs/libssh2_channel_direct_tcpip.md`, `libssh2/docs/libssh2_channel_direct_tcpip_ex.md`, `libssh2/docs/libssh2_channel_eof.md`, `libssh2/docs/libssh2_channel_exec.md`, `libssh2/docs/libssh2_channel_flush.md`, `libssh2/docs/libssh2_channel_flush_ex.md`, `libssh2/docs/libssh2_channel_flush_stderr.md`, `libssh2/docs/libssh2_channel_forward_accept.md`, `libssh2/docs/libssh2_channel_forward_cancel.md`, `libssh2/docs/libssh2_channel_forward_listen.md`, `libssh2/docs/libssh2_channel_forward_listen_ex.md`, `libssh2/docs/libssh2_channel_free.md`, `libssh2/docs/libssh2_channel_get_exit_signal.md`, `libssh2/docs/libssh2_channel_get_exit_status.md`, `libssh2/docs/libssh2_channel_handle_extended_data.md`, `libssh2/docs/libssh2_channel_handle_extended_data2.md`, `libssh2/docs/libssh2_channel_has_exit_status.md`, `libssh2/docs/libssh2_channel_ignore_extended_data.md`, `libssh2/docs/libssh2_channel_open_ex.md`, `libssh2/docs/libssh2_channel_open_session.md`, `libssh2/docs/libssh2_channel_process_startup.md`, `libssh2/docs/libssh2_channel_read.md`, `libssh2/docs/libssh2_channel_read_ex.md`, `libssh2/docs/libssh2_channel_read_stderr.md`, `libssh2/docs/libssh2_channel_receive_window_adjust.md`, `libssh2/docs/libssh2_channel_receive_window_adjust2.md`, `libssh2/docs/libssh2_channel_request_auth_agent.md`, `libssh2/docs/libssh2_channel_request_pty.md`, `libssh2/docs/libssh2_channel_request_pty_ex.md`, `libssh2/docs/libssh2_channel_request_pty_size.md`, `libssh2/docs/libssh2_channel_request_pty_size_ex.md`, `libssh2/docs/libssh2_channel_send_eof.md`, `libssh2/docs/libssh2_channel_set_blocking.md`, `libssh2/docs/libssh2_channel_setenv.md`, `libssh2/docs/libssh2_channel_setenv_ex.md`, `libssh2/docs/libssh2_channel_shell.md`, `libssh2/docs/libssh2_channel_signal.md`, `libssh2/docs/libssh2_channel_signal_ex.md`, `libssh2/docs/libssh2_channel_subsystem.md`, `libssh2/docs/libssh2_channel_wait_closed.md`, `libssh2/docs/libssh2_channel_wait_eof.md`, `libssh2/docs/libssh2_channel_window_read.md`, `libssh2/docs/libssh2_channel_window_read_ex.md`, `libssh2/docs/libssh2_channel_window_write.md`, `libssh2/docs/libssh2_channel_window_write_ex.md`, `libssh2/docs/libssh2_channel_write.md`, `libssh2/docs/libssh2_channel_write_ex.md`, `libssh2/docs/libssh2_channel_write_stderr.md`, `libssh2/docs/libssh2_channel_x11_req.md`, `libssh2/docs/libssh2_channel_x11_req_ex.md`, `libssh2/docs/libssh2_crypto_engine.md`, `libssh2/docs/libssh2_exit.md`, `libssh2/docs/libssh2_free.md`, `libssh2/docs/libssh2_hostkey_hash.md`, `libssh2/docs/libssh2_init.md`, `libssh2/docs/libssh2_keepalive_config.md`, `libssh2/docs/libssh2_keepalive_send.md`, `libssh2/docs/libssh2_knownhost_add.md`, `libssh2/docs/libssh2_knownhost_addc.md`, `libssh2/docs/libssh2_knownhost_check.md`, `libssh2/docs/libssh2_knownhost_checkp.md`, `libssh2/docs/libssh2_knownhost_del.md`, `libssh2/docs/libssh2_knownhost_free.md`, `libssh2/docs/libssh2_knownhost_get.md`, `libssh2/docs/libssh2_knownhost_init.md`, `libssh2/docs/libssh2_knownhost_readfile.md`, `libssh2/docs/libssh2_knownhost_readline.md`, `libssh2/docs/libssh2_knownhost_writefile.md`, `libssh2/docs/libssh2_knownhost_writeline.md`, `libssh2/docs/libssh2_poll.md`, `libssh2/docs/libssh2_poll_channel_read.md`, `libssh2/docs/libssh2_publickey_add.md`, `libssh2/docs/libssh2_publickey_add_ex.md`, `libssh2/docs/libssh2_publickey_init.md`, `libssh2/docs/libssh2_publickey_list_fetch.md`, `libssh2/docs/libssh2_publickey_list_free.md`, `libssh2/docs/libssh2_publickey_remove.md`, `libssh2/docs/libssh2_publickey_remove_ex.md`, `libssh2/docs/libssh2_publickey_shutdown.md`, `libssh2/docs/libssh2_scp_recv.md`, `libssh2/docs/libssh2_scp_recv2.md`, `libssh2/docs/libssh2_scp_send.md`, `libssh2/docs/libssh2_scp_send64.md`, `libssh2/docs/libssh2_scp_send_ex.md`, `libssh2/docs/libssh2_session_abstract.md`, `libssh2/docs/libssh2_session_banner_get.md`, `libssh2/docs/libssh2_session_banner_set.md`, `libssh2/docs/libssh2_session_block_directions.md`, `libssh2/docs/libssh2_session_callback_set.md`, `libssh2/docs/libssh2_session_callback_set2.md`, `libssh2/docs/libssh2_session_disconnect.md`, `libssh2/docs/libssh2_session_disconnect_ex.md`, `libssh2/docs/libssh2_session_flag.md`, `libssh2/docs/libssh2_session_free.md`, `libssh2/docs/libssh2_session_get_blocking.md`, `libssh2/docs/libssh2_session_get_read_timeout.md`, `libssh2/docs/libssh2_session_get_timeout.md`, `libssh2/docs/libssh2_session_handshake.md`, `libssh2/docs/libssh2_session_hostkey.md`, `libssh2/docs/libssh2_session_init.md`, `libssh2/docs/libssh2_session_init_ex.md`, `libssh2/docs/libssh2_session_last_errno.md`, `libssh2/docs/libssh2_session_last_error.md`, `libssh2/docs/libssh2_session_method_pref.md`, `libssh2/docs/libssh2_session_methods.md`, `libssh2/docs/libssh2_session_set_blocking.md`, `libssh2/docs/libssh2_session_set_last_error.md`, `libssh2/docs/libssh2_session_set_read_timeout.md`, `libssh2/docs/libssh2_session_set_timeout.md`, `libssh2/docs/libssh2_session_startup.md`, `libssh2/docs/libssh2_session_supported_algs.md`, `libssh2/docs/libssh2_sftp_close.md`, `libssh2/docs/libssh2_sftp_close_handle.md`, `libssh2/docs/libssh2_sftp_closedir.md`, `libssh2/docs/libssh2_sftp_fsetstat.md`, `libssh2/docs/libssh2_sftp_fstat.md`, `libssh2/docs/libssh2_sftp_fstat_ex.md`, `libssh2/docs/libssh2_sftp_fstatvfs.md`, `libssh2/docs/libssh2_sftp_fsync.md`, `libssh2/docs/libssh2_sftp_get_channel.md`, `libssh2/docs/libssh2_sftp_init.md`, `libssh2/docs/libssh2_sftp_last_error.md`, `libssh2/docs/libssh2_sftp_lstat.md`, `libssh2/docs/libssh2_sftp_mkdir.md`, `libssh2/docs/libssh2_sftp_mkdir_ex.md`, `libssh2/docs/libssh2_sftp_open.md`, `libssh2/docs/libssh2_sftp_open_ex.md`, `libssh2/docs/libssh2_sftp_open_ex_r.md`, `libssh2/docs/libssh2_sftp_open_r.md`, `libssh2/docs/libssh2_sftp_opendir.md`, `libssh2/docs/libssh2_sftp_posix_rename.md`, `libssh2/docs/libssh2_sftp_posix_rename_ex.md`, `libssh2/docs/libssh2_sftp_read.md`, `libssh2/docs/libssh2_sftp_readdir.md`, `libssh2/docs/libssh2_sftp_readdir_ex.md`, `libssh2/docs/libssh2_sftp_readlink.md`, `libssh2/docs/libssh2_sftp_realpath.md`, `libssh2/docs/libssh2_sftp_rename.md`, `libssh2/docs/libssh2_sftp_rename_ex.md`, `libssh2/docs/libssh2_sftp_rewind.md`, `libssh2/docs/libssh2_sftp_rmdir.md`, `libssh2/docs/libssh2_sftp_rmdir_ex.md`, `libssh2/docs/libssh2_sftp_seek.md`, `libssh2/docs/libssh2_sftp_seek64.md`, `libssh2/docs/libssh2_sftp_setstat.md`, `libssh2/docs/libssh2_sftp_shutdown.md`, `libssh2/docs/libssh2_sftp_stat.md`, `libssh2/docs/libssh2_sftp_stat_ex.md`, `libssh2/docs/libssh2_sftp_statvfs.md`, `libssh2/docs/libssh2_sftp_symlink.md`, `libssh2/docs/libssh2_sftp_symlink_ex.md`, `libssh2/docs/libssh2_sftp_tell.md`, `libssh2/docs/libssh2_sftp_tell64.md`, `libssh2/docs/libssh2_sftp_unlink.md`, `libssh2/docs/libssh2_sftp_unlink_ex.md`, `libssh2/docs/libssh2_sftp_write.md`, `libssh2/docs/libssh2_sign_sk.md`, `libssh2/docs/libssh2_trace.md`, `libssh2/docs/libssh2_trace_sethandler.md`, `libssh2/docs/libssh2_userauth_authenticated.md`, `libssh2/docs/libssh2_userauth_banner.md`, `libssh2/docs/libssh2_userauth_hostbased_fromfile.md`, `libssh2/docs/libssh2_userauth_hostbased_fromfile_ex.md`, `libssh2/docs/libssh2_userauth_keyboard_interactive.md`, `libssh2/docs/libssh2_userauth_keyboard_interactive_ex.md`, `libssh2/docs/libssh2_userauth_list.md`, `libssh2/docs/libssh2_userauth_password.md`, `libssh2/docs/libssh2_userauth_password_ex.md`, `libssh2/docs/libssh2_userauth_publickey.md`, `libssh2/docs/libssh2_userauth_publickey_fromfile.md`, `libssh2/docs/libssh2_userauth_publickey_fromfile_ex.md`, `libssh2/docs/libssh2_userauth_publickey_frommemory.md`, `libssh2/docs/libssh2_userauth_publickey_sk.md`, `libssh2/docs/libssh2_version.md`, `libssh2/docs/template.md`, `libssh2/include/libssh2.h`, `libssh2/include/libssh2_publickey.h`, `libssh2/include/libssh2_sftp.h`, `libssh2/libssh2-style.el`, `libssh2/libssh2.pc.in`, `libssh2/m4/.gitignore`, `libssh2/os400/ccsid.c`, `libssh2/os400/config400.default`, `libssh2/os400/include/alloca.h`, `libssh2/os400/include/assert.h`, `libssh2/os400/include/sys/socket.h`, `libssh2/os400/initscript.sh`, `libssh2/os400/libssh2_ccsid.h`, `libssh2/os400/libssh2_config.h`, `libssh2/os400/libssh2rpg/libssh2.rpgle.in`, `libssh2/os400/libssh2rpg/libssh2_ccsid.rpgle.in`, `libssh2/os400/libssh2rpg/libssh2_publickey.rpgle`, `libssh2/os400/libssh2rpg/libssh2_sftp.rpgle`, `libssh2/os400/macros.h`, `libssh2/os400/make-include.sh`, `libssh2/os400/make-rpg.sh`, `libssh2/os400/make-src.sh`, `libssh2/os400/make.sh`, `libssh2/os400/os400sys.c`, `libssh2/os400/rpg-examples/SFTPXMPLE`, `libssh2/scripts/appveyor/docker-bridge.ps1`, `libssh2/scripts/appveyor/docker-bridge.sh`, `libssh2/scripts/codespell-ignore.words`, `libssh2/scripts/git2news.pl`, `libssh2/scripts/maketgz`, `libssh2/scripts/spellcheck.sh`, `libssh2/src/.gitignore`, `libssh2/src/CMakeLists.txt`, `libssh2/src/HACKING-CRYPTO.md`, `libssh2/src/Makefile.am`, `libssh2/src/Makefile.inc`, `libssh2/src/agent.c`, `libssh2/src/agent.h`, `libssh2/src/blowfish.c`, `libssh2/src/channel.c`, `libssh2/src/channel.h`, `libssh2/src/comp.c`, `libssh2/src/comp.h`, `libssh2/src/crypt.c`, `libssh2/src/crypto.h`, `libssh2/src/crypto_config.h`, `libssh2/src/global.c`, `libssh2/src/hostkey.c`, `libssh2/src/keepalive.c`, `libssh2/src/kex.c`, `libssh2/src/knownhost.c`, `libssh2/src/libgcrypt.c`, `libssh2/src/libgcrypt.h`, `libssh2/src/libssh2.rc`, `libssh2/src/libssh2_config_cmake.h.in`, `libssh2/src/libssh2_priv.h`, `libssh2/src/libssh2_setup.h`, `libssh2/src/mac.c`, `libssh2/src/mac.h`, `libssh2/src/mbedtls.c`, `libssh2/src/mbedtls.h`, `libssh2/src/misc.c`, `libssh2/src/misc.h`, `libssh2/src/openssl.c`, `libssh2/src/openssl.h`, `libssh2/src/os400qc3.c`, `libssh2/src/os400qc3.h`, `libssh2/src/packet.c`, `libssh2/src/packet.h`, `libssh2/src/pem.c`, `libssh2/src/publickey.c`, `libssh2/src/scp.c`, `libssh2/src/session.c`, `libssh2/src/session.h`, `libssh2/src/sftp.c`, `libssh2/src/sftp.h`, `libssh2/src/transport.c`, `libssh2/src/transport.h`, `libssh2/src/userauth.c`, `libssh2/src/userauth.h`, `libssh2/src/userauth_kbd_packet.c`, `libssh2/src/userauth_kbd_packet.h`, `libssh2/src/version.c`, `libssh2/src/wincng.c`, `libssh2/src/wincng.h`, `libssh2/vms/.checksrc`, `libssh2/vms/libssh2_config.h`, `libssh2/vms/libssh2_make_example.dcl`, `libssh2/vms/libssh2_make_help.dcl`, `libssh2/vms/libssh2_make_kit.dcl`, `libssh2/vms/libssh2_make_lib.dcl`, `libssh2/vms/man2help.c`
+  - Copyright (C) The libssh2 project and its contributors.
+  - Copyright (C) Viktor Szakats
+  - Copyright (C) Daiki Ueno
+  - Copyright (C) Daniel Stenberg
+
+```text
+Copyright (C) The libssh2 project and its contributors. (libssh2-sys)
+Copyright (C) Viktor Szakats (libssh2-sys)
+Copyright (C) Daiki Ueno (libssh2-sys)
+Copyright (C) Daniel Stenberg (libssh2-sys)
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following disclaimer in the documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its contributors may be used to endorse or promote products derived from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
 ### Bundled Code: MIT
 
+- `whisper-rs-sys@0.15.0` (cargo, SPDX: `Unlicense`) bundles code under MIT in `whisper.cpp/ggml/include/ggml-sycl.h`, `whisper.cpp/ggml/src/ggml-cpu/kleidiai/kernels.cpp`, `whisper.cpp/ggml/src/ggml-cpu/kleidiai/kernels.h`, `whisper.cpp/ggml/src/ggml-cpu/kleidiai/kleidiai.cpp`, `whisper.cpp/ggml/src/ggml-cpu/kleidiai/kleidiai.h`, `whisper.cpp/ggml/src/ggml-sycl/backend.hpp`, `whisper.cpp/ggml/src/ggml-sycl/common.cpp`, `whisper.cpp/ggml/src/ggml-sycl/common.hpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.cpp`, `whisper.cpp/ggml/src/ggml-sycl/concat.hpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.cpp`, `whisper.cpp/ggml/src/ggml-sycl/conv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/convert.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dequantize.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dmmv.hpp`, `whisper.cpp/ggml/src/ggml-sycl/dpct/helper.hpp`, `whisper.cpp/ggml/src/ggml-sycl/gemm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.cpp`, `whisper.cpp/ggml/src/ggml-sycl/getrows.hpp`, `whisper.cpp/ggml/src/ggml-sycl/ggml-sycl.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.cpp`, `whisper.cpp/ggml/src/ggml-sycl/im2col.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.cpp`, `whisper.cpp/ggml/src/ggml-sycl/mmq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/mmvq.hpp`, `whisper.cpp/ggml/src/ggml-sycl/norm.hpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.cpp`, `whisper.cpp/ggml/src/ggml-sycl/pad.hpp`, `whisper.cpp/ggml/src/ggml-sycl/presets.hpp`, `whisper.cpp/ggml/src/ggml-sycl/quants.hpp`, `whisper.cpp/ggml/src/ggml-sycl/roll.hpp`, `whisper.cpp/ggml/src/ggml-sycl/rope.hpp`, `whisper.cpp/ggml/src/ggml-sycl/softmax.hpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.cpp`, `whisper.cpp/ggml/src/ggml-sycl/tsembd.hpp`, `whisper.cpp/ggml/src/ggml-sycl/vecdotq.hpp`
+  - Copyright (C) 2024 Intel Corporation
+  - Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+  - Copyright (C) 2025 Intel Corporation
+  - Copyright (C) 2025 Codeplay Software Ltd.
+- `zstd-sys@2.1.3+zstd.1.5.7` (cargo, SPDX: `BSD-3-Clause AND BSD-2-Clause`) bundles code under MIT in `zstd/build/cmake/CMakeModules/JoinPaths.cmake`
+  - Copyright 2020 Jan Tojnar
 - `qrcode.react@4.2.0` (npm, SPDX: `ISC`) bundles code under MIT in `lib/esm/index.js`, `lib/index.js`
   - Copyright (c) Project Nayuki.
 

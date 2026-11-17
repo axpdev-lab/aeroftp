@@ -527,12 +527,19 @@ test('bundled code under a license the package does not declare: its header lice
       ...readPackageFiles(tmpDir, 'bundling-pkg@1.0.0'),
     };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    // A license file in the same folder does not hide a header: which license
+    // libbar/COPYING grants is not known.
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
+      { license: 'BSD-3-Clause', notices: ['Copyright (c) 2004 Bar Project'], files: ['libbar/src/bar.c'] },
       { license: 'MIT', notices: ['Copyright (c) Project Nayuki.'], files: ['lib/index.js'] },
     ]);
     const md = generateNoticesMarkdown([comp], []);
     const section = md.slice(md.indexOf('### Bundled Code: MIT'));
     assert.match(section, /^### Bundled Code: MIT\n\n- `bundling-pkg@1\.0\.0` \(npm, SPDX: `ISC`\) bundles code under MIT in `lib\/index\.js`\n {2}- Copyright \(c\) Project Nayuki\.\n\n```text\nPermission is hereby granted/);
+    // A standard text with a holder placeholder takes the header's copyright.
+    const bsd = md.slice(md.indexOf('### Bundled Code: BSD-3-Clause'), md.indexOf('### Bundled Code: MIT'));
+    assert.match(bsd, /```text\nCopyright \(c\) 2004 Bar Project \(bundling-pkg\)\n/);
+    assert.doesNotMatch(bsd, /<copyright holders>|<year>/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -546,7 +553,10 @@ test('vendored license files: they keep their text but neither cover the package
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
     write('only-vendored/src/thirdparty/COPYING', 'Copyright (c) 2004 Bar Project\nRedistribution and use in source and binary forms.');
-    write('only-vendored/thirdparty/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageCopyrightText: <text>2019 First Holder\n2020 Second Holder</text>\n');
+    write('only-vendored/src/thirdparty/third.c', '/* Copyright (c) 2010 Third Party */\n');
+    write('only-vendored/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageSupplier: Organization: Own Supplier\nPackageCopyrightText: <text>2019 First Holder\n2020 Second Holder</text>\n');
+    // "Abc/" sorts before "LICENSE.spdx": a vendored document must not name the package's supplier.
+    write('only-vendored/Abc/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageSupplier: Organization: Vendored Supplier\nPackageCopyrightText: 2001 Vendored Holder\n');
     write('own-and-vendored/LICENSE-MIT', 'MIT License\n\nCopyright (c) 2020 Own Holder\n\nPermission is hereby granted.');
     // "Abc/" sorts before "LICENSE-MIT", so its group comes first.
     write('own-and-vendored/Abc/COPYING', 'Copyright (c) 2004 Vendored Holder\nRedistribution and use in source and binary forms, vendored.');
@@ -562,9 +572,9 @@ test('vendored license files: they keep their text but neither cover the package
       authors: ['Wrapper Author'],
       ...readPackageFiles(path.join(tmpDir, name), `${name}@1.0.0`),
     });
-    const onlyVendored = component('only-vendored');
+    const onlyVendored = { ...component('only-vendored'), authors: [] };
     // A nested LICENSE.spdx is found, and is a notice.
-    assert.deepStrictEqual(onlyVendored.noticeFiles.map((f) => f.filename), ['thirdparty/LICENSE.spdx']);
+    assert.deepStrictEqual(onlyVendored.noticeFiles.map((f) => [f.filename, Boolean(f.vendored)]), [['Abc/LICENSE.spdx', true], ['LICENSE.spdx', false]]);
     assert.deepStrictEqual(onlyVendored.licenseFiles.map((f) => [f.filename, f.vendored]), [['src/thirdparty/COPYING', true]]);
     const own = component('own-and-vendored');
     const holderFree = component('holder-free-own');
@@ -576,9 +586,13 @@ test('vendored license files: they keep their text but neither cover the package
     // own sources are still searched for its notice.
     assert.match(md, /- `holder-free-own@1\.0\.0` \(cargo, file: `LICENSE`\)\n {2}- Copyright 2024 Own Source Holder \(src\/lib\.rs\)/);
     // The package keeps the standard text of its own license.
-    assert.match(md, /### Standard License: MIT\n\n[^\n]*\n- `only-vendored@1\.0\.0` - SPDX: `MIT`/);
+    assert.match(md, /### Standard License: MIT\n\n[^\n]*\n- `only-vendored@1\.0\.0` - SPDX: `MIT` \(authors: Own Supplier\)\n/);
     // A multi-line SPDX copyright field is read whole, without its delimiters.
-    assert.match(md, /- Copyright 2019 First Holder 2020 Second Holder \(thirdparty\/LICENSE\.spdx\)/);
+    assert.match(md, /- Copyright 2019 First Holder 2020 Second Holder \(LICENSE\.spdx\)/);
+    // The notices of vendored code are listed with its license, not with the package's.
+    assert.match(md, /- `only-vendored@1\.0\.0` \(cargo, file: `src\/thirdparty\/COPYING`\)\n {2}- Copyright \(c\) 2010 Third Party \(src\/thirdparty\/third\.c\)\n/);
+    const standardEntry = md.slice(md.indexOf('- `only-vendored@1.0.0` - SPDX'));
+    assert.doesNotMatch(standardEntry.slice(0, standardEntry.indexOf('\n- ', 3)), /Third Party/);
     // The vendored text is kept.
     assert.match(md, /- `only-vendored@1\.0\.0` \(cargo, file: `src\/thirdparty\/COPYING`\)/);
     // The anchor goes to the package's own license text when it has one.
@@ -591,7 +605,7 @@ test('vendored license files: they keep their text but neither cover the package
   }
 });
 
-test('bundled code headers: the copyright may follow the identifier, and only a license text covers its folder', () => {
+test('bundled code headers: the copyright may follow the identifier or be an SPDX field, and a NOTICE or license file does not hide it', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-header-fixture-'));
   try {
     const write = (rel, content) => {
@@ -604,6 +618,7 @@ test('bundled code headers: the copyright may follow the identifier, and only a 
     write('src/two.js', '// Copyright (c) 2022 Slash Vendor\n// SPDX-License-Identifier: MIT\n// Copyright (c) 2023 Slash Vendor Two\nconst x = 1;\n// Copyright (c) 2021 Not In Header\n');
     write('covered/LICENSE', 'Copyright (c) 2004 Covered Project\nPermission granted.');
     write('covered/c.js', '/* Copyright (c) 2004 Covered Project\n * SPDX-License-Identifier: MIT */\n');
+    write('spdx/s.js', '// SPDX-FileCopyrightText: 2024 Field Vendor\n// SPDX-License-Identifier: MIT\n');
     const comp = {
       name: 'header-pkg',
       version: '1.0.0',
@@ -617,8 +632,14 @@ test('bundled code headers: the copyright may follow the identifier, and only a 
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
       {
         license: 'MIT',
-        notices: ['Copyright (c) 2024 Vendor', 'Copyright (c) 2022 Slash Vendor', 'Copyright (c) 2023 Slash Vendor Two'],
-        files: ['src/index.js', 'src/two.js'],
+        notices: [
+          'Copyright (c) 2004 Covered Project',
+          'Copyright 2024 Field Vendor',
+          'Copyright (c) 2024 Vendor',
+          'Copyright (c) 2022 Slash Vendor',
+          'Copyright (c) 2023 Slash Vendor Two',
+        ],
+        files: ['covered/c.js', 'spdx/s.js', 'src/index.js', 'src/two.js'],
       },
     ]);
   } finally {

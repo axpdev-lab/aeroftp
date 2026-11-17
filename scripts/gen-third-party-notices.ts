@@ -469,7 +469,8 @@ export function isGplCompatible(expr: string): boolean {
 // examples, CI, and node_modules (its packages are components of their own).
 const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtures?|examples?|benches)$/i;
 // A license or notice file by name, not a source file named after one
-// (copying.rs, copyright.mjs, copyright.pm, license.yml).
+// (copying.rs, copyright.mjs, copyright.pm, license.yml, dompurify's
+// src/license_header, a lowercase name after the separator).
 const VENDORED_LICENSE_FILE =
   /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
 
@@ -548,7 +549,7 @@ export function readPackageFiles(
             const filename = `${rel}/${sub.name}`;
             if (sub.isDirectory()) {
               if (!VENDORED_SKIP_DIR.test(sub.name)) walkVendored(path.join(d, sub.name), filename);
-            } else if (sub.isFile() && VENDORED_LICENSE_FILE.test(sub.name)) {
+            } else if (sub.isFile() && VENDORED_LICENSE_FILE.test(sub.name) && !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name)) {
               const content = fs.readFileSync(path.join(d, sub.name), 'utf8').replace(/\r\n/g, '\n').trim();
               if (content.length === 0) continue;
               // A vendored file describes the vendored code, not the package.
@@ -588,7 +589,8 @@ export function readPackageFiles(
  */
 export function findPackageCopyrightNotices(
   packageDir?: string,
-  excludedFiles: string[] = []
+  excludedFiles: string[] = [],
+  excludedDirs: string[] = []
 ): { notice: string; file: string }[] {
   if (!packageDir || !fs.existsSync(packageDir)) return [];
   const files: { full: string; rel: string }[] = [];
@@ -607,7 +609,7 @@ export function findPackageCopyrightNotices(
           continue;
         }
         files.push({ full, rel });
-      } else if (e.isDirectory() && e.name !== 'node_modules' && e.name !== '.git') {
+      } else if (e.isDirectory() && e.name !== 'node_modules' && e.name !== '.git' && !excludedDirs.includes(rel)) {
         walk(full, rel);
       }
     }
@@ -859,7 +861,7 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
  * place of a license text (LICENSE.spdx), or null without one.
  */
 export function spdxDocumentAttribution(comp: ComponentInfo): { author: string | null; notice: string | null; file: string } | null {
-  const doc = comp.noticeFiles.find((f) => /^SPDXVersion:/.test(f.content));
+  const doc = comp.noticeFiles.find((f) => !f.vendored && /^SPDXVersion:/.test(f.content));
   if (!doc) return null;
   // A field holds one line, or several between <text> and </text>.
   const field = (name: string) => {
@@ -875,12 +877,34 @@ export function spdxDocumentAttribution(comp: ComponentInfo): { author: string |
 }
 
 /**
+ * The folders of a package's vendored license files: their notices belong to
+ * the vendored code and are listed with its license, not with the package's.
+ */
+export function vendoredFolders(comp: ComponentInfo): string[] {
+  return [...new Set([...comp.licenseFiles, ...comp.noticeFiles].filter((f) => f.vendored).map((f) => path.posix.dirname(f.filename)))].sort(compareStrings);
+}
+
+/**
+ * What to say when the package's own files hold no copyright notice: with
+ * vendored code, whose notices are listed with that code's license, the
+ * package still ships notices, only not its own.
+ */
+export function noOwnNoticeLine(comp: ComponentInfo): string {
+  const dirs = vendoredFolders(comp);
+  return dirs.length > 0
+    ? `No copyright notice of its own; the notices of its vendored code (${dirs.map((d) => `\`${d}/\``).join(', ')}) are listed with that code's license`
+    : 'No copyright notice is shipped in the package';
+}
+
+/**
  * Code a package bundles under a license it does not declare, found by the
  * SPDX-License-Identifier header of the bundled file when no license file of
  * its own ships with it: qrcode.react (ISC) bundles the QR Code generator
  * (MIT) in lib/index.js. Returns one entry per license, with the copyright
- * lines of the header and the files that carry it. A file inside a folder
- * whose license file was collected is covered by that file. An identifier
+ * lines of the header and the files that carry it. A license file in the
+ * same folder does not cover it: which license a text grants is not known
+ * here, and libssh2's ChaCha files are BSD-2-Clause beside its BSD-3-Clause
+ * COPYING. An identifier
  * with no standard text (a typo such as "Apache-2.inner") is not a license
  * the notices can reproduce and is left out.
  */
@@ -889,10 +913,6 @@ export function findBundledCodeUnderOtherLicenses(
   knownLicenseIds: Set<string>
 ): { license: string; notices: string[]; files: string[] }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
-  // Only a license text covers the code of its folder; a NOTICE file does not.
-  const licensedFolders = comp.licenseFiles
-    .map((f) => path.posix.dirname(f.filename))
-    .filter((d) => d !== '.');
   const found = new Map<string, { notices: string[]; files: string[] }>();
   const walk = (dir: string, rel: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -902,7 +922,6 @@ export function findBundledCodeUnderOtherLicenses(
         continue;
       }
       if (!entry.isFile()) continue;
-      if (licensedFolders.some((d) => entryRel.startsWith(`${d}/`))) continue;
       const buf = fs.readFileSync(path.join(dir, entry.name));
       if (buf.subarray(0, 8000).includes(0)) continue;
       const lines = buf.toString('utf8').split(/\r?\n/);
@@ -937,7 +956,9 @@ export function findBundledCodeUnderOtherLicenses(
         }
         const notices: string[] = [];
         for (let j = start; j <= end; j++) {
-          const text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trim();
+          let text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trim();
+          const spdxText = text.match(/^SPDX-FileCopyrightText:\s*(\S.*)$/);
+          if (spdxText) text = /^(?:copyright\b|\(c\)|©)/i.test(spdxText[1]) ? spdxText[1] : `Copyright ${spdxText[1]}`;
           if (/^(?:copyright\b|\(c\)|©)/i.test(text)) notices.push(text);
         }
         for (const id of isOr ? undeclared.slice(0, 1) : undeclared) {
@@ -1179,15 +1200,29 @@ export function generateNoticesMarkdown(
     for (const comp of group.components) {
       lines.push(`- \`${comp.name}@${comp.version}\` (${comp.source}, file: \`${comp.filename}\`)`);
       const fullComp = compMap.get(`${comp.source}:${comp.name}@${comp.version}`);
+      if (fullComp && comp.vendored && fullComp.packageDir) {
+        // The notices of vendored code, from its own folder.
+        const dir = path.posix.dirname(comp.filename);
+        const inDir = [...fullComp.licenseFiles, ...fullComp.noticeFiles]
+          .filter((f) => path.posix.dirname(f.filename) === dir)
+          .map((f) => path.posix.basename(f.filename));
+        const nested = vendoredFolders(fullComp)
+          .filter((d) => d.startsWith(`${dir}/`))
+          .map((d) => d.slice(dir.length + 1));
+        for (const n of findPackageCopyrightNotices(path.join(fullComp.packageDir, dir), inDir, nested)) {
+          lines.push(`  - ${n.notice} (${dir}/${n.file})`);
+        }
+        continue;
+      }
       if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && !hasCopyrightHolderInFiles(fullComp)) {
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
-        const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded);
+        const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded, vendoredFolders(fullComp));
         if (pkgNotices.length > 0) {
           for (const n of pkgNotices) {
             lines.push(`  - ${n.notice} (${n.file})`);
           }
         } else {
-          lines.push(`  - No copyright notice is shipped in the package`);
+          lines.push(`  - ${noOwnNoticeLine(fullComp)}`);
         }
       }
     }
@@ -1295,7 +1330,7 @@ export function generateNoticesMarkdown(
         lines.push(`- \`${comp.name}@${comp.version}\` - SPDX: \`${comp.license}\` (authors: ${author})`);
 
         const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
-        const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded);
+        const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
         if (spdxDoc?.notice) {
           lines.push(`  - ${spdxDoc.notice} (${spdxDoc.file})`);
         }
@@ -1308,7 +1343,7 @@ export function generateNoticesMarkdown(
         } else if (comp.noticeFiles.length > 0) {
           lines.push(`  - Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')}`);
         } else {
-          lines.push(`  - No copyright notice is shipped in the package`);
+          lines.push(`  - ${noOwnNoticeLine(comp)}`);
         }
       }
       lines.push('');
@@ -1332,7 +1367,7 @@ export function generateNoticesMarkdown(
           const holder = pinned?.copyrightHolder || author;
 
           const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
-          const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded);
+          const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded, vendoredFolders(comp));
 
           if (pinned?.year) {
             attributionLines.push(`Copyright (c) ${pinned.year} ${holder} (${comp.name})`);
@@ -1344,7 +1379,8 @@ export function generateNoticesMarkdown(
             attributionLines.push(`Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')} (${comp.name})`);
           } else {
             const srcStr = pinned?.source ? ` per ${pinned.source}` : '';
-            attributionLines.push(`No copyright notice is shipped upstream; authors${srcStr}: ${author} (${comp.name})`);
+            const noNotice = vendoredFolders(comp).length > 0 ? noOwnNoticeLine(comp) : 'No copyright notice is shipped upstream';
+            attributionLines.push(`${noNotice}; authors${srcStr}: ${author} (${comp.name})`);
           }
         }
         licText = licText.replace(
@@ -1369,9 +1405,14 @@ export function generateNoticesMarkdown(
     }
     const standardLicenses: Record<string, string> = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'));
     const byLicense = new Map<string, string[]>();
+    const holdersByLicense = new Map<string, string[]>();
     for (const comp of bundledComponents) {
       for (const b of findBundledCodeUnderOtherLicenses(comp, new Set(Object.keys(standardLicenses)))) {
         if (!byLicense.has(b.license)) byLicense.set(b.license, []);
+        if (!holdersByLicense.has(b.license)) holdersByLicense.set(b.license, []);
+        holdersByLicense.get(b.license)!.push(
+          ...(b.notices.length > 0 ? b.notices : [`No copyright notice is shipped with the bundled code`]).map((n) => `${n} (${comp.name})`)
+        );
         byLicense.get(b.license)!.push(
           `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) bundles code under ${b.license} in ${b.files.map((f) => `\`${f}\``).join(', ')}`,
           ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : ['  - No copyright notice is shipped with the bundled code'])
@@ -1388,7 +1429,12 @@ export function generateNoticesMarkdown(
         lines.push('');
         lines.push(...byLicense.get(licKey)!);
         lines.push('');
-        lines.push(makeCodeBlock(standardLicenses[licKey]));
+        // A text with a holder placeholder (BSD) takes the header's copyright lines.
+        const text = standardLicenses[licKey].replace(
+          /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|owner|author|authors)>/g,
+          () => holdersByLicense.get(licKey)!.join('\n')
+        );
+        lines.push(makeCodeBlock(text));
         lines.push('');
       }
     }
