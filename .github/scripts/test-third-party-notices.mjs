@@ -24,6 +24,7 @@ import {
   formatDiff,
   findPackageCopyrightNotices,
   hasCopyrightHolderInFiles,
+  findBundledCodeUnderOtherLicenses,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -497,6 +498,41 @@ test('an anchor leads to license text: an SPDX document or a notice file is no l
     const body = md.slice(md.indexOf(entry));
     assert.match(body.slice(0, body.indexOf('```text\n') + 40), /```text\nMIT License/, `${entry} must hold the license text`);
     assert.strictEqual((md.match(/<a id="notice-with-notice"><\/a>/g) || []).length, 1);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code under a license the package does not declare: its header license and copyright are reproduced', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-code-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'ISC License\n\nCopyright (c) 2015 Wrapper Author\n\nPermission to use, copy, modify.');
+    write('lib/index.js', '/**\n * @license QR Code generator library\n * Copyright (c) Project Nayuki.\n * SPDX-License-Identifier: MIT\n */\nvar a;\n/**\n * Copyright (c) Wrapper Author\n * SPDX-License-Identifier: ISC\n */\n');
+    write('lib/either.js', '// SPDX-License-Identifier: ISC OR MIT\n');
+    write('lib/typo.js', '// SPDX-License-Identifier: Apache-2.inner\n');
+    write('libbar/COPYING', 'Copyright (c) 2004 Bar Project\nRedistribution and use in source and binary forms.');
+    write('libbar/src/bar.c', '/* Copyright (c) 2004 Bar Project\n * SPDX-License-Identifier: BSD-3-Clause */\n');
+    write('tests/fixture.js', '// SPDX-License-Identifier: BSD-3-Clause\n');
+    const comp = {
+      name: 'bundling-pkg',
+      version: '1.0.0',
+      license: 'ISC',
+      source: 'npm',
+      packageDir: tmpDir,
+      authors: ['Wrapper Author'],
+      ...readPackageFiles(tmpDir, 'bundling-pkg@1.0.0'),
+    };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
+      { license: 'MIT', notices: ['Copyright (c) Project Nayuki.'], files: ['lib/index.js'] },
+    ]);
+    const md = generateNoticesMarkdown([comp], []);
+    const section = md.slice(md.indexOf('### Bundled Code: MIT'));
+    assert.match(section, /^### Bundled Code: MIT\n\n- `bundling-pkg@1\.0\.0` \(npm, SPDX: `ISC`\) bundles code under MIT in `lib\/index\.js`\n {2}- Copyright \(c\) Project Nayuki\.\n\n```text\nPermission is hereby granted/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

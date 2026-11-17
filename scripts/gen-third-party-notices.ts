@@ -862,6 +862,71 @@ export function spdxDocumentAttribution(comp: ComponentInfo): { author: string |
   return { author, notice, file: doc.filename };
 }
 
+/**
+ * Code a package bundles under a license it does not declare, found by the
+ * SPDX-License-Identifier header of the bundled file when no license file of
+ * its own ships with it: qrcode.react (ISC) bundles the QR Code generator
+ * (MIT) in lib/index.js. Returns one entry per license, with the copyright
+ * lines of the header and the files that carry it. A file inside a folder
+ * whose license file was collected is covered by that file. An identifier
+ * with no standard text (a typo such as "Apache-2.inner") is not a license
+ * the notices can reproduce and is left out.
+ */
+export function findBundledCodeUnderOtherLicenses(
+  comp: ComponentInfo,
+  knownLicenseIds: Set<string>
+): { license: string; notices: string[]; files: string[] }[] {
+  const declared = new Set(extractSpdxLicenseIds(comp.license));
+  const licensedFolders = [...comp.licenseFiles, ...comp.noticeFiles]
+    .map((f) => path.posix.dirname(f.filename))
+    .filter((d) => d !== '.');
+  const found = new Map<string, { notices: string[]; files: string[] }>();
+  const walk = (dir: string, rel: string) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) {
+        if (!VENDORED_SKIP_DIR.test(entry.name)) walk(path.join(dir, entry.name), entryRel);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (licensedFolders.some((d) => entryRel.startsWith(`${d}/`))) continue;
+      const buf = fs.readFileSync(path.join(dir, entry.name));
+      if (buf.subarray(0, 8000).includes(0)) continue;
+      const lines = buf.toString('utf8').split(/\r?\n/);
+      lines.forEach((line, i) => {
+        const m = line.match(/SPDX-License-Identifier:\s*(.+?)\s*(?:\*\/|-->)?\s*$/);
+        if (!m) return;
+        let ids: string[];
+        try {
+          ids = extractSpdxLicenseIds(m[1]);
+        } catch {
+          return;
+        }
+        const offered = ids.filter((id) => knownLicenseIds.has(id));
+        const isOr = !/\bAND\b/.test(m[1]) && /\bOR\b|\//.test(m[1]);
+        const undeclared = offered.filter((id) => !declared.has(id));
+        if (undeclared.length === 0 || (isOr && undeclared.length < offered.length)) return;
+        // The copyright lines of the same header: the lines above, up to the
+        // start of the comment.
+        const notices: string[] = [];
+        for (let j = i - 1; j >= 0 && j >= i - 10; j--) {
+          const text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').trim();
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) notices.unshift(text);
+          if (/^\s*\/\*/.test(lines[j])) break;
+        }
+        for (const id of isOr ? undeclared.slice(0, 1) : undeclared) {
+          if (!found.has(id)) found.set(id, { notices: [], files: [] });
+          const entryFound = found.get(id)!;
+          for (const n of notices) if (!entryFound.notices.includes(n)) entryFound.notices.push(n);
+          if (!entryFound.files.includes(entryRel)) entryFound.files.push(entryRel);
+        }
+      });
+    }
+  };
+  walk(comp.packageDir, '');
+  return [...found.keys()].sort(compareStrings).map((license) => ({ license, ...found.get(license)! }));
+}
+
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   const boilerplateRegex =
     /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
@@ -1260,6 +1325,39 @@ export function generateNoticesMarkdown(
 
       lines.push(makeCodeBlock(licText));
       lines.push('');
+    }
+  }
+
+  // Code bundled under a license its package does not declare.
+  const bundledComponents = allComponents.filter((c) => c.packageDir);
+  if (bundledComponents.length > 0) {
+    if (!fs.existsSync(spdxLicensesFile)) {
+      throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
+    }
+    const standardLicenses: Record<string, string> = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'));
+    const byLicense = new Map<string, string[]>();
+    for (const comp of bundledComponents) {
+      for (const b of findBundledCodeUnderOtherLicenses(comp, new Set(Object.keys(standardLicenses)))) {
+        if (!byLicense.has(b.license)) byLicense.set(b.license, []);
+        byLicense.get(b.license)!.push(
+          `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) bundles code under ${b.license} in ${b.files.map((f) => `\`${f}\``).join(', ')}`,
+          ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : ['  - No copyright notice is shipped with the bundled code'])
+        );
+      }
+    }
+    if (byLicense.size > 0) {
+      lines.push('## Bundled Code Under Other Licenses');
+      lines.push('');
+      lines.push('These components bundle code from another project under a license they do not declare themselves. The bundled files name that license in their SPDX-License-Identifier header and ship no license file of their own, so the standard text is reproduced with the copyright lines of the header.');
+      lines.push('');
+      for (const licKey of [...byLicense.keys()].sort(compareStrings)) {
+        lines.push(`### Bundled Code: ${licKey}`);
+        lines.push('');
+        lines.push(...byLicense.get(licKey)!);
+        lines.push('');
+        lines.push(makeCodeBlock(standardLicenses[licKey]));
+        lines.push('');
+      }
     }
   }
 
