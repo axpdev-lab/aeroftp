@@ -47101,3 +47101,27 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
+## Source Headers With Their Own Terms
+
+Each of these headers is tagged with a license whose text these notices already reproduce for its component (the license the component declares, or a license text shipped beside the vendored code), but the permission text of the header differs from that text and from the standard one. The tag is quoted as the header states it, and the header is reproduced as shipped.
+
+- `libssh2-sys@0.3.4` (cargo, SPDX: `MIT OR Apache-2.0`) ships a header tagged `MIT` whose permission text differs from it, in `libssh2/src/bcrypt_pbkdf.c`:
+
+```text
+Copyright (C) Ted Unangst <tedu@openbsd.org>
+
+Permission to use, copy, modify, and distribute this software for any
+purpose with or without fee is hereby granted, provided that the above
+copyright notice and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+SPDX-License-Identifier: MIT
+```
+

@@ -529,6 +529,11 @@ const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtu
 // src/license_header, a lowercase name after the separator).
 const VENDORED_LICENSE_FILE =
   /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
+// A source or data file by its extension: never a license or notice text.
+const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|rs|c|h|cc|cpp|hpp|py|rb|go|java|kt|swift|sh|pl|pm|php|json|ya?ml|toml|lock|css|map)$/i;
+// Permission text in a source header (see findBundledCodeUnderOtherLicenses).
+const PERMISSION_TEXT =
+  /permission to use|permission (?:is|are) (?:hereby )?granted|redistribution and use|\byou may (?:freely )?(?:use|copy|modify|distribute|redistribute)\b|\bmay be (?:freely )?(?:used|copied|modified|distributed|redistributed)\b/i;
 // A REUSE license folder (LICENSES/MIT.txt, LICENSES/BSD-3-Clause.txt) names
 // its files after the license, not with a license word.
 const LICENSE_DIR = /^licen[sc]es?$/i;
@@ -574,6 +579,9 @@ export function readPackageFiles(
       if (declaredLicenseFile && path.resolve(fullPath) === path.resolve(dir, declaredLicenseFile)) {
         continue;
       }
+      // A source file named after a license word (license.js, copyright.rs)
+      // is code; LICENSE.Apache_2.0, LICENSE-MIT and NOTICES.md stay texts.
+      if (SOURCE_FILE.test(f)) continue;
       if (/^(notice|copyright)/i.test(f)) {
         noticeFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
       } else if (/^(licen[sc]e|copying|unlicense)/i.test(f)) {
@@ -585,7 +593,8 @@ export function readPackageFiles(
       try {
         const subEntries = fs.readdirSync(subDir, { withFileTypes: true });
         for (const sub of subEntries) {
-          if (sub.isFile()) {
+          // A source file is code here too (LICENSES/build.rs).
+          if (sub.isFile() && !SOURCE_FILE.test(sub.name)) {
             const fullPath = path.join(subDir, sub.name);
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -1008,6 +1017,27 @@ export const UNREPRODUCIBLE_HEADER_IDS: Record<string, string> = {
   'Apache-2.inner': 'muda 0.19 (src/menu.rs, src/items/*.rs): a typo of Apache-2.0, which muda declares (Apache-2.0 OR MIT)',
 };
 
+// A comment leader: C and C++ (`//`, `/*`, ` *`), shell and Python (`#`),
+// Lisp and INI (`;`), Lua, SQL and Haskell (`--`, `{-`), TeX (`%`), ARM
+// assembly (`@`), DCL (`$!`), HTML (`<!--`), OCaml (`(*`), batch and m4
+// (`REM --`, `dnl`).
+const COMMENT_LEADER = /^\s*(?:\/\/+!?|\/\*+!?|\*+\/?|#+|;+|--+|%+|@(?=\s)|\$!|<!--|\{-|\(\*|(?:rem|dnl)\b(?:\s*--)?)/i;
+
+/**
+ * Whether a line that carries an SPDX-License-Identifier tag at `at` is a
+ * license header: a comment line in a source file (its leader decides, not
+ * the words before the tag), or the tag after punctuation only. In a document
+ * (Markdown, reStructuredText) a list item is prose, and only the line-start
+ * rule applies. Measured on the dependency tree: all 3727 tag lines that
+ * tokenize pass, ARM `@`, DCL `$!`, `REM --` and unstarred blocks included.
+ */
+export function isSpdxHeaderLine(line: string, rel: string, at: number): boolean {
+  const doc = /\.(?:md|markdown|rst)$/i.test(rel);
+  if (doc && /^\s*(?:[-+*]|\d+[.)])\s/.test(line)) return false;
+  if (!doc && COMMENT_LEADER.test(line)) return true;
+  return /^[^A-Za-z0-9]*$/.test(line.slice(0, at));
+}
+
 /**
  * Code a package bundles under a license it does not declare, found by the
  * SPDX-License-Identifier header of the bundled file: qrcode.react (ISC)
@@ -1037,8 +1067,10 @@ export function findBundledCodeUnderOtherLicenses(
     .filter((f) => f.vendored && LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
     .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: vendoredRoot(f.filename) }));
   const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
-  const isCommentLine = (l: string) => /^\s*(?:\/\*|\*|\/\/|#)/.test(l);
-  const stripLeader = (l: string) => l.replace(/^\s*(?:\/\*+!?|\*+\/?|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trimEnd();
+  // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
+  // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
+  const isCommentLine = (l: string) => COMMENT_LEADER.test(l);
+  const stripLeader = (l: string) => l.replace(COMMENT_LEADER, '').replace(/^\s/, '').replace(/\s*(?:\*\/|-->|-\}|\*\)).*$/, '').trimEnd();
   const walk = (dir: string, rel: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
@@ -1059,8 +1091,22 @@ export function findBundledCodeUnderOtherLicenses(
         // reproduced, and with none the generation fails: a license the
         // notices cannot reproduce is never dropped. A known upstream typo is
         // no license and is left out (UNREPRODUCIBLE_HEADER_IDS).
+        // Text with characters no SPDX expression has (a backtick, a quote, a
+        // backslash: a README or a string literal that mentions the tag) is no
+        // header. A header made only of SPDX tokens that does not parse fails.
+        // A header is a comment line that carries the tag, whatever words come
+        // before it on that line (`/* Copyright 2020 Foo. SPDX-License-Identifier:
+        // BSD-2-Clause */`), or the tag at the start of a line, after nothing
+        // but punctuation (a LICENSE file, an unstarred block comment). A
+        // sentence that mentions it is no header ("Documentation:
+        // SPDX-License-Identifier: MIT (preferred)"), nor a list item of a
+        // document.
+        if (!isSpdxHeaderLine(line, entryRel, m.index!)) return;
+        if (tokenizeSpdx(m[1]).length === 0) return;
         const parsed = spdxAlternatives(m[1]);
-        if (!parsed) return;
+        if (!parsed) {
+          throw new Error(`${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'`);
+        }
         const alternatives = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
         if (alternatives.length === 0) return;
         // A term is covered by the package's declared license. A license with no
@@ -1077,9 +1123,16 @@ export function findBundledCodeUnderOtherLicenses(
         const undeclaredOf = (terms: string[]) => terms.filter((t) => !declaredTerm(t) && !shippedTerm(t));
         const covering = alternatives.find((terms) => undeclaredOf(terms).length === 0);
         let chosen: string[];
+        // Terms covered only by a text shipped beside the code: the holders of
+        // that code are listed with its folder, and a header with terms of its
+        // own is still reproduced, as declared.
+        let shippedOnly = false;
         if (covering) {
           chosen = covering.filter(declaredTerm);
-          if (chosen.length === 0) return;
+          if (chosen.length === 0) {
+            chosen = covering;
+            shippedOnly = true;
+          }
         } else {
           const reproducible = alternatives.find((terms) =>
             undeclaredOf(terms).every((t) => t.split(' WITH ').every((id) => knownLicenseIds.has(id)))
@@ -1141,14 +1194,23 @@ export function findBundledCodeUnderOtherLicenses(
         }
         // A header with its own permission text is reproduced as shipped.
         const blockText = block.join('\n').replace(/^\n+|\n+$/g, '');
-        const carriesTerms = /permission to use|permission is hereby granted|redistribution and use/i.test(blockText);
+        // Permission text, in the wordings headers grant it with: "Permission
+        // to use", "Permission is hereby granted", "Redistribution and use",
+        // "You may use, copy, modify and distribute", "may be freely used".
+        // A notice that only points to a license ("Licensed under the Apache
+        // License", "you may not use this file except") grants nothing itself.
+        const carriesTerms = PERMISSION_TEXT.test(blockText);
+        if (shippedOnly) {
+          if (!carriesTerms) return;
+          notices.length = 0;
+        }
         for (const license of chosen) {
           const key = `${covering ? 'declared' : 'other'}\u0000${license}`;
           if (!found.has(key)) found.set(key, { notices: [], files: [], headers: [] });
           const entryFound = found.get(key)!;
           for (const n of notices) if (!entryFound.notices.includes(n)) entryFound.notices.push(n);
           if (!entryFound.files.includes(entryRel)) entryFound.files.push(entryRel);
-          if (carriesTerms && !covering) {
+          if (carriesTerms) {
             const same = entryFound.headers.find((h) => h.text === blockText);
             if (same) same.files.push(entryRel);
             else entryFound.headers.push({ text: blockText, files: [entryRel] });
@@ -1230,7 +1292,10 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
     joinBrokenNotices(f.content)
       .some(
         (l) =>
-          !boilerplateRegex.test(l) && (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
+          // A template line ("Copyright (c) <year> <owner>") names nobody.
+          !boilerplateRegex.test(l) &&
+          !TEMPLATE_NOTICE.test(l) &&
+          (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
       )
   );
 }
@@ -1682,11 +1747,29 @@ export function generateNoticesMarkdown(
     const byLicense = new Map<string, string[]>();
     const holdersByLicense = new Map<string, string[]>();
     const noHolder = 'No copyright line in the header that declares this license';
+    const ownTermHeaders: string[] = [];
     for (const comp of bundledComponents) {
       for (const b of bundledOf(comp)) {
         // A header under a declared license is covered by the package's text;
-        // its holders are listed with the package.
-        if (b.declared) continue;
+        // its holders are listed with the package, and a header whose terms
+        // differ from the standard text and from every license text of the
+        // package (its own and the ones shipped beside vendored code) is
+        // reproduced below.
+        if (b.declared) {
+          const standardTerms = licenseTermsOf(standardLicenses[b.license.split(' WITH ')[0]] ?? '');
+          const ownTerms = new Set(comp.licenseFiles.map((f) => licenseTermsOf(f.content)));
+          for (const h of b.headers) {
+            const terms = licenseTermsOf(h.text);
+            if (terms === standardTerms || ownTerms.has(terms)) continue;
+            ownTermHeaders.push(
+              `- \`${comp.name}@${comp.version}\` (${comp.source}, SPDX: \`${comp.license}\`) ships a header tagged \`${b.license}\` whose permission text differs from it, in ${h.files.map((f) => `\`${f}\``).join(', ')}:`,
+              '',
+              makeCodeBlock(h.text),
+              ''
+            );
+          }
+          continue;
+        }
         if (!byLicense.has(b.license)) byLicense.set(b.license, []);
         if (!holdersByLicense.has(b.license)) holdersByLicense.set(b.license, []);
         holdersByLicense.get(b.license)!.push(...(b.notices.length > 0 ? b.notices : [noHolder]).map((n) => `${n} (${comp.name})`));
@@ -1723,6 +1806,13 @@ export function generateNoticesMarkdown(
         lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardLicenses[exceptionId]}` : text));
         lines.push('');
       }
+    }
+    if (ownTermHeaders.length > 0) {
+      lines.push('## Source Headers With Their Own Terms');
+      lines.push('');
+      lines.push('Each of these headers is tagged with a license whose text these notices already reproduce for its component (the license the component declares, or a license text shipped beside the vendored code), but the permission text of the header differs from that text and from the standard one. The tag is quoted as the header states it, and the header is reproduced as shipped.');
+      lines.push('');
+      lines.push(...ownTermHeaders);
     }
   }
 

@@ -213,6 +213,7 @@ struct StagedPortable {
     new_marker: Option<PathBuf>,
     new_readme: Option<PathBuf>,
     new_license: Option<PathBuf>,
+    new_notices: Option<PathBuf>,
     stage_dir: PathBuf,
 }
 
@@ -226,6 +227,7 @@ struct StagedPortable {
 ///   portable.marker
 ///   README.txt
 ///   LICENSE.txt
+///   THIRD-PARTY-NOTICES.md
 ///
 /// `app_exe_name` is the file name of the running exe: the new app exe is
 /// the entry with that name. Any failure removes the stage dir.
@@ -303,6 +305,7 @@ fn extract_portable(
         new_marker: pick_optional("portable.marker"),
         new_readme: pick_optional("README.txt"),
         new_license: pick_optional("LICENSE.txt"),
+        new_notices: pick_optional("THIRD-PARTY-NOTICES.md"),
         stage_dir,
     })
 }
@@ -576,25 +579,29 @@ fn portable_helper_script(
         "del /F /Q {} >nul 2>&1\n",
         quote_for_cmd(&beside_path(current_exe))
     );
+    // A file held open without write sharing refuses the replace. The log
+    // line is in a group that swallows cmd's error when the log itself is
+    // held, and the helper goes on with its exit code unchanged.
+    let warn_line = |name: &str| {
+        match log_file {
+        Some(log) => format!(
+            "if exist {dir} ((echo [windows_update_helper][WARN] portable update: {name} is in use, kept the installed one)>>{log}) 2>nul\n",
+            dir = quote_for_cmd(log.parent().unwrap_or(exe_dir)),
+            log = quote_for_cmd(log),
+        ),
+        None => String::new(),
+    }
+    };
+
     // Each CLI exe is replaced only after the app exe, so a failed app swap
     // leaves all three at the installed version. One still in use keeps the
     // installed exe, and the app log says so.
     let mut cli_block = String::new();
-    for (i, name) in cli.iter().enumerate() {
+    for (i, &name) in cli.iter().enumerate() {
         let target = exe_dir.join(name);
         let new = quote_for_cmd(&beside_path(&target));
         discard_block.push_str(&format!("del /F /Q {new} >nul 2>&1\n"));
-        // A log the restarted app or another instance holds refuses the
-        // append; the outer group swallows cmd's error, and the helper goes
-        // on with its exit code unchanged.
-        let log_line = match log_file {
-            Some(log) => format!(
-                "if exist {dir} ((echo [windows_update_helper][WARN] portable update: {name} is in use, kept the installed one)>>{log}) 2>nul\n",
-                dir = quote_for_cmd(log.parent().unwrap_or(exe_dir)),
-                log = quote_for_cmd(log),
-            ),
-            None => String::new(),
-        };
+        let log_line = warn_line(name);
         cli_block.push_str(&format!(
             r#"set RETRY=0
 :cli_{i}
@@ -612,26 +619,36 @@ del /F /Q {new} >nul 2>&1
         ));
     }
 
+    // The marker, README, LICENSE and third-party notices beside the exes.
+    // The notices list the components the new exes ship, so they change with
+    // every release (build.yml stages them beside LICENSE.txt). A document
+    // open in an editor that does not share writes refuses the copy: it is
+    // retried like a CLI exe, then the installed one is kept and the log
+    // says so.
+    let docs = [
+        (&staged.new_marker, "portable.marker"),
+        (&staged.new_readme, "README.txt"),
+        (&staged.new_license, "LICENSE.txt"),
+        (&staged.new_notices, "THIRD-PARTY-NOTICES.md"),
+    ];
     let mut copy_block = String::new();
-    if let Some(m) = &staged.new_marker {
+    for (i, &(src, name)) in docs.iter().enumerate() {
+        let Some(src) = src else { continue };
+        let log_line = warn_line(name);
         copy_block.push_str(&format!(
-            "copy /Y {src} {dst} >nul\n",
-            src = quote_for_cmd(m),
-            dst = quote_for_cmd(&exe_dir.join("portable.marker"))
-        ));
-    }
-    if let Some(r) = &staged.new_readme {
-        copy_block.push_str(&format!(
-            "copy /Y {src} {dst} >nul\n",
-            src = quote_for_cmd(r),
-            dst = quote_for_cmd(&exe_dir.join("README.txt"))
-        ));
-    }
-    if let Some(l) = &staged.new_license {
-        copy_block.push_str(&format!(
-            "copy /Y {src} {dst} >nul\n",
-            src = quote_for_cmd(l),
-            dst = quote_for_cmd(&exe_dir.join("LICENSE.txt"))
+            r#"set RETRY=0
+:doc_{i}
+copy /Y {src} {dst} >nul 2>&1
+if not errorlevel 1 goto doc_{i}_done
+set /a RETRY+=1
+if %RETRY% GEQ {CLI_ATTEMPTS} goto doc_{i}_busy
+ping 127.0.0.1 -n 2 >nul
+goto doc_{i}
+:doc_{i}_busy
+{log_line}:doc_{i}_done
+"#,
+            src = quote_for_cmd(src),
+            dst = quote_for_cmd(&exe_dir.join(name)),
         ));
     }
 
@@ -642,7 +659,7 @@ rem AeroFTP portable in-place update helper. The updater has already
 rem copied the new exes, whole, next to the installed ones. This helper
 rem replaces the app exe with its copy in one rename on the same volume,
 rem so the launch path names the old exe or the new one at every instant,
-rem then the CLI exes the same way, copies the new marker/README/LICENSE,
+rem then the CLI exes the same way, copies the new marker/README/LICENSE/notices,
 rem and launches the new exe. The cleanup argument removes a .old an
 rem earlier version's helper may have left. After the swap the staged ZIP
 rem and extraction dir are also wiped so the portable update leaves
@@ -678,7 +695,7 @@ del /F /Q "%~f0" & exit /b 1
 :replace_done
 rem The app exe is the new one: replace the CLI exes.
 {cli_block}
-rem Copy ancillary files (marker, README, LICENSE) over the old ones.
+rem Copy ancillary files (marker, README, LICENSE, notices) over the old ones.
 {copy_block}
 rem Launch the new exe with cleanup arg pointing at the .old file.
 start "" {current} --post-update-cleanup {old}
@@ -882,6 +899,7 @@ mod tests {
                 new_marker: Some(marker),
                 new_readme: None,
                 new_license: None,
+                new_notices: None,
                 stage_dir,
             },
             zip,
@@ -891,17 +909,18 @@ mod tests {
 
     /// The entries of the portable ZIP the CI builds, in its order (build.yml,
     /// "Create Windows portable ZIP").
-    const CI_ZIP_ENTRIES: [(&str, &[u8]); 6] = [
+    const CI_ZIP_ENTRIES: [(&str, &[u8]); 7] = [
         ("AeroFTP.exe", NEW_EXE),
         ("aeroftp-cli.exe", b"new cli"),
         ("aeroftp-dispatch.exe", b"new dispatch"),
         ("portable.marker", b"portable"),
         ("README.txt", b"readme"),
         ("LICENSE.txt", b"license"),
+        ("THIRD-PARTY-NOTICES.md", b"notices"),
     ];
 
     /// The same ZIP with the bridge copy of the app the CI adds now.
-    const BRIDGE_ZIP_ENTRIES: [(&str, &[u8]); 7] = [
+    const BRIDGE_ZIP_ENTRIES: [(&str, &[u8]); 8] = [
         ("AeroFTP.exe", NEW_EXE),
         ("aeroftp-app.exe", NEW_EXE),
         ("aeroftp-cli.exe", b"new cli"),
@@ -909,6 +928,7 @@ mod tests {
         ("portable.marker", b"portable"),
         ("README.txt", b"readme"),
         ("LICENSE.txt", b"license"),
+        ("THIRD-PARTY-NOTICES.md", b"notices"),
     ];
 
     /// How the updater of 4.0.8 to 4.2.4 picked the app exe: the first
@@ -1081,6 +1101,75 @@ mod tests {
         assert!(!fx.zip.exists());
         assert!(!fx.staged.stage_dir.exists());
         assert!(!fx.log.exists(), "nothing to log");
+    }
+
+    /// Each document beside the exes with its installed and its updated content.
+    const DOC_FILES: [(&str, &[u8], &[u8]); 3] = [
+        ("README.txt", b"old readme", b"new readme"),
+        ("LICENSE.txt", b"old license", b"new license"),
+        ("THIRD-PARTY-NOTICES.md", b"old notices", b"new notices"),
+    ];
+
+    /// The update replaces the installed README, LICENSE and third-party
+    /// notices with the ones of the new version: the notices list what the
+    /// new exes ship.
+    #[test]
+    fn the_update_replaces_the_readme_the_license_and_the_third_party_notices() {
+        let mut fx = fixture();
+        for (name, old, new) in DOC_FILES {
+            std::fs::write(fx.app.join(name), old).expect("installed file");
+            std::fs::write(fx.staged.stage_dir.join(name), new).expect("staged file");
+        }
+        fx.staged.new_readme = Some(fx.staged.stage_dir.join("README.txt"));
+        fx.staged.new_license = Some(fx.staged.stage_dir.join("LICENSE.txt"));
+        fx.staged.new_notices = Some(fx.staged.stage_dir.join("THIRD-PARTY-NOTICES.md"));
+        let script = script_for(&fx);
+        run(&fx, &runnable(&script));
+        assert_eq!(read(&fx, "README.txt"), b"new readme");
+        assert_eq!(read(&fx, "LICENSE.txt"), b"new license");
+        assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"new notices");
+    }
+
+    /// An installed document held open without write sharing (an editor)
+    /// refuses the copy: the helper retries, keeps the installed one, says so
+    /// in the app log, and still replaces the other documents and the exe and
+    /// removes the stage.
+    #[test]
+    fn a_document_in_use_keeps_the_installed_one_and_the_log_says_so() {
+        let mut fx = fixture();
+        for (name, old, new) in DOC_FILES {
+            std::fs::write(fx.app.join(name), old).expect("installed file");
+            std::fs::write(fx.staged.stage_dir.join(name), new).expect("staged file");
+        }
+        fx.staged.new_readme = Some(fx.staged.stage_dir.join("README.txt"));
+        fx.staged.new_license = Some(fx.staged.stage_dir.join("LICENSE.txt"));
+        fx.staged.new_notices = Some(fx.staged.stage_dir.join("THIRD-PARTY-NOTICES.md"));
+        let script = script_for(&fx);
+        let held = hold(&fx.app.join("THIRD-PARTY-NOTICES.md"));
+        run(&fx, &runnable(&script));
+        drop(held);
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(read(&fx, "THIRD-PARTY-NOTICES.md"), b"old notices");
+        assert_eq!(read(&fx, "README.txt"), b"new readme");
+        assert_eq!(read(&fx, "LICENSE.txt"), b"new license");
+        assert!(!fx.staged.stage_dir.exists());
+        let log = std::fs::read_to_string(&fx.log).expect("log");
+        assert_eq!(
+            log.trim_end(),
+            "[windows_update_helper][WARN] portable update: THIRD-PARTY-NOTICES.md is in use, kept the installed one"
+        );
+    }
+
+    /// The notices of the CI ZIP are staged with the README and the LICENSE.
+    #[test]
+    fn staging_picks_the_third_party_notices_from_the_ci_zip() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let zip_path = portable_zip(root.path(), &CI_ZIP_ENTRIES);
+        let staged = stage_portable_artifact(&zip_path, OsStr::new("AeroFTP.exe"), root.path())
+            .expect("staged");
+        let notices = staged.new_notices.clone().expect("notices staged");
+        assert_eq!(std::fs::read(&notices).expect("notices"), b"notices");
+        let _ = std::fs::remove_dir_all(&staged.stage_dir);
     }
 
     /// Every line of the helper ends in CRLF. With LF only, cmd missed the

@@ -27,6 +27,7 @@ import {
   findBundledCodeUnderOtherLicenses,
   licenseTermsOf,
   vendoredFolders,
+  isSpdxHeaderLine,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -894,6 +895,163 @@ test('findPackageCopyrightNotices: a template copyright line is no notice, a lic
     const md = generateNoticesMarkdown([comp], []);
     assert.ok(md.includes('```text\nMIT License\n\nCopyright (c) <year> <owner>\n'), 'the license text keeps its placeholder');
     assert.doesNotMatch(md, /^ {2}- .*(?:\$YEAR|%d|<year>|\[year\]|\$\{YEAR\})/m, 'no attribution line carries a template slot');
+    // The template line names no holder, so the source scan runs and finds the real one.
+    assert.strictEqual(hasCopyrightHolderInFiles(comp), false);
+    assert.match(md, /^ {2}- Copyright \(c\) 2001 Real Holder <real@example\.org> \(src\/real\.c\)$/m);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a header under the declared license with its own terms is reproduced, one with the standard terms is not', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'declared-own-terms-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    write('LICENSE', standard['MIT'].replace(/Copyright \(c\) <year> <copyright holders>/, 'Copyright (c) 2020 Wrapper Author'));
+    const ownTerms = 'Permission is hereby granted to use this file only together with the Foo engine, provided that this notice is kept.';
+    write('lib/own.js', `/*\n * Copyright (c) 2018 Own Terms Vendor\n * ${ownTerms}\n * SPDX-License-Identifier: MIT\n */\n`);
+    const mitTerms = standard['MIT'].split('\n').filter((l) => !/^(?:MIT License|Copyright)/.test(l));
+    const mayTerms = 'You may use, copy, modify and distribute this software provided you retain this notice and credit Example Project.';
+    write('lib/may.js', `/*\n * Copyright (c) 2017 May Vendor\n * ${mayTerms}\n * SPDX-License-Identifier: MIT\n */\n`);
+    const batTerms = 'You may use, copy, modify and distribute this script provided you keep this notice.';
+    write('lib/build.bat', `@echo off\nREM -- Copyright (c) 2016 Batch Vendor\nREM -- ${batTerms}\nREM -- SPDX-License-Identifier: MIT\n`);
+    write('lib/tpl.js', '/*\n * Copyright (c) <year> <copyright holders>\n * SPDX-License-Identifier: MIT\n */\n');
+    write('lib/std.js', `/*\n * Copyright (c) 2019 Standard Vendor\n${mitTerms.map((l) => (l ? ` * ${l}` : ' *')).join('\n')}\n * SPDX-License-Identifier: MIT\n */\n`);
+    const comp = { name: 'own-terms-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'own-terms-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    const section = md.slice(md.indexOf('## Source Headers With Their Own Terms'));
+    assert.ok(md.includes('## Source Headers With Their Own Terms'), 'the section exists');
+    assert.ok(section.includes(ownTerms), 'the differing terms are reproduced');
+    assert.match(section, /ships a header tagged `MIT` whose permission text differs from it, in `lib\/own\.js`/);
+    assert.ok(section.includes(mayTerms), 'permission text in other words is reproduced too');
+    // Every accepted comment style keeps its block: holder and terms of a `REM --` header.
+    assert.ok(section.includes(batTerms), 'the terms of a REM header are reproduced');
+    assert.match(md, /^ {2}- Copyright \(c\) 2016 Batch Vendor \(/m);
+    assert.doesNotMatch(section, /^echo off$/m, 'a batch command is no comment line');
+    assert.doesNotMatch(section, /lib\/std\.js/, 'a header with the standard terms is not repeated');
+    assert.doesNotMatch(md, /### Bundled Code: MIT/);
+    assert.doesNotMatch(md, /<year> <copyright holders> \(in a source header/, 'a template line in a header names no holder');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a header covered by a license text shipped beside the code is reproduced only with terms of its own', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'shipped-covered-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+    assert.ok(!('curl' in standard), 'the fixture needs an identifier with no standard text');
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    const shippedTerms = 'Permission to use, copy, modify, and distribute this software for any purpose\nwith or without fee is hereby granted.';
+    write('vend/LICENSES/curl.txt', `COPYRIGHT AND PERMISSION NOTICE\n\nCopyright (c) 1996 - 2025, Daniel Stenberg, <daniel@haxx.se>.\n\n${shippedTerms}`);
+    write('vend/lib/plain.c', '/*\n * Copyright (C) Viktor Szakats\n * SPDX-License-Identifier: curl\n */\n');
+    write('vend/lib/same.c', `/*\n * Copyright (C) Daniel Stenberg, <daniel@haxx.se>.\n *\n${shippedTerms.split('\n').map((l) => ` * ${l}`).join('\n')}\n *\n * SPDX-License-Identifier: curl\n */\n`);
+    const ownTerms = 'Permission to use this file is hereby granted only inside the Foo engine.';
+    write('vend/lib/own.c', `/*\n * Copyright (C) Own Terms Vendor\n * ${ownTerms}\n * SPDX-License-Identifier: curl\n */\n`);
+    const comp = { name: 'shipped-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'shipped-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    // The holders of the vendored code are listed with its folder, once.
+    assert.match(md, /^ {2}- Copyright \(C\) Viktor Szakats \(vend\/lib\/plain\.c\)$/m);
+    assert.doesNotMatch(md, /\(in a source header under curl\)/);
+    const section = md.slice(md.indexOf('## Source Headers With Their Own Terms'));
+    assert.ok(md.includes('## Source Headers With Their Own Terms'), 'the header with terms of its own is reproduced');
+    assert.ok(section.includes(ownTerms));
+    assert.match(section, /ships a header tagged `curl` whose permission text differs from it, in `vend\/lib\/own\.c`/);
+    // The component declares MIT, not curl: the text names no declaration it does not make.
+    assert.doesNotMatch(section, /declare the license of these headers themselves/);
+    assert.match(section, /or a license text shipped beside the vendored code/);
+    assert.doesNotMatch(section, /same\.c|plain\.c/, 'a header with the shipped terms, or with none, is not repeated');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('isSpdxHeaderLine: a comment line is a header whatever precedes the tag, prose and list items are not', () => {
+  const at = (l) => l.indexOf('SPDX-License-Identifier:');
+  const header = (l, rel = 'src/a.c') => isSpdxHeaderLine(l, rel, at(l));
+  for (const l of [
+    '// SPDX-License-Identifier: MIT',
+    '/* Copyright 2020 Foo Ltd. SPDX-License-Identifier: BSD-2-Clause */',
+    '// Licensed to X. SPDX-License-Identifier: Apache-2.0',
+    ' * SPDX-License-Identifier: MIT',
+    '@ SPDX-License-Identifier: Apache-2.0',
+    '$! SPDX-License-Identifier: BSD-3-Clause',
+    'REM -- SPDX-License-Identifier: Apache-2.0 OR ISC',
+    'SPDX-License-Identifier: Apache-2.0 OR MIT',
+  ]) {
+    assert.ok(header(l), l);
+  }
+  assert.ok(header('SPDX-License-Identifier: BSD-3-Clause', 'docs/HACKING.md'));
+  assert.ok(header('<!-- SPDX-License-Identifier: MIT -->', 'README.md'));
+  for (const [l, rel] of [
+    ['Documentation: SPDX-License-Identifier: MIT (preferred)', 'docs/notes.md'],
+    ['- SPDX-License-Identifier: MIT', 'README.md'],
+    ['* SPDX-License-Identifier: MIT', 'README.md'],
+    ['1. SPDX-License-Identifier: MIT', 'README.rst'],
+    ['const S: &str = "// SPDX-License-Identifier: MIT";', 'src/html.rs'],
+  ]) {
+    assert.ok(!header(l, rel), l);
+  }
+});
+
+test('bundled code: a header expression made of SPDX tokens that does not parse fails, a mention in prose or code does not', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'malformed-spdx-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    // Mentions measured on the real tree: a README, a string literal, a shell check.
+    write('README.md', 'Each file starts with `SPDX-License-Identifier: MIT` at the top.\n');
+    write('src/html.rs', 'const S: &str = "// SPDX-License-Identifier: Apache-2.0\\n// SPDX-License-Identifier: MIT\\n\\nwindow.x = 1";\n');
+    write('ci/check.sh', "grep -q 'SPDX-License-Identifier: BSD-2-Clause OR Apache-2.0 OR MIT' \\\n");
+    write('docs/notes.md', 'Documentation: SPDX-License-Identifier: MIT (preferred)\n');
+    write('lib/arm.S', '@ SPDX-License-Identifier: BSD-2-Clause AND MIT\n');
+    write('lib/one.c', '/* Copyright 2020 Foo Ltd. SPDX-License-Identifier: BSD-2-Clause */\n');
+    write('docs/list.md', '- SPDX-License-Identifier: MIT OR\n');
+    write('lib/valid.c', '/* SPDX-License-Identifier: BSD-2-Clause AND MIT */\n');
+    const comp = { name: 'malformed-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'malformed-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known).filter((b) => !b.declared).map((b) => [b.license, b.files]), [['BSD-2-Clause', ['lib/arm.S', 'lib/one.c', 'lib/valid.c']]]);
+    write('lib/broken.c', '/* SPDX-License-Identifier: BSD-2-Clause AND */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(comp, known), /malformed-pkg@1\.0\.0 has a malformed SPDX-License-Identifier in lib\/broken\.c: 'BSD-2-Clause AND'/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('readPackageFiles: a source file named after a license word at the root is code, the standard text is used', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'root-source-license-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'license.js'), 'module.exports = function license() { return "MIT"; };\n');
+    fs.writeFileSync(path.join(tmpDir, 'copyright.rs'), '// copyright helpers\n');
+    fs.writeFileSync(path.join(tmpDir, 'NOTICE.html'), '<p>This product includes software developed by Example Project.</p>\n');
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE.Apache_2.0'), 'Apache License\nVersion 2.0, January 2004');
+    fs.mkdirSync(path.join(tmpDir, 'LICENSES'));
+    fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'MIT.txt'), 'MIT License\n\nPermission is hereby granted.');
+    fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'build.rs'), 'fn main() {}\n');
+    const files = readPackageFiles(tmpDir, 'root-source@1.0.0');
+    assert.deepStrictEqual(files.licenseFiles.map((f) => f.filename), ['LICENSE.Apache_2.0', 'LICENSES/MIT.txt']);
+    // An HTML notice document is a notice, reproduced whole.
+    assert.deepStrictEqual(files.noticeFiles.map((f) => f.filename), ['NOTICE.html']);
+    fs.rmSync(path.join(tmpDir, 'NOTICE.html'));
+    fs.rmSync(path.join(tmpDir, 'LICENSE.Apache_2.0'));
+    fs.rmSync(path.join(tmpDir, 'LICENSES'), { recursive: true });
+    const only = readPackageFiles(tmpDir, 'test-root-source@1.0.0');
+    assert.deepStrictEqual([...only.licenseFiles, ...only.noticeFiles], []);
+    const comp = { name: 'test-root-source', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Root Author'], ...only };
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /### Standard License: MIT\n/);
+    assert.doesNotMatch(md, /file: `license\.js`/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

@@ -10,8 +10,8 @@
  *
  * Resolves true when the URL was handed to the system or to a new window, and
  * false when the scheme is blocked or both the shell and the window.open
- * fallback failed (window.open returns null when it opens nothing). It never
- * rejects, so a caller that ignores the result keeps working as before.
+ * fallback failed (window.open returns null or throws). It never rejects, so a
+ * caller that ignores the result keeps working as before.
  */
 import { open } from '@tauri-apps/plugin-shell';
 
@@ -31,8 +31,14 @@ export async function openUrl(url: string): Promise<boolean> {
       return false;
     }
     console.error('Failed to open URL:', error);
-    // Fallback: try window.open (won't work in Tauri but useful for dev)
-    return window.open(url, '_blank') !== null;
+    // Fallback: try window.open (won't work in Tauri but useful for dev).
+    // It returns null when it opens nothing and can throw (a malformed URL).
+    try {
+      return window.open(url, '_blank') !== null;
+    } catch (fallbackError) {
+      console.error('Failed to open URL in a new window:', fallbackError);
+      return false;
+    }
   }
 }
 

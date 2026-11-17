@@ -12,6 +12,7 @@ import {
   GITHUB_NOTICES_URL,
   LINUX_NOTICE_PATHS,
 } from './thirdPartyLicenses';
+import { openUrl } from './openUrl';
 
 describe('thirdPartyLicenses', () => {
   describe('getCandidateNoticePaths', () => {
@@ -123,6 +124,15 @@ describe('thirdPartyLicenses', () => {
 
         expect(windowOpen).toHaveBeenCalledWith(GITHUB_NOTICES_URL, '_blank');
         expect(res).toEqual({ success: false, target: GITHUB_NOTICES_URL });
+      });
+
+      it('reports failure, without rejecting, when the shell fails and window.open throws', async () => {
+        shellOpen.mockRejectedValue(new Error('shell unavailable'));
+        vi.stubGlobal('window', { open: vi.fn(() => { throw new SyntaxError('Invalid URL'); }) });
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(openUrl(GITHUB_NOTICES_URL)).resolves.toBe(false);
+        expect(await openThirdPartyLicenses(noLocalFile, failingOpener)).toEqual({ success: false, target: GITHUB_NOTICES_URL });
       });
 
       it('reports success when the shell fails and window.open opens a window', async () => {
