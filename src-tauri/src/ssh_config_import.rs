@@ -38,6 +38,82 @@ fn shellexpand_tilde(p: &str) -> String {
     p.to_string()
 }
 
+/// The values ssh substitutes for `%` tokens in one `Host` block.
+struct SshTokens<'a> {
+    /// `%n`: the alias the block was looked up by.
+    alias: &'a str,
+    /// `%h`: the host name (the alias itself inside `HostName`).
+    host: &'a str,
+    /// `%r`: the remote user name.
+    user: &'a str,
+    /// `%p`: the port.
+    port: u32,
+}
+
+/// A value read from an ssh config, with its `%` tokens and, where ssh reads
+/// them (`dollar`), its `${VAR}` references expanded the way ssh does, so the
+/// profile holds the literal value ssh would use. `allowed` lists the tokens
+/// this keyword takes (measured with `ssh -G` and `ssh -v` on 10.2p1:
+/// `HostName` only `%h`; `User` also reads `%d`, `%n`, `%p` and `%u`, but
+/// not `%r`). A token AeroFTP cannot resolve here, such as `%C` or `%l`, is
+/// an error, and the host is skipped with it rather than imported with a
+/// value no client reads as written.
+fn ssh_expand(
+    field: &str,
+    value: &str,
+    allowed: &str,
+    tokens: &SshTokens,
+    dollar: bool,
+) -> Result<String, String> {
+    let env = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+    let mut out = String::new();
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '$' && dollar && chars.peek() == Some(&'{') {
+            chars.next();
+            let mut name = String::new();
+            let closed = loop {
+                match chars.next() {
+                    Some('}') => break true,
+                    Some(c) => name.push(c),
+                    None => break false,
+                }
+            };
+            let found = closed.then(|| env(&name)).flatten().ok_or_else(|| {
+                format!("its {field} reads the environment variable `{name}`, which is not set or not closed")
+            })?;
+            out.push_str(&found);
+            continue;
+        }
+        if c != '%' {
+            out.push(c);
+            continue;
+        }
+        let token = chars.next();
+        let expanded = match token {
+            Some('%') => Some("%".to_string()),
+            Some(t) if allowed.contains(t) => match t {
+                'h' => Some(tokens.host.to_string()),
+                'n' => Some(tokens.alias.to_string()),
+                'r' => Some(tokens.user.to_string()),
+                'p' => Some(tokens.port.to_string()),
+                'u' => env("USER").or_else(|| env("USERNAME")),
+                'd' => env("HOME").or_else(|| env("USERPROFILE")),
+                _ => None,
+            },
+            _ => None,
+        };
+        let expanded = expanded.ok_or_else(|| {
+            format!(
+                "its {field} uses the ssh token %{}, which AeroFTP cannot resolve",
+                token.map(String::from).unwrap_or_default()
+            )
+        })?;
+        out.push_str(&expanded);
+    }
+    Ok(out)
+}
+
 /// `true` if an alias is an ssh match pattern rather than a concrete host.
 fn is_wildcard_pattern(alias: &str) -> bool {
     alias.contains('*') || alias.contains('?')
@@ -168,26 +244,41 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
     }
 
     let kv = &block.kv;
-    let host = kv
-        .get("hostname")
-        .cloned()
-        .filter(|h| !h.is_empty())
-        .unwrap_or_else(|| alias.clone());
     let port = kv
         .get("port")
         .and_then(|p| p.parse::<u32>().ok())
         .unwrap_or(22);
-    let username = kv.get("user").cloned().unwrap_or_default();
+    // ssh expands `HostName` first (its `%h` is the alias), then the others
+    // against that host name: the order the tokens are resolved in below.
+    let mut tokens = SshTokens {
+        alias: &alias,
+        host: &alias,
+        user: "",
+        port,
+    };
+    let host = match kv.get("hostname").filter(|h| !h.is_empty()) {
+        Some(h) => ssh_expand("host", h, "h", &tokens, false)?,
+        None => alias.clone(),
+    };
+    tokens.host = &host;
+    let username = match kv.get("user") {
+        Some(u) => ssh_expand("user name", u, "dhnpu", &tokens, true)?,
+        None => String::new(),
+    };
+    tokens.user = &username;
 
     let mut options = serde_json::Map::new();
     if let Some(identity) = kv.get("identityfile").filter(|s| !s.is_empty()) {
+        let identity = ssh_expand("key file path", identity, "dhnpru", &tokens, true)?;
         options.insert(
             "private_key_path".into(),
-            serde_json::Value::String(shellexpand_tilde(identity)),
+            serde_json::Value::String(shellexpand_tilde(&identity)),
         );
     }
     if let Some(proxy) = kv.get("proxyjump").filter(|s| !s.is_empty()) {
-        options.insert("proxyJump".into(), serde_json::Value::String(proxy.clone()));
+        // ssh builds a `ProxyCommand` from the jump host and expands that.
+        let proxy = ssh_expand("jump host", proxy, "hnpr", &tokens, false)?;
+        options.insert("proxyJump".into(), serde_json::Value::String(proxy));
     }
 
     Ok(ServerProfileExport {
@@ -361,8 +452,13 @@ fn ssh_escapes(value: &str, quoted: bool) -> bool {
 /// which ssh reads as a comment, leaving the keyword without its argument
 /// and the whole file refused ("Missing argument"), or with `=`, which ssh
 /// reads as the separator after the keyword and drops (`User =ops` is
-/// `User ops`).
-fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
+/// `User ops`). A `%` is written as `%%`, which ssh reads as one `%`: unescaped,
+/// ssh would expand it as a token (`ssh -G`: `HostName fe80::1%eth0` fails
+/// with "unknown key %e", `User u%hx` reads as `u<host>x`; a jump host goes
+/// into a `ProxyCommand`, which ssh expands too). Where ssh also expands
+/// `${VAR}` (`dollar`: `User`), a value holding `${` is refused, since ssh
+/// has no escape for it.
+fn ssh_word(field: &str, value: &str, dollar: bool) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains(char::is_whitespace) || value.contains(['"', '\'']) {
         return Err(format!(
@@ -379,7 +475,20 @@ fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
             "its {field} holds a backslash before a backslash, which ssh would read as an escape; correct the profile and export again"
         ));
     }
-    Ok(value)
+    ssh_no_dollar(field, value, dollar)?;
+    Ok(value.replace('%', "%%"))
+}
+
+/// Refuses a value holding `${` for a keyword where ssh expands `${VAR}`
+/// (`User`, `IdentityFile`; `ssh -v`: `IdentityFile /k/${HOME}` loads
+/// `/k/<home>`), since ssh_config has no escape for it.
+fn ssh_no_dollar(field: &str, value: &str, dollar: bool) -> Result<(), String> {
+    if dollar && value.contains("${") {
+        return Err(format!(
+            "its {field} holds `${{`, which ssh would expand as an environment variable; correct the profile and export again"
+        ));
+    }
+    Ok(())
 }
 
 /// An `IdentityFile` path as ssh_config reads it: one with whitespace is
@@ -393,7 +502,10 @@ fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
 /// quotes"). Any other backslash (`C:\Users\Me`, an unquoted `/keys/id\`)
 /// is read as written. A path that starts with `#` or `=` is quoted too:
 /// unquoted, ssh would read a comment or a separator there (see
-/// [`ssh_word`]), and `"#id"` reads as `#id`.
+/// [`ssh_word`]), and `"#id"` reads as `#id`. ssh expands `%` tokens and
+/// `${VAR}` in a key path when it loads the key (`ssh -v`: `%u` loads the
+/// local user name, `%%` one `%`), so a `%` is written as `%%`, and a path
+/// holding `${` is refused ([`ssh_no_dollar`]).
 fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains('"') {
@@ -412,10 +524,12 @@ fn ssh_path(field: &str, value: &str) -> Result<String, String> {
             "its {field} holds a backslash before a backslash, a quote or its end, which ssh would read as an escape; move the key and export again"
         ));
     }
+    ssh_no_dollar(field, value, true)?;
+    let value = value.replace('%', "%%");
     Ok(if quoted {
         format!("\"{value}\"")
     } else {
-        value.to_string()
+        value
     })
 }
 
@@ -443,15 +557,15 @@ fn ssh_host_lines(server: &SshExportServer) -> Result<String, String> {
     let opt = |key: &str| raw(key).map(str::trim).filter(|s| !s.is_empty());
     let host = Some(server.host.trim()).filter(|s| !s.is_empty());
     let user = Some(server.username.trim()).filter(|s| !s.is_empty());
-    let host = host.map(|h| ssh_word("host", h)).transpose()?;
-    let user = user.map(|u| ssh_word("user name", u)).transpose()?;
+    let host = host.map(|h| ssh_word("host", h, false)).transpose()?;
+    let user = user.map(|u| ssh_word("user name", u, true)).transpose()?;
     let key_file = opt("private_key_path")
         .map(|k| ssh_path("key file path", k))
         .transpose()?;
     // `ProxyJump` alone also ends its value at a `#` inside it (`ssh -G`:
     // `ProxyJump a#b` reads as `a`).
     let proxy = opt("proxyJump")
-        .map(|p| match ssh_word("jump host", p)? {
+        .map(|p| match ssh_word("jump host", p, false)? {
             p if p.contains('#') => Err(
                 "its jump host holds `#`, which ssh would read as the start of a comment; correct the profile and export again"
                     .to_string(),
@@ -1006,6 +1120,19 @@ Host roundtrip
                 "u",
                 serde_json::json!({"proxyJump": "bastion#2"}),
             ),
+            sftp("dollar user", "h.example.com", "u${HOME}", none.clone()),
+            sftp(
+                "dollar key",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "/keys/${HOME}/id"}),
+            ),
+            sftp(
+                "percent",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "/keys/id%u", "proxyJump": "j%h"}),
+            ),
             sftp("\n", "h.example.com", "u", none.clone()),
             sftp("   ", "h.example.com", "u", none.clone()),
             sftp("good", "h.example.com", "u", none.clone()),
@@ -1013,7 +1140,7 @@ Host roundtrip
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config");
         let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
-        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
+        assert_eq!(outcome.exported, 3, "{:?}", outcome.skipped);
         let want = [
             ("lead", "its host holds a line break"),
             ("trail", "its user name holds a line break"),
@@ -1037,6 +1164,8 @@ Host roundtrip
             ("hash jump", "its jump host starts with `#` or `=`"),
             ("equals jump", "its jump host starts with `#` or `=`"),
             ("inner hash jump", "its jump host holds `#`"),
+            ("dollar user", "its user name holds `${`"),
+            ("dollar key", "its key file path holds `${`"),
             ("\n", "its name holds a line break"),
             ("   ", "its name is empty"),
         ];
@@ -1046,7 +1175,11 @@ Host roundtrip
             assert!(skip.reason.starts_with(reason), "{name:?}: {}", skip.reason);
         }
         let config = std::fs::read_to_string(&path).unwrap();
-        assert_eq!(config.matches("Host ").count(), 2, "{config}");
+        assert_eq!(config.matches("Host ").count(), 3, "{config}");
+        // A `%` goes out as `%%`, which ssh reads as one `%` (`ssh -v` on
+        // 10.2p1, for the key it loads and the `ProxyCommand` it runs).
+        assert!(config.contains("  IdentityFile /keys/id%%u\n"), "{config}");
+        assert!(config.contains("  ProxyJump j%%h\n"), "{config}");
         assert!(
             config.contains("  IdentityFile \"C:\\Users\\John Doe\\.ssh\\id\"\n"),
             "{config}"
@@ -1135,6 +1268,7 @@ Host roundtrip
             sftp("ssh://box", "l.example.com", "u", serde_json::json!({})),
             sftp("box", "m.example.com", "u", serde_json::json!({})),
             sftp("#tag", "n.example.com", "u", serde_json::json!({})),
+            sftp("zone", "fe80::1%eth0", "u%hx", serde_json::json!({})),
         ];
         let outcome = export_ssh_config(&named, &HashMap::new(), &config).unwrap();
         assert_eq!(outcome.exported, named.len(), "{:?}", outcome.skipped);
@@ -1157,11 +1291,97 @@ Host roundtrip
                 read.status.success()
                     && stdout
                         .lines()
-                        .any(|l| l == format!("hostname {}", server.host)),
+                        .any(|l| l == format!("hostname {}", server.host))
+                    && stdout
+                        .lines()
+                        .any(|l| l == format!("user {}", server.username)),
                 "{} as {alias}: {stdout} {}",
                 server.name,
                 String::from_utf8_lossy(&read.stderr)
             );
         }
+    }
+
+    /// A config's `%` tokens and `${VAR}` references are imported as the
+    /// values ssh uses, so the profile holds a literal value, and exporting
+    /// it again gives ssh the same host and user. A token AeroFTP cannot
+    /// resolve skips the host with its reason.
+    #[test]
+    fn an_imported_token_is_expanded_as_ssh_reads_it() {
+        // No `%d` or `%u` here: another test in this module points `HOME` at
+        // a temporary folder while this one runs.
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("source");
+        std::fs::write(
+            &source,
+            "Host al\n  HostName %h.example.com\n  Port 2200\n  User %n-x\n  IdentityFile /keys/id_%h_%r_%%\n  ProxyJump %r@jump.%h\n\nHost tok\n  HostName h.example.com\n  IdentityFile /keys/%C\n\nHost noenv\n  HostName h.example.com\n  User ${AEROFTP_SSH_TEST_UNSET_VARIABLE}\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&source).unwrap();
+        let skipped: Vec<(&str, &str)> = result
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.reason.as_str()))
+            .collect();
+        assert_eq!(skipped.len(), 2, "{skipped:?}");
+        assert_eq!(skipped[0].0, "tok");
+        assert!(
+            skipped[0]
+                .1
+                .starts_with("its key file path uses the ssh token %C"),
+            "{skipped:?}"
+        );
+        assert_eq!(skipped[1].0, "noenv");
+        assert!(
+            skipped[1]
+                .1
+                .starts_with("its user name reads the environment variable"),
+            "{skipped:?}"
+        );
+        assert_eq!(result.servers.len(), 1);
+        let al = &result.servers[0];
+        assert_eq!(al.host, "al.example.com");
+        assert_eq!(al.username, "al-x");
+        assert_eq!(al.port, 2200);
+        let options = al.options.as_ref().unwrap();
+        assert_eq!(
+            options["private_key_path"],
+            "/keys/id_al.example.com_al-x_%"
+        );
+        assert_eq!(options["proxyJump"], "al-x@jump.al.example.com");
+
+        let mut profile = sftp(&al.name, &al.host, &al.username, options.clone());
+        profile.port = al.port;
+        let exported = dir.path().join("exported");
+        export_ssh_config(&[profile], &HashMap::new(), &exported).unwrap();
+        let written = std::fs::read_to_string(&exported).unwrap();
+        assert!(
+            written.contains("  IdentityFile /keys/id_al.example.com_al-x_%%\n"),
+            "{written}"
+        );
+        if std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let read = |config: &Path| {
+            let out = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(config)
+                .arg("al")
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter(|l| {
+                    l.starts_with("hostname ") || l.starts_with("user ") || l.starts_with("port ")
+                })
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(read(&source), read(&exported));
     }
 }
