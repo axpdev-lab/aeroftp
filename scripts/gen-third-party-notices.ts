@@ -461,6 +461,14 @@ export function isGplCompatible(expr: string): boolean {
   return result;
 }
 
+// Folders whose license files describe no code that ships: tests, fixtures,
+// examples, CI, and node_modules (its packages are components of their own).
+const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtures?|examples?|benches)$/i;
+// A license or notice file by name, not a source file named after one
+// (copying.rs, copyright.mjs, copyright.pm, license.yml).
+const VENDORED_LICENSE_FILE =
+  /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode))?$/i;
+
 export function readPackageFiles(
   dir: string,
   componentId: string,
@@ -525,40 +533,29 @@ export function readPackageFiles(
       } catch (err: any) {
         throw new Error(`Failed to read licenses directory in ${componentId} at ${subDir}: ${err.message}`);
       }
-    } else if (entry.isDirectory() && ['vendor', 'whisper.cpp'].includes(entry.name)) {
-      // 4. Scan known vendored native subdirectories
+    } else if (entry.isDirectory() && !VENDORED_SKIP_DIR.test(entry.name)) {
+      // 4. Code a package vendors (a C library, Go modules, a polyfill) keeps
+      // its license file in its own folder, at any depth: libssh2/COPYING,
+      // go/vendor/golang.org/x/crypto/LICENSE, src/unicode_tables/LICENSE-UNICODE.
       const subDir = path.join(dir, entry.name);
       try {
-        const subEntries = fs.readdirSync(subDir, { withFileTypes: true });
-        for (const sub of subEntries) {
-          if (sub.isFile() && /^(licen[sc]e|copying|copyright|notice)/i.test(sub.name)) {
-            const fullPath = path.join(subDir, sub.name);
-            const filename = `${entry.name}/${sub.name}`;
-            const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
-            if (/^(notice|copyright)/i.test(sub.name)) {
-              noticeFiles.push({ filename, content });
-            } else {
-              licenseFiles.push({ filename, content });
-            }
-          } else if (sub.isDirectory()) {
-            const nestedDir = path.join(subDir, sub.name);
-            const nestedEntries = fs.readdirSync(nestedDir, { withFileTypes: true });
-            for (const n of nestedEntries) {
-              if (n.isFile() && /^(licen[sc]e|copying|copyright|notice)/i.test(n.name)) {
-                const fullPath = path.join(nestedDir, n.name);
-                const filename = `${entry.name}/${sub.name}/${n.name}`;
-                const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
-                if (content.length > 0) {
-                  if (/^(notice|copyright)/i.test(n.name)) {
-                    noticeFiles.push({ filename, content });
-                  } else {
-                    licenseFiles.push({ filename, content });
-                  }
-                }
+        const walkVendored = (d: string, rel: string) => {
+          for (const sub of fs.readdirSync(d, { withFileTypes: true })) {
+            const filename = `${rel}/${sub.name}`;
+            if (sub.isDirectory()) {
+              if (!VENDORED_SKIP_DIR.test(sub.name)) walkVendored(path.join(d, sub.name), filename);
+            } else if (sub.isFile() && VENDORED_LICENSE_FILE.test(sub.name)) {
+              const content = fs.readFileSync(path.join(d, sub.name), 'utf8').replace(/\r\n/g, '\n').trim();
+              if (content.length === 0) continue;
+              if (/^(notice|copyright)/i.test(sub.name)) {
+                noticeFiles.push({ filename, content });
+              } else {
+                licenseFiles.push({ filename, content });
               }
             }
           }
-        }
+        };
+        walkVendored(subDir, entry.name);
       } catch (err: any) {
         throw new Error(`Failed to read vendored files in ${componentId} at ${subDir}: ${err.message}`);
       }

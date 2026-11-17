@@ -435,6 +435,31 @@ test('readPackageFiles: propagates error when reading vendored files fails', () 
   }
 });
 
+test('readPackageFiles: a vendored library keeps its license at any depth, tests and source files named like one are skipped', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vendored-depth-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE-MIT', 'MIT License\n\nCopyright (c) 2024 Wrapper Author');
+    write('libfoo/COPYING', 'Copyright (c) 2004 Foo Project\nRedistribution and use ...');
+    write('go/vendor/golang.org/x/crypto/LICENSE', 'Copyright 2009 The Go Authors.');
+    write('src/unicode_tables/LICENSE-UNICODE', 'UNICODE LICENSE V3');
+    write('libfoo/tests/LICENSE', 'license of a test fixture');
+    write('.github/workflows/license.yml', 'name: license');
+    write('src/copying.rs', '// Copying helpers');
+    write('libfoo/empty/LICENSE', '   ');
+    const { licenseFiles, noticeFiles } = readPackageFiles(tmpDir, 'vendoring-crate@1.0.0');
+    assert.deepStrictEqual(
+      [...licenseFiles, ...noticeFiles].map((f) => f.filename).sort(),
+      ['LICENSE-MIT', 'go/vendor/golang.org/x/crypto/LICENSE', 'libfoo/COPYING', 'src/unicode_tables/LICENSE-UNICODE']
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('standard SPDX texts: preserves mandatory AND conjuncts even when expression contains OR', () => {
   const dummyComponent = {
     name: 'mixed-and-or-crate',
