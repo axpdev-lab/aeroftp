@@ -41453,73 +41453,146 @@ provided below. Authors are listed as declared in package manifests or reviewed 
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
+  - No copyright notice is shipped in the package
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
+  - No copyright notice is shipped in the package
 - `binary-merge@0.1.2` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `cesu8@1.1.0` - SPDX: `Apache-2.0/MIT` (authors: Eric Kidd <git@randomhacks.net>)
+  - Copyright 2012-2014 The Rust Project Developers and Eric Kidd. (src/lib.rs)
+  - Copyright 2012-2014 The Rust Project Developers. (src/unicode.rs)
 - `crc-catalog@2.5.0` - SPDX: `MIT OR Apache-2.0` (authors: Akhil Velagapudi <akhilvelagapudi@gmail.com>)
+  - No copyright notice is shipped in the package
 - `crc24@0.1.6` - SPDX: `MIT/Apache-2.0` (authors: Sebastian Gesemann <s.gesemann@gmail.com>)
+  - No copyright notice is shipped in the package
 - `delegate@0.13.5` - SPDX: `MIT OR Apache-2.0` (authors: Godfrey Chan <godfreykfc@gmail.com>, Jakub Beránek <berykubik@gmail.com>)
+  - No copyright notice is shipped in the package
 - `dispatch2@0.3.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>)
+  - No copyright notice is shipped in the package
 - `enum-assoc@1.4.1` - SPDX: `MIT OR Apache-2.0` (authors: Griffin O'Neill <gsoneill1003@gmail.com>)
+  - No copyright notice is shipped in the package
 - `genawaiter-macro@0.99.1` - SPDX: `MIT/Apache-2.0` (authors: Devin R <devin.ragotzy@gmail.com>)
+  - No copyright notice is shipped in the package
 - `genawaiter-proc-macro@0.99.1` - SPDX: `MIT/Apache-2.0` (authors: Devin R <devin.ragotzy@gmail.com>)
+  - No copyright notice is shipped in the package
 - `gloo-timers@0.3.0` - SPDX: `MIT OR Apache-2.0` (authors: Rust and WebAssembly Working Group)
+  - No copyright notice is shipped in the package
 - `gloo-timers@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: Rust and WebAssembly Working Group)
+  - No copyright notice is shipped in the package
 - `inplace-vec-builder@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `iroh-base@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `iroh-dns@1.3.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `iroh-mainline-address-lookup@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - Copyright 2025 N0, INC. (README.md)
 - `iroh-mdns-address-lookup@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - Copyright 2025 N0, INC. (README.md)
 - `iroh-metrics-derive@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
+  - No copyright notice is shipped in the package
 - `irpc-derive@0.17.0` - SPDX: `Apache-2.0/MIT` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `jni@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
+  - No copyright notice is shipped in the package
 - `jni-macros@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
+  - No copyright notice is shipped in the package
 - `jni-sys-macros@0.4.1` - SPDX: `MIT OR Apache-2.0` (authors: Robert Bragg <robert@sixbynine.org>)
+  - No copyright notice is shipped in the package
 - `libappindicator-sys@0.9.0` - SPDX: `Apache-2.0 OR MIT` (authors: Mikkel Hougesen)
+  - No copyright notice is shipped in the package
 - `mac-notification-sys@0.6.15` - SPDX: `MIT/Apache-2.0` (authors: Felix Döring <development@felixdoering.com>, Hendrik Sollich <hendrik@hoodie.de>)
+  - No copyright notice is shipped in the package
 - `n0-error-macros@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
+  - No copyright notice is shipped in the package
 - `ndk@0.9.0` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Mobile contributors)
+  - No copyright notice is shipped in the package
 - `ndk-context@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Windowing contributors)
+  - No copyright notice is shipped in the package
 - `ndk-sys@0.6.0+11769913` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Windowing contributors)
+  - No copyright notice is shipped in the package
 - `netwatch@0.19.3` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `objc2-app-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-cloud-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-data@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-graphics@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-image@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-location@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-services@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-text@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-wlan@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-exception-helper@0.1.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-quartz-core@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-system-configuration@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-ui-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-user-notifications@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-web-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `pageant@0.2.5` - SPDX: `Apache-2.0` (authors: Eugene <inbox@null.page>)
+  - No copyright notice is shipped in the package
 - `portmapper@0.19.3` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `r-efi@5.3.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 - `r-efi@6.0.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 - `russh@0.65.1` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>)
+  - Copyright 2016 Pierre-Étienne Meunier (src/auth.rs)
 - `russh-cryptovec@0.62.0` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>, Eugeny <e@ajenti.org)
+  - Copyright 2016 Pierre-Étienne Meunier (src/lib.rs)
 - `russh-util@0.52.0` - SPDX: `Apache-2.0` (authors: Pierre-Étienne Meunier <pe@pijul.org>, Eugeny Pankov <e@ajenti.org>)
+  - No copyright notice is shipped in the package
 - `rustls-platform-verifier-android@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: The Rustls Project Developers)
+  - No copyright notice is shipped in the package
 - `sigstore_protobuf_specs@0.5.2` - SPDX: `Apache-2.0` (authors: Sigstore Authors <sigstore-dev@googlegroups.com>)
+  - No copyright notice is shipped in the package
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
+  - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)
+  - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (src/build/mobile.rs)
 - `typed-path@0.9.3` - SPDX: `MIT OR Apache-2.0` (authors: Chip Senkbeil <chip@senkbeil.org>)
+  - No copyright notice is shipped in the package
 - `unftp-core@0.1.1` - SPDX: `Apache-2.0` (authors: Hannes de Jager <hannes@cloudinvoke.com>, Rob klein Gunnewiek <rob@cloudinvoke.com>)
+  - No copyright notice is shipped in the package
 - `unic-char-property@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-char-range@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/iter.rs)
+  - Copyright 2018 The UNIC Project Developers. (src/par_iter.rs)
 - `unic-common@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-ucd-ident@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/pkg_info.rs)
+  - Copyright 2017-2019 The UNIC Project Developers. (src/id.rs)
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `winapi-i686-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
+  - Copyright © 2016 winapi-rs developers (src/lib.rs)
+  - Copyright © 2016-2018 winapi-rs developers (build.rs)
 - `winapi-x86_64-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
+  - Copyright © 2016 winapi-rs developers (src/lib.rs)
+  - Copyright © 2016-2018 winapi-rs developers (build.rs)
 
 ```text
 Apache License
@@ -41729,7 +41802,12 @@ limitations under the License.
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `alloc-stdlib@0.2.4` - SPDX: `BSD-3-Clause` (authors: Daniel Reiter Horn <danielrh@dropbox.com>)
+  - No copyright notice is shipped in the package
 - `cx448@0.1.1` - SPDX: `BSD-3-Clause` (authors: Friedel Ziegelmayer (port to RustCrypto), based on crate-crypto/x448 by Kevaundray Wedderburn)
+  - Copyright (c) 2016-2019 Henry de Valence (src/macros.rs)
+  - Copyright (c) 2016-2019 Isis Lovecruft, Henry de Valence (src/curve/montgomery.rs)
+  - Copyright (c) 2016-2021 isis agora lovecruft (src/macros.rs)
+  - Copyright (c) 2020 Kevaundray Wedderburn (src/curve/montgomery.rs)
 
 ```text
 Copyright (c) 2016 Dropbox, Inc. (alloc-stdlib)
@@ -41751,6 +41829,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `clipboard-win@5.4.3` - SPDX: `BSL-1.0` (authors: Douman <douman@gmx.se>)
+  - No copyright notice is shipped in the package
 
 ```text
 Boost Software License - Version 1.0 - August 17th, 2003
@@ -41782,7 +41861,9 @@ DEALINGS IN THE SOFTWARE.
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `r-efi@5.3.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 - `r-efi@6.0.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 
 ```text
 GNU LESSER GENERAL PUBLIC LICENSE
@@ -42293,83 +42374,166 @@ That's all there is to it!
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
+  - No copyright notice is shipped in the package
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
+  - No copyright notice is shipped in the package
 - `binary-merge@0.1.2` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `bitfields@1.0.3` - SPDX: `MIT` (authors: Gregory Gaines <gainesagregory@gmail.com>)
+  - No copyright notice is shipped in the package
 - `bitfields-impl@1.0.3` - SPDX: `MIT` (authors: Gregory Gaines <gainesagregory@gmail.com>)
+  - No copyright notice is shipped in the package
 - `block2@0.6.2` - SPDX: `MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `cesu8@1.1.0` - SPDX: `Apache-2.0/MIT` (authors: Eric Kidd <git@randomhacks.net>)
+  - Copyright 2012-2014 The Rust Project Developers and Eric Kidd. (src/lib.rs)
+  - Copyright 2012-2014 The Rust Project Developers. (src/unicode.rs)
 - `crc-catalog@2.5.0` - SPDX: `MIT OR Apache-2.0` (authors: Akhil Velagapudi <akhilvelagapudi@gmail.com>)
+  - No copyright notice is shipped in the package
 - `crc24@0.1.6` - SPDX: `MIT/Apache-2.0` (authors: Sebastian Gesemann <s.gesemann@gmail.com>)
+  - No copyright notice is shipped in the package
 - `delegate@0.13.5` - SPDX: `MIT OR Apache-2.0` (authors: Godfrey Chan <godfreykfc@gmail.com>, Jakub Beránek <berykubik@gmail.com>)
+  - No copyright notice is shipped in the package
 - `dispatch2@0.3.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>)
+  - No copyright notice is shipped in the package
 - `dlopen2@0.8.2` - SPDX: `MIT` (authors: Szymon Wieloch <szymon.wieloch@gmail.com>, Ahmed Masud <ahmed.masud@saf.ai>, OpenByte <development.openbyte@gmail.com>)
+  - No copyright notice is shipped in the package
 - `dlopen2_derive@0.4.3` - SPDX: `MIT` (authors: Szymon Wieloch <szymon.wieloch@gmail.com>, OpenByte <development.openbyte@gmail.com>)
+  - No copyright notice is shipped in the package
 - `enum-assoc@1.4.1` - SPDX: `MIT OR Apache-2.0` (authors: Griffin O'Neill <gsoneill1003@gmail.com>)
+  - No copyright notice is shipped in the package
 - `genawaiter@0.99.1` - SPDX: `MIT` (authors: John Simon <john@whatisaph.one>)
+  - No copyright notice is shipped in the package
 - `genawaiter-macro@0.99.1` - SPDX: `MIT/Apache-2.0` (authors: Devin R <devin.ragotzy@gmail.com>)
+  - No copyright notice is shipped in the package
 - `genawaiter-proc-macro@0.99.1` - SPDX: `MIT/Apache-2.0` (authors: Devin R <devin.ragotzy@gmail.com>)
+  - No copyright notice is shipped in the package
 - `gloo-timers@0.3.0` - SPDX: `MIT OR Apache-2.0` (authors: Rust and WebAssembly Working Group)
+  - No copyright notice is shipped in the package
 - `gloo-timers@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: Rust and WebAssembly Working Group)
+  - No copyright notice is shipped in the package
 - `inplace-vec-builder@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `iroh-base@1.2.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `iroh-dns@1.3.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `iroh-mainline-address-lookup@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - Copyright 2025 N0, INC. (README.md)
 - `iroh-mdns-address-lookup@0.4.0` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - Copyright 2025 N0, INC. (README.md)
 - `iroh-metrics-derive@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
+  - No copyright notice is shipped in the package
 - `irpc-derive@0.17.0` - SPDX: `Apache-2.0/MIT` (authors: Rüdiger Klaehn <rklaehn@protonmail.com>)
+  - No copyright notice is shipped in the package
 - `jni@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
+  - No copyright notice is shipped in the package
 - `jni-macros@0.22.4` - SPDX: `MIT OR Apache-2.0` (authors: jni team)
+  - No copyright notice is shipped in the package
 - `jni-sys-macros@0.4.1` - SPDX: `MIT OR Apache-2.0` (authors: Robert Bragg <robert@sixbynine.org>)
+  - No copyright notice is shipped in the package
 - `lazy-regex-proc_macros@3.6.1` - SPDX: `MIT` (authors: Canop <cano.petrole@gmail.com>)
+  - No copyright notice is shipped in the package
 - `libappindicator-sys@0.9.0` - SPDX: `Apache-2.0 OR MIT` (authors: Mikkel Hougesen)
+  - No copyright notice is shipped in the package
 - `mac-notification-sys@0.6.15` - SPDX: `MIT/Apache-2.0` (authors: Felix Döring <development@felixdoering.com>, Hendrik Sollich <hendrik@hoodie.de>)
+  - No copyright notice is shipped in the package
 - `n0-error-macros@1.0.1` - SPDX: `MIT OR Apache-2.0` (authors: Frando <franz@n0.computer>, n0 team)
+  - No copyright notice is shipped in the package
 - `ndk@0.9.0` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Mobile contributors)
+  - No copyright notice is shipped in the package
 - `ndk-context@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Windowing contributors)
+  - No copyright notice is shipped in the package
 - `ndk-sys@0.6.0+11769913` - SPDX: `MIT OR Apache-2.0` (authors: The Rust Windowing contributors)
+  - No copyright notice is shipped in the package
 - `netwatch@0.19.3` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `objc2@0.6.4` - SPDX: `MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-app-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-cloud-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-data@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-graphics@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-image@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-location@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-services@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-text@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-wlan@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-encode@4.1.0` - SPDX: `MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-exception-helper@0.1.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-foundation@0.3.2` - SPDX: `MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-quartz-core@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-system-configuration@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-ui-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-user-notifications@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-web-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `portmapper@0.19.3` - SPDX: `MIT OR Apache-2.0` (authors: n0 team)
+  - No copyright notice is shipped in the package
 - `qrcodegen@1.8.0` - SPDX: `MIT` (authors: Project Nayuki)
+  - Copyright (c) Project Nayuki. (src/lib.rs)
 - `qrcodegen-image@1.5.2` - SPDX: `MIT` (authors: Cleo Rebert <cleo.rebert@gmail.com>)
+  - No copyright notice is shipped in the package
 - `r-efi@5.3.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 - `r-efi@6.0.0` - SPDX: `MIT OR Apache-2.0 OR LGPL-2.1-or-later` (authors: David Rheinsberg, Red Hat, Inc., Microsoft Corporation)
+  - No copyright notice is shipped in the package
 - `rustls-platform-verifier-android@0.1.1` - SPDX: `MIT OR Apache-2.0` (authors: The Rustls Project Developers)
+  - No copyright notice is shipped in the package
 - `sigchld@0.2.5` - SPDX: `MIT` (authors: Jack O'Connor)
+  - No copyright notice is shipped in the package
 - `suppaftp@12.2.1` - SPDX: `MIT OR Apache-2.0` (authors: Christian Visintin <christian.visintin@veeso.dev>)
+  - No copyright notice is shipped in the package
 - `tauri-plugin@2.6.3` - SPDX: `Apache-2.0 OR MIT` (authors: Tauri Programme within The Commons Conservancy)
+  - Copyright 2019-2024 Tauri Programme within The Commons Conservancy (src/build/mobile.rs)
 - `typed-path@0.9.3` - SPDX: `MIT OR Apache-2.0` (authors: Chip Senkbeil <chip@senkbeil.org>)
+  - No copyright notice is shipped in the package
 - `unic-char-property@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-char-range@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/iter.rs)
+  - Copyright 2018 The UNIC Project Developers. (src/par_iter.rs)
 - `unic-common@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-ucd-ident@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/pkg_info.rs)
+  - Copyright 2017-2019 The UNIC Project Developers. (src/id.rs)
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
+  - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `webview2-com@0.38.2` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
+  - No copyright notice is shipped in the package
 - `webview2-com-macros@0.8.1` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
+  - No copyright notice is shipped in the package
 - `webview2-com-sys@0.38.2` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
+  - No copyright notice is shipped in the package
 - `winapi-i686-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
+  - Copyright © 2016 winapi-rs developers (src/lib.rs)
+  - Copyright © 2016-2018 winapi-rs developers (build.rs)
 - `winapi-x86_64-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
+  - Copyright © 2016 winapi-rs developers (src/lib.rs)
+  - Copyright © 2016-2018 winapi-rs developers (build.rs)
 
 ```text
 Permission is hereby granted, free of charge, to any
@@ -42401,6 +42565,7 @@ DEALINGS IN THE SOFTWARE.
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `selectors@0.36.1` - SPDX: `MPL-2.0` (authors: The Servo Project Developers)
+  - No copyright notice is shipped in the package
 
 ```text
 Mozilla Public License Version 2.0
@@ -42782,6 +42947,7 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `pharos@0.5.3` - SPDX: `Unlicense` (authors: Naja Melan <najamelan@autistici.org>)
+  - No copyright notice is shipped in the package
 
 ```text
 This is free and unencumbered software released into the public domain.
@@ -42814,24 +42980,43 @@ For more information, please refer to <http://unlicense.org/>
 
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `dispatch2@0.3.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>)
+  - No copyright notice is shipped in the package
 - `objc2-app-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-cloud-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-data@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-graphics@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-image@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-location@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-services@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-text@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-core-wlan@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-exception-helper@0.1.1` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-quartz-core@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-security-foundation@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-system-configuration@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-ui-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-user-notifications@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 - `objc2-web-kit@0.3.2` - SPDX: `Zlib OR Apache-2.0 OR MIT` (authors: Mads Marquart <mads@marquart.dk>)
+  - No copyright notice is shipped in the package
 
 ```text
 zlib License

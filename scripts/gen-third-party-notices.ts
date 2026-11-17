@@ -41,6 +41,7 @@ export interface ComponentInfo {
   licenseFiles: { filename: string; content: string }[];
   noticeFiles: { filename: string; content: string }[];
   authors?: string[];
+  packageDir?: string;
 }
 
 /**
@@ -547,6 +548,84 @@ export function readPackageFiles(
   return { licenseFiles, noticeFiles };
 }
 
+/**
+ * Scans locked package sources (header comments of source files and README)
+ * for copyright notices. Deduplicates notices and returns them sorted deterministically.
+ */
+export function findPackageCopyrightNotices(packageDir?: string): { notice: string; file: string }[] {
+  if (!packageDir || !fs.existsSync(packageDir)) return [];
+  const files: { full: string; rel: string }[] = [];
+
+  function walk(currentDir: string, relBase: string) {
+    if (!fs.existsSync(currentDir)) return;
+    const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    for (const e of entries) {
+      const rel = relBase ? `${relBase}/${e.name}` : e.name;
+      const full = path.join(currentDir, e.name);
+      if (e.isFile()) {
+        if (
+          /^README/i.test(e.name) ||
+          ((e.name.endsWith('.rs') || e.name.endsWith('.js') || e.name.endsWith('.ts')) &&
+            (relBase === '' || relBase.startsWith('src')))
+        ) {
+          files.push({ full, rel });
+        }
+      } else if (e.isDirectory()) {
+        if (relBase === '' && e.name === 'src') {
+          walk(full, 'src');
+        } else if (relBase.startsWith('src')) {
+          walk(full, rel);
+        }
+      }
+    }
+  }
+
+  walk(packageDir, '');
+  files.sort((a, b) => compareStrings(a.rel, b.rel));
+
+  const notices: { notice: string; file: string }[] = [];
+  const seenNotice = new Set<string>();
+
+  for (const f of files) {
+    try {
+      const content = fs.readFileSync(f.full, 'utf8');
+      const isSrc = f.rel.endsWith('.rs') || f.rel.endsWith('.js') || f.rel.endsWith('.ts');
+      const lines = content.split('\n').slice(0, isSrc ? 60 : 300);
+
+      for (const rawLine of lines) {
+        let line = rawLine
+          .replace(/^\s*(?:\/\/[\/!]?|\/\*+|\*+|\#+|<!--)\s*/, '')
+          .replace(/(?:\*\/|-->)\s*$/, '')
+          .trim();
+        if (!line) continue;
+
+        if (/the above copyright notice/i.test(line)) continue;
+        if (/authors or copyright holders/i.test(line)) continue;
+        if (/see the copyright file/i.test(line)) continue;
+        if (/retains? all copyright/i.test(line)) continue;
+        if (/subject to the following conditions/i.test(line)) continue;
+
+        const match = line.match(
+          /^(?:(?:\(c\)|©)\s+[0-9]{4}|copyright\s+(?:\(c\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/i
+        );
+        if (match) {
+          let cleaned = match[0].trim();
+          cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
+          cleaned = cleaned.replace(/\s+See the\b.*/i, '');
+          cleaned = cleaned.trim();
+          if (cleaned.length > 0 && !seenNotice.has(cleaned)) {
+            seenNotice.add(cleaned);
+            notices.push({ notice: cleaned, file: f.rel });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  notices.sort((a, b) => compareStrings(a.notice, b.notice) || compareStrings(a.file, b.file));
+  return notices;
+}
+
 export function collectCargoDependencies(): ComponentInfo[] {
   const cargoToml = path.join(ROOT, 'src-tauri', 'Cargo.toml');
 
@@ -604,6 +683,7 @@ export function collectCargoDependencies(): ComponentInfo[] {
       licenseFiles,
       noticeFiles,
       authors: pkg.authors,
+      packageDir: crateDir,
     });
   }
 
@@ -638,6 +718,7 @@ export function collectNpmDependencies(
       source: 'npm',
       licenseFiles,
       noticeFiles,
+      packageDir: depDir,
     });
   }
 
@@ -971,6 +1052,15 @@ export function generateNoticesMarkdown(
           ? comp.authors.join(', ')
           : PINNED_FALLBACK_ATTRIBUTIONS[key]?.author;
         lines.push(`- \`${comp.name}@${comp.version}\` - SPDX: \`${comp.license}\` (authors: ${author})`);
+
+        const pkgNotices = findPackageCopyrightNotices(comp.packageDir);
+        if (pkgNotices.length > 0) {
+          for (const n of pkgNotices) {
+            lines.push(`  - ${n.notice} (${n.file})`);
+          }
+        } else {
+          lines.push(`  - No copyright notice is shipped in the package`);
+        }
       }
       lines.push('');
 

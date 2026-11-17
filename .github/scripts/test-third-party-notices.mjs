@@ -21,6 +21,7 @@ import {
   KNOWN_NON_FREE_EXCEPTIONS,
   PINNED_FALLBACK_ATTRIBUTIONS,
   formatDiff,
+  findPackageCopyrightNotices,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -854,4 +855,38 @@ test('alloc-stdlib: copyright line matches upstream license and separates author
     content,
     /- `alloc-stdlib@0\.2\.4` - SPDX: `BSD-3-Clause` \(authors: Daniel Reiter Horn <danielrh@dropbox\.com>\)/
   );
+});
+
+test('findPackageCopyrightNotices: extracts header notices, deduplicates, and ignores boilerplate', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copyright-scan-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'lib.rs'),
+      '/*\n * Copyright (c) 2024 Test Author. (MIT License)\n * The above copyright notice and this permission notice shall be included in\n */\nfn foo() {}'
+    );
+    fs.writeFileSync(
+      path.join(tmpDir, 'README.md'),
+      '# Test\nCopyright (c) 2024 Test Author.\nSome documentation'
+    );
+    const notices = findPackageCopyrightNotices(tmpDir);
+    assert.strictEqual(notices.length, 1, 'Identical notices across files must be deduplicated');
+    assert.strictEqual(notices[0].notice, 'Copyright (c) 2024 Test Author.');
+    assert.strictEqual(notices[0].file, 'README.md');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('componentsWithoutFiles copyright notices: extracts upstream source header notices and marks packages without notices', () => {
+  const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  const mitSection = noticesContent.split('### Standard License: MIT')[1]?.split('### Standard License:')[0] || '';
+
+  // qrcodegen@1.8.0 must retain its upstream copyright notice from src/lib.rs
+  assert.match(mitSection, /`qrcodegen@1\.8\.0` - SPDX: `MIT`/);
+  assert.match(mitSection, /Copyright \(c\) Project Nayuki\. \(src\/lib\.rs\)/);
+
+  // A component without copyright notice shipped in its package must show the explicit line
+  assert.match(mitSection, /`qrcodegen-image@1\.5\.2` - SPDX: `MIT`/);
+  assert.match(mitSection, /No copyright notice is shipped in the package/);
 });
