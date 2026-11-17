@@ -1446,24 +1446,39 @@ SOFTWARE.
 - `@tauri-apps/api@2.11.0` (npm, file: `LICENSE_APACHE-2.0`)
 - `arboard@3.7.0` (cargo, file: `LICENSE-APACHE.txt`)
 - `fdeflate@0.3.7` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `field-offset@0.3.6` (cargo, file: `LICENSE-APACHE`)
 - `half@2.7.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `image@0.25.10` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2018 Guillaume Gomez (src/lib.rs)
+  - copyright (C) 1991-2014, Thomas G. Lane, Guido Vollbeding. (src/codecs/jpeg/transform.rs)
 - `image-webp@0.2.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `miniz_oxide@0.8.9` (cargo, file: `LICENSE-APACHE.md`)
 - `miniz_oxide@0.9.1` (cargo, file: `LICENSE-APACHE.md`)
 - `num-conv@0.2.2` (cargo, file: `LICENSE-Apache`)
 - `pin-project@1.1.13` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `pin-project-internal@1.1.13` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `pin-project-lite@0.2.17` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `portable-atomic@1.15.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `raw-window-handle@0.6.2` (cargo, file: `LICENSE-APACHE.md`)
 - `rpassword@7.5.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `rtoolbox@0.0.6` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) 2015-2019 Doug Tangren (src/atty.rs)
 - `simdutf8@0.1.5` (cargo, file: `LICENSE-Apache`)
+  - No copyright notice is shipped in the package
 - `swarm-discovery@0.6.3` (cargo, file: `LICENSE.Apache_2.0`)
+  - No copyright notice is shipped in the package
 - `syn-mid@0.5.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `sync_wrapper@1.0.2` (cargo, file: `LICENSE`)
+  - Copyright 2020 Actyx AG (src/lib.rs)
 - `tauri@2.11.0` (cargo, file: `LICENSE_APACHE-2.0`)
 - `tauri-build@2.6.3` (cargo, file: `LICENSE_APACHE-2.0`)
 - `tauri-codegen@2.6.3` (cargo, file: `LICENSE_APACHE-2.0`)
@@ -1484,6 +1499,7 @@ SOFTWARE.
 - `time-core@0.1.9` (cargo, file: `LICENSE-Apache`)
 - `time-macros@0.2.32` (cargo, file: `LICENSE-Apache`)
 - `widestring@1.2.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Apache License
@@ -2553,9 +2569,13 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 **Used by component(s):**
 - `adler2@2.0.1` (cargo, file: `LICENSE-APACHE`)
 - `cargo-platform@0.1.9` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@1.3.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@2.0.2` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@3.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Apache License
@@ -2862,115 +2882,202 @@ limitations under the License.
 **Used by component(s):**
 - `adler2@2.0.1` (cargo, file: `LICENSE-MIT`)
 - `allocator-api2@0.2.21` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ambient-authority@0.0.2` (cargo, file: `LICENSE-MIT`)
 - `anyhow@1.0.104` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-channel@2.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-executor@1.14.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-io@2.6.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-lock@3.4.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-process@2.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-recursion@1.1.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-signal@0.2.14` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-task@4.7.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `async-trait@0.1.92` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `atomic-waker@1.1.2` (cargo, file: `LICENSE-MIT`)
 - `blocking@1.7.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `camino@1.2.5` (cargo, file: `LICENSE-MIT`)
+  - Copyright (c) The camino Contributors (build.rs)
 - `cap-primitives@4.0.3` (cargo, file: `LICENSE-MIT`)
 - `cap-std@4.0.3` (cargo, file: `LICENSE-MIT`)
 - `cargo-platform@0.1.9` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `cargo_metadata@0.19.2` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ctrlc@3.5.2` (cargo, file: `LICENSE-MIT`)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `displaydoc@0.2.7` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `dtoa@1.0.11` (cargo, file: `LICENSE-MIT`)
+  - Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip. All (src/diyfp.rs)
 - `dyn-clone@1.0.20` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `endi@1.1.1` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `erased-serde@0.3.31` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `erased-serde@0.4.10` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `event-listener@5.4.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `event-listener-strategy@0.5.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `fastrand@2.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `fs-set-times@0.20.3` (cargo, file: `LICENSE-MIT`)
 - `futures-lite@2.6.1` (cargo, file: `LICENSE-MIT`)
 - `group@0.13.0` (cargo, file: `LICENSE-MIT`)
 - `group@0.14.0` (cargo, file: `LICENSE-MIT`)
 - `hermit-abi@0.5.3` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `indoc@2.0.7` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `io-extras@0.19.0` (cargo, file: `LICENSE-MIT`)
 - `io-lifetimes@2.0.4` (cargo, file: `LICENSE-MIT`)
 - `io-lifetimes@3.0.1` (cargo, file: `LICENSE-MIT`)
 - `itoa@1.0.18` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `lazy_static@1.5.1` (cargo, file: `LICENSE-MIT`)
+  - Copyright 2016 lazy-static.rs Developers (src/core_lazy.rs)
 - `linux-raw-sys@0.12.1` (cargo, file: `LICENSE-MIT`)
 - `minimal-lexical@0.2.1` (cargo, file: `LICENSE-MIT`)
 - `num_enum@0.7.6` (cargo, file: `LICENSE-MIT`)
 - `num_enum_derive@0.7.6` (cargo, file: `LICENSE-MIT`)
 - `once_cell@1.21.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ordered-stream@0.2.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `parking@2.2.1` (cargo, file: `LICENSE-MIT`)
 - `paste@1.0.15` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `pgp@0.21.0` (cargo, file: `LICENSE-MIT`)
+  - Copyright (C) 2017 Damien Goutte-Gattat (tests/openpgp/trust-pgp/common.scm)
+  - Copyright 2015 The OpenPGP Interoperability Project Authors. (tests/openpgp-interop/README.md)
 - `pin-project@1.1.13` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `pin-project-internal@1.1.13` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `pin-project-lite@0.2.17` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `piper@0.2.5` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `polling@3.11.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `portable-atomic@1.15.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `prettyplease@0.2.37` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@1.3.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@2.0.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `proc-macro-crate@3.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `proc-macro2@1.0.107` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `prost-reflect@0.16.5` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `prost-reflect-build@0.16.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `prost-reflect-derive@0.16.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `quote@1.0.47` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ref-cast@1.0.27` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ref-cast-impl@1.0.27` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `reflink-copy@0.1.30` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `replace_with@0.1.8` (cargo, file: `LICENSE-MIT.txt`)
+  - Copyright (c) 2016 Sgeo (src/lib.rs)
 - `rsa@0.10.0-rc.18` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `rsa@0.9.10` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `rustc-hash@2.1.3` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `rustix@1.1.6` (cargo, file: `LICENSE-MIT`)
 - `rustix-linux-procfs@0.1.1` (cargo, file: `LICENSE-MIT`)
 - `rustversion@1.0.23` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `semver@1.0.28` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `send_wrapper@0.6.0` (cargo, file: `LICENSE-MIT.txt`)
+  - Copyright 2017 Thomas Keh. (src/lib.rs)
 - `serde@1.0.229` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde-untagged@0.1.9` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_bytes@0.11.19` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_core@1.0.229` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_derive@1.0.229` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_derive_internals@0.29.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_json@1.0.154` (cargo, file: `LICENSE-MIT`)
+  - copyright Alexander Huszagh. (src/lexical/mod.rs)
 - `serde_path_to_error@0.1.20` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `serde_repr@0.1.21` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `servo_arc@0.4.3` (cargo, file: `LICENSE-MIT`)
+  - Copyright 2012-2014 The Rust Project Developers. (lib.rs)
 - `simd_cesu8@1.2.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `smol_str@0.1.24` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `syn@1.0.109` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `syn@2.0.119` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `syn@3.0.5` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `syn-mid@0.5.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `system-deps@6.2.2` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `thiserror@1.0.69` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `thiserror@2.0.21` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `thiserror-impl@1.0.69` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `thiserror-impl@2.0.21` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `typed-path@0.12.3` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `typeid@1.0.3` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `unicode-ident@1.0.24` (cargo, file: `LICENSE-MIT`)
 - `unrar@0.5.8` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `wasi@0.11.1+wasi-snapshot-preview1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `wasip2@1.0.4+wasi-0.2.12` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `wasm-streams@0.5.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `wit-bindgen@0.57.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `wmi@0.18.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `x11@2.21.0` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `x11-dl@2.21.0` (cargo, file: `LICENSE-MIT`)
@@ -3502,6 +3609,7 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `aerovault@0.6.8` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Mozilla Public License Version 2.0
@@ -4224,13 +4332,21 @@ DEALINGS IN THE SOFTWARE.
 - `asn1-rs@0.7.2` (cargo, file: `LICENSE-APACHE`)
 - `asn1-rs-derive@0.6.0` (cargo, file: `LICENSE-APACHE`)
 - `async-channel@2.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-executor@1.14.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-io@2.6.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-lock@3.4.2` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-process@2.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-recursion@1.1.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-signal@0.2.14` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-task@4.7.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `atomic-polyfill@1.0.3` (cargo, file: `LICENSE-APACHE`)
 - `atomic-waker@1.1.2` (cargo, file: `LICENSE-APACHE`)
 - `autocfg@1.5.1` (cargo, file: `LICENSE-APACHE`)
@@ -4241,10 +4357,12 @@ DEALINGS IN THE SOFTWARE.
 - `bitflags@1.3.2` (cargo, file: `LICENSE-APACHE`)
 - `bitflags@2.13.2` (cargo, file: `LICENSE-APACHE`)
 - `blocking@1.7.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `bstr@1.13.1` (cargo, file: `LICENSE-APACHE`)
 - `bumpalo@3.20.3` (cargo, file: `LICENSE-APACHE`)
 - `bzip2@0.6.1` (cargo, file: `LICENSE-APACHE`)
 - `camino@1.2.5` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (c) The camino Contributors (build.rs)
 - `cap-primitives@4.0.3` (cargo, file: `LICENSE-APACHE`)
 - `cap-std@4.0.3` (cargo, file: `LICENSE-APACHE`)
 - `cc@1.4.5` (cargo, file: `LICENSE-APACHE`)
@@ -4252,6 +4370,7 @@ DEALINGS IN THE SOFTWARE.
 - `cfg-if@1.0.4` (cargo, file: `LICENSE-APACHE`)
 - `cmake@0.1.58` (cargo, file: `LICENSE-APACHE`)
 - `concurrent-queue@2.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `core-foundation@0.10.1` (cargo, file: `LICENSE-APACHE`)
 - `core-foundation@0.9.4` (cargo, file: `LICENSE-APACHE`)
 - `core-foundation-sys@0.8.7` (cargo, file: `LICENSE-APACHE`)
@@ -4263,15 +4382,20 @@ DEALINGS IN THE SOFTWARE.
 - `crossbeam-epoch@0.9.21` (cargo, file: `LICENSE-APACHE`)
 - `crossbeam-utils@0.8.23` (cargo, file: `LICENSE-APACHE`)
 - `curve25519-dalek-derive@0.1.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `dbus-secret-service@4.1.0` (cargo, file: `LICENSE-APACHE`)
 - `der-parser@10.0.0` (cargo, file: `LICENSE-APACHE`)
 - `displaydoc@0.2.7` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `either@1.18.0` (cargo, file: `LICENSE-APACHE`)
 - `equivalent@1.0.2` (cargo, file: `LICENSE-APACHE`)
 - `errno@0.3.14` (cargo, file: `LICENSE-APACHE`)
 - `event-listener@5.4.2` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `event-listener-strategy@0.5.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `fastrand@2.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `ff@0.13.1` (cargo, file: `LICENSE-APACHE`)
 - `ff@0.14.0` (cargo, file: `LICENSE-APACHE`)
 - `filetime@0.2.29` (cargo, file: `LICENSE-APACHE`)
@@ -4283,6 +4407,7 @@ DEALINGS IN THE SOFTWARE.
 - `fs-set-times@0.20.3` (cargo, file: `LICENSE-APACHE`)
 - `futures-lite@2.6.1` (cargo, file: `LICENSE-APACHE`)
 - `gethostname@1.1.0` (cargo, file: `LICENSE`)
+  - Copyright Sebastian Wiesner <sebastian@swsnr.de> (README.md)
 - `gif@0.14.2` (cargo, file: `LICENSE-APACHE`)
 - `glob@0.3.4` (cargo, file: `LICENSE-APACHE`)
 - `group@0.13.0` (cargo, file: `LICENSE-APACHE`)
@@ -4297,6 +4422,7 @@ DEALINGS IN THE SOFTWARE.
 - `heck@0.4.1` (cargo, file: `LICENSE-APACHE`)
 - `heck@0.5.0` (cargo, file: `LICENSE-APACHE`)
 - `hermit-abi@0.5.3` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `html5ever@0.38.0` (cargo, file: `LICENSE-APACHE`)
 - `httparse@1.10.1` (cargo, file: `LICENSE-APACHE`)
 - `hyper-rustls@0.27.9` (cargo, file: `LICENSE-APACHE`)
@@ -4318,6 +4444,7 @@ DEALINGS IN THE SOFTWARE.
 - `js-sys@0.3.105` (cargo, file: `LICENSE-APACHE`)
 - `keyboard-types@0.7.0` (cargo, file: `LICENSE-APACHE`)
 - `lazy_static@1.5.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2016 lazy-static.rs Developers (src/core_lazy.rs)
 - `libappindicator@0.9.0` (cargo, file: `LICENSE-APACHE`)
 - `libssh2-sys@0.3.4` (cargo, file: `LICENSE-APACHE`)
 - `libunftp@0.24.0` (cargo, file: `LICENSE`)
@@ -4342,9 +4469,11 @@ DEALINGS IN THE SOFTWARE.
 - `oauth2@5.0.0` (cargo, file: `LICENSE-APACHE`)
 - `oid-registry@0.8.1` (cargo, file: `LICENSE-APACHE`)
 - `once_cell@1.21.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `openssl-probe@0.2.1` (cargo, file: `LICENSE-APACHE`)
 - `openssl-src@300.6.1+3.6.3` (cargo, file: `LICENSE-APACHE`)
 - `ordered-stream@0.2.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `page_size@0.6.0` (cargo, file: `LICENSE-APACHE`)
 - `parking@2.2.1` (cargo, file: `LICENSE-APACHE`)
 - `parking_lot@0.11.2` (cargo, file: `LICENSE-APACHE`)
@@ -4354,27 +4483,40 @@ DEALINGS IN THE SOFTWARE.
 - `percent-encoding@2.3.2` (cargo, file: `LICENSE-APACHE`)
 - `petgraph@0.8.3` (cargo, file: `LICENSE-APACHE`)
 - `pgp@0.21.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (C) 2017 Damien Goutte-Gattat (tests/openpgp/trust-pgp/common.scm)
+  - Copyright 2015 The OpenPGP Interoperability Project Authors. (tests/openpgp-interop/README.md)
 - `piper@0.2.5` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `pkg-config@0.3.34` (cargo, file: `LICENSE-APACHE`)
 - `png@0.17.16` (cargo, file: `LICENSE-APACHE`)
 - `png@0.18.1` (cargo, file: `LICENSE-APACHE`)
 - `polling@3.11.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `postcard@1.1.3` (cargo, file: `LICENSE-APACHE`)
 - `postcard-derive@0.2.2` (cargo, file: `LICENSE-APACHE`)
 - `primal-check@0.3.4` (cargo, file: `LICENSE-APACHE`)
 - `proc-macro-hack@0.5.20+deprecated` (cargo, file: `LICENSE-APACHE`)
 - `prost@0.14.4` (cargo, file: `LICENSE`)
+  - Copyright 2022 Dan Burkert & Tokio Contributors (README.md)
 - `prost-build@0.14.4` (cargo, file: `LICENSE`)
+  - Copyright 2017 Dan Burkert (README.md)
 - `prost-derive@0.14.4` (cargo, file: `LICENSE`)
+  - Copyright 2017 Dan Burkert (README.md)
 - `prost-reflect@0.16.5` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `prost-reflect-build@0.16.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `prost-reflect-derive@0.16.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `prost-types@0.14.4` (cargo, file: `LICENSE`)
+  - Copyright 2017 Dan Burkert (README.md)
 - `regex@1.13.1` (cargo, file: `LICENSE-APACHE`)
 - `regex-automata@0.4.18` (cargo, file: `LICENSE-APACHE`)
 - `regex-syntax@0.8.11` (cargo, file: `LICENSE-APACHE`)
 - `rsa@0.10.0-rc.18` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `rsa@0.9.10` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `rustc_version@0.4.1` (cargo, file: `LICENSE-APACHE`)
 - `rusticata-macros@4.1.0` (cargo, file: `LICENSE-APACHE`)
 - `rustix@1.1.6` (cargo, file: `LICENSE-APACHE`)
@@ -4387,31 +4529,38 @@ DEALINGS IN THE SOFTWARE.
 - `security-framework@3.7.0` (cargo, file: `LICENSE-APACHE`)
 - `security-framework-sys@2.17.0` (cargo, file: `LICENSE-APACHE`)
 - `send_wrapper@0.6.0` (cargo, file: `LICENSE-APACHE.txt`)
+  - Copyright 2017 Thomas Keh. (src/lib.rs)
 - `serde_plain@1.0.2` (cargo, file: `LICENSE-APACHE`)
 - `serde_with@3.23.0` (cargo, file: `LICENSE-APACHE`)
 - `serde_with_macros@3.23.0` (cargo, file: `LICENSE-APACHE`)
 - `servo_arc@0.4.3` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2012-2014 The Rust Project Developers. (lib.rs)
 - `signal-hook@0.3.18` (cargo, file: `LICENSE-APACHE`)
 - `signal-hook@0.4.4` (cargo, file: `LICENSE-APACHE`)
 - `signal-hook-mio@0.2.5` (cargo, file: `LICENSE-APACHE`)
 - `signal-hook-registry@1.4.8` (cargo, file: `LICENSE-APACHE`)
 - `simd_cesu8@1.2.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `similar@3.2.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `slog@2.8.2` (cargo, file: `LICENSE-APACHE`)
 - `slog-scope@4.4.1` (cargo, file: `LICENSE-APACHE`)
 - `slog-stdlog@4.1.1` (cargo, file: `LICENSE-APACHE`)
 - `smallvec@1.16.0` (cargo, file: `LICENSE-APACHE`)
 - `smol_str@0.1.24` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `socket2@0.6.5` (cargo, file: `LICENSE-APACHE`)
 - `ssh2@0.9.7` (cargo, file: `LICENSE-APACHE`)
 - `stable_deref_trait@1.2.1` (cargo, file: `LICENSE-APACHE`)
 - `string_cache@0.9.0` (cargo, file: `LICENSE-APACHE`)
 - `string_cache_codegen@0.6.1` (cargo, file: `LICENSE-APACHE`)
 - `syn@1.0.109` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `system-configuration@0.7.0` (cargo, file: `LICENSE-APACHE`)
 - `system-configuration@0.8.0` (cargo, file: `LICENSE-APACHE`)
 - `system-configuration-sys@0.6.0` (cargo, file: `LICENSE-APACHE`)
 - `system-deps@6.2.2` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `tao-macros@0.1.4` (cargo, file: `LICENSE-APACHE`)
 - `tar@0.4.46` (cargo, file: `LICENSE-APACHE`)
 - `tempfile@3.27.0` (cargo, file: `LICENSE-APACHE`)
@@ -4430,7 +4579,9 @@ DEALINGS IN THE SOFTWARE.
 - `vcpkg@0.2.15` (cargo, file: `LICENSE-APACHE`)
 - `version_check@0.9.5` (cargo, file: `LICENSE-APACHE`)
 - `wasi@0.11.1+wasi-snapshot-preview1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `wasip2@1.0.4+wasi-0.2.12` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `wasm-bindgen@0.2.128` (cargo, file: `LICENSE-APACHE`)
 - `wasm-bindgen-futures@0.4.78` (cargo, file: `LICENSE-APACHE`)
 - `wasm-bindgen-macro@0.2.128` (cargo, file: `LICENSE-APACHE`)
@@ -4441,7 +4592,9 @@ DEALINGS IN THE SOFTWARE.
 - `weezl@0.1.12` (cargo, file: `LICENSE-APACHE`)
 - `window-vibrancy@0.6.0` (cargo, file: `LICENSE-APACHE`)
 - `wit-bindgen@0.57.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `wmi@0.18.4` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `wry@0.55.1` (cargo, file: `LICENSE-APACHE`)
 - `x509-parser@0.18.1` (cargo, file: `LICENSE-APACHE`)
 - `xattr@1.6.1` (cargo, file: `LICENSE-APACHE`)
@@ -4862,56 +5015,99 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 **Used by component(s):**
 - `allocator-api2@0.2.21` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `anyhow@1.0.104` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `async-trait@0.1.92` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.3.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.4.2` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.6.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `dtoa@1.0.11` (cargo, file: `LICENSE-APACHE`)
+  - Copyright (C) 2015 THL A29 Limited, a Tencent company, and Milo Yip. All (src/diyfp.rs)
 - `dyn-clone@1.0.20` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `erased-serde@0.3.31` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `erased-serde@0.4.10` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `fastbloom@0.17.0` (cargo, file: `LICENSE-APACHE`)
 - `indoc@2.0.7` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `itoa@1.0.18` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `libc@0.2.191` (cargo, file: `LICENSE-APACHE`)
 - `litrs@1.0.0` (cargo, file: `LICENSE-APACHE`)
 - `num_enum@0.7.6` (cargo, file: `LICENSE-APACHE`)
 - `num_enum_derive@0.7.6` (cargo, file: `LICENSE-APACHE`)
 - `paste@1.0.15` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `prettyplease@0.2.37` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `proc-macro2@1.0.107` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `quote@1.0.47` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `ref-cast@1.0.27` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `ref-cast-impl@1.0.27` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `reflink-copy@0.1.30` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `rustc-hash@2.1.3` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `rustversion@1.0.23` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `ryu@1.0.23` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2018 Ulf Adams (src/common.rs)
 - `ryu-js@1.0.3` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2018 Ulf Adams (src/common.rs)
 - `semver@1.0.28` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde@1.0.229` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde-untagged@0.1.9` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_bytes@0.11.19` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_core@1.0.229` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_derive@1.0.229` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_derive_internals@0.29.1` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_json@1.0.154` (cargo, file: `LICENSE-APACHE`)
+  - copyright Alexander Huszagh. (src/lexical/mod.rs)
 - `serde_path_to_error@0.1.20` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_repr@0.1.21` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `serde_urlencoded@0.7.1` (cargo, file: `LICENSE-APACHE`)
 - `syn@2.0.119` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `syn@3.0.5` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `thiserror@1.0.69` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `thiserror@2.0.21` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `thiserror-impl@1.0.69` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `thiserror-impl@2.0.21` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `typed-path@0.12.3` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `typeid@1.0.3` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `unicode-ident@1.0.24` (cargo, file: `LICENSE-APACHE`)
 - `unrar@0.5.8` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `utf8parse@0.2.2` (cargo, file: `LICENSE-APACHE`)
 - `wasm-streams@0.5.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Apache License
@@ -5146,10 +5342,15 @@ at your option.
 - `rustix@1.1.6` (cargo, file: `LICENSE-Apache-2.0_WITH_LLVM-exception`)
 - `rustix-linux-procfs@0.1.1` (cargo, file: `LICENSE-Apache-2.0_WITH_LLVM-exception`)
 - `target-lexicon@0.12.16` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `wasi@0.11.1+wasi-snapshot-preview1` (cargo, file: `LICENSE-Apache-2.0_WITH_LLVM-exception`)
+  - No copyright notice is shipped in the package
 - `wasip2@1.0.4+wasi-0.2.12` (cargo, file: `LICENSE-Apache-2.0_WITH_LLVM-exception`)
+  - No copyright notice is shipped in the package
 - `winx@0.36.4` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `wit-bindgen@0.57.1` (cargo, file: `LICENSE-Apache-2.0_WITH_LLVM-exception`)
+  - No copyright notice is shipped in the package
 
 ```text
 Apache License
@@ -5954,7 +6155,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 - `colorchoice@1.0.5` (cargo, file: `LICENSE-APACHE`)
 - `crc32fast@1.5.1` (cargo, file: `LICENSE-APACHE`)
 - `ctor@0.8.0` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `ctor-proc-macro@0.0.7` (cargo, file: `LICENSE-APACHE`)
+  - No copyright notice is shipped in the package
 - `derive_builder@0.20.2` (cargo, file: `LICENSE-APACHE`)
 - `derive_builder_core@0.20.2` (cargo, file: `LICENSE-APACHE`)
 - `derive_builder_macro@0.20.2` (cargo, file: `LICENSE-APACHE`)
@@ -6937,6 +7140,9 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `attohttpc@0.30.1` (cargo, file: `LICENSE`)
+  - Copyright 2016 `multipart` Crate Developers (src/multipart_crate/lazy.rs)
+  - Copyright 2025 Simon Bernier St-Pierre <git.sbstp.ca@gmail.com> (src/multipart_crate/lazy.rs)
+  - Copyright 2025 github.com/sbstp (src/multipart_crate/mod.rs)
 
 ```text
 Mozilla Public License Version 2.0
@@ -8814,6 +9020,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 - `hashlink@0.9.1` (cargo, file: `LICENSE-APACHE`)
 - `minimal-lexical@0.2.1` (cargo, file: `LICENSE-APACHE`)
 - `replace_with@0.1.8` (cargo, file: `LICENSE-APACHE.txt`)
+  - Copyright (c) 2016 Sgeo (src/lib.rs)
 - `shared_library@0.1.9` (cargo, file: `LICENSE-APACHE`)
 
 ```text
@@ -9653,8 +9860,11 @@ Software.
 **Used by component(s):**
 - `blake3@1.8.7` (cargo, file: `LICENSE_CC0`)
 - `constant_time_eq@0.3.1` (cargo, file: `LICENSE-CC0`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.4.2` (cargo, file: `LICENSE-CC0`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.6.1` (cargo, file: `LICENSE-CC0`)
+  - No copyright notice is shipped in the package
 - `dunce@1.0.5` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 
@@ -11848,19 +12058,33 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `clang-sys@1.9.1` (cargo, file: `LICENSE.txt`)
+  - No copyright notice is shipped in the package
 - `cmov@0.5.4` (cargo, file: `LICENSE-APACHE`)
 - `crypto-primes@0.7.2` (cargo, file: `LICENSE-APACHE`)
 - `ctutils@0.4.5` (cargo, file: `LICENSE-APACHE`)
 - `dompurify@3.4.17` (npm, file: `LICENSE`)
+  - Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE (dist/purify.cjs.js)
 - `embed_plist@1.2.2` (cargo, file: `LICENSE-APACHE`)
 - `encode_unicode@1.0.0` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2016-2022 Torbjørn Birch Moltu (src/errors.rs)
+  - Copyright 2018 Aljoscha Meyer (src/lib.rs)
+  - Copyright 2018 Torbjørn Birch Moltu (benches/multiiterators.rs)
+  - Copyright 2018-2019 Torbjørn Birch Moltu (src/utf16_iterators.rs)
+  - Copyright 2018-2020 Torbjørn Birch Moltu (src/decoding_iterators.rs)
+  - Copyright 2018-2022 Torbjørn Birch Moltu (benches/length.rs)
 - `encoding_rs@0.8.41` (cargo, file: `LICENSE-APACHE`)
 - `flagset@0.4.7` (cargo, file: `LICENSE`)
+  - Copyright 2019 Red Hat, Inc. (src/lib.rs)
 - `hound@3.5.1` (cargo, file: `license`)
+  - Copyright (C) 2015 Ruud van Asseldonk (examples/cpal.rs)
+  - Copyright (C) 2017 Ruud van Asseldonk (examples/rms.rs)
+  - Copyright 2018 Ruud van Asseldonk (examples/append.rs)
 - `identity-hash@0.1.0` (cargo, file: `LICENSE-APACHE`)
 - `lru-slab@0.1.2` (cargo, file: `LICENSE-APACHE`)
 - `lzma-rust2@0.22.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `lzma-rust2@0.23.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `multiversion@0.9.0` (cargo, file: `LICENSE-APACHE`)
 - `multiversion-macros@0.9.0` (cargo, file: `LICENSE-APACHE`)
 - `multiversion_no_op@1.0.0` (cargo, file: `LICENSE-APACHE`)
@@ -11869,6 +12093,7 @@ DEALINGS IN THE SOFTWARE.
 - `redb@3.1.3` (cargo, file: `LICENSE-APACHE`)
 - `redb@4.2.0` (cargo, file: `LICENSE-APACHE`)
 - `russh-sftp@2.4.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `rustls-platform-verifier@0.7.0` (cargo, file: `LICENSE-APACHE`)
 - `secrecy@0.10.3` (cargo, file: `LICENSE-APACHE`)
 - `secrecy@0.8.0` (cargo, file: `LICENSE-APACHE`)
@@ -11879,8 +12104,10 @@ DEALINGS IN THE SOFTWARE.
 - `serialize-to-javascript@0.1.2` (cargo, file: `LICENSE-APACHE`)
 - `serialize-to-javascript-impl@0.1.2` (cargo, file: `LICENSE-APACHE`)
 - `sevenz-rust2@0.24.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `sigstore@0.14.0` (cargo, file: `LICENSE`)
 - `sigstore-protobuf-specs-derive@0.0.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `static_assertions@1.1.0` (cargo, file: `LICENSE-APACHE`)
 - `tinyvec@1.13.2` (cargo, file: `LICENSE-APACHE.md`)
 - `tough@0.22.0` (cargo, file: `LICENSE-APACHE`)
@@ -12662,8 +12889,11 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `constant_time_eq@0.3.1` (cargo, file: `LICENSE-MIT0`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.4.2` (cargo, file: `LICENSE-MIT0`)
+  - No copyright notice is shipped in the package
 - `constant_time_eq@0.6.1` (cargo, file: `LICENSE-MIT0`)
+  - No copyright notice is shipped in the package
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a
@@ -14578,8 +14808,11 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `cssparser@0.36.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `cssparser-macros@0.6.1` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `dompurify@3.4.17` (npm, file: `LICENSE-MPL`)
+  - Copyright (c) 2014-present, Facebook, Inc. -- license (MIT): https://github.com/babel/babel/blob/main/packages/babel-helpers/LICENSE (dist/purify.cjs.js)
 - `slog@2.8.2` (cargo, file: `LICENSE-MPL2`)
 - `slog-scope@4.4.1` (cargo, file: `LICENSE-MPL2`)
 - `slog-stdlog@4.1.1` (cargo, file: `LICENSE-MPL2`)
@@ -14993,7 +15226,9 @@ SOFTWARE.
 
 **Used by component(s):**
 - `ctor@0.8.0` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ctor-proc-macro@0.0.7` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `tinyvec@1.13.2` (cargo, file: `LICENSE-MIT.md`)
 
 ```text
@@ -17355,6 +17590,7 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `dtoa-short@0.3.5` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Mozilla Public License Version 2.0
@@ -18049,6 +18285,12 @@ SOFTWARE.
 
 **Used by component(s):**
 - `encode_unicode@1.0.0` (cargo, file: `LICENSE-MIT`)
+  - Copyright 2016-2022 Torbjørn Birch Moltu (src/errors.rs)
+  - Copyright 2018 Aljoscha Meyer (src/lib.rs)
+  - Copyright 2018 Torbjørn Birch Moltu (benches/multiiterators.rs)
+  - Copyright 2018-2019 Torbjørn Birch Moltu (src/utf16_iterators.rs)
+  - Copyright 2018-2020 Torbjørn Birch Moltu (src/decoding_iterators.rs)
+  - Copyright 2018-2022 Torbjørn Birch Moltu (benches/length.rs)
 
 ```text
 Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -18492,7 +18734,9 @@ DEALINGS IN THE SOFTWARE.
 - `error-code@3.4.0` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 - `ryu@1.0.23` (cargo, file: `LICENSE-BOOST`)
+  - Copyright 2018 Ulf Adams (src/common.rs)
 - `ryu-js@1.0.3` (cargo, file: `LICENSE-BOOST`)
+  - Copyright 2018 Ulf Adams (src/common.rs)
 - `xxhash-rust@0.8.19` (cargo, file: `LICENSE`)
   - No copyright notice is shipped in the package
 
@@ -18739,8 +18983,12 @@ THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR I
 
 **Used by component(s):**
 - `fdeflate@0.3.7` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `image@0.25.10` (cargo, file: `LICENSE-MIT`)
+  - Copyright (c) 2018 Guillaume Gomez (src/lib.rs)
+  - copyright (C) 1991-2014, Thomas G. Lane, Guido Vollbeding. (src/codecs/jpeg/transform.rs)
 - `image-webp@0.2.4` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 
 ```text
 MIT License
@@ -20620,12 +20868,15 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `half@2.7.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `ident_case@1.0.1` (cargo, file: `LICENSE`)
   - Copyright 2017 Serde Developers (src/lib.rs)
 - `papaya@0.2.5` (cargo, file: `LICENSE.md`)
   - No copyright notice is shipped in the package
 - `simdutf8@0.1.5` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 - `widestring@1.2.1` (cargo, file: `LICENSE-MIT`)
+  - No copyright notice is shipped in the package
 
 ```text
 MIT License
@@ -29081,6 +29332,7 @@ SOFTWARE.
 
 **Used by component(s):**
 - `option-ext@0.2.0` (cargo, file: `LICENSE.txt`)
+  - No copyright notice is shipped in the package
 
 ```text
 Mozilla Public License Version 2.0
@@ -41860,7 +42112,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `unic-char-property@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-char-range@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
-  - Copyright 2017 The UNIC Project Developers. (src/iter.rs)
+  - Copyright 2017 The UNIC Project Developers. (benches/benchmarks.rs)
   - Copyright 2018 The UNIC Project Developers. (src/par_iter.rs)
 - `unic-common@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
@@ -42804,7 +43056,7 @@ Authors for the following components as listed in package manifests or reviewed 
 - `unic-char-property@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
 - `unic-char-range@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
-  - Copyright 2017 The UNIC Project Developers. (src/iter.rs)
+  - Copyright 2017 The UNIC Project Developers. (benches/benchmarks.rs)
   - Copyright 2018 The UNIC Project Developers. (src/par_iter.rs)
 - `unic-common@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)

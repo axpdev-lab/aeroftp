@@ -582,6 +582,9 @@ export function findPackageCopyrightNotices(
   if (!packageDir || !fs.existsSync(packageDir)) return [];
   const files: { full: string; rel: string }[] = [];
 
+  // Every file the package ships, at any depth, as the property test in
+  // test-third-party-notices.mjs greps it; nested node_modules are other
+  // components and are scanned as themselves.
   function walk(currentDir: string, relBase: string) {
     if (!fs.existsSync(currentDir)) return;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -592,26 +595,9 @@ export function findPackageCopyrightNotices(
         if (excludedFiles && excludedFiles.includes(rel)) {
           continue;
         }
-        if (
-          relBase === '' &&
-          (/^(AUTHORS|README|COPYRIGHT|COPYING|NOTICE)/i.test(e.name) ||
-            e.name.endsWith('.rs') ||
-            e.name.endsWith('.js') ||
-            e.name.endsWith('.ts'))
-        ) {
-          files.push({ full, rel });
-        } else if (
-          relBase.startsWith('src') &&
-          (e.name.endsWith('.rs') || e.name.endsWith('.js') || e.name.endsWith('.ts'))
-        ) {
-          files.push({ full, rel });
-        }
-      } else if (e.isDirectory()) {
-        if (relBase === '' && e.name === 'src') {
-          walk(full, 'src');
-        } else if (relBase.startsWith('src')) {
-          walk(full, rel);
-        }
+        files.push({ full, rel });
+      } else if (e.isDirectory() && e.name !== 'node_modules' && e.name !== '.git') {
+        walk(full, rel);
       }
     }
   }
@@ -623,14 +609,15 @@ export function findPackageCopyrightNotices(
   const seenNotice = new Set<string>();
 
   for (const f of files) {
-    let content: string;
+    let buf: Buffer;
     try {
-      content = fs.readFileSync(f.full, 'utf8');
+      buf = fs.readFileSync(f.full);
     } catch (err: any) {
       throw new Error(`Failed to read package file at ${f.full}: ${err.message}`);
     }
-    const isSrc = f.rel.endsWith('.rs') || f.rel.endsWith('.js') || f.rel.endsWith('.ts');
-    const lines = content.split('\n').slice(0, isSrc ? 60 : 500);
+    // Binary files (a NUL byte near the start, as grep -I decides) hold no notice.
+    if (buf.subarray(0, 8000).includes(0)) continue;
+    const lines = buf.toString('utf8').split('\n');
 
     for (const rawLine of lines) {
       let line = rawLine
@@ -644,12 +631,16 @@ export function findPackageCopyrightNotices(
       if (/see the copyright file/i.test(line)) continue;
       if (/retains? all copyright/i.test(line)) continue;
       if (/subject to the following conditions/i.test(line)) continue;
+      if (/copyright (?:notice|license|holders?|owner)/i.test(line)) continue;
 
-      const match = line.match(
-        /^(?:(?:\(c\)|©)\s+[0-9]{4}|copyright\s+(?:\(c\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/i
-      );
+      // A notice at the start of the line, or a dated one inside it
+      // ("/*! regenerator-runtime -- Copyright (c) 2014-present, Facebook").
+      const match =
+        line.match(/^(?:(?:\([cC]\)|©)\s+[0-9]{4}|[Cc]opyright\s+(?:\([cC]\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/) ??
+        line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
-        let cleaned = match[0].trim();
+        // A notice inside a minified line ends where its comment does.
+        let cleaned = match[0].replace(/\s*(?:\*\/|-->).*$/, '').trim();
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
@@ -833,15 +824,32 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   const boilerplateRegex =
     /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
-  // Case 2: keyword followed by year, (c), or © anywhere on the line
-  const case2Regex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*(?:[0-9]{4}|\(c\)|©)/i;
-  // Case 1: begins the line after optional comment leader, list marker, or prefixes (SPDX-FileCopyrightText, PackageCopyrightText, Portions, Original work, All)
-  // followed by keyword (copyrights?, (c), ©) and then [0-9]{4} or [A-Z]
-  const case1Regex =
-    /^\s*(?:(?:\/\/+|\/\*+|\*+|#+|--+|;+)\s*)?(?:(?:\d+[\.\)]\s+)?all\s+|portions(?:\s+of)?\s+|original\s+work:?\s*)?(?:copyrights?|\(c\)|©|spdx-filecopyrighttext:|packagecopyrighttext:)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
+  // A keyword followed by a year, (c) or ©, anywhere on the line.
+  const datedRegex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*(?:[0-9]{4}|\(c\)|©)/i;
+  // Without a year, the keyword must begin the line (after a comment leader)
+  // and be followed by a name, which starts with a capital letter: this keeps
+  // prose such as "Copyright has been waived" out. A bare "(c)" at the start
+  // of a line is a list item in license texts (Apache-2.0 4(c) "(c) You must
+  // retain ..."), so it counts only with a year, above.
+  const lead = String.raw`^\s*(?:(?:\/\/+|\/\*+|\*+|#+|--+|;+)\s*)?`;
+  const namedRegex = new RegExp(
+    lead +
+      String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*(?:\([cC]\)|©)?\s*[\x60'"\[\(<]*[A-Z0-9]`
+  );
+  // Statements that name the holders without a name after the keyword.
+  const statementRegex = new RegExp(
+    lead +
+      String.raw`(?:(?:\d+[.)]\s+)?all\s+copyrights?\s+to\s|copyrights?\s+in\s.+\s(?:are|is)\s+(?:retained|owned|held)\s+by\s)`,
+    'i'
+  );
 
   return [...comp.licenseFiles, ...comp.noticeFiles].some((f) =>
-    f.content.split('\n').some((l) => !boilerplateRegex.test(l) && (case1Regex.test(l) || case2Regex.test(l)))
+    f.content
+      .split('\n')
+      .some(
+        (l) =>
+          !boilerplateRegex.test(l) && (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
+      )
   );
 }
 

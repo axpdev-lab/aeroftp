@@ -1207,6 +1207,33 @@ test('compMap: distinguishes Cargo and npm components with identical name and ve
   }
 });
 
+test('hasCopyrightHolderInFiles: a list item or prose after the keyword is not a holder, a dated or named one is', () => {
+  const holder = (content) =>
+    hasCopyrightHolderInFiles({ licenseFiles: [{ filename: 'LICENSE', content }], noticeFiles: [] });
+  // Apache-2.0 section 4(c) and MPL-2.0 2.1(c) are list items, not holders.
+  assert.strictEqual(holder('     (c) You must retain, in the Source form of any Derivative Works\n'), false);
+  assert.strictEqual(holder('(c) under Patent Claims infringed by Covered Software in the absence of\n'), false);
+  // Prose that starts with the keyword names no one.
+  assert.strictEqual(holder('Copyright has been waived.\n'), false);
+  assert.strictEqual(holder('copyright assignment is required to contribute to the "group" library.\n'), false);
+  // List items starting with the keyword: CC0 numbers its sections this way.
+  assert.strictEqual(holder('1. Copyright and Related Rights. A Work made available under CC0 may be\n'), false);
+  // Holders, with and without a year.
+  assert.strictEqual(holder('(c) 2020 Alice Example\n'), true);
+  assert.strictEqual(holder('Copyright (c) The camino Contributors\n'), true);
+  assert.strictEqual(holder('Copyright Mozilla Foundation\n'), true);
+  assert.strictEqual(holder('© Kornel Lesiński\n'), true);
+  assert.strictEqual(holder('// Copyright Alice Example\n'), true);
+  assert.strictEqual(holder('Copyrights in the `rustix` project are retained by their contributors.\n'), true);
+  // The full Apache-2.0 text with its appendix placeholder names no holder.
+  assert.strictEqual(
+    holder(
+      'TERMS AND CONDITIONS\n     (c) You must retain, in the Source form of any Derivative Works\n   Copyright [yyyy] [name of copyright owner]\n'
+    ),
+    false
+  );
+});
+
 test('hasCopyrightHolderInFiles: distinguishes true holders from CC0-1.0 non-holder boilerplate and respects start-of-line semantics', () => {
   const cc0Text = `Creative Commons Legal Code\n\nCC0 1.0 Universal\n\nStatement of Purpose\n\nThe laws of most jurisdictions throughout the world automatically confer exclusive Copyright and Related Rights (defined below) upon the creator and subsequent owner(s) (each and all, an "owner") of an original work of authorship and/or a database (each, a "Work").\n\n1. Copyright and Related Rights. A Work made available under CC0 may be protected by copyright and related or neighboring rights ("Copyright and Related Rights"). Copyright and Related Rights include, but are not limited to, the following:\n\n2. Waiver. To the greatest extent permitted by, but not in contravention of, applicable law, Affirmer hereby overtly, fully, permanently, irrevocably and unconditionally waives, abandons, and surrenders all of Affirmer's Copyright and Related Rights...\n\n3. Public License Fallback. ...irrevocable and unconditional license to exercise Affirmer's Copyright and Related Rights in the Work...\n`;
 
