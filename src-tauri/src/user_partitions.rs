@@ -5104,6 +5104,10 @@ thread_local! {
 /// [`delete_refresh_chain`], so no connection begins between them and reads
 /// the one left.
 ///
+/// A private token of an account other than the legacy owner is its row
+/// alone ([`private_account_delete`]): the vault key of that name is the
+/// owner's and stays, and the row's removal must succeed.
+///
 /// [`delete_refresh_chain`]: crate::providers::jottacloud::delete_refresh_chain
 pub(crate) fn delete_credential_dual_with(
     store: &CredentialStore,
@@ -5113,6 +5117,9 @@ pub(crate) fn delete_credential_dual_with(
 ) -> Result<(), String> {
     let user_id = active_user();
     crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
+        if let Some(user) = private_account_delete(user_id, credential_id)? {
+            return delete_partition_credential_checked(user, credential_id);
+        }
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
@@ -5124,18 +5131,40 @@ pub(crate) fn delete_credential_dual_with(
 }
 
 /// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
-/// from `user_id`'s partition.
+/// from `user_id`'s partition. Another account's private token: its row only,
+/// as [`delete_credential_dual_with`].
 pub fn delete_credential_for_user_dual(
     store: &CredentialStore,
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
     crate::providers::jottacloud::delete_refresh_chain(Some(user_id), credential_id, || {
+        if let Some(user) = private_account_delete(Some(user_id), credential_id)? {
+            return delete_partition_credential_checked(user, credential_id);
+        }
         store
             .delete(credential_id)
             .map_err(|e| format!("Delete credential from vault: {e}"))?;
         unmirror_deleted_credential(user_id, credential_id)
     })
+}
+
+/// `Some(user)` when deleting `credential_id` for `user` must leave the vault
+/// alone: a private token of an account other than the legacy owner, whose
+/// vault key of that name is the owner's ([`vault_copy_is_another_accounts`]).
+/// A partition DB that cannot be opened is an error before anything changes,
+/// since only the DB tells whose the vault key is; any other key never opens it.
+fn private_account_delete(
+    user_id: Option<i64>,
+    credential_id: &str,
+) -> Result<Option<i64>, String> {
+    match user_id {
+        Some(user) if private_token_type(credential_id).is_some() => {
+            let conn = open_or_init_cli()?;
+            Ok(vault_copy_is_another_accounts(&conn, user, credential_id)?.then_some(user))
+        }
+        _ => Ok(None),
+    }
 }
 
 /// Remove `credential_id` from `user_id`'s partition and return the error, for a

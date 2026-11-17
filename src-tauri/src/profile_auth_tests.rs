@@ -1863,6 +1863,8 @@ async fn a_purge_reports_the_accounts_own_token(
     users::cli_set_active_user(store, legacy_id).unwrap();
     assert!(!without_a_row.unwrap().iter().any(|removed| removed == key));
     assert!(with_its_row.unwrap().iter().any(|removed| removed == key));
+    // Neither purge took the owner's vault key of the same name.
+    assert_eq!(store.get(key).unwrap(), "owners-token");
     let conn = users::open_or_init_cli().unwrap();
     let root = store.derive_user_partition_wrapping_key();
     assert_eq!(
@@ -1901,6 +1903,16 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
             Some("legacy-owners-token"),
             "{key}"
         );
+        // A sign-out or purge through the dual deletes removes the account's
+        // row, and the owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_dual(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_dual_as(store, Some(private_id), key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
         // The rollback of a failed copy removes the account's row, and the
         // owner's vault key of the same name stays.
         users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
