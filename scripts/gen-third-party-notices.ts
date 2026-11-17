@@ -562,6 +562,15 @@ export function readPackageFiles(
     }
   }
 
+  // An SPDX document (LICENSE.spdx) declares license identifiers and a
+  // copyright line but carries no license text: it is a notice, and a package
+  // that ships nothing else gets the standard texts of its license.
+  const spdxDocuments = licenseFiles.filter((f) => /^SPDXVersion:/.test(f.content));
+  for (const f of spdxDocuments) {
+    licenseFiles.splice(licenseFiles.indexOf(f), 1);
+    noticeFiles.push(f);
+  }
+
   licenseFiles.sort((a, b) => compareStrings(a.filename, b.filename));
   noticeFiles.sort((a, b) => compareStrings(a.filename, b.filename));
   return { licenseFiles, noticeFiles };
@@ -772,14 +781,14 @@ export function collectNpmDependencies(
 
 interface LicenseTextGroup {
   text: string;
-  components: { name: string; version: string; filename: string; source: string }[];
+  components: { name: string; version: string; filename: string; source: string; isLicenseText: boolean }[];
 }
 
 export function groupLicenseTexts(components: ComponentInfo[]): {
   groupedTexts: LicenseTextGroup[];
   componentsWithoutFiles: ComponentInfo[];
 } {
-  const textMap = new Map<string, { name: string; version: string; filename: string; source: string }[]>();
+  const textMap = new Map<string, { name: string; version: string; filename: string; source: string; isLicenseText: boolean }[]>();
   const componentsWithoutFiles: ComponentInfo[] = [];
 
   for (const c of components) {
@@ -791,9 +800,9 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
     }
 
     const allFiles = [
-      ...usableLicenseFiles,
+      ...usableLicenseFiles.map((f) => ({ ...f, isLicenseText: true })),
       ...c.noticeFiles
-        .map((f) => ({ ...f, content: f.content.replace(/\r\n/g, '\n') }))
+        .map((f) => ({ ...f, content: f.content.replace(/\r\n/g, '\n'), isLicenseText: false }))
         .filter((f) => f.content.trim().length > 0),
     ];
     for (const f of allFiles) {
@@ -806,6 +815,7 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
         version: c.version,
         filename: f.filename,
         source: c.source,
+        isLicenseText: f.isLicenseText,
       });
     }
   }
@@ -834,6 +844,22 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
   });
 
   return { groupedTexts, componentsWithoutFiles };
+}
+
+/**
+ * The supplier and copyright line of the SPDX document a package ships in
+ * place of a license text (LICENSE.spdx), or null without one.
+ */
+export function spdxDocumentAttribution(comp: ComponentInfo): { author: string | null; notice: string | null; file: string } | null {
+  const doc = comp.noticeFiles.find((f) => /^SPDXVersion:/.test(f.content));
+  if (!doc) return null;
+  const field = (name: string) => doc.content.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'))?.[1].trim() ?? null;
+  const author = field('PackageSupplier')?.replace(/^(?:Organization|Person):\s*/, '') || null;
+  const copyright = field('PackageCopyrightText');
+  const notice = copyright && /[A-Za-z0-9]/.test(copyright) && !/^NOASSERTION|^NONE$/.test(copyright)
+    ? (/^(?:copyright\b|\(c\)|©)/i.test(copyright) ? copyright : `Copyright ${copyright}`)
+    : null;
+  return { author, notice, file: doc.filename };
 }
 
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
@@ -1036,7 +1062,9 @@ export function generateNoticesMarkdown(
   let groupIndex = 1;
   for (const group of groupedTexts) {
     const newAnchors: string[] = [];
-    for (const comp of group.components) {
+    // A component's anchor leads to its license text, never to a notice file
+    // or an SPDX document that only names the license.
+    for (const comp of group.components.filter((c) => c.isLicenseText)) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);
@@ -1100,7 +1128,7 @@ export function generateNoticesMarkdown(
       const key = `${comp.name}@${comp.version}`;
       const authorStr = (comp.authors && comp.authors.length > 0)
         ? comp.authors.join(', ')
-        : PINNED_FALLBACK_ATTRIBUTIONS[key]?.author;
+        : PINNED_FALLBACK_ATTRIBUTIONS[key]?.author ?? spdxDocumentAttribution(comp)?.author;
       if (!authorStr) {
         throw new Error(
           `Component ${key} has no manifest authors and is missing reviewed attribution in PINNED_FALLBACK_ATTRIBUTIONS`
@@ -1145,22 +1173,40 @@ export function generateNoticesMarkdown(
       // Sort components within group deterministically
       comps.sort((a, b) => compareStrings(a.name, b.name) || compareStrings(a.version, b.version));
 
+      const standardAnchors: string[] = [];
+      for (const comp of comps) {
+        const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
+        if (!seenAnchorIds.has(anchorId)) {
+          seenAnchorIds.add(anchorId);
+          standardAnchors.push(`<a id="${anchorId}"></a>`);
+        }
+      }
+      if (standardAnchors.length > 0) {
+        lines.push(standardAnchors.join('\n'));
+        lines.push('');
+      }
       lines.push(`### Standard License: ${licKey}`);
       lines.push('');
       lines.push('Authors for the following components as listed in package manifests or reviewed attributions:');
       for (const comp of comps) {
         const key = `${comp.name}@${comp.version}`;
+        const spdxDoc = spdxDocumentAttribution(comp);
         const author = (comp.authors && comp.authors.length > 0)
           ? comp.authors.join(', ')
-          : PINNED_FALLBACK_ATTRIBUTIONS[key]?.author;
+          : PINNED_FALLBACK_ATTRIBUTIONS[key]?.author ?? spdxDoc?.author;
         lines.push(`- \`${comp.name}@${comp.version}\` - SPDX: \`${comp.license}\` (authors: ${author})`);
 
         const excluded = [...comp.licenseFiles, ...comp.noticeFiles].map((f) => f.filename);
         const pkgNotices = findPackageCopyrightNotices(comp.packageDir, excluded);
+        if (spdxDoc?.notice) {
+          lines.push(`  - ${spdxDoc.notice} (${spdxDoc.file})`);
+        }
         if (pkgNotices.length > 0) {
           for (const n of pkgNotices) {
             lines.push(`  - ${n.notice} (${n.file})`);
           }
+        } else if (spdxDoc?.notice) {
+          // The copyright line of the SPDX document is listed above.
         } else if (comp.noticeFiles.length > 0) {
           lines.push(`  - Notice file shipped: ${comp.noticeFiles.map((f) => f.filename).join(', ')}`);
         } else {

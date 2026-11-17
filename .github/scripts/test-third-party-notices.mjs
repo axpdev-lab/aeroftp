@@ -460,6 +460,48 @@ test('readPackageFiles: a vendored library keeps its license at any depth, tests
   }
 });
 
+test('an anchor leads to license text: an SPDX document or a notice file is no license text', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spdx-document-fixture-'));
+  try {
+    const spdxOnly = path.join(tmpDir, 'spdx-only');
+    fs.mkdirSync(spdxOnly);
+    fs.writeFileSync(
+      path.join(spdxOnly, 'LICENSE.spdx'),
+      'SPDXVersion: SPDX-2.1\nPackageName: spdx-only\nPackageSupplier: Organization: The Example Programme\nPackageLicenseDeclared: MIT\nPackageCopyrightText: 2019-2022, The Example Programme\n'
+    );
+    const withNotice = path.join(tmpDir, 'with-notice');
+    fs.mkdirSync(withNotice);
+    fs.writeFileSync(path.join(withNotice, 'COPYRIGHT'), 'Copyright 2020 Notice Holder. See LICENSE-MIT.');
+    fs.writeFileSync(path.join(withNotice, 'LICENSE-MIT'), 'MIT License\n\nCopyright (c) 2020 Notice Holder\n\nPermission is hereby granted.');
+    const component = (name, dir) => ({
+      name,
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'npm',
+      packageDir: dir,
+      authors: [],
+      ...readPackageFiles(dir, `${name}@1.0.0`),
+    });
+    const spdx = component('@test/spdx-only', spdxOnly);
+    assert.deepStrictEqual(spdx.licenseFiles, [], 'an SPDX document carries no license text');
+    assert.deepStrictEqual(spdx.noticeFiles.map((f) => f.filename), ['LICENSE.spdx']);
+
+    const md = generateNoticesMarkdown([spdx, component('with-notice', withNotice)], []);
+    const after = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n').find((l) => l.startsWith('### '));
+    assert.strictEqual(after('notice-@test/spdx-only'), '### Standard License: MIT');
+    assert.match(
+      md,
+      /- `@test\/spdx-only@1\.0\.0` - SPDX: `MIT` \(authors: The Example Programme\)\n {2}- Copyright 2019-2022, The Example Programme \(LICENSE\.spdx\)\n/
+    );
+    const entry = after('notice-with-notice');
+    const body = md.slice(md.indexOf(entry));
+    assert.match(body.slice(0, body.indexOf('```text\n') + 40), /```text\nMIT License/, `${entry} must hold the license text`);
+    assert.strictEqual((md.match(/<a id="notice-with-notice"><\/a>/g) || []).length, 1);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('standard SPDX texts: preserves mandatory AND conjuncts even when expression contains OR', () => {
   const dummyComponent = {
     name: 'mixed-and-or-crate',

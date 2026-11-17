@@ -1726,13 +1726,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<a id="notice-@tauri-apps/plugin-autostart"></a>
-<a id="notice-@tauri-apps/plugin-dialog"></a>
-<a id="notice-@tauri-apps/plugin-fs"></a>
-<a id="notice-@tauri-apps/plugin-log"></a>
-<a id="notice-@tauri-apps/plugin-notification"></a>
-<a id="notice-@tauri-apps/plugin-shell"></a>
-
 ### Notice Entry 5
 
 **Used by component(s):**
@@ -6939,18 +6932,6 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org>
 ```
 
-<a id="notice-atk"></a>
-<a id="notice-cairo-rs"></a>
-<a id="notice-gdk"></a>
-<a id="notice-gdk-pixbuf"></a>
-<a id="notice-gdkx11"></a>
-<a id="notice-gio"></a>
-<a id="notice-glib"></a>
-<a id="notice-glib-macros"></a>
-<a id="notice-gtk"></a>
-<a id="notice-gtk3-macros"></a>
-<a id="notice-pango"></a>
-
 ### Notice Entry 51
 
 **Used by component(s):**
@@ -6983,16 +6964,27 @@ LGPL or other licenses. For more information check the license of each GNOME
 library.
 ```
 
+<a id="notice-atk"></a>
 <a id="notice-atk-sys"></a>
+<a id="notice-cairo-rs"></a>
 <a id="notice-cairo-sys-rs"></a>
+<a id="notice-gdk"></a>
+<a id="notice-gdk-pixbuf"></a>
 <a id="notice-gdk-pixbuf-sys"></a>
 <a id="notice-gdk-sys"></a>
 <a id="notice-gdkwayland-sys"></a>
+<a id="notice-gdkx11"></a>
 <a id="notice-gdkx11-sys"></a>
+<a id="notice-gio"></a>
 <a id="notice-gio-sys"></a>
+<a id="notice-glib"></a>
+<a id="notice-glib-macros"></a>
 <a id="notice-glib-sys"></a>
 <a id="notice-gobject-sys"></a>
+<a id="notice-gtk"></a>
 <a id="notice-gtk-sys"></a>
+<a id="notice-gtk3-macros"></a>
+<a id="notice-pango"></a>
 <a id="notice-pango-sys"></a>
 
 ### Notice Entry 52
@@ -11152,8 +11144,6 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
-
-<a id="notice-cesu8"></a>
 
 ### Notice Entry 108
 
@@ -19112,8 +19102,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-<a id="notice-fiat-crypto"></a>
-
 ### Notice Entry 225
 
 **Used by component(s):**
@@ -19129,6 +19117,8 @@ Fiat Cryptography is licensed under the MIT License <LICENSE-MIT> or
 the BSD 1-Clause License <LICENSE-BSD-1> or
 <https://spdx.org/licenses/BSD-1-Clause.html>, at your option.
 ```
+
+<a id="notice-fiat-crypto"></a>
 
 ### Notice Entry 226
 
@@ -34288,10 +34278,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-<a id="notice-rand"></a>
-<a id="notice-rand-core"></a>
-<a id="notice-rand-pcg"></a>
-
 ### Notice Entry 469
 
 **Used by component(s):**
@@ -34318,6 +34304,8 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 The Rand project includes code from the Rust project
 published under these same licenses.
 ```
+
+<a id="notice-rand"></a>
 
 ### Notice Entry 470
 
@@ -34506,6 +34494,8 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 ```
 
+<a id="notice-rand-core"></a>
+
 ### Notice Entry 471
 
 **Used by component(s):**
@@ -34562,6 +34552,8 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 ```
+
+<a id="notice-rand-pcg"></a>
 
 ### Notice Entry 473
 
@@ -43899,9 +43891,103 @@ a dedicated physical license text file in their published crate archives.
 In accordance with licensing requirements, the standard verbatim text for each applicable license is
 provided below. Authors are listed as declared in package manifests or reviewed attributions; copyright notices, where available, reproduce upstream repository declarations.
 
+<a id="notice-@tauri-apps/plugin-autostart"></a>
+<a id="notice-@tauri-apps/plugin-dialog"></a>
+<a id="notice-@tauri-apps/plugin-fs"></a>
+<a id="notice-@tauri-apps/plugin-log"></a>
+<a id="notice-@tauri-apps/plugin-notification"></a>
+<a id="notice-@tauri-apps/plugin-shell"></a>
+<a id="notice-acto"></a>
+<a id="notice-asn1-rs-impl"></a>
+<a id="notice-binary-merge"></a>
+<a id="notice-cesu8"></a>
+<a id="notice-crc24"></a>
+<a id="notice-delegate"></a>
+<a id="notice-dispatch2"></a>
+<a id="notice-enum-assoc"></a>
+<a id="notice-genawaiter-macro"></a>
+<a id="notice-genawaiter-proc-macro"></a>
+<a id="notice-gloo-timers"></a>
+<a id="notice-inplace-vec-builder"></a>
+<a id="notice-iroh-base"></a>
+<a id="notice-iroh-dns"></a>
+<a id="notice-iroh-mainline-address-lookup"></a>
+<a id="notice-iroh-mdns-address-lookup"></a>
+<a id="notice-iroh-metrics-derive"></a>
+<a id="notice-irpc-derive"></a>
+<a id="notice-jni-macros"></a>
+<a id="notice-jni-sys-macros"></a>
+<a id="notice-libappindicator-sys"></a>
+<a id="notice-mac-notification-sys"></a>
+<a id="notice-n0-error-macros"></a>
+<a id="notice-ndk"></a>
+<a id="notice-ndk-context"></a>
+<a id="notice-ndk-sys"></a>
+<a id="notice-netwatch"></a>
+<a id="notice-objc2-app-kit"></a>
+<a id="notice-objc2-cloud-kit"></a>
+<a id="notice-objc2-core-data"></a>
+<a id="notice-objc2-core-foundation"></a>
+<a id="notice-objc2-core-graphics"></a>
+<a id="notice-objc2-core-image"></a>
+<a id="notice-objc2-core-location"></a>
+<a id="notice-objc2-core-services"></a>
+<a id="notice-objc2-core-text"></a>
+<a id="notice-objc2-core-wlan"></a>
+<a id="notice-objc2-exception-helper"></a>
+<a id="notice-objc2-quartz-core"></a>
+<a id="notice-objc2-security"></a>
+<a id="notice-objc2-security-foundation"></a>
+<a id="notice-objc2-system-configuration"></a>
+<a id="notice-objc2-ui-kit"></a>
+<a id="notice-objc2-user-notifications"></a>
+<a id="notice-objc2-web-kit"></a>
+<a id="notice-pageant"></a>
+<a id="notice-portmapper"></a>
+<a id="notice-r-efi"></a>
+<a id="notice-russh"></a>
+<a id="notice-russh-cryptovec"></a>
+<a id="notice-russh-util"></a>
+<a id="notice-rustls-platform-verifier-android"></a>
+<a id="notice-sigstore-protobuf-specs"></a>
+<a id="notice-suppaftp"></a>
+<a id="notice-tauri-plugin"></a>
+<a id="notice-unftp-core"></a>
+<a id="notice-unic-char-property"></a>
+<a id="notice-unic-char-range"></a>
+<a id="notice-unic-common"></a>
+<a id="notice-unic-ucd-ident"></a>
+<a id="notice-unic-ucd-version"></a>
+<a id="notice-winapi-i686-pc-windows-gnu"></a>
+<a id="notice-winapi-x86-64-pc-windows-gnu"></a>
+
 ### Standard License: Apache-2.0
 
 Authors for the following components as listed in package manifests or reviewed attributions:
+- `@tauri-apps/plugin-autostart@2.5.1` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-dialog@2.7.3` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-fs@2.5.2` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-log@2.9.2` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-notification@2.4.0` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-shell@2.3.6` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
   - No copyright notice is shipped in the package
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
@@ -44250,6 +44336,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
+<a id="notice-alloc-stdlib"></a>
+<a id="notice-cx448"></a>
+
 ### Standard License: BSD-3-Clause
 
 Authors for the following components as listed in package manifests or reviewed attributions:
@@ -44279,6 +44368,8 @@ Redistribution and use in source and binary forms, with or without modification,
 
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+<a id="notice-clipboard-win"></a>
 
 ### Standard License: BSL-1.0
 
@@ -44829,9 +44920,50 @@ necessary.  Here is a sample; alter the names:
 That's all there is to it!
 ```
 
+<a id="notice-bitfields"></a>
+<a id="notice-bitfields-impl"></a>
+<a id="notice-block2"></a>
+<a id="notice-dlopen2"></a>
+<a id="notice-dlopen2-derive"></a>
+<a id="notice-genawaiter"></a>
+<a id="notice-lazy-regex-proc-macros"></a>
+<a id="notice-objc2"></a>
+<a id="notice-objc2-encode"></a>
+<a id="notice-objc2-foundation"></a>
+<a id="notice-qrcodegen"></a>
+<a id="notice-qrcodegen-image"></a>
+<a id="notice-sigchld"></a>
+<a id="notice-webview2-com"></a>
+<a id="notice-webview2-com-macros"></a>
+<a id="notice-webview2-com-sys"></a>
+
 ### Standard License: MIT
 
 Authors for the following components as listed in package manifests or reviewed attributions:
+- `@tauri-apps/plugin-autostart@2.5.1` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-dialog@2.7.3` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-fs@2.5.2` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-log@2.9.2` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-notification@2.4.0` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
+- `@tauri-apps/plugin-shell@2.3.6` - SPDX: `MIT OR Apache-2.0` (authors: The Tauri Programme in the Commons Conservancy)
+  - Copyright 2019-2022, The Tauri Programme in the Commons Conservancy (LICENSE.spdx)
+  - (c) 2015 - Present - The Tauri Programme within The Commons Conservancy. (README.md)
+  - Copyright 2019-2023 Tauri Programme within The Commons Conservancy (dist-js/index.cjs)
 - `acto@0.8.2` - SPDX: `Apache-2.0 OR MIT` (authors: Roland Kuhn <rk@rkuhn.info>)
   - No copyright notice is shipped in the package
 - `asn1-rs-impl@0.2.0` - SPDX: `MIT/Apache-2.0` (authors: Pierre Chifflier <chifflier@wzdftpd.net>)
@@ -45021,6 +45153,8 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
+
+<a id="notice-selectors"></a>
 
 ### Standard License: MPL-2.0
 
@@ -45403,6 +45537,8 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
   This Source Code Form is "Incompatible With Secondary Licenses", as
   defined by the Mozilla Public License, v. 2.0.
 ```
+
+<a id="notice-pharos"></a>
 
 ### Standard License: Unlicense
 
