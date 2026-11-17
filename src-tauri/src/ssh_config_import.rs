@@ -204,6 +204,12 @@ fn split_directive(line: &str) -> Option<Result<(String, Vec<String>), String>> 
     let rest = rest.strip_prefix('=').unwrap_or(rest);
     let key = key.to_lowercase();
     if key == "proxyjump" {
+        // ssh splits the line into words first (`argv_split`), so a quote
+        // left open is refused here too: `ProxyJump "j` gives "invalid
+        // quotes", while a quote inside a comment (`ProxyJump j # "x`) does not.
+        if let Err(reason) = ssh_words(rest) {
+            return Some(Err(reason));
+        }
         let jump = rest.split('#').next().unwrap_or("").trim();
         return Some(Ok((key, vec![jump.to_string()])));
     }
@@ -1616,7 +1622,8 @@ Host roundtrip
             "Host esc\n  HostName h.example.com # prod\n  User 'o\\'brien'\n  IdentityFile \"C:\\\\Keys\\\\my id\"\n  ProxyJump j1,j2 # two hops\n\n\
              Host eq\n  HostName=e.example.com\n  User = ops\n\n\
              Host m\n  HostName m.example.com\nMatch all\n  User matched\n\n\
-             Host pj\n  HostName p.example.com\n  ProxyJump jump.example.com#x\n",
+             Host pj\n  HostName p.example.com\n  ProxyJump jump.example.com#x\n\n\
+             Host pq\n  HostName q.example.com\n  ProxyJump j1 # \"x\n",
         )
         .unwrap();
         let result = import_ssh_config(&good).unwrap();
@@ -1639,6 +1646,8 @@ Host roundtrip
             ("e.example.com", "ops")
         );
         assert_eq!(by("m").username, "");
+        // A quote inside the comment of a `ProxyJump` line is not read.
+        assert_eq!(by("pq").options.as_ref().unwrap()["proxyJump"], "j1");
         // `ProxyJump` ends at a `#` even inside a word, unlike the others.
         assert_eq!(
             by("pj").options.as_ref().unwrap()["proxyJump"],
@@ -1687,6 +1696,11 @@ Host roundtrip
                 "Host fine\n  HostName f.example.com\nHost o\n  User #x\n",
                 4,
                 "gives `user` no value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nHost o\n  ProxyJump \"j\n",
+                4,
+                "leaves a quote open",
             ),
             (
                 "Host fine\n  HostName f.example.com\nHost o\n  ProxyJump #x\n",
