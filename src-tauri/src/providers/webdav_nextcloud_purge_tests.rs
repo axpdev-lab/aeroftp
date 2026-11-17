@@ -1071,7 +1071,7 @@ async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
         }));
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
     let mut provider = nextcloud_at(&format!("http://{addr}"));
 
     let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
@@ -1135,6 +1135,26 @@ async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
         ["DELETE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001"]
     );
 
+    // `.` and `..` would resolve to the trash collection and its parent.
+    hits.lock().unwrap().clear();
+    for bad in [".", "..", "..."] {
+        for op in [
+            TrashOp::Delete { id: bad.into() },
+            TrashOp::Restore { id: bad.into() },
+        ] {
+            let refused = run(&mut provider, op).await;
+            assert!(
+                matches!(refused, Err(crate::provider_trash::TrashError::BadId(_))),
+                "{bad}: {refused:?}"
+            );
+        }
+    }
+    assert!(
+        hits.lock().unwrap().is_empty(),
+        "{:?}",
+        hits.lock().unwrap()
+    );
+
     hits.lock().unwrap().clear();
     let emptied = run(
         &mut provider,
@@ -1159,5 +1179,10 @@ async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
             "PROPFIND /remote.php/dav/trashbin/user/trash/",
             "DELETE /remote.php/dav/trashbin/user/trash",
         ]
+    );
+    server.abort();
+    assert!(
+        server.await.is_err_and(|e| e.is_cancelled()),
+        "the test server must stop with the test"
     );
 }

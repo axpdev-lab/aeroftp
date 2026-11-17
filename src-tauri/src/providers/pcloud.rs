@@ -4103,7 +4103,7 @@ mod tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut provider = fixture_connected();
         provider.api_base_override = Some(format!("http://{addr}"));
         let take = || std::mem::take(&mut *calls.lock().unwrap());
@@ -4218,5 +4218,10 @@ mod tests {
             }
         );
         assert_eq!(take(), ["GET /trash_list?recursive=1", "GET /trash_clear"]);
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
     }
 }

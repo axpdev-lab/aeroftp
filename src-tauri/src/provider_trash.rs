@@ -1102,6 +1102,20 @@ async fn list(p: &mut dyn StorageProvider, kind: TrashKind, path: &str) -> Res<V
     })
 }
 
+/// A Nextcloud trash id goes into the URL as one segment with its dots
+/// encoded, and the URL parser still reads `%2E` and `%2E%2E` as `.` and
+/// `..`: the request would land on the trash collection itself (a DELETE
+/// there empties the whole trash) or on its parent. No listed id is all dots.
+fn nextcloud_item(kind: TrashKind, id: &str) -> Res<String> {
+    if id.bytes().all(|b| b == b'.') {
+        return Err(TrashError::BadId(format!(
+            "'{id}' is not a {} trash item: use an id as `trash list` shows it",
+            kind.label()
+        )));
+    }
+    Ok(id.to_string())
+}
+
 /// An id part these providers put into a request URL as it is: a number on
 /// pCloud and kDrive. Anything else is refused before any request, so an
 /// empty or crafted id can never reach, say, pCloud's `trash_clear` without
@@ -1158,7 +1172,7 @@ async fn dropbox_purge_allowed(p: &mut dyn StorageProvider) -> Res<()> {
 async fn restore(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<Option<Value>> {
     let one = [id.to_string()];
     match kind {
-        TrashKind::Nextcloud => nextcloud_restore(p, &one).await?,
+        TrashKind::Nextcloud => nextcloud_restore(p, &[nextcloud_item(kind, id)?]).await?,
         TrashKind::FileLu => filelu_restore(p, id).await?,
         TrashKind::Koofr => {
             let (mount, path) = split_id(kind, id)?;
@@ -1218,7 +1232,7 @@ async fn restore(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<
 async fn delete(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<Option<Value>> {
     let one = [id.to_string()];
     match kind {
-        TrashKind::Nextcloud => nextcloud_delete(p, &one).await?,
+        TrashKind::Nextcloud => nextcloud_delete(p, &[nextcloud_item(kind, id)?]).await?,
         TrashKind::FileLu => filelu_delete(p, id).await?,
         TrashKind::GoogleDrive => google_drive_delete(p, &one).await?,
         TrashKind::OneDrive => onedrive_delete(p, id).await?,

@@ -7321,6 +7321,10 @@ mod tests {
         .await;
         server.abort();
         assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        assert!(
             matches!(emptied, Err(TrashError::NotOffered(_))),
             "{emptied:?}"
         );

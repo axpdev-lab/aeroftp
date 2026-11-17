@@ -11499,7 +11499,7 @@ pub(crate) mod tests {
                 async move { (axum::http::StatusCode::OK, body) }
             },
         ));
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
 
         let listed = run(&mut *boxed, TrashOp::List { path: "/".into() })
             .await
@@ -11538,6 +11538,11 @@ pub(crate) mod tests {
                 "GET /trash_list?recursive=1",
                 "GET /trash_restore?fileid=4321"
             ]
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
         );
     }
 

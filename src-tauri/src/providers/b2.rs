@@ -7588,7 +7588,7 @@ mod tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut p = empty_provider();
         p.api_url = format!("http://{addr}");
         p.auth_token = SecretString::new("token".into());
@@ -7659,6 +7659,11 @@ mod tests {
             calls.lock().unwrap().is_empty(),
             "{:?}",
             calls.lock().unwrap()
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
         );
     }
 }

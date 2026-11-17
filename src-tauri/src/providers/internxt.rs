@@ -5180,7 +5180,7 @@ mod tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut p = test_provider();
         p.api_base = base;
         let take = || std::mem::take(&mut *calls.lock().unwrap());
@@ -5223,5 +5223,10 @@ mod tests {
             }
         }
         assert!(take().is_empty(), "a refused op reached the server");
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
     }
 }

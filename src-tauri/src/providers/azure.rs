@@ -4884,7 +4884,7 @@ Time:2026-01-01</Message>
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut config = test_config();
         config.endpoint = Some(format!("http://{addr}"));
         let mut provider = AzureProvider::new(config);
@@ -4939,6 +4939,11 @@ Time:2026-01-01</Message>
             }
         }
         assert!(take().is_empty(), "a refused op reached the service");
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
     }
 }
 

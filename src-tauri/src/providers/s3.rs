@@ -20865,6 +20865,10 @@ mod tests {
             })
         );
         server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
         let requests = seen.lock().unwrap().clone();
         assert_eq!(requests.len(), 2, "{requests:?}");
         assert_eq!(requests[0], "LIST prefix=");

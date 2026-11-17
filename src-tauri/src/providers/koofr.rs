@@ -2728,7 +2728,7 @@ mod tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut provider = KoofrProvider::new(KoofrConfig {
             email: "u@example.com".to_string(),
             password: secrecy::SecretString::from("p".to_string()),
@@ -2801,6 +2801,11 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             ["GET /trash?pageSize=1000 ", "DELETE /trash "]
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
         );
     }
 }

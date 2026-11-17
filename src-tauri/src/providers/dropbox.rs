@@ -4497,6 +4497,10 @@ mod tests {
             "{emptied:?}"
         );
         server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
         assert_eq!(
             *calls.lock().unwrap(),
             [
@@ -4531,6 +4535,10 @@ mod tests {
             "{emptied:?}"
         );
         server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
         assert_eq!(
             *calls.lock().unwrap(),
             [

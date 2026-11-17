@@ -2702,7 +2702,7 @@ mod tests {
         ));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.ok() });
         let mut provider = YandexDiskProvider::new("t".to_string(), None)
             .with_test_api_base(&format!("http://{addr}"));
         provider.connected = true;
@@ -2773,6 +2773,11 @@ mod tests {
                 "GET /trash/resources?path=/&limit=1000&offset=0",
                 "DELETE /trash/resources",
             ]
+        );
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
         );
     }
 }
