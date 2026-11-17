@@ -2088,6 +2088,16 @@ async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
     let prefix = normalize_path_arg(args, "prefix", "");
     let include_noncurrent = get_bool_opt(args, "include_noncurrent").unwrap_or(false);
     let backend = ctx.remote_backend(&server).await.map_err(backend_error)?;
+    // Every provider with a trash manager in the app but S3 goes through the
+    // same entry point as that manager and the CLI `trash` command. S3, and a
+    // backend without a trash, keep the actions below, unchanged.
+    if backend
+        .provider_type()
+        .await
+        .is_some_and(crate::provider_trash::has_trash_manager)
+    {
+        return provider_trash_tool(&*backend, &server, &action, args).await;
+    }
     match action.as_str() {
         "list" => {
             let entries = backend
@@ -2176,6 +2186,83 @@ async fn remote_trash(ctx: &dyn ToolCtx, args: &Value) -> Result<Value, ToolErro
                 other
             ),
         }),
+    }
+}
+
+/// `remote_trash` on a provider other than S3, through
+/// [`crate::provider_trash::run`]: action=list (with `path` where the app's
+/// trash manager lists a folder's deletions: Dropbox, B2), restore and delete
+/// by the `id` list gives, and empty, a preview unless `dry_run=false`, which
+/// also needs `confirm=true`. An action the app's trash manager does not offer
+/// on that provider is refused with what it offers.
+async fn provider_trash_tool(
+    backend: &dyn RemoteBackend,
+    server: &str,
+    action: &str,
+    args: &Value,
+) -> Result<Value, ToolError> {
+    use crate::provider_trash::{TrashError, TrashOp, TrashOutcome};
+    let invalid = |reason: String| ToolError::InvalidArgs {
+        tool: "remote_trash".to_string(),
+        reason,
+    };
+    let op = match action {
+        "list" => TrashOp::List {
+            path: normalize_path_arg(args, "path", "/"),
+        },
+        "restore" => TrashOp::Restore {
+            id: get_str(args, "id").map_err(|_| {
+                invalid("action=restore needs 'id', as action=list gives it".to_string())
+            })?,
+        },
+        "delete" | "purge" => TrashOp::Delete {
+            id: get_str(args, "id").map_err(|_| {
+                invalid(format!(
+                    "action={action} needs 'id', as action=list gives it"
+                ))
+            })?,
+        },
+        "empty" => {
+            let dry_run = get_bool_opt(args, "dry_run").unwrap_or(true);
+            if !dry_run && !get_bool_opt(args, "confirm").unwrap_or(false) {
+                return Err(invalid("action=empty with dry_run=false permanently deletes everything in the trash: set confirm=true to acknowledge it, or omit dry_run for a preview".to_string()));
+            }
+            TrashOp::Empty {
+                path: normalize_path_arg(args, "path", "/"),
+                dry_run,
+            }
+        }
+        other => {
+            return Err(invalid(format!(
+                "unknown action '{other}' (expected list, restore, delete, empty)"
+            )))
+        }
+    };
+    match backend.trash(op).await {
+        Ok(TrashOutcome::Listed { kind, items }) => Ok(json!({
+            "server": server,
+            "provider": kind,
+            "count": items.len(),
+            "entries": items,
+        })),
+        Ok(TrashOutcome::Restored { kind, id, detail }) => Ok(json!({
+            "server": server, "provider": kind, "id": id, "restored": true, "detail": detail,
+        })),
+        Ok(TrashOutcome::Deleted { kind, id, detail }) => Ok(json!({
+            "server": server, "provider": kind, "id": id, "deleted": true, "detail": detail,
+        })),
+        Ok(TrashOutcome::Emptied {
+            kind,
+            dry_run,
+            items,
+            bytes,
+        }) => Ok(json!({
+            "server": server, "provider": kind, "dry_run": dry_run, "count": items, "bytes": bytes,
+        })),
+        Err(e @ (TrashError::NoTrash | TrashError::NotOffered(_) | TrashError::BadId(_))) => {
+            Err(invalid(e.to_string()))
+        }
+        Err(e) => Err(ToolError::Exec(e.to_string())),
     }
 }
 
@@ -4844,6 +4931,8 @@ mod tests {
         /// Every `empty_object_versions` call as (prefix, include_noncurrent,
         /// dry_run), so trash tests can assert the flags the tool passed.
         empty_calls: Mutex<Vec<(String, bool, bool)>>,
+        /// Every `trash` call, so the provider-trash route can be pinned.
+        trash_ops: Mutex<Vec<crate::provider_trash::TrashOp>>,
         /// When set, `delete` fails with this message, the way a provider's
         /// `rmdir` fails on a non-empty directory.
         delete_fails_with: Option<String>,
@@ -4944,6 +5033,7 @@ mod tests {
                 deleted: Mutex::new(Vec::new()),
                 deleted_recursive: Mutex::new(Vec::new()),
                 empty_calls: Mutex::new(Vec::new()),
+                trash_ops: Mutex::new(Vec::new()),
                 delete_fails_with: None,
                 rename_fails_with: None,
                 stat_fails_with: None,
@@ -5224,6 +5314,37 @@ mod tests {
                 dry_run,
             ));
             Ok((7, 1234))
+        }
+        async fn trash(
+            &self,
+            op: crate::provider_trash::TrashOp,
+        ) -> Result<crate::provider_trash::TrashOutcome, crate::provider_trash::TrashError>
+        {
+            use crate::provider_trash::{TrashKind, TrashOp, TrashOutcome};
+            self.trash_ops.lock().unwrap().push(op.clone());
+            let kind = TrashKind::PCloud;
+            Ok(match op {
+                TrashOp::List { .. } => TrashOutcome::Listed {
+                    kind,
+                    items: vec![json!({"id": "f:42", "name": "a.txt", "size": 5})],
+                },
+                TrashOp::Restore { id } => TrashOutcome::Restored {
+                    kind,
+                    id,
+                    detail: None,
+                },
+                TrashOp::Delete { id } => TrashOutcome::Deleted {
+                    kind,
+                    id,
+                    detail: None,
+                },
+                TrashOp::Empty { dry_run, .. } => TrashOutcome::Emptied {
+                    kind,
+                    dry_run,
+                    items: Some(1),
+                    bytes: Some(5),
+                },
+            })
         }
     }
 
@@ -7683,6 +7804,110 @@ mod tests {
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].0, "");
         assert!(!calls[0].2);
+    }
+
+    fn pcloud_backend() -> Arc<FakeBackend> {
+        Arc::new(FakeBackend::sample().with_provider_type(ProviderType::PCloud))
+    }
+
+    /// A provider with a trash manager other than S3 goes to the provider
+    /// trash entry point, with the GUI's operations and the list's ids.
+    #[tokio::test]
+    async fn remote_trash_off_s3_goes_through_the_provider_trash() {
+        use crate::provider_trash::TrashOp;
+        let backend = pcloud_backend();
+        let ctx = test_ctx(Arc::clone(&backend));
+        let listed = remote_trash(&ctx, &json!({"server": "s"}))
+            .await
+            .expect("list");
+        assert_eq!(listed["entries"][0]["id"], json!("f:42"));
+        assert_eq!(listed["provider"], json!("pcloud"));
+        remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "restore", "id": "f:42"}),
+        )
+        .await
+        .expect("restore");
+        remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "delete", "id": "f:42"}),
+        )
+        .await
+        .expect("delete");
+        assert_eq!(
+            *backend.trash_ops.lock().unwrap(),
+            vec![
+                TrashOp::List { path: "/".into() },
+                TrashOp::Restore { id: "f:42".into() },
+                TrashOp::Delete { id: "f:42".into() },
+            ]
+        );
+        assert!(
+            backend.empty_calls.lock().unwrap().is_empty(),
+            "no S3 version call"
+        );
+    }
+
+    /// Off S3, empty is a preview unless dry_run=false, and a real empty also
+    /// needs confirm=true; restore without an id is refused before the call.
+    #[tokio::test]
+    async fn remote_trash_off_s3_empty_is_a_preview_and_needs_confirm() {
+        use crate::provider_trash::TrashOp;
+        let backend = pcloud_backend();
+        let ctx = test_ctx(Arc::clone(&backend));
+        let preview = remote_trash(&ctx, &json!({"server": "s", "action": "empty"}))
+            .await
+            .expect("preview");
+        assert_eq!(preview["dry_run"], json!(true));
+        let refused = remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "empty", "dry_run": false}),
+        )
+        .await;
+        assert!(
+            matches!(refused, Err(ToolError::InvalidArgs { .. })),
+            "{refused:?}"
+        );
+        let missing_id = remote_trash(&ctx, &json!({"server": "s", "action": "restore"})).await;
+        assert!(
+            matches!(missing_id, Err(ToolError::InvalidArgs { .. })),
+            "{missing_id:?}"
+        );
+        remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "empty", "dry_run": false, "confirm": true}),
+        )
+        .await
+        .expect("confirmed empty");
+        assert_eq!(
+            *backend.trash_ops.lock().unwrap(),
+            vec![
+                TrashOp::Empty {
+                    path: "/".into(),
+                    dry_run: true
+                },
+                TrashOp::Empty {
+                    path: "/".into(),
+                    dry_run: false
+                },
+            ]
+        );
+    }
+
+    /// S3, and a backend without a trash, keep the version actions.
+    #[tokio::test]
+    async fn remote_trash_on_s3_and_without_a_trash_keeps_the_version_route() {
+        for backend in [
+            Arc::new(FakeBackend::sample().with_provider_type(ProviderType::S3)),
+            Arc::new(FakeBackend::sample()),
+        ] {
+            let ctx = test_ctx(Arc::clone(&backend));
+            remote_trash(&ctx, &json!({"server": "s", "action": "empty"}))
+                .await
+                .expect("S3 preview");
+            assert_eq!(backend.empty_calls.lock().unwrap().len(), 1);
+            assert!(backend.trash_ops.lock().unwrap().is_empty());
+        }
     }
 
     /// SECVAL-A (v4.2.0 pre-release validation, lead 7): the real MCP

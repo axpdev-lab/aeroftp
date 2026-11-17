@@ -4335,4 +4335,121 @@ mod tests {
         p.set_acknowledge_abuse(false);
         assert_eq!(p.acknowledge_abuse_suffix(), "");
     }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the Drive
+    /// trash with the file id as the row id, restores and deletes by that
+    /// id, and refuses Empty before any request, as the GUI manager does.
+    #[tokio::test]
+    async fn trash_dispatch_uses_the_drive_file_id_and_refuses_empty() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    let body = String::from_utf8_lossy(&body).into_owned();
+                    seen.lock()
+                        .unwrap()
+                        .push(format!("{method} {path} {body}").trim_end().to_string());
+                    if method == axum::http::Method::GET
+                        && path == "/drive/v3/files"
+                        && query.contains("trashed=true")
+                    {
+                        return axum::Json(serde_json::json!({
+                            "files": [{
+                                "id": "FILE1",
+                                "name": "report.pdf",
+                                "mimeType": "application/pdf",
+                                "size": "42",
+                                "modifiedTime": "2026-01-02T03:04:05.000Z",
+                                "parents": ["root"]
+                            }],
+                            "incompleteSearch": false
+                        }))
+                        .into_response();
+                    }
+                    if method == axum::http::Method::PATCH && path == "/drive/v3/files/FILE1" {
+                        return axum::Json(serde_json::json!({"id": "FILE1", "trashed": false}))
+                            .into_response();
+                    }
+                    if method == axum::http::Method::DELETE && path == "/drive/v3/files/FILE1" {
+                        return axum::http::StatusCode::NO_CONTENT.into_response();
+                    }
+                    axum::http::StatusCode::BAD_REQUEST.into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("t".into());
+
+        let items = match run(&mut provider, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::GoogleDrive,
+                items,
+            }) => items,
+            other => panic!("not a Google Drive listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["id"], "FILE1", "the row id is metadata.id");
+        assert_eq!(items[0]["name"], "report.pdf");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::GoogleDrive, id: got, .. }) if got == "FILE1"),
+            "{restored:?}"
+        );
+        assert_eq!(
+            requests.lock().unwrap().last().map(String::as_str),
+            Some(r#"PATCH /drive/v3/files/FILE1 {"trashed":false}"#)
+        );
+
+        let deleted = run(&mut provider, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(
+                &deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::GoogleDrive,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        assert_eq!(
+            requests.lock().unwrap().last().map(String::as_str),
+            Some("DELETE /drive/v3/files/FILE1")
+        );
+
+        let before = requests.lock().unwrap().len();
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(emptied, Err(TrashError::NotOffered(_))),
+            "{emptied:?}"
+        );
+        let all = requests.lock().unwrap().clone();
+        assert_eq!(all.len(), before, "a refused Empty sends nothing: {all:?}");
+        assert_eq!(all.len(), 3, "list, restore, delete: {all:?}");
+    }
 }

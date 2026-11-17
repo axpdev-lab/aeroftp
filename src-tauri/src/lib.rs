@@ -915,6 +915,7 @@ mod trash_guard;
 pub use profile_export::endpoint_needs_cleartext_consent;
 mod provider_bulk_commands;
 mod provider_commands;
+pub mod provider_trash;
 // PD-CLI-CONV-B: the next four modules are exposed for the `aeroftp-cli`
 // bin so the CLI file-level batch can converge on the same provider
 // executor + orchestrator the GUI uses (sink-agnostic after

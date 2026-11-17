@@ -2077,13 +2077,13 @@ pub struct KoofrTrashEntry {
     pub mount_id: String,
 }
 
-#[tauri::command]
-pub async fn koofr_list_trash(
-    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+/// The Koofr trash rows the GUI shows: the display name decoded under a crypt
+/// overlay, `path` and `mount_id` raw so a restore round-trips them. The GUI
+/// command and [`crate::provider_trash`] both read it here.
+pub async fn trash_entries(
+    provider: &mut dyn crate::providers::StorageProvider,
 ) -> Result<Vec<KoofrTrashEntry>, String> {
-    let mut guard = state.provider.lock().await;
-    let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
+    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(provider)
         .as_any_mut()
         .downcast_mut::<KoofrProvider>()
         .ok_or("Not a Koofr connection")?;
@@ -2108,15 +2108,24 @@ pub async fn koofr_list_trash(
         // (is_dir = false): correct for standard/AeroCrypt names (type-agnostic) and
         // for rclone off-mode file leaves; an off-mode directory simply fails the
         // suffix decode and is left verbatim (decode-or-passthrough), never garbled.
-        if let Some(plain) = crate::crypt_overlay_provider::decode_overlay_trash_name(
-            &mut **provider,
-            &entry.name,
-            false,
-        ) {
+        if let Some(plain) =
+            crate::crypt_overlay_provider::decode_overlay_trash_name(provider, &entry.name, false)
+        {
             entry.name = plain;
         }
     }
     Ok(entries)
+}
+
+#[tauri::command]
+pub async fn koofr_list_trash(
+    state: tauri::State<'_, crate::provider_commands::ProviderState>,
+) -> Result<Vec<KoofrTrashEntry>, String> {
+    let mut guard = state.provider.lock().await;
+    let provider = guard.as_mut().ok_or("Not connected")?;
+    crate::provider_trash::koofr_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2126,13 +2135,7 @@ pub async fn koofr_restore_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<KoofrProvider>()
-        .ok_or("Not a Koofr connection")?;
-
-    koofr
-        .restore_from_trash(files)
+    crate::provider_trash::koofr_restore(&mut **provider, files)
         .await
         .map_err(|e| e.to_string())
 }
@@ -2143,12 +2146,9 @@ pub async fn koofr_empty_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let koofr = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<KoofrProvider>()
-        .ok_or("Not a Koofr connection")?;
-
-    koofr.empty_trash().await.map_err(|e| e.to_string())
+    crate::provider_trash::koofr_empty(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -2693,5 +2693,114 @@ mod tests {
             "{refused:?}"
         );
         assert_eq!(*calls.lock().unwrap(), ["DELETE /mounts/M/links/L-1_a"]);
+    }
+
+    /// The CLI and agent trash path reaches Koofr's own trash calls: the row
+    /// id is `<mount_id>:<path>`, restore sends that pair to
+    /// `trash/undelete`, empty lists then sends `DELETE /trash`, and delete
+    /// (which the app's trash manager does not offer) sends nothing.
+    #[tokio::test]
+    async fn trash_dispatch_restores_by_mount_and_path_and_refuses_delete() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                seen.lock().unwrap().push(format!("{method} {uri} {body}"));
+                let answer = if method == axum::http::Method::GET && uri.path() == "/trash" {
+                    serde_json::json!({
+                        "files": [{
+                            "name": "a.txt",
+                            "path": "/docs/a.txt",
+                            "mountId": "mnt-1",
+                            "size": 5,
+                            "deleted": 1_700_000_000_000_i64,
+                            "contentType": "text/plain"
+                        }]
+                    })
+                    .to_string()
+                } else {
+                    String::new()
+                };
+                async move { (axum::http::StatusCode::OK, answer) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = KoofrProvider::new(KoofrConfig {
+            email: "u@example.com".to_string(),
+            password: secrecy::SecretString::from("p".to_string()),
+            initial_path: None,
+        });
+        provider.connected = true;
+        provider.mount_id = "M".to_string();
+        provider.api_base_override = Some(format!("http://{addr}"));
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
+        let items = match listed {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::Koofr,
+                items,
+            }) => items,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        let id = items[0]["id"].as_str().expect("id").to_string();
+        assert_eq!(id, "mnt-1:/docs/a.txt");
+        assert_eq!(items[0]["mount_id"], "mnt-1");
+        assert_eq!(items[0]["original_path"], "/docs/a.txt");
+        assert_eq!(items[0]["size"], 5);
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["GET /trash?pageSize=1000 "],
+            "one trash listing"
+        );
+
+        calls.lock().unwrap().clear();
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(restored, Ok(TrashOutcome::Restored { kind: TrashKind::Koofr, ref id, .. }) if id == "mnt-1:/docs/a.txt"),
+            "{restored:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [r#"POST /trash/undelete {"files":[{"mountId":"mnt-1","path":"/docs/a.txt"}]}"#]
+        );
+
+        calls.lock().unwrap().clear();
+        let refused = run(&mut provider, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(refused, Err(TrashError::NotOffered(_))),
+            "{refused:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert_eq!(
+            emptied,
+            Ok(TrashOutcome::Emptied {
+                kind: TrashKind::Koofr,
+                dry_run: false,
+                items: Some(1),
+                bytes: Some(5),
+            })
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["GET /trash?pageSize=1000 ", "DELETE /trash "]
+        );
     }
 }

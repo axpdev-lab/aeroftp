@@ -917,6 +917,25 @@ impl RemoteBackend for TauriRemoteBackend {
                 .map_err(|e| e.to_string()),
         }
     }
+
+    async fn trash(
+        &self,
+        op: crate::provider_trash::TrashOp,
+    ) -> Result<crate::provider_trash::TrashOutcome, crate::provider_trash::TrashError> {
+        match self {
+            TauriRemoteBackend::Active { app } => {
+                if let Some(ref mut p) = *Self::active_provider(app).lock().await {
+                    return crate::provider_trash::run(&mut **p, op).await;
+                }
+                Err(crate::provider_trash::TrashError::Failed(
+                    "trash requires an active provider connection".to_string(),
+                ))
+            }
+            TauriRemoteBackend::Temp { provider } => {
+                crate::provider_trash::run(&mut **provider.lock().await, op).await
+            }
+        }
+    }
 }
 
 async fn download_provider_bytes(

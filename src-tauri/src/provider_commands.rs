@@ -11713,17 +11713,9 @@ pub async fn zoho_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
     }
 
     // Downcast to ZohoWorkdriveProvider
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    let mut entries = zoho
-        .list_trash()
+    crate::provider_trash::zoho_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete files/folders from Zoho WorkDrive trash
@@ -11741,20 +11733,9 @@ pub async fn zoho_permanent_delete(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    if file_ids.len() == 1 {
-        zoho.permanent_delete(&file_ids[0])
-            .await
-            .map_err(|e| format!("Permanent delete failed: {}", e))
-    } else {
-        zoho.permanent_delete_batch(&file_ids)
-            .await
-            .map_err(|e| format!("Permanent delete batch failed: {}", e))
-    }
+    crate::provider_trash::zoho_delete(&mut **provider, &file_ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore files/folders from Zoho WorkDrive trash to their original location
@@ -11772,20 +11753,9 @@ pub async fn zoho_restore_from_trash(
         return Err("This operation is only available for Zoho WorkDrive".to_string());
     }
 
-    let zoho = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::zoho_workdrive::ZohoWorkdriveProvider>()
-        .ok_or_else(|| "Failed to access Zoho WorkDrive provider".to_string())?;
-
-    if file_ids.len() == 1 {
-        zoho.restore_from_trash(&file_ids[0])
-            .await
-            .map_err(|e| format!("Restore failed: {}", e))
-    } else {
-        zoho.restore_from_trash_batch(&file_ids)
-            .await
-            .map_err(|e| format!("Restore batch failed: {}", e))
-    }
+    crate::provider_trash::zoho_restore(&mut **provider, &file_ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Zoho WorkDrive Label Operations ───────────────────────────────────
@@ -11892,17 +11862,9 @@ pub async fn jottacloud_list_trash(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
-        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
-
-    let mut entries = jotta
-        .list_trash()
+    crate::provider_trash::jottacloud_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Restore files from Jottacloud Trash to their original location
@@ -11920,38 +11882,9 @@ pub async fn jottacloud_restore_from_trash(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
-        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
-
-    // Aggregate the per-entry reports so the UI shows what the server
-    // actually confirmed, not what was selected (#397). A partial folder
-    // restore arrives as Err carrying its confirmed counts; the remaining
-    // selections are still attempted so one bad entry does not strand the
-    // rest, then the combined failure is reported.
-    let mut total = crate::providers::jottacloud::TrashRestoreReport::default();
-    let mut errors: Vec<String> = Vec::new();
-    for path in &paths {
-        match jotta.restore_from_trash(path).await {
-            Ok(rep) => {
-                total.files_restored += rep.files_restored;
-                total.files_already_present += rep.files_already_present;
-                total.dirs_restored += rep.dirs_restored;
-            }
-            Err(e) => errors.push(format!("Restore failed for {}: {}", path, e)),
-        }
-    }
-    if !errors.is_empty() {
-        return Err(format!(
-            "{} (overall: {} file(s) restored, {} already present, {} folder(s) revived)",
-            errors.join("; "),
-            total.files_restored,
-            total.files_already_present,
-            total.dirs_restored
-        ));
-    }
-    Ok(total)
+    crate::provider_trash::jottacloud_restore(&mut **provider, &paths)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete files from Jottacloud Trash
@@ -11969,18 +11902,9 @@ pub async fn jottacloud_permanent_delete(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
-        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
-
-    for path in &paths {
-        jotta
-            .permanent_delete_from_trash(path)
-            .await
-            .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
-    }
-    Ok(())
+    crate::provider_trash::jottacloud_delete(&mut **provider, &paths)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty the whole Jottacloud trash (`files/v1/purge_trash`, rclone's
@@ -11996,15 +11920,9 @@ pub async fn jottacloud_empty_trash(state: State<'_, ProviderState>) -> Result<(
         return Err("This operation is only available for Jottacloud".to_string());
     }
 
-    let jotta = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::jottacloud::JottacloudProvider>()
-        .ok_or_else(|| "Failed to access Jottacloud provider".to_string())?;
-
-    jotta
-        .empty_trash()
+    crate::provider_trash::jottacloud_empty(&mut **provider)
         .await
-        .map_err(|e| format!("Empty trash failed: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 // ── MEGA Trash Operations ────────────────────────────────────────────
@@ -12021,24 +11939,9 @@ pub async fn mega_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remo
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
-    {
-        return native
-            .list_trash()
-            .await
-            .map_err(|e| format!("Failed to list trash: {}", e));
-    }
-
-    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
-        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
-
-    mega.list_trash()
+    crate::provider_trash::mega_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 /// Restore files from MEGA Rubbish Bin to cloud root
@@ -12056,32 +11959,9 @@ pub async fn mega_restore_from_trash(
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
-    {
-        let cwd = native.pwd().await.unwrap_or_else(|_| "/".to_string());
-        for filename in &filenames {
-            native
-                .restore_from_trash(filename, &cwd)
-                .await
-                .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
-        }
-        return Ok(());
-    }
-
-    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
-        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
-
-    let cwd = mega.pwd().await.unwrap_or_else(|_| "/".to_string());
-    for filename in &filenames {
-        mega.restore_from_trash(filename, &cwd)
-            .await
-            .map_err(|e| format!("Restore failed for {}: {}", filename, e))?;
-    }
-    Ok(())
+    crate::provider_trash::mega_restore(&mut **provider, &filenames)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete files from MEGA Rubbish Bin
@@ -12099,30 +11979,9 @@ pub async fn mega_permanent_delete(
         return Err("This operation is only available for MEGA".to_string());
     }
 
-    if let Some(native) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega_native::MegaNativeProvider>()
-    {
-        for filename in &filenames {
-            native
-                .permanent_delete_from_trash(filename)
-                .await
-                .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
-        }
-        return Ok(());
-    }
-
-    let mega = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::mega::MegaCmdProvider>()
-        .ok_or_else(|| "Failed to access MEGA provider".to_string())?;
-
-    for filename in &filenames {
-        mega.permanent_delete_from_trash(filename)
-            .await
-            .map_err(|e| format!("Permanent delete failed for {}: {}", filename, e))?;
-    }
-    Ok(())
+    crate::provider_trash::mega_delete(&mut **provider, &filenames)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── Google Drive Trash Operations ────────────────────────────────────
@@ -12141,17 +12000,9 @@ pub async fn google_drive_list_trash(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
-
-    let mut entries = gdrive
-        .list_trash()
+    crate::provider_trash::google_drive_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Restore files from Google Drive Trash
@@ -12169,18 +12020,9 @@ pub async fn google_drive_restore_from_trash(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
-
-    for file_id in &file_ids {
-        gdrive
-            .restore_from_trash(file_id)
-            .await
-            .map_err(|e| format!("Restore failed for {}: {}", file_id, e))?;
-    }
-    Ok(())
+    crate::provider_trash::google_drive_restore(&mut **provider, &file_ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete files from Google Drive Trash
@@ -12198,18 +12040,9 @@ pub async fn google_drive_permanent_delete(
         return Err("This operation is only available for Google Drive".to_string());
     }
 
-    let gdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::google_drive::GoogleDriveProvider>()
-        .ok_or_else(|| "Failed to access Google Drive provider".to_string())?;
-
-    for file_id in &file_ids {
-        gdrive
-            .permanent_delete(file_id)
-            .await
-            .map_err(|e| format!("Permanent delete failed for {}: {}", file_id, e))?;
-    }
-    Ok(())
+    crate::provider_trash::google_drive_delete(&mut **provider, &file_ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ── OpenDrive Trash Operations ──────────────────────────────────────
@@ -12228,17 +12061,9 @@ pub async fn opendrive_list_trash(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
-        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
-
-    let mut entries = opendrive
-        .list_trash()
+    crate::provider_trash::opendrive_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Restore items from OpenDrive Trash.
@@ -12256,18 +12081,10 @@ pub async fn opendrive_restore_from_trash(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
-        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
-
-    for item in &items {
-        opendrive
-            .restore_from_trash(&item.item_id, item.is_dir)
-            .await
-            .map_err(|e| format!("Restore failed for {}: {}", item.item_id, e))?;
-    }
-    Ok(())
+    let items: Vec<(String, bool)> = items.into_iter().map(|i| (i.item_id, i.is_dir)).collect();
+    crate::provider_trash::opendrive_restore(&mut **provider, &items)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete items from OpenDrive Trash.
@@ -12285,18 +12102,10 @@ pub async fn opendrive_permanent_delete(
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
-        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
-
-    for item in &items {
-        opendrive
-            .permanent_delete_from_trash(&item.item_id, item.is_dir)
-            .await
-            .map_err(|e| format!("Permanent delete failed for {}: {}", item.item_id, e))?;
-    }
-    Ok(())
+    let items: Vec<(String, bool)> = items.into_iter().map(|i| (i.item_id, i.is_dir)).collect();
+    crate::provider_trash::opendrive_delete(&mut **provider, &items)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty OpenDrive Trash.
@@ -12311,15 +12120,9 @@ pub async fn opendrive_empty_trash(state: State<'_, ProviderState>) -> Result<()
         return Err("This operation is only available for OpenDrive".to_string());
     }
 
-    let opendrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::opendrive::OpenDriveProvider>()
-        .ok_or_else(|| "Failed to access OpenDrive provider".to_string())?;
-
-    opendrive
-        .empty_trash()
+    crate::provider_trash::opendrive_empty(&mut **provider)
         .await
-        .map_err(|e| format!("Empty trash failed: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 /// Set OpenDrive privacy for a file or folder.
@@ -12512,17 +12315,9 @@ pub async fn yandex_list_trash(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
-        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
-
-    let mut entries = yandex
-        .list_trash()
+    crate::provider_trash::yandex_list(&mut **provider)
         .await
-        .map_err(|e| format!("Failed to list trash: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Restore items from Yandex Disk trash
@@ -12540,18 +12335,9 @@ pub async fn yandex_restore_from_trash(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
-        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
-
-    for path in &paths {
-        yandex
-            .restore_from_trash(path)
-            .await
-            .map_err(|e| format!("Restore failed for {}: {}", path, e))?;
-    }
-    Ok(())
+    crate::provider_trash::yandex_restore(&mut **provider, &paths)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete items from Yandex Disk trash
@@ -12569,18 +12355,9 @@ pub async fn yandex_permanent_delete(
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
-        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
-
-    for path in &paths {
-        yandex
-            .permanent_delete_from_trash(path)
-            .await
-            .map_err(|e| format!("Permanent delete failed for {}: {}", path, e))?;
-    }
-    Ok(())
+    crate::provider_trash::yandex_delete(&mut **provider, &paths)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty Yandex Disk trash
@@ -12595,15 +12372,9 @@ pub async fn yandex_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
         return Err("This operation is only available for Yandex Disk".to_string());
     }
 
-    let yandex = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::yandex_disk::YandexDiskProvider>()
-        .ok_or_else(|| "Failed to access Yandex Disk provider".to_string())?;
-
-    yandex
-        .empty_trash()
+    crate::provider_trash::yandex_empty(&mut **provider)
         .await
-        .map_err(|e| format!("Empty trash failed: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 // ─── Box-Specific Commands ────────────────────────────────────────────────
@@ -12616,16 +12387,9 @@ pub async fn box_list_trash(state: State<'_, ProviderState>) -> Result<Vec<Remot
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
-        .ok_or_else(|| "Box downcast failed".to_string())?;
-    let mut entries = bx
-        .list_trash()
+    crate::provider_trash::box_list(&mut **provider)
         .await
-        .map_err(|e| format!("List trash failed: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Move files/folders to Box trash (soft delete)
@@ -12662,13 +12426,9 @@ pub async fn box_restore_from_trash(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
-        .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.restore_from_trash(&item_id, &item_type)
+    crate::provider_trash::box_restore(&mut **provider, &item_id, &item_type)
         .await
-        .map_err(|e| format!("Restore failed: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete an item from Box trash
@@ -12683,13 +12443,9 @@ pub async fn box_permanent_delete(
     if provider.provider_type() != ProviderType::Box {
         return Err("Only available for Box".to_string());
     }
-    let bx = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::box_provider::BoxProvider>()
-        .ok_or_else(|| "Box downcast failed".to_string())?;
-    bx.permanent_delete_from_trash(&item_id, &item_type)
+    crate::provider_trash::box_delete(&mut **provider, &item_id, &item_type)
         .await
-        .map_err(|e| format!("Permanent delete failed: {}", e))
+        .map_err(|e| e.to_string())
 }
 
 /// List comments on a Box file
@@ -13132,11 +12888,9 @@ pub async fn filelu_list_deleted(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
-        .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.list_deleted_files().await.map_err(|e| e.to_string())
+    crate::provider_trash::filelu_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a deleted file from FileLu trash by file_code.
@@ -13150,11 +12904,7 @@ pub async fn filelu_restore_file(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
-        .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.restore_deleted_file(&file_code)
+    crate::provider_trash::filelu_restore(&mut **provider, &file_code)
         .await
         .map_err(|e| e.to_string())
 }
@@ -13170,11 +12920,7 @@ pub async fn filelu_permanent_delete(
     if provider.provider_type() != ProviderType::FileLu {
         return Err("Only available for FileLu".to_string());
     }
-    let fl = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::filelu::FileLuProvider>()
-        .ok_or_else(|| "FileLu downcast failed".to_string())?;
-    fl.permanent_delete_file(&file_code)
+    crate::provider_trash::filelu_delete(&mut **provider, &file_code)
         .await
         .map_err(|e| e.to_string())
 }
@@ -13299,13 +13045,9 @@ pub async fn dropbox_list_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    let mut entries = db.list_deleted(&path).await.map_err(|e| e.to_string())?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+    crate::provider_trash::dropbox_list(&mut **provider, &path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a file from Dropbox trash
@@ -13320,11 +13062,7 @@ pub async fn dropbox_restore_from_trash(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.restore_file(&path, &rev)
+    crate::provider_trash::dropbox_restore(&mut **provider, &path, &rev)
         .await
         .map_err(|e| e.to_string())
 }
@@ -13340,11 +13078,9 @@ pub async fn dropbox_permanent_delete(
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.permanent_delete(&path).await.map_err(|e| e.to_string())
+    crate::provider_trash::dropbox_delete(&mut **provider, &path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Return the Dropbox account tier ("basic" | "pro" | "business"). The GUI
@@ -13357,11 +13093,9 @@ pub async fn dropbox_account_type(state: State<'_, ProviderState>) -> Result<Str
     if provider.provider_type() != ProviderType::Dropbox {
         return Err("Only available for Dropbox".to_string());
     }
-    let db = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::dropbox::DropboxProvider>()
-        .ok_or_else(|| "Dropbox downcast failed".to_string())?;
-    db.account_type().await.map_err(|e| e.to_string())
+    crate::provider_trash::dropbox_account_type(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── OneDrive Extended Commands ───────────────────────────────────────────
@@ -13376,13 +13110,9 @@ pub async fn onedrive_list_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
-        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    let mut entries = od.list_trash().await.map_err(|e| e.to_string())?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+    crate::provider_trash::onedrive_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore an item from OneDrive recycle bin
@@ -13396,11 +13126,7 @@ pub async fn onedrive_restore_from_trash(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
-        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    od.restore_from_trash(&item_id)
+    crate::provider_trash::onedrive_restore(&mut **provider, &item_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -13416,11 +13142,7 @@ pub async fn onedrive_permanent_delete(
     if provider.provider_type() != ProviderType::OneDrive {
         return Err("Only available for OneDrive".to_string());
     }
-    let od = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::onedrive::OneDriveProvider>()
-        .ok_or_else(|| "OneDrive downcast failed".to_string())?;
-    od.permanent_delete(&item_id)
+    crate::provider_trash::onedrive_delete(&mut **provider, &item_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16119,12 +15841,9 @@ pub async fn s3_list_trash(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Trash browse is only available for S3".into());
     }
-    let mut entries = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .list_object_versions(&prefix, include_noncurrent)
+    crate::provider_trash::s3_list(&mut **provider, &prefix, include_noncurrent)
         .await
-        .map_err(|e| format!("List trash failed: {}", e))?;
-    crate::crypt_overlay_provider::decode_overlay_trash_keys(&mut **provider, &mut entries);
-    Ok(entries)
+        .map_err(|e| e.to_string())
 }
 
 /// Act on one trash entry (identified by its raw `key` + `version_id`):
@@ -16148,21 +15867,9 @@ pub async fn s3_restore_from_trash(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Trash restore is only available for S3".into());
     }
-    let s3 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider);
-    match mode.as_str() {
-        "copy_forward" => s3
-            .restore_version(&key, &version_id)
-            .await
-            .map_err(|e| format!("Restore from trash failed: {}", e)),
-        "undelete" | "purge" => s3
-            .delete_version(&key, &version_id)
-            .await
-            .map_err(|e| format!("Restore from trash failed: {}", e)),
-        other => Err(format!(
-            "Unknown trash mode '{}' (expected 'undelete', 'copy_forward', or 'purge')",
-            other
-        )),
-    }
+    crate::provider_trash::s3_restore(&mut **provider, &key, &version_id, &mode)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Empty the S3 trash under `prefix`, purging every version and delete marker in
@@ -16180,10 +15887,10 @@ pub async fn s3_empty_trash(
     if provider.provider_type() != ProviderType::S3 {
         return Err("Empty trash is only available for S3".into());
     }
-    let (count, bytes) = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .empty_object_versions(&prefix, include_noncurrent, dry_run)
-        .await
-        .map_err(|e| format!("Empty trash failed: {}", e))?;
+    let (count, bytes) =
+        crate::provider_trash::s3_empty(&mut **provider, &prefix, include_noncurrent, dry_run)
+            .await
+            .map_err(|e| e.to_string())?;
     Ok(S3EmptyTrashSummary {
         count,
         bytes,
@@ -16225,11 +15932,9 @@ pub async fn azure_list_deleted_blobs(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::azure::AzureProvider>()
-        .ok_or("Failed to access Azure provider")?;
-    azure.list_deleted_blobs().await.map_err(|e| e.to_string())
+    crate::provider_trash::azure_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Undelete a soft-deleted Azure blob
@@ -16244,15 +15949,10 @@ pub async fn azure_undelete_blob(
     if provider.provider_type() != ProviderType::Azure {
         return Err("Only available for Azure".into());
     }
-    let azure = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::azure::AzureProvider>()
-        .ok_or("Failed to access Azure provider")?;
     let resolved_path = path
         .or(blob_name)
         .ok_or_else(|| "Missing path or blobName".to_string())?;
-    azure
-        .undelete_blob(&resolved_path)
+    crate::provider_trash::azure_undelete(&mut **provider, &resolved_path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16269,13 +15969,9 @@ pub async fn internxt_list_trash(
     if provider.provider_type() != ProviderType::Internxt {
         return Err("Only available for Internxt".into());
     }
-    let internxt = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::internxt::InternxtProvider>()
-        .ok_or("Failed to access Internxt provider")?;
-    let mut entries = internxt.list_trash().await.map_err(|e| e.to_string())?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+    crate::provider_trash::internxt_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// List items in the pCloud trash
@@ -16288,13 +15984,9 @@ pub async fn pcloud_list_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
-        .ok_or("Failed to access pCloud provider")?;
-    let mut entries = pcloud.list_trash().await.map_err(|e| e.to_string())?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+    crate::provider_trash::pcloud_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore item from pCloud trash
@@ -16309,12 +16001,7 @@ pub async fn pcloud_restore_from_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
-        .ok_or("Failed to access pCloud provider")?;
-    pcloud
-        .restore_from_trash(&id, is_folder)
+    crate::provider_trash::pcloud_restore(&mut **provider, &id, is_folder)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16327,11 +16014,9 @@ pub async fn pcloud_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
-        .ok_or("Failed to access pCloud provider")?;
-    pcloud.empty_trash().await.map_err(|e| e.to_string())
+    crate::provider_trash::pcloud_empty(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Permanently delete a single item from pCloud trash
@@ -16346,12 +16031,7 @@ pub async fn pcloud_permanently_delete_trash(
     if provider.provider_type() != ProviderType::PCloud {
         return Err("Only available for pCloud".into());
     }
-    let pcloud = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::pcloud::PCloudProvider>()
-        .ok_or("Failed to access pCloud provider")?;
-    pcloud
-        .permanent_delete_from_trash(&id, is_folder)
+    crate::provider_trash::pcloud_delete(&mut **provider, &id, is_folder)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16368,13 +16048,9 @@ pub async fn kdrive_list_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
-        .ok_or("Failed to access kDrive provider")?;
-    let mut entries = kdrive.list_trash().await.map_err(|e| e.to_string())?;
-    crate::crypt_overlay_provider::decode_overlay_trash_names(&mut **provider, &mut entries);
-    Ok(entries)
+    crate::provider_trash::kdrive_list(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore item from kDrive trash
@@ -16388,12 +16064,7 @@ pub async fn kdrive_restore_from_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
-        .ok_or("Failed to access kDrive provider")?;
-    kdrive
-        .restore_from_trash(&file_id)
+    crate::provider_trash::kdrive_restore(&mut **provider, &file_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16409,12 +16080,7 @@ pub async fn kdrive_permanently_delete_trash(
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
-        .ok_or("Failed to access kDrive provider")?;
-    kdrive
-        .permanently_delete_trash(&file_id)
+    crate::provider_trash::kdrive_delete(&mut **provider, &file_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16427,11 +16093,9 @@ pub async fn kdrive_empty_trash(state: State<'_, ProviderState>) -> Result<(), S
     if provider.provider_type() != ProviderType::KDrive {
         return Err("Only available for kDrive".into());
     }
-    let kdrive = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::kdrive::KDriveProvider>()
-        .ok_or("Failed to access kDrive provider")?;
-    kdrive.empty_trash().await.map_err(|e| e.to_string())
+    crate::provider_trash::kdrive_empty(&mut **provider)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 // ─── Backblaze B2 native: hide / restore / permanent-delete ────────────────
@@ -16456,11 +16120,9 @@ pub async fn b2_list_hidden(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::B2Provider>()
-        .ok_or_else(|| "B2 downcast failed".to_string())?;
-    b2.list_hidden_files(&path).await.map_err(|e| e.to_string())
+    crate::provider_trash::b2_list(&mut **provider, &path)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Restore a soft-deleted B2 file by removing its hide marker. The previous
@@ -16476,11 +16138,7 @@ pub async fn b2_restore_hidden(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::B2Provider>()
-        .ok_or_else(|| "B2 downcast failed".to_string())?;
-    b2.restore_hidden_file(&path)
+    crate::provider_trash::b2_restore(&mut **provider, &path)
         .await
         .map_err(|e| e.to_string())
 }
@@ -16498,11 +16156,7 @@ pub async fn b2_permanent_delete(
     if provider.provider_type() != ProviderType::Backblaze {
         return Err("Only available for Backblaze B2".to_string());
     }
-    let b2 = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<crate::providers::B2Provider>()
-        .ok_or_else(|| "B2 downcast failed".to_string())?;
-    b2.permanent_delete_path(&path)
+    crate::provider_trash::b2_delete(&mut **provider, &path)
         .await
         .map_err(|e| e.to_string())
 }

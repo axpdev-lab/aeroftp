@@ -20654,6 +20654,231 @@ mod tests {
             Some((" ".to_string(), Some("v1".to_string())))
         );
     }
+
+    /// The CLI and agent trash path reaches the S3 version calls the GUI
+    /// uses. A delete marker's id (`m:`) restores by deleting that marker
+    /// (undelete), an older version's id (`v:`) restores by copying it
+    /// forward, delete purges the named version, and empty is one batch
+    /// delete of the soft-deleted rows under the bucket root only.
+    #[tokio::test]
+    async fn trash_dispatch_undeletes_a_marker_and_copies_a_version_forward() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        const VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+    <IsTruncated>false</IsTruncated>
+    <DeleteMarker>
+        <Key>docs/report.pdf</Key>
+        <VersionId>del-marker-001</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-09T10:00:00.000Z</LastModified>
+    </DeleteMarker>
+    <Version>
+        <Key>docs/report.pdf</Key>
+        <VersionId>v-002</VersionId>
+        <IsLatest>false</IsLatest>
+        <LastModified>2026-07-08T09:00:00.000Z</LastModified>
+        <Size>2048</Size>
+    </Version>
+    <Version>
+        <Key>photos/cat.jpg</Key>
+        <VersionId>v-100</VersionId>
+        <IsLatest>true</IsLatest>
+        <LastModified>2026-07-07T08:00:00.000Z</LastModified>
+        <Size>512000</Size>
+    </Version>
+    <Version>
+        <Key>photos/cat.jpg</Key>
+        <VersionId>v-099</VersionId>
+        <IsLatest>false</IsLatest>
+        <LastModified>2026-07-06T08:00:00.000Z</LastModified>
+        <Size>499000</Size>
+    </Version>
+</ListVersionsResult>"#;
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let log = seen.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let log = log.clone();
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let path = req.uri().path().to_string();
+                    let query = req.uri().query().unwrap_or("").to_string();
+                    let copy = req
+                        .headers()
+                        .get("x-amz-copy-source")
+                        .and_then(|v| v.to_str().ok())
+                        .map(|v| format!(" copy={v}"))
+                        .unwrap_or_default();
+                    let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    let body = String::from_utf8_lossy(&bytes).to_string();
+                    let (status, answer) = if method == "GET" && query.contains("versions") {
+                        let prefix = query
+                            .split('&')
+                            .find_map(|pair| pair.strip_prefix("prefix="))
+                            .unwrap_or("");
+                        log.lock().unwrap().push(format!("LIST prefix={prefix}"));
+                        (200, VERSIONS.to_string())
+                    } else if method == "POST" && query.contains("delete") {
+                        log.lock()
+                            .unwrap()
+                            .push(format!("POST {path}?{query} {body}"));
+                        (200, "<DeleteResult/>".to_string())
+                    } else {
+                        log.lock()
+                            .unwrap()
+                            .push(format!("{method} {path}?{query}{copy}"));
+                        match method.as_str() {
+                            "DELETE" => (204, String::new()),
+                            "PUT" => (
+                                200,
+                                "<CopyObjectResult><ETag>\"e\"</ETag></CopyObjectResult>"
+                                    .to_string(),
+                            ),
+                            _ => (405, String::new()),
+                        }
+                    };
+                    axum::http::Response::builder()
+                        .status(status)
+                        .header("content-length", answer.len().to_string())
+                        .body(axum::body::Body::from(answer))
+                        .unwrap()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = make_provider(Some(&format!("http://{addr}")));
+        provider.connected = true;
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
+        let items = match listed {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::S3,
+                items,
+            }) => items,
+            other => panic!("{other:?}"),
+        };
+        let ids: Vec<&str> = items.iter().filter_map(|i| i["id"].as_str()).collect();
+        // The live `photos/cat.jpg` is not soft-deleted, so its older
+        // version stays out of the trash without include_noncurrent.
+        assert_eq!(
+            ids,
+            [
+                "m:del-marker-001:docs/report.pdf",
+                "v:v-002:docs/report.pdf"
+            ]
+        );
+        assert_eq!(items[0]["name"], "docs/report.pdf");
+        assert_eq!(items[0]["restorable"], true);
+        assert_eq!(items[1]["restorable"], true);
+        assert_eq!(*seen.lock().unwrap(), ["LIST prefix="]);
+
+        seen.lock().unwrap().clear();
+        let undeleted = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: "m:del-marker-001:docs/report.pdf".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                undeleted,
+                Ok(TrashOutcome::Restored {
+                    kind: TrashKind::S3,
+                    ..
+                })
+            ),
+            "{undeleted:?}"
+        );
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["DELETE /test-bucket/docs/report.pdf?versionId=del-marker-001"]
+        );
+
+        seen.lock().unwrap().clear();
+        let copied = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: "v:v-002:docs/report.pdf".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                copied,
+                Ok(TrashOutcome::Restored {
+                    kind: TrashKind::S3,
+                    ..
+                })
+            ),
+            "{copied:?}"
+        );
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["PUT /test-bucket/docs/report.pdf? copy=/test-bucket/docs/report.pdf?versionId=v-002"]
+        );
+
+        seen.lock().unwrap().clear();
+        let purged = run(
+            &mut provider,
+            TrashOp::Delete {
+                id: "v:v-002:docs/report.pdf".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                purged,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::S3,
+                    ..
+                })
+            ),
+            "{purged:?}"
+        );
+        assert_eq!(
+            *seen.lock().unwrap(),
+            ["DELETE /test-bucket/docs/report.pdf?versionId=v-002"]
+        );
+
+        seen.lock().unwrap().clear();
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/docs".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert_eq!(
+            emptied,
+            Ok(TrashOutcome::Emptied {
+                kind: TrashKind::S3,
+                dry_run: false,
+                items: Some(2),
+                bytes: Some(2048),
+            })
+        );
+        server.abort();
+        let requests = seen.lock().unwrap().clone();
+        assert_eq!(requests.len(), 2, "{requests:?}");
+        assert_eq!(requests[0], "LIST prefix=");
+        assert!(
+            requests[1].starts_with("POST /test-bucket/?delete")
+                && requests[1].contains(
+                    "<Object><Key>docs/report.pdf</Key><VersionId>del-marker-001</VersionId></Object>"
+                )
+                && requests[1]
+                    .contains("<Object><Key>docs/report.pdf</Key><VersionId>v-002</VersionId></Object>")
+                && !requests[1].contains("photos/cat.jpg"),
+            "{requests:?}"
+        );
+    }
 }
 
 #[cfg(test)]

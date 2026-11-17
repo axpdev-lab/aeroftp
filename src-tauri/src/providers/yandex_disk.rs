@@ -758,7 +758,9 @@ impl YandexDiskProvider {
         loop {
             let url = format!(
                 "{}/trash/resources?path=/&limit={}&offset={}",
-                API_BASE, limit, offset
+                self.api_base(),
+                limit,
+                offset
             );
             let resp = self
                 .send_with_reauth(|this| {
@@ -798,7 +800,11 @@ impl YandexDiskProvider {
     /// Restore a resource from trash.
     pub async fn restore_from_trash(&mut self, trash_path: &str) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
-        let url = format!("{}/trash/resources/restore?path={}", API_BASE, encoded);
+        let url = format!(
+            "{}/trash/resources/restore?path={}",
+            self.api_base(),
+            encoded
+        );
         let resp = self
             .send_with_reauth(|this| {
                 this.client
@@ -812,7 +818,7 @@ impl YandexDiskProvider {
 
     /// Empty the entire trash.
     pub async fn empty_trash(&mut self) -> Result<(), ProviderError> {
-        let url = format!("{}/trash/resources", API_BASE);
+        let url = format!("{}/trash/resources", self.api_base());
         let resp = self
             .send_with_reauth(|this| {
                 this.client
@@ -830,7 +836,7 @@ impl YandexDiskProvider {
         trash_path: &str,
     ) -> Result<(), ProviderError> {
         let encoded = urlencoding::encode(trash_path);
-        let url = format!("{}/trash/resources?path={}", API_BASE, encoded);
+        let url = format!("{}/trash/resources?path={}", self.api_base(), encoded);
         let resp = self
             .send_with_reauth(|this| {
                 this.client
@@ -2637,5 +2643,136 @@ mod tests {
         assert_eq!(hints.multipart_max_parallel, 1);
         assert!(hints.supports_resume_download);
         assert!(hints.supports_resume_upload);
+    }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// Yandex Disk rows whose id is the row's own path, what the GUI manager
+    /// sends back, and turns it into the GUI command's calls: PUT
+    /// `trash/resources/restore`, DELETE `trash/resources?path=` for one
+    /// item, and DELETE `trash/resources` without a path for Empty.
+    #[tokio::test]
+    async fn trash_dispatch_sends_the_listed_trash_path_back() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let query = urlencoding::decode(uri.query().unwrap_or(""))
+                    .unwrap()
+                    .to_string();
+                seen.lock().unwrap().push(if query.is_empty() {
+                    format!("{method} {}", uri.path())
+                } else {
+                    format!("{method} {}?{query}", uri.path())
+                });
+                let listing = method == axum::http::Method::GET;
+                let restore = uri.path().ends_with("/restore");
+                async move {
+                    if listing {
+                        axum::Json(serde_json::json!({
+                            "path": "trash:/",
+                            "type": "dir",
+                            "_embedded": {
+                                "items": [{
+                                    "name": "report.txt",
+                                    "path": "trash:/report.txt_d41d8cd9",
+                                    "origin_path": "disk:/docs/report.txt",
+                                    "type": "file",
+                                    "size": 300
+                                }],
+                                "total": 1,
+                                "limit": 1000,
+                                "offset": 0
+                            }
+                        }))
+                        .into_response()
+                    } else if restore {
+                        (
+                            axum::http::StatusCode::CREATED,
+                            r#"{"href":"x","method":"GET"}"#,
+                        )
+                            .into_response()
+                    } else {
+                        axum::http::StatusCode::NO_CONTENT.into_response()
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = YandexDiskProvider::new("t".to_string(), None)
+            .with_test_api_base(&format!("http://{addr}"));
+        provider.connected = true;
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::Yandex,
+                items,
+            } => items,
+            other => panic!("not a Yandex listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["name"], "report.txt");
+        // The GUI manager sends `item.path` back.
+        assert_eq!(items[0]["id"], items[0]["path"]);
+        let id = items[0]["id"].as_str().unwrap().to_string();
+        assert!(id.contains("report.txt_d41d8cd9"), "{id}");
+        assert_eq!(take(), ["GET /trash/resources?path=/&limit=1000&offset=0"]);
+
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() })
+            .await
+            .expect("restore");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::Yandex,
+                id: id.clone(),
+                detail: None
+            }
+        );
+        assert_eq!(take(), [format!("PUT /trash/resources/restore?path={id}")]);
+
+        let deleted = run(&mut provider, TrashOp::Delete { id: id.clone() })
+            .await
+            .expect("delete");
+        assert!(
+            matches!(&deleted, TrashOutcome::Deleted { kind: TrashKind::Yandex, id: d, .. } if *d == id),
+            "{deleted:?}"
+        );
+        assert_eq!(take(), [format!("DELETE /trash/resources?path={id}")]);
+
+        // Empty lists first (the counts it reports), then deletes the whole trash.
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await
+        .expect("empty");
+        assert_eq!(
+            emptied,
+            TrashOutcome::Emptied {
+                kind: TrashKind::Yandex,
+                dry_run: false,
+                items: Some(1),
+                bytes: Some(300),
+            }
+        );
+        assert_eq!(
+            take(),
+            [
+                "GET /trash/resources?path=/&limit=1000&offset=0",
+                "DELETE /trash/resources",
+            ]
+        );
     }
 }

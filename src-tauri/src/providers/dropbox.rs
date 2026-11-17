@@ -807,7 +807,7 @@ impl DropboxProvider {
             "path": full_path
         });
 
-        let url = format!("{}/files/permanently_delete", API_BASE);
+        let url = format!("{}/files/permanently_delete", self.rpc_api_base());
 
         let response = self
             .client
@@ -861,7 +861,7 @@ impl DropboxProvider {
     /// premium notice for `basic` / `pro` personal accounts. On any parse
     /// failure it returns "basic" (the safe, purge-disabled default).
     pub async fn account_type(&self) -> Result<String, ProviderError> {
-        let url = format!("{}/users/get_current_account", API_BASE);
+        let url = format!("{}/users/get_current_account", self.rpc_api_base());
         let response = self
             .client
             .post(&url)
@@ -4396,5 +4396,153 @@ mod tests {
         assert!(err.is_err());
         assert!(primary.is_connected());
         server.abort();
+    }
+
+    /// Local Dropbox double for the shared trash entry point: two deleted
+    /// files (7 bytes each) in the root, the revision lookup and restore,
+    /// `permanently_delete`, and an account of the tier `tier`. Every call
+    /// is recorded as `endpoint path` (just `endpoint` without a path).
+    async fn trash_dispatch_fixture(
+        tier: &'static str,
+    ) -> (
+        DropboxProvider,
+        std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+        tokio::task::JoinHandle<()>,
+    ) {
+        use axum::{routing::any, Json, Router};
+        use serde_json::{json, Value};
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let seen = calls.clone();
+        let app = Router::new().fallback(any(move |req: axum::extract::Request| {
+            let seen = seen.clone();
+            async move {
+                let endpoint = req.uri().path().trim_start_matches('/').to_string();
+                let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                    .await
+                    .unwrap_or_default();
+                let request: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+                let path = request["path"].as_str().unwrap_or("");
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{endpoint} {path}").trim_end().to_string());
+                match endpoint.as_str() {
+                    "files/list_folder" => Json(json!({
+                        "entries": [
+                            {".tag": "deleted", "name": "old.txt", "path_display": "/old.txt"},
+                            {".tag": "deleted", "name": "draft.md", "path_display": "/draft.md"}
+                        ],
+                        "cursor": "done",
+                        "has_more": false
+                    })),
+                    "files/list_revisions" => Json(json!({
+                        "is_deleted": true,
+                        "entries": [{"rev": "r1", "size": 7, "is_restorable": true}]
+                    })),
+                    "files/restore" => Json(json!({"rev": "r1"})),
+                    "files/permanently_delete" => Json(Value::Null),
+                    "users/get_current_account" => Json(json!({"account_type": {".tag": tier}})),
+                    other => panic!("unexpected endpoint {other}"),
+                }
+            }
+        }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        (provider, calls, server)
+    }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the Dropbox
+    /// trash with the row path as the id and restores by it. Delete and Empty
+    /// ask the account tier first: on a basic account they are refused with
+    /// no `permanently_delete` sent; on a business one Delete purges the id
+    /// and Empty purges every listed row by path, as the GUI loops
+    /// `dropbox_permanent_delete`.
+    #[tokio::test]
+    async fn trash_dispatch_purges_by_path_only_on_a_business_account() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        let empty_op = || TrashOp::Empty {
+            path: "/".into(),
+            dry_run: false,
+        };
+
+        let (mut p, calls, server) = trash_dispatch_fixture("basic").await;
+        let items = match run(&mut p, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::Dropbox,
+                items,
+            }) => items,
+            other => panic!("not a Dropbox listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0]["id"], "/old.txt", "the row id is the path");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut p, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::Dropbox, id: got, .. }) if got == "/old.txt"),
+            "{restored:?}"
+        );
+        let deleted = run(&mut p, TrashOp::Delete { id: id.clone() }).await;
+        assert!(
+            matches!(deleted, Err(TrashError::NotOffered(_))),
+            "{deleted:?}"
+        );
+        let emptied = run(&mut p, empty_op()).await;
+        assert!(
+            matches!(emptied, Err(TrashError::NotOffered(_))),
+            "{emptied:?}"
+        );
+        server.abort();
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "files/list_folder",
+                "files/list_revisions /old.txt",
+                "files/list_revisions /draft.md",
+                "files/list_revisions /old.txt",
+                "files/restore /old.txt",
+                "users/get_current_account",
+                "users/get_current_account",
+            ],
+            "a basic account sends no permanently_delete"
+        );
+
+        let (mut p, calls, server) = trash_dispatch_fixture("business").await;
+        let deleted = run(&mut p, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(&deleted, Ok(TrashOutcome::Deleted { kind: TrashKind::Dropbox, id: got, .. }) if got == "/old.txt"),
+            "{deleted:?}"
+        );
+        let emptied = run(&mut p, empty_op()).await;
+        assert!(
+            matches!(
+                emptied,
+                Ok(TrashOutcome::Emptied {
+                    kind: TrashKind::Dropbox,
+                    dry_run: false,
+                    items: Some(2),
+                    bytes: Some(14),
+                })
+            ),
+            "{emptied:?}"
+        );
+        server.abort();
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "users/get_current_account",
+                "files/permanently_delete /old.txt",
+                "users/get_current_account",
+                "files/list_folder",
+                "files/list_revisions /old.txt",
+                "files/list_revisions /draft.md",
+                "files/permanently_delete /old.txt",
+                "files/permanently_delete /draft.md",
+            ]
+        );
     }
 }

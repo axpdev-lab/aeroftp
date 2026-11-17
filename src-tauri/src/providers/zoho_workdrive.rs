@@ -7222,4 +7222,116 @@ mod tests {
             ["DELETE /workdrive/api/v1/links/abc123"]
         );
     }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the private
+    /// space trash with the file id as the row id. A single id is restored
+    /// and deleted through the one-file status PATCH (`/files/{id}`, status 1
+    /// then 61), never the batch one, and Empty is refused before any
+    /// request, as the GUI manager does.
+    #[tokio::test]
+    async fn trash_dispatch_sends_a_single_id_to_the_one_file_status_patch() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = calls.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    let body = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                        .await
+                        .unwrap_or_default();
+                    let body: serde_json::Value =
+                        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+                    let call = match body
+                        .pointer("/data/attributes/status")
+                        .and_then(|s| s.as_str())
+                    {
+                        Some(status) => format!("{method} {path} status={status}"),
+                        None => format!("{method} {path}"),
+                    };
+                    seen.lock().unwrap().push(call);
+                    match (method.as_str(), path.as_str()) {
+                        ("GET", "/workdrive/api/v1/privatespace/PS/trashedfiles") => {
+                            axum::Json(serde_json::json!({"data": [{
+                                "id": "Z1",
+                                "attributes": {
+                                    "name": "budget.xlsx",
+                                    "type": "file",
+                                    "modified_time": "Jan 2, 2026"
+                                }
+                            }]}))
+                            .into_response()
+                        }
+                        ("PATCH", "/workdrive/api/v1/files/Z1") => {
+                            axum::Json(serde_json::json!({"data": {"id": "Z1"}})).into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = ZohoWorkdriveProvider::new(config("com"));
+        provider.endpoint_override = Some(format!("http://{addr}"));
+        provider.test_access_token = Some("test-token".into());
+        provider.connected = true;
+        provider.privatespace_id = Some("PS".into());
+
+        let items = match run(&mut provider, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::Zoho,
+                items,
+            }) => items,
+            other => panic!("not a Zoho WorkDrive listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["id"], "Z1", "the row id is metadata.id");
+        assert_eq!(items[0]["name"], "budget.xlsx");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::Zoho, id: got, .. }) if got == "Z1"),
+            "{restored:?}"
+        );
+        let deleted = run(&mut provider, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(
+                &deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::Zoho,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(emptied, Err(TrashError::NotOffered(_))),
+            "{emptied:?}"
+        );
+        // A refused Empty sends nothing after the delete.
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "GET /workdrive/api/v1/privatespace/PS/trashedfiles",
+                "PATCH /workdrive/api/v1/files/Z1 status=1",
+                "PATCH /workdrive/api/v1/files/Z1 status=61",
+            ]
+        );
+    }
 }

@@ -5233,4 +5233,88 @@ mod tests {
         p.set_link_scope(None);
         assert_eq!(p.effective_link_scope(), "anonymous");
     }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the recycle
+    /// bin with the Graph item id as the row id, restores and deletes by that
+    /// id, and refuses Empty before any request, as the GUI manager does.
+    #[tokio::test]
+    async fn trash_dispatch_uses_the_graph_item_id_and_refuses_empty() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use axum::http::{Method, StatusCode};
+        let (mut p, requests, server) = graph_fixture(|method, path| match (method, path) {
+            (&Method::GET, "/v1.0/me/drive/special/deleted/children") => (
+                StatusCode::OK,
+                serde_json::json!({"value": [{
+                    "id": "ITEM1",
+                    "name": "notes.txt",
+                    "size": 7,
+                    "lastModifiedDateTime": "2026-01-02T03:04:05Z",
+                    "file": {}
+                }]}),
+            ),
+            (&Method::POST, "/v1.0/me/drive/items/ITEM1/restore") => (
+                StatusCode::OK,
+                serde_json::json!({"id": "ITEM1", "name": "notes.txt", "size": 7, "file": {}}),
+            ),
+            (&Method::DELETE, "/v1.0/me/drive/items/ITEM1") => {
+                (StatusCode::NO_CONTENT, serde_json::Value::Null)
+            }
+            _ => (
+                StatusCode::NOT_FOUND,
+                serde_json::json!({"error": {"code": "itemNotFound"}}),
+            ),
+        })
+        .await;
+
+        let items = match run(&mut p, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::OneDrive,
+                items,
+            }) => items,
+            other => panic!("not a OneDrive listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["id"], "ITEM1", "the row id is metadata.id");
+        assert_eq!(items[0]["name"], "notes.txt");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut p, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::OneDrive, id: got, .. }) if got == "ITEM1"),
+            "{restored:?}"
+        );
+        let deleted = run(&mut p, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(
+                &deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::OneDrive,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        let emptied = run(
+            &mut p,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(emptied, Err(TrashError::NotOffered(_))),
+            "{emptied:?}"
+        );
+        // A refused Empty sends nothing after the delete.
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "GET /v1.0/me/drive/special/deleted/children",
+                "POST /v1.0/me/drive/items/ITEM1/restore",
+                "DELETE /v1.0/me/drive/items/ITEM1",
+            ]
+        );
+    }
 }

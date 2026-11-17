@@ -5154,4 +5154,74 @@ mod tests {
             }
         }
     }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// the Internxt trash, folders then files, with the row's `[Trash]/<uuid>`
+    /// path as its id, as the GUI manager does. The manager only lists, so
+    /// restore, delete and empty are refused and nothing more reaches the
+    /// server, not even the listing an Empty runs first elsewhere.
+    #[tokio::test]
+    async fn trash_dispatch_lists_by_uuid_and_sends_nothing_for_the_ops_it_lacks() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let query = uri.query().unwrap_or("").to_string();
+                seen.lock().unwrap().push(format!("{method} {}?{query}", uri.path()));
+                let body = if query.contains("type=folders") {
+                    r#"{"result":[{"uuid":"fold-1","plainName":"old","parentUuid":"root-0","updatedAt":"2026-10-01T10:00:00Z"}]}"#
+                } else {
+                    r#"{"result":[{"uuid":"file-1","plainName":"report","type":"txt","size":512,"folderUuid":"root-0","updatedAt":"2026-10-01T10:00:00Z"}]}"#
+                };
+                async move { (axum::http::StatusCode::OK, body) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = test_provider();
+        p.api_base = base;
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut p, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::Internxt,
+                items,
+            } => items,
+            other => panic!("not an Internxt listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0]["name"], "old");
+        assert_eq!(items[0]["id"], "[Trash]/fold-1");
+        assert_eq!(items[1]["name"], "report.txt");
+        assert_eq!(items[1]["id"], "[Trash]/file-1");
+        assert_eq!(
+            take(),
+            [
+                "GET /drive/storage/trash/paginated?offset=0&limit=50&type=folders&root=true",
+                "GET /drive/storage/trash/paginated?offset=0&limit=50&type=files&root=true",
+            ]
+        );
+
+        let id = items[1]["id"].as_str().unwrap().to_string();
+        for op in [
+            TrashOp::Restore { id: id.clone() },
+            TrashOp::Delete { id: id.clone() },
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        ] {
+            match run(&mut p, op.clone()).await {
+                Err(TrashError::NotOffered(m)) => assert!(m.contains("Internxt"), "{m}"),
+                other => panic!("{op:?}: {other:?}"),
+            }
+        }
+        assert!(take().is_empty(), "a refused op reached the server");
+    }
 }

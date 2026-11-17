@@ -5022,4 +5022,111 @@ mod tests {
         assert!(primary.is_connected());
         server.abort();
     }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the Box trash
+    /// with `<item_type>:<id>` as the row id, so a trashed folder is restored
+    /// and deleted on the folders endpoints, and Empty is refused before any
+    /// request, as the GUI manager does.
+    #[tokio::test]
+    async fn trash_dispatch_routes_a_folder_id_to_the_folders_endpoints() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let requests: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&requests);
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = Arc::clone(&seen);
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                    let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                    match (method.as_str(), path.as_str()) {
+                        ("GET", "/folders/trash/items") => axum::Json(serde_json::json!({
+                            "entries": [{
+                                "type": "folder",
+                                "id": "F1",
+                                "name": "Projects",
+                                "size": 2048,
+                                "modified_at": "2026-01-02T03:04:05-08:00",
+                                "trashed_at": "2026-01-03T03:04:05-08:00",
+                                "parent": {"type": "folder", "id": "0"}
+                            }],
+                            "total_count": 1,
+                            "offset": 0,
+                            "limit": 1000
+                        }))
+                        .into_response(),
+                        ("POST", "/folders/F1") => axum::http::StatusCode::CREATED.into_response(),
+                        ("DELETE", "/folders/F1/trash") => {
+                            axum::http::StatusCode::NO_CONTENT.into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.ok();
+        });
+        let mut p = fixture_connected();
+        p.api_base_override = Some(format!("http://{addr}"));
+
+        let items = match run(&mut p, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::Box,
+                items,
+            }) => items,
+            other => panic!("not a Box listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(
+            items[0]["id"], "folder:F1",
+            "the row id is <item_type>:<id>"
+        );
+        assert_eq!(items[0]["name"], "Projects");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut p, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::Box, id: got, .. }) if got == "folder:F1"),
+            "{restored:?}"
+        );
+        let deleted = run(&mut p, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(
+                &deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::Box,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        let emptied = run(
+            &mut p,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(emptied, Err(TrashError::NotOffered(_))),
+            "{emptied:?}"
+        );
+        // A refused Empty sends nothing after the delete.
+        assert_eq!(
+            *requests.lock().unwrap(),
+            [
+                "GET /folders/trash/items",
+                "POST /folders/F1",
+                "DELETE /folders/F1/trash",
+            ]
+        );
+    }
 }

@@ -418,6 +418,16 @@ impl PCloudProvider {
         p
     }
 
+    /// Connected provider whose API is the local fixture at `base`, with a
+    /// fixture token, for tests in other modules (the crypt overlay trash test).
+    #[cfg(test)]
+    pub(crate) fn connected_at_fixture(base: String) -> Self {
+        let mut p = Self::connected_for_test(PCloudConfig::new("client-id", "client-secret", "us"));
+        p.api_base_override = Some(base);
+        p.test_access_token = Some("fixture-token".to_string());
+        p
+    }
+
     /// Bind this provider to a server profile so OAuth tokens are stored
     /// under the per-profile vault key. Issue #214.
     /// Keep token refresh in the account selected by the CLI or MCP profile.
@@ -4053,5 +4063,144 @@ mod tests {
             "{refused:?}"
         );
         assert_eq!(*calls.lock().unwrap(), ["GET /deletepublink?linkid=42"]);
+    }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// pCloud rows with the id the GUI manager sends back, `f:<fileid>` or
+    /// `d:<folderid>`, and turns that id into the same `trash_restore` and
+    /// `trash_clear` calls the GUI command makes, with `fileid` or `folderid`
+    /// as the row was a file or a folder.
+    #[tokio::test]
+    async fn trash_dispatch_sends_the_listed_fileid_or_folderid_back() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                // The token rides in the query on trash calls: keep it out of the log.
+                let query: Vec<&str> = uri
+                    .query()
+                    .unwrap_or("")
+                    .split('&')
+                    .filter(|pair| !pair.is_empty() && !pair.starts_with("access_token="))
+                    .collect();
+                seen.lock().unwrap().push(if query.is_empty() {
+                    format!("{method} {}", uri.path())
+                } else {
+                    format!("{method} {}?{}", uri.path(), query.join("&"))
+                });
+                let body = if uri.path() == "/trash_list" {
+                    r#"{"result":0,"metadata":{"name":"Trash","isfolder":true,"folderid":0,"contents":[
+                        {"name":"report.txt","isfolder":false,"fileid":1234,"path":"/report.txt","size":5,"contenttype":"text/plain"},
+                        {"name":"old","isfolder":true,"folderid":77,"path":"/old"}
+                    ]}}"#
+                } else {
+                    r#"{"result":0}"#
+                };
+                async move { (axum::http::StatusCode::OK, body) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = fixture_connected();
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::PCloud,
+                items,
+            } => items,
+            other => panic!("not a pCloud listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0]["name"], "report.txt");
+        assert_eq!(items[0]["id"], "f:1234");
+        assert_eq!(items[1]["name"], "old");
+        assert_eq!(items[1]["id"], "d:77");
+        assert_eq!(take(), ["GET /trash_list?recursive=1"]);
+
+        let file_id = items[0]["id"].as_str().unwrap().to_string();
+        let folder_id = items[1]["id"].as_str().unwrap().to_string();
+        let restored = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: file_id.clone(),
+            },
+        )
+        .await
+        .expect("restore file");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::PCloud,
+                id: file_id.clone(),
+                detail: None
+            }
+        );
+        run(
+            &mut provider,
+            TrashOp::Restore {
+                id: folder_id.clone(),
+            },
+        )
+        .await
+        .expect("restore folder");
+        assert_eq!(
+            take(),
+            [
+                "GET /trash_restore?fileid=1234",
+                "GET /trash_restore?folderid=77"
+            ]
+        );
+
+        let deleted = run(
+            &mut provider,
+            TrashOp::Delete {
+                id: file_id.clone(),
+            },
+        )
+        .await
+        .expect("delete file");
+        assert!(
+            matches!(&deleted, TrashOutcome::Deleted { kind: TrashKind::PCloud, id, .. } if *id == file_id),
+            "{deleted:?}"
+        );
+        run(&mut provider, TrashOp::Delete { id: folder_id })
+            .await
+            .expect("delete folder");
+        assert_eq!(
+            take(),
+            [
+                "GET /trash_clear?fileid=1234",
+                "GET /trash_clear?folderid=77"
+            ]
+        );
+
+        // Empty lists first (the counts it reports), then clears the whole trash.
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await
+        .expect("empty");
+        assert_eq!(
+            emptied,
+            TrashOutcome::Emptied {
+                kind: TrashKind::PCloud,
+                dry_run: false,
+                items: Some(2),
+                bytes: Some(5),
+            }
+        );
+        assert_eq!(take(), ["GET /trash_list?recursive=1", "GET /trash_clear"]);
     }
 }

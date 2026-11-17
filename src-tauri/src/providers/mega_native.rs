@@ -3060,4 +3060,106 @@ mod tests {
             "NotFound display must carry the prefix once, got: {rendered}"
         );
     }
+
+    /// The CLI and agent trash path reaches the native MEGA rubbish bin calls
+    /// the GUI uses: the row id is the name, restore moves that node into the
+    /// session's current folder, delete removes that node, and empty (which
+    /// the app's manager does not offer) sends nothing.
+    #[tokio::test]
+    async fn trash_dispatch_restores_by_name_into_the_current_folder() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        let (mut provider, commands) = provider_with_tree(vec![4u8; 32], false).await;
+        for (handle, parent, node_type, name) in
+            [("TRASH", "", 4u8, ""), ("T", "TRASH", 0u8, "old.txt")]
+        {
+            provider.nodes.insert(
+                handle.to_string(),
+                super::MegaNode {
+                    handle: handle.to_string(),
+                    parent: parent.to_string(),
+                    node_type,
+                    name: name.to_string(),
+                    size: 9,
+                    timestamp: 0,
+                    key: vec![6u8; 32],
+                },
+            );
+            provider
+                .children
+                .entry(parent.to_string())
+                .or_default()
+                .push(handle.to_string());
+        }
+        provider.trash_handle = Some("TRASH".to_string());
+        provider.current_path = "/a".to_string();
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
+        let items = match listed {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::Mega,
+                items,
+            }) => items,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["id"], "old.txt");
+        assert_eq!(items[0]["size"], 9);
+        assert!(commands.lock().unwrap().is_empty());
+
+        let restored = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: "old.txt".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(restored, Ok(TrashOutcome::Restored { kind: TrashKind::Mega, ref id, .. }) if id == "old.txt"),
+            "{restored:?}"
+        );
+        // Moved into `/a`, the session's current folder.
+        assert_eq!(*commands.lock().unwrap(), ["m T A"]);
+
+        // The double does not serve a node tree: keep the local one.
+        provider.nodes_loaded = true;
+        commands.lock().unwrap().clear();
+        let deleted = run(
+            &mut provider,
+            TrashOp::Delete {
+                id: "old.txt".into(),
+            },
+        )
+        .await;
+        assert!(
+            matches!(
+                deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::Mega,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        assert_eq!(*commands.lock().unwrap(), ["d T"]);
+
+        provider.nodes_loaded = true;
+        commands.lock().unwrap().clear();
+        let refused = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert!(
+            matches!(refused, Err(TrashError::NotOffered(_))),
+            "{refused:?}"
+        );
+        assert!(
+            commands.lock().unwrap().is_empty(),
+            "{:?}",
+            commands.lock().unwrap()
+        );
+    }
 }

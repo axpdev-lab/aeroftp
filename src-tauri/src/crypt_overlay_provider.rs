@@ -11445,6 +11445,102 @@ pub(crate) mod tests {
         assert_eq!(plain[0].name, "plain.txt");
     }
 
+    /// Under Crypt the shared trash entry point (CLI `trash`, MCP
+    /// `remote_trash`) does what the GUI trash commands do: it peels the
+    /// overlay to reach pCloud, shows the plaintext name of a row from the
+    /// vault (a foreign row passes as it is), and keeps the raw pCloud id,
+    /// which Restore sends to pCloud unchanged.
+    #[tokio::test]
+    async fn trash_dispatch_through_the_overlay_decodes_names_and_keeps_raw_ids() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use crate::providers::pcloud::PCloudProvider;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let overlay = CryptOverlayProvider::new(
+            Box::new(PCloudProvider::connected_at_fixture(base)),
+            aerocrypt_keys(),
+            "/vault",
+        );
+        let enc = overlay.keys.encode_name("secret.txt", false).unwrap();
+        let mut boxed: Box<dyn StorageProvider> = Box::new(overlay);
+
+        let listing = serde_json::json!({
+            "result": 0,
+            "metadata": {
+                "name": "Trash",
+                "isfolder": true,
+                "folderid": 0,
+                "contents": [
+                    {"name": enc, "isfolder": false, "fileid": 4321, "path": format!("/vault/{enc}"), "size": 100},
+                    {"name": "foreign.txt", "isfolder": false, "fileid": 99, "path": "/foreign.txt", "size": 3}
+                ]
+            }
+        })
+        .to_string();
+        let calls: std::sync::Arc<std::sync::Mutex<Vec<String>>> = std::sync::Arc::default();
+        let seen = std::sync::Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                // The fixture token rides in the query: keep it out of the log.
+                let query: Vec<&str> = uri
+                    .query()
+                    .unwrap_or("")
+                    .split('&')
+                    .filter(|pair| !pair.is_empty() && !pair.starts_with("access_token="))
+                    .collect();
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{method} {}?{}", uri.path(), query.join("&")));
+                let body = if uri.path() == "/trash_list" {
+                    listing.clone()
+                } else {
+                    r#"{"result":0}"#.to_string()
+                };
+                async move { (axum::http::StatusCode::OK, body) }
+            },
+        ));
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+
+        let listed = run(&mut *boxed, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list through the overlay");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::PCloud,
+                items,
+            } => items,
+            other => panic!("not a pCloud listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        // The vault row: plaintext name, raw id and raw path.
+        assert_eq!(items[0]["name"], "secret.txt");
+        assert_eq!(items[0]["id"], "f:4321");
+        assert_eq!(items[0]["path"], format!("/vault/{enc}"));
+        // A row from outside the vault passes as it is.
+        assert_eq!(items[1]["name"], "foreign.txt");
+        assert_eq!(items[1]["id"], "f:99");
+
+        let id = items[0]["id"].as_str().unwrap().to_string();
+        let restored = run(&mut *boxed, TrashOp::Restore { id: id.clone() })
+            .await
+            .expect("restore through the overlay");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::PCloud,
+                id,
+                detail: None
+            }
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "GET /trash_list?recursive=1",
+                "GET /trash_restore?fileid=4321"
+            ]
+        );
+    }
+
     fn s3_trash_entry(key: &str) -> TrashEntry {
         TrashEntry {
             key: key.to_string(),

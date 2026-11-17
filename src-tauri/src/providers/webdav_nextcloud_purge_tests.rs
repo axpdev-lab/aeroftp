@@ -1027,3 +1027,137 @@ async fn koofr_webdav_keeps_its_trash_note_and_sends_nothing() {
     );
     assert!(hits.lock().unwrap().is_empty());
 }
+
+/// The CLI and agent trash path reaches the Nextcloud trashbin calls the GUI
+/// uses: the row keeps the GUI's keys plus `id`, restore is a `MOVE` of that
+/// id into `restore/`, delete is a `DELETE` of that id, and empty lists the
+/// trash then deletes the trash collection itself.
+#[tokio::test]
+async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
+    use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+    let hits: Arc<Mutex<Vec<String>>> = Arc::default();
+    let seen = Arc::clone(&hits);
+    let app =
+        axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+            let seen = Arc::clone(&seen);
+            async move {
+                let method = req.method().as_str().to_string();
+                let path = req.uri().path().to_string();
+                let destination = req
+                    .headers()
+                    .get("destination")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|d| format!(" -> {}", d.split_once("/remote.php").map_or(d, |(_, p)| p)))
+                    .unwrap_or_default();
+                let bytes = axum::body::to_bytes(req.into_body(), 64 * 1024)
+                    .await
+                    .unwrap_or_default();
+                let body = String::from_utf8_lossy(&bytes).to_string();
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{method} {path}{destination}"));
+                let (status, xml) = match method.as_str() {
+                    "PROPFIND" if path.contains("/trashbin/") => (207, one_generation_trash(&body)),
+                    "MOVE" => (201, String::new()),
+                    "DELETE" => (204, String::new()),
+                    _ => (405, String::new()),
+                };
+                axum::response::Response::builder()
+                    .status(status)
+                    .header("content-type", "application/xml; charset=utf-8")
+                    .body(axum::body::Body::from(xml))
+                    .unwrap()
+            }
+        }));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+    let mut provider = nextcloud_at(&format!("http://{addr}"));
+
+    let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
+    let items = match listed {
+        Ok(TrashOutcome::Listed {
+            kind: TrashKind::Nextcloud,
+            items,
+        }) => items,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(items.len(), 1, "{items:?}");
+    let row = &items[0];
+    // The keys `aeroftp trash list --json` printed before the shared path.
+    for key in [
+        "id",
+        "name",
+        "original_path",
+        "deleted_at",
+        "size",
+        "is_dir",
+    ] {
+        assert!(row.get(key).is_some(), "row lost `{key}`: {row}");
+    }
+    assert_eq!(row["id"], "a.txt.d1700000001");
+    assert_eq!(row["name"], "a.txt");
+    assert_eq!(row["original_path"], "docs/a.txt");
+    assert_eq!(row["deleted_at"], 1_700_000_001_u64);
+    assert_eq!(row["size"], 4);
+    assert_eq!(row["is_dir"], false);
+    let id = row["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        *hits.lock().unwrap(),
+        ["PROPFIND /remote.php/dav/trashbin/user/trash/"]
+    );
+
+    hits.lock().unwrap().clear();
+    let restored = run(&mut provider, TrashOp::Restore { id: id.clone() }).await;
+    assert!(
+        matches!(restored, Ok(TrashOutcome::Restored { kind: TrashKind::Nextcloud, ref id, .. }) if id == "a.txt.d1700000001"),
+        "{restored:?}"
+    );
+    assert_eq!(
+        *hits.lock().unwrap(),
+        ["MOVE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001 -> /dav/trashbin/user/restore/a%2Etxt%2Ed1700000001"]
+    );
+
+    hits.lock().unwrap().clear();
+    let deleted = run(&mut provider, TrashOp::Delete { id }).await;
+    assert!(
+        matches!(
+            deleted,
+            Ok(TrashOutcome::Deleted {
+                kind: TrashKind::Nextcloud,
+                ..
+            })
+        ),
+        "{deleted:?}"
+    );
+    assert_eq!(
+        *hits.lock().unwrap(),
+        ["DELETE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001"]
+    );
+
+    hits.lock().unwrap().clear();
+    let emptied = run(
+        &mut provider,
+        TrashOp::Empty {
+            path: "/".into(),
+            dry_run: false,
+        },
+    )
+    .await;
+    assert_eq!(
+        emptied,
+        Ok(TrashOutcome::Emptied {
+            kind: TrashKind::Nextcloud,
+            dry_run: false,
+            items: Some(1),
+            bytes: Some(4),
+        })
+    );
+    assert_eq!(
+        *hits.lock().unwrap(),
+        [
+            "PROPFIND /remote.php/dav/trashbin/user/trash/",
+            "DELETE /remote.php/dav/trashbin/user/trash",
+        ]
+    );
+}

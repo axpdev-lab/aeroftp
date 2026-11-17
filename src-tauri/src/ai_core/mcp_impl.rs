@@ -593,6 +593,18 @@ impl RemoteBackend for McpRemoteBackend {
         })
         .await
     }
+
+    async fn trash(
+        &self,
+        op: crate::provider_trash::TrashOp,
+    ) -> Result<crate::provider_trash::TrashOutcome, crate::provider_trash::TrashError> {
+        // The trash result rides inside Ok: a refusal is not a broken session.
+        self.with_provider(move |p| {
+            Box::pin(async move { Ok(crate::provider_trash::run(&mut **p, op).await) })
+        })
+        .await
+        .map_err(crate::provider_trash::TrashError::Failed)?
+    }
 }
 
 #[cfg(test)]

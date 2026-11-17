@@ -7531,4 +7531,134 @@ mod tests {
             "the single-stream fallback must keep reporting progress"
         );
     }
+
+    /// The CLI and agent trash path reaches B2's hidden-file calls: the row
+    /// id is the hidden file's path, restore deletes its hide marker by file
+    /// id, delete purges every version and says how many, and empty (which
+    /// the app's manager does not offer) sends nothing.
+    #[tokio::test]
+    async fn trash_dispatch_restores_the_hide_marker_and_refuses_empty() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::post(
+            move |uri: axum::http::Uri, axum::Json(body): axum::Json<serde_json::Value>| {
+                let call = match uri.path() {
+                    "/b2api/v4/b2_list_file_versions" => format!(
+                        "list prefix={} start={}",
+                        body["prefix"].as_str().unwrap_or(""),
+                        body["startFileName"].as_str().unwrap_or("")
+                    ),
+                    "/b2api/v4/b2_delete_file_version" => format!(
+                        "delete {} {}",
+                        body["fileName"].as_str().unwrap_or(""),
+                        body["fileId"].as_str().unwrap_or("")
+                    ),
+                    other => other.to_string(),
+                };
+                seen.lock().unwrap().push(call);
+                let prefix = body["prefix"].as_str().unwrap_or("").to_string();
+                async move {
+                    // Newest first, as B2 lists the versions of one name.
+                    let files: Vec<_> = [
+                        ("docs/a.txt", "hide-1", "hide", 0),
+                        ("docs/a.txt", "upl-1", "upload", 5),
+                        ("docs/b.txt", "upl-2", "upload", 7),
+                    ]
+                    .into_iter()
+                    .filter(|(name, ..)| name.starts_with(&prefix))
+                    .map(|(name, id, action, len)| {
+                        serde_json::json!({
+                            "fileId": id,
+                            "fileName": name,
+                            "action": action,
+                            "contentLength": len,
+                            "uploadTimestamp": 1_700_000_000_000_i64
+                        })
+                    })
+                    .collect();
+                    axum::Json(serde_json::json!({
+                        "files": files,
+                        "nextFileName": null,
+                        "nextFileId": null
+                    }))
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut p = empty_provider();
+        p.api_url = format!("http://{addr}");
+        p.auth_token = SecretString::new("token".into());
+        p.bucket_id = "bucket".into();
+        p.connected = true;
+
+        let listed = run(&mut p, TrashOp::List { path: "/".into() }).await;
+        let items = match listed {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::B2,
+                items,
+            }) => items,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(items.len(), 1, "only the hidden file: {items:?}");
+        assert_eq!(items[0]["id"], "/docs/a.txt");
+        assert_eq!(items[0]["name"], "a.txt");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+        assert_eq!(*calls.lock().unwrap(), ["list prefix= start="]);
+
+        calls.lock().unwrap().clear();
+        let restored = run(&mut p, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(restored, Ok(TrashOutcome::Restored { kind: TrashKind::B2, ref id, .. }) if id == "/docs/a.txt"),
+            "{restored:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "list prefix=docs/a.txt start=docs/a.txt",
+                "delete docs/a.txt hide-1",
+            ]
+        );
+
+        calls.lock().unwrap().clear();
+        let deleted = run(&mut p, TrashOp::Delete { id }).await;
+        assert_eq!(
+            deleted,
+            Ok(TrashOutcome::Deleted {
+                kind: TrashKind::B2,
+                id: "/docs/a.txt".to_string(),
+                detail: Some(serde_json::json!({ "versions_purged": 2 })),
+            })
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "list prefix=docs/a.txt start=docs/a.txt",
+                "delete docs/a.txt hide-1",
+                "delete docs/a.txt upl-1",
+            ]
+        );
+
+        calls.lock().unwrap().clear();
+        let refused = run(
+            &mut p,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert!(
+            matches!(refused, Err(TrashError::NotOffered(_))),
+            "{refused:?}"
+        );
+        assert!(
+            calls.lock().unwrap().is_empty(),
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
 }

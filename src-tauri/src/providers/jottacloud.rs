@@ -279,6 +279,9 @@ pub struct JottacloudProvider {
     /// The upload base of a local double, in tests.
     #[cfg(test)]
     upload_base_override: Option<String>,
+    /// The account API base of a local double, in tests.
+    #[cfg(test)]
+    api_base_override: Option<String>,
 }
 
 impl JottacloudProvider {
@@ -314,6 +317,8 @@ impl JottacloudProvider {
             jfs_base_override: None,
             #[cfg(test)]
             upload_base_override: None,
+            #[cfg(test)]
+            api_base_override: None,
         }
     }
 
@@ -324,6 +329,15 @@ impl JottacloudProvider {
             return base;
         }
         UPLOAD_BASE
+    }
+
+    /// `API_BASE`, pointed at a local double in tests.
+    fn api_base(&self) -> &str {
+        #[cfg(test)]
+        if let Some(base) = &self.api_base_override {
+            return base;
+        }
+        API_BASE
     }
 
     /// `JFS_BASE`, pointed at a local double in tests.
@@ -2401,7 +2415,13 @@ impl JottacloudProvider {
         let user = urlencoding::encode(&self.username);
         let device = urlencoding::encode(&self.config.device);
         if clean.is_empty() {
-            format!("{}/{}/{}/{}", JFS_BASE, user, device, TRASH_MOUNTPOINT)
+            format!(
+                "{}/{}/{}/{}",
+                self.jfs_base(),
+                user,
+                device,
+                TRASH_MOUNTPOINT
+            )
         } else {
             let encoded_path: String = clean
                 .split('/')
@@ -2413,7 +2433,11 @@ impl JottacloudProvider {
                 .join("/");
             format!(
                 "{}/{}/{}/{}/{}",
-                JFS_BASE, user, device, TRASH_MOUNTPOINT, encoded_path
+                self.jfs_base(),
+                user,
+                device,
+                TRASH_MOUNTPOINT,
+                encoded_path
             )
         }
     }
@@ -3388,7 +3412,7 @@ impl JottacloudProvider {
     /// counts the server reports, so the caller shows what was confirmed.
     pub async fn empty_trash(&mut self) -> Result<(u64, u64), ProviderError> {
         self.refresh_if_needed().await?;
-        let url = format!("{}/files/v1/purge_trash", API_BASE);
+        let url = format!("{}/files/v1/purge_trash", self.api_base());
         jotta_log(&format!("Emptying trash: {}", url));
         let request = self
             .client
@@ -7003,6 +7027,160 @@ mod tests {
                 "empty_trash step SKIPPED: set JOTTA_TEST_ALLOW_EMPTY_TRASH=1 to purge the whole bin"
             );
         }
+    }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// Jottacloud rows whose id is the original path, what the GUI manager
+    /// sends back. Restore reads the tombstone and posts `cphash` with its
+    /// revision on the original mountpoint, and reports the server-confirmed
+    /// counts; Delete posts `rm` on the Trash view; Empty posts `purge_trash`
+    /// and reports the server's own file and folder counts.
+    #[tokio::test]
+    async fn trash_dispatch_restores_by_cphash_and_reports_the_servers_counts() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method,
+                  uri: axum::http::Uri,
+                  headers: axum::http::HeaderMap| {
+                let query = uri.query().map(|q| format!("?{q}")).unwrap_or_default();
+                let mut line = format!("{method} {}{query}", uri.path());
+                if query == "?cphash=true" {
+                    let header = |name: &str| {
+                        headers
+                            .get(name)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_string()
+                    };
+                    line.push_str(&format!(
+                        " JSize={} JMd5={}",
+                        header("JSize"),
+                        header("JMd5")
+                    ));
+                }
+                seen.lock().unwrap().push(line);
+                let body = match (method.as_str(), uri.path()) {
+                    ("GET", "/user123/Jotta/Trash") => {
+                        r#"<mountPoint name="Trash">
+  <files>
+    <file name="report.txt" deleted="2026-08-29-T13:45:33Z" contextType="TRASH">
+      <abspath>/user123/Jotta/Archive/docs</abspath>
+      <currentRevision>
+        <modified>2026-08-29-T13:44:54Z</modified>
+        <size>28</size>
+      </currentRevision>
+    </file>
+  </files>
+</mountPoint>"#
+                    }
+                    ("GET", "/user123/Jotta/Archive/docs/report.txt") => {
+                        r#"<file name="report.txt" deleted="2026-08-29-T13:45:33Z">
+  <currentRevision>
+    <size>28</size>
+    <md5>9a6924f78982f7e759f371f08fb5d57e</md5>
+    <created>2026-08-29-T13:44:54Z</created>
+    <modified>2026-08-29-T13:44:54Z</modified>
+  </currentRevision>
+</file>"#
+                    }
+                    ("POST", "/files/v1/purge_trash") => r#"{"files":3,"folders":1}"#,
+                    _ => r#"<file name="report.txt"/>"#,
+                };
+                async move { (axum::http::StatusCode::OK, body) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.token_expiry = Instant::now() + std::time::Duration::from_secs(3600);
+        provider.jfs_base_override = Some(format!("http://{addr}"));
+        provider.api_base_override = Some(format!("http://{addr}"));
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::Jottacloud,
+                items,
+            } => items,
+            other => panic!("not a Jottacloud listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["name"], "report.txt");
+        assert_eq!(items[0]["id"], "/docs/report.txt");
+        assert_eq!(take(), ["GET /user123/Jotta/Trash"]);
+
+        let id = items[0]["id"].as_str().unwrap().to_string();
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() })
+            .await
+            .expect("restore");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::Jottacloud,
+                id: id.clone(),
+                detail: Some(serde_json::json!({
+                    "files_restored": 1,
+                    "files_already_present": 0,
+                    "dirs_restored": 0,
+                })),
+            }
+        );
+        assert_eq!(
+            take(),
+            [
+                "GET /user123/Jotta/Archive/docs/report.txt",
+                "POST /user123/Jotta/Archive/docs/report.txt?cphash=true JSize=28 JMd5=9a6924f78982f7e759f371f08fb5d57e",
+            ]
+        );
+
+        let deleted = run(&mut provider, TrashOp::Delete { id: id.clone() })
+            .await
+            .expect("delete");
+        assert_eq!(
+            deleted,
+            TrashOutcome::Deleted {
+                kind: TrashKind::Jottacloud,
+                id: id.clone(),
+                detail: None
+            }
+        );
+        assert_eq!(
+            take(),
+            ["POST /user123/Jotta/Trash/docs/report.txt?rm=true"]
+        );
+
+        // Empty lists first (the bytes it reports), then purges; the item
+        // count is what the server says it purged, files plus folders.
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await
+        .expect("empty");
+        assert_eq!(
+            emptied,
+            TrashOutcome::Emptied {
+                kind: TrashKind::Jottacloud,
+                dry_run: false,
+                items: Some(4),
+                bytes: Some(28),
+            }
+        );
+        assert_eq!(
+            take(),
+            ["GET /user123/Jotta/Trash", "POST /files/v1/purge_trash"]
+        );
     }
 }
 

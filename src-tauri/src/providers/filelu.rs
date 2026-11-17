@@ -6708,4 +6708,110 @@ mod tests {
             "{calls:?}"
         );
     }
+
+    /// The CLI and agent trash path reaches FileLu's own trash calls: the
+    /// row keeps the keys `trash list --json` printed (with `id`, the file
+    /// code), restore and delete name that code, and empty deletes the
+    /// listed files one by one.
+    #[tokio::test]
+    async fn trash_dispatch_names_the_file_code_and_empties_one_by_one() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        let (mut provider, calls) = provider_with_trash(&[("a.txt", "CODE1")]).await;
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() }).await;
+        let items = match listed {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::FileLu,
+                items,
+            }) => items,
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        let row = &items[0];
+        for key in ["file_code", "name", "deleted", "deleted_ago_sec"] {
+            assert!(row.get(key).is_some(), "row lost `{key}`: {row}");
+        }
+        assert_eq!(row["id"], "CODE1");
+        assert_eq!(row["file_code"], "CODE1");
+        assert_eq!(row["name"], "a.txt");
+        assert_eq!(*calls.lock().unwrap(), ["/api/files/deleted?"]);
+
+        calls.lock().unwrap().clear();
+        let restored = run(&mut provider, TrashOp::Restore { id: "CODE1".into() }).await;
+        assert!(
+            matches!(restored, Ok(TrashOutcome::Restored { kind: TrashKind::FileLu, ref id, .. }) if id == "CODE1"),
+            "{restored:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/api/file/restore?file_code=CODE1&restore=1"]
+        );
+
+        calls.lock().unwrap().clear();
+        let deleted = run(&mut provider, TrashOp::Delete { id: "CODE1".into() }).await;
+        assert!(
+            matches!(
+                deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::FileLu,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            ["/api/file/permanent_delete?file_code=CODE1"]
+        );
+
+        calls.lock().unwrap().clear();
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert_eq!(
+            emptied,
+            Ok(TrashOutcome::Emptied {
+                kind: TrashKind::FileLu,
+                dry_run: false,
+                items: Some(1),
+                bytes: None,
+            })
+        );
+        // The audit listing, then the provider's own listing and delete.
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "/api/files/deleted?",
+                "/api/files/deleted?",
+                "/api/file/permanent_delete?file_code=CODE1",
+            ]
+        );
+    }
+
+    /// A trash row FileLu lists without a file code cannot be deleted: empty
+    /// through the shared trash path deletes the others and then fails as
+    /// Partial, saying how many went and how many were left.
+    #[tokio::test]
+    async fn trash_dispatch_empty_with_a_codeless_row_is_partial() {
+        use crate::provider_trash::{run, TrashError, TrashOp};
+        let (mut provider, calls) = provider_with_three_trashed(None).await;
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        assert!(
+            matches!(emptied, Err(TrashError::Partial(ref m)) if m.contains("3 item(s) deleted, 2 left")),
+            "{emptied:?}"
+        );
+        assert_eq!(purged(&calls).len(), 3, "{:?}", calls.lock().unwrap());
+    }
 }

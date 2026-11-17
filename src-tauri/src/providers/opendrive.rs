@@ -3513,4 +3513,153 @@ mod tests {
         assert!(hints.supports_server_checksum);
         assert_eq!(hints.preferred_checksum_algo.as_deref(), Some("md5"));
     }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// OpenDrive rows with the id the GUI manager sends back, `f:<FileId>` or
+    /// `d:<FolderID>`, and turns it into the GUI command's own calls: the file
+    /// or folder restore form, the file DELETE or folder remove form, and the
+    /// trash DELETE for Empty.
+    #[tokio::test]
+    async fn trash_dispatch_sends_the_item_id_with_its_file_or_folder_flag() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                seen.lock().unwrap().push(if body.is_empty() {
+                    format!("{method} {}", uri.path())
+                } else {
+                    format!("{method} {} {body}", uri.path())
+                });
+                let answer = if uri.path() == "/api/v1/folder/trashlist.json/sid" {
+                    r#"{"Folders":[{"FolderID":"FD7","Name":"old","DateTrashed":1700000000}],
+                        "Files":[{"FileId":"FL1","Name":"report.txt","Size":"2048","DateTrashed":1700000000}]}"#
+                } else {
+                    "{}"
+                };
+                async move {
+                    (
+                        axum::http::StatusCode::OK,
+                        [(axum::http::header::CONTENT_TYPE, "application/json")],
+                        answer,
+                    )
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut provider = OpenDriveProvider::new(OpenDriveConfig {
+            host: format!("http://{addr}"),
+            username: "u".to_string(),
+            password: SecretString::from("p".to_string()),
+            initial_path: None,
+            default_privacy: None,
+        });
+        provider.connected = true;
+        provider.session_id = "sid".to_string();
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::OpenDrive,
+                items,
+            } => items,
+            other => panic!("not an OpenDrive listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 2, "{items:?}");
+        assert_eq!(items[0]["name"], "old");
+        assert_eq!(items[0]["id"], "d:FD7");
+        assert_eq!(items[1]["name"], "report.txt");
+        assert_eq!(items[1]["id"], "f:FL1");
+        assert_eq!(take(), ["GET /api/v1/folder/trashlist.json/sid"]);
+
+        let folder_id = items[0]["id"].as_str().unwrap().to_string();
+        let file_id = items[1]["id"].as_str().unwrap().to_string();
+        let restored = run(
+            &mut provider,
+            TrashOp::Restore {
+                id: file_id.clone(),
+            },
+        )
+        .await
+        .expect("restore file");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::OpenDrive,
+                id: file_id.clone(),
+                detail: None
+            }
+        );
+        run(
+            &mut provider,
+            TrashOp::Restore {
+                id: folder_id.clone(),
+            },
+        )
+        .await
+        .expect("restore folder");
+        assert_eq!(
+            take(),
+            [
+                "POST /api/v1/file/restore.json session_id=sid&file_id=FL1",
+                "POST /api/v1/folder/restore.json session_id=sid&folder_id=FD7",
+            ]
+        );
+
+        let deleted = run(
+            &mut provider,
+            TrashOp::Delete {
+                id: file_id.clone(),
+            },
+        )
+        .await
+        .expect("delete file");
+        assert!(
+            matches!(&deleted, TrashOutcome::Deleted { kind: TrashKind::OpenDrive, id, .. } if *id == file_id),
+            "{deleted:?}"
+        );
+        run(&mut provider, TrashOp::Delete { id: folder_id })
+            .await
+            .expect("delete folder");
+        assert_eq!(
+            take(),
+            [
+                "DELETE /api/v1/file.json/sid/FL1",
+                "POST /api/v1/folder/remove.json session_id=sid&folder_id=FD7",
+            ]
+        );
+
+        // Empty lists first (the counts it reports), then deletes the trash.
+        let emptied = run(
+            &mut provider,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await
+        .expect("empty");
+        assert_eq!(
+            emptied,
+            TrashOutcome::Emptied {
+                kind: TrashKind::OpenDrive,
+                dry_run: false,
+                items: Some(2),
+                bytes: Some(2048),
+            }
+        );
+        assert_eq!(
+            take(),
+            [
+                "GET /api/v1/folder/trashlist.json/sid",
+                "DELETE /api/v1/folder/trash.json/sid",
+            ]
+        );
+    }
 }

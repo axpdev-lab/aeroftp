@@ -6307,12 +6307,7 @@ pub async fn webdav_list_trash(
 ) -> Result<Vec<NextcloudTrashEntry>, String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    webdav
-        .nextcloud_list_trash()
+    crate::provider_trash::nextcloud_list(&mut **provider)
         .await
         .map_err(|e| e.to_string())
 }
@@ -6324,17 +6319,9 @@ pub async fn webdav_restore_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    for id in &ids {
-        webdav
-            .nextcloud_restore_trash(id)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    crate::provider_trash::nextcloud_restore(&mut **provider, &ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6344,17 +6331,9 @@ pub async fn webdav_delete_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    for id in &ids {
-        webdav
-            .nextcloud_delete_trash_item(id)
-            .await
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    crate::provider_trash::nextcloud_delete(&mut **provider, &ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -6363,12 +6342,7 @@ pub async fn webdav_empty_trash(
 ) -> Result<(), String> {
     let mut guard = state.provider.lock().await;
     let provider = guard.as_mut().ok_or("Not connected")?;
-    let webdav = crate::crypt_overlay_provider::concrete_provider_mut(&mut **provider)
-        .as_any_mut()
-        .downcast_mut::<WebDavProvider>()
-        .ok_or("Not a WebDAV connection")?;
-    webdav
-        .nextcloud_empty_trash()
+    crate::provider_trash::nextcloud_empty(&mut **provider)
         .await
         .map_err(|e| e.to_string())
 }

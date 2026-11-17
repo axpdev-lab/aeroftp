@@ -4846,6 +4846,97 @@ Time:2026-01-01</Message>
         assert!(matches!(r, Err(ProviderError::InvalidConfig(_))), "{r:?}");
         assert_eq!(AZURE_ACCESS_TIERS, ["Hot", "Cool", "Cold", "Archive"]);
     }
+
+    /// The shared trash entry point (CLI `trash`, MCP `remote_trash`) lists
+    /// the soft-deleted blobs of the container, live ones left out, with the
+    /// blob name as the id the GUI manager sends back, and restores one with
+    /// `comp=undelete` on that blob. The manager has no delete or empty, so
+    /// both are refused and nothing reaches the service.
+    #[tokio::test]
+    async fn trash_dispatch_undeletes_the_listed_blob_and_refuses_purges() {
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri| {
+                let query = uri.query().unwrap_or("").to_string();
+                seen.lock()
+                    .unwrap()
+                    .push(format!("{method} {}?{query}", uri.path()));
+                let body = if method == axum::http::Method::GET {
+                    // Compact, as the service sends it.
+                    concat!(
+                        r#"<?xml version="1.0" encoding="utf-8"?>"#,
+                        r#"<EnumerationResults ContainerName="mycontainer"><Blobs>"#,
+                        r#"<Blob><Name>docs/report.txt</Name><Deleted>true</Deleted><Properties>"#,
+                        r#"<Last-Modified>Thu, 01 Oct 2026 10:00:00 GMT</Last-Modified>"#,
+                        r#"<Content-Length>640</Content-Length></Properties></Blob>"#,
+                        r#"<Blob><Name>live.txt</Name><Properties>"#,
+                        r#"<Content-Length>10</Content-Length></Properties></Blob>"#,
+                        r#"</Blobs><NextMarker /></EnumerationResults>"#
+                    )
+                } else {
+                    ""
+                };
+                async move { (axum::http::StatusCode::OK, body) }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.ok() });
+        let mut config = test_config();
+        config.endpoint = Some(format!("http://{addr}"));
+        let mut provider = AzureProvider::new(config);
+        provider.connected = true;
+        let take = || std::mem::take(&mut *calls.lock().unwrap());
+
+        let listed = run(&mut provider, TrashOp::List { path: "/".into() })
+            .await
+            .expect("list");
+        let items = match listed {
+            TrashOutcome::Listed {
+                kind: TrashKind::Azure,
+                items,
+            } => items,
+            other => panic!("not an Azure listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "only the soft-deleted blob: {items:?}");
+        assert_eq!(items[0]["name"], "report.txt");
+        assert_eq!(items[0]["id"], "docs/report.txt");
+        assert_eq!(
+            take(),
+            ["GET /mycontainer?restype=container&comp=list&include=deleted"]
+        );
+
+        let id = items[0]["id"].as_str().unwrap().to_string();
+        let restored = run(&mut provider, TrashOp::Restore { id: id.clone() })
+            .await
+            .expect("undelete");
+        assert_eq!(
+            restored,
+            TrashOutcome::Restored {
+                kind: TrashKind::Azure,
+                id: id.clone(),
+                detail: None
+            }
+        );
+        assert_eq!(take(), ["PUT /mycontainer/docs/report.txt?comp=undelete"]);
+
+        for op in [
+            TrashOp::Delete { id: id.clone() },
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        ] {
+            match run(&mut provider, op.clone()).await {
+                Err(TrashError::NotOffered(m)) => assert!(m.contains("Azure"), "{m}"),
+                other => panic!("{op:?}: {other:?}"),
+            }
+        }
+        assert!(take().is_empty(), "a refused op reached the service");
+    }
 }
 
 #[cfg(test)]

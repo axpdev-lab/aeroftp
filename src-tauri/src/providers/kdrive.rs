@@ -3425,4 +3425,119 @@ mod tests {
         p2.current_path = "/".to_string();
         assert_eq!(p2.resolve_path("child"), "/child");
     }
+
+    /// The shared trash entry point (GUI, CLI and agent) lists the kDrive
+    /// trash with `metadata.file_id` as the row id (not the path), restores
+    /// and deletes by it on the v2 trash endpoints, and empties with the one
+    /// trash-wide DELETE after counting what the listing holds.
+    #[tokio::test]
+    async fn trash_dispatch_uses_the_file_id_and_empties_the_whole_trash() {
+        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = calls.clone();
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let seen = seen.clone();
+                async move {
+                    let method = req.method().clone();
+                    let path = req.uri().path().to_string();
+                    seen.lock().unwrap().push(format!("{method} {path}"));
+                    let _ = axum::body::to_bytes(req.into_body(), 64 * 1024).await;
+                    match (method.as_str(), path.as_str()) {
+                        ("GET", "/3/drive/987654/trash") => axum::Json(serde_json::json!({
+                            "result": "success",
+                            "data": [{
+                                "id": 4242,
+                                "name": "Photos",
+                                "type": "dir",
+                                "size": 9,
+                                "last_modified_at": 1767322800,
+                                "deleted_at": 1767409200,
+                                "path": "/Photos",
+                                "parent_id": 1
+                            }],
+                            "has_more": false,
+                            "cursor": null
+                        }))
+                        .into_response(),
+                        ("POST", "/2/drive/987654/trash/4242/restore")
+                        | ("DELETE", "/2/drive/987654/trash/4242")
+                        | ("DELETE", "/2/drive/987654/trash") => {
+                            axum::Json(serde_json::json!({"result": "success", "data": true}))
+                                .into_response()
+                        }
+                        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+                    }
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = test_provider();
+        p.api_base_override = Some(format!("http://{addr}"));
+        p.connected = true;
+
+        let items = match run(&mut p, TrashOp::List { path: "/".into() }).await {
+            Ok(TrashOutcome::Listed {
+                kind: TrashKind::KDrive,
+                items,
+            }) => items,
+            other => panic!("not a kDrive listing: {other:?}"),
+        };
+        assert_eq!(items.len(), 1, "{items:?}");
+        assert_eq!(items[0]["id"], "4242", "the row id is metadata.file_id");
+        assert_eq!(items[0]["path"], "/Photos");
+        let id = items[0]["id"].as_str().unwrap().to_string();
+
+        let restored = run(&mut p, TrashOp::Restore { id: id.clone() }).await;
+        assert!(
+            matches!(&restored, Ok(TrashOutcome::Restored { kind: TrashKind::KDrive, id: got, .. }) if got == "4242"),
+            "{restored:?}"
+        );
+        let deleted = run(&mut p, TrashOp::Delete { id }).await;
+        assert!(
+            matches!(
+                &deleted,
+                Ok(TrashOutcome::Deleted {
+                    kind: TrashKind::KDrive,
+                    ..
+                })
+            ),
+            "{deleted:?}"
+        );
+        let emptied = run(
+            &mut p,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            matches!(
+                emptied,
+                Ok(TrashOutcome::Emptied {
+                    kind: TrashKind::KDrive,
+                    dry_run: false,
+                    items: Some(1),
+                    bytes: Some(9),
+                })
+            ),
+            "{emptied:?}"
+        );
+        assert_eq!(
+            *calls.lock().unwrap(),
+            [
+                "GET /3/drive/987654/trash",
+                "POST /2/drive/987654/trash/4242/restore",
+                "DELETE /2/drive/987654/trash/4242",
+                "GET /3/drive/987654/trash",
+                "DELETE /2/drive/987654/trash",
+            ]
+        );
+    }
 }

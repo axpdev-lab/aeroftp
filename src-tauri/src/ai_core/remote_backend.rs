@@ -220,6 +220,16 @@ pub trait RemoteBackend: Send + Sync {
     ) -> Result<(u64, u64), String> {
         Err("trash operations are not available on this backend".to_string())
     }
+
+    /// Run one operation on the provider's server-side trash, the way the
+    /// app's trash manager for that provider does
+    /// ([`crate::provider_trash::run`]).
+    async fn trash(
+        &self,
+        _op: crate::provider_trash::TrashOp,
+    ) -> Result<crate::provider_trash::TrashOutcome, crate::provider_trash::TrashError> {
+        Err(crate::provider_trash::TrashError::NoTrash)
+    }
 }
 
 /// The provider side of [`RemoteBackend::upload_bulk`] for a backend that
