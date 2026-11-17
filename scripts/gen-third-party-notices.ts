@@ -974,6 +974,11 @@ export function findBundledCodeUnderOtherLicenses(
   return [...found.keys()].sort(compareStrings).map((license) => ({ license, ...found.get(license)! }));
 }
 
+// The first words of license prose: a bare "Copyright (c)" followed by
+// "Permission is hereby granted" names no holder on the next line.
+const LICENSE_PROSE_START =
+  /^\s*(?:permission\b|redistribution\b|all rights\b|this\b|the\b|licensed\b|you may\b|subject to\b|everyone\b|in no event\b|use of\b|provided\b)/i;
+
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   const boilerplateRegex =
     /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
@@ -1004,7 +1009,9 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
     content
       .split(/\r?\n/)
       .map((l, i, all) =>
-        /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*$/i.test(l) && i + 1 < all.length ? `${l} ${all[i + 1].trim()}` : l
+        /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*$/i.test(l) && i + 1 < all.length && !LICENSE_PROSE_START.test(all[i + 1])
+          ? `${l} ${all[i + 1].trim()}`
+          : l
       );
   // The holders of vendored code are not the package's holders.
   return [...comp.licenseFiles, ...comp.noticeFiles].filter((f) => !f.vendored).some((f) =>
@@ -1026,6 +1033,10 @@ export function generateNoticesMarkdown(
   for (const [key, attr] of Object.entries(PINNED_FALLBACK_ATTRIBUTIONS)) {
     if (!attr.source || attr.source.trim().length === 0) {
       throw new Error(`Entry ${key} in PINNED_FALLBACK_ATTRIBUTIONS must have a non-empty 'source' field`);
+    }
+    // A copyright line names its holder: a year alone would print the author as one.
+    if (attr.year && !attr.copyrightHolder?.trim()) {
+      throw new Error(`Entry ${key} in PINNED_FALLBACK_ATTRIBUTIONS has a year but no copyrightHolder`);
     }
   }
 
@@ -1387,9 +1398,14 @@ export function generateNoticesMarkdown(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/gi,
           attributionLines.join('\n')
         );
-        if (/<(?:copyright holders|author)>/i.test(licText) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(licText)) {
-          throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders>, <year>, or <author>)`);
-        }
+      }
+      // Any placeholder left in the terms, also one the replacement above does
+      // not know (a "Copyright (C) <year>" with no author placeholder), fails.
+      // The GPL-family appendix after the terms ("How to Apply These Terms")
+      // is a template for other works and keeps its placeholders verbatim.
+      const terms = licText.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms/i)[0];
+      if (/<(?:copyright holders|author)>/i.test(terms) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(terms)) {
+        throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders>, <year>, or <author>)`);
       }
 
       lines.push(makeCodeBlock(licText));

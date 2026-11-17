@@ -1036,6 +1036,54 @@ test('groupLicenseTexts: COPYRIGHT-only component receives both notice entry and
   assert.strictEqual(componentsWithoutFiles[0].name, 'copyright-only-pkg');
   assert.strictEqual(groupedTexts.length, 1);
   assert.strictEqual(groupedTexts[0].components[0].filename, 'COPYRIGHT-RUST.txt');
+  // Rendered: the notice entry keeps the copyright text, and the standard
+  // license section gives the license text with the component listed.
+  const md = generateNoticesMarkdown([comp], []);
+  assert.match(md, /- `copyright-only-pkg@1\.0\.0` \(cargo, file: `COPYRIGHT-RUST\.txt`\)\n\n```text\nCopyright notice text\n```/);
+  const standard = md.slice(md.indexOf('### Standard License: Apache-2.0'));
+  assert.match(standard, /^### Standard License: Apache-2\.0\n\n[^\n]*\n- `copyright-only-pkg@1\.0\.0` - SPDX: `Apache-2\.0`/);
+  assert.match(standard, /```text\n\s*Apache License\s*\n\s*Version 2\.0/);
+});
+
+test('standard texts: a leftover placeholder fails, and a holder-placeholder text needs a reviewed attribution', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'placeholder-guard-fixture-'));
+  try {
+    const comp = (name, license) => ({ name, version: '1.0.0', license, source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Some Author'] });
+    // A "Copyright (C) <year>" with no author placeholder is not replaced, and must not pass.
+    const lic = path.join(tmpDir, 'licenses.json');
+    fs.writeFileSync(lic, JSON.stringify({ MIT: 'Copyright (C) <year>\n\nPermission is hereby granted.' }));
+    assert.throws(() => generateNoticesMarkdown([comp('year-only-crate', 'MIT')], [], lic), /Standard license text for MIT contains unpopulated placeholders/);
+    // The GPL-family appendix after the terms is a template and keeps its placeholders.
+    fs.writeFileSync(lic, JSON.stringify({ MIT: 'The terms.\n\nEND OF TERMS AND CONDITIONS\n\nHow to Apply These Terms\n\nCopyright (C) <year> <name of author>' }));
+    assert.match(generateNoticesMarkdown([comp('appendix-crate', 'MIT')], [], lic), /Copyright \(C\) <year> <name of author>/);
+    // A text with a holder placeholder (0BSD) and no reviewed attribution is refused.
+    assert.throws(() => generateNoticesMarkdown([comp('unreviewed-crate', '0BSD')], []), /Component unreviewed-crate@1\.0\.0 requires an entry in PINNED_FALLBACK_ATTRIBUTIONS/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('fallback attributions: a pinned year without a copyrightHolder is refused', () => {
+  PINNED_FALLBACK_ATTRIBUTIONS['year-no-holder@1.0.0'] = { author: 'Only Author', year: '2020', source: 'test fixture' };
+  try {
+    assert.throws(() => generateNoticesMarkdown([], []), /Entry year-no-holder@1\.0\.0 in PINNED_FALLBACK_ATTRIBUTIONS has a year but no copyrightHolder/);
+  } finally {
+    delete PINNED_FALLBACK_ATTRIBUTIONS['year-no-holder@1.0.0'];
+  }
+});
+
+test('holder-free license: a bare "Copyright (c)" before license prose names no holder, so the sources are searched', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bare-marker-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nCopyright (c)\nPermission is hereby granted, free of charge, to any person.');
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'src', 'lib.rs'), '// Copyright 2024 Real Holder\n');
+    const comp = { name: 'bare-marker', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['A'], ...readPackageFiles(tmpDir, 'bare-marker@1.0.0') };
+    assert.strictEqual(hasCopyrightHolderInFiles(comp), false);
+    assert.match(generateNoticesMarkdown([comp], []), /- `bare-marker@1\.0\.0` \(cargo, file: `LICENSE`\)\n {2}- Copyright 2024 Real Holder \(src\/lib\.rs\)\n/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('standard SPDX texts: 0BSD fallback replaces uppercase (C) and <year>/<author> placeholders', () => {

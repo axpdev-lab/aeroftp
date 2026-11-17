@@ -2,6 +2,7 @@
 // Copyright (c) 2024-2026 axpnet (see AI-TRANSPARENCY.md)
 
 import { describe, it, expect, vi } from 'vitest';
+import packageJson from '../../package.json';
 import {
   openThirdPartyLicenses,
   getCandidateNoticePaths,
@@ -101,7 +102,7 @@ describe('thirdPartyLicenses', () => {
     });
 
     it('points to immutable release tag ref instead of main branch', () => {
-      expect(GITHUB_NOTICES_URL).toMatch(/^https:\/\/github\.com\/axpdev-lab\/aeroftp\/blob\/v\d+\.\d+\.\d+\/THIRD-PARTY-NOTICES\.md$/);
+      expect(GITHUB_NOTICES_URL).toBe(`https://github.com/axpdev-lab/aeroftp/blob/v${packageJson.version}/THIRD-PARTY-NOTICES.md`);
       expect(GITHUB_NOTICES_URL).not.toContain('/blob/main/');
     });
   });
