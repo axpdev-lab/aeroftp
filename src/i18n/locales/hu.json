@@ -1819,7 +1819,8 @@
             "scpModeBody": "A(z) {host} szerveren nincs SFTP, ezért az AeroFTP SCP-t használ ugyanazon a kapcsolaton.",
             "saveOnAnotherServer": "Nincs mentve: ezt a fájlt egy most nem aktív szerverről, fiókból vagy titkosított rétegből nyitották meg. Váltson vissza a lapjára, majd mentse újra.",
             "openedOnAnotherServer": "Nincs megnyitva: a szerver megváltozott a fájl olvasása közben. Nyissa meg újra.",
-            "remoteTargetChanged": "Nem történt módosítás: a szerver, a fiók vagy a titkosított réteg megváltozott a művelet indítása óta, vagy még újracsatlakozik. Próbálja újra az aktuális kapcsolaton."
+            "remoteTargetChanged": "Nem történt módosítás: a szerver, a fiók vagy a titkosított réteg megváltozott a művelet indítása óta, vagy még újracsatlakozik. Próbálja újra az aktuális kapcsolaton.",
+            "connectEarlierNotStopped": "Egy korábbi csatlakozási kísérletet nem sikerült leállítani, és még fut, ezért ez a kapcsolat nem indult el. Próbálja újra, amint befejeződött."
         },
         "about": {
             "tagline": "Több mint FTP. Teljes fejlesztői eszközkészlet.",
@@ -2430,7 +2431,10 @@
             "discoverTigris": "Tigris: globálisan elosztott, S3-kompatibilis tárhely, kimenő forgalmi díj nélkül (5 GB ingyenes)",
             "trustPasvAddress": "A szerver által megadott passzív cím használata",
             "trustPasvAddressHelp": "Ki: az adatkapcsolatok arra a gazdagépre mennek, amelyhez csatlakozott, ahogy a curl is teszi. Csak olyan szervernél kapcsolja be, amely más címről küldi az adatokat.",
-            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)"
+            "discoverFastly": "Fastly Object Storage: S3-kompatibilis tárhely 12 régióban (5 GB ingyenes, kártya szükséges)",
+            "discoverNeon": "Neon Object Storage: S3-kompatibilis tárhely projekti áganként (5 GB ingyen projektenként)",
+            "discoverPuter": "Puter felhőalapú tároló WebDAV-on keresztül (25 MB ingyenes, kártya nélkül)",
+            "discoverLifetimeCloud": "LifetimeCloud tárhely WebDAV-on keresztül (1 GB ingyen, kártya nélkül)"
         },
         "shortcuts": {
             "title": "Billentyűparancsok",

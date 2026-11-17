@@ -47,7 +47,8 @@ export const getCredentialWithRetry = async (account: string, maxRetries = 3): P
  * OAuth/Jotta token, per-mode snapshots, OneDrive hints), not just the password.
  * Delegates to the Rust `copy_profile_secrets` single source of truth. Returns a
  * map `base_prefix -> bool` of what was copied so the caller can set the
- * duplicate's `hasStored*` flags. `protocol` lets the backend derive the OAuth
+ * duplicate's `hasStored*` flags; rejects, with nothing copied, when a secret
+ * could not be read or written. `protocol` lets the backend derive the OAuth
  * token key.
  */
 export const copyProfileVaultSecrets = async (
@@ -55,20 +56,16 @@ export const copyProfileVaultSecrets = async (
   targetProfileId: string,
   protocol?: string,
   expectedUserId?: number,
-): Promise<ProfileVaultSecretCopyResult> => {
-  try {
-    return await invoke<ProfileVaultSecretCopyResult>('copy_profile_secrets', {
-      sourceId: sourceProfileId,
-      targetId: targetProfileId,
-      protocol: protocol ?? null,
-      expectedUserId: expectedUserId ?? null,
-    });
-  } catch {
-    // Best-effort: a copy failure leaves the duplicate credential-free, exactly
-    // as before this helper existed.
-    return {};
-  }
-};
+): Promise<ProfileVaultSecretCopyResult> =>
+  // A copy the backend could not complete rejects, and the caller saves no
+  // duplicate: one without its source's secrets would connect without them, or
+  // fall back to the shared OAuth token, which may be another account's.
+  invoke<ProfileVaultSecretCopyResult>('copy_profile_secrets', {
+    sourceId: sourceProfileId,
+    targetId: targetProfileId,
+    protocol: protocol ?? null,
+    expectedUserId: expectedUserId ?? null,
+  });
 
 /**
  * Remove EVERY vault secret scoped to a profile id so deleting a profile leaves

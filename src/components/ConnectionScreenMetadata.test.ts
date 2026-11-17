@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
+import { USERNAME_TEMPLATE_UNRESOLVED } from '../utils/usernameTemplate';
+import { ConnectEarlierNotStoppedError, isConnectEarlierNotStoppedError } from '../utils/connectCancel';
+import { transformWithOxc } from 'vite';
+import APP from '../App.tsx?raw';
 import React, { act, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -12,12 +16,13 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke }));
 vi.mock('../i18n', () => ({
     useTranslation: () => mocks.t,
     useI18n: () => ({ t: mocks.t, language: 'en' }),
+    translate: (key: string) => key,
 }));
 vi.mock('../hooks/useActivityLog', () => ({ useActivityLog: () => ({ log: mocks.log }) }));
 // Keep the real QuickConnect controls and save handlers, without signing in.
 vi.mock('./OAuthConnect', () => ({
-    OAuthConnect: ({ rightColumn, onConnected }: { rightColumn: React.ReactNode; onConnected: (name: string) => void }) =>
-        React.createElement('div', null, rightColumn,
+    OAuthConnect: ({ rightColumn, onConnected, disabled }: { rightColumn: React.ReactNode; onConnected: (name: string) => void; disabled?: boolean }) =>
+        React.createElement('div', { 'data-sign-in-disabled': String(!!disabled) }, rightColumn,
             React.createElement('button', { onClick: () => onConnected('Account') }, 'Test OAuth sign-in')),
 }));
 vi.mock('./IconPickerDialog', () => ({
@@ -37,13 +42,23 @@ vi.mock('./IntroHub/DiscoverPanel', () => ({
 vi.mock('./IntroHub/PortableIsolationBanner', () => ({ PortableIsolationBanner: () => null }));
 
 import { ConnectionScreen } from './ConnectionScreen';
+import { BACKEND_SWAP_WAIT_MS, latestSettledBackendSwapToken, swapBackend, useOAuth2, type BackendSwapDetail } from '../hooks/useOAuth2';
+import { connectStartFolder } from '../utils/usernameTemplate';
 import { IntroHub } from './IntroHub/IntroHub';
+import { fixture, local, LOCAL } from './appTransfers.testkit';
+import PROVIDER_COMMANDS_RS from '../../src-tauri/src/provider_commands.rs?raw';
+import MY_SERVERS from './IntroHub/MyServersPanel.tsx?raw';
+import CONNECTION_SCREEN from './ConnectionScreen.tsx?raw';
+import USE_OAUTH2 from '../hooks/useOAuth2.ts?raw';
 
 const icon = 'data:image/png;base64,dGVzdA==';
 let profiles: ServerProfile[];
 let container: HTMLDivElement;
 let root: Root;
 let onFormSaved: ReturnType<typeof vi.fn<() => void>>;
+let onConnectSpy: ReturnType<typeof vi.fn<(overrideParams?: ConnectionParams) => void>>;
+let abandoned: number;
+const countAbandoned = () => { abandoned += 1; };
 
 beforeEach(() => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -51,6 +66,9 @@ beforeEach(() => {
     mocks.invoke.mockReset();
     mocks.log.mockReset();
     onFormSaved = vi.fn<() => void>();
+    onConnectSpy = vi.fn<(overrideParams?: ConnectionParams) => void>();
+    abandoned = 0;
+    window.addEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     mocks.invoke.mockImplementation(async (command: string, args?: { profiles?: ServerProfile[]; expectedUserId?: number }) => {
         if (command === 'user_partitions_load_active_server_profiles') return structuredClone(profiles);
         if (command === 'user_partitions_load_active_server_profiles_scoped') return { userId: 1, profiles: structuredClone(profiles) };
@@ -71,6 +89,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+    window.removeEventListener('aeroftp-sign-in-abandoned', countAbandoned);
     await act(async () => root.unmount());
     container.remove();
     vi.unstubAllGlobals();
@@ -95,7 +114,7 @@ async function renderEditor() {
         return React.createElement(ConnectionScreen, {
             connectionParams: params, quickConnectDirs: dirs, loading: false,
             onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
-            onConnect: vi.fn(), editingProfile: profile, onFormSaved,
+            onConnect: onConnectSpy, editingProfile: profile, onFormSaved,
         });
     }
     await act(async () => root.render(React.createElement(Harness)));
@@ -282,7 +301,7 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         const connect = button('connection.fourshared.connectTo4shared');
         expect(connect.disabled).toBe(false);
         await act(async () => connect.click());
-        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret' } });
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'legacy-key', consumer_secret: 'legacy-secret', profile_id: 'edited' } });
     });
 
     it('4shared retains existing tokens after an app credential read fails', async () => {
@@ -306,7 +325,7 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         const connect = button('connection.fourshared.connectTo4shared');
         expect(connect.disabled).toBe(false);
         await act(async () => connect.click());
-        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'manual-key', consumer_secret: 'manual-secret' } });
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_connect', { params: { consumer_key: 'manual-key', consumer_secret: 'manual-secret', profile_id: 'edited' } });
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('fourshared_full_auth');
     });
 
@@ -327,6 +346,20 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(mocks.invoke.mock.calls.map(([command]) => command)).not.toContain('fourshared_connect');
     });
 
+    it("4shared checks and signs out the edited profile's own sign-in, not the shared one", async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        // Only the edited profile's key holds a sign-in.
+        mocks.invoke.mockImplementation(async (command: string, args?: any) =>
+            command === 'fourshared_has_tokens' ? args?.profileId === 'edited' : previous(command, args));
+        await openEditor('fourshared');
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_has_tokens', { profileId: 'edited' });
+        // Seen as signed in: the form offers to connect with it.
+        expect(button('connection.fourshared.connectTo4shared')).toBeTruthy();
+        const logout = container.querySelector<HTMLButtonElement>('button[title="connection.fourshared.disconnectAccount"]')!;
+        await act(async () => logout.click());
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_logout', { profileId: 'edited' });
+    });
+
     it.each([false, true])('4shared reconnect updates the edited ID after a rename (existing tokens: %s)', async tokens => {
         const previous = mocks.invoke.getMockImplementation()!;
         mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? tokens : previous(command, args));
@@ -343,6 +376,72 @@ describe('4shared and Swift share the modern QuickConnect columns', () => {
         expect(profiles[0]).toMatchObject({ id: 'edited', name: 'Renamed', initialPath: '' });
         expect(profiles[0].customIconUrl).toBeUndefined();
         expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_full_auth')).toBe(!tokens);
+    });
+});
+
+describe('A 4shared sign-in of the connection form', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    // CodeRabbit 4577064144: "Pass the same per-attempt key to
+    // `fourshared_full_auth` and `fourshared_connect`, and load the token by
+    // that key instead of the singleton."
+    it('signs in, connects and saves a new profile under one per-attempt key', async () => {
+        profiles = [];
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({ protocol: 'fourshared', server: '', username: '', password: '' });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params, quickConnectDirs: dirs, loading: false,
+                onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
+                onConnect: onConnectSpy, onFormSaved,
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        await act(async () => {
+            for (const [input, value] of [[key, 'form-key'], [secret, 'form-secret']] as const) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        await act(async () => button('connection.fourshared.signInWith4shared').click());
+        const params = (command: string) => mocks.invoke.mock.calls.find(([name]) => name === command)?.[1] as { params: { profile_id?: string } } | undefined;
+        const signedInAs = params('fourshared_full_auth')?.params.profile_id;
+        // The attempt's own key, never the shared singleton another form writes.
+        expect(signedInAs).toMatch(/^srv_/);
+        expect(params('fourshared_connect')?.params.profile_id).toBe(signedInAs);
+        // The saved profile is the one that key names, so it reads that token.
+        const saved = profiles.find(profile => profile.protocol === 'fourshared');
+        expect(saved?.id).toBe(signedInAs);
+    });
+
+    it('moves the token a sign-in wrote to the existing profile the form saves onto', async () => {
+        // An existing 4shared profile of the name the connect reports.
+        profiles = [{ id: 'kept', name: 'Account', host: 'Account', port: 443, username: '', protocol: 'fourshared' } as ServerProfile];
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({ protocol: 'fourshared', server: '', username: '', password: '' });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params, quickConnectDirs: dirs, loading: false,
+                onConnectionParamsChange: setParams, onQuickConnectDirsChange: setDirs,
+                onConnect: onConnectSpy, onFormSaved,
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const key = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerKey"]')!;
+        const secret = container.querySelector<HTMLInputElement>('input[placeholder="connection.fourshared.enterConsumerSecret"]')!;
+        await act(async () => {
+            for (const [input, value] of [[key, 'form-key'], [secret, 'form-secret']] as const) {
+                Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(input, value);
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+        });
+        await act(async () => button('connection.fourshared.signInWith4shared').click());
+        const signedInAs = (mocks.invoke.mock.calls.find(([name]) => name === 'fourshared_full_auth')?.[1] as { params: { profile_id: string } }).params.profile_id;
+        expect(signedInAs).not.toBe('kept');
+        expect(profiles.map(profile => profile.id)).toEqual(['kept']);
+        expect(mocks.invoke).toHaveBeenCalledWith('fourshared_adopt_tokens', { fromProfileId: signedInAs, toProfileId: 'kept' });
     });
 });
 
@@ -437,5 +536,2311 @@ describe('IntroHub form drafts across tab switches', () => {
         const tab = [...container.querySelectorAll('span')].find(element => element.textContent === 'New backup')!.parentElement!;
         await act(async () => tab.querySelector<HTMLButtonElement>('button[title="common.close"]')!.click());
         expect(draft.isConnected).toBe(false);
+    });
+});
+
+describe('Puter WebDAV credential guidance and Advanced Server override', () => {
+    async function renderPuterNewConnection() {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'puter-webdav',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+    }
+
+    it('renders username and password helpText for puter-webdav', async () => {
+        await renderPuterNewConnection();
+        const text = container.textContent || '';
+        expect(text).toContain('Token auth: use -token as the username (literal)');
+        expect(text).toMatch(/appended verification codes expire and may stop authenticating/i);
+        expect(text).toContain('-token');
+    });
+
+    it('allows unlocking and overriding Server under Advanced Options for token auth', async () => {
+        await renderPuterNewConnection();
+        const toggle = button('protocol.advanced');
+        await act(async () => toggle.click());
+
+        const serverInput = container.querySelector<HTMLInputElement>('input[placeholder="https://dav.puter.com/{username}"]')!;
+        expect(serverInput).toBeDefined();
+        expect(serverInput.disabled).toBe(true);
+
+        const editBtn = button('common.edit');
+        await act(async () => editBtn.click());
+
+        const unlockBtn = button('protocol.advancedUnlock');
+        await act(async () => unlockBtn.click());
+
+        expect(serverInput.disabled).toBe(false);
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(serverInput, 'https://dav.puter.com/myuser');
+            serverInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(serverInput.value).toBe('https://dav.puter.com/myuser');
+    });
+});
+
+describe('LifetimeCloud WebDAV credential helpText and overlay defaults', () => {
+    it('renders username and password helpText for lifetimecloud and keeps crypt overlay opt-in', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                providerId: 'lifetimecloud',
+                server: '',
+                username: '',
+                password: '',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const text = container.textContent || '';
+        expect(text).toContain('Used to fill https://lifetimecloud.me/dav/{username}/ automatically');
+        expect(text).toContain('Profile > Enable WebDAV > Generate WebDAV token (not your LifetimeCloud account password)');
+        expect(container.querySelector('input[placeholder="connection.passwordPlaceholder"]')).not.toBeNull();
+    });
+});
+
+describe('A crypt overlay folder the user name cannot fill', () => {
+    it('shows the refusal and blocks Save until the user name fills it', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                username: '',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/remote.php/dav/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        // Blank user name: the overlay would anchor at a folder named after the
+        // placeholder, so the form shows the refusal.
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        // A user name that fills the folder clears it.
+        const user = container.querySelector<HTMLInputElement>('input[placeholder="connection.usernamePlaceholder"]')
+            ?? [...container.querySelectorAll<HTMLInputElement>('input[type="text"]')].find(i => i.value === '')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+    });
+
+    it('checks a relative Overlays Path on the scope it saves, under the templated Remote Path', async () => {
+        function Harness() {
+            const [params, setParams] = useState<ConnectionParams>({
+                protocol: 'webdav',
+                server: 'https://cloud.example.test',
+                // A backslash cannot fill a folder path: the scope keeps the placeholder.
+                username: 'DOMAIN\\alice',
+                password: 'p',
+            });
+            const [dirs, setDirs] = useState({ remoteDir: '/files/{username}/', localDir: '' });
+            return React.createElement(ConnectionScreen, {
+                connectionParams: params,
+                quickConnectDirs: dirs,
+                loading: false,
+                onConnectionParamsChange: setParams,
+                onQuickConnectDirsChange: setDirs,
+                onConnect: vi.fn(),
+            });
+        }
+        await act(async () => root.render(React.createElement(Harness)));
+        const buttons = () => [...container.querySelectorAll('button')];
+        await act(async () => buttons().find(b => b.textContent?.trim() === 'aerocryptProfile.overlaysSection')!.click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        const overlayPath = container.querySelector<HTMLInputElement>('input[placeholder="/"]')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(overlayPath, 'crypt');
+            overlayPath.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // `crypt` alone holds no placeholder, but it is saved as
+        // `/files/{username}/crypt`, which the backend refuses to unlock.
+        expect(overlayPath.value).toBe('crypt');
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const save = () => [...container.querySelectorAll('button')].find(b => ['common.save', 'common.connect'].includes(b.textContent?.trim() ?? ''))!;
+        expect(save().disabled).toBe(true);
+        // A user name that fills the folder clears the refusal and enables Save.
+        const user = [...container.querySelectorAll<HTMLInputElement>('input')].find(i => i.value === 'DOMAIN\\alice')!;
+        await act(async () => {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(user, 'alice');
+            user.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        expect(container.textContent).not.toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        expect(save().disabled).toBe(false);
+    });
+
+    it('lets an OAuth sign-in write nothing while the overlay folder is unresolved', async () => {
+        // An OAuth profile has no user name, so a `{username}` folder cannot be filled.
+        profiles = [{
+            id: 'edited', name: 'Account', host: '', port: 443, username: '',
+            protocol: 'googledrive', initialPath: '/vault/{username}', localInitialPath: '/local',
+        }];
+        await renderEditor();
+        await act(async () => button('aerocryptProfile.overlaysSection').click());
+        const enable = [...container.querySelectorAll('label')].find(l => l.textContent?.includes('aerocryptProfile.enable'))!;
+        await act(async () => enable.click());
+        expect(container.textContent).toContain(USERNAME_TEMPLATE_UNRESOLVED);
+        const before = structuredClone(profiles);
+        mocks.invoke.mockClear();
+        await act(async () => button('Test OAuth sign-in').click());
+        const writes = mocks.invoke.mock.calls.map(([command]) => command)
+            .filter(command => /save_active_server_profiles|store_credential|credential_store|aerocrypt/.test(String(command)));
+        expect(writes).toEqual([]);
+        expect(profiles).toEqual(before);
+        // The sign-in is offered disabled, and the swapped backend is reported
+        // so App puts the live tab aside.
+        expect(container.querySelector('[data-sign-in-disabled]')!.getAttribute('data-sign-in-disabled')).toBe('true');
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+});
+
+describe('A sign-in that swapped the backend', () => {
+    // OAuthConnect and FourSharedConnect swap the backend before the form
+    // decides: every exit either hands the connect to App, which parks the
+    // live tab first, or reports the abandoned sign-in so App parks it.
+    it('hands an OAuth sign-in to App and reports nothing', async () => {
+        await openEditor('googledrive');
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).toHaveBeenCalledOnce();
+        expect(abandoned).toBe(0);
+    });
+
+    it("refuses App's own upload while the sign-in still reads the profile to save", async () => {
+        // App's transfers on the live tab, and App's swap listener on the same
+        // backend accounting.
+        const app = fixture({ folders: { [LOCAL]: [local('a.txt')] } });
+        const start = APP.indexOf('  const backendMark = (): BackendMark => ({');
+        const listener = APP.indexOf('  const backendSwapRef = useRef<');
+        const { code } = await transformWithOxc([
+            APP.slice(start, APP.indexOf('  const remoteConnectPhaseVersionRef = useRef(0);', start)),
+            APP.slice(listener, APP.indexOf('  // FTP operations', listener)),
+        ].join('\n'), 'swap-listener.ts');
+        const ctx = {
+            useRef: <T,>(current: T) => ({ current }),
+            useEffect: (effect: () => () => void) => { cleanups.push(effect()); },
+            useLatestCallback: <F,>(fn: F) => fn,
+            notify: { error: vi.fn() }, t: (key: string) => key,
+            // The takeover only schedules the park: the tab still reads connected.
+            takeOverActiveSession: vi.fn(), parkActiveSession: vi.fn(),
+            remoteConnectPhaseVersionRef: { current: 7 },
+            backendUncertainRef: app.uncertain, backendConfirmationsRef: app.confirmations,
+            backendTeardownsRef: app.teardowns, backendReplacementSeqRef: { current: 0 },
+        };
+        const { confirmBackendConnection } = new Function(...Object.keys(ctx), `${code}; return { confirmBackendConnection };`)(...Object.values(ctx));
+        try {
+            await openEditor('googledrive');
+            // The form's read of the profile to save is held after the swap.
+            let release!: () => void;
+            let reading!: () => void;
+            const readStarted = new Promise<void>(resolve => { reading = resolve; });
+            const previous = mocks.invoke.getMockImplementation()!;
+            mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+                if (command === 'user_partitions_load_active_server_profiles_scoped') {
+                    reading();
+                    await new Promise<void>(resolve => { release = resolve; });
+                }
+                return previous(command, args);
+            });
+            // OAuthConnect swaps the backend through `swapBackend`, then hands
+            // the sign-in to the form (`onConnected`), which reads the profile.
+            await swapBackend(async () => undefined);
+            let signIn!: Promise<void>;
+            act(() => { signIn = Promise.resolve(button('Test OAuth sign-in').click()); });
+            await readStarted;
+            expect(ctx.takeOverActiveSession).toHaveBeenCalled();
+            // A write through App's upload now: refused, nothing written.
+            await app.uploadFile(`${LOCAL}/a.txt`, 'a.txt', false, 40);
+            expect(app.written()).toEqual([]);
+            await act(async () => { release(); await signIn; });
+            expect(onConnectSpy).toHaveBeenCalledOnce();
+            // Once a connect confirms the tab, the same upload lands.
+            confirmBackendConnection();
+            await app.uploadFile(`${LOCAL}/a.txt`, 'a.txt', false, 40);
+            expect(app.written()).toEqual(['/remote/a.txt']);
+        } finally {
+            cleanups.splice(0).forEach(cleanup => cleanup());
+        }
+    });
+
+    it('reports an OAuth sign-in whose profile read fails', async () => {
+        await openEditor('googledrive');
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return previous(command, args);
+        });
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+
+    it('reports a 4shared connect whose profile read fails', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? true : previous(command, args));
+        await openEditor('fourshared');
+        const withTokens = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return withTokens(command, args);
+        });
+        await act(async () => button('connection.fourshared.connectTo4shared').click());
+        expect(mocks.invoke.mock.calls.some(([command]) => command === 'fourshared_connect')).toBe(true);
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+
+    it('tells App before the 4shared connect swaps the backend, and reports that swap', async () => {
+        const previous = mocks.invoke.getMockImplementation()!;
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => command === 'fourshared_has_tokens' ? true : previous(command, args));
+        await openEditor('fourshared');
+        const withTokens = mocks.invoke.getMockImplementation()!;
+        const order: string[] = [];
+        mocks.invoke.mockImplementation(async (command: string, args?: any) => {
+            if (command === 'fourshared_connect') order.push(command);
+            if (command === 'user_partitions_load_active_server_profiles_scoped') throw new Error('STORE_NOT_READY');
+            return withTokens(command, args);
+        });
+        const { swaps, reports, stop } = listenToSwaps(order);
+        try {
+            await act(async () => button('connection.fourshared.connectTo4shared').click());
+        } finally { stop(); }
+        expect(order).toEqual(['swap:start', 'fourshared_connect', 'swap:settled']);
+        expect(swaps[0].token).toBe(swaps[1].token);
+        expect(reports).toEqual([swaps[0].token]);
+    });
+});
+
+/** Records the sign-in swap events and the form's abandoned reports. */
+function listenToSwaps(order: string[]) {
+    const swaps: BackendSwapDetail[] = [];
+    const reports: (number | undefined)[] = [];
+    const swap = (event: Event) => {
+        const detail = (event as CustomEvent<BackendSwapDetail>).detail;
+        swaps.push(detail);
+        order.push(`swap:${detail.phase}`);
+    };
+    const report = (event: Event) => { reports.push((event as CustomEvent<{ token?: number }>).detail?.token); };
+    window.addEventListener('aeroftp-backend-swap', swap);
+    window.addEventListener('aeroftp-sign-in-abandoned', report);
+    return {
+        swaps, reports,
+        stop: () => {
+            window.removeEventListener('aeroftp-backend-swap', swap);
+            window.removeEventListener('aeroftp-sign-in-abandoned', report);
+        },
+    };
+}
+
+describe('The OAuth sign-in swap (useOAuth2.connect)', () => {
+    async function connectOnce(result: () => Promise<unknown>) {
+        const order: string[] = [];
+        mocks.invoke.mockImplementation(async (command: string) => {
+            order.push(command);
+            return result();
+        });
+        let connect!: ReturnType<typeof useOAuth2>['connect'];
+        function Hook() { connect = useOAuth2().connect; return null; }
+        await act(async () => root.render(React.createElement(Hook)));
+        const { swaps, stop } = listenToSwaps(order);
+        try {
+            await act(async () => { await connect({ provider: 'google_drive', client_id: 'id', client_secret: 'secret' }).catch(() => undefined); });
+        } finally { stop(); }
+        return { order, swaps };
+    }
+
+    it('tells App before oauth2_connect swaps the backend, and when it ends', async () => {
+        const { order, swaps } = await connectOnce(async () => ({ display_name: 'Account', account_email: null }));
+        expect(order).toEqual(['swap:start', 'oauth2_connect', 'swap:settled']);
+        expect(swaps[0].token).toBe(swaps[1].token);
+        expect(swaps[0].token).toBe(latestSettledBackendSwapToken());
+    });
+
+    it('says the swap ended when the connect fails', async () => {
+        const { order } = await connectOnce(async () => { throw new Error('refused'); });
+        expect(order).toEqual(['swap:start', 'oauth2_connect', 'swap:settled']);
+    });
+});
+
+/** Runs App's sign-in swap listener (the `backendSwapRef` effect) on stubs. */
+async function mountSwapListener() {
+    const start = APP.indexOf('  const backendSwapRef = useRef<');
+    const end = APP.indexOf('  // FTP operations', start);
+    expect(start, 'the swap listener in App.tsx').toBeGreaterThan(-1);
+    const { code } = await transformWithOxc(APP.slice(start, end), 'backend-swap.ts');
+    const ctx = {
+        useRef: <T,>(current: T) => ({ current }),
+        useEffect: (effect: () => () => void) => { cleanups.push(effect()); },
+        useLatestCallback: <F,>(fn: F) => fn,
+        notify: { error: vi.fn() },
+        t: (key: string) => key,
+        takeOverActiveSession: vi.fn(),
+        parkActiveSession: vi.fn(),
+        remoteConnectPhaseVersionRef: { current: 7 },
+        backendUncertainRef: { current: false },
+        replacingBackend: () => () => undefined,
+    };
+    new Function(...Object.keys(ctx), code)(...Object.values(ctx));
+    return ctx;
+}
+const cleanups: (() => void)[] = [];
+const abandon = (token: number) => window.dispatchEvent(new CustomEvent('aeroftp-sign-in-abandoned', { detail: { token } }));
+/** The form's hand-off request for a sign-in: true when App accepts it. */
+const handOffFor = (token: number) => {
+    const request = { token, accepted: true };
+    window.dispatchEvent(new CustomEvent('aeroftp-sign-in-handoff', { detail: request }));
+    return request.accepted;
+};
+/** The events of a sign-in swap, sent as `swapBackend` sends them, in an
+ *  order the queue no longer lets happen: the token rules hold anyway. */
+let eventToken = 9000;
+const swapEvents = () => {
+    const token = ++eventToken;
+    const tell = (phase: 'start' | 'settled') =>
+        window.dispatchEvent(new CustomEvent<BackendSwapDetail>('aeroftp-backend-swap', { detail: { token, phase } }));
+    tell('start');
+    return { token, settle: () => tell('settled') };
+};
+/** A sign-in swap the test settles when it wants: its token, and the settle. */
+const pendingSwap = () => {
+    let settle: (() => void) | undefined;
+    const done = swapBackend(() => new Promise<void>(resolve => { settle = resolve; }));
+    return {
+        settle: async () => {
+            // Its invoke runs in its turn, a few microtasks after the start.
+            for (let i = 0; i < 20 && !settle; i++) await Promise.resolve();
+            settle!();
+            await done;
+        },
+    };
+};
+
+describe('App around a sign-in swap', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    it('puts the live tab aside before the backend is swapped', async () => {
+        const app = await mountSwapListener();
+        let parkedFirst = false;
+        await swapBackend(async () => { parkedFirst = app.takeOverActiveSession.mock.calls.length === 1; });
+        expect(parkedFirst).toBe(true);
+        // And again when it settles: a tab connected meanwhile lost its backend.
+        expect(app.takeOverActiveSession).toHaveBeenCalledTimes(2);
+    });
+
+    it('puts aside a tab opened while the abandoned swap ran', async () => {
+        const app = await mountSwapListener();
+        // A tab switch or a connect began while oauth2_connect ran: the swap
+        // replaced the backend it had opened.
+        await swapBackend(async () => { app.remoteConnectPhaseVersionRef.current++; });
+        abandon(latestSettledBackendSwapToken());
+        expect(app.parkActiveSession).toHaveBeenCalledOnce();
+    });
+
+    it('leaves alone a tab opened after the swap, when the report comes late', async () => {
+        const app = await mountSwapListener();
+        await swapBackend(async () => undefined);
+        app.remoteConnectPhaseVersionRef.current++;
+        abandon(latestSettledBackendSwapToken());
+        expect(app.parkActiveSession).not.toHaveBeenCalled();
+    });
+
+    it('leaves the tab alone on a report about a superseded sign-in', async () => {
+        const app = await mountSwapListener();
+        await swapBackend(async () => undefined);
+        const older = latestSettledBackendSwapToken();
+        await swapBackend(async () => undefined);
+        abandon(older);
+        expect(app.parkActiveSession).not.toHaveBeenCalled();
+        abandon(latestSettledBackendSwapToken());
+        expect(app.parkActiveSession).toHaveBeenCalledOnce();
+    });
+});
+
+describe('Overlapping sign-ins', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    it('puts aside a tab opened while two sign-ins wait, when the first one settles', async () => {
+        const app = await mountSwapListener();
+        const a = swapEvents();
+        const b = swapEvents();
+        // Tab C connects while both wait: its connect advances the phase.
+        app.remoteConnectPhaseVersionRef.current++;
+        const before = app.takeOverActiveSession.mock.calls.length;
+        a.settle();
+        // A's settle replaced C's backend: C is put aside.
+        expect(app.takeOverActiveSession.mock.calls.length).toBe(before + 1);
+        // A's form fails its profile save: its report names A, which owns the backend.
+        abandon(a.token);
+        expect(app.parkActiveSession).toHaveBeenCalledOnce();
+        b.settle();
+    });
+
+    it('puts aside the later sign-in\'s tab when the earlier one settles after it', async () => {
+        const app = await mountSwapListener();
+        const a = swapEvents();
+        const b = swapEvents();
+        b.settle();
+        expect(handOffFor(b.token)).toBe(true);
+        // App's connect of B's session.
+        app.remoteConnectPhaseVersionRef.current++;
+        const before = app.takeOverActiveSession.mock.calls.length;
+        a.settle();
+        expect(app.takeOverActiveSession.mock.calls.length).toBe(before + 1);
+        // A now owns the backend: its own hand-off is the right one.
+        expect(handOffFor(a.token)).toBe(true);
+    });
+
+    it('refuses the hand-off of a sign-in that another one overtook', async () => {
+        const app = await mountSwapListener();
+        const a = swapEvents();
+        const b = swapEvents();
+        a.settle();
+        b.settle();
+        expect(handOffFor(a.token)).toBe(false);
+        expect(app.notify.error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
+        // Its abandoned report is left alone; B hands off.
+        abandon(a.token);
+        expect(app.parkActiveSession).not.toHaveBeenCalled();
+        expect(handOffFor(b.token)).toBe(true);
+    });
+
+    it('refuses a hand-off after a connect took the backend since the settle', async () => {
+        const app = await mountSwapListener();
+        await swapBackend(async () => undefined);
+        app.remoteConnectPhaseVersionRef.current++;
+        expect(handOffFor(latestSettledBackendSwapToken())).toBe(false);
+    });
+
+    it('does not connect a form sign-in whose hand-off App refuses', async () => {
+        const app = await mountSwapListener();
+        await openEditor('googledrive');
+        await swapBackend(async () => undefined);
+        app.remoteConnectPhaseVersionRef.current++;
+        await act(async () => button('Test OAuth sign-in').click());
+        expect(onConnectSpy).not.toHaveBeenCalled();
+        expect(abandoned).toBe(1);
+    });
+});
+
+/** App's backend confirmation and replacement accounting, its sign-in swap
+ *  listener, `backendServesLiveTab`, `remoteActionGuard`, `queuedTargetProblem`
+ *  and `queuedTargetGuard`, run together on stubs. */
+async function liveTabChecks() {
+    const between = (from: string, to: string) => {
+        const start = APP.indexOf(from);
+        expect(start, from).toBeGreaterThan(-1);
+        return APP.slice(start, APP.indexOf(to, start));
+    };
+    const source = [
+        between('  const backendMark = (): BackendMark => ({', '  const remoteConnectPhaseVersionRef = useRef(0);'),
+        between('  const backendSwapRef = useRef<', '  // FTP operations'),
+        between('  const backendServesLiveTab = () =>', '  /** Fails the rows from'),
+    ].join('\n');
+    const { code } = await transformWithOxc(source, 'live-tab.ts');
+    const params = { protocol: 'ftp', server: 'example.test', username: 'u', password: '' };
+    const target = { params, profileId: null, oauthLogins: 0, overlay: null, aeroVault: null };
+    class QueuedTargetChangedError extends Error {}
+    const ctx = {
+        useRef: <T,>(current: T) => ({ current }),
+        useEffect: (effect: () => () => void) => { cleanups.push(effect()); },
+        useLatestCallback: <F,>(fn: F) => fn,
+        notify: { error: vi.fn() },
+        // The takeover only schedules the park: isConnected still reads true.
+        takeOverActiveSession: vi.fn(),
+        parkActiveSession: vi.fn(),
+        remoteConnectPhaseVersionRef: { current: 7 },
+        remoteConnectPhaseRef: { current: false },
+        backendTeardownsRef: { current: 0 },
+        backendUncertainRef: { current: false },
+        backendConfirmationsRef: { current: 0 },
+        backendReplacementSeqRef: { current: 0 },
+        // The AeroVault overlay a queued transfer was planned under (none).
+        aeroVaultSessionRef: { current: null },
+        isConnected: true,
+        isSameConnection: () => true,
+        liveConnectionParams: params,
+        accountKeysDiffer: () => false,
+        liveProfileId: () => null,
+        isOAuthProvider: () => false,
+        isFourSharedProvider: () => false,
+        liveOverlay: () => null,
+        snapshotQueuedTarget: () => target,
+        QueuedTargetChangedError,
+        t: (key: string) => key,
+    };
+    const fns = new Function(...Object.keys(ctx), `${code}; return { confirmBackendConnection, replacingBackend, remoteActionGuard, queuedTargetProblem, queuedTargetGuard };`)(...Object.values(ctx));
+    return { ...fns, target, ctx };
+}
+
+describe('The live tab while the backend is being replaced', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    it('refuses the queue and a direct action at once, before React commits the park', async () => {
+        const live = await liveTabChecks();
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+        expect(() => live.remoteActionGuard()()).not.toThrow();
+        const swap = pendingSwap();
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
+        // The batch's own guard, run before each write while the form still
+        // reads the profile to save (the swap settled, the hand-off pending).
+        await swap.settle();
+        expect(() => live.queuedTargetGuard(live.target)()).toThrow('transfer.queuedForAnotherServer');
+        // A connect that confirms a tab binds it again.
+        live.confirmBackendConnection();
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+
+    it('keeps the tab another sign-in confirmed unbound while an earlier one is in flight', async () => {
+        const live = await liveTabChecks();
+        const a = swapEvents();
+        const b = swapEvents();
+        b.settle();
+        // B hands off and its connect confirms B's tab.
+        live.confirmBackendConnection();
+        // A is still in flight: the backend may hold A's provider already.
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
+        a.settle();
+        // A replaced the backend under B's tab: unbound until a connect confirms.
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        expect(live.ctx.backendTeardownsRef.current).toBe(0);
+    });
+
+    it('does the same when the earlier replacement is a resume connect', async () => {
+        const live = await liveTabChecks();
+        // The resume of a restored transfer starts its OAuth connect.
+        const endResume = live.replacingBackend();
+        // Another connect confirms its tab meanwhile.
+        live.confirmBackendConnection();
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        endResume();
+        expect(live.queuedTargetProblem(live.target)).toBe('transfer.queuedForAnotherServer');
+        // A replacement nobody confirmed around leaves nothing behind.
+        live.confirmBackendConnection();
+        const endAlone = live.replacingBackend();
+        endAlone();
+        endAlone();
+        expect(live.ctx.backendTeardownsRef.current).toBe(0);
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+});
+
+describe('An AeroCloud open after an abandoned sign-in', () => {
+    afterEach(() => { cleanups.splice(0).forEach(cleanup => cleanup()); });
+
+    /** App's AeroCloud connect closure, run on stubs, confirming through the
+     *  same accounting as `live`; its connect replaces the backend as App's
+     *  `runConnect` does. */
+    async function aeroCloudConnect(live: Awaited<ReturnType<typeof liveTabChecks>>, isProvider: boolean) {
+        const start = APP.indexOf('const connectToCloudServer = async');
+        const end = APP.indexOf('// Helper: navigate to remote folder', start);
+        expect(start, 'connectToCloudServer in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end), 'aerocloud-connect.ts');
+        const runConnect = vi.fn(async () => { live.replacingBackend()(); });
+        const ctx = {
+            confirmBackendConnection: live.confirmBackendConnection,
+            remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, AEROCLOUD_OPEN_SUPERSEDED: 'AEROCLOUD_OPEN_SUPERSEDED',
+            ownsPhase: () => true, supersedeOlderConnects: () => undefined, previousSessionEnded: false,
+            invoke: vi.fn(async () => undefined),
+            isProvider,
+            protocol: isProvider ? 'webdav' : 'ftp',
+            cloudServer: { id: 'cloud', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} },
+            cloudServerString: 'ftp.example.test:21',
+            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }),
+            cloudConfig: { remote_folder: '/sync' },
+            cloudPassword: 'dummy-password',
+            cloudFilenApiKey: null,
+            runConnect,
+            scpFallbackConnectParam: () => ({}),
+            loadedCertificateCheck: () => true,
+            loadedOption: () => undefined,
+            loadedOptionOn: () => false,
+            connectTlsMode: () => undefined,
+            webdavConnectBasePath: () => null,
+            isSshProtocol: () => false,
+            checkSftpHostKey: vi.fn(async () => true),
+            CONNECT_CANCELLED_MARKER: 'cancelled',
+        };
+        const connect = new Function(...Object.keys(ctx), `${code}; return connectToCloudServer;`)(...Object.values(ctx));
+        await connect();
+        expect(runConnect).toHaveBeenCalledOnce();
+    }
+
+    it.each([['a provider', true], ['an FTP server', false]])('lets a remote action through once it has connected %s', async (_label, isProvider) => {
+        const live = await liveTabChecks();
+        // A sign-in swapped the backend and was then abandoned.
+        await swapBackend(async () => { live.ctx.remoteConnectPhaseVersionRef.current++; });
+        abandon(latestSettledBackendSwapToken());
+        expect(live.ctx.parkActiveSession).toHaveBeenCalledOnce();
+        expect(() => live.remoteActionGuard()()).toThrow('toast.remoteTargetChanged');
+        await aeroCloudConnect(live, isProvider);
+        expect(() => live.remoteActionGuard()()).not.toThrow();
+        expect(live.queuedTargetProblem(live.target)).toBeNull();
+    });
+});
+
+describe('One sign-in swap at a time', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('starts a second swap only once the first has settled', async () => {
+        const settled: number[] = [];
+        const record = (event: Event) => {
+            const { token, phase } = (event as CustomEvent<BackendSwapDetail>).detail;
+            if (phase === 'settled') settled.push(token);
+        };
+        window.addEventListener('aeroftp-backend-swap', record);
+        try {
+            const first = pendingSwap();
+            const run = vi.fn(async () => undefined);
+            const second = swapBackend(run);
+            for (let i = 0; i < 5; i++) await Promise.resolve();
+            expect(run).not.toHaveBeenCalled();
+            await first.settle();
+            await second;
+            expect(run).toHaveBeenCalledOnce();
+            // Installed in settle order: the one that settled last owns the backend.
+            expect(latestSettledBackendSwapToken()).toBe(settled[settled.length - 1]);
+        } finally {
+            window.removeEventListener('aeroftp-backend-swap', record);
+        }
+    });
+
+    it('stops waiting for a swap that never settles, and keeps the next ones behind it', async () => {
+        vi.useFakeTimers();
+        const ownerBefore = latestSettledBackendSwapToken();
+        // A is still running; B and C queue behind it.
+        let settleA!: () => void;
+        const a = swapBackend(() => new Promise<void>((resolve) => { settleA = resolve; }));
+        const runB = vi.fn(async () => undefined);
+        const b = swapBackend(runB).catch((error: Error) => error.message);
+        await vi.advanceTimersByTimeAsync(BACKEND_SWAP_WAIT_MS);
+        // B fails as a timed-out connect, replacing and owning nothing.
+        expect(await b).toBe('toast.connectTimedOut');
+        expect(runB).not.toHaveBeenCalled();
+        expect(latestSettledBackendSwapToken()).toBe(ownerBefore);
+        // C, queued after B gave up, still waits for A, which is running.
+        const runC = vi.fn(async () => undefined);
+        const c = swapBackend(runC);
+        await vi.advanceTimersByTimeAsync(1000);
+        expect(runC).not.toHaveBeenCalled();
+        // Only once A settles does C start.
+        settleA();
+        await a;
+        await c;
+        expect(runC).toHaveBeenCalledOnce();
+    });
+
+    it('lets the ones behind go when a swap that ran fails at once', async () => {
+        const failing = swapBackend<void>(() => { throw new Error('refused'); }).catch(() => 'failed');
+        const next = vi.fn(async () => undefined);
+        expect(await failing).toBe('failed');
+        await swapBackend(next);
+        expect(next).toHaveBeenCalledOnce();
+    });
+});
+
+describe('A connect whose backend another invoke replaced meanwhile', () => {
+    /** App's createSession, run on stubs; `replaceDuringRead` ends another
+     *  replacement while it reads the saved profiles. */
+    async function createSessionRun(replaceDuringRead: boolean, confirmDuringRead = false) {
+        const start = APP.indexOf('  const createSession = async (');
+        const end = APP.indexOf('\n  };\n', start);
+        expect(start, 'createSession in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end + '\n  };'.length), 'create-session.ts');
+        const seq = { current: 4 };
+        const confirmations = { current: 2 };
+        const ctx: Record<string, unknown> = {
+            backendReplacementSeqRef: seq,
+            backendConfirmationsRef: confirmations,
+            loadSavedServerProfiles: async () => {
+                if (replaceDuringRead) seq.current += 1;
+                // Another connect finished meanwhile and confirmed its tab.
+                if (confirmDuringRead) confirmations.current += 1;
+                return [];
+            },
+            confirmBackendConnection: vi.fn(),
+            notify: { error: vi.fn() },
+            t: (key: string) => key,
+            remoteFiles: [],
+            localFiles: [],
+        };
+        for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
+        const createSession = new Function(...Object.keys(ctx), `${code}; return createSession;`)(...Object.values(ctx));
+        // The caller read the mark as its own connect returned.
+        const outcome = await createSession('Server', { protocol: 'sftp', server: 'h', username: 'u', password: '' }, '/', '/home', [], [], undefined, { replacements: 4, confirmations: 2 });
+        const added = (ctx.setSessions as ReturnType<typeof vi.fn>).mock.calls[0][0]([]) as { status: string }[];
+        return { ctx, added, outcome };
+    }
+
+    it('keeps the tab cached and confirms nothing when a replacement ended during the profile read', async () => {
+        const { ctx, added, outcome } = await createSessionRun(true);
+        expect(outcome).toBe('stale');
+        expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.setIsConnected).toHaveBeenCalledWith(false);
+        expect(added[0].status).toBe('cached');
+        expect((ctx.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
+    });
+
+    it("leaves a newer connect's workspace connected when that one confirmed during the profile read", async () => {
+        const { ctx, added } = await createSessionRun(true, true);
+        expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.setIsConnected).not.toHaveBeenCalled();
+        expect(added[0].status).toBe('cached');
+    });
+
+    it("leaves the live connection's Navigation Sync alone when A is refused as stale", async () => {
+        const { ctx } = await createSessionRun(true, true);
+        expect(ctx.setIsSyncNavigation).not.toHaveBeenCalled();
+        expect(ctx.setSyncBasePaths).not.toHaveBeenCalled();
+        const live = await createSessionRun(false);
+        expect(live.ctx.setIsSyncNavigation).toHaveBeenCalledWith(false);
+        expect(live.ctx.setSyncBasePaths).toHaveBeenCalledWith(null);
+    });
+
+    it('confirms and makes the tab live when nothing replaced the backend', async () => {
+        const { ctx, added, outcome } = await createSessionRun(false);
+        expect(outcome).toBe('live');
+        expect(ctx.confirmBackendConnection).toHaveBeenCalledOnce();
+        expect(ctx.setActiveSessionId).toHaveBeenCalled();
+        expect(added[0].status).toBe('connected');
+    });
+
+    it('checks the sequence in every connect path that awaits before it confirms', () => {
+        // Every createSession call of a connect flow passes the sequence read
+        // right after that flow's own connect (or, for an OAuth hand-off, when
+        // the branch starts, after its sign-in's swap returned).
+        const calls = [...APP.matchAll(/createSession\(/g)].map(m => m.index!).filter(i => !APP.slice(i - 30, i).includes('const '));
+        expect(calls.length).toBe(6);
+        for (const call of calls) {
+            // The argument list, by parenthesis depth.
+            const open = APP.indexOf('(', call);
+            let depth = 0;
+            let close = open;
+            for (let i = open; i < APP.length; i++) {
+                if (APP[i] === '(') depth++;
+                else if (APP[i] === ')' && --depth === 0) { close = i; break; }
+            }
+            const args = APP.slice(open, close + 1);
+            expect(args, APP.slice(call, call + 80)).toMatch(/\w+ReplacedAt,?\s*\)$/);
+            // A stale outcome stops the flow right there: nothing after it
+            // (the quota, the overlay, the success return) describes the
+            // backend that replaced this tab's.
+            const head = APP.slice(APP.lastIndexOf('\n', call) + 1, call);
+            expect(head, APP.slice(call, call + 80)).toMatch(/^\s+if \(await (connectScope\.step\(\(\) => )?$/);
+            const tail = APP.slice(close + 1, APP.indexOf('\n', close));
+            expect(tail, APP.slice(call, call + 80)).toMatch(/^\)? === 'stale'\) return( 'failed' as const)?;$/);
+        }
+        for (const read of ['providerReplacedAt', 'ftpReplacedAt', 'savedProviderReplacedAt', 'savedFtpReplacedAt']) {
+            // Taken from the receipt the flow's own connect filled as its
+            // replacement ended, on the statement right after that connect.
+            const receipt = read.replace('ReplacedAt', 'Receipt');
+            const at = APP.indexOf(`const ${read} = ${receipt}.mark!;`);
+            expect(at, read).toBeGreaterThan(-1);
+            const before = APP.slice(APP.lastIndexOf('await ', at), at);
+            expect(before, read).toMatch(new RegExp(`^await connectUnderRow\\([^]*runConnect\\('(provider_connect|connect_ftp)'[^]*, ${receipt}\\)\\)?\\);\\n\\s+$`));
+        }
+        expect(APP).toContain('const oauthReplacedAt = backendMark();');
+        // My Servers' sign-in hands over its own replacement's receipt.
+        expect(APP).toContain('const savedOAuthReplacedAt = signInMark ?? backendMark();');
+        expect(APP).toMatch(/onSavedServerConnect=\{asConnectPhase\(async \(params, initialPath, localInitialPath, signInMark, connectScope = new ConnectScope\(\)\) => \{/);
+        // A tab switch reads it after each of its own connects, before any
+        // other statement, and refuses before confirming.
+        const swStart = APP.indexOf('  const switchSession = ');
+        const sw = APP.slice(swStart, APP.indexOf('\n  };\n', swStart));
+        const connects = [...sw.matchAll(/await connectScope\.step\(\(\) => (runConnect|cancellableConnect|swapBackend)\(/g)];
+        expect(connects.length).toBeGreaterThanOrEqual(6);
+        for (const connect of connects) {
+            // The statement's end, by parenthesis depth.
+            let depth = 0;
+            let close = connect.index!;
+            for (let i = sw.indexOf('(', connect.index!); i < sw.length; i++) {
+                if (sw[i] === '(') depth++;
+                else if (sw[i] === ')' && --depth === 0) { close = i; break; }
+            }
+            // Only more connects of the same step (a sign-in, then its
+            // connect) may come before the read.
+            const after = sw.slice(sw.indexOf(';', close) + 1);
+            expect(after, sw.slice(connect.index!, connect.index! + 120)).toMatch(/^(\s*await connectScope\.step\(\(\) => (runConnect|cancellableConnect)\([^;]*;)*\s*switchReplacedAt = switchReceipt\.mark!\.replacements;/);
+            // Each connect carries the switch's receipt.
+            expect(sw.slice(connect.index!, close + 1), sw.slice(connect.index!, connect.index! + 120)).toMatch(/, switchReceipt\)\)$/);
+        }
+        expect(sw).toMatch(/if \(backendReplacementSeqRef\.current !== switchReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n\s+setSessions\(prev => prev\.map\(s => s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \}[^\n]+\n[^\n]+\n\s+confirmBackendConnection\(\);/);
+        // The device open counts its own replacement, reads the sequence once
+        // it ended, and checks it after its listing.
+        expect(APP).toMatch(/const endDeviceReplacement = replacingBackend\(\);\n(\s+\/\/[^\n]*\n)*\s+const deviceOpen = \{ replaced: false \};\n\s+try \{[^]*?mtp_open_gvfs_mount[^]*?mtp_open_device[^]*?\} finally \{\n\s+endDeviceReplacement\(deviceOpen\.replaced\);\n\s+\}\n\s+setActivePortableDeviceId\(session\.deviceId\);\n(\s+\/\/[^\n]*\n)*\s+const deviceReplacedAt = backendReplacementSeqRef\.current;/);
+        expect(APP).toMatch(/if \(backendReplacementSeqRef\.current !== deviceReplacedAt\) \{\n\s+throw [^\n]+\n\s+\}\n[^\n]+\n\s+confirmBackendConnection\(\);/);
+        // The AeroCloud open (both of its connects) and a GitHub branch switch
+        // confirm with no await after their connect: nothing else would.
+        // confirm with no await after their connect, and only while no newer
+        // connect owns the workspace.
+        expect(APP.match(/await runConnect\('(provider_connect|connect_ftp)', (providerParams|ftpParams)\);\n(\s+\/\/[^\n]*\n)*\s+(if \(!ownsPhase\(\)\) throw new Error\(AEROCLOUD_OPEN_SUPERSEDED\);\n\s+confirmBackendConnection\(\);|if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);)/g)?.length).toBe(3);
+    });
+});
+
+/** App's code from `from` to `to`, run with every free name it reads taken
+ *  from `overrides`, else from the globals, else a stub made on first read (a
+ *  `{ current: 0 }` for a ref, a spy otherwise). */
+async function runAppSlice(source: string, overrides: Record<string, unknown>, result: string) {
+    const { code } = await transformWithOxc(source, 'app-slice.ts');
+    // App's own error class and its check, unless a test gives its own: a
+    // made-up one would answer every check with a truthy promise.
+    overrides.ConnectEarlierNotStoppedError ??= ConnectEarlierNotStoppedError;
+    overrides.isConnectEarlierNotStoppedError ??= isConnectEarlierNotStoppedError;
+    overrides.useLatestCallback ??= (fn: unknown) => fn;
+    const made = new Map<string | symbol, unknown>();
+    const scope = new Proxy(overrides, {
+        has: (target, key) => typeof key === 'string' && (key in target || !(key in globalThis)),
+        get: (target, key) => {
+            if (key === Symbol.unscopables) return undefined;
+            if (key in target) return target[key as string];
+            if (key in globalThis) return (globalThis as Record<string | symbol, unknown>)[key];
+            if (!made.has(key)) made.set(key, String(key).endsWith('Ref') ? { current: 0 } : vi.fn(async () => undefined));
+            return made.get(key);
+        },
+        set: (target, key, value) => { target[key as string] = value; return true; },
+    });
+    return new Function('__scope', `with (__scope) { ${code}\n return ${result}; }`)(scope);
+}
+const appBetween = (from: string, to: string) => {
+    const start = APP.indexOf(from);
+    expect(start, from).toBeGreaterThan(-1);
+    const end = APP.indexOf(to, start);
+    expect(end, to).toBeGreaterThan(start);
+    return APP.slice(start, end + to.length);
+};
+const connectScope = () => ({ assert: () => undefined, step: <T,>(fn: () => T) => fn(), cancellable: <T,>(_c: unknown, fn: () => T) => fn() });
+
+describe('Bot-named runs of the backend replacement checks', () => {
+    /** App's real switchSession for an FTP tab whose liveness probe fails, so
+     *  the switch reconnects through `runConnect('connect_ftp')`, which ends
+     *  its own replacement. `replaceAfterRefresh` ends another one during the
+     *  listing that follows the refresh. */
+    async function ftpSwitch(replaceAfterRefresh: boolean) {
+        const seq = { current: 3 };
+        const confirmBackendConnection = vi.fn();
+        const logger = { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() };
+        const activityLog = { updateEntry: vi.fn(), log: vi.fn() };
+        const target = {
+            id: 'ftp-tab', serverName: 'ftp.example.test', status: 'cached', remotePath: '/pub', localPath: '/home/me',
+            remoteFiles: [], localFiles: [], connectionParams: { protocol: 'ftp', server: 'ftp.example.test', username: 'u', password: '' },
+        };
+        const invoke = vi.fn(async (command: string) => {
+            if (command === 'provider_probe_alive') return false;
+            if (command === 'list_files') {
+                if (replaceAfterRefresh) seq.current += 1;
+                return { files: [], current_path: '/pub' };
+            }
+            if (command === 'get_local_files') return [];
+            return undefined;
+        });
+        // Ends its own replacement, and hands back the receipt that end leaves.
+        const runConnect = vi.fn(async (_command: string, _params: unknown, _scope: unknown, receipt?: { mark?: unknown }) => {
+            seq.current += 1;
+            if (receipt) receipt.mark = { replacements: seq.current, confirmations: 0 };
+        });
+        const source = appBetween('  const switchSession = async (', '\n  };\n');
+        const switchSession = await runAppSlice(source, {
+            sessions: [target], activeSessionId: 'other-tab', backendReplacementSeqRef: seq, confirmBackendConnection,
+            logger, activityLog, invoke, runConnect, remoteFiles: [], localFiles: [],
+            isSshProtocol: () => false, isOAuthProvider: () => false, isFourSharedProvider: () => false, usesProviderApi: () => false,
+            probeAliveArgs: () => ({}), loadedOptionOn: () => false, isListingCancelled: () => false, isConnectCancelledError: () => false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), t: (key: string) => key, humanLog: { logRaw: () => 'log' },
+        }, 'switchSession');
+        await switchSession('ftp-tab', connectScope());
+        return { confirmBackendConnection, logger, activityLog, runConnect };
+    }
+
+    it('completes an FTP switch whose liveness probe fails without remoteTargetChanged', async () => {
+        const { confirmBackendConnection, logger, activityLog, runConnect } = await ftpSwitch(false);
+        expect(runConnect).toHaveBeenCalledWith('connect_ftp', expect.anything(), expect.anything(), expect.anything());
+        expect(logger.error).not.toHaveBeenCalled();
+        expect(confirmBackendConnection).toHaveBeenCalledOnce();
+        expect(activityLog.updateEntry).toHaveBeenLastCalledWith('log', expect.objectContaining({ status: 'success' }));
+    });
+
+    it('still fails the FTP switch for a separate replacement after the refresh', async () => {
+        const { confirmBackendConnection, logger, activityLog } = await ftpSwitch(true);
+        expect(logger.error).toHaveBeenCalledWith('Reconnect error:', new Error('toast.remoteTargetChanged'));
+        expect(confirmBackendConnection).not.toHaveBeenCalled();
+        expect(activityLog.updateEntry).toHaveBeenLastCalledWith('log', expect.objectContaining({ status: 'error' }));
+    });
+
+    it("pauses A's profile lookup, opens a device, and A never becomes live", async () => {
+        // App's own replacement accounting, shared by A's createSession and the
+        // device open.
+        const refs = {
+            backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+            backendConfirmationsRef: { current: 5 }, backendReplacementSeqRef: { current: 2 },
+        };
+        const accounting = await runAppSlice(
+            appBetween('  const backendMark = (): BackendMark => ({', '\n  const remoteConnectPhaseVersionRef = useRef(0);'),
+            { ...refs, useRef: (current: unknown) => ({ current }) },
+            '{ confirmBackendConnection, replacingBackend, backendMark }',
+        );
+        const deviceInvoke = vi.fn(async (command: string) => {
+            if (command === 'mtp_open_device') return { deviceId: 'phone', displayName: 'Phone' };
+            if (command === 'provider_list_files') return { files: [], current_path: '/' };
+            if (command === 'get_local_files') return [];
+            return undefined;
+        });
+        // App's real device open: the callback useCallback wraps.
+        const { code: deviceCode } = await transformWithOxc(
+            `const openDevice = ${appBetween('  const openMtpSessionFromLiveDevice = useCallback(', '\n  }, [').replace('  const openMtpSessionFromLiveDevice = useCallback(', '').replace(/\n  \}, \[$/, '\n  }')};`,
+            'device-open.ts');
+        const deviceScope = { ...refs, ...accounting, invoke: deviceInvoke, t: (key: string) => key, findGvfsMtpMount: () => null,
+            localFiles: [], remoteFiles: [], currentLocalPath: '/home/me', notify: { info: vi.fn(), error: vi.fn() },
+            supersedeOlderConnects: vi.fn(),
+            // A sent open that the backend did not refuse replaced the backend.
+            phaseCancellable: async (run: (token: string) => unknown, outcome?: { replaced: boolean }) => {
+                const result = await run('device-token');
+                if (outcome) outcome.replaced = true;
+                return result;
+            } };
+        const open = await runAppSlice(deviceCode, deviceScope, 'openDevice');
+        expect(deviceInvoke).not.toHaveBeenCalled();
+
+        const createStart = APP.indexOf('  const createSession = async (');
+        const createSource = APP.slice(createStart, APP.indexOf('\n  };\n', createStart) + '\n  };'.length);
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const createSession = await runAppSlice(createSource, {
+            ...refs, ...accounting, setActiveSessionId, setSessions, remoteFiles: [], localFiles: [],
+            notify: { error: vi.fn() }, t: (key: string) => key,
+            loadSavedServerProfiles: async () => {
+                // The device opens while A reads the saved profiles.
+                await open({ deviceId: 'phone', displayName: 'Phone' }, undefined, connectScope());
+                return [];
+            },
+        }, 'createSession');
+        // A read its mark as its own connect returned.
+        const mark = accounting.backendMark();
+        expect(mark).toEqual({ replacements: 2, confirmations: 5 });
+        const outcome = await createSession('A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, mark);
+        expect(deviceInvoke).toHaveBeenCalledWith('mtp_open_device', expect.anything());
+        expect(outcome).toBe('stale');
+        const added = setSessions.mock.calls.map(([update]) => update([])).flat() as { serverId?: string; status: string; id: string }[];
+        const tabA = added.find(tab => tab.serverId === 'A');
+        expect(tabA?.status).toBe('cached');
+        expect(setActiveSessionId).not.toHaveBeenCalledWith(tabA?.id);
+    });
+
+    it.each([
+        ['the OAuth connect', 'oauthReplacedAt,', 'fetchStorageQuota(protocol, effectiveParams, { newConnection: true });'],
+        ['the provider connect', 'providerReplacedAt,', 'fetchStorageQuota(protocol, sessionParams, { newConnection: true });'],
+    ])("does not persist backend B's metadata onto saved profile A after %s is refused as stale", async (_name, mark, quota) => {
+        // From the caller's createSession to its quota fetch, which writes the
+        // connection's quota onto the saved profile (`persistQuotaToProfile`).
+        const at = APP.indexOf(mark);
+        const from = APP.lastIndexOf('if (await createSession(', at);
+        const source = `const tail = async () => {\n${APP.slice(from, APP.indexOf(quota, at) + quota.length)}\n};`;
+        const fetchStorageQuota = vi.fn();
+        const markSessionOverlayKind = vi.fn();
+        const setPendingOverlayUnlock = vi.fn();
+        const tail = await runAppSlice(source, {
+            createSession: async () => 'stale', fetchStorageQuota, markSessionOverlayKind, setPendingOverlayUnlock,
+            overlayHint: { kind: 'aerocrypt', anchor: '/vault', opensOutside: false }, overlaySavedId: 'profile-A',
+            shouldAutoUnlockOverlayOnConnect: () => true, getEnabledProfileOverlay: async () => ({}),
+        }, 'tail');
+        await tail();
+        expect(fetchStorageQuota).not.toHaveBeenCalled();
+        expect(markSessionOverlayKind).not.toHaveBeenCalled();
+        expect(setPendingOverlayUnlock).not.toHaveBeenCalled();
+    });
+});
+
+describe('Reviewed ownership of a connect', () => {
+    /** App's backend accounting on fresh refs. */
+    async function accountingOn(refs: Record<string, unknown>) {
+        return runAppSlice(
+            appBetween('  const backendMark = (): BackendMark => ({', '\n  const remoteConnectPhaseVersionRef = useRef(0);'),
+            { ...refs, useRef: (current: unknown) => ({ current }) },
+            '{ confirmBackendConnection, replacingBackend, backendMark }',
+        );
+    }
+    const freshRefs = () => ({
+        backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false },
+        backendConfirmationsRef: { current: 0 }, backendReplacementSeqRef: { current: 0 },
+        remoteConnectPhaseVersionRef: { current: 0 },
+    });
+
+    it("keeps the backend uncertain when B confirms before A's branch-switch connect returns", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A's connect replaces the backend; B starts, connects and confirms
+        // its tab before A's connect returns.
+        const runConnect = vi.fn(async () => {
+            const endA = accounting.replacingBackend();
+            refs.remoteConnectPhaseVersionRef.current += 1;
+            accounting.confirmBackendConnection();
+            endA();
+        });
+        const source = APP.slice(APP.indexOf('  const switchGitHubBranch ='), APP.indexOf('  const requestGitHubBatchCommitMessage'));
+        const switchGitHubBranch = await runAppSlice(`const __switch = ${source.replace(/^\s*const switchGitHubBranch =\s*/, '').replace(/;\s*$/, '')};`, {
+            ...refs, ...accounting, runConnect, useCallback: (fn: unknown) => fn,
+            normalizeProviderConnectionParams: () => ({}), liveConnectionParams: {}, activeSessionId: null, currentRemotePath: '/',
+            buildProviderParams: async () => ({ effectiveParams: {}, providerParams: {} }),
+            invoke: vi.fn(async (command: string) => command === 'provider_list_files' ? { files: [], current_path: '/' } : undefined),
+            withRemoteListSpinner: (fn: () => unknown) => fn(), t: (key: string) => key, notify: { success: vi.fn(), error: vi.fn() },
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+        }, '__switch');
+        await switchGitHubBranch('other');
+        expect(runConnect).toHaveBeenCalledOnce();
+        expect(refs.backendUncertainRef.current).toBe(true);
+    });
+
+    /** A backend as the Rust side keeps it: one provider slot and one legacy
+     *  FTP session, each with the generation its connect and disconnect move,
+     *  and a disconnect that ends only the generation it names. `hold` keeps
+     *  a disconnect (or A's host-key check) waiting until the test releases it. */
+    function fakeBackend(hold: string[]) {
+        const backend = { provider: 'old' as string | null, providerGeneration: 1, ftp: 'old' as string | null, ftpGeneration: 1 };
+        const gates: Record<string, { reached: Promise<void>; release: () => void }> = {};
+        const gate = (name: string) => {
+            if (!hold.includes(name)) return async () => undefined;
+            let reach!: () => void;
+            let release!: () => void;
+            const reached = new Promise<void>(resolve => { reach = resolve; });
+            const released = new Promise<void>(resolve => { release = resolve; });
+            gates[name] = { reached, release };
+            return async () => { reach(); await released; };
+        };
+        const providerTeardown = gate('provider_disconnect');
+        const ftpTeardown = gate('disconnect_ftp');
+        const hostKey = gate('hostKey');
+        const owns = (expected: number | undefined, live: number) => expected === undefined || expected === live;
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'provider_connection_generation') return backend.providerGeneration;
+            if (command === 'ftp_connection_generation') return backend.ftpGeneration;
+            if (command === 'provider_disconnect') {
+                await providerTeardown();
+                if (owns(args?.expectedGeneration, backend.providerGeneration)) { backend.provider = null; backend.providerGeneration += 1; }
+            }
+            if (command === 'disconnect_ftp') {
+                await ftpTeardown();
+                if (owns(args?.expectedGeneration, backend.ftpGeneration)) { backend.ftp = null; backend.ftpGeneration += 1; }
+            }
+            return undefined;
+        });
+        return { backend, gates, invoke, hostKey };
+    }
+
+    /** B's connect for real on that backend: its click opens a newer phase,
+     *  it replaces the backend (provider or FTP, moving that generation),
+     *  selects its own tab and confirms it, as App records a connect. */
+    function connectB(
+        refs: ReturnType<typeof freshRefs>,
+        accounting: { replacingBackend: () => () => void; confirmBackendConnection: () => void },
+        fake: ReturnType<typeof fakeBackend>,
+        ui: { activeSessionId: string | null },
+        kind: 'provider' | 'ftp',
+    ) {
+        refs.remoteConnectPhaseVersionRef.current += 1;
+        const endB = accounting.replacingBackend();
+        if (kind === 'provider') { fake.backend.provider = 'B'; fake.backend.providerGeneration += 1; }
+        else { fake.backend.ftp = 'B'; fake.backend.ftpGeneration += 1; }
+        endB();
+        ui.activeSessionId = 'B-tab';
+        accounting.confirmBackendConnection();
+    }
+
+    /** App's AeroCloud connect for A, opened at phase 0, with the click's own
+     *  phase check, on the fake backend. */
+    async function aeroCloudRace(isProvider: boolean, hold: string[]) {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend(hold);
+        const runConnect = vi.fn(async () => { accounting.replacingBackend()(); });
+        // App's own phase owner (the click's phase and connection counter) and
+        // its AeroCloud connect.
+        const source = 'const phaseVersion = 0;\nlet previousSessionEnded = false;\n'
+            + appBetween('    const connectionAtEntry = quotaConnectionRef.current;', '&& connectionAtEntry === quotaConnectionRef.current;\n')
+            + appBetween('const connectToCloudServer = async', '\n      };\n');
+        const connect = await runAppSlice(source, {
+            ...refs, ...accounting, runConnect, invoke: fake.invoke, isProvider, protocol: isProvider ? 'sftp' : 'ftp',
+            quotaConnectionRef: { current: 0 },
+            AEROCLOUD_OPEN_SUPERSEDED: 'AEROCLOUD_OPEN_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            cloudServer: { id: 'cloud', providerId: null, host: 'nas.example.test', port: 22, username: 'u', options: {} },
+            cloudServerString: 'ftp.example.test:21', cloudConfig: { remote_folder: '/sync' }, cloudPassword: 'p', cloudFilenApiKey: null,
+            resolveProfileS3Location: () => ({ endpoint: null, signingRegion: undefined }), scpFallbackConnectParam: () => ({}),
+            loadedCertificateCheck: () => true, loadedOption: () => undefined, loadedOptionOn: () => false,
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => { await fake.hostKey(); return true; },
+        }, 'connectToCloudServer');
+        const ui = { activeSessionId: 'old-tab' as string | null };
+        return { refs, fake, runConnect, connect, ui, connectB: (kind: 'provider' | 'ftp') => connectB(refs, accounting, fake, ui, kind) };
+    }
+
+    it("leaves B installed when B's connect phase begins while A waits inside provider_connect", async () => {
+        // App's own connect wrappers, from the live-token refs to runConnect.
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A backend with one slot that honours cancel_connection: a connect
+        // cancelled while it waited is refused at its install.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        // A's connect, begun in phase 0, waits inside provider_connect.
+        const a = wrappers.runConnect('provider_connect', { server: 'A' });
+        await aReached;
+        // B's connect phase begins (as every phase start does) and B connects.
+        const bPhase = ++refs.remoteConnectPhaseVersionRef.current;
+        wrappers.supersedeOlderConnects(bPhase);
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        expect(backend.slot).toBe('B');
+        releaseA();
+        // A was cancelled, so the backend refused its install: B stays.
+        await expect(a).rejects.toThrow('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+        expect(invoke).toHaveBeenCalledWith('cancel_connection', { token: 'token-1' });
+        // Superseded is not a user cancel: no cancel toast.
+        expect(notify.info).not.toHaveBeenCalled();
+    });
+
+    it("sends B's connect only after A's cancel reached the backend, when the cancel is slow", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot; a connect whose token was cancelled before its install is
+        // refused there. A's cancel is held, as a slow IPC would.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        const order: string[] = [];
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        let deliverCancel!: () => void;
+        const cancelHeld = new Promise<void>(resolve => { deliverCancel = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') {
+                await cancelHeld;
+                backend.cancelled.add(args.token!);
+                order.push(`cancel ${args.token}`);
+                return undefined;
+            }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                order.push(`connect ${server}`);
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        vi.useRealTimers();
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        // B's phase begins: A's cancel is sent but not yet delivered.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const b = wrappers.runConnect('provider_connect', { server: 'B' });
+        await new Promise(resolve => setTimeout(resolve, 20));
+        expect(order).toEqual(['connect A']);
+        // The cancel is delivered: only now is B's connect sent.
+        deliverCancel();
+        await b;
+        expect(order).toEqual(['connect A', 'cancel token-1', 'connect B']);
+        expect(backend.slot).toBe('B');
+        // A comes back late: cancelled in the backend, its install is refused.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+    });
+
+    it("fails B closed, without sending it, when A's cancel fails twice", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot. Every cancel delivery fails, so A is never cancelled in
+        // the backend and still installs when it comes back.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        const order: string[] = [];
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') {
+                order.push(`cancel ${args.token} failed`);
+                throw new Error('IPC unavailable');
+            }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                order.push(`connect ${server}`);
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        // B's phase begins: both deliveries of A's cancel fail.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const b = wrappers.runConnect('provider_connect', { server: 'B' });
+        // B fails, as a failure (not a cancel), and is never sent: A may
+        // still install, and would replace it.
+        await expect(b).rejects.toThrow('toast.connectEarlierNotStopped');
+        await expect(b).rejects.toSatisfy(isConnectEarlierNotStoppedError);
+        expect(order).toEqual(['connect A', 'cancel token-1 failed', 'cancel token-1 failed']);
+        expect(notify.info).not.toHaveBeenCalled();
+        // B replaced nothing: the backend's tab is still the one it was.
+        expect(refs.backendReplacementSeqRef.current).toBe(0);
+        // A, never cancelled in the backend, installs when it comes back.
+        releaseA();
+        await a;
+        expect(backend.slot).toBe('A');
+        // A has ended: nothing can install over a connect sent now.
+        await wrappers.runConnect('provider_connect', { server: 'C' });
+        expect(backend.slot).toBe('C');
+        expect(order.slice(3)).toEqual(['connect C']);
+    });
+
+    it("ends A superseded when A installed before its cancel and answers after B's phase began", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // One slot. A installs at once, then its answer is held (the install
+        // beat the cancel, so the backend has nothing left to refuse).
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aInstalled = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                if (server === 'A') { reachA(); await aReleased; }
+                return { server };
+            }
+            return undefined;
+        });
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then((value: unknown) => value, (error: unknown) => String(error));
+        await aInstalled;
+        // B's phase begins and B connects over A's slot.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        await expect(wrappers.runConnect('provider_connect', { server: 'B' })).resolves.toEqual({ server: 'B' });
+        expect(backend.slot).toBe('B');
+        // A's answer comes back late: B's phase owns the workspace, so A ends
+        // as a cancel (not applied), without the cancel toast.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(notify.info).not.toHaveBeenCalled();
+        expect(backend.slot).toBe('B');
+    });
+
+    it("does not send a connect whose phase a newer one overtook before it was sent", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const invoke = vi.fn(async () => undefined);
+        const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn() };
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        // A's phase (0) began, then B's phase began during A's preflight.
+        wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        const receipt: { phase?: number; mark?: unknown } = { phase: 0 };
+        await expect(wrappers.runConnect('provider_connect', { server: 'A' }, undefined, receipt)).rejects.toThrow('CONNECT_CANCELLED');
+        // A was never sent and replaced nothing; not a user cancel: no toast.
+        expect(invoke).not.toHaveBeenCalledWith('provider_connect', expect.anything());
+        expect(refs.backendReplacementSeqRef.current).toBe(0);
+        expect(notify.info).not.toHaveBeenCalled();
+        // A connect of the current phase is sent.
+        await wrappers.runConnect('provider_connect', { server: 'B' }, undefined, { phase: 1 });
+        expect(invoke).toHaveBeenCalledWith('provider_connect', expect.anything());
+    });
+
+    it.each([
+        ['refused by the backend', 'refused'],
+        ['never sent', 'unsent'],
+        ['installed', 'installs'],
+    ] as const)("ends a device open %s with the replacement it really made, B confirming meanwhile", async (_label, fate) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; connectToken?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { if (fate === 'refused') backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'mtp_open_device') {
+                reachA(); await aReleased;
+                if (backend.cancelled.has(args.connectToken!)) throw 'CONNECT_CANCELLED';
+                backend.slot = 'device';
+                return { deviceId: 'd' };
+            }
+            if (command === 'provider_connect') { backend.slot = args.params!.server; return undefined; }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects, phaseCancellable }');
+        // A device open as App runs it: its replacement ends with what the
+        // open really did (`phaseCancellable`'s outcome).
+        const endDeviceReplacement = accounting.replacingBackend();
+        const deviceOpen = { replaced: false };
+        if (fate === 'unsent') {
+            // An older connect X whose cancel never reaches the backend still
+            // runs, so A's open is not sent (`trackedConnect`); a connect
+            // confirms a tab meanwhile.
+            invoke.mockImplementation((async (command: string, args: { params?: { server: string } }) => {
+                if (command === 'cancel_connection') throw new Error('IPC unavailable');
+                if (command === 'provider_connect' && args.params!.server === 'X') { reachA(); await aReleased; }
+                if (command === 'mtp_open_device') backend.slot = 'device';
+                return undefined;
+            }) as typeof invoke);
+            const x = wrappers.runConnect('provider_connect', { server: 'X' }).catch(() => undefined);
+            await aReached;
+            wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+            accounting.confirmBackendConnection();
+            await expect(wrappers.phaseCancellable((connectToken: string) => invoke('mtp_open_device', { connectToken }), deviceOpen)).rejects.toThrow('toast.connectEarlierNotStopped');
+            expect(backend.slot).toBe('old');
+            // X ends after A's replacement has (`void`: its own end is X's).
+            void x;
+        } else {
+            const a = wrappers.phaseCancellable((connectToken: string) => invoke('mtp_open_device', { connectToken }), deviceOpen).then(() => 'opened', (error: unknown) => String(error));
+            await aReached;
+            if (fate === 'installs') releaseA();
+            wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+            await wrappers.runConnect('provider_connect', { server: 'B' });
+            accounting.confirmBackendConnection();
+            const seqAfterB = refs.backendReplacementSeqRef.current;
+            expect(seqAfterB).toBe(1);
+            releaseA();
+            await a;
+        }
+        const seqBeforeAEnd = refs.backendReplacementSeqRef.current;
+        endDeviceReplacement(deviceOpen.replaced);
+        if (fate === 'installs') {
+            // A did replace the backend after B confirmed: uncertain.
+            expect(refs.backendReplacementSeqRef.current).toBe(seqBeforeAEnd + 1);
+            expect(refs.backendUncertainRef.current).toBe(true);
+        } else {
+            // A replaced nothing: B's confirmed backend stays certain.
+            expect(refs.backendReplacementSeqRef.current).toBe(seqBeforeAEnd);
+            expect(refs.backendUncertainRef.current).toBe(false);
+        }
+        releaseA();
+    });
+
+    it('ends every device, OAuth and 4shared replacement with what its connects did', () => {
+        expect(APP).toContain('endDeviceReplacement(deviceOpen.replaced);');
+        expect(APP).toContain('endOAuthReplacement(oauthConnects.replaced);');
+        expect(APP).toContain('endFourSharedReplacement(fourSharedConnects.replaced);');
+        expect(APP.match(/phaseCancellable\(/g)?.length).toBe(6);
+        expect(APP.match(/\), (?:deviceOpen|oauthConnects|fourSharedConnects)\)\)?;?/g)?.length).toBe(6);
+    });
+
+    it("keeps B's backend certain when B confirms while a cancelled A is still cleaning up", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                // A is in its cleanup: refused before its install, it still
+                // disconnects its own provider before it answers.
+                if (server === 'A') { reachA(); await aReleased; }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 120000,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect, supersedeOlderConnects }');
+        vi.useRealTimers();
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        await wrappers.supersedeOlderConnects(++refs.remoteConnectPhaseVersionRef.current);
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        accounting.confirmBackendConnection();
+        expect(refs.backendUncertainRef.current).toBe(false);
+        const replacementsWithB = refs.backendReplacementSeqRef.current;
+        // A answers only now, refused before its install.
+        releaseA();
+        expect(await a).toContain('CONNECT_CANCELLED');
+        expect(backend.slot).toBe('B');
+        // A replaced nothing: B's tab keeps its backend.
+        expect(refs.backendUncertainRef.current).toBe(false);
+        expect(refs.backendReplacementSeqRef.current).toBe(replacementsWithB);
+        expect(refs.backendTeardownsRef.current).toBe(0);
+    });
+
+    it("keeps B in the slot when A times out, B connects and is confirmed, then A's connect returns", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        // A backend with one slot that honours cancel_connection: a connect
+        // cancelled while it waited is refused at its install.
+        const backend = { slot: 'old' as string, cancelled: new Set<string>() };
+        let releaseA!: () => void;
+        let reachA!: () => void;
+        const aReached = new Promise<void>(resolve => { reachA = resolve; });
+        const aReleased = new Promise<void>(resolve => { releaseA = resolve; });
+        let aReturned!: () => void;
+        const aDone = new Promise<void>(resolve => { aReturned = resolve; });
+        const invoke = vi.fn(async (command: string, args: { token?: string; params?: { server: string; connectToken: string } }) => {
+            if (command === 'cancel_connection') { backend.cancelled.add(args.token!); return undefined; }
+            if (command === 'provider_connect') {
+                const { server, connectToken } = args.params!;
+                if (server === 'A') {
+                    reachA();
+                    await aReleased;
+                    try {
+                        if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                        backend.slot = server;
+                    } finally { aReturned(); }
+                    return undefined;
+                }
+                if (backend.cancelled.has(connectToken)) throw 'CONNECT_CANCELLED';
+                backend.slot = server;
+                return undefined;
+            }
+            return undefined;
+        });
+        let tokens = 0;
+        const wrappers = await runAppSlice(appBetween('  const activeConnectTokenRef = useRef', '  }), [cancellableConnect, showConnectWarnings]);'), {
+            ...refs, ...accounting, invoke, notify: { info: vi.fn(), error: vi.fn(), success: vi.fn() }, t: (key: string) => key,
+            useRef: (current: unknown) => ({ current }), useCallback: (fn: unknown) => fn, useState: (v: unknown) => [v, () => undefined],
+            makeConnectToken: () => `token-${++tokens}`,
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() },
+            // A short hard timeout, so the test times A out for real.
+            STILL_CONNECTING_DELAY_MS: 8000, CONNECT_HARD_TIMEOUT_MS: 20,
+            CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED', CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_HARD_TIMEOUT_MARKER: 'CONNECT_HARD_TIMEOUT',
+            isConnectCancelledError: (error: unknown) => String(error).includes('CONNECT_CANCELLED'),
+            isConnectSupersededError: (error: unknown) => String(error).includes('CONNECT_SUPERSEDED'),
+            isConnectHardTimeoutError: (error: unknown) => String(error).includes('CONNECT_HARD_TIMEOUT'),
+        }, '{ runConnect }');
+        vi.useRealTimers();
+        // A waits inside provider_connect until its hard timeout gives it up.
+        const a = wrappers.runConnect('provider_connect', { server: 'A' }).then(() => 'connected', (error: unknown) => String(error));
+        await aReached;
+        expect(await a).toContain('toast.connectTimedOut');
+        expect(invoke).toHaveBeenCalledWith('cancel_connection', { token: 'token-1' });
+        // B connects and its tab is confirmed.
+        await wrappers.runConnect('provider_connect', { server: 'B' });
+        accounting.confirmBackendConnection();
+        expect(backend.slot).toBe('B');
+        // A's connect returns late: its install is refused, B stays.
+        releaseA();
+        await aDone;
+        expect(backend.slot).toBe('B');
+    });
+
+    it("stops A's AeroCloud open before its teardown when B connects during an earlier await", async () => {
+        const race = await aeroCloudRace(true, ['hostKey']);
+        const a = race.connect();
+        await race.fake.gates.hostKey.reached;
+        race.connectB('provider');
+        race.fake.gates.hostKey.release();
+        await expect(a).rejects.toThrow('AEROCLOUD_OPEN_SUPERSEDED');
+        expect(race.fake.invoke).not.toHaveBeenCalledWith('provider_disconnect', expect.anything());
+        expect(race.runConnect).not.toHaveBeenCalled();
+        // B's backend and tab are B's; B's confirmed tab keeps the backend.
+        expect(race.fake.backend.provider).toBe('B');
+        expect(race.ui.activeSessionId).toBe('B-tab');
+        expect(race.refs.backendConfirmationsRef.current).toBe(1);
+        expect(race.refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([
+        ['a provider', true, 'provider_disconnect', 'provider'],
+        ['an FTP server', false, 'disconnect_ftp', 'ftp'],
+    ] as const)("leaves B's backend connected when B connects while A's teardown of %s is in flight", async (_label, isProvider, teardown, kind) => {
+        const race = await aeroCloudRace(isProvider, [teardown]);
+        const a = race.connect();
+        await race.fake.gates[teardown].reached;
+        // A's disconnect is already dispatched, naming the session A saw.
+        expect(race.fake.invoke).toHaveBeenCalledWith(teardown, { expectedGeneration: 1 });
+        race.connectB(kind);
+        race.fake.gates[teardown].release();
+        await expect(a).rejects.toThrow('AEROCLOUD_OPEN_SUPERSEDED');
+        expect(race.runConnect).not.toHaveBeenCalled();
+        // The late disconnect named an older session: B's is still there.
+        expect(kind === 'provider' ? race.fake.backend.provider : race.fake.backend.ftp).toBe('B');
+        expect(race.ui.activeSessionId).toBe('B-tab');
+        expect(race.refs.backendConfirmationsRef.current).toBe(1);
+        expect(race.refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it("leaves B's tab and backend alone when B connects while A's same-server open waits for its credentials", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const ui = { activeSessionId: 'old-tab' as string | null };
+        let releaseCredential!: () => void;
+        let reachCredential!: () => void;
+        const credentialReached = new Promise<void>(resolve => { reachCredential = resolve; });
+        const credentialReleased = new Promise<void>(resolve => { releaseCredential = resolve; });
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas' };
+            if (command === 'get_credential') { reachCredential(); await credentialReleased; return 'p'; }
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        const setSessions = vi.fn();
+        const setConnectionParams = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, remoteConnectPhaseRef: { current: false }, uncancelledOlderConnectRuns: () => false,
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} }],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            // The tab live at A's click is the cloud's own server: the same-server branch.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => true, normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId: (id: string | null) => { ui.activeSessionId = id; },
+            setSessions, setConnectionParams, remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify: { error: vi.fn(), success: vi.fn() },
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const a = handleCloudTabClick();
+        await credentialReached;
+        connectB(refs, accounting, fake, ui, 'provider');
+        releaseCredential();
+        await a;
+        // A's view of the connection is from before B: it changes nothing of B's.
+        expect(ui.activeSessionId).toBe('B-tab');
+        expect(setSessions).not.toHaveBeenCalled();
+        expect(setConnectionParams).not.toHaveBeenCalled();
+        expect(invoke).not.toHaveBeenCalledWith('provider_list_files', expect.anything());
+        expect(invoke).not.toHaveBeenCalledWith('trigger_cloud_sync');
+        expect(fake.backend.provider).toBe('B');
+        expect(refs.backendConfirmationsRef.current).toBe(1);
+        expect(refs.backendUncertainRef.current).toBe(false);
+    });
+
+    it.each([
+        ['AeroCloud is off', { enabled: false }, [], false, []],
+        ['no profile is saved', {}, [], false, []],
+        ['the live server is the cloud\'s', {}, ['cloud'], true, ['provider_connection_generation', 'supersede 1', 'provider_connection_generation']],
+        ['the open ends another server to connect its own', {}, ['cloud'], false, ['supersede 1', 'provider_connection_generation']],
+    ] as const)('cancels a connect in flight only where the AeroCloud open takes the backend (%s)', async (_label, config, profiles, sameServer, expected) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const events: string[] = [];
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            events.push(command);
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud', ...config };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        const supersedeOlderConnects = vi.fn((phase: number) => { events.push(`supersede ${phase}`); });
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, remoteConnectPhaseRef: { current: false }, uncancelledOlderConnectRuns: () => false,
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => profiles.map(id => ({ id, name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} })),
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => sameServer, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId: vi.fn(), setShowCloudPanel: vi.fn(),
+            setSessions: vi.fn(), setConnectionParams: vi.fn(), remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify: { error: vi.fn(), success: vi.fn() },
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        await handleCloudTabClick();
+        // A server connect still in flight is cancelled only by an open that
+        // uses the backend, and before that open ends anything.
+        const relevant = events.filter(event => event.startsWith('supersede') || event === 'provider_connection_generation');
+        expect(relevant.slice(0, expected.length)).toEqual(expected);
+        if (expected.length === 0) expect(supersedeOlderConnects).not.toHaveBeenCalled();
+        else expect(supersedeOlderConnects).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+        ['A installs before its delayed cancel arrives: the open reconnects', 'installs'],
+        ['the delayed cancel refuses A: the open reuses the live backend', 'refused'],
+        ["A's cancel never arrives and A still runs: the open fails closed", 'undelivered'],
+    ] as const)('revalidates the live backend after a delayed cancellation during same-server reuse (%s)', async (_label, a) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud' };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        // The cancels of the reuse's supersede are held, as a slow IPC would.
+        let sendCancels!: () => void;
+        let deliverCancels!: () => void;
+        const cancelsSent = new Promise<void>(resolve => { sendCancels = resolve; });
+        const cancelsDelivered = new Promise<void>(resolve => { deliverCancels = resolve; });
+        let supersedes = 0;
+        const supersedeOlderConnects = vi.fn(async () => {
+            if (++supersedes > 1) return;
+            sendCancels();
+            await cancelsDelivered;
+        });
+        // AeroCloud's own connect, when it reconnects: it installs the cloud.
+        const runConnect = vi.fn(async () => { fake.backend.provider = 'cloud'; fake.backend.providerGeneration += 1; });
+        const notify = { error: vi.fn(), success: vi.fn() };
+        const setActiveSessionId = vi.fn();
+        const setConnectionParams = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, runConnect, remoteConnectPhaseRef: { current: false },
+            uncancelledOlderConnectRuns: () => a === 'undelivered',
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: () => false, isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: 'webdav', providerId: null, host: 'dav.example.test', port: 443, username: 'u', options: {} }],
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV', isSshProtocol: () => false,
+            // The live tab is the cloud's own server: the same-server branch.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => true, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId, setShowCloudPanel: vi.fn(),
+            setSessions: vi.fn(), setConnectionParams, remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify,
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const open = handleCloudTabClick();
+        await cancelsSent;
+        // A connect that began before the open and is still in flight: its
+        // cancel is on its way.
+        if (a === 'installs') { fake.backend.provider = 'A'; fake.backend.providerGeneration += 1; }
+        deliverCancels();
+        await open;
+        // The folder open's next step after its listing.
+        const listed = invoke.mock.calls.some(([command]) => command === 'get_local_files');
+        if (a === 'installs') {
+            // The backend serves A now, not the live tab: the open ends A's
+            // session and connects the cloud's own before it lists.
+            expect(invoke).toHaveBeenCalledWith('provider_disconnect', { expectedGeneration: 2 });
+            expect(runConnect).toHaveBeenCalledWith('provider_connect', expect.objectContaining({ server: 'dav.example.test' }));
+            expect(fake.backend.provider).toBe('cloud');
+            expect(listed).toBe(true);
+        } else if (a === 'refused') {
+            // Nothing moved: the live backend is the cloud's, reused as is.
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(invoke).not.toHaveBeenCalledWith('provider_disconnect', expect.anything());
+            expect(fake.backend.provider).toBe('old');
+            expect(setConnectionParams).toHaveBeenCalledOnce();
+            expect(listed).toBe(true);
+        } else {
+            // A may still install: nothing is listed, reused or connected,
+            // and the previous session is live again.
+            expect(notify.error).toHaveBeenCalledWith('toast.connectionFailedTitle', 'toast.connectEarlierNotStopped');
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(setConnectionParams).not.toHaveBeenCalled();
+            expect(listed).toBe(false);
+            expect(setActiveSessionId).toHaveBeenLastCalledWith('old-tab');
+        }
+    });
+
+    it.each([
+        ['A answers after its late cancel, before the reuse decides: the open reconnects', 'answered'],
+        ["A's answer is still on its way when the reuse decides: the open reconnects", 'pending'],
+        ["A's cancel fails twice and A still runs: the parked tab is not given back as connected", 'undelivered'],
+        ['the cancel refuses A before its install: the open reuses the live backend', 'refused'],
+        ["the host key is refused while A's answer is on its way: the parked tab is not given back as connected", 'hostKeyRefused'],
+        ['the host key is refused and nothing replaced the backend: the parked tab is connected again', 'hostKeyRefusedAlone'],
+    ] as const)('checks that the backend still serves the tab on screen when an earlier connect installed before the first generation read (%s)', async (_label, a) => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const fake = fakeBackend([]);
+        // A connect that began before the open (a GitHub branch switch) and is
+        // still in flight replaces the backend. It installed before the open
+        // read anything, unless the cancel refuses it, or there is none.
+        const endA = a === 'hostKeyRefusedAlone' ? null : accounting.replacingBackend();
+        if (a !== 'refused' && a !== 'hostKeyRefusedAlone') { fake.backend.provider = 'A'; fake.backend.providerGeneration += 1; }
+        const hostKeyRefused = a === 'hostKeyRefused' || a === 'hostKeyRefusedAlone';
+        const invoke = vi.fn(async (command: string, args?: { expectedGeneration?: number }) => {
+            if (command === 'get_cloud_config') return { enabled: true, local_folder: '/home/me/sync', remote_folder: '/sync', server_profile: 'nas', server_profile_id: 'cloud' };
+            if (command === 'get_credential') return 'p';
+            if (command === 'provider_list_files') return { files: [], current_path: '/sync' };
+            if (command === 'get_local_files') return [];
+            return fake.invoke(command, args);
+        });
+        let sendCancels!: () => void;
+        let deliverCancels!: () => void;
+        const cancelsSent = new Promise<void>(resolve => { sendCancels = resolve; });
+        const cancelsDelivered = new Promise<void>(resolve => { deliverCancels = resolve; });
+        let supersedes = 0;
+        const supersedeOlderConnects = vi.fn(async () => {
+            if (++supersedes > 1) return;
+            sendCancels();
+            await cancelsDelivered;
+        });
+        const runConnect = vi.fn(async () => { fake.backend.provider = 'cloud'; fake.backend.providerGeneration += 1; });
+        const notify = { error: vi.fn(), success: vi.fn() };
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const setIsConnected = vi.fn();
+        const setShowConnectionScreen = vi.fn();
+        const handleCloudTabClick = await runAppSlice(appBetween('  const handleCloudTabClick = async () => {', '\n  };\n'), {
+            ...refs, ...accounting, invoke, supersedeOlderConnects, runConnect, remoteConnectPhaseRef: { current: false },
+            uncancelledOlderConnectRuns: () => a === 'undelivered',
+            CONNECT_SUPERSEDED_MARKER: 'CONNECT_SUPERSEDED', CONNECT_CANCELLED_MARKER: 'CONNECT_CANCELLED',
+            isConnectSupersededError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_SUPERSEDED',
+            isConnectCancelledError: (error: unknown) => error instanceof Error && error.message === 'CONNECT_CANCELLED',
+            isListingCancelled: () => false,
+            loadSavedServerProfiles: async () => [{ id: 'cloud', name: 'nas', protocol: hostKeyRefused ? 'sftp' : 'webdav', providerId: null, host: 'dav.example.test', port: hostKeyRefused ? 22 : 443, username: 'u', options: {} }],
+            selectAeroCloudProfile: (servers: { id: string }[]) => servers[0],
+            usesProviderApi: () => true, connectionViaLabel: () => 'WebDAV',
+            isSshProtocol: (protocol: string) => protocol === 'sftp', checkSftpHostKey: async () => false,
+            // The live tab is the cloud's own server, except where the open
+            // reconnects to check a host key.
+            isConnected: true, liveConnectionParams: {}, isSameConnection: () => !hostKeyRefused, mayReuseForAeroCloud: () => true,
+            normalizeProviderConnectionParams: (params: unknown) => params,
+            activeSessionId: 'old-tab', setActiveSessionId, setShowCloudPanel: vi.fn(),
+            setSessions, setIsConnected, setShowConnectionScreen, setConnectionParams: vi.fn(),
+            remoteFiles: [], localFiles: [], currentRemotePath: '/', currentLocalPath: '/',
+            isSyncNavigation: false, syncBasePaths: null, showHiddenFiles: false, showToastNotifications: false,
+            withRemoteListSpinner: (fn: () => unknown) => fn(), listingReason: () => '',
+            logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn(), info: vi.fn() }, notify,
+            toast: { info: vi.fn() }, t: (key: string) => key,
+            humanLog: { logRaw: vi.fn(), logStart: () => 'log', logSuccess: vi.fn(), updateEntry: vi.fn() },
+        }, 'handleCloudTabClick');
+        const open = handleCloudTabClick();
+        if (!hostKeyRefused) {
+            await cancelsSent;
+            // A's answer: an install the late cancel no longer stops, or the
+            // refusal of one the cancel reached in time.
+            if (a === 'answered') endA!();
+            if (a === 'refused') endA!(false);
+            deliverCancels();
+        }
+        await open;
+        if (a === 'pending' || a === 'hostKeyRefused') endA!();
+        const listed = invoke.mock.calls.some(([command]) => command === 'get_local_files');
+        // What the parked tab ends as, after every update the open made.
+        const parkedTab = setSessions.mock.calls.reduce(
+            (tabs: { id: string; status: string }[], [update]) => update(tabs),
+            [{ id: 'old-tab', status: 'connected' }],
+        )[0];
+        if (a === 'answered' || a === 'pending') {
+            // The backend serves A, whatever the generations said: the open
+            // connects the cloud's own before it lists.
+            expect(runConnect).toHaveBeenCalledWith('provider_connect', expect.objectContaining({ server: 'dav.example.test' }));
+            expect(fake.backend.provider).toBe('cloud');
+            expect(listed).toBe(true);
+        } else if (a === 'refused') {
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(fake.backend.provider).toBe('old');
+            expect(listed).toBe(true);
+        } else if (a === 'hostKeyRefusedAlone') {
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(setActiveSessionId).toHaveBeenLastCalledWith('old-tab');
+            expect(parkedTab.status).toBe('connected');
+            expect(setIsConnected).not.toHaveBeenCalledWith(false);
+        } else {
+            // The backend may hold A: the tab stays cached, to reconnect with
+            // a click, and the workspace is disconnected.
+            if (a === 'undelivered') expect(notify.error).toHaveBeenCalledWith('toast.connectionFailedTitle', 'toast.connectEarlierNotStopped');
+            expect(runConnect).not.toHaveBeenCalled();
+            expect(listed).toBe(false);
+            expect(setActiveSessionId).not.toHaveBeenCalledWith('old-tab');
+            expect(parkedTab.status).toBe('cached');
+            expect(setIsConnected).toHaveBeenCalledWith(false);
+            expect(setShowConnectionScreen).toHaveBeenCalledWith(true);
+        }
+    });
+
+    it.each([
+        ['superseded', 'AEROCLOUD_OPEN_SUPERSEDED', 1, 1],
+        ['refused after a newer connect began', 'refused', 1, 1],
+        ['refused', 'refused', 0, 0],
+        ['connected after a newer connect began', null, 1, 1],
+    ] as const)("settles the AeroCloud first-connect log row as cancelled only when the open is superseded (%s)", async (_label, failure, phase, settled) => {
+        // App's own phase owner and SCENARIO 2 block, from the log row it
+        // opens to the first step after the open.
+        const updateEntry = vi.fn();
+        const owns = appBetween('    const connectionAtEntry = quotaConnectionRef.current;', '&& connectionAtEntry === quotaConnectionRef.current;\n');
+        const block = appBetween("      const logId = humanLog.logStart('CONNECT'", '      connectedHere = true;');
+        const open = await runAppSlice(`const phaseVersion = 0;\n${owns}const open = async () => {\n${block}\n  return 'connected';\n};`, {
+            remoteConnectPhaseVersionRef: { current: phase }, quotaConnectionRef: { current: 0 },
+            humanLog: { logStart: () => 'cloud-log', updateEntry }, cloudConfig: { server_profile: 'nas' }, protocolLabel: 'SFTP',
+            showToastNotifications: false,
+            connectToCloudServer: async () => { if (failure) throw new Error(failure); },
+        }, 'open');
+        if (failure) await expect(open()).rejects.toThrow(failure);
+        else expect(await open()).toBeUndefined();
+        expect(updateEntry).toHaveBeenCalledTimes(settled);
+        if (settled) expect(updateEntry).toHaveBeenCalledWith('cloud-log', { status: 'cancelled' });
+    });
+
+    it("hands A the receipt of its own replacement when B's ends between A's end and A's continuation", async () => {
+        // A sequence ref that queues B's end right after A's end, ahead of
+        // A's continuation.
+        let seq = 0;
+        let afterNextEnd: (() => void) | null = null;
+        const backendReplacementSeqRef = {
+            get current() { return seq; },
+            set current(value: number) {
+                seq = value;
+                const next = afterNextEnd;
+                afterNextEnd = null;
+                if (next) queueMicrotask(next);
+            },
+        };
+        const refs = { ...freshRefs(), backendReplacementSeqRef };
+        const accounting = await accountingOn(refs);
+        const wrappers = await runAppSlice(
+            `${appBetween('  const cancellableConnect = useCallback(async <T,>(', '\n  }, [beginConnectAttempt, cancelActiveConnect, endConnectAttempt, notify, t]);')}\n${appBetween('  const runConnect = useCallback(<T,>(', '\n  }), [cancellableConnect, showConnectWarnings]);')}\n${appBetween('  const connectUnderRow = async (', '\n  };\n')}`,
+            { ...refs, ...accounting, useCallback: (fn: unknown) => fn, beginConnectAttempt: () => 'token', endConnectAttempt: () => undefined,
+                invoke: vi.fn(async () => undefined), connectCancelledRef: { current: false }, extendHardTimeoutRef: { current: null },
+                isConnectHardTimeoutError: () => false, isConnectCancelledError: () => false, humanLog: { updateEntry: vi.fn() },
+                trackedConnect: <T,>(run: (token: string) => Promise<T>, token: string) => run(token) },
+            '{ runConnect, connectUnderRow }',
+        );
+        const endB = accounting.replacingBackend();
+        afterNextEnd = endB;
+        const receipt: { mark?: { replacements: number; confirmations: number } } = {};
+        await wrappers.connectUnderRow(null, () => wrappers.runConnect('provider_connect', {}, undefined, receipt));
+        // B's end landed before A's continuation: the receipt is A's own.
+        expect(seq).toBe(2);
+        expect(receipt.mark).toEqual({ replacements: 1, confirmations: 0 });
+        expect(accounting.backendMark().replacements).toBe(2);
+        // And createSession refuses A on that receipt.
+        const createStart = APP.indexOf('  const createSession = async (');
+        const createSession = await runAppSlice(APP.slice(createStart, APP.indexOf('\n  };\n', createStart) + '\n  };'.length), {
+            ...refs, ...accounting, remoteFiles: [], localFiles: [], notify: { error: vi.fn() }, t: (key: string) => key,
+            loadSavedServerProfiles: async () => [],
+        }, 'createSession');
+        expect(await createSession('A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, receipt.mark)).toBe('stale');
+    });
+    it("does not confirm or activate A when sign-in B settles during A's profile read", async () => {
+        const refs = freshRefs();
+        const accounting = await accountingOn(refs);
+        const backendSwapRef = { current: null as { token: number; settledAtPhase: number } | null };
+        const takeOverActiveSession = vi.fn();
+        // App's own sign-in swap listener: a form's sign-in replaces the
+        // backend from its start to its settle.
+        const swap = await runAppSlice(
+            appBetween('    const swapsInFlight = new Map<number, () => void>();', "    window.addEventListener('aeroftp-backend-swap', swap);"),
+            { ...refs, ...accounting, backendSwapRef, takeOverActiveSession },
+            'swap',
+        ) as (event: Event) => void;
+        const signIn = (phase: 'start' | 'settled') => swap(new CustomEvent('aeroftp-backend-swap', { detail: { token: 7, phase } }));
+        const setActiveSessionId = vi.fn();
+        const setSessions = vi.fn();
+        const notify = { error: vi.fn() };
+        const confirmBackendConnection = vi.fn(accounting.confirmBackendConnection);
+        // App's own createSession for connection A.
+        const createSession = await runAppSlice(appBetween('  const createSession = async (', '\n  };\n'), {
+            ...refs, confirmBackendConnection, setActiveSessionId, setSessions, notify, t: (key: string) => key,
+            remoteFiles: [], localFiles: [],
+            loadSavedServerProfiles: async () => {
+                // Sign-in B starts and settles while A reads the saved profiles.
+                signIn('start');
+                signIn('settled');
+                return [];
+            },
+        }, 'createSession');
+        // A's connect returned: the mark it takes then.
+        const aConnectedAt = accounting.backendMark();
+        const outcome = await createSession('Server A', { protocol: 'sftp', server: 'a.example.test', username: 'u', password: '' }, '/', '/home', [], [], undefined, aConnectedAt);
+        expect(takeOverActiveSession).toHaveBeenCalled();
+        expect(outcome).toBe('stale');
+        expect(confirmBackendConnection).not.toHaveBeenCalled();
+        expect(setActiveSessionId).not.toHaveBeenCalled();
+        expect(refs.backendUncertainRef.current).toBe(true);
+        expect(notify.error).toHaveBeenCalledWith('connection.connectionFailed', 'toast.remoteTargetChanged');
+        const added = setSessions.mock.calls[0][0]([]) as { status: string }[];
+        expect(added[0].status).toBe('cached');
+    });
+});
+
+describe('Every invoke that installs a provider in the backend slot', () => {
+    it('is counted as a replacement, for every command the backend lists', () => {
+        // The backend's own list of the commands that install into the slot
+        // (`PROVIDER_SLOT_INSTALLERS`, pinned there against its installers).
+        const list = PROVIDER_COMMANDS_RS.match(/const PROVIDER_SLOT_INSTALLERS: &\[&str\] = &\[([^\]]*)\]/);
+        expect(list, 'PROVIDER_SLOT_INSTALLERS in provider_commands.rs').not.toBeNull();
+        const commands = [...list![1].matchAll(/"([a-z0-9_]+)"/g)].map(m => m[1]);
+        expect(commands).toContain('mtp_open_device');
+        const sources = { 'App.tsx': APP, 'MyServersPanel.tsx': MY_SERVERS, 'ConnectionScreen.tsx': CONNECTION_SCREEN, 'useOAuth2.ts': USE_OAUTH2 };
+        let sites = 0;
+        for (const command of commands) {
+            for (const [file, source] of Object.entries(sources)) {
+                for (const site of source.matchAll(new RegExp(`(invoke(<[^()]*?>)?\\(|runConnect\\()'${command}'`, 'g'))) {
+                    sites += 1;
+                    const at = site.index!;
+                    const line = source.slice(source.lastIndexOf('\n', at) + 1, source.indexOf('\n', at));
+                    const before = source.slice(Math.max(0, at - 1500), at);
+                    const where = `${command} in ${file}: ${line.trim()}`;
+                    if (site[0].startsWith('runConnect(') || /swapBackend\(\(\) => invoke/.test(line)) continue;
+                    if (file === 'MyServersPanel.tsx') {
+                        // Its connect closures run through App's cancellableConnect.
+                        const fn = before.match(/const (do\w+Connect) = async[^]*$/);
+                        expect(fn, where).not.toBeNull();
+                        expect(source, where).toMatch(new RegExp(`scopedCancellable\\(${fn![1]}[,)]`));
+                        continue;
+                    }
+                    expect(/cancellableConnect\(|= replacingBackend\(\);/.test(before), where).toBe(true);
+                }
+            }
+        }
+        expect(sites).toBeGreaterThanOrEqual(commands.length);
+    });
+});
+
+describe('A tab switch that probes the live backend', () => {
+    it('fails when a replacement ends while the probe runs', async () => {
+        const from = APP.indexOf('      // Read before the probe (a replacement');
+        const to = APP.indexOf('      // Each connect of this switch fills it as its own replacement ends.', from);
+        expect(from, 'switchSession probe').toBeGreaterThan(-1);
+        expect(to).toBeGreaterThan(from);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(from, to)}\nreturn { stillAlive, switchReplacedAt };\n}\n`, 'switch-probe.ts');
+        const run = async (replacedDuringProbe: boolean, replacementRunning = false) => {
+            const backendReplacementSeqRef = { current: 3 };
+            const ctx: Record<string, unknown> = {
+                backendReplacementSeqRef,
+                backendTeardownsRef: { current: replacementRunning ? 1 : 0 },
+                targetSession: { cryptOverlay: null, connectionParams: {} },
+                protocol: 'webdav',
+                probeAliveArgs: () => ({}),
+                connectScope: { step: (fn: () => unknown) => fn(), assert: () => undefined },
+                // A sign-in swap (no new phase) replaces the backend while
+                // the probe waits; the probe still answers for the old server.
+                invoke: async () => { if (replacedDuringProbe) backendReplacementSeqRef.current += 1; return true; },
+            };
+            const probe = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<{ stillAlive: boolean; switchReplacedAt: number }>);
+            // The switch's final check: refuse when the sequence moved.
+            return { ...probe, refused: backendReplacementSeqRef.current !== probe.switchReplacedAt };
+        };
+        expect(await run(false)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: false });
+        expect(await run(true)).toEqual({ stillAlive: true, switchReplacedAt: 3, refused: true });
+    });
+
+    it('reconnects while a connect that replaces the backend is still running', async () => {
+        // A connect that began before the switch (a GitHub branch switch)
+        // installed under the same identity and has not answered yet: the
+        // probe says alive for it, and the switch must not reuse it.
+        const from = APP.indexOf('      // Read before the probe (a replacement');
+        const to = APP.indexOf('      // Each connect of this switch fills it as its own replacement ends.', from);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(from, to)}\nreturn stillAlive;\n}\n`, 'switch-probe-running.ts');
+        const probe = (running: number) => (new Function('backendReplacementSeqRef', 'backendTeardownsRef', 'targetSession', 'protocol', 'probeAliveArgs', 'connectScope', 'invoke',
+            `return (${code.trim().replace(/;$/, '')})()`)(
+            { current: 0 }, { current: running }, { cryptOverlay: null, connectionParams: {} }, 'github', () => ({}),
+            { step: (fn: () => unknown) => fn(), assert: () => undefined }, async () => true,
+        ) as Promise<boolean>);
+        expect(await probe(0)).toBe(true);
+        expect(await probe(1)).toBe(false);
+    });
+});
+
+describe('A connect overtaken while its SSH host key prompt is open', () => {
+    // The host key prompt and the teardown after it, from each connect path
+    // that asks it inside its own phase.
+    const SITES: Array<[string, string, string, Record<string, unknown>]> = [
+        ['connectToFtpImpl', '        if (isSshProtocol(protocol)) {\n          const target', '        parkActiveSession();\n',
+            { protocol: 'sftp', effectiveParams: { server: 'h', port: 22 }, normalizeProviderConnectionParams: (p: unknown) => p }],
+        ['onSavedServerConnect', '                    if (isSshProtocol(normalizedParams.protocol)) {', '                    parkActiveSession();\n',
+            { normalizedParams: { protocol: 'sftp', server: 'h', port: 22 }, connectScope: { step: (fn: () => unknown) => fn() } }],
+    ];
+    it.each(SITES)('%s ends without ending the newer connection', async (_name, from, to, extra) => {
+        const start = APP.indexOf(from);
+        const end = APP.indexOf(to, start);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        const body = APP.slice(start, end + to.length);
+        const run = async (overtake: boolean) => {
+            const ref = { current: 1 };
+            const ctx: Record<string, unknown> = {
+                ...extra,
+                connectPhase: 1,
+                remoteConnectPhaseVersionRef: ref,
+                logId: 'log-a',
+                isSshProtocol: (protocol: string) => protocol === 'sftp',
+                checkSftpHostKey: async () => { if (overtake) ref.current += 1; return true; },
+                setLoading: vi.fn(),
+                humanLog: { updateEntry: vi.fn() },
+                parkActiveSession: vi.fn(),
+            };
+            const { code } = await transformWithOxc(`async () => {\n${body}\nreturn 'went on';\n}\n`, 'host-key-phase.ts');
+            const outcome = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<unknown>);
+            return { outcome, ctx };
+        };
+        // The user accepts the key with no newer connect: the connect goes on.
+        const plain = await run(false);
+        expect(plain.outcome).toBe('went on');
+        expect(plain.ctx.parkActiveSession).toHaveBeenCalledOnce();
+        // B's phase began while the prompt was open: A stops before it puts
+        // B's tab aside (its teardown ends B's connection).
+        const overtaken = await run(true);
+        expect(overtaken.outcome).not.toBe('went on');
+        expect(overtaken.ctx.parkActiveSession).not.toHaveBeenCalled();
+        expect((overtaken.ctx.humanLog as { updateEntry: ReturnType<typeof vi.fn> }).updateEntry).toHaveBeenCalledWith('log-a', { status: 'cancelled' });
+    });
+
+    it('sends each of their connects with the phase the connect began in', () => {
+        for (const receipt of ['providerReceipt', 'ftpReceipt', 'savedProviderReceipt', 'savedFtpReceipt']) {
+            expect(APP, receipt).toContain(`const ${receipt}: ConnectReceipt = { phase: connectPhase };`);
+        }
+    });
+});
+
+describe('A provider connect that could reuse a live session', () => {
+    it('refuses a start folder the user name cannot fill before the reuse', async () => {
+        const start = APP.indexOf('    if (isProvider) {\n', APP.indexOf('  const connectToFtpImpl = async ('));
+        const end = APP.indexOf('      setLoading(true);\n', start);
+        expect(start, 'the provider branch of connectToFtpImpl').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(start, end)}}\n}`, 'provider-reuse.ts');
+        const params = { protocol: 'webdav', server: 'https://dav.example.test', username: 'alice/team', password: 'x', savedServerId: 'p1' };
+        const ctx: Record<string, unknown> = {
+            effectiveParams: params,
+            protocol: 'webdav',
+            isProvider: true,
+            remoteDirInput: '',
+            opts: undefined,
+            sessions: [{ id: 's1', connectionParams: params, remoteFiles: [], remotePath: '/docs', localPath: '/home/u' }],
+            invoke: vi.fn(async (command: string) => (command === 'get_local_files' ? [] : command === 'provider_probe_alive')),
+            notify: { error: vi.fn() },
+            t: (key: string) => key,
+            connectStartFolder,
+            probeAliveArgs: () => ({}),
+            reusesOpenTab: () => true,
+            confirmBackendConnection: vi.fn(),
+            fetchStorageQuota: vi.fn(),
+            showHiddenFiles: false,
+            logger: { debug: () => undefined },
+            connectPhase: 1,
+            remoteConnectPhaseVersionRef: { current: 1 },
+            backendReplacementSeqRef: { current: 0 },
+            backendTeardownsRef: { current: 0 },
+        };
+        const run = async (remoteDirInput: string) => {
+            ctx.remoteDirInput = remoteDirInput;
+            for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
+            await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})`)(...Object.values(ctx)) as () => Promise<void>)();
+        };
+        // A folder the name fills: the live session is reused.
+        await run('/docs');
+        expect(ctx.setActiveSessionId).toHaveBeenCalledWith('s1');
+        (ctx.invoke as ReturnType<typeof vi.fn>).mockClear();
+        (ctx.confirmBackendConnection as ReturnType<typeof vi.fn>).mockClear();
+        await run('/{username}');
+        expect((ctx.notify as { error: ReturnType<typeof vi.fn> }).error).toHaveBeenCalledOnce();
+        expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+        expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+        expect((ctx.invoke as ReturnType<typeof vi.fn>).mock.calls.map(([command]) => command)).not.toContain('provider_probe_alive');
+    });
+});
+
+describe('A provider connect that reuses a live session after a probe', () => {
+    it.each([
+        ['nothing happens meanwhile', 'none', true],
+        ['a sign-in swap replaces the backend', 'replaced', false],
+        ['a newer connect begins', 'overtaken', false],
+        ['a connect that replaces the backend is still running', 'running', false],
+    ] as const)('reuses the tab only if %s', async (_label, during, reuses) => {
+        const start = APP.indexOf('    if (isProvider) {\n', APP.indexOf('  const connectToFtpImpl = async ('));
+        const end = APP.indexOf('      setLoading(true);\n', start);
+        const { code } = await transformWithOxc(`async () => {\n${APP.slice(start, end)}}\nreturn 'reconnects';\n}\n`, 'provider-reuse-probe.ts');
+        const params = { protocol: 'webdav', server: 'https://dav.example.test', username: 'alice', password: 'x', savedServerId: 'p1' };
+        const backendReplacementSeqRef = { current: 0 };
+        const remoteConnectPhaseVersionRef = { current: 1 };
+        const ctx: Record<string, unknown> = {
+            effectiveParams: params, protocol: 'webdav', isProvider: true, remoteDirInput: '/docs', opts: undefined,
+            sessions: [{ id: 's1', connectionParams: params, remoteFiles: [], remotePath: '/docs', localPath: '/home/u' }],
+            invoke: vi.fn(async (command: string) => {
+                if (command !== 'provider_probe_alive') return [];
+                if (during === 'replaced') backendReplacementSeqRef.current += 1;
+                if (during === 'overtaken') remoteConnectPhaseVersionRef.current += 1;
+                return true;
+            }),
+            notify: { error: vi.fn() }, t: (key: string) => key, connectStartFolder, probeAliveArgs: () => ({}),
+            reusesOpenTab: () => true, confirmBackendConnection: vi.fn(), fetchStorageQuota: vi.fn(), showHiddenFiles: false,
+            logger: { debug: () => undefined },
+            connectPhase: 1, remoteConnectPhaseVersionRef, backendReplacementSeqRef,
+            // A GitHub branch switch that installed before the probe and has
+            // not answered yet: the probe says alive for it.
+            backendTeardownsRef: { current: during === 'running' ? 1 : 0 },
+        };
+        for (const setter of new Set(code.match(/\bset[A-Z]\w+/g))) ctx[setter] = vi.fn();
+        const outcome = await (new Function(...Object.keys(ctx), `return (${code.trim().replace(/;$/, '')})()`)(...Object.values(ctx)) as Promise<unknown>);
+        if (reuses) {
+            expect(ctx.setActiveSessionId).toHaveBeenCalledWith('s1');
+            expect(ctx.confirmBackendConnection).toHaveBeenCalledOnce();
+        } else {
+            expect(ctx.setActiveSessionId).not.toHaveBeenCalled();
+            expect(ctx.confirmBackendConnection).not.toHaveBeenCalled();
+            // Replaced or still being replaced: it reconnects; overtaken: it
+            // ends, leaving B alone.
+            expect(outcome).toBe(during === 'overtaken' ? undefined : 'reconnects');
+        }
+    });
+});
+
+describe('The transfer queue after a sign-in put the tab aside', () => {
+    it('refuses a batch while no tab is connected', async () => {
+        const start = APP.indexOf('  const queuedTargetProblem = useLatestCallback(');
+        const end = APP.indexOf('\n  });\n', start);
+        expect(start, 'queuedTargetProblem in App.tsx').toBeGreaterThan(-1);
+        const { code } = await transformWithOxc(APP.slice(start, end + '\n  });'.length), 'queued-target.ts');
+        const problem = (isConnected: boolean) => {
+            const ctx = {
+                useLatestCallback: <F,>(fn: F) => fn,
+                backendServesLiveTab: () => true,
+                isConnected,
+                isSameConnection: () => true,
+                liveConnectionParams: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' },
+                accountKeysDiffer: () => false,
+                liveProfileId: () => null,
+                isOAuthProvider: () => false,
+                isFourSharedProvider: () => false,
+                liveOverlay: () => null,
+                aeroVaultSessionRef: { current: null },
+            };
+            const fn = new Function(...Object.keys(ctx), `${code}; return queuedTargetProblem;`)(...Object.values(ctx));
+            return fn({ params: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' }, profileId: null, oauthLogins: 0, overlay: null, aeroVault: null });
+        };
+        // parkActiveSession sets isConnected(false).
+        expect(problem(false)).toBe('transfer.queuedForAnotherServer');
+        expect(problem(true)).toBeNull();
     });
 });

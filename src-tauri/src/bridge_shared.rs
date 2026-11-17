@@ -83,6 +83,7 @@ pub(crate) fn map_s3_provider(provider: &str) -> &'static str {
         "alibaba" | "alicloud" | "oss" => "alibaba-oss",
         "gcs" => "google-cloud-storage",
         "ibmcos" | "ibm-cos" | "ibm" => "ibm-cos",
+        "neon" => "neon-s3",
         "ionos" => "ionos-s3",
         "petabox" => "custom-s3",
         "seaweedfs" => "custom-s3",
@@ -414,7 +415,16 @@ pub(crate) fn plist_field(xml: &str, key: &str) -> Option<String> {
         let close = format!("</{tag}>");
         if let Some(s) = rest.strip_prefix(&open) {
             let e = s.find(&close)?;
-            return Some(html_unescape(s[..e].trim()));
+            // A string is read as written: a plist keeps the spaces at its
+            // ends, and a user name or a folder that has one is another
+            // account or another folder (trimmed, `alice ` came back as
+            // `alice`). A number has none to keep.
+            let value = if tag == "string" {
+                &s[..e]
+            } else {
+                s[..e].trim()
+            };
+            return Some(html_unescape(value));
         }
     }
     None
@@ -798,6 +808,13 @@ pub fn resolve_export_endpoint(
     crate::profile_loader::apply_profile_options(&mut extra, &profile);
 
     let mut host = host.trim().to_string();
+    if provider_type == ProviderType::WebDav && host.is_empty() {
+        if let Some(resolved) =
+            crate::profile_loader::apply_webdav_profile_defaults(provider_id, &host)
+        {
+            host = resolved;
+        }
+    }
     if provider_type == ProviderType::S3 {
         // As in the CLI and MCP connect paths: preset defaults (region,
         // path style, endpoint), and the resolved endpoint as host when the
@@ -839,6 +856,17 @@ pub fn resolve_export_endpoint(
             }
         }
     }
+}
+
+/// The start folder (or an rclone-crypt scope) a bridge export writes, with
+/// the `{username}` placeholder filled the way the connect fills it
+/// ([`crate::connection_manifest::expand_username_in_path`]): the exported
+/// remote opens the folder AeroFTP opens. Written as stored, a template
+/// reached the file literally (`nas:/home/{username}/backup`) and the tool
+/// created that folder. An `Err` is the reason the profile is skipped: a user
+/// name that cannot fill it, or none at all.
+pub fn export_start_folder(path: &str, username: &str) -> Result<String, String> {
+    crate::connection_manifest::expand_username_in_path(path, username)
 }
 
 /// The FTP TLS mode a profile connects with, for an exporter:
@@ -1472,6 +1500,36 @@ mod tests {
                 "{endpoint}"
             );
         }
+    }
+
+    #[test]
+    fn s3_provider_from_endpoint_neon_uses_a_domain_boundary() {
+        for endpoint in [
+            "https://br-misty-pine-bagvej1p.storage.c-8.eu-central-1.aws.neon.tech",
+            "br-x.storage.c-1.us-east-1.aws.neon.tech",
+            "https://br-x.storage.c-1.us-east-1.aws.neon.tech:443/bucket",
+            "https://aws.neon.tech",
+        ] {
+            assert_eq!(
+                map_s3_provider_from_endpoint(endpoint),
+                "neon-s3",
+                "{endpoint}"
+            );
+        }
+        for endpoint in [
+            "https://aws.neon.tech.example.com",
+            "https://notaws.neon.tech",
+            "https://neon.tech",
+            "https://aws.neon.tech.evil.com/bucket",
+        ] {
+            assert_ne!(
+                map_s3_provider_from_endpoint(endpoint),
+                "neon-s3",
+                "{endpoint}"
+            );
+        }
+        assert_eq!(map_s3_provider("Neon"), "neon-s3");
+        assert_eq!(map_s3_provider("neon"), "neon-s3");
     }
 
     #[test]

@@ -20,6 +20,14 @@ describe('provider logo coverage', () => {
         expect(missing).toEqual([]);
     });
 
+    it('gives every named WebDAV preset in the manifest a logo', () => {
+        const missing = connectionManifest.presets
+            .filter(p => p.protocol === 'webdav' && !p.generic)
+            .map(p => p.id)
+            .filter(id => !(id in PROVIDER_LOGOS));
+        expect(missing).toEqual([]);
+    });
+
     it('gives every catalog company a logo', () => {
         const missing = PROVIDER_CATALOG
             .map(c => c.logoId)

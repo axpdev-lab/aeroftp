@@ -410,6 +410,34 @@ pub fn delete_session(owner: SessionOwner, profile_id: Option<&str>) -> Result<(
     remove_saved(&store, owner, &key)
 }
 
+/// [`remove_saved`] for a rollback or a Move: every half is attempted and
+/// every failure returned, because the caller must name a session it could
+/// not remove. A private account removes its own row only; the vault key of
+/// the same name is the legacy owner's.
+fn delete_discarded_session(owner: SessionOwner, profile_id: &str) -> Result<(), ProviderError> {
+    let store = open_store()?;
+    let key = saved_key(&store, owner, Some(profile_id))?;
+    if let Some(user) = private_account(owner)? {
+        return crate::user_partitions::delete_partition_credential_checked(user, &key)
+            .map_err(ProviderError::Other);
+    }
+    let mut errors = Vec::new();
+    if let Err(error) = store.delete(&key) {
+        errors.push(format!("the vault refused the delete: {error}"));
+    }
+    if let Some(user) = owner.user_id {
+        if let Err(error) = crate::user_partitions::delete_partition_credential_checked(user, &key)
+        {
+            errors.push(error);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ProviderError::Other(errors.join("; ")))
+    }
+}
+
 /// Remove a profile's saved session locally, without revoking it: a failed
 /// local duplicate, whose source shares the remote session, or the source of a
 /// Move into another account. The key lock and the session's refresh lease are
@@ -430,7 +458,7 @@ pub fn discard_session_blocking(
             let key = saved_key(&store, owner, Some(&profile_id))?;
             let _lease = lease_of_saved(owner, &key).await?;
             let _writes = session_writes();
-            delete_session(owner, Some(&profile_id))
+            delete_discarded_session(owner, &profile_id)
         })
     })
     .join()

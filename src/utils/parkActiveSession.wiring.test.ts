@@ -323,7 +323,7 @@ describe('a connect parks the live tab before it ends the connection', () => {
     });
 
     it('parks before an OAuth or 4shared connect replaces the backend in My Servers', () => {
-        for (const run of ['scopedCancellable(doOAuthConnect)', 'scopedCancellable(doFourSharedConnect)']) {
+        for (const run of ['scopedCancellable(doOAuthConnect, signIn)', 'scopedCancellable(doFourSharedConnect, signIn)']) {
             const at = MY_SERVERS.indexOf(run);
             const branch = MY_SERVERS.slice(MY_SERVERS.lastIndexOf('setOauthConnecting(server.id);', at), at);
             expect(at, run).toBeGreaterThan(-1);
@@ -331,7 +331,13 @@ describe('a connect parks the live tab before it ends the connection', () => {
         }
         expect(MY_SERVERS).toContain('    onParkActiveSession,\n}: MyServersPanelProps)');
         expect(INTRO_HUB).toContain('onParkActiveSession={onParkActiveSession}');
-        expect(APP).toContain('onParkActiveSession={takeOverActiveSession}');
+        expect(APP).toContain('onParkActiveSession={takeOverBeforeSignIn}');
+        // It marks the backend uncertain before the takeover: the park runs
+        // after My Servers' awaits, so React has not committed it yet.
+        const start = APP.indexOf('  const takeOverBeforeSignIn = useLatestCallback(');
+        const body = APP.slice(start, APP.indexOf('\n  });\n', start));
+        expect(start).toBeGreaterThan(-1);
+        expect(body).toMatch(/backendUncertainRef\.current = true;\s+takeOverActiveSession\(\);/);
     });
 });
 

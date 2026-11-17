@@ -13,6 +13,7 @@ import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from '../ut
 import { isWindowsLocalPath, isSafeRemoteDownloadName, remoteDownloadTarget } from '../utils/localPath';
 import { RECONNECT_ERROR_KINDS, getErrorKindI18nKey } from '../utils/transferErrorClassifier';
 import { isCancelledTransferError } from '../utils/transferQueueJournal';
+import { isDeletionCancelled } from '../utils/localTrash';
 import { QueuedTargetChangedError, type QueuedTarget } from '../utils/queuedTarget';
 import { oauthLoginCount, oauthLoginKey } from '../utils/oauthLogins';
 import type { PreviewFile } from './DevTools/types';
@@ -23,6 +24,7 @@ import { isTargetChangedRefusal } from '../utils/targetChanged';
 import {
   cancelTransfer as cancelTransferRow,
   createFileBatchDispatcher,
+  dispatchGuardForGesture,
   rearmedOnUserAction,
   retryAllFailed as retryAllFailedRows,
   updateTransferStatus,
@@ -46,6 +48,13 @@ function closure(name: string, endMarker: string) {
   if (start < 0 || end < 0) throw new Error(`Missing App closure: ${name}`);
   return app.slice(start, end);
 }
+/** App's module-level `const name = ...;`, through its closing `;`. */
+function topLevel(name: string) {
+  const start = app.indexOf(`\nconst ${name} =`);
+  const end = app.indexOf(';\n', start + 1);
+  if (start < 0 || end < 0) throw new Error(`Missing App constant: ${name}`);
+  return app.slice(start, end + 1);
+}
 // App's own list of the account-key options, read from its source.
 // Interactive OAuth logins, as App's counter sees them; a test can add one.
 const ACCOUNT_KEY_OPTIONS = new Function(`return ${app.match(/const ACCOUNT_KEY_OPTIONS = (\[[^\]]*\])/)![1]};`)() as string[];
@@ -55,7 +64,9 @@ const dropEnd = app.indexOf('\n  });', dropStart);
 if (dropStart < 0 || dropEnd < 0) throw new Error('Missing App closure: crossPanelDropRef');
 
 const { code } = await transformWithOxc(
-  closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
+  topLevel('throwsTransferError')
+  + closure('captureGuiTarget', '\n  const getOverwriteDestination =')
+  + closure('getOverwriteDestination', '\n  // Helper: check folder overwrite')
   + closure('liveOverlay', '\n  const connectSavedProfileForResume')
   + closure('downloadFile', '\n  const uploadFile =')
   + closure('uploadFile', '\n  const retryRestoredEntry =')
@@ -66,7 +77,7 @@ const { code } = await transformWithOxc(
   + closure('retryAllFailedItems', '\n  // ======== File Clipboard')
   + closure('formatClipboardFileCount', '\n  /**')
   + closure('clipboardCut', '\n  // openDevToolsPreview, openUniversalPreview')
-  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch } };',
+  + '\nreturn { retryAllFailedItems, downloadFile, uploadFile, clipboardCopy, clipboardCut, clipboardPaste, saveDevToolsFile, targetChecks: { snapshotQueuedTarget, prepareGuiTarget, resolveGuiTarget, rearmNativeCancelForRow, boundToQueuedServer, queuedTargetProblem, queuedTargetGuard, failQueuedRestIfRetargeted, fileBatchSessionFlags, runFileBatch, QueuedTargetChangedError } };',
   'drop-on-folder-row.ts',
 );
 const { code: overwriteCode } = await transformWithOxc(
@@ -120,6 +131,10 @@ export type Options = {
   folderOutcome?: (command: string, call: number) => Partial<FolderTransferOutcome>;
   /** App's circuit breaker; by default one that never retries. */
   breaker?: Breaker;
+  /** An AeroVault overlay session open on the remote panel. */
+  vaultOverlay?: boolean;
+  /** The Auto-start setting; off stages the rows for an explicit Start. */
+  autoStart?: boolean;
 };
 
 export function fixture(options: Options = {}) {
@@ -134,10 +149,18 @@ export function fixture(options: Options = {}) {
     return folders[path] ?? [];
   };
   const calls: Record<string, number> = {};
+  // The backend's cancel state: a hard Stop raises it (cancel_transfer), a
+  // reset or a batch command clears it, and a single or folder transfer
+  // refuses while it is raised, as the legacy flag and the provider token do.
+  const nativeCancel = { current: false };
+  const cancelLevelRef = { current: 0 };
+  const refusedWhileCancelled = ['provider_upload_file', 'provider_download_file', 'upload_file', 'download_file', 'provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'];
   const invoke = vi.fn(async (command: string, args?: Record<string, any>) => {
+    if (nativeCancel.current && refusedWhileCancelled.includes(command)) throw 'Transfer cancelled by user';
     if (command === 'get_local_files') return listingOf(args!.path);
     if (command === 'provider_list_files') return { files: listingOf(args!.path), current_path: args!.path };
     if (command === 'provider_download_files_batch' || command === 'provider_upload_files_batch') {
+      nativeCancel.current = false;
       const entries = args!.params.entries;
       return { completed: entries.length, failed: 0, cancelled: false, succeeded: entries.map((_: unknown, i: number) => i) };
     }
@@ -148,7 +171,8 @@ export function fixture(options: Options = {}) {
       if (error !== undefined) throw error;
       return undefined;
     }
-    if (command === 'reset_cancel_flag') return undefined;
+    if (command === 'reset_cancel_flag') { nativeCancel.current = false; return undefined; }
+    if (command === 'cancel_transfer') { nativeCancel.current = true; return undefined; }
     if (['provider_upload_folder', 'provider_download_folder', 'upload_folder', 'download_folder'].includes(command)) {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
@@ -156,7 +180,7 @@ export function fixture(options: Options = {}) {
       return { completed: 1, skipped: 0, failed: 0, cancelled: false, message: 'Done', ...options.folderOutcome?.(command, calls[command]) };
     }
     if (command === 'github_check_local_sync') return { is_local_repo: false };
-    if (command === 'provider_connection_generation') return 7;
+    if (command === 'provider_connection_generation' || command === 'provider_gui_target_epoch') return 7;
     if (command === 'save_remote_file') {
       calls[command] = (calls[command] ?? 0) + 1;
       const error = options.fail?.(command, calls[command]);
@@ -168,6 +192,11 @@ export function fixture(options: Options = {}) {
     if (command === 'opendrive_set_path_privacy' || command === 'fourshared_set_path_privacy') return undefined;
     // A cut's moves and source deletes.
     if (['provider_delete_file', 'delete_remote_file', 'delete_local_file', 'provider_rename', 'rename_remote_file', 'provider_server_copy'].includes(command)) return undefined;
+    if (command === 'aerovault_overlay_delete_entries') return args!.entryPaths.length;
+    if (command === 'aerovault_overlay_extract_entry') return undefined;
+    // The vault's listing reads the session's current folder: the panel's.
+    if (command === 'aerovault_overlay_list') return { files: listingOf(REMOTE), current_path: REMOTE };
+    if (command === 'aerovault_overlay_add_file') return `${args!.remoteDir ?? ''}/${args!.remotePlainName}`;
     throw new Error(`Unexpected IPC: ${command}`);
   });
 
@@ -193,11 +222,14 @@ export function fixture(options: Options = {}) {
     queueItemsRef.current = queueItemsRef.current.map(item => (item.id === id ? { ...item, status: 'pending', error: undefined, cancelled: undefined } : item));
   };
   const transferQueue = {
-    addItem: vi.fn(() => {
+    addItem: vi.fn((..._args: unknown[]) => {
       const id = `q${queueItemsRef.current.length}`;
-      queueItemsRef.current.push({ id, status: 'pending' } as TransferItem);
+      const options = _args[4] as { staged?: boolean } | undefined;
+      queueItemsRef.current.push({ id, status: options?.staged ? 'staged' : 'pending' } as TransferItem);
       return id;
     }),
+    // A row's Start: staged to pending, as the queue's `startStaged`.
+    startStaged: vi.fn(reopen),
     startTransfer: vi.fn((id: string) => settle(id, 'transferring')),
     completeTransfer: vi.fn((id: string) => settle(id, 'completed')),
     failTransfer: vi.fn((id: string, error: string) => settle(id, 'error', error)),
@@ -205,6 +237,7 @@ export function fixture(options: Options = {}) {
       queueItemsRef.current = cancelTransferRow(queueItemsRef.current, id, label);
     }),
     retryItem: vi.fn(reopen),
+    getItemNow: (id: string) => queueItemsRef.current.find(item => item.id === id),
     // The queue's own filter: a failed row, not a stopped one.
     retryAllFailed: vi.fn(() => {
       const { ids } = retryAllFailedRows(queueItemsRef.current);
@@ -215,6 +248,7 @@ export function fixture(options: Options = {}) {
   const row = (id: string) => queueItemsRef.current.find(item => item.id === id);
   const batchCancelledRef = { current: false };
   const stopCountRef = { current: 0 };
+  const deleteGesturesRef = { current: [] as string[] };
   const retryCallbacksRef = { current: new Map<string, () => Promise<void>>() };
   const notify = { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() };
   const humanLog = { logStart: () => 'log', logRaw: vi.fn(), log: vi.fn(), logError: vi.fn(), logSuccess: vi.fn(), updateEntry: vi.fn() };
@@ -224,7 +258,7 @@ export function fixture(options: Options = {}) {
   // Panel 1's own loader, which the download called before it reloaded every
   // panel showing the folder written.
   const loadLocalFiles = vi.fn(async () => undefined);
-  const crossPanelDropRef = { current: null as null | ((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string | undefined, sourceKey?: string) => Promise<void>) };
+  const crossPanelDropRef = { current: null as null | ((files: { name: string; path: string }[], fromRemote: boolean, targetDir: string | undefined, sourceKey?: string, target?: unknown, stops?: number) => Promise<void>) };
   const protocol = options.protocol ?? 'webdav';
   // The live connection, which a test can switch to another server or
   // account: App's own target checks read it through this proxy.
@@ -239,9 +273,12 @@ export function fixture(options: Options = {}) {
     },
   });
   const requestGitHubBatchCommitMessage = vi.fn(async (..._args: unknown[]) => 'Add files');
+  // The AeroVault session in React state, and App's ref of it, which every set
+  // updates at once, before the render commits the state.
+  const vaultSession: { sessionId: string } | null = options.vaultOverlay ? { sessionId: 'vault-session' } : null;
   const context = {
     // Outside a render a latest-value callback is the function itself.
-    useLatestCallback: <T,>(fn: T) => fn,
+    useLatestCallback: <T,>(fn: T) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null },
     isLiveOnProfile: () => true,
     invoke, checkOverwrite, loadOverwriteDestination, usesProviderApi,
     resetOverwriteSettings: vi.fn(), checkFolderOverwrite,
@@ -250,25 +287,25 @@ export function fixture(options: Options = {}) {
     getActiveLocalState: (id: 'local' | 'local2' = 'local') => panels[id],
     focusedLocalPanelId: 'local',
     sessions: [{ id: 'A', connectionParams: liveConnectionParams }], activeSessionId: 'A', connectionParams: { protocol },
-    liveConnectionParams, aeroVaultOverlaySession: null, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
+    liveConnectionParams, aeroVaultOverlaySession: vaultSession, aeroVaultSessionRef: { current: vaultSession }, isConnected: true, isSameConnection, isTargetChangedRefusal, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount, oauthLoginKey,
     currentRemotePath: REMOTE, currentLocalPath: LOCAL, localFiles, localFiles2, sortedLocalFiles: localFiles, sortedLocalFiles2: localFiles2, remoteFiles,
     selectedRemoteFiles: new Set<string>(), setSelectedRemoteFiles: vi.fn(),
-    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, cancelLevelRef: { current: 0 },
-    batchOpInFlightRef: { current: false }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
+    humanLog, pendingFileLogIds: { current: new Map() }, batchCancelledRef, stopCountRef, deleteGesturesRef, isDeletionCancelled, cancelLevelRef,
+    batchOpInFlightRef: { current: false }, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, batchOperationPendingRef: { current: null }, folderOverwriteApplyToAll: { current: { action: 'merge_overwrite', enabled: false } },
     circuitBreaker: options.breaker ?? {
       reset: vi.fn(), recordSuccess: vi.fn(), recordFailure: () => ({ isFatal: false, retryable: false, shouldPause: false }),
       stateRef: { current: 'closed' }, pauseReasonRef: { current: null }, tripErrorKindRef: { current: null },
       config: { maxRetriesPerFile: 0 }, getRetryDelay: () => 0,
     },
     RECONNECT_ERROR_KINDS, getErrorKindI18nKey, attemptBatchReconnect: vi.fn(), waitForBatchResume: vi.fn(),
-    retryCallbacksRef, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), withTransferRun,
+    retryCallbacksRef, dispatchGuardForGesture, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { retryCallbacksRef.current.set(id, cb); }, queueItemsRef, transferQueue, recordQueueDescriptor: vi.fn(), registerFileBatchRows: vi.fn(), holdFileCompletions: () => () => undefined, withTransferRun,
     QueuedTargetChangedError,
     remoteConnectPhaseRef: { current: false as false | 'connect' | 'switch' },
     backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
     fileBatchCommand, keepsSingleFilePath, folderTransferIsComplete, folderTransferFailure, FolderTransferFailedError,
     isCancelledTransferError, createFileBatchDispatcher, rearmedOnUserAction,
     joinRemotePath: (dir: string, name: string) => `${dir}${dir.endsWith('/') ? '' : '/'}${name}`,
-    settings: { autoStartTransfers: true }, fileExistsAction: options.policy ?? 'skip',
+    settings: { autoStartTransfers: options.autoStart ?? true }, fileExistsAction: options.policy ?? 'skip',
     effectiveMaxConcurrentTransfers: 4, retryCount: 1, timeoutSeconds: 30,
     downloadSegments: 0, sftpDownloadPreset: 'balanced', supportsFtpTransferPresets: false,
     buildSftpDownloadPresetPayload: () => ({}), resolveFtpDownloadSegments: () => 0,
@@ -304,8 +341,21 @@ export function fixture(options: Options = {}) {
   const commits = () => invoke.mock.calls.filter(([command]) => command === 'github_batch_upload').map(([, args]) => args!.files.map((f: any) => f.remotePath));
   /** The user switches to another tab: by default another server, else the
    *  same one with what `change` sets (a port, a bucket, an API key, a profile). */
+  /** The user's hard Stop: counted, the batch flag set, the backend's cancel raised. */
+  const hardStop = () => {
+    stopCountRef.current += 1;
+    batchCancelledRef.current = true;
+    cancelLevelRef.current = 2;
+    nativeCancel.current = true;
+  };
+  /** The user opens another AeroVault on the same connection: the server and
+   *  its epoch stay, the vault session changes. */
+  const switchVault = (sessionId = 'vault-session-b') => {
+    if (vaultSession) vaultSession.sessionId = sessionId;
+    else context.aeroVaultSessionRef.current = { sessionId };
+  };
   const switchServer = (change: Partial<ConnectionParams> = { server: 'b.example' }) => {
     live.params = { ...live.params, ...change };
   };
-  return { switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
+  return { hardStop, nativeCancel, switchVault, aeroVaultSessionRef: context.aeroVaultSessionRef, switchServer, liveConnectionParams, connectPhase: context.remoteConnectPhaseRef, teardowns: context.backendTeardownsRef, uncertain: context.backendUncertainRef, confirmations: context.backendConfirmationsRef, snapshotQueuedTarget: targetChecks.snapshotQueuedTarget, targetChecks, saveDevToolsFile, fileClipboardRef: context.fileClipboardRef, clipboardCopy, clipboardCut, clipboardPaste, downloadFile, uploadFile, drop, invoke, written, commits, panels, setSelectedRemoteFiles: context.setSelectedRemoteFiles, checkOverwrite, checkFolderOverwrite, requestGitHubBatchCommitMessage, notify, humanLog, transferQueue, row, batchCancelledRef, stopCountRef, deleteGesturesRef, retryCallbacksRef, retryAllFailedItems, refreshLocalPanelForPath, loadRemoteFiles };
 }

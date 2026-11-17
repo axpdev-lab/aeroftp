@@ -54,7 +54,7 @@ function fixture(fail: 'read' | 'write' | 'none' = 'write') {
         aeroCryptConfirmMismatch: false, overlaysRemotePathError: false, defaultSaltEntropyMismatch: false,
         cryptFormsHalfRecorded: false, remotePathEscapesOverlay: false, aeroCryptEnabled: false,
         mtpFingerprint: undefined, persistModeCredentials: true, inModeGroup: true,
-        oauthOverlaySaveBlocked: false,
+        overlaySaveBlocked: false,
         modeChanged: true, targetModeLabel: 'Native', originalEditMode: { protocol: 'webdav' },
         customIconForSave: undefined, faviconForSave: undefined, editHydratedPasswordRef: { current: '' },
         modeCredentialSnapshotsRef: { current: { ftp: 'fixture' } }, bridgeSaveBlocked: false,
@@ -145,6 +145,20 @@ describe('saved profile write rejection in production handlers', () => {
         }
         if (name === 'handleConvertMode') expect(f.context.deleteModeCredentials).not.toHaveBeenCalledWith('old');
         expect(f.events.filter(e => e.detail?.type === 'success')).toEqual([]);
+    });
+
+    it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s writes nothing while the overlay gate is up', async name => {
+        // An unresolved `{username}` overlay folder, a confirm mismatch, a
+        // default-salt entropy refusal or a half-recorded crypt form.
+        const f = fixture('none');
+        f.context.overlaySaveBlocked = true;
+        const fn = await execute(connection, [name], f.context);
+        await fn[name]();
+        expect(f.read).not.toHaveBeenCalled();
+        expect(f.store).not.toHaveBeenCalled();
+        for (const n of ['aeroCryptOverlayFields', 'tryStoreCredential', 'stashFilenApiKey', 'migrateCryptCredentials', 'syncPersistedModeCredentials', 'deleteModeCredentials']) {
+            expect(f.context[n], n).not.toHaveBeenCalled();
+        }
     });
 
     it.each(['handleSaveAsNew', 'handleConvertMode'] as const)('%s refuses a failed strict read before any credential mutation', async name => {
@@ -386,6 +400,17 @@ describe('saved profile write rejection in production handlers', () => {
         expect(f.events.some(e => e.detail?.type === 'error')).toBe(true);
     });
 
+    it('IntroHub stores no duplicate when its secrets cannot be copied, and shows why', async () => {
+        const f = fixture('none');
+        f.context.copyProfileVaultSecrets = vi.fn(async () => { throw 'The server secret could not be written to the copy, so the copy was not created: disk full'; });
+        const fn = await execute(hub, ['handleDuplicate'], f.context);
+        await fn.handleDuplicate(f.servers[0]);
+        expect(f.context.copyProfileVaultSecrets).toHaveBeenCalledWith('old', expect.stringMatching(/^srv_/), 'ftp', 7);
+        expect(f.store).not.toHaveBeenCalled();
+        expect(f.context.setServers).not.toHaveBeenCalled();
+        expect(f.events).toContainEqual({ type: 'aeroftp-toast', detail: expect.objectContaining({ type: 'error', message: expect.stringContaining('disk full') }) });
+    });
+
     it('IntroHub preserves profiles that appeared since the last render', async () => {
         const f = fixture('none');
         const unseen = { ...f.servers[0], id: 'unseen' };
@@ -417,12 +442,22 @@ describe('saved profile write rejection in production handlers', () => {
     it.each(['4shared', 'OAuth new', 'OAuth edit'] as const)('%s does not connect as saved after a failed write', async mode => {
         const f = fixture();
         f.context.editingProfileId = mode === 'OAuth edit' ? 'old' : null;
-        const marker = mode === '4shared' ? 'onConnected={async (displayName) => {' : 'onConnected={async (displayName, extraOptions) => {';
+        // The token of the sign-in swap that afterBackendSwap reports on.
+        f.context.latestSettledBackendSwapToken = () => 1;
+        // 4shared signs in under a per-attempt profile id, renewed after a save.
+        f.context.fourSharedTokenProfileId = 'fourshared-attempt';
+        f.context.setPendingFourSharedProfileId = vi.fn();
+        f.context.newFourSharedProfileId = () => 'fourshared-next';
+        const marker = mode === '4shared'
+            ? 'onConnected={afterBackendSwap(async (handOff, displayName: string) => {'
+            : 'onConnected={afterBackendSwap(async (handOff, displayName: string, extraOptions?: { region?: string }) => {';
         const start = connection.indexOf(marker);
-        const end = connection.indexOf('\n                                }}', start);
-        const helpers = connection.includes('const readProfilesForSave =')
-            ? declaration(connection, 'readProfilesForSave') + declaration(connection, 'persistProfilesForSave') : '';
-        await snippet(helpers + '\nconst onConnected = ' + connection.slice(start + 'onConnected={'.length, end) + '\n};\nawait onConnected("Cloud", {});', f.context);
+        const end = connection.indexOf('\n                                })}', start);
+        expect(start, marker).toBeGreaterThan(-1);
+        const helpers = (connection.includes('const readProfilesForSave =')
+            ? declaration(connection, 'readProfilesForSave') + declaration(connection, 'persistProfilesForSave') : '')
+            + declaration(connection, 'afterBackendSwap');
+        await snippet(helpers + '\nconst onConnected = ' + connection.slice(start + 'onConnected={'.length, end) + '\n});\nawait onConnected("Cloud", {});', f.context);
         expect(f.store).toHaveBeenCalled();
         expect(f.context.onConnect).not.toHaveBeenCalled();
         expect(f.context.setGitHubAlert).toHaveBeenCalled();

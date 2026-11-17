@@ -4090,6 +4090,53 @@ enum Commands {
 mod cli_dispatch;
 
 #[cfg(test)]
+mod username_template_tests {
+    use super::cli_username_template;
+    use ftp_client_gui_lib::connection_manifest::USERNAME_TEMPLATE_MISSING;
+
+    /// The CLI fills from the shared case table: the table's value, or exit 5.
+    #[test]
+    fn the_cli_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            for (key, url) in [("urlTemplate", true), ("pathTemplate", false)] {
+                let want = case[if url { "url" } else { "path" }].as_str();
+                let got = cli_username_template(table[key].as_str().unwrap(), user, url);
+                match want {
+                    Some(v) => assert_eq!(got, Ok(v.to_string()), "{user:?} {key}"),
+                    None => assert_eq!(got.unwrap_err().0, 5, "{user:?} {key}"),
+                }
+            }
+        }
+    }
+
+    /// A saved profile whose server URL or start folder needs a user name the
+    /// profile does not have: exit 5 with the text every surface gives, never
+    /// a connect to `/dav//`.
+    #[test]
+    fn a_blank_user_name_on_a_template_profile_is_a_configuration_error() {
+        assert_eq!(
+            cli_username_template("https://lifetimecloud.me/dav/{username}/", "", true),
+            Err((5, USERNAME_TEMPLATE_MISSING.to_string()))
+        );
+        assert_eq!(
+            cli_username_template("/remote.php/dav/files/{username}/", " ", false),
+            Err((5, USERNAME_TEMPLATE_MISSING.to_string()))
+        );
+        assert_eq!(
+            cli_username_template("https://lifetimecloud.me/dav/{username}/", "a b", true),
+            Ok("https://lifetimecloud.me/dav/a%20b/".to_string())
+        );
+        let (code, _) = cli_username_template("/files/{username}/", "..", false).unwrap_err();
+        assert_eq!(code, 5);
+    }
+}
+
+#[cfg(test)]
 mod warning_line_tests {
     use super::{warning_line, OutputFormat};
 
@@ -7851,7 +7898,9 @@ fn provider_error_to_exit_code(err: &ProviderError) -> i32 {
         ProviderError::NotSupported(_) => 7,
         ProviderError::Timeout => 8,
         ProviderError::AlreadyExists(_) | ProviderError::DirectoryNotEmpty(_) => 9,
-        ProviderError::ParseError(_) | ProviderError::ServerError(_) => 10,
+        ProviderError::ParseError(_)
+        | ProviderError::ServerError(_)
+        | ProviderError::FtpRefused { .. } => 10,
         ProviderError::IoError(_) => 11,
         ProviderError::Unknown(_) | ProviderError::Other(_) => 99,
     }
@@ -27796,12 +27845,6 @@ fn interactive_new_profile(
     Ok(Some(id))
 }
 
-/// Duplicate a vault profile under a fresh id. Mirrors the GUI's
-/// `handleDuplicate` in `MyServersPanel.tsx`: appends ` (copy)` to the
-/// name (unless `new_name` is provided), drops `lastConnected`, clones any
-/// stored credential, and prepends the copy to the profile list so it
-/// surfaces at the top of the table. Always emits the new id on stdout
-/// in text mode for scripting (the JSON path wraps it in a struct).
 /// PASS-01: resolve the optional override password for profile mode conversion
 /// from at most one of --password / --password-env / --password-stdin. Inline
 /// --password is honoured but warned about (it lands in argv/shell history).
@@ -27851,6 +27894,93 @@ fn resolve_mode_password(
     Ok(None)
 }
 
+/// Copy every per-profile secret of `source_id` onto `new_id`, in the vault and
+/// the scoped user's partition, all or nothing
+/// ([`ftp_client_gui_lib::profile_secret_copy::copy_profile_secret_keys`]).
+fn copy_duplicate_secrets(
+    store: &CredentialStore,
+    scoped_uid: Option<i64>,
+    source_id: &str,
+    new_id: &str,
+    protocol: Option<&str>,
+) -> Result<(), String> {
+    use ftp_client_gui_lib::profile_secret_copy;
+    profile_secret_copy::copy_profile_secret_keys(
+        source_id,
+        new_id,
+        ftp_client_gui_lib::per_profile_vault_keys(source_id, protocol),
+        |key| match scoped_uid {
+            // A key with no partition home is read as its connection reads it.
+            Some(uid) if profile_secret_copy::is_shared_vault_key(key) => {
+                ftp_client_gui_lib::user_partitions::resolve_credential_for_user(store, uid, key)
+            }
+            // Owner-aware: a shared vault entry under the same key may be another
+            // account's (an imported profile keeps its id), so only the proven
+            // legacy owner falls back to it.
+            Some(uid) => {
+                ftp_client_gui_lib::user_partitions::resolve_credential_for_user_owner_aware(
+                    store, uid, key,
+                )
+            }
+            None => profile_secret_copy::read_vault_secret(store, key),
+        },
+        |base, target_key, value| {
+            #[cfg(feature = "proton-native")]
+            if base == "proton_native_session" {
+                use ftp_client_gui_lib::providers::proton_native::vault;
+                return vault::restore_session_blocking(
+                    vault::SessionOwner::for_user(scoped_uid),
+                    new_id,
+                    value,
+                )
+                .map_err(|error| error.to_string());
+            }
+            match profile_secret_copy::copied_secret_type(base) {
+                Some(kind) => {
+                    dual_store_typed_cred_checked(store, scoped_uid, target_key, kind, value)
+                }
+                None => dual_store_server_cred_checked(store, scoped_uid, target_key, value),
+            }
+        },
+        |base, target_key| {
+            profile_secret_copy::remove_copied_secret(store, scoped_uid, new_id, base, target_key)
+        },
+    )
+    .map(|_| ())
+}
+
+/// Remove a duplicate whose secrets could not be copied, never its source, and
+/// return `error` with what the removal could not do.
+fn remove_incomplete_duplicate(
+    cli: &Cli,
+    store: &CredentialStore,
+    new_id: &str,
+    error: String,
+) -> String {
+    let removed = update_active_user_profiles(
+        cli,
+        store,
+        |e| e,
+        |profiles| {
+            profiles.retain(|profile| profile.get("id").and_then(|id| id.as_str()) != Some(new_id));
+            Ok(())
+        },
+    );
+    match removed {
+        Ok(_) => error,
+        Err(rollback) => {
+            format!("{error}; removing incomplete profile {new_id} failed: {rollback}")
+        }
+    }
+}
+
+/// Duplicate a vault profile under a fresh id. Mirrors the GUI's
+/// `handleDuplicate` in `MyServersPanel.tsx`: appends ` (copy)` to the
+/// name (unless `new_name` is provided), drops `lastConnected`, clones every
+/// stored secret of the profile (or removes the copy when one cannot be
+/// cloned), and prepends the copy to the profile list so it surfaces at the
+/// top of the table. Always emits the new id on stdout in text mode for
+/// scripting (the JSON path wraps it in a struct).
 fn cmd_profile_duplicate(
     cli: &Cli,
     format: OutputFormat,
@@ -27963,86 +28093,24 @@ fn cmd_profile_duplicate(
         .map(str::to_string)
         .unwrap_or(resolved_name);
 
-    // Best-effort clone of EVERY vault secret scoped to the source profile so a
-    // duplicate is a complete working copy, not just the password (crypt overlay,
-    // Filen key, OAuth/Jotta token, per-mode snapshots, OneDrive hints). Same
-    // single source of truth (`per_profile_vault_keys`) the GUI copy command and
-    // delete/export use. Missing keys are valid for many protocols, so a missing
-    // source key is skipped, never an error. MUV-3: same scoped user, dual-write.
+    // Clone EVERY vault secret scoped to the source profile so a duplicate is a
+    // complete working copy, not just the password (crypt overlay, Filen key,
+    // OAuth/Jotta token, per-mode snapshots, OneDrive hints), by the same rule
+    // as the app's copy. A secret the source does not have is skipped; one that
+    // cannot be read or written removes the copy, so no duplicate is left
+    // without a secret its source has.
     if !source_id.is_empty() {
         let scoped_uid = scoped_credential_user_id(cli, &store);
         let protocol = source.get("protocol").and_then(|v| v.as_str());
-        let source_suffix = format!("_{}", source_id);
-        for source_key in ftp_client_gui_lib::per_profile_vault_keys(&source_id, protocol) {
-            if let Some(base) = source_key.strip_suffix(&source_suffix) {
-                if let Some(value) = read_server_cred(&store, scoped_uid, &source_key) {
-                    let target_key = format!("{}_{}", base, new_id);
-                    #[cfg(feature = "proton-native")]
-                    if base == "proton_native_session" {
-                        use ftp_client_gui_lib::providers::proton_native::vault;
-                        let owner = vault::SessionOwner::for_user(scoped_uid);
-                        if let Err(error) = vault::restore_session_blocking(owner, &new_id, &value)
-                        {
-                            // Roll back the copy, never its source. Cleanup is
-                            // local: remote revocation could sign the source out.
-                            let profile_rollback = match scoped_uid {
-                                Some(user_id) => ftp_client_gui_lib::user_partitions::cli_update_server_profiles_for_user(
-                                    &store,
-                                    user_id,
-                                    |current| {
-                                        let before = current.len();
-                                        current.retain(|profile| profile.get("id").and_then(|id| id.as_str()) != Some(new_id.as_str()));
-                                        current.len() != before
-                                    },
-                                ).map(|(stored, _)| mirror_profiles_to_legacy_blob_if_active(&store, user_id, &stored)),
-                                None => Err("COPY_ROLLBACK_OWNER_UNKNOWN".to_string()),
-                            };
-                            let session_rollback = vault::discard_session_blocking(owner, &new_id);
-                            for key in ftp_client_gui_lib::per_profile_vault_keys_for_delete(
-                                &new_id, protocol,
-                            ) {
-                                if key != format!("proton_native_session_{new_id}") {
-                                    dual_delete_server_cred(&store, scoped_uid, &key);
-                                }
-                            }
-                            let mut message =
-                                format!("Failed to restore the copied Proton session: {error}");
-                            if let Err(rollback) = profile_rollback {
-                                message.push_str(&format!(
-                                    "; removing incomplete profile {new_id} failed: {rollback}"
-                                ));
-                            }
-                            if let Err(rollback) = session_rollback {
-                                message.push_str(&format!(
-                                    "; local session cleanup failed: {rollback}"
-                                ));
-                            }
-                            print_error(format, &message, 5);
-                            return 5;
-                        }
-                        continue;
-                    }
-                    let kind =
-                        if ftp_client_gui_lib::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
-                            Some("oauth")
-                        } else if base == "proton_native_session" {
-                            Some("proton_native_session")
-                        } else {
-                            None
-                        };
-                    if let Some(kind) = kind {
-                        let _ = dual_store_typed_cred_checked(
-                            &store,
-                            scoped_uid,
-                            &target_key,
-                            kind,
-                            &value,
-                        );
-                    } else {
-                        dual_store_server_cred(&store, scoped_uid, &target_key, &value);
-                    }
-                }
-            }
+        if let Err(error) =
+            copy_duplicate_secrets(&store, scoped_uid, &source_id, &new_id, protocol)
+        {
+            print_error(
+                format,
+                &remove_incomplete_duplicate(cli, &store, &new_id, error),
+                5,
+            );
+            return 5;
         }
     }
 
@@ -29805,11 +29873,16 @@ fn duplicate_profile_in_vault(
             Ok((new_id, resolved_name))
         },
     )?;
-    // MUV-3: clone the credential into vault + the scoped user's partition.
+    // MUV-3: clone every secret into vault + the scoped user's partition, as
+    // `profile duplicate` does; a copy that cannot be completed is removed.
     let scoped_uid = scoped_credential_user_id(cli, store);
-    if let Some(cred) = read_server_cred(store, scoped_uid, &format!("server_{}", source_id)) {
-        dual_store_server_cred(store, scoped_uid, &format!("server_{}", new_id), &cred);
-    }
+    let protocol = stored
+        .iter()
+        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(new_id.as_str()))
+        .and_then(|p| p.get("protocol"))
+        .and_then(|v| v.as_str());
+    copy_duplicate_secrets(store, scoped_uid, source_id, &new_id, protocol)
+        .map_err(|error| remove_incomplete_duplicate(cli, store, &new_id, error))?;
     // The name that selects the copy: " (1)", ... when it was taken.
     let resolved_name = name_of(&stored, &new_id)
         .map(str::to_string)
@@ -31651,6 +31724,22 @@ fn profile_to_provider_config(
     profile_value_to_provider_config(profile, &store, cli, format)
 }
 
+/// A profile's `{username}` template filled for the CLI: the server URL
+/// (`url`) or the start folder. A blank or unusable user name is a
+/// configuration error, exit 5, with the same text every surface gives.
+fn cli_username_template(
+    template: &str,
+    username: &str,
+    url: bool,
+) -> Result<String, (i32, String)> {
+    let filled = if url {
+        ftp_client_gui_lib::connection_manifest::expand_username_in_url(template, username)
+    } else {
+        ftp_client_gui_lib::connection_manifest::expand_username_in_path(template, username)
+    };
+    filled.map_err(|reason| (5, reason))
+}
+
 /// Build a `ProviderConfig` from an ALREADY resolved saved-profile value.
 ///
 /// Split out of `profile_to_provider_config` so callers that do not have a
@@ -31685,7 +31774,13 @@ fn profile_value_to_provider_config(
     // `WebDavConfig::from_provider_config` does the same substitution for
     // its `url` field, but the raw host is also used by the banner and by
     // some option lookups before WebDavConfig is built.
-    let mut host = raw_host.replace("{username}", &username_for_template);
+    let mut host = match cli_username_template(&raw_host, &username_for_template, true) {
+        Ok(h) => h,
+        Err((code, msg)) => {
+            print_error(format, &msg, code);
+            return Err(code);
+        }
+    };
     let port = profile
         .get("port")
         .and_then(|v| v.as_u64())
@@ -31708,7 +31803,13 @@ fn profile_value_to_provider_config(
     // (banner, scratch-dir creation, path resolution) sees a concrete path
     // rather than the literal placeholder. Same semantics as
     // `WebDavConfig::from_provider_config` does for the URL.
-    let initial_path = initial_path.replace("{username}", &username);
+    let initial_path = match cli_username_template(&initial_path, &username, false) {
+        Ok(p) => p,
+        Err((code, msg)) => {
+            print_error(format, &msg, code);
+            return Err(code);
+        }
+    };
     // Auto-strip the legacy Nextcloud-style WebDAV root when it was saved
     // both as part of the host URL and again as initial_path. Mirrors the
     // frontend `stripLegacyNextcloudWebdavRoot` helper so profiles that
@@ -43471,6 +43572,69 @@ fn collect_export_scaffold(
     supported_protocols: &[&str],
     oauth_protocols: &[&str],
 ) -> Result<ExportCollected, String> {
+    collect_export_scaffold_with(
+        servers_json,
+        selectors,
+        source,
+        supported_protocols,
+        oauth_protocols,
+        |id, protocol| export_vault_secret(store, id, protocol),
+    )
+}
+
+/// The secret a profile is exported with, from the active user's partition
+/// with fallback to the legacy vault (MUV-3); empty when none is stored.
+fn export_vault_secret(
+    store: &ftp_client_gui_lib::credential_store::CredentialStore,
+    id: &str,
+    protocol: &str,
+) -> String {
+    if id.is_empty() {
+        String::new()
+    } else if protocol == "jottacloud" {
+        // Jotta authenticates via its OIDC refresh blob ({refresh_token,
+        // token_endpoint, username}), not a `server_<id>` password. The
+        // provider persists it under the per-profile key
+        // `jottacloud_refresh_<id>` when a profile id is set, or the
+        // singleton `jottacloud_refresh` otherwise (see
+        // `JottacloudProvider::refresh_token_account`). Try per-profile
+        // first, then fall back to the singleton, so export_rclone can
+        // rebuild the rclone `token` line from it.
+        let uid = active_credential_user_id(store);
+        read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
+            .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
+            .unwrap_or_default()
+    } else {
+        match read_server_cred(
+            store,
+            active_credential_user_id(store),
+            &format!("server_{}", id),
+        ) {
+            Some(stored) => {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
+                    v.get("password")
+                        .and_then(|x| x.as_str())
+                        .unwrap_or(stored.trim_matches('"'))
+                        .to_string()
+                } else {
+                    stored
+                }
+            }
+            None => String::new(),
+        }
+    }
+}
+
+/// [`collect_export_scaffold`] with each profile's secret read by
+/// `secret_for(id, protocol)`.
+fn collect_export_scaffold_with(
+    servers_json: &serde_json::Value,
+    selectors: Option<&[String]>,
+    source: &str,
+    supported_protocols: &[&str],
+    oauth_protocols: &[&str],
+    secret_for: impl Fn(&str, &str) -> String,
+) -> Result<ExportCollected, String> {
     let arr = servers_json
         .as_array()
         .ok_or_else(|| "vault profiles payload is not an array".to_string())?;
@@ -43518,47 +43682,8 @@ fn collect_export_scaffold(
             .and_then(|v| v.as_str())
             .map(str::to_string);
         let options = entry.get("options").cloned();
-        let initial_path = entry
-            .get("initialPath")
-            .and_then(|v| v.as_str())
-            .map(str::to_string);
-        let overlay = entry.get("aeroCryptOverlay").cloned();
 
-        // MUV-3: active user's partition with fallback to the legacy vault.
-        let secret = if id.is_empty() {
-            String::new()
-        } else if protocol == "jottacloud" {
-            // Jotta authenticates via its OIDC refresh blob ({refresh_token,
-            // token_endpoint, username}), not a `server_<id>` password. The
-            // provider persists it under the per-profile key
-            // `jottacloud_refresh_<id>` when a profile id is set, or the
-            // singleton `jottacloud_refresh` otherwise (see
-            // `JottacloudProvider::refresh_token_account`). Try per-profile
-            // first, then fall back to the singleton, so export_rclone can
-            // rebuild the rclone `token` line from it.
-            let uid = active_credential_user_id(store);
-            read_server_cred(store, uid, &format!("jottacloud_refresh_{}", id))
-                .or_else(|| read_server_cred(store, uid, "jottacloud_refresh"))
-                .unwrap_or_default()
-        } else {
-            match read_server_cred(
-                store,
-                active_credential_user_id(store),
-                &format!("server_{}", id),
-            ) {
-                Some(stored) => {
-                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stored) {
-                        v.get("password")
-                            .and_then(|x| x.as_str())
-                            .unwrap_or(stored.trim_matches('"'))
-                            .to_string()
-                    } else {
-                        stored
-                    }
-                }
-                None => String::new(),
-            }
-        };
+        let secret = secret_for(id, &protocol);
 
         let proto_supported = supported_protocols.contains(&protocol.as_str());
         let proto_oauth = oauth_protocols.contains(&protocol.as_str());
@@ -43586,6 +43711,22 @@ fn collect_export_scaffold(
                 .push((name.to_string(), "no credential in vault".to_string()));
             continue;
         }
+        // The start folder (and an exported overlay's scope) as the profile
+        // opens it, filled by the fill the GUI export uses: every CLI writer
+        // reads the scaffold, so none writes a literal `{username}` folder.
+        let filled = match ftp_client_gui_lib::bridge_commands::with_filled_start_folders(entry) {
+            Ok(filled) => filled,
+            Err(reason) => {
+                out.skipped.push((name.to_string(), reason));
+                continue;
+            }
+        };
+        let options = filled.get("options").cloned();
+        let overlay = filled.get("aeroCryptOverlay").cloned();
+        let initial_path = filled
+            .get("initialPath")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
 
         // By id, the key the secret was read under: by name, two profiles of
         // one name both went out with the second one's secret.
@@ -43750,17 +43891,23 @@ async fn cmd_export_rclone(
     }
 
     let mut exportable: Vec<RcloneExportServer> = Vec::with_capacity(collected.profiles.len());
+    let mut unreadable: Vec<(String, String)> = Vec::new();
     for p in &collected.profiles {
         // #128-D: inject the vaulted OAuth token + BYO client_id/secret so
         // OAuth remotes export usable (refreshable) from the CLI too, using
         // the exact same helper the GUI bridge calls.
         let mut options = p.options.clone();
-        ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
+        // A token that cannot be read skips the profile: exporting it bare, or
+        // with the legacy singleton, would hand rclone another account's token.
+        if let Err(reason) = ftp_client_gui_lib::bridge_commands::inject_rclone_oauth_export_options(
             &mut options,
             &store,
             &p.protocol,
             &p.id,
-        );
+        ) {
+            unreadable.push((p.name.clone(), reason));
+            continue;
+        }
         ftp_client_gui_lib::bridge_commands::inject_rclone_filen_export_options(
             &mut options,
             &store,
@@ -43826,6 +43973,7 @@ async fn cmd_export_rclone(
             // could not write (an unaddressable Zoho region, a Zoho whose
             // root folder is unknown, a crypt name already taken).
             let mut skipped = collected.skipped.clone();
+            skipped.extend(unreadable.iter().cloned());
             skipped.extend(
                 outcome
                     .skipped
@@ -45535,6 +45683,101 @@ mod export_vault_secret_tests {
         assert!(export_needs_vault_secret("sftp", None));
         assert!(export_needs_vault_secret("ftp", None));
         assert!(export_needs_vault_secret("s3", Some(&native)));
+    }
+}
+
+#[cfg(test)]
+mod export_start_folder_tests {
+    use super::collect_export_scaffold_with;
+    use ftp_client_gui_lib::lftp_import::{export_lftp, LftpExportServer};
+
+    fn profile(username: &str) -> serde_json::Value {
+        serde_json::json!([{
+            "id": "p1", "name": "backup", "protocol": "sftp", "host": "sftp.example.test",
+            "port": 22, "username": username, "initialPath": "/home/{username}/backup",
+            "options": { "initial_path": "/home/{username}/backup" }
+        }])
+    }
+
+    /// Greptile 4583669529: the CLI export reads its profiles through the
+    /// scaffold and calls the writers directly, so the fill the GUI export
+    /// runs never reached it: an lftp export of `/home/{username}/backup`
+    /// wrote the placeholder, percent-encoded, as its start folder.
+    #[test]
+    fn a_cli_lftp_export_writes_the_start_folder_the_profile_opens() {
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("lftp");
+        let collected = collect_export_scaffold_with(
+            &profile("alice"),
+            None,
+            "lftp",
+            supported,
+            &[],
+            |_, _| "pw".to_string(),
+        )
+        .unwrap();
+        let p = &collected.profiles[0];
+        assert_eq!(p.initial_path.as_deref(), Some("/home/alice/backup"));
+        assert_eq!(
+            p.options.as_ref().and_then(|o| o["initial_path"].as_str()),
+            Some("/home/alice/backup")
+        );
+
+        // Through the lftp writer, as `cmd_export_bridge` maps the scaffold.
+        let servers: Vec<LftpExportServer> = collected
+            .profiles
+            .iter()
+            .map(|p| LftpExportServer {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                host: p.host.clone(),
+                port: p.port,
+                username: p.username.clone(),
+                protocol: Some(p.protocol.clone()),
+                options: p.options.clone(),
+                provider_id: p.provider_id.clone(),
+                initial_path: p.initial_path.clone(),
+            })
+            .collect();
+        let dir = tempfile::TempDir::new().unwrap();
+        let out = dir.path().join("bookmarks");
+        export_lftp(&servers, &collected.passwords, &out).unwrap();
+        let written = std::fs::read_to_string(&out).unwrap();
+        assert!(written.contains("/home/alice/backup"), "{written}");
+        assert!(!written.contains("username"), "{written}");
+    }
+
+    /// A user name the fill refuses (it would change the folder's depth)
+    /// skips the profile with the reason, as the GUI export does.
+    #[test]
+    fn a_cli_export_skips_a_profile_whose_user_name_cannot_fill_its_folder() {
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("lftp");
+        let collected =
+            collect_export_scaffold_with(&profile("a/b"), None, "lftp", supported, &[], |_, _| {
+                "pw".to_string()
+            })
+            .unwrap();
+        assert!(collected.profiles.is_empty());
+        assert_eq!(collected.skipped.len(), 1);
+        assert_eq!(collected.skipped[0].0, "backup");
+    }
+
+    /// CodeRabbit (CLI deep, #1574): the CLI writers take the overlay from
+    /// the scaffold, so an enabled rclone-crypt overlay's scope is the filled
+    /// one, as in the GUI export.
+    #[test]
+    fn a_cli_export_hands_the_writers_the_filled_overlay_scope() {
+        let mut profiles = profile("alice");
+        profiles[0]["aeroCryptOverlay"] = serde_json::json!({
+            "enabled": true, "kind": "rclone-crypt", "remoteScope": "/vault/{username}"
+        });
+        let supported = ftp_client_gui_lib::bridge_shared::bridge_supported_protocols("rclone");
+        let collected =
+            collect_export_scaffold_with(&profiles, None, "rclone", supported, &[], |_, _| {
+                "pw".to_string()
+            })
+            .unwrap();
+        let overlay = collected.profiles[0].overlay.as_ref().unwrap();
+        assert_eq!(overlay["remoteScope"], "/vault/alice");
     }
 }
 
@@ -87513,7 +87756,6 @@ mod tests {
             root.path(),
             "tests::import_template_reports_when_vault_profiles_unreadable",
             &[(CHILD, "1")],
-            std::time::Duration::from_secs(15),
         );
     }
 
@@ -87764,7 +88006,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::cloudinary_cli_clear_import_keeps_api_key_verbatim",
             &[
                 (CHILD, file.to_str().unwrap()),
@@ -87772,27 +88014,26 @@ mod tests {
                 ("XDG_DATA_HOME", cfg_dir.to_str().unwrap()),
                 ("HOME", cfg_dir.to_str().unwrap()),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 
-    fn assert_child_finishes_with_open_stdin_within(
-        test_name: &str,
-        envs: &[(&str, &str)],
-        timeout: std::time::Duration,
-    ) {
+    /// How long a child may run before it counts as blocked on its open stdin.
+    /// It detects a hang, not a slow run: a child waiting on a pipe that is
+    /// never closed never finishes, so any bound catches it, and the bound only
+    /// has to stay clear of a slow run. One child takes about 5s alone and 9s
+    /// beside eleven others on 24 cores; on a 4-vCPU CI runner, inside the
+    /// whole suite, 15s was exceeded by a child that was not blocked (main
+    /// 3c475248c, Build run 43822610680).
+    const CHILD_HANG_BOUND: std::time::Duration = std::time::Duration::from_secs(180);
+
+    fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
         let root = crate::isolated_cli::root();
-        assert_child_finishes_in(root.path(), test_name, envs, timeout);
+        assert_child_finishes_in(root.path(), test_name, envs);
     }
 
-    /// [`assert_child_finishes_with_open_stdin_within`] in a private root the
-    /// caller made (and may have prepared, as a broken data root).
-    fn assert_child_finishes_in(
-        root: &std::path::Path,
-        test_name: &str,
-        envs: &[(&str, &str)],
-        timeout: std::time::Duration,
-    ) {
+    /// [`assert_child_finishes_with_open_stdin`] in a private root the caller
+    /// made (and may have prepared, as a broken data root).
+    fn assert_child_finishes_in(root: &std::path::Path, test_name: &str, envs: &[(&str, &str)]) {
         // Its own executable beside a portable.marker: the child's data root is
         // inside `root`, whatever the platform does with HOME and XDG variables.
         let mut cmd = crate::isolated_cli::command(&std::env::current_exe().unwrap(), root);
@@ -87806,7 +88047,7 @@ mod tests {
         }
         let mut child = cmd.spawn().expect("spawn child with open stdin pipe");
         let open_stdin = child.stdin.take().expect("piped stdin");
-        let deadline = std::time::Instant::now() + timeout;
+        let deadline = std::time::Instant::now() + CHILD_HANG_BOUND;
         let status = loop {
             if let Some(status) = child.try_wait().expect("poll child") {
                 break status;
@@ -87848,14 +88089,6 @@ mod tests {
             "the child resolves {} outside its private root {}",
             data.display(),
             std::path::Path::new(&root).display()
-        );
-    }
-
-    fn assert_child_finishes_with_open_stdin(test_name: &str, envs: &[(&str, &str)]) {
-        assert_child_finishes_with_open_stdin_within(
-            test_name,
-            envs,
-            std::time::Duration::from_secs(15),
         );
     }
 
@@ -87966,7 +88199,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::import_template_refusals_exit_with_config_error_code_5",
             &[
                 (CHILD, file.to_str().unwrap()),
@@ -87975,7 +88208,6 @@ mod tests {
                 ("HOME", cfg_dir.to_str().unwrap()),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 
@@ -88128,7 +88360,7 @@ mod tests {
         .unwrap();
         let cfg_dir = dir.path().join("xdg");
         std::fs::create_dir_all(&cfg_dir).unwrap();
-        assert_child_finishes_with_open_stdin_within(
+        assert_child_finishes_with_open_stdin(
             "tests::crypt_over_skipped_base_cli_secret_form_for_mixed_case",
             &[
                 (CHILD, tpl_file.to_str().unwrap()),
@@ -88138,7 +88370,6 @@ mod tests {
                 ("HOME", cfg_dir.to_str().unwrap()),
                 ("AEROFTP_MASTER_PASSWORD", "test-vault-master-password"),
             ],
-            std::time::Duration::from_secs(30),
         );
     }
 

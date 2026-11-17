@@ -3,6 +3,11 @@
 
 import { transformWithOxc } from 'vite';
 import { describe, expect, it, vi } from 'vitest';
+import { isDeletionCancelled } from './localTrash';
+import { splitForFileBatch } from './fileBatchRouting';
+import { createUnifiedTransferPlan } from './unifiedTransferPlanner';
+import { createLocalEndpoint } from './panelEndpoints';
+import { asLocalFileEntry, localRowNameClashes, selectedLocalTrees } from './localSelection';
 import APP from '../App.tsx?raw';
 import CODE_BLOCK from '../components/DevTools/CodeBlockActions.tsx?raw';
 import CODE_EDITOR from '../components/DevTools/CodeEditor.tsx?raw';
@@ -77,10 +82,10 @@ describe('Apply on a remote file', () => {
 
 describe('a queued transfer', () => {
     it('is bound to its server on every Start and Retry the user queues', () => {
-        const registrations = APP_CODE.split('retryCallbacksRef.current.set(').slice(1).map(rest => rest.slice(0, 120));
+        const registrations = APP_CODE.split('registerTransferCallback(id, ').slice(1).map(rest => rest.slice(0, 120));
         // The restored-journal retry has its own profile ownership check.
-        const restored = registrations.filter(r => r.startsWith('id, () => retryRestoredEntry('));
-        const bound = registrations.filter(r => r.startsWith('id, boundToQueuedServer(queuedTarget, id, '));
+        const restored = registrations.filter(r => r.startsWith('() => retryRestoredEntry('));
+        const bound = registrations.filter(r => r.startsWith('boundToQueuedServer(queuedTarget, id, '));
         expect(restored).toHaveLength(1);
         expect(bound).toHaveLength(5);
         expect(registrations).toHaveLength(restored.length + bound.length);
@@ -119,11 +124,11 @@ describe('a queued transfer', () => {
         const run = vi.fn();
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: vault as Overlay };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 },
             isConnected: true,
             remoteConnectPhaseRef: { current: false }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
             sessions: [session],
-            activeSessionId: 'A',
+            activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null },
             liveConnectionParams: session.connectionParams,
             isSameConnection,
             savedProfileIdOf,
@@ -132,7 +137,7 @@ describe('a queued transfer', () => {
             connectionNumberOf,
             ACCOUNT_KEY_OPTIONS,
             oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey,
-            transferQueue: { failTransfer: vi.fn() },
+            transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() },
             t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
@@ -158,9 +163,9 @@ describe('a queued transfer', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const queuedTargetGuard =');
         const session = { id: 'A', connectionParams: { ...queued }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true, remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
         };
         const { code } = await transformWithOxc(source, 'bound.ts');
         const fns = new Function(...Object.keys(ctx), `${code}; return { snapshotQueuedTarget, queuedTargetProblem };`)(...Object.values(ctx));
@@ -179,10 +184,10 @@ describe('a queued transfer', () => {
                 + between(APP, '  const abortSwitchAfterCancel = async (', '\n  // #401') : '');
         const session = { id: 'A', connectionParams: { ...params }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             BACKEND_TEARDOWN_BOUND_MS: 30000, clearCryptOverlayState: vi.fn(),
             lockAndDropBackendConnection: (extra.lockAndDrop as (() => Promise<boolean>) | undefined) ?? vi.fn(() => new Promise<boolean>(() => {})),
         };
@@ -365,10 +370,17 @@ describe('a queued transfer', () => {
         // The flag is cleared in one helper, which the confirmations call.
         expect(APP_CODE.match(/backendUncertainRef\.current = false;/g)).toHaveLength(1);
         expect(APP_CODE).toMatch(/const confirmBackendConnection = \(\) => \{\n\s+backendUncertainRef\.current = false;\n\s+backendConfirmationsRef\.current \+= 1;/);
-        expect(APP_CODE.match(/confirmBackendConnection\(\);/g)).toHaveLength(4);
+        expect(APP_CODE.match(/confirmBackendConnection\(\);/g)).toHaveLength(7);
         for (const confirmed of [
             /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_mtp_/,
-            /confirmBackendConnection\(\);\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            // createSession confirms only when no replacement ended since its
+            // caller's own connect (`replacedAt`).
+            /\} else \{\n\s+confirmBackendConnection\(\);\n\s+\}\n\s+const newSession: FtpSession = \{\n\s+id: `session_\$\{/,
+            // The AeroCloud open (both arms) and a GitHub branch switch, right
+            // after their connect, while no newer connect owns the workspace.
+            /await runConnect\('provider_connect', providerParams\);\n(\s+\/\/[^\n]*\n)*\s+if \(!ownsPhase\(\)\) throw new Error\(AEROCLOUD_OPEN_SUPERSEDED\);\n\s+confirmBackendConnection\(\);\n\s+\} else \{/,
+            /await runConnect\('connect_ftp', ftpParams\);\n\s+if \(!ownsPhase\(\)\) throw new Error\(AEROCLOUD_OPEN_SUPERSEDED\);\n\s+confirmBackendConnection\(\);/,
+            /await runConnect\('provider_connect', providerParams\);\n(\s+\/\/[^\n]*\n)*\s+if \(phaseVersion === remoteConnectPhaseVersionRef\.current\) confirmBackendConnection\(\);\n\s+const response = await withRemoteListSpinner/,
             /s\.id === reusable\.id \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
             /s\.id === sessionId \? \{ \.\.\.s, status: 'connected' \} : s\)\);\n\s+confirmBackendConnection\(\);/,
         ]) expect(APP_CODE).toMatch(confirmed);
@@ -480,6 +492,22 @@ describe('a queued transfer', () => {
         expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/up.txt`]);
         expect(f.row('q0')).toMatchObject({ status: 'completed' });
     });
+
+    it('refuses the actual Retry when its overwrite prompt switches the target', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [remote('up.txt')] },
+            policy: 'ask', fail: (command, call) => command === 'provider_upload_file' && call === 1 ? 'Connection reset' : undefined });
+        f.checkOverwrite.mockResolvedValue({ action: 'overwrite', destinationExists: true });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'error' });
+        f.checkOverwrite.mockImplementation(async () => {
+            f.switchServer();
+            return { action: 'overwrite', destinationExists: true };
+        });
+        await f.retryAllFailedItems();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file')).toHaveLength(1);
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'reconnect_ftp')).toHaveLength(0);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedForAnotherServer' });
+    });
 });
 
 /**
@@ -546,9 +574,21 @@ describe('a switch to another server while the overwrite question is open', () =
         ]) {
             // Up to the next closure declared at App's own level.
             const body = between(APP_CODE, head, '\n  const ');
-            expect(body).toContain('const onQueuedTarget = queuedTargetGuard(queuedTarget);');
+            expect(body).toContain('queuedTargetGuard(queuedTarget);');
             const writes = body.split(/await (?:uploadFile|downloadFile)\(/).slice(1).map(call => call.slice(0, call.indexOf(';')));
-            for (const call of writes) expect(call).toMatch(/'throw', undefined, onQueuedTarget\)$/);
+            // M5: the guard they get checks the batch's Stop too, after the
+            // target, right before each native dispatch. A row's Start or
+            // Retry is the user's own gesture: its guard takes the Stop count
+            // when it starts (dispatchGuardForGesture), after the same target.
+            // The row's dispatch carries the epoch its native cancel reset was
+            // made on (rearmNativeCancelForRow).
+            for (const call of writes) expect(call).toMatch(/'throw', undefined, (?:onQueuedDispatch(?:, expectedGuiTarget)?|onRowDispatch, rowEpoch)\)$/);
+            if (writes.length > 0) expect(body).toMatch(/const onQueuedDispatch = \(\) => \{\n\s+onQueuedTarget\(\);\n\s+if \(stopCountRef\.current !== stops\) throw/);
+            for (const row of body.split('const onRowDispatch = ').slice(1)) {
+                expect(row.slice(0, row.indexOf(';'))).toBe('dispatchGuardForGesture(onQueuedTarget, stopCountRef)');
+            }
+            // Each row callback clears a hard Stop's native cancel first.
+            expect(body.split('const rowEpoch = await rearmNativeCancelForRow(onRowDispatch);').length).toBe(body.split('const onRowDispatch = ').length);
         }
         const batch = between(APP_CODE, 'const runFileBatch = useLatestCallback(', '\n  const uploadMultipleFiles =');
         expect(batch).toMatch(/onQueuedTarget\(\);\n\s+if \(isProvider\) \{\n\s+const outcome = await invoke/);
@@ -572,6 +612,509 @@ describe('a switch to another server while the overwrite question is open', () =
  * server, so a cut on A pasted after a switch to B downloaded B's files at the
  * same paths and then deleted them from B, or moved them there.
  */
+/**
+ * CodeRabbit on #1561: a lone local file pasted into a remote folder went to
+ * the folder the panel stood in at the upload (the latest `currentRemotePath`),
+ * not to the folder the Paste named, which the panel can leave while the
+ * target is prepared, or which is a folder row other than the panel's own.
+ * A Cut then removed the local source after an upload into the wrong folder.
+ */
+/**
+ * CodeRabbit on #1561: the transfer plan took a fresh target for each entry,
+ * so after a switch during the first entry's overwrite question (which
+ * refuses that entry, quietly in notify mode) the next entry took the new
+ * server and wrote there. The plan now takes one target before it starts and
+ * stops at the first entry that target refuses.
+ */
+/** A plan staged through App's own `stageUnifiedTransferPlan`, on the
+ *  fixture's live connection: bound to the target and epoch live now. */
+async function stagedPlan(f: ReturnType<typeof fixture>, staged: Record<string, unknown>) {
+    const source = between(APP, '  const stageUnifiedTransferPlan = useLatestCallback(', '\n  // AeroSync dialog:');
+    const { code } = await transformWithOxc(source, 'stage.ts');
+    let pending: Record<string, unknown> | null = null;
+    const context: Record<string, unknown> = {
+        useLatestCallback: <T,>(fn: T) => fn, ...f.targetChecks,
+        captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
+        setPendingUnifiedTransferPlan: (value: Record<string, unknown>) => { pending = value; },
+    };
+    const stage = new Function(...Object.keys(context), `${code}; return stageUnifiedTransferPlan;`)(...Object.values(context)) as (staged: Record<string, unknown>) => void;
+    stage(staged);
+    return pending!;
+}
+
+// CodeRabbit on #1561, the local-local sibling of the sync roots (review
+// 5913269115): a planned cross-panel copy or move read the panels' folders and
+// selection at Execute, so with a panel moved since the files went into
+// another folder than the plan showed.
+describe('a planned local-local copy or move whose panels moved before Execute', () => {
+    const runPlanned = async (mode: 'copy' | 'move', onListing: (stopCount: { current: number }) => void = () => undefined) => {
+        const rowA = { name: 'a.txt', path: '/a/a.txt', is_dir: false, size: 1, modified: null } as never;
+        const rowX = { name: 'x.txt', path: '/c/x.txt', is_dir: false, size: 1, modified: null } as never;
+        // Staged with App's own planner and staging, on /a -> /b with a.txt.
+        let pending: Record<string, unknown> | null = null;
+        const stageSource = between(APP, '  const stageUnifiedTransferPlan = useLatestCallback(', '\n  // AeroSync dialog:')
+            + '\n' + between(APP, '  const planLocalSelectionAcrossPanels = useCallback(', '\n  React.useEffect(() => {');
+        const { code: stageCode } = await transformWithOxc(stageSource, 'stage-local.ts');
+        const staging = {
+            useLatestCallback: <T,>(fn: T) => fn, useCallback: <T,>(fn: T) => fn,
+            snapshotQueuedTarget: () => ({}), queuedTargetGuard: () => () => undefined, prepareGuiTarget: () => Promise.resolve({ epoch: 1 }),
+            setPendingUnifiedTransferPlan: (value: Record<string, unknown>) => { pending = value; },
+            activeLocalPanelId: 'local',
+            localUnifiedPanel: { endpoint: createLocalEndpoint('local', '/a') }, local2UnifiedPanel: { endpoint: createLocalEndpoint('local2', '/b') },
+            localFiles: [rowA], localFiles2: [], sortedLocalFiles: [rowA], sortedLocalFiles2: [],
+            selectedLocalFiles: new Set(['a.txt']), selectedLocalFiles2: new Set(),
+            selectedLocalTrees, localRowNameClashes, asLocalFileEntry, createUnifiedTransferPlan,
+            notify: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        };
+        const plan = new Function(...Object.keys(staging), `${stageCode}; return planLocalSelectionAcrossPanels;`)(...Object.values(staging)) as (mode: string, panel: string) => void;
+        plan(mode, 'local');
+        expect(pending).not.toBeNull();
+
+        // Both panels moved, to /c (x.txt selected) and /d; then Execute.
+        const stopCountRef = { current: 0 };
+        const invoke = vi.fn(async (command: string, args?: Record<string, unknown>) => {
+            if (command === 'get_local_files') { onListing(stopCountRef); return args!.path === '/b' ? [] : [rowX]; }
+            return undefined;
+        });
+        const runSource = between(APP, '  const transferLocalSelectionAcrossPanels = useCallback(', '\n  // Keep the F5/F6 forward ref')
+            + '\n' + between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code: runCode } = await transformWithOxc(runSource, 'run-local.ts');
+        const running = {
+            useLatestCallback: <T,>(fn: T) => fn, useCallback: <T,>(fn: T) => fn,
+            stopCountRef, queuedTargetGuard: () => () => undefined, queuedTargetProblem: () => null,
+            pendingUnifiedTransferPlan: pending, setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            activeLocalPanelId: 'local', currentLocalPath: '/c', currentLocalPath2: '/d',
+            localFiles: [rowX], localFiles2: [], sortedLocalFiles: [rowX], sortedLocalFiles2: [],
+            selectedLocalFiles: new Set(['x.txt']), selectedLocalFiles2: new Set(),
+            selectedLocalTrees, localRowNameClashes, asLocalFileEntry, setConfirmDialog: vi.fn(),
+            loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(), invoke,
+            notify: { error: vi.fn(), info: vi.fn(), success: vi.fn(), warning: vi.fn() }, t: (key: string) => key,
+        };
+        const execute = new Function(...Object.keys(running), `${runCode}; return executeUnifiedTransferPlan;`)(...Object.values(running)) as () => Promise<void>;
+        await execute();
+        return invoke;
+    };
+
+    it.each(['copy', 'move'] as const)('acts on the plan\'s folders and files (%s)', async mode => {
+        const invoke = await runPlanned(mode);
+        const writes = invoke.mock.calls.filter(([command]) => command === 'copy_local_file' || command === 'rename_local_file');
+        expect(writes).toEqual([[mode === 'copy' ? 'copy_local_file' : 'rename_local_file', { from: '/a/a.txt', to: '/b/a.txt', overwrite: false }]]);
+        // The overwrite check read the plan's target folder, not the panel's.
+        expect(invoke.mock.calls.filter(([command]) => command === 'get_local_files').map(([, args]) => args!.path)).toEqual(['/b']);
+    });
+
+    // CodeRabbit CLI on this delta: a Stop while the plan lists its target
+    // folder still let the files go after the listing.
+    it.each(['copy', 'move'] as const)('starts no %s when Stop lands during the target listing', async mode => {
+        const invoke = await runPlanned(mode, stopCount => { stopCount.current += 1; });
+        expect(invoke.mock.calls.filter(([command]) => command === 'copy_local_file' || command === 'rename_local_file')).toEqual([]);
+    });
+});
+
+describe('a transfer plan whose server changes after it was made', () => {
+    // CodeRabbit 4579437713 and the CLI on the round: the plan took its target
+    // and epoch when Execute ran, so a server switched to while its dialog was
+    // open received every entry.
+    it.each(['per-entry', 'batch'] as const)('sends no entry to the server switched to before Execute (%s)', async route => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const pending = await stagedPlan(f, {
+            sourceLocalPanelId: 'local',
+            plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+            transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        // The dialog is open; the user switches to another server, then Execute.
+        f.switchServer();
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: pending,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: route === 'batch' ? splitForFileBatch : (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        expect(f.invoke.mock.calls.filter(([command]) => /upload/.test(command))).toEqual([]);
+        expect(f.written()).toEqual([]);
+        expect(f.notify.error).toHaveBeenCalled();
+    });
+
+    // A switch to another server and back passes the target check: the epoch
+    // read when the plan was made is what the backend then refuses.
+    it('sends its entries with the epoch read when it was made', async () => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const pending = await stagedPlan(f, {
+            sourceLocalPanelId: 'local',
+            plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+            transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) =>
+            command === 'provider_gui_target_epoch' ? 8 : answer(command, args));
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
+            pendingUnifiedTransferPlan: pending,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        const uploads = f.invoke.mock.calls.filter(([command]) => command === 'provider_upload_file');
+        expect(uploads).toHaveLength(2);
+        for (const [, args] of uploads) expect(args!.expectedGuiTarget).toBe(7);
+    });
+
+    it('stages every plan through the binding', () => {
+        const staged = APP_CODE.match(/stageUnifiedTransferPlan\(\{/g) ?? [];
+        const direct = APP_CODE.match(/setPendingUnifiedTransferPlan\(\{/g) ?? [];
+        expect(staged.length).toBe(3);
+        expect(direct.length).toBe(1);
+    });
+});
+
+describe('a local file uploaded into another folder of a vault overlay', () => {
+    // CodeRabbit CLI on the round: the vault upload command took no folder and
+    // wrote into the vault session's current one, whatever folder the upload
+    // named (an upload that skips the overwrite listing, say).
+    it('names its own folder to the vault upload', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, vaultOverlay: true });
+        // The panel stands in REMOTE; the upload names its Inbox folder.
+        await f.uploadFile(`${LOCAL}/up.txt`, 'up.txt', false, 1, true, undefined, INBOX, 'throw');
+        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds).toHaveLength(1);
+        expect(adds[0][1]).toMatchObject({ remoteDir: INBOX, remotePlainName: 'up.txt' });
+    });
+
+    // CodeRabbit CLI on the combined range of #1561: a file staged in vault A
+    // went to vault B, opened since on the same connection: the queued target
+    // did not record the vault session, and the server and epoch are the same.
+    it('a file staged in one vault sends nothing to another vault opened since', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] }, vaultOverlay: true, autoStart: false });
+        await f.drop([local('up.txt')], false, REMOTE, 'local');
+        expect(f.row('q0')).toMatchObject({ status: 'staged' });
+        f.switchVault();
+        const [start] = [...f.retryCallbacksRef.current.values()];
+        f.transferQueue.startStaged('q0');
+        await start();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file')).toEqual([]);
+        expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.queuedOverlayChanged' });
+    });
+
+    // CodeRabbit CLI on the last delta of #1561: round 3 left the save checks
+    // on the full target, so a provider file opened before a vault was opened
+    // could no longer be saved.
+    it('saves a remote file opened before a vault was opened, on the provider', async () => {
+        const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] } });
+        const file = { name: 'a.txt', path: `${REMOTE}/a.txt`, isRemote: true, target: f.snapshotQueuedTarget() };
+        f.switchVault('vault-opened-since');
+        await f.saveDevToolsFile('edited', file as never);
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'save_remote_file')).toHaveLength(1);
+        expect(f.notify.error).not.toHaveBeenCalled();
+    });
+
+    // CodeRabbit CLI on the last delta of #1561: a vault opened while a
+    // plaintext upload waited for its target. The upload's continuation can
+    // run before React commits the new session, so the check read the session
+    // from state and let the upload through. It now reads App's ref, which
+    // the set updates at once.
+    it('refuses a plaintext upload when a vault opens before React commits it', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] } });
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            if (command === 'provider_gui_target_epoch') await held;
+            return answer(command, args);
+        });
+        // App's own setter and change handler, with React's commit left out:
+        // the state setter records the value and renders nothing.
+        const source = between(APP, '  const aeroVaultSessionRef = useRef', '\n  const ')
+            + '\n' + between(APP, '  const setAeroVaultOverlaySession = useCallback(', '\n  const [showCryptomatorBrowser')
+            + '\n' + between(APP, '  const handleAeroVaultOverlaySessionChange = useCallback(', '\n  const clearAeroVaultOverlaySession');
+        const { code } = await transformWithOxc(source, 'vault-set.ts');
+        const ctx = { useRef: () => f.aeroVaultSessionRef, useCallback: <T,>(fn: T) => fn, setAeroVaultOverlaySessionState: vi.fn(), activeSessionId: 'A', setSessions: vi.fn() };
+        const change = new Function(...Object.keys(ctx), `${code}; return handleAeroVaultOverlaySessionChange;`)(...Object.values(ctx)) as (session: { sessionId: string } | null) => void;
+        const dropping = f.drop([local('up.txt')], false, REMOTE, 'local');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        change({ sessionId: 'vault-opened-meanwhile' });
+        expect(ctx.setAeroVaultOverlaySessionState).toHaveBeenCalledWith({ sessionId: 'vault-opened-meanwhile' });
+        release();
+        await dropping;
+        expect(f.invoke.mock.calls.filter(([command]) => /upload|aerovault_overlay_add_file/.test(command))).toEqual([]);
+    });
+
+    // CodeRabbit CLI on the integrated delta of #1561: the Paste routed each
+    // file by the ref, but chose the batch by the session from state. A vault
+    // opened before React committed it left the batch eligible, and two local
+    // files went to the provider batch, outside the vault.
+    it('a Paste of two files into a vault opened before React commits it writes both into that vault', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('a.txt'), local('b.txt')], [REMOTE]: [] } });
+        f.switchVault('vault-opened-meanwhile');
+        f.clipboardCopy([
+            { name: 'a.txt', path: `${LOCAL}/a.txt`, is_dir: false },
+            { name: 'b.txt', path: `${LOCAL}/b.txt`, is_dir: false },
+        ], false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        const sent = f.invoke.mock.calls.map(([command]) => command);
+        expect(sent.filter(command => /^provider_upload|^upload_files_batch|^upload_file$/.test(command))).toEqual([]);
+        const adds = f.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds.map(([, args]) => [args!.sessionId, args!.remotePlainName])).toEqual([
+            ['vault-opened-meanwhile', 'a.txt'],
+            ['vault-opened-meanwhile', 'b.txt'],
+        ]);
+    });
+
+    // The editor reads and saves through the provider, never a vault session:
+    // its target leaves the vault out, so a vault opened meanwhile refuses
+    // no save of a provider file.
+    it('the editor\'s remote target leaves the vault session out, in its read and both save checks', () => {
+        expect(APP_CODE).toContain('const editorTargetProblem = (target: QueuedTarget) =>\n    queuedTargetProblem({ ...target, aeroVault: aeroVaultSessionRef.current?.sessionId ?? null });');
+        expect(APP_CODE).toContain('changedSince: (target: QueuedTarget) => editorTargetProblem(target) !== null,');
+        const save = between(APP_CODE, 'const saveDevToolsFile = useLatestCallback(', "await invoke('save_remote_file'");
+        expect(save.match(/editorTargetProblem\(file\.target\)/g)).toHaveLength(2);
+        expect(save).not.toContain('queuedTargetProblem(');
+    });
+
+    // A Paste reaches the vault upload in the folder its listing can read,
+    // the session's current one, and names it; into another vault folder its
+    // overwrite listing refuses it (overwriteDestination.ts), and nothing is
+    // written, into the current folder least of all.
+    it('a Paste names its folder to the vault upload, and one into another vault folder writes nothing', async () => {
+        const here = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [] }, vaultOverlay: true });
+        here.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        await here.clipboardPaste(true, REMOTE);
+        const adds = here.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file');
+        expect(adds).toHaveLength(1);
+        expect(adds[0][1]).toMatchObject({ remoteDir: REMOTE, remotePlainName: 'up.txt' });
+
+        const other = fixture({ folders: { [LOCAL]: [local('up.txt')], [INBOX]: [] }, vaultOverlay: true });
+        other.clipboardCopy([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        await other.clipboardPaste(true, INBOX);
+        expect(other.invoke.mock.calls.filter(([command]) => command === 'aerovault_overlay_add_file')).toEqual([]);
+        expect(other.notify.error).toHaveBeenCalled();
+    });
+});
+
+describe('a transfer plan whose server changes during its first entry', () => {
+    it('writes no later entry to the server switched to', async () => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({
+            folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: names.map(n => remote(n)) }, policy: 'ask',
+        });
+        f.checkOverwrite.mockImplementation(async () => {
+            f.switchServer();
+            return { action: 'overwrite', destinationExists: true };
+        });
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
+                sourceLocalPanelId: 'local',
+                plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+                transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+            }),
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            // The per-entry path, where each entry asks its own overwrite question.
+            splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        expect(f.checkOverwrite).toHaveBeenCalledTimes(1);
+        expect(f.written()).toEqual([]);
+    });
+
+    // CodeRabbit 4579437713 on #1561 (its reply of 11-16): the backend can
+    // refuse the plan's epoch while the panel still shows the plan's server
+    // (a reconnect to the same server). 'notify' turned that refusal into a
+    // false return, and the loop went on to the next entry. The refusal now
+    // reaches the loop, which stops at that entry.
+    it.each(['upload', 'download'] as const)('starts no later entry once the backend refuses the plan\'s epoch while the target still matches (%s)', async direction => {
+        const names = ['a.txt', 'b.txt', 'c.txt'];
+        const single = direction === 'upload' ? 'provider_upload_file' : 'provider_download_file';
+        const f = fixture({
+            // Only the source lists the files: none is skipped as already there.
+            folders: direction === 'upload' ? { [LOCAL]: names.map(n => local(n)) } : { [REMOTE]: names.map(n => remote(n)) },
+            fail: (command, call) => command === single && call === 1 ? 'CONNECTION_CHANGED: the connection changed since this transfer was started' : undefined,
+        });
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const plan = direction === 'upload'
+            ? { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } }
+            : { pairKind: 'remote-local', mode: 'copy', source: { kind: 'remote', path: REMOTE }, destination: { kind: 'local', path: LOCAL, panelId: 'local' } };
+        const from = direction === 'upload' ? LOCAL : REMOTE;
+        const staged = await stagedPlan(f, {
+            sourceLocalPanelId: 'local', plan,
+            transferEntries: names.map(n => ({ path: `${from}/${n}`, name: n, is_dir: false, size: 1 })),
+        });
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: staged,
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile, remoteFiles: [],
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles, loadLocalFiles: vi.fn(), loadLocalFiles2: vi.fn(),
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        // The frontend target is the plan's own throughout: only the backend refuses.
+        const queuedTargetProblem = f.targetChecks.queuedTargetProblem as (target: unknown) => string | null;
+        expect(queuedTargetProblem(staged.queuedTarget)).toBeNull();
+        await execute();
+        expect(queuedTargetProblem(staged.queuedTarget)).toBeNull();
+        expect(f.invoke.mock.calls.filter(([command]) => command === single)).toHaveLength(1);
+        expect(f.notify.error).toHaveBeenCalledTimes(1);
+    });
+
+    // CodeRabbit CLI on the round: the plan's uploads went to the folder the
+    // panel stood in when they ran, which can differ from the plan's own
+    // destination (the panel moved after the plan was made, or during its
+    // epoch read). Both routes write into the plan's destination now.
+    it.each(['per-entry', 'batch'] as const)('uploads into the plan\'s destination, wherever the panel is (%s)', async route => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)) } });
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
+                sourceLocalPanelId: 'local',
+                plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: INBOX } },
+                transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+            }),
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            splitForFileBatch: route === 'batch' ? splitForFileBatch : (items: unknown[]) => ({ batch: [], sequential: [...items] }),
+            // The panel stands in REMOTE; the plan was made for its Inbox.
+            currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        expect(f.written().sort()).toEqual(names.map(n => `${INBOX}/${n}`));
+    });
+
+    // CodeRabbit CLI on the round: a Stop while the plan reads its epoch ended
+    // only the per-entry loop; the batch path took a fresh Stop count.
+    it('starts no transfer when Stop lands while the plan reads its epoch', async () => {
+        const names = ['a.txt', 'b.txt'];
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)) } });
+        const source = between(APP, '  const executeUnifiedTransferPlan = useLatestCallback(', '\n  // AeroFile Sync: unified opener');
+        const { code } = await transformWithOxc(source, 'plan.ts');
+        const context: Record<string, unknown> = {
+            useLatestCallback: <T,>(fn: T) => fn, stopCountRef: f.stopCountRef, batchCancelledRef: f.batchCancelledRef,
+            ...f.targetChecks,
+            // The epoch answers after the user pressed Stop.
+            resolveGuiTarget: async (prepared: Promise<{ epoch: number } | { error: unknown }>, check: () => void) => {
+                const captured = await prepared;
+                f.stopCountRef.current += 1;
+                f.batchCancelledRef.current = true;
+                if ('error' in captured) throw captured.error;
+                check();
+                return captured.epoch;
+            },
+            pendingUnifiedTransferPlan: await stagedPlan(f, {
+                sourceLocalPanelId: 'local',
+                plan: { pairKind: 'local-remote', mode: 'copy', source: { kind: 'local', path: LOCAL }, destination: { kind: 'remote', path: REMOTE } },
+                transferEntries: names.map(n => ({ path: `${LOCAL}/${n}`, name: n, is_dir: false, size: 1 })),
+            }),
+            setUnifiedTransferExecuting: vi.fn(), setPendingUnifiedTransferPlan: vi.fn(),
+            // The batch path: two plain files go out as one batch.
+            splitForFileBatch, currentRemotePath: REMOTE, uploadFile: f.uploadFile, downloadFile: f.downloadFile,
+            notify: f.notify, t: (key: string) => key, loadRemoteFiles: f.loadRemoteFiles,
+        };
+        const execute = new Function(...Object.keys(context), `${code}; return executeUnifiedTransferPlan;`)(...Object.values(context)) as () => Promise<void>;
+        await execute();
+        expect(f.invoke.mock.calls.filter(([command]) => /upload/.test(command))).toEqual([]);
+        expect(f.written()).toEqual([]);
+    });
+});
+
+describe('a local file pasted into a remote folder', () => {
+    it.each(['copy', 'cut'] as const)('lands in the folder the Paste named (%s)', async operation => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
+        const files = [{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }];
+        if (operation === 'cut') f.clipboardCut(files, false, LOCAL);
+        else f.clipboardCopy(files, false, LOCAL);
+        // The panel stands in REMOTE; the Paste names its Inbox folder.
+        await f.clipboardPaste(true, INBOX);
+        expect(f.written()).toEqual([`${INBOX}/up.txt`]);
+        if (operation === 'cut') expect(f.fileClipboardRef.current).toBeNull();
+    });
+
+    // CodeRabbit 4579437716: the Paste began in the Inbox; the panel is in
+    // another folder while the target preparation is still pending (App reads
+    // the panel's folder when the upload runs, here REMOTE). The upload stays
+    // in the captured folder, and a Cut removes its source only after the
+    // upload landed.
+    // Holds every epoch read until the release: the Paste's target
+    // preparation (a local source's Cut prepares none; the Paste reads it).
+    const deferredEpoch = (f: ReturnType<typeof fixture>) => {
+        let release!: () => void;
+        const held = new Promise<void>(resolve => { release = resolve; });
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+            if (command === 'provider_gui_target_epoch') await held;
+            return answer(command, args);
+        });
+        return release;
+    };
+    // A macrotask: every microtask the Paste can run without the epoch has run.
+    const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+    const sourceDeletes = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
+        .map(([command, args], index) => ({ command, args, index })).filter(({ command }) => command === 'delete_local_file');
+    const uploads = (f: ReturnType<typeof fixture>) => f.invoke.mock.calls
+        .map(([command], index) => ({ command, index })).filter(({ command }) => command === 'provider_upload_file');
+
+    it('with its preparation deferred, uploads into the captured folder and cleans up the Cut after it', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
+        const release = deferredEpoch(f);
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        const paste = f.clipboardPaste(true, INBOX);
+        await settle();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_gui_target_epoch')).toHaveLength(1);
+        expect(uploads(f)).toEqual([]);
+        expect(sourceDeletes(f)).toEqual([]);
+        release();
+        await paste;
+        expect(f.written()).toEqual([`${INBOX}/up.txt`]);
+        expect(uploads(f)).toHaveLength(1);
+        expect(sourceDeletes(f)).toHaveLength(1);
+        expect(sourceDeletes(f)[0].args).toMatchObject({ path: `${LOCAL}/up.txt` });
+        expect(sourceDeletes(f)[0].index).toBeGreaterThan(uploads(f)[0].index);
+        expect(f.fileClipboardRef.current).toBeNull();
+    });
+
+    it('with its preparation deferred, keeps the Cut\'s source when the upload fails', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, fail: command => (command === 'provider_upload_file' ? 'permission denied' : undefined) });
+        const release = deferredEpoch(f);
+        f.clipboardCut([{ name: 'up.txt', path: `${LOCAL}/up.txt`, is_dir: false }], false, LOCAL);
+        const paste = f.clipboardPaste(true, INBOX);
+        await settle();
+        expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_gui_target_epoch')).toHaveLength(1);
+        expect(uploads(f)).toEqual([]);
+        expect(sourceDeletes(f)).toEqual([]);
+        release();
+        await paste;
+        expect(f.written()).toEqual([`${INBOX}/up.txt`]);
+        expect(sourceDeletes(f)).toEqual([]);
+    });
+});
+
 describe('remote files cut on one server and pasted after a switch to another', () => {
     const names = ['a.txt', 'b.txt'];
     const cutOnA = (f: ReturnType<typeof fixture>) => f.clipboardCut(names.map(n => ({ name: n, path: `${REMOTE}/${n}`, is_dir: false })), true, REMOTE);
@@ -592,12 +1135,16 @@ describe('remote files cut on one server and pasted after a switch to another', 
         expect(f.notify.error).toHaveBeenCalledWith('contextMenu.paste', 'transfer.pasteFromAnotherServer');
     });
 
-    it('moves them once their server is live again', async () => {
+    it('requires a fresh cut after the captured target was interrupted', async () => {
         const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)) } });
         cutOnA(f);
         f.switchServer();
         await f.clipboardPaste(false, SUB);
         f.switchServer({ server: 'a.example' });
+        await f.clipboardPaste(false, SUB);
+        expect(f.written()).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', isRemote: true });
+        cutOnA(f);
         await f.clipboardPaste(false, SUB);
         expect(f.written()).toEqual(names.map(n => `${SUB}/${n}`));
         expect(f.invoke.mock.calls.filter(([command]) => command === 'provider_delete_file').map(([, args]) => args!.path))
@@ -662,10 +1209,15 @@ describe('the editor\'s save of a remote file', () => {
         expect(saves(f)).toEqual([]);
         expect(f.notify.error).toHaveBeenCalledWith('toast.saveFailed', 'toast.saveOnAnotherServer');
         f.switchServer({ server: 'a.example' });
+        // The GUI target epoch answers a value of its own, so a save that sent
+        // the generation in its place (or the other way round) is told apart.
+        const answer = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) =>
+            command === 'provider_gui_target_epoch' ? 9 : answer(command, args));
         await f.saveDevToolsFile('new', file);
-        // Bound to the connection read just before the write, held by the
-        // backend through it (Greptile on #1526).
-        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7 }]]);
+        // Bound to the connection and GUI target read just before the write,
+        // held by the backend through it (Greptile on #1526, CodeRabbit 4580538013).
+        expect(saves(f)).toEqual([['save_remote_file', { path: `${REMOTE}/a.txt`, content: 'new', expectedGeneration: 7, expectedGuiTarget: 9 }]]);
     });
 
     it('rejects a save the backend refused or failed, saying why once', async () => {
@@ -799,15 +1351,17 @@ describe('a direct remote action', () => {
     });
 
     it('takes the target when the dialog it is answered from opens', () => {
-        expect(APP).toContain('setInlineRename({ path, name, isRemote, target: isRemote ? snapshotQueuedTarget() : undefined });');
-        expect(APP).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target: snapshotQueuedTarget() });');
-        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*target: snapshotQueuedTarget\(\) \}\)/g)).toHaveLength(2);
+        expect(between(APP_CODE, 'const startInlineRename =', 'const commitInlineRename =')).toContain('prepareGuiTarget(remoteActionGuard(target))');
+        expect(APP_CODE).toContain('setBatchRenameDialog({ files: selectedFiles, isRemote: true, siblings, target, preparedTarget: prepareGuiTarget(remoteActionGuard(target)) });');
+        expect(APP.match(/setSyncNavDialog\(\{ [^}]*isRemote: true[^}]*preparedTarget: prepareGuiTarget\(remoteActionGuard\(target\)\) \}\)/g)).toHaveLength(2);
     });
 
     it('moves a dropped remote file only on the server it was dropped on', () => {
-        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', '            } catch (err) {');
-        expect(move).toContain("const onTarget = sourceIsRemote ? remoteActionGuard?.() : undefined;");
+        const move = between(codeOnly(DRAG), '        if (dropsIntoItself(targetPath, sourcePaths)) return;', "humanLog.logError('MOVE'");
+        expect(move).toContain('const onTarget = remoteOwner?.check;');
         expect(move).toMatch(/onTarget\?\.\(\);\n\s+if \(useProviderCmd\) \{\n\s+await invoke\('provider_rename'/);
+        expect(move).toContain('const expectedGuiTarget = remoteOwner?.epoch;');
+        expect(DRAG).toContain('remoteOwner = await resolveRemoteDragTarget(dragData)');
         expect(APP).toContain('remoteActionGuard: () => remoteActionGuard(),');
     });
 
@@ -815,10 +1369,10 @@ describe('a direct remote action', () => {
         const source = between(APP, '  const liveOverlay = useLatestCallback(', '\n  const failQueuedRestIfRetargeted =');
         const session = { id: 'A', connectionParams: { server: 'a.example', protocol: 'sftp', username: 'u', password: 'k' }, cryptOverlay: null };
         const ctx = {
-            useLatestCallback: (fn: unknown) => fn, isConnected: true,
+            useLatestCallback: (fn: unknown) => fn, syncCancelPendingRef: { current: null }, syncRunnerPendingRef: { current: null }, stopCountRef: { current: 0 }, isConnected: true,
             remoteConnectPhaseRef: { current: false as false | 'switch' }, backendTeardownsRef: { current: 0 }, backendUncertainRef: { current: false }, backendConfirmationsRef: { current: 0 },
-            sessions: [session], activeSessionId: 'A', liveConnectionParams: session.connectionParams,
-            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { failTransfer: vi.fn() }, t: (key: string) => key,
+            sessions: [session], activeSessionId: 'A', aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, liveConnectionParams: session.connectionParams,
+            isSameConnection, savedProfileIdOf, isOAuthProvider, isFourSharedProvider, connectionNumberOf, ACCOUNT_KEY_OPTIONS, oauthLoginCount: (key: string) => oauthLogins.get(key) ?? 0, oauthLoginKey, transferQueue: { getItemNow: () => ({ status: 'pending' }), failTransfer: vi.fn() }, t: (key: string) => key,
             QueuedTargetChangedError: class extends Error {},
         };
         const { code } = await transformWithOxc(source, 'action-guard.ts');
@@ -871,7 +1425,8 @@ describe('the private step after a batch upload', () => {
  */
 describe('a delete that asks for a commit message', () => {
     const run = async () => {
-        const source = between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
+        const source = between(APP, '  const captureGuiTarget =', '\n  const getOverwriteDestination =')
+            + between(APP, '  const deleteRemoteFile = (', '\n  const renameFile = (');
         const { code } = await transformWithOxc(source, 'delete.ts');
         const live = { server: 'a.example' };
         // The guard of a direct action: bound to the server live when it is taken.
@@ -879,7 +1434,7 @@ describe('a delete that asks for a commit message', () => {
             const at = live.server;
             return () => { if (live.server !== at) throw new QueuedTargetChangedError('toast.remoteTargetChanged'); };
         };
-        const invoke = vi.fn(async () => undefined);
+        const invoke = vi.fn(async (command: string) => command === 'provider_gui_target_epoch' ? 7 : undefined);
         const dialog: { onCommit?: (message: string) => void } = {};
         const notify = { success: vi.fn(), error: vi.fn() };
         const context: Record<string, unknown> = {
@@ -888,8 +1443,9 @@ describe('a delete that asks for a commit message', () => {
             gitHubRepoInfo: { branch: 'main', writeModeKind: 'direct', workingBranch: null },
             setGitHubCommitDialog: (value: { onCommit: (message: string) => void } | null) => { if (value) dialog.onCommit = value.onCommit; },
             humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
-            usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
+            usesProviderApi: () => true, aeroVaultOverlaySession: null, aeroVaultSessionRef: { current: null }, confirmBeforeDelete: false,
             setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+            deleteGesturesRef: { current: [] }, isDeletionCancelled,
         };
         const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context));
         return { deleteRemoteFile, live, invoke, dialog, notify };
@@ -903,7 +1459,7 @@ describe('a delete that asks for a commit message', () => {
         r.live.server = 'b.example';
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).not.toHaveBeenCalled();
+        expect(r.invoke.mock.calls.filter(([name]) => name === 'provider_delete_file')).toHaveLength(0);
         expect(r.notify.error).toHaveBeenCalled();
     });
 
@@ -912,6 +1468,225 @@ describe('a delete that asks for a commit message', () => {
         r.deleteRemoteFile('/repo/a.txt', false);
         r.dialog.onCommit!('sentinel message');
         await flush();
-        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message' });
+        expect(r.invoke).toHaveBeenCalledWith('provider_delete_file', { path: '/repo/a.txt', commitMessage: 'sentinel message', expectedGuiTarget: 7, operationId: expect.any(String) });
     });
 });
+
+/**
+ * E3: each local copy or delete is a native command with a cancel state of
+ * its own, so a Stop raised during the first one does not reach the next:
+ * the paste itself starts no further item once a Stop came.
+ */
+describe('a Stop during a paste ends the paste, not only the command in flight', () => {
+    const names = ['a.txt', 'b.txt', 'c.txt'];
+    const stopOnFirst = (f: ReturnType<typeof fixture>, command: string, answer: () => unknown) => {
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            if (cmd !== command) return original(cmd, args);
+            if (f.invoke.mock.calls.filter(([c]) => c === command).length === 1) {
+                f.stopCountRef.current += 1;
+                return answer();
+            }
+            return undefined;
+        }) as typeof original);
+    };
+    const sent = (f: ReturnType<typeof fixture>, command: string) => f.invoke.mock.calls.filter(([c]) => c === command);
+
+    it('copies no further local file after a Stop (K4)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [SUB]: [] } });
+        // The Stop comes while the first copy runs; that copy completes.
+        stopOnFirst(f, 'copy_local_file', () => undefined);
+        f.clipboardCopy(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(false, SUB);
+        expect(sent(f, 'copy_local_file')).toHaveLength(1);
+    });
+
+    it('lets a new paste run after an earlier gesture was stopped (K3)', async () => {
+        const f = fixture({ folders: { [LOCAL]: [local('a.txt')], [REMOTE]: [] } });
+        // An earlier gesture's Stop, which no batch has reset since.
+        f.stopCountRef.current += 1;
+        f.batchCancelledRef.current = true;
+        f.clipboardCut([{ name: 'a.txt', path: `${LOCAL}/a.txt`, is_dir: false }], false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        expect(f.invoke.mock.calls.filter(([c]) => /upload/.test(c)).length).toBeGreaterThan(0);
+        expect(sent(f, 'delete_local_file')).toHaveLength(1);
+    });
+
+    it('deletes no further source of a cut after a Stop, even one answered as a cancelled delete', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        stopOnFirst(f, 'delete_local_file', () => 'Deletion cancelled: 0 of 1 files deleted');
+        f.clipboardCut(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        expect(sent(f, 'delete_local_file')).toHaveLength(1);
+        // H4: the cut keeps on the clipboard every source it did not finish
+        // moving, the one whose delete was cancelled included.
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+    });
+
+    it('the toast Cancel during the cleanup of a cut stops its delete and no other source goes (L2)', async () => {
+        for (const sourceIsRemote of [false, true]) {
+            const f = fixture({ folders: sourceIsRemote
+                ? { [REMOTE]: names.map(n => remote(n)), [SUB]: [] }
+                : { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+            const command = sourceIsRemote ? 'provider_delete_file' : 'delete_local_file';
+            const cancelled: Array<string | null> = [];
+            const original = f.invoke.getMockImplementation()!;
+            f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+                if (cmd !== command) return original(cmd, args);
+                // The toast's Cancel while the first source delete runs: what
+                // `ScanningToast.onCancel` does, then the native answer.
+                f.stopCountRef.current += 1;
+                cancelled.push(f.deleteGesturesRef.current[f.deleteGesturesRef.current.length - 1] ?? null);
+                if (sourceIsRemote) throw new Error('Transfer cancelled by user');
+                return 'Deletion cancelled: 0 of 1 files deleted';
+            }) as typeof original);
+            const dir = sourceIsRemote ? REMOTE : LOCAL;
+            f.clipboardCut(names.map(n => ({ name: n, path: `${dir}/${n}`, is_dir: false })), sourceIsRemote, dir);
+            await f.clipboardPaste(!sourceIsRemote, sourceIsRemote ? SUB : REMOTE);
+            const deletes = sent(f, command);
+            expect(deletes).toHaveLength(1);
+            // The Cancel reached the paste's own scope, the one its delete carries.
+            expect(cancelled[0]).toEqual(expect.any(String));
+            expect(deletes[0][1]).toMatchObject({ operationId: cancelled[0] });
+            expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+        }
+    });
+
+    it('the toast Cancel reaches the delete of an earlier paste a later one overlaps (M4)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        const held: Array<() => void> = [];
+        const deleting: Array<string> = [];
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            if (cmd !== 'delete_local_file') return original(cmd, args);
+            deleting.push(String(args?.operationId));
+            // Each source delete waits, as a folder delete runs.
+            await new Promise<void>(resolve => held.push(resolve));
+            return 'Deletion cancelled: 0 of 1 files deleted';
+        }) as typeof original);
+        f.clipboardCut([{ name: names[0], path: `${LOCAL}/${names[0]}`, is_dir: false }], false, LOCAL);
+        const first = f.clipboardPaste(true, REMOTE);
+        await vi.waitFor(() => expect(deleting).toHaveLength(1));
+        f.clipboardCut([{ name: names[1], path: `${LOCAL}/${names[1]}`, is_dir: false }], false, LOCAL);
+        const second = f.clipboardPaste(true, REMOTE);
+        await vi.waitFor(() => expect(deleting).toHaveLength(2));
+        // What the toast's Cancel sends: one cancel per gesture it knows.
+        const cancelled = [...f.deleteGesturesRef.current];
+        expect(deleting[0]).not.toBe(deleting[1]);
+        expect(cancelled).toEqual(expect.arrayContaining(deleting));
+        for (const release of held) release();
+        await Promise.all([first, second]);
+    });
+
+    it('a paste stopped while a transfer is prepared (overwrite question) sends no transfer (M5)', async () => {
+        const dispatched = (f: ReturnType<typeof fixture>) =>
+            f.invoke.mock.calls.some(([c]) => /^(provider_)?(upload|download)_file$/.test(c));
+        for (const fromRemote of [false, true]) {
+            for (const stopped of [false, true]) {
+                const f = fixture({ folders: { [LOCAL]: [local(names[0])], [REMOTE]: [remote(names[0])] } });
+                f.checkOverwrite.mockImplementation(async () => {
+                    // The Stop lands while the user is asked about the existing file.
+                    if (stopped) f.stopCountRef.current += 1;
+                    return { action: 'overwrite', destinationExists: true };
+                });
+                const dir = fromRemote ? REMOTE : LOCAL;
+                f.clipboardCopy([{ name: names[0], path: `${dir}/${names[0]}`, is_dir: false }], fromRemote, dir);
+                await f.clipboardPaste(!fromRemote, fromRemote ? LOCAL : REMOTE);
+                expect(f.checkOverwrite).toHaveBeenCalled();
+                expect(dispatched(f), `fromRemote=${fromRemote} stopped=${stopped}`).toBe(!stopped);
+            }
+        }
+    });
+
+    it('a drop stopped while it prepared its target starts no transfer (M6)', async () => {
+        // A batch starts with `reset_cancel_flag`; its transfers leave the queue after it.
+        const started = (f: ReturnType<typeof fixture>) =>
+            f.invoke.mock.calls.some(([c]) => c === 'reset_cancel_flag' || /upload|download/.test(c));
+        for (const fromRemote of [false, true]) {
+            for (const stoppedSince of [false, true]) {
+                const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: names.map(n => remote(n)) } });
+                // The drop took its count (4) before its first await.
+                f.stopCountRef.current = stoppedSince ? 5 : 4;
+                const rows = fromRemote ? [remote(names[0])] : [local(names[0])];
+                await f.drop(rows, fromRemote, fromRemote ? LOCAL : REMOTE, fromRemote ? 'remote' : 'local', undefined, 4);
+                expect(started(f), `fromRemote=${fromRemote} stopped=${stoppedSince}`).toBe(!stoppedSince);
+            }
+        }
+    });
+
+    it('starts no transfer when a Stop came while the target was prepared (H7)', async () => {
+        const f = fixture({ folders: { [LOCAL]: names.map(n => local(n)), [REMOTE]: [] } });
+        stopOnFirst(f, 'provider_gui_target_epoch', () => 7);
+        f.clipboardCut(names.map(n => ({ name: n, path: `${LOCAL}/${n}`, is_dir: false })), false, LOCAL);
+        await f.clipboardPaste(true, REMOTE);
+        const transfers = f.invoke.mock.calls.filter(([c]) => /upload|download|delete/.test(c));
+        expect(transfers).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut', files: names.map(n => ({ name: n })) });
+    });
+
+    it('deletes no vault source of a cut after a Stop during its download (H5)', async () => {
+        const f = fixture({ folders: { [REMOTE]: names.map(n => remote(n)), [SUB]: [] }, vaultOverlay: true });
+        const original = f.invoke.getMockImplementation()!;
+        f.invoke.mockImplementation((async (cmd: string, args?: Record<string, any>) => {
+            const answer = await original(cmd, args);
+            // The Stop lands while the first file comes out of the vault.
+            if (cmd === 'aerovault_overlay_extract_entry') f.stopCountRef.current += 1;
+            return answer;
+        }) as typeof original);
+        f.clipboardCut(names.map(n => ({ name: n, path: `${REMOTE}/${n}`, is_dir: false })), true, REMOTE);
+        await f.clipboardPaste(false, SUB);
+        expect(sent(f, 'aerovault_overlay_extract_entry')).toHaveLength(1);
+        expect(sent(f, 'aerovault_overlay_delete_entries')).toEqual([]);
+        expect(f.fileClipboardRef.current).toMatchObject({ operation: 'cut' });
+    });
+});
+
+/**
+ * E3 and H8 for the panel delete, the gesture that has a Cancel (its scanning
+ * toast): one id per gesture, made before anything is awaited, carried by
+ * every native delete of it; the toast's Cancel stops the delete in flight
+ * through that id, and touches no other transfer.
+ */
+describe('a panel delete is one gesture its toast can cancel', () => {
+    it('carries one id from its start and cancels it from the toast', () => {
+        for (const head of ['const deleteMultipleRemoteFiles = withBatchLatch(', 'const deleteMultipleLocalFiles = withBatchLatch(']) {
+            const body = between(APP_CODE, head, '\n  const ');
+            expect(body).toMatch(/const performDelete = async \(\) => \{\n\s+const operationId = crypto\.randomUUID\(\);\n\s+deleteGesturesRef\.current = \[\.\.\.deleteGesturesRef\.current\.slice\(-15\), operationId\];/);
+        }
+        const remote = between(APP_CODE, 'const deleteMultipleRemoteFiles = withBatchLatch(', '\n  const ');
+        expect(remote).toContain("await invoke('delete_remote_file', { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId });");
+        expect(remote).toMatch(/if \(stopCountRef\.current !== stops\) return;/);
+        // K6: the provider deletes carry the gesture too.
+        expect(remote.match(/invoke\('provider_delete_dir', \{[^}]*operationId \}\)/g)).toHaveLength(2);
+        expect(remote).toMatch(/invoke\('provider_delete_file', \{[^}]*operationId \}\)/);
+        const local = between(APP_CODE, 'const deleteMultipleLocalFiles = withBatchLatch(', '\n  const ');
+        expect(local).toContain('{ ...localTrashDeps(() => batchCancelledRef.current), operationId }');
+        // L2: every native delete of the page belongs to a gesture scope, and
+        // every scope is made before its first await and named to the toast.
+        const deletes = APP_CODE.match(/invoke(<[^>]*>)?\('(delete_remote_file|delete_local_file|provider_delete_file|provider_delete_dir)', \{[^}]*\}/g) ?? [];
+        expect(deletes.length).toBeGreaterThanOrEqual(10);
+        for (const call of deletes) expect(call).toContain('operationId');
+        const scopes = APP_CODE.match(/deleteGesturesRef\.current = \[\.\.\.deleteGesturesRef\.current\.slice\(-15\), operationId\];/g) ?? [];
+        expect(scopes).toHaveLength(5);
+        // One reader of a cancelled delete, in both shapes: no call site
+        // reads the text itself, and every delete gesture asks it.
+        const pageSources = Object.entries(import.meta.glob(['../**/*.{ts,tsx}', '!../**/*.test.*', '!../**/*.testkit.*'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>);
+        for (const [file, source] of pageSources) {
+            if (file.endsWith('/localTrash.ts')) continue;
+            expect(source, file).not.toMatch(/Deletion cancelled|Transfer cancelled by user/);
+        }
+        expect(APP_CODE.match(/isDeletionCancelled\(/g)?.length ?? 0).toBeGreaterThanOrEqual(7);
+        // M5: inside a loop, every single transfer gets a guard that checks the
+        // gesture's Stop right before its native dispatch, after its awaits.
+        for (const [guard, count] of [['onPasteDispatch', 2], ['onQueuedDispatch', 4], ['onRowDispatch', 3], ['planDispatch', 2]] as const) {
+            expect(APP_CODE.match(new RegExp(`(?:uploadFile|downloadFile)\\([^;]*?${guard}`, 'g'))?.length, guard).toBe(count);
+        }
+        const toast = between(APP_CODE, '<ScanningToast state={scanningState}', '/>');
+        expect(toast).toContain("invoke('operation_scope_cancel', { operationId })");
+        // M4: the Cancel reaches every delete gesture started, not only the
+        // last one: an earlier one still running is stopped too.
+        expect(toast).toContain('for (const operationId of deleteGesturesRef.current)');
+        expect(toast).toContain('stopCountRef.current += 1; batchCancelledRef.current = true;');
+    });
+});
+

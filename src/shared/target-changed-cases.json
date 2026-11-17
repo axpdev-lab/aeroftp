@@ -78,6 +78,14 @@
             "refusal": true
         },
         {
+            "text": "CONNECTION_CHANGED: The connection changed; reconnect and compare again [sync-error:auth:false]",
+            "refusal": true
+        },
+        {
+            "text": "CONNECTION_CHANGED: the sync target changed; reconnect and compare again",
+            "refusal": true
+        },
+        {
             "text": "the connection changed",
             "refusal": false
         },

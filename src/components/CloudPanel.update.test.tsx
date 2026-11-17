@@ -1415,8 +1415,12 @@ describe('every reply applied belongs to the operation that asked', () => {
         ['const savedServers = await loadSavedServerProfiles();', PHASE],
         ["cloudPassword = await invoke<string>('get_credential'", PHASE],
         ["const storedFilenKey = await invoke<string>('get_credential'", PHASE],
-        ["try { await invoke('provider_disconnect'); }", PHASE_THROW],
-        ["try { await invoke('disconnect_ftp'); }", null, 'the teardown ends: its callers check right after it'],
+        // The teardown names the sessions it saw (their generations), so a
+        // newer connect's survives a disconnect already dispatched.
+        ["const providerGeneration = await invoke<number>('provider_connection_generation');", null, 'a read: the check follows both reads, before the first disconnect'],
+        ["const ftpGeneration = await invoke<number>('ftp_connection_generation');", PHASE_THROW],
+        ["try { await invoke('provider_disconnect', { expectedGeneration: providerGeneration }); }", PHASE_THROW],
+        ["try { await invoke('disconnect_ftp', { expectedGeneration: ftpGeneration }); }", null, 'the teardown ends: its callers check right after it'],
         ['const accepted = await checkSftpHostKey(', PHASE_THROW],
         ['await endCurrentConnection();', PHASE_THROW],
         ["await runConnect('provider_connect', providerParams);", null, 'the connect ends: both callers check right after it'],
@@ -1424,6 +1428,11 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["await runConnect('connect_ftp', ftpParams);", null, 'the connect ends: both callers check right after it'],
         ['const response = await listing;', 'if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);'],
         ['const response = await listing;', 'if (!ownsPhase() || generation !== remoteNavCounter.current) throw new Error(AEROCLOUD_OPEN_SUPERSEDED);'],
+        // The reuse of the live backend: the generations read before and
+        // after the cancels of the connects it supersedes.
+        ['const generationsBefore = await backendGenerations();', PHASE],
+        ['await supersedeOlderConnects(phaseVersion);', null, 'the cancels reached the backend: the phase is checked after the read that follows'],
+        ['const generationsAfter = await backendGenerations();', PHASE],
         ['await connectToCloudServer();', PHASE],
         // openAeroCloudFolder checks its owner, phase included, after the
         // listing and throws (the folder open above).
@@ -1431,7 +1440,9 @@ describe('every reply applied belongs to the operation that asked', () => {
         ["const localFilesData: LocalFile[] = await invoke('get_local_files'", 'if (!owner.owns()) return;'],
         ["await invoke(isProvider ? 'provider_change_dir' : 'change_directory', { path: currentRemotePath });", null, 'the way back after a failed entry: phase and generation are checked before it, and its failure is logged only'],
         ["try { await invoke('trigger_cloud_sync'); }", null, 'the last step'],
-        ['await connectToCloudServer();', PHASE],
+        // A first open that lost its phase settles its log row, in the catch
+        // and right after: the phase is checked before either write.
+        ['await connectToCloudServer();', "if (!ownsPhase()) humanLog.updateEntry"],
         ['const listedCloudFolder = await openCloudRemoteFolder(', null, 'openAeroCloudFolder checks the owner before it returns'],
         ["const cloudLocalFilesData: LocalFile[] = await invoke('get_local_files'", 'if (!owner.owns()) return;'],
         ["await invoke('trigger_cloud_sync');", null, 'the last step: its failure is logged only'],

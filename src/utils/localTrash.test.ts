@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { trashLocalPaths, TRASH_NEEDS_HOME_COPY, type LocalTrashDeps } from './localTrash';
+import { isDeletionCancelled, trashLocalPaths, TRASH_NEEDS_HOME_COPY, type LocalTrashDeps } from './localTrash';
 
 type Call = { cmd: string; args: Record<string, unknown> };
 
@@ -42,6 +42,86 @@ describe('trashLocalPaths', () => {
     expect(result.kept).toEqual(['/m/b']);
     expect(result.removed).toEqual([]);
     expect(permanentCalls(calls)).toEqual([]);
+  });
+
+  it('names the panel gesture on every permanent delete, so its Cancel reaches the one in flight', async () => {
+    const { calls, invoke } = backend({ '/m/b': 'copy', '/m/c': 'fail' });
+    await trashLocalPaths(['/m/b', '/m/c'], {
+      invoke,
+      askHomeCopy: async () => 'permanent',
+      askPermanentAfterFailure: async () => true,
+      operationId: 'gesture-1',
+    });
+    const permanent = calls.filter(c => c.cmd === 'delete_local_file');
+    expect(permanent.map(c => c.args)).toEqual([
+      { path: '/m/b', operationId: 'gesture-1' },
+      { path: '/m/c', operationId: 'gesture-1' },
+    ]);
+  });
+
+  it('reads a cancelled delete in both shapes, and only those', () => {
+    expect(isDeletionCancelled('Deletion cancelled: 0 of 1 files deleted')).toBe(true);
+    expect(isDeletionCancelled('Deletion cancelled')).toBe(true);
+    expect(isDeletionCancelled('Transfer cancelled by user [sync-error:unknown:false]')).toBe(true);
+    expect(isDeletionCancelled(new Error('Transfer cancelled by user'))).toBe(true);
+    for (const other of [undefined, null, 'Deleted', 'Failed to delete: no such file', new Error('denied'), 3]) {
+      expect(isDeletionCancelled(other)).toBe(false);
+    }
+  });
+
+  it('keeps every item from a cancelled permanent delete on, in either shape (one reader)', async () => {
+    for (const cancelled of ['resolved', 'rejected'] as const) {
+      const calls: Call[] = [];
+      const invoke = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+        calls.push({ cmd, args });
+        if (cmd === 'delete_to_trash' && !args.allowHomeCopy) throw 'Failed to move to trash: no trash here';
+        if (cmd === 'delete_local_file') {
+          if (cancelled === 'resolved') return 'Deletion cancelled: 2 of 5 files deleted';
+          throw 'Transfer cancelled by user [sync-error:unknown:false]';
+        }
+        return null;
+      });
+      const result = await trashLocalPaths(['/a', '/b', '/c'], {
+        invoke,
+        askHomeCopy: async () => 'permanent',
+        askPermanentAfterFailure: async () => true,
+      });
+      expect(permanentCalls(calls)).toEqual(['/a']);
+      expect(result.removed).toEqual([]);
+      expect(result.failed).toEqual([]);
+      expect(result.kept).toEqual(['/a', '/b', '/c']);
+    }
+  });
+
+  it('a cancelled delete in one group stops the other too, with no isCancelled and in either shape (M7)', async () => {
+    for (const cancelled of ['resolved', 'rejected'] as const) {
+      const calls: Call[] = [];
+      const askPermanentAfterFailure = vi.fn(async () => true);
+      const invoke = vi.fn(async (cmd: string, args: Record<string, unknown>) => {
+        calls.push({ cmd, args });
+        const path = String(args.path);
+        if (cmd === 'delete_to_trash' && !args.allowHomeCopy) {
+          if (path.startsWith('/m/')) throw `${TRASH_NEEDS_HOME_COPY}: ${path} is on /media/x`;
+          throw 'Failed to move to trash: no trash here';
+        }
+        if (cmd === 'delete_local_file') {
+          if (cancelled === 'resolved') return 'Deletion cancelled: 0 of 1 files deleted';
+          throw 'Transfer cancelled by user [sync-error:unknown:false]';
+        }
+        return null;
+      });
+      // One path needs a home copy, two others have another trash failure.
+      const result = await trashLocalPaths(['/m/a', '/r/b', '/r/c'], {
+        invoke,
+        askHomeCopy: async () => 'permanent',
+        askPermanentAfterFailure,
+      });
+      expect(permanentCalls(calls)).toEqual(['/m/a']);
+      expect(askPermanentAfterFailure).not.toHaveBeenCalled();
+      expect(result.kept.sort()).toEqual(['/m/a', '/r/b', '/r/c']);
+      expect(result.removed).toEqual([]);
+      expect(result.failed).toEqual([]);
+    }
   });
 
   it('deletes permanently only when the user chose it', async () => {

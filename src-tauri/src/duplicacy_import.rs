@@ -578,13 +578,20 @@ fn duplicacy_storage_for(
         ("webdav", _) => {
             let ep = endpoint.ok_or_else(|| "WebDAV profile has no server URL".to_string())?;
             let scheme = if ep.is_tls() { "webdav" } else { "webdav-http" };
+            // Duplicacy decodes nothing: it requests `https://host/` + this
+            // path as written and matches the server's hrefs against it byte
+            // for byte. Go keeps an escape on the wire only while the whole
+            // path is validly encoded, so a raw space would turn the host's
+            // `%2F` back into `/`. The endpoint path is already in URL form;
+            // the start folder is encoded as the WebDAV connection sends it.
             let mut full = ep.path.trim_start_matches('/').to_string();
-            let start = path.trim_matches('/');
+            let start =
+                crate::providers::webdav::WebDavProvider::encode_path(path.trim_matches('/'));
             if !start.is_empty() {
                 if !full.is_empty() {
                     full.push('/');
                 }
-                full.push_str(start);
+                full.push_str(&start);
             }
             Ok((
                 format!("{scheme}://{}@{}/{}", server.username, ep.authority(), full),
@@ -992,5 +999,66 @@ mod tests {
             [("AKA", "secret-a"), ("AKB", "secret-b")],
             "{entries}"
         );
+    }
+
+    /// A WebDAV storage URL is what Duplicacy requests: it appends the path
+    /// as written to `https://host/` (duplicacy_webdavstorage.go:108, the
+    /// segment taken verbatim at duplicacy_storage.go:370/817) and matches
+    /// hrefs against it byte for byte (:268, :350). Go's `net/url` keeps the
+    /// written escapes on the wire only when the whole path is validly
+    /// encoded (url.go:654-664, :681, `validEncoded` :697, Go 1.26, the
+    /// toolchain of duplicacy's go.mod), so the URL must be in wire form:
+    /// the request AeroFTP sends for the same start folder.
+    #[test]
+    fn a_webdav_storage_url_is_the_request_the_profile_sends() {
+        // `validEncoded` of net/url, the RFC 3986 pchar set plus `%` and `/`.
+        let go_keeps = |p: &str| {
+            p.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"-._~!$&'()*+,;=:@[]%/".contains(&b))
+        };
+        let storage = |base: &str, folder: &str| {
+            let server = DuplicacyExportServer {
+                id: "dav".into(),
+                name: "dav".into(),
+                host: format!("https://dav.example.com{base}"),
+                port: 0,
+                username: "u".into(),
+                protocol: Some("webdav".into()),
+                options: None,
+                provider_id: None,
+                initial_path: Some(folder.into()),
+            };
+            duplicacy_storage_for(&server, Some("p")).unwrap().0
+        };
+        let aeroftp_request = |base: &str, folder: &str| {
+            crate::providers::WebDavProvider::start_folder_request_url(
+                &crate::providers::ProviderConfig {
+                    name: "dav".into(),
+                    provider_type: crate::providers::ProviderType::WebDav,
+                    host: format!("https://dav.example.com{base}"),
+                    port: None,
+                    username: Some("u".into()),
+                    password: None,
+                    initial_path: Some(folder.into()),
+                    extra: HashMap::new(),
+                },
+            )
+        };
+        assert_eq!(
+            storage("/a%2Fb", "/my docs"),
+            "webdav://u@dav.example.com/a%2Fb/my%20docs"
+        );
+        for base in ["", "/dav", "/a%2Fb", "/my%20dav", "/50%25"] {
+            for folder in ["/my docs", "/50% off/c d#1", "/caf\u{e9}", "/docs"] {
+                let url = storage(base, folder);
+                let path = url.strip_prefix("webdav://u@dav.example.com/").unwrap();
+                assert!(go_keeps(path), "{base} {folder}: {url}");
+                assert_eq!(
+                    format!("https://dav.example.com/{path}/"),
+                    format!("{}/", aeroftp_request(base, folder).trim_end_matches('/')),
+                    "{base} {folder}"
+                );
+            }
+        }
     }
 }

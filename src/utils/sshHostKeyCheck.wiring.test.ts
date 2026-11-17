@@ -105,7 +105,7 @@ describe('every SSH connect path asks for the host key first', () => {
         const end = APP.indexOf('const changeRemoteDirectory = async', start);
         const cloudTab = APP.slice(start, end);
         const helper = cloudTab.slice(cloudTab.indexOf('const connectToCloudServer = async'), cloudTab.indexOf('const navigateToRemoteFolder = async'));
-        const disconnects = (text: string) => text.split("invoke('provider_disconnect')").length - 1;
+        const disconnects = (text: string) => text.split("invoke('provider_disconnect'").length - 1;
         expect(disconnects(helper)).toBe(1);
         expect(disconnects(cloudTab)).toBe(1);
         expect(helper.indexOf('checkSftpHostKey(')).toBeGreaterThan(-1);

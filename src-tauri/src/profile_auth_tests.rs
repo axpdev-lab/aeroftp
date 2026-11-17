@@ -261,6 +261,114 @@ async fn round_trip() {
     );
     assert_eq!(readiness(&scope, &google).unwrap(), "valid");
 
+    // A profile id with path separators (an imported remote name) takes the
+    // same expired-token path: the refresh runs under a lease whose file name
+    // is made safe inside the token folder, and nothing is created outside it.
+    let separator_id = "rclone-team/drive..\\x-1";
+    let account = format!("oauth_google_{separator_id}");
+    scope
+        .write(&account, &serde_json::to_string(&tokens).unwrap())
+        .unwrap();
+    let mut separated = oauth_config(
+        ProviderType::GoogleDrive,
+        separator_id,
+        &("fixture-client".into(), "fixture-client-secret".into()),
+        "",
+        19899,
+    )
+    .unwrap();
+    separated.token_url = format!("{endpoint}/oauth2-token");
+    let refreshes = |log: &Mutex<Vec<(String, String, String)>>| {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _, b)| p == "/oauth2-token" && b.contains("grant_type=refresh_token"))
+            .count()
+    };
+    let before = refreshes(&captured);
+    assert_eq!(
+        OAuth2Manager::new()
+            .get_valid_token(&separated)
+            .await
+            .unwrap()
+            .expose_secret(),
+        "oauth-refreshed"
+    );
+    assert_eq!(
+        refreshes(&captured),
+        before + 1,
+        "the expired token was refreshed"
+    );
+    // The whole `delete_tokens` path refused on ENOLCK, with the vault open
+    // and the legacy owner active: its partition row, the vault entry and the
+    // memory copy all stay; with the lock the same call removes all three.
+    #[cfg(unix)]
+    {
+        use crate::providers::oauth2::OAuthProvider;
+        let manager = OAuth2Manager::new();
+        manager
+            .store_tokens(OAuthProvider::Box, "enolck-profile", &tokens)
+            .unwrap();
+        let account = "oauth_box_enolck-profile";
+        assert!(store.get(account).is_ok());
+        let legacy_owner = users::cli_get_active_user(&store).unwrap().unwrap();
+        let partition_rows = || {
+            users::open_or_init_cli()
+                .unwrap()
+                .query_row(
+                    "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+                    rusqlite::params![legacy_owner.id, account],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(partition_rows(), 1, "the legacy owner's partition mirror");
+        crate::providers::oauth2::seed_memory_token_for_test(account, &store.get(account).unwrap());
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the memory cache starts populated"
+        );
+        crate::providers::oauth2::force_signout_enolck_for_test(true);
+        let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-profile");
+        crate::providers::oauth2::force_signout_enolck_for_test(false);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert!(store.get(account).is_ok(), "the vault entry stays");
+        assert_eq!(partition_rows(), 1, "the partition row stays");
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the refused sign-out leaves the memory copy"
+        );
+        assert!(manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+        manager
+            .delete_tokens(OAuthProvider::Box, "enolck-profile")
+            .unwrap();
+        assert!(store.get(account).is_err(), "the retry removes it");
+        assert_eq!(partition_rows(), 0, "and the partition row");
+        assert!(
+            !crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the retry removes the memory copy"
+        );
+        assert!(!manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+    }
+    let token_dir = crate::portable::aeroftp_data_root()
+        .unwrap()
+        .join("oauth_tokens");
+    assert!(
+        !token_dir.join("refresh-oauth_google_rclone-team").exists(),
+        "the separator made no folder"
+    );
+    assert!(
+        !token_dir
+            .join("refresh-oauth_google_rclone-team_drive___x-1.lock")
+            .exists(),
+        "the lease is released after the refresh"
+    );
+
     let github =
         json!({"id":"fixture-github","name":"synthetic","protocol":"github","host":"owner/repo"});
     execute_at(
@@ -1793,6 +1901,12 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
             Some("legacy-owners-token"),
             "{key}"
         );
+        // The rollback of a failed copy removes the account's row, and the
+        // owner's vault key of the same name stays.
+        users::store_credential_for_user_dual(store, private_id, key, "private-token").unwrap();
+        users::delete_credential_for_user_checked(store, private_id, key).unwrap();
+        assert_eq!(read(private_id), None, "{key}");
+        assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
         store.delete(key).unwrap();
     }
     users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
@@ -1939,4 +2053,146 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
     assert_eq!(store.get(key).unwrap(), "owners-token");
     assert_eq!(row(private_id), None);
     store.delete(key).unwrap();
+}
+
+/// A fresh vault with no active user, for `test` to read and corrupt.
+fn with_unreadable_profile_vault(test: impl FnOnce(&CredentialStore)) {
+    let _env = crate::test_env::lock();
+    let _partition = crate::user_partitions::test_lock();
+    let dir = tempfile::TempDir::new().unwrap();
+    let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+    let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+    std::env::set_var("XDG_CONFIG_HOME", dir.path());
+    std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+    CredentialStore::clear_cache();
+    CredentialStore::bootstrap_master_password("unreadable-profile-test").unwrap();
+    CredentialStore::unlock_with_master("unreadable-profile-test", None).unwrap();
+    let store = CredentialStore::from_cache().unwrap();
+    crate::user_partitions::init_or_migrate_cli(&store).unwrap();
+    test(&store);
+    CredentialStore::clear_cache();
+    match previous_xdg {
+        Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+        None => std::env::remove_var("XDG_CONFIG_HOME"),
+    }
+    if let Some(value) = previous_passphrase {
+        std::env::set_var("AEROFTP_USER_PASSPHRASE", value);
+    }
+}
+
+/// CodeRabbit (CLI deep, #1574): a profile token that cannot be read is an
+/// error, not a missing token. The legacy singleton beside it may be another
+/// profile's account, so the connect and the rclone export that read the
+/// token through `resolve_profile_oauth_token` refuse instead of using it.
+#[test]
+fn an_unreadable_profile_token_never_falls_back_to_the_singleton() {
+    with_unreadable_profile_vault(|store| {
+        store
+            .store("oauth_fourshared_mine", "own-token:own-secret")
+            .unwrap();
+        store
+            .store("oauth_fourshared", "other-token:other-secret")
+            .unwrap();
+        store
+            .store(
+                "fourshared_oauth_settings",
+                r#"{"consumer_key":"ck","consumer_secret":"cs"}"#,
+            )
+            .unwrap();
+        store.store("oauth_google_mine", "own-google").unwrap();
+        store.store("oauth_google", "other-google").unwrap();
+        store.corrupt_entry_for_test("oauth_fourshared_mine");
+        store.corrupt_entry_for_test("oauth_google_mine");
+
+        assert!(
+            crate::bridge_commands::resolve_profile_oauth_token(store, "fourshared", "mine")
+                .is_err()
+        );
+        // The GUI 4shared connect.
+        let loaded = crate::provider_commands::load_fourshared_tokens("mine");
+        assert!(
+            loaded
+                .as_ref()
+                .is_err_and(|e| !e.contains("No 4shared tokens")),
+            "{loaded:?}"
+        );
+        // The CLI and MCP 4shared connect (client configured, so only the token
+        // decides it).
+        let scope = AuthScope {
+            store,
+            user_id: None,
+        };
+        let four = json!({"id":"mine","name":"synthetic","protocol":"fourshared","host":""});
+        let opened = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(provider_at(&scope, &four, &AuthEndpoints::default()));
+        assert!(opened.is_err(), "connected with another account's token");
+        // The rclone export (GUI bridge and CLI share this helper).
+        let mut options = None;
+        let injected = crate::bridge_commands::inject_rclone_oauth_export_options(
+            &mut options,
+            store,
+            "googledrive",
+            "mine",
+        );
+        assert!(injected.is_err());
+        assert!(!options
+            .unwrap_or_default()
+            .to_string()
+            .contains("other-google"));
+    });
+}
+
+/// The `.aeroftp` export of an OAuth profile whose own token cannot be read
+/// fails instead of bundling the legacy singleton (CodeRabbit, #1574).
+#[test]
+fn an_unreadable_oauth_token_fails_the_profile_export() {
+    with_unreadable_profile_vault(|store| {
+        store.store("oauth_google_mine", "own-google").unwrap();
+        store.store("oauth_google", "other-google").unwrap();
+        let server = crate::profile_export::ServerProfileExport {
+            id: "mine".into(),
+            name: "drive".into(),
+            protocol: Some("googledrive".into()),
+            ..Default::default()
+        };
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        assert_eq!(secrets.oauth.as_deref(), Some("own-google"));
+        store.corrupt_entry_for_test("oauth_google_mine");
+        let secrets = crate::collect_provider_secrets_for_server(store, &server);
+        assert!(
+            secrets.as_ref().is_err_and(|e| e.contains("drive")),
+            "{:?}",
+            secrets.map(|s| s.oauth)
+        );
+        // Absent, not unreadable: the singleton is still the fallback.
+        store.delete("oauth_google_mine").unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        assert_eq!(secrets.oauth.as_deref(), Some("other-google"));
+    });
+}
+
+/// The same for a Jottacloud refresh token (CodeRabbit, #1574).
+#[test]
+fn an_unreadable_jotta_token_fails_the_profile_export() {
+    with_unreadable_profile_vault(|store| {
+        store.store("jottacloud_refresh_mine", "own-jotta").unwrap();
+        store.store("jottacloud_refresh", "other-jotta").unwrap();
+        let server = crate::profile_export::ServerProfileExport {
+            id: "mine".into(),
+            name: "jotta".into(),
+            protocol: Some("jottacloud".into()),
+            ..Default::default()
+        };
+        store.corrupt_entry_for_test("jottacloud_refresh_mine");
+        let secrets = crate::collect_provider_secrets_for_server(store, &server);
+        assert!(
+            secrets.as_ref().is_err_and(|e| e.contains("jotta")),
+            "{:?}",
+            secrets.map(|s| s.jotta_refresh)
+        );
+        store.delete("jottacloud_refresh_mine").unwrap();
+        let secrets = crate::collect_provider_secrets_for_server(store, &server).unwrap();
+        assert_eq!(secrets.jotta_refresh.as_deref(), Some("other-jotta"));
+    });
 }

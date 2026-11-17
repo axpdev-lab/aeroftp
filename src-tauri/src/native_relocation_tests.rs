@@ -208,6 +208,39 @@ fn a_native_session_keeps_to_its_account() {
     assert_eq!(loaded(owner, "dup-c").as_deref(), Some("r2"));
     vault::delete_session(owner, Some("dup-c")).unwrap();
 
+    // Rolling back a failed duplicate removes only its own copy: the source's
+    // copy of the shared session stays, and the legacy owner's vault key of
+    // the same name is not this account's to remove.
+    vault::restore_session_blocking(owner, "dup-d", &raw(&session("shared-uid", "r1"))).unwrap();
+    store
+        .store(&key("dup-d"), &raw(&session("owners-other-uid", "r1")))
+        .unwrap();
+    vault::discard_session_blocking(owner, "dup-d").unwrap();
+    assert_eq!(loaded(owner, "dup-d"), None);
+    assert_eq!(loaded(owner, "dup-a").as_deref(), Some("r2"));
+    assert!(in_vault("dup-d"));
+    store.delete(&key("dup-d")).unwrap();
+
+    // A rollback that cannot remove the partition copy reports it.
+    vault::restore_session_blocking(
+        owner,
+        "discard-fail-copy",
+        &raw(&session("discard-uid", "r1")),
+    )
+    .unwrap();
+    conn.execute_batch(
+        "CREATE TRIGGER refuse_partition_delete BEFORE DELETE ON user_credentials \
+         BEGIN SELECT RAISE(ABORT, 'partition locked'); END;",
+    )
+    .unwrap();
+    let refused = vault::discard_session_blocking(owner, "discard-fail-copy");
+    conn.execute_batch("DROP TRIGGER refuse_partition_delete;")
+        .unwrap();
+    let error = refused.unwrap_err().to_string();
+    assert!(error.contains("partition locked"), "{error}");
+    vault::discard_session_blocking(owner, "discard-fail-copy").unwrap();
+    assert_eq!(loaded(owner, "discard-fail-copy"), None);
+
     // A sign-out revokes on Proton only when no other profile of the same
     // account holds the session; another account's copy does not count. The
     // sign-out of a shared copy leaves the other profile signed in.

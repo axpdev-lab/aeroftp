@@ -11,6 +11,7 @@ import { isSshProtocol } from '../types';
 import { AEROCLOUD_OPEN_SUPERSEDED } from './liveConnection';
 import locationCases from '../shared/path-location-cases.json';
 import { LOCAL, REMOTE, fixture } from '../components/appTransfers.testkit';
+import { isDeletionCancelled } from './localTrash';
 
 const start = app.indexOf('const connectToCloudServer = async');
 const end = app.indexOf('// Helper: navigate to remote folder', start);
@@ -20,6 +21,7 @@ const { code } = await transformWithOxc(app.slice(start, end), 'aerocloud-connec
 it('forwards the saved S3 SSE policy through the real AeroCloud connection builder', async () => {
   const runConnect = vi.fn(async () => undefined);
   const context = {
+      confirmBackendConnection: () => undefined, remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, invoke: async () => 0,
     isProvider: true,
     protocol: 's3',
     cloudServer: {
@@ -50,7 +52,7 @@ it('forwards the saved S3 SSE policy through the real AeroCloud connection build
     checkSftpHostKey: vi.fn(async () => true),
     CONNECT_CANCELLED_MARKER,
     AEROCLOUD_OPEN_SUPERSEDED,
-    ownsPhase: () => true,
+    ownsPhase: () => true, supersedeOlderConnects: () => undefined,
   };
   const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
   await connect();
@@ -66,6 +68,7 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
   const connectWith = async (options: Record<string, unknown>) => {
     const runConnect = vi.fn(async (_command: string, _params: Record<string, unknown>) => undefined);
     const context = {
+        confirmBackendConnection: () => undefined, remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, invoke: async () => 0,
       isProvider: true,
       protocol: 'sftp',
       cloudServer: { id: 'profile-ssh', host: 'router.lan', port: 22, username: 'root', options },
@@ -84,7 +87,7 @@ it('keeps an "SFTP only" profile on SFTP through the AeroCloud connection builde
       checkSftpHostKey: vi.fn(async () => true),
       CONNECT_CANCELLED_MARKER,
       AEROCLOUD_OPEN_SUPERSEDED,
-      ownsPhase: () => true,
+      ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     await connect();
@@ -103,6 +106,7 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
     const runConnect = vi.fn(async () => { order.push('connect'); });
     const checkSftpHostKey = vi.fn(async () => { order.push('host-key'); return accepted; });
     const context = {
+        confirmBackendConnection: () => undefined, remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, invoke: async () => 0,
       isProvider: true,
       protocol,
       cloudServer: { id: 'profile-ssh', host: 'nas.lan', port, username: 'root', options: {} },
@@ -121,7 +125,7 @@ it('asks for the host key of an SCP or SFTP profile before it connects', async (
       checkSftpHostKey,
       CONNECT_CANCELLED_MARKER,
       AEROCLOUD_OPEN_SUPERSEDED,
-      ownsPhase: () => true,
+      ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     const error = await connect().then(() => null, (e: unknown) => e);
@@ -149,13 +153,14 @@ it('forwards the effective scheme, S3 consent and preset id', async () => {
   const connectWith = async (protocol: string, providerId: string, options: Record<string, unknown>) => {
     const runConnect = vi.fn(async (_command: string, _params: Record<string, unknown>) => undefined);
     const context = {
+        confirmBackendConnection: () => undefined, remoteConnectPhaseVersionRef: { current: 0 }, phaseVersion: 0, invoke: async () => 0,
       isProvider: true, protocol,
       cloudServer: { id: 'profile', providerId, host: 'dav.example.test', port: 80, username: 'user', options },
       resolveProfileS3Location: () => ({ endpoint: options.endpoint ?? null, signingRegion: 'us-east-1' }),
       cloudConfig: { remote_folder: '/' }, cloudPassword: 'secret', cloudFilenApiKey: null,
       runConnect, scpFallbackConnectParam, connectTlsMode, webdavConnectBasePath, loadedCertificateCheck, loadedOption, loadedOptionOn,
       isSshProtocol, checkSftpHostKey: vi.fn(async () => true), CONNECT_CANCELLED_MARKER,
-      AEROCLOUD_OPEN_SUPERSEDED, ownsPhase: () => true,
+      AEROCLOUD_OPEN_SUPERSEDED, ownsPhase: () => true, supersedeOlderConnects: () => undefined,
     };
     const connect = new Function(...Object.keys(context), `${code}; return connectToCloudServer;`)(...Object.values(context));
     await connect();
@@ -198,7 +203,7 @@ it('bases Navigation Sync on the folder the session lists, not on the saved form
   expect(relativeSyncSegments('/usr/home/u/docs', '~/docs')).toBeNull();
   // Both AeroCloud entries take that folder for the lock, the badges and the share link.
   const lock = app.slice(app.indexOf('// Lock navigation to cloud folders'), app.indexOf('// === SCENARIO 2'));
-  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !isSameServer, owner\);\s*if \(!owner\.owns\(\)\) return;\s*setSyncBasePaths\(\{ remote: listedFolder,/);
+  expect(lock).toMatch(/const listedFolder = await openCloudRemoteFolder\(isProvider && !reusesLiveServer, owner\);\s*if \(!owner\.owns\(\)\) return;\s*setSyncBasePaths\(\{ remote: listedFolder,/);
   expect(lock).toContain('adoptOpenedCloudFolder({ remoteFolder: listedFolder, savedFolder: cloudConfig.remote_folder, localFolder: cloudConfig.local_folder, profileId: cloudServer.id });');
   const fresh = app.slice(app.indexOf('// === SCENARIO 2'), app.indexOf('// === SCENARIO 2') + 3000);
   expect(fresh).toContain('const listedCloudFolder = await openCloudRemoteFolder(isProvider, owner);');
@@ -275,7 +280,8 @@ it('keeps the session on screen only for the pinned profile and a folder that na
   expect(kept).toContain('liveSavedServerId(sessions, activeSessionId, liveConnectionParams),');
   expect(kept).toContain('cloudServer.id,');
   expect(kept).toContain('cloudConfig.remote_folder,');
-  expect(kept).toContain('openCloudRemoteFolder(isProvider && !isSameServer, owner)');
+  expect(kept).toContain('let reusesLiveServer = isSameServer;');
+  expect(kept).toContain('openCloudRemoteFolder(isProvider && !reusesLiveServer, owner)');
 });
 
 it('drops a folder open that finishes after another connection took the session', async () => {
@@ -405,11 +411,18 @@ async function cloudTabApp(overrides: Record<string, unknown> = {}) {
     quotaVersionRef: { current: 0 },
     quotaConnectionRef: { current: 0 },
     mtpGvfsMountPathRef: { current: null },
+    // A connect under its own tracked token: here, the invoke it wraps.
+    phaseCancellable: (run: (token: string) => unknown) => run('device-token'),
     useLatestCallback: (fn: unknown) => fn,
     useCallback: (fn: unknown) => fn,
     ConnectScope: class { assert() {} step<T>(fn: () => T) { return fn(); } },
     remoteConnectPhaseVersionRef: { current: 0 },
     remoteConnectPhaseRef: { current: false },
+    // The backend accounting as App starts it: nothing replaces the backend,
+    // so it serves the tab on screen.
+    backendTeardownsRef: { current: 0 },
+    backendUncertainRef: { current: false },
+    backendReplacementSeqRef: { current: 0 },
     isConnected: true,
     liveConnectionParams: {},
     sessions: [], activeSessionId: 'tab-a',
@@ -505,7 +518,8 @@ it.each([
   const invoke = vi.fn(async (command: string) => command === 'get_cloud_config' ? CLOUD_CONFIG : '');
   const { handleCloudTabClick, spy } = await cloudTabApp({ invoke, runConnect, isSameConnection: () => false, sessions: [{ id: 'tab-a', status: 'connected' }] });
   await handleCloudTabClick();
-  expect(invoke).toHaveBeenCalledWith('provider_disconnect');
+  // The teardown names the session it saw (its generation).
+  expect(invoke).toHaveBeenCalledWith('provider_disconnect', expect.objectContaining({ expectedGeneration: expect.anything() }));
   const tabs = spy('setSessions').mock.calls.reduce(
     (list: { id: string; status: string }[], [update]) => typeof update === 'function' ? update(list) : update,
     [{ id: 'tab-a', status: 'connected' }],
@@ -738,7 +752,7 @@ it('shows the folder the server returned when a kept session enters the AeroClou
   // The breadcrumb shows the displayed path, and uploads go to the remote
   // path: both are the folder the server returned, not /cloud/sub. An upload
   // with no folder of its own takes currentRemotePath (its default below).
-  expect(app).toContain("const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {");
+  expect(app).toContain("const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath, stopsAtStart?: number) => {");
   expect(spy('setCurrentRemoteDisplayPath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setCurrentRemotePath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setRemoteBreadcrumb')).toHaveBeenLastCalledWith(listing);
@@ -809,15 +823,18 @@ it.each([
 
 /** App's own `deleteRemoteFile`, with the IPC, the guard and the dialogs mocked. */
 async function appDelete() {
-  const source = app.slice(app.indexOf('  const deleteRemoteFile = ('), app.indexOf('\n  const renameFile = ('));
+  // With App's own target capture, which the delete takes before it asks.
+  const source = app.slice(app.indexOf('  const captureGuiTarget ='), app.indexOf('\n  const getOverwriteDestination ='))
+    + app.slice(app.indexOf('  const deleteRemoteFile = ('), app.indexOf('\n  const renameFile = ('));
   const { code } = await transformWithOxc(source, 'delete.ts');
-  const invoke = vi.fn(async () => undefined);
+  const invoke = vi.fn(async (command: string) => command === 'provider_gui_target_epoch' ? 7 : undefined);
   const context: Record<string, unknown> = {
     remoteActionGuard: () => () => {}, invoke, notify: { success: vi.fn(), error: vi.fn() }, t: (key: string) => key,
     liveConnectionParams: { protocol: 'webdav' }, gitHubRepoInfo: null, setGitHubCommitDialog: vi.fn(),
     humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
     usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
     setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+    deleteGesturesRef: { current: [] }, isDeletionCancelled,
   };
   const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context)) as (path: string, isDir: boolean) => void;
   return { deleteRemoteFile, invoke };
@@ -830,7 +847,10 @@ it.each([
 ] as const)('sets no connection state from a connect that %s took the session from', async (_label, takeover) => {
   // The AeroCloud tab connects (no session on screen); the takeover happens
   // while that connect is still pending, before anything is listed.
-  expect(app).toContain('onParkActiveSession={takeOverActiveSession}');
+  // My Servers parks through takeOverBeforeSignIn, which marks the backend
+  // uncertain and then takes the session over (`takeOverActiveSession`).
+  expect(app).toContain('onParkActiveSession={takeOverBeforeSignIn}');
+  expect(app).toMatch(/const takeOverBeforeSignIn = useLatestCallback\(\(\) => \{\n\s+backendUncertainRef\.current = true;\n\s+takeOverActiveSession\(\);/);
   let finishConnect!: () => void;
   const runConnect = vi.fn(() => new Promise<void>(resolve => { finishConnect = resolve; }));
   const invoke = vi.fn(async (command: string) => {
@@ -968,21 +988,21 @@ it('sends every legacy FTP path as a folder the tab means, never one the server 
     'change_directory { path: folder }', // the AeroCloud folder placed by the connection builder
     'change_directory { path: legacyPath }', // the Up / navigation target, resolved below
     'change_directory { path: newRemotePath }', // the sync base joined with a '/'-led tail
-    'create_remote_folder { path: syncNavDialog.targetPath }',
-    'change_directory { path: syncNavDialog.targetPath }',
+    'create_remote_folder { path: syncNavDialog.targetPath, expectedGuiTarget }',
+    'change_directory { path: syncNavDialog.targetPath, expectedGuiTarget }',
     'download_folder { params }', // remote_path from the listing entry
     'download_file { params }', // remote_path from the listing entry
     'upload_folder { params }', // remote_path joined onto the folder the tab shows
-    'upload_file { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams }',
-    'save_remote_file { path: file.path, content, expectedGeneration }',
-    'delete_remote_file { path: file.path }',
-    'rename_remote_file { from: file.path, to: destPath }',
-    'delete_remote_file { path: file.path, isDir: file.is_dir }',
-    'delete_remote_file { path, isDir }',
-    'rename_remote_file { from: path, to: newPath }',
-    'rename_remote_file { from: path, to: newPath }',
-    'rename_remote_file { from: oldPath, to: newPath }',
-    'create_remote_folder { path }', // currentRemotePath joined with the new name
+    'upload_file { params: { local_path: localFilePath, remote_path: remotePath, expected_gui_target: expectedGuiTarget } as UploadParams }',
+    'save_remote_file { path: file.path, content, expectedGeneration, expectedGuiTarget }',
+    'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',
+    'rename_remote_file { from: file.path, to: destPath, expectedGuiTarget }',
+    'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',
+    'delete_remote_file { path, isDir, expectedGuiTarget, operationId }',
+    'rename_remote_file { from: path, to: newPath, expectedGuiTarget }',
+    'rename_remote_file { from: path, to: newPath, expectedGuiTarget }',
+    'rename_remote_file { from: oldPath, to: newPath, expectedGuiTarget }',
+    'create_remote_folder { path, expectedGuiTarget }', // currentRemotePath joined with the new name
   ]);
   expect(calls.join('\n')).not.toMatch(/['"`]\.{1,2}['"`]|path: ['"`][^/]/);
 

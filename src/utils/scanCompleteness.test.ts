@@ -21,6 +21,16 @@ describe('isScanIncompleteError', () => {
         expect(isScanIncompleteError(new Error(wire))).toBe(true);
     });
 
+    // D4: a compare whose connection changed while it scanned is refused by
+    // the backend under this contract (`compare_target_refusal`), so the page
+    // fails closed instead of falling back to a flat compare of panel rows
+    // that may belong to the other connection.
+    it('treats a target change during the compare as an incomplete scan', () => {
+        const wire = `${SCAN_INCOMPLETE_MARKER}: the connection changed during the compare; compare again`;
+        expect(isScanIncompleteError(wire)).toBe(true);
+        expect(describeScanIncompleteError(wire)).toContain('the connection changed during the compare');
+    });
+
     it('does not swallow unrelated failures, which keep their flat fallback', () => {
         expect(isScanIncompleteError('Connection reset by peer')).toBe(false);
         expect(isScanIncompleteError(null)).toBe(false);

@@ -2393,15 +2393,15 @@ impl SftpProvider {
     ///
     /// Free of `&self` so `list` can call it from inside the concurrent
     /// per-entry futures without capturing the provider.
-    fn metadata_to_entry(
+    pub(crate) fn metadata_to_entry(
         name: String,
         path: String,
         metadata: &russh_sftp::protocol::FileAttributes,
     ) -> RemoteEntry {
-        let is_dir = metadata
-            .permissions
-            .map(|p| (p & 0o40000) != 0)
-            .unwrap_or(false);
+        // The file-type field (S_IFMT), not one bit of it: a socket
+        // (0o140000) also has the directory bit set.
+        let file_type = metadata.permissions.map(|p| p & 0o170000);
+        let is_dir = file_type == Some(0o040000);
 
         let permissions = metadata.permissions.map(|p| format_permissions(p, is_dir));
 
@@ -2411,7 +2411,7 @@ impl SftpProvider {
                 .unwrap_or_default()
         });
 
-        RemoteEntry {
+        let mut entry = RemoteEntry {
             name,
             path,
             is_dir,
@@ -2424,7 +2424,15 @@ impl SftpProvider {
             link_target: None,
             mime_type: None,
             metadata: Default::default(),
+        };
+        // Positive evidence only: no file-type bits, or a FIFO, socket or
+        // device, is not a regular file (`is_dir` and `is_symlink` false do
+        // not say "file"). A symlink's own mode is marked too; the receipt
+        // refuses a link on its own flag.
+        if !matches!(file_type, Some(0o100000) | Some(0o040000)) {
+            crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry);
         }
+        entry
     }
 
     async fn verify_remote_upload_size(
@@ -3258,7 +3266,7 @@ impl StorageProvider for SftpProvider {
                         until_sftp_ends(&sftp.ended, sftp.metadata(&entry_path)).await
                     {
                         if let Some(target_perms) = target_meta.permissions {
-                            remote_entry.is_dir = (target_perms & 0o40000) != 0;
+                            remote_entry.is_dir = (target_perms & 0o170000) == 0o040000;
                         }
                         // Update size from target if available
                         if let Some(target_size) = target_meta.size {
@@ -3329,7 +3337,7 @@ impl StorageProvider for SftpProvider {
         };
 
         if let Some(perms) = metadata.permissions {
-            if (perms & 0o40000) == 0 {
+            if (perms & 0o170000) != 0o040000 {
                 return Err(ProviderError::InvalidPath(format!(
                     "{} is not a directory",
                     full_path
@@ -4687,21 +4695,25 @@ impl StorageProvider for SftpProvider {
 
         let mut entry = Self::metadata_to_entry(name, full_path.clone(), &metadata);
 
-        // Check for symlink. The check is best effort, but not over a
-        // transport that ended while it was asked: the entry would say "not a
-        // link" for a question that got no answer.
+        // The entry's own type, which STAT does not give (it follows a link):
+        // LSTAT. When LSTAT is refused or answers no type bits, nothing says
+        // the name is not a link to the file STAT read, so the entry's type
+        // is marked unconfirmed and a backup receipt refuses it (T2). So is a
+        // LSTAT type that is not STAT's (a directory or a FIFO where STAT read
+        // a regular file): the path changed between the two calls, or the
+        // server contradicts itself, and neither answer can be kept. Not over
+        // a transport that ended while it was asked (checked below).
+        let stat_type = metadata.permissions.map(|p| p & 0o170000);
         let link_meta = until_sftp_ends(&sftp.ended, sftp.symlink_metadata(&full_path)).await;
-        if let Ok(link_meta) = link_meta {
-            if let Some(perms) = link_meta.permissions {
-                if (perms & 0o170000) == 0o120000 {
-                    entry.is_symlink = true;
-                    if let Ok(target) =
-                        until_sftp_ends(&sftp.ended, sftp.read_link(&full_path)).await
-                    {
-                        entry.link_target = Some(target);
-                    }
+        match link_meta.ok().and_then(|meta| meta.permissions) {
+            Some(perms) if (perms & 0o170000) == 0o120000 => {
+                entry.is_symlink = true;
+                if let Ok(target) = until_sftp_ends(&sftp.ended, sftp.read_link(&full_path)).await {
+                    entry.link_target = Some(target);
                 }
             }
+            Some(perms) if (perms & 0o170000) != 0 && Some(perms & 0o170000) == stat_type => {}
+            _ => crate::providers::ftp_listing::mark_entry_type_unconfirmed(&mut entry),
         }
         if sftp.ended.is_cancelled() {
             return Err(ProviderError::ConnectionLost(
@@ -8683,6 +8695,110 @@ mod tests {
                 ]
             };
             Ok(russh_sftp::protocol::Name { id, files })
+        }
+    }
+
+    /// How [`LinkStatServer`] answers LSTAT.
+    #[derive(Clone, Copy, Debug)]
+    enum LstatAnswer {
+        Refused,
+        Typeless,
+        Regular,
+        Symlink,
+        /// A type that is not STAT's regular file: the path changed between
+        /// the calls, or the server contradicts itself (U1).
+        Directory,
+        Fifo,
+    }
+
+    /// An SFTP server whose STAT finds a regular file (as it does through a
+    /// link) and whose LSTAT answers as told.
+    struct LinkStatServer(LstatAnswer);
+
+    impl russh_sftp::server::Handler for LinkStatServer {
+        type Error = russh_sftp::protocol::StatusCode;
+
+        fn unimplemented(&self) -> Self::Error {
+            russh_sftp::protocol::StatusCode::OpUnsupported
+        }
+
+        async fn stat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(3),
+                    permissions: Some(0o100644),
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn lstat(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Attrs, Self::Error> {
+            let permissions = match self.0 {
+                LstatAnswer::Refused => {
+                    return Err(russh_sftp::protocol::StatusCode::PermissionDenied)
+                }
+                LstatAnswer::Typeless => Some(0o644),
+                LstatAnswer::Regular => Some(0o100644),
+                LstatAnswer::Symlink => Some(0o120777),
+                LstatAnswer::Directory => Some(0o040755),
+                LstatAnswer::Fifo => Some(0o010644),
+            };
+            Ok(russh_sftp::protocol::Attrs {
+                id,
+                attrs: russh_sftp::protocol::FileAttributes {
+                    size: Some(3),
+                    permissions,
+                    ..Default::default()
+                },
+            })
+        }
+
+        async fn readlink(
+            &mut self,
+            id: u32,
+            _path: String,
+        ) -> Result<russh_sftp::protocol::Name, Self::Error> {
+            Ok(russh_sftp::protocol::Name {
+                id,
+                files: vec![russh_sftp::protocol::File::dummy("/elsewhere")],
+            })
+        }
+    }
+
+    /// T2: a backup receipt is a regular file only when LSTAT says so. A
+    /// refused or type-less LSTAT leaves the entry's own type unknown (the
+    /// name may be a link STAT followed), and the receipt is refused; a link
+    /// is refused; a confirmed regular file is accepted. A LSTAT type that
+    /// contradicts STAT's regular file (a directory, a FIFO) is refused too
+    /// (U1). Through the production `stat` and `provider_receipt_is_file`.
+    #[tokio::test]
+    async fn a_receipt_needs_lstat_to_confirm_a_regular_file() {
+        for (answer, accepted) in [
+            (LstatAnswer::Refused, false),
+            (LstatAnswer::Typeless, false),
+            (LstatAnswer::Symlink, false),
+            (LstatAnswer::Directory, false),
+            (LstatAnswer::Fifo, false),
+            (LstatAnswer::Regular, true),
+        ] {
+            let (client, server) = tokio::io::duplex(1 << 16);
+            russh_sftp::server::run(server, LinkStatServer(answer)).await;
+            let mut provider = provider_without_a_session();
+            provider.sftp = Some(SftpChannel::open(client).await.expect("sftp init"));
+            let receipt =
+                crate::sync_backup::provider_receipt_is_file(&mut provider, "/backup/a.txt")
+                    .await
+                    .unwrap();
+            assert_eq!(receipt, accepted, "{answer:?}");
         }
     }
 

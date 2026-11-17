@@ -478,122 +478,6 @@ fn parse_webdav_url_for_inspection(raw: &str) -> Option<url::Url> {
     url::Url::parse(&normalized).ok()
 }
 
-const USERNAME_URL_SEGMENT: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'#')
-    .add(b'%')
-    .add(b'&')
-    .add(b'+')
-    .add(b'/')
-    .add(b':')
-    .add(b';')
-    .add(b'<')
-    .add(b'=')
-    .add(b'>')
-    .add(b'?')
-    .add(b'[')
-    .add(b'\\')
-    .add(b']')
-    .add(b'^')
-    .add(b'`')
-    .add(b'{')
-    .add(b'|')
-    .add(b'}');
-
-fn validate_username_segment(username: &str) -> Result<(), ProviderError> {
-    if username.trim().is_empty() {
-        return Err(ProviderError::InvalidConfig(
-            "Username cannot be blank when expanding {username}".into(),
-        ));
-    }
-    if username == "." || username == ".." {
-        return Err(ProviderError::InvalidConfig(
-            "Username cannot be '.' or '..' when expanding {username}".into(),
-        ));
-    }
-    if username.contains(['/', '\\', '\0']) || username.chars().any(char::is_control) {
-        return Err(ProviderError::InvalidConfig(
-            "Username contains a forbidden path separator or control character for {username}"
-                .into(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_username_host_label(username: &str) -> Result<(), ProviderError> {
-    validate_username_segment(username)?;
-    if username.starts_with('.')
-        || username.ends_with('.')
-        || username.contains("..")
-        || !username
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-    {
-        return Err(ProviderError::InvalidConfig(
-            "Username contains characters invalid in a hostname for {username}".into(),
-        ));
-    }
-    Ok(())
-}
-
-/// Expand `{username}` placeholders inside a logical path template (e.g. `initial_path`).
-/// Refuses blank, traversal (`..`), and separator/control usernames without double-encoding.
-pub(crate) fn expand_username_in_path(
-    template: &str,
-    username: &str,
-) -> Result<String, ProviderError> {
-    if !template.contains("{username}") {
-        return Ok(template.to_string());
-    }
-    validate_username_segment(username)?;
-    Ok(template.replace("{username}", username))
-}
-
-/// Expand `{username}` placeholders inside a URL template (`scheme://authority/path?query#frag`).
-/// Keeps URL structure intact by validating host placeholders and percent-encoding path/query
-/// placeholders once as a single URL segment.
-pub(crate) fn expand_username_in_url(
-    template: &str,
-    username: &str,
-) -> Result<String, ProviderError> {
-    if !template.contains("{username}") {
-        return Ok(template.to_string());
-    }
-    validate_username_segment(username)?;
-    let (scheme_prefix, rest) = match template.split_once("://") {
-        Some((scheme, rest)) => (Some(scheme), rest),
-        None => (None, template),
-    };
-    let auth_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let (authority, tail) = rest.split_at(auth_end);
-    let encoded = percent_encoding::utf8_percent_encode(username, USERNAME_URL_SEGMENT).to_string();
-    let expanded_authority = if authority.contains("{username}") {
-        let (userinfo, host_part) = match authority.rsplit_once('@') {
-            Some((u, h)) => (Some(u), h),
-            None => (None, authority),
-        };
-        if host_part.contains("{username}") {
-            validate_username_host_label(username)?;
-        }
-        match userinfo {
-            Some(u) => format!(
-                "{}@{}",
-                u.replace("{username}", &encoded),
-                host_part.replace("{username}", username)
-            ),
-            None => host_part.replace("{username}", username),
-        }
-    } else {
-        authority.to_string()
-    };
-    let expanded_tail = tail.replace("{username}", &encoded);
-    Ok(match scheme_prefix {
-        Some(scheme) => format!("{scheme}://{expanded_authority}{expanded_tail}"),
-        None => format!("{expanded_authority}{expanded_tail}"),
-    })
-}
-
 /// Whether a WebDAV host or URL string already carries a non-root path
 /// segment after the authority (e.g. `https://dav.example/dav`, not `/`).
 pub(crate) fn webdav_host_has_own_path(host: &str) -> bool {
@@ -704,12 +588,14 @@ impl WebDavConfig {
             }
         }
 
-        let url = expand_username_in_url(&raw_url, &username)?;
+        let url = crate::connection_manifest::expand_username_in_url(&raw_url, &username)
+            .map_err(ProviderError::InvalidConfig)?;
         let initial_path = config
             .initial_path
-            .as_deref()
-            .map(|p| expand_username_in_path(p, &username))
-            .transpose()?;
+            .as_ref()
+            .map(|p| crate::connection_manifest::expand_username_in_path(p, &username))
+            .transpose()
+            .map_err(ProviderError::InvalidConfig)?;
         let provider_id = config
             .extra
             .get("provider_id")
@@ -881,6 +767,73 @@ mod webdav_config_tests {
         );
     }
 
+    /// The connect reads the server URL and the start folder from the shared
+    /// case table: both filled as the table says, or the profile refused.
+    #[test]
+    fn the_connect_fills_the_username_from_the_shared_table() {
+        let table: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../src/shared/username-template-cases.json"
+        ))
+        .unwrap();
+        for case in table["cases"].as_array().unwrap() {
+            let user = case["user"].as_str().unwrap();
+            let cfg = ProviderConfig {
+                name: "template".to_string(),
+                provider_type: ProviderType::WebDav,
+                host: table["urlTemplate"].as_str().unwrap().to_string(),
+                port: Some(443),
+                username: Some(user.to_string()),
+                password: Some("p".to_string()),
+                initial_path: Some(table["pathTemplate"].as_str().unwrap().to_string()),
+                extra: std::collections::HashMap::new(),
+            };
+            let resolved = WebDavConfig::from_provider_config(&cfg).ok();
+            match (case["url"].as_str(), case["path"].as_str()) {
+                (Some(url), Some(path)) => {
+                    let resolved = resolved.unwrap_or_else(|| panic!("{user:?} refused"));
+                    assert_eq!(resolved.url, url, "{user:?}");
+                    assert_eq!(resolved.initial_path.as_deref(), Some(path), "{user:?}");
+                }
+                _ => assert!(resolved.is_none(), "{user:?} must be refused"),
+            }
+        }
+    }
+
+    /// A user name that cannot fill a folder template (a directory login such
+    /// as `DOMAIN\alice`) is refused with the way out in the message, and the
+    /// way out works: the same folder written in full, without the
+    /// placeholder, connects.
+    #[test]
+    fn a_folder_written_in_full_takes_a_user_name_the_template_refuses() {
+        let cfg = |initial_path: &str| ProviderConfig {
+            name: "nextcloud".to_string(),
+            provider_type: ProviderType::WebDav,
+            host: "https://cloud.example.test".to_string(),
+            port: Some(443),
+            username: Some("DOMAIN\\alice".to_string()),
+            password: Some("p".to_string()),
+            initial_path: Some(initial_path.to_string()),
+            extra: std::collections::HashMap::new(),
+        };
+        let refused = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/{username}/"))
+            .expect_err("a template the user name cannot fill is refused")
+            .to_string();
+        assert!(
+            refused.contains("cannot be used in a folder path"),
+            "{refused}"
+        );
+        assert!(
+            refused.contains("enter the folder path in full"),
+            "{refused}"
+        );
+        let full = WebDavConfig::from_provider_config(&cfg("/remote.php/dav/files/DOMAIN\\alice/"))
+            .expect("a folder written in full connects");
+        assert_eq!(
+            full.initial_path.as_deref(),
+            Some("/remote.php/dav/files/DOMAIN\\alice/")
+        );
+    }
+
     #[test]
     fn username_placeholder_is_substituted_in_url_too() {
         let mut extra = std::collections::HashMap::new();
@@ -1013,7 +966,15 @@ mod webdav_config_tests {
                     .url,
                 format!("https://webdav.cloudme.com/x%23y{suffix}")
             );
-            for bad in ["a/b", "..", ".", ""] {
+            // A `/` stays inside its segment, encoded (the shared helper's
+            // rule, pinned on the wire by `a_username_template_reaches_the_server_encoded_exactly_once`).
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(&tpl, None, "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://webdav.cloudme.com/a%2Fb{suffix}")
+            );
+            for bad in ["..", ".", ""] {
                 assert!(
                     WebDavConfig::from_provider_config(&make_cfg(&tpl, None, bad)).is_err(),
                     "expected `{bad}` to fail in `{tpl}`"
@@ -1062,7 +1023,13 @@ mod webdav_config_tests {
                     .url,
                 format!("https://lifetimecloud.me/dav/x%23y/{suffix}")
             );
-            for bad in ["a/b", "..", ".", ""] {
+            assert_eq!(
+                WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), "a/b"))
+                    .unwrap()
+                    .url,
+                format!("https://lifetimecloud.me/dav/a%2Fb/{suffix}")
+            );
+            for bad in ["..", ".", ""] {
                 assert!(
                     WebDavConfig::from_provider_config(&make_cfg(host, Some(bp), bad)).is_err(),
                     "expected `{bad}` to fail in basePath with host `{host}`"
@@ -2727,6 +2694,13 @@ pub enum ProviderError {
     )]
     TargetChanged,
 
+    /// An FTP reply that refused the command, by the status the reply parser
+    /// read, and what we were doing (`during`: our own words, ` (while
+    /// uploading /x)`). Never the server's text: the status alone is
+    /// classified, so a reply whose text holds `HTTP 403` stays a 425 (T8).
+    #[error("FTP status {code}: command rejected{during}")]
+    FtpRefused { code: u16, during: String },
+
     #[error("Not connected to server")]
     NotConnected,
 
@@ -3220,6 +3194,65 @@ mod tests {
         assert!(is_target_changed_text(
             &ProviderError::TargetChanged.to_string()
         ));
+    }
+
+    /// The refusal's marker is never produced bare, in any native source
+    /// outside its tests: the word with no colon is no refusal for either
+    /// reader (the shared table's "CONNECTION_CHANGED" row), so a producer
+    /// that wrote it would be retried as an ordinary failure. Every
+    /// occurrence of the word is the colon form, `{CONNECTION_CHANGED_MARKER}:`
+    /// in a format string, the constant's definition or its import, a reader
+    /// (`starts_with`, `contains`, a match arm), or `IpcError::Marker`, which
+    /// `sync::ipc_error_parts` renders with its colon (pinned by its test, the
+    /// render a row of the shared table).
+    #[test]
+    fn no_native_producer_writes_the_changed_target_marker_without_its_colon() {
+        assert!(TARGET_CHANGED_MARKER.ends_with(':'));
+        let test_module = regex::Regex::new(
+            r"(?ms)^#\[cfg\(test\)\]\n(?:#\[[^\n]*\]\n)*mod [A-Za-z0-9_]+ \{\n.*?^\}\n",
+        )
+        .unwrap();
+        let reader =
+            regex::Regex::new(r"(?:starts_with|contains)\((?:crate::)?(?:provider_commands::)?$")
+                .unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let (mut files, mut bare) = (0, Vec::new());
+        for entry in walkdir::WalkDir::new(&root) {
+            let entry = entry.unwrap();
+            if entry.path().extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            files += 1;
+            let source = std::fs::read_to_string(entry.path()).unwrap();
+            let production = test_module.replace_all(&source, "");
+            for line in production.lines() {
+                let code = line.trim_start();
+                if code.starts_with("//")
+                    || code.starts_with("use ")
+                    || code.starts_with(
+                        "pub const CONNECTION_CHANGED_MARKER: &str = \"CONNECTION_CHANGED\";",
+                    )
+                {
+                    continue;
+                }
+                for (at, word) in line.match_indices("CONNECTION_CHANGED") {
+                    let (before, rest) = (&line[..at], &line[at + word.len()..]);
+                    let colon = rest.starts_with(':') || rest.starts_with("_MARKER}:");
+                    let read = reader.is_match(before)
+                        || (before.ends_with('"') && rest.starts_with("\" =>"));
+                    let marker = before.ends_with("Marker(\"") && rest.starts_with("\")");
+                    if !(colon || read || marker) {
+                        bare.push(format!("{}: {}", entry.path().display(), line.trim()));
+                    }
+                }
+            }
+        }
+        assert!(files > 100, "read {files} files");
+        assert!(
+            bare.is_empty(),
+            "the marker written bare:\n{}",
+            bare.join("\n")
+        );
     }
     use std::collections::HashMap;
 

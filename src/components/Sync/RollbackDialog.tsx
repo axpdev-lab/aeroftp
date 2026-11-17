@@ -16,6 +16,7 @@ import { useTranslation } from '../../i18n';
 import { formatSize } from '../../utils/formatters';
 import { logger } from '../../utils/logger';
 import { useDraggableModal } from '../../hooks/useDraggableModal';
+import { normalizedSyncRoot } from '../../utils/remoteSyncRunner';
 import { useGuardedClose } from '../../hooks/useGuardedClose';
 
 interface RollbackDialogProps {
@@ -38,12 +39,16 @@ export const RollbackDialog: React.FC<RollbackDialogProps> = ({
     embedded = false,
     active = true,
     onClose,
-    localPath,
-    remotePath,
+    localPath: shownLocalPath,
+    remotePath: shownRemotePath,
     isProvider,
     onRestoringChange,
     versioningStrategy,
 }) => {
+    // The runner saves a pair's index under its normalized roots (`C:/`, no
+    // trailing slash), so every pair-keyed command here asks for the same key.
+    const localPath = normalizedSyncRoot(shownLocalPath);
+    const remotePath = normalizedSyncRoot(shownRemotePath);
     const t = useTranslation();
     const modalDrag = useDraggableModal();
     const [snapshots, setSnapshots] = useState<SyncSnapshot[]>([]);

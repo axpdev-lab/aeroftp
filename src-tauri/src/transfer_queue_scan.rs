@@ -105,16 +105,15 @@ pub async fn walk_remote_ftp(
     root_path: &str,
     max_depth: u32,
     entry_cap_per_level: usize,
-) -> ScanTreeResult {
+) -> Result<ScanTreeResult, String> {
     let mut result = ScanTreeResult {
         root_path: root_path.to_string(),
         ..Default::default()
     };
 
     // Capture the current CWD so the scan does not perturb other in-flight
-    // operations that share the same connection. Restoration is best-effort
-    // on exit: if it fails the next user-driven operation will navigate
-    // explicitly anyway.
+    // operations that share the same connection. A session that cannot go
+    // back is closed, and the scan answers with that error.
     let original_path = ftp_manager.current_path();
 
     let mut queue: VecDeque<(String, u32)> = VecDeque::new();
@@ -211,10 +210,13 @@ pub async fn walk_remote_ftp(
     }
 
     if !original_path.is_empty() {
-        let _ = ftp_manager.change_dir(&original_path).await;
+        ftp_manager
+            .return_to_folder(&original_path)
+            .await
+            .map_err(|e| e.to_string())?;
     }
 
-    result
+    Ok(result)
 }
 
 /// Map a `RemoteEntry` (provider trait shape) into a `ScanNode`. The two
@@ -395,7 +397,7 @@ pub async fn transfer_queue_scan_remote_tree(
     }
 
     let mut ftp_manager = state.ftp_manager.lock().await;
-    Ok(walk_remote_ftp(&mut ftp_manager, &state.cancel_flag, &path, max_depth, cap).await)
+    walk_remote_ftp(&mut ftp_manager, &state.cancel_flag, &path, max_depth, cap).await
 }
 
 #[cfg(test)]

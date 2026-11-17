@@ -268,6 +268,12 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       healthCheckUrl: 'https://us-east-1.object.fastlystorage.app/',
       searchAliases: ['fastly', 'fos', 'fastly s3', 'fastlystorage', 'fastly object storage'],
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'fastly', category: 'object-storage', paid: true }] },
+    // Free plan is 5 GB of object storage per Neon project (up to 100 projects
+    // per account), no card required.
+    { company: 'Neon Object Storage', parentCompany: 'Neon', logoId: 'neon', countryCode: 'US', freeStorageGb: 5,
+      freeNote: 'per project', healthCheckUrl: 'https://neon.com',
+      searchAliases: ['neon', 'neon tech', 'lakebase', 'aws.neon.tech'],
+      protocols: [{ label: 'S3', protocol: 's3', providerId: 'neon-s3', category: 'object-storage' }] },
     { company: 'IBM Cloud Object Storage', parentCompany: 'IBM', logoId: 'ibm-cos', countryCode: 'US', freeStorageGb: null,
       freeNote: '12-month trial',
       healthCheckUrl: 'https://s3.eu-de.cloud-object-storage.appdomain.cloud',
@@ -275,6 +281,18 @@ export const PROVIDER_CATALOG: CatalogCompany[] = [
       protocols: [{ label: 'S3', protocol: 's3', providerId: 'ibm-cos', category: 'object-storage', paid: true }] },
     { company: 'CloudMe', logoId: 'cloudme', countryCode: 'SE', freeStorageGb: 3,
       protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'cloudme', category: 'webdav' }] },
+    // Puter publishes a Free plan: 25 MB, no card
+    // (puter.com/pricing, 2026-11-14). Printed as "25 MB".
+    { company: 'Puter', logoId: 'puter', countryCode: 'US', freeStorageGb: 0.025,
+      freeNote: 'limited: 25 MB in total', healthCheckUrl: 'https://api.puter.com',
+      searchAliases: ['puter', 'dav.puter.com'],
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'puter-webdav', category: 'webdav' }] },
+    // A free plan: 1 GB, no card, no time limit, limited use (at most 50 MB per
+    // file and 50 files; account card and lifetimecloud.me/it, 2026-11-14).
+    { company: 'LifetimeCloud', logoId: 'lifetimecloud', countryCode: 'IT', freeStorageGb: 1,
+      freeNote: 'limited: 50 files, 50 MB per file', healthCheckUrl: 'https://lifetimecloud.me/',
+      searchAliases: ['lifetimecloud', 'lifetimecloud.me', 'lifetime cloud'],
+      protocols: [{ label: 'WebDAV', protocol: 'webdav', providerId: 'lifetimecloud', category: 'webdav' }] },
     { company: 'Uploadcare', logoId: 'uploadcare', countryCode: 'US', freeStorageGb: 1,
       freeNote: 'media CDN', healthCheckUrl: 'https://api.uploadcare.com',
       protocols: [{ label: 'API', protocol: 'uploadcare', providerId: 'uploadcare', category: 'media-services' }] },
@@ -452,6 +470,7 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'filebase', icon: 'filebase.png', docsPath: 'providers/filebase' },
     { logoId: 'tigris', icon: 'tigris.png', docsPath: 'providers/tigris' },
     { logoId: 'fastly', icon: 'fastly.png', docsPath: 'providers/fastly-object-storage' },
+    { logoId: 'neon', icon: 'neon.png', docsPath: 'providers/neon' },
     { logoId: 'minio', icon: 'minio.png', docsPath: 'providers/minio' },
     { logoId: 'yandex-storage', icon: 'yandexcloud.png', docsPath: 'providers/yandex-object-storage' },
     { logoId: 's3drive', icon: 's3drive.png', docsPath: 'providers/s3drive' },
@@ -462,11 +481,13 @@ export const PROVIDER_GRID: readonly ProviderGridTile[] = [
     { logoId: 'felicloud', icon: 'felicloud.png', docsPath: 'providers/felicloud' },
     { logoId: 'tabdigital', icon: 'tabdigital.png', docsPath: 'providers/tabdigital' },
     { logoId: 'cloudme', icon: 'cloudme.png', docsPath: 'providers/cloudme' },
+    { logoId: 'puter', icon: 'puter.png', docsPath: 'providers/puter' },
     { logoId: 'infinicloud', icon: 'infiniCloud.png', docsPath: 'providers/infinicloud' },
     { logoId: 'jianguoyun', icon: 'jianguoyun.png', docsPath: 'providers/jianguoyun' },
     { logoId: 'seafile', icon: 'seafile.png', docsPath: 'providers/seafile' },
     { logoId: 'drivehq', icon: 'drivehq.png', docsPath: 'providers/drivehq' },
     { logoId: 'mailru-cloud', icon: 'mailru-cloud.png', docsPath: 'providers/mailru-cloud', label: 'Mail.ru Cloud' },
+    { logoId: 'lifetimecloud', icon: 'lifetimecloud.png', docsPath: 'providers/lifetimecloud' },
     // SFTP
     { logoId: 'hetzner-storage-box', icon: 'hetzner.png', docsPath: 'providers/hetzner-storage-box' },
     // Developer
@@ -594,6 +615,12 @@ export function hasFreeTier(c: CatalogCompany): boolean {
 export type CompanyTier = 'free' | 'free-card' | 'paid';
 
 /** Classify a company into its commercial bucket for the tier filter. */
+/** A free allowance as people read it: below 1 GB in MB (`0.025` is
+ *  "25 MB", not "0.025 GB"), from 1 GB in GB. */
+export function formatFreeStorage(gb: number): string {
+    return gb < 1 ? `${Math.round(gb * 1000)} MB` : `${gb} GB`;
+}
+
 export function companyTier(c: CatalogCompany): CompanyTier {
     if (c.freeRequiresCard) return 'free-card';
     return hasFreeTier(c) ? 'free' : 'paid';
@@ -699,6 +726,8 @@ const REGIONS_BY_LOGO: Record<string, string[]> = {
     'filebase': ['global'],
     'tigris': ['global'],
     'fastly': ['US', 'GB', 'FR', 'DE', 'IT', 'JP', 'AU'],
+    // Neon Object Storage regions (eu-central-1, us-east-1/2, ap-southeast-1).
+    'neon': ['US', 'DE', 'SG'],
     'yandex-storage': ['RU'],
 };
 
@@ -787,7 +816,7 @@ export function buildProvidersMarkdown(): string {
             const hq = c.countryCode ? c.countryCode.toUpperCase() : '-';
             let free: string;
             if (c.freeStorageGb != null) {
-                free = `${c.freeStorageGb} GB`;
+                free = formatFreeStorage(c.freeStorageGb);
                 if (c.freeNote) free += ` (${c.freeNote})`;
             } else {
                 free = c.freeNote ?? '-';

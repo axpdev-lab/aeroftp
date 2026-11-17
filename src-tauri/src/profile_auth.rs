@@ -17,6 +17,20 @@ pub struct AuthScope<'a> {
     pub store: &'a CredentialStore,
     pub user_id: Option<i64>,
 }
+impl<'a> AuthScope<'a> {
+    /// The scope of the reads a connection makes for the account it captured
+    /// (`OpenedCloudProvider::reads_account`). A legacy-only capture
+    /// (`LEGACY_ONLY_ACCOUNT`) is the explicit legacy scope, `None`: the
+    /// shared vault, never a partition user that does not exist (V1). The
+    /// reserved id itself stays for the profile-list and binding reads, which
+    /// understand it.
+    pub(crate) fn for_captured(store: &'a CredentialStore, account: i64) -> Self {
+        Self {
+            store,
+            user_id: (account != users::LEGACY_ONLY_ACCOUNT).then_some(account),
+        }
+    }
+}
 impl AuthScope<'_> {
     fn read(&self, key: &str) -> Result<Option<String>, String> {
         match self.user_id {
@@ -863,12 +877,13 @@ async fn provider_at(
     }
     if kind == ProviderType::FourShared {
         let client = client_settings(scope, profile, &config);
-        let raw = scope
-            .read(&format!("oauth_fourshared_{id}"))?
-            .or_else(|| {
-                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)
-            })
-            .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
+        let raw = match scope.read(&format!("oauth_fourshared_{id}"))? {
+            Some(raw) => Some(raw),
+            None => {
+                crate::bridge_commands::resolve_profile_oauth_token(scope.store, "fourshared", id)?
+            }
+        }
+        .ok_or("4shared authorization missing; use profile-auth configure, begin and finish")?;
         let (token, secret) = raw
             .split_once(':')
             .filter(|(a, b)| !a.is_empty() && !b.is_empty())
