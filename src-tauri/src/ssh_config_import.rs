@@ -224,10 +224,26 @@ fn ssh_config_in(home: Option<String>) -> Option<PathBuf> {
 
 // ============ Parser ============
 
-/// One parsed `Host` block: the alias list plus its lowercased key/value
-/// directives. `Host` may name several patterns; the first concrete token
-/// is used as the profile name.
+/// Which hosts the lines of a block apply to.
+#[derive(Debug, PartialEq)]
+enum Scope {
+    /// The lines before the first `Host` or `Match`: every host.
+    Global,
+    /// A `Host` line: the hosts its patterns match ([`host_matches`]).
+    Host,
+    /// `Match all`: every host.
+    MatchAll,
+    /// Any other `Match`, on the given line of the file: its conditions are
+    /// not evaluated here ([`host_values`]).
+    Match(usize),
+}
+
+/// One parsed block: where it applies, the `Host` patterns (empty for the
+/// others), and its lowercased key/value directives, the first value of each
+/// key. `Host` may name several patterns; the first concrete one is used as
+/// the profile name ([`profile_alias`]).
 struct HostBlock {
+    scope: Scope,
     aliases: Vec<String>,
     kv: HashMap<String, String>,
 }
@@ -354,16 +370,27 @@ fn port_digits(value: &str) -> Option<&str> {
 /// uncapped parse of a large config is a self-inflicted write storm.
 const MAX_HOSTS: usize = 10_000;
 
-/// Parse the ssh config into ordered `Host` blocks. Comments (`#`) and blank
-/// lines are ignored. Directives before the first `Host` (rare global block)
-/// are discarded since they cannot produce a concrete profile. The second
-/// value is the first line for which ssh refuses the whole file
-/// ([`ssh_line_error`], or a quote left open), wherever it sits.
+/// Parse the ssh config into its blocks, in file order: the lines before the
+/// first `Host` or `Match` (when there are any), then one block per `Host`
+/// and `Match` line. Comments (`#`) and blank lines are ignored. Past
+/// [`MAX_HOSTS`] `Host` blocks no block is kept. The second value is the
+/// first line for which ssh refuses the whole file ([`ssh_line_error`], or a
+/// quote left open), wherever it sits.
 fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
     let mut blocks: Vec<HostBlock> = Vec::new();
-    let mut current: Option<HostBlock> = None;
+    let mut current: Option<HostBlock> = Some(HostBlock {
+        scope: Scope::Global,
+        aliases: Vec::new(),
+        kv: HashMap::new(),
+    });
     let mut error: Option<String> = None;
+    let mut hosts = 0;
     let mut capped = false;
+    let push = |blocks: &mut Vec<HostBlock>, block: HostBlock| {
+        if block.scope != Scope::Global || !block.kv.is_empty() {
+            blocks.push(block);
+        }
+    };
 
     for (index, raw) in content.lines().enumerate() {
         let line = raw.trim();
@@ -390,29 +417,35 @@ fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
             continue;
         };
 
-        if key == "match" {
-            // A `Match` block ends the `Host` block before it, and what it
-            // sets applies on its own conditions: none of it is this host's.
+        if key == "host" || key == "match" {
             if let Some(block) = current.take() {
-                blocks.push(block);
-            }
-            continue;
-        }
-        if key == "host" {
-            if let Some(block) = current.take() {
-                blocks.push(block);
+                push(&mut blocks, block);
             }
             // Past the cap the lines are still read for an error, which
             // would make ssh refuse the hosts already taken.
-            if blocks.len() >= MAX_HOSTS {
+            if hosts >= MAX_HOSTS {
                 if !capped {
                     log::warn!("ssh config import: stopped at the {MAX_HOSTS}-host cap");
                 }
                 capped = true;
                 continue;
             }
-            let aliases: Vec<String> = words.into_iter().filter(|s| !s.is_empty()).collect();
+            // `Match all` takes no other condition (`ssh -G`: "'all' cannot
+            // be combined"), in any case (`Match ALL` applies).
+            let scope = match key.as_str() {
+                "host" => {
+                    hosts += 1;
+                    Scope::Host
+                }
+                _ if words.len() == 1 && words[0].eq_ignore_ascii_case("all") => Scope::MatchAll,
+                _ => Scope::Match(index + 1),
+            };
+            let aliases = match scope {
+                Scope::Host => words.into_iter().filter(|s| !s.is_empty()).collect(),
+                _ => Vec::new(),
+            };
             current = Some(HostBlock {
+                scope,
                 aliases,
                 kv: HashMap::new(),
             });
@@ -424,27 +457,168 @@ fn parse_ssh_config(content: &str) -> (Vec<HostBlock>, Option<String>) {
     }
 
     if let Some(block) = current.take() {
-        blocks.push(block);
+        push(&mut blocks, block);
     }
 
     (blocks, error)
 }
 
-/// Convert one `Host` block to a profile, or `None` (with a skip reason) when
-/// it is a wildcard pattern or has no usable alias.
-fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
-    let alias = block
-        .aliases
-        .iter()
-        .find(|a| !a.is_empty())
-        .ok_or_else(|| "empty host alias".to_string())?
-        .clone();
+/// Whether `name` matches one ssh pattern: `*` stands for any run of
+/// characters, `?` for one, anything else for itself, case included
+/// (`ssh -G`: `Host A` applies to `ssh A`, not to `ssh a`).
+fn ssh_pattern(pattern: &str, name: &str) -> bool {
+    if !pattern.contains(['*', '?']) {
+        return pattern == name;
+    }
+    let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
+    let (mut pi, mut ni) = (0, 0);
+    let mut star: Option<(usize, usize)> = None;
+    while ni < n.len() {
+        if pi < p.len() && (p[pi] == '?' || p[pi] == n[ni]) {
+            pi += 1;
+            ni += 1;
+        } else if pi < p.len() && p[pi] == '*' {
+            star = Some((pi, ni));
+            pi += 1;
+        } else if let Some((sp, sn)) = star {
+            pi = sp + 1;
+            ni = sn + 1;
+            star = Some((sp, sn + 1));
+        } else {
+            return false;
+        }
+    }
+    p[pi..].iter().all(|&c| c == '*')
+}
 
+/// Whether a `Host` line applies to `alias`, as ssh decides it: one of its
+/// patterns matches and none of its `!` patterns does (`ssh -G`: `Host * !b`
+/// skips `b`, and `Host !c` alone applies to no host at all).
+fn host_matches(patterns: &[String], alias: &str) -> bool {
+    let mut matched = false;
+    for pattern in patterns {
+        match pattern.strip_prefix('!') {
+            Some(negated) if ssh_pattern(negated, alias) => return false,
+            Some(_) => {}
+            None => matched |= ssh_pattern(pattern, alias),
+        }
+    }
+    matched
+}
+
+/// The blocks of a file, with the `Host` blocks whose patterns each name one
+/// host indexed by that name, so the values of a host are read from its own
+/// blocks and the others (global, wildcard, `!`, `Match`) alone, not by
+/// matching all of a 10,000-host file for each of its hosts.
+struct SshConfig {
+    blocks: Vec<HostBlock>,
+    by_name: HashMap<String, Vec<usize>>,
+    others: Vec<usize>,
+}
+
+impl SshConfig {
+    fn new(blocks: Vec<HostBlock>) -> Self {
+        let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+        let mut others = Vec::new();
+        for (index, block) in blocks.iter().enumerate() {
+            let literal = block.scope == Scope::Host
+                && block
+                    .aliases
+                    .iter()
+                    .all(|a| !is_wildcard_pattern(a) && !a.starts_with('!'));
+            if !literal {
+                others.push(index);
+                continue;
+            }
+            // A name twice on one line visits the block twice, which
+            // changes nothing: the first value of each key is kept.
+            for alias in &block.aliases {
+                by_name.entry(alias.clone()).or_default().push(index);
+            }
+        }
+        Self {
+            blocks,
+            by_name,
+            others,
+        }
+    }
+
+    /// The blocks that may apply to `alias`, in file order.
+    fn candidates(&self, alias: &str) -> Vec<&HostBlock> {
+        let mut indexes: Vec<usize> = self.others.clone();
+        indexes.extend(self.by_name.get(alias).into_iter().flatten());
+        indexes.sort_unstable();
+        indexes.into_iter().map(|i| &self.blocks[i]).collect()
+    }
+}
+
+/// The keys of a host's profile, as ssh reads them for it.
+const PROFILE_KEYS: [&str; 5] = ["hostname", "port", "user", "identityfile", "proxyjump"];
+
+/// The values ssh reads for the host `alias`: over every block that applies
+/// to it, in file order, the first value of each key (`ssh -G` on 10.2p1: a
+/// `User` before the first `Host`, a later `Host *` and a `Match all` all
+/// set what the host's own block leaves unset, and never what it sets). For
+/// `IdentityFile`, which ssh gathers from every block, the first is the key
+/// ssh tries first, the one the profile keeps. A `Match` with any other
+/// condition is not evaluated here: when it sets a key the host has no value
+/// for yet, the value ssh uses is unknown, and `Err` gives the reason the
+/// host is skipped. Not read here: the file's `Include` lines, and the second
+/// reading ssh makes of the file after `CanonicalizeHostname` rewrites a name.
+fn host_values(config: &SshConfig, alias: &str) -> Result<HashMap<String, String>, String> {
+    let mut values: HashMap<String, String> = HashMap::new();
+    for block in config.candidates(alias) {
+        let applies = match block.scope {
+            Scope::Global | Scope::MatchAll => true,
+            Scope::Host => host_matches(&block.aliases, alias),
+            Scope::Match(line) => {
+                let unset = PROFILE_KEYS
+                    .iter()
+                    .find(|key| block.kv.contains_key(**key) && !values.contains_key(**key));
+                if let Some(key) = unset {
+                    return Err(format!(
+                        "the `Match` block on line {line} of the file may set its `{key}`, and this import does not evaluate `Match` conditions; give the host its `{key}` in its own `Host` block and import again"
+                    ));
+                }
+                false
+            }
+        };
+        if applies {
+            for (key, value) in &block.kv {
+                values.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
+    }
+    Ok(values)
+}
+
+/// The host a `Host` block is imported as: its first pattern that names one
+/// host, neither a wildcard nor a `!` exclusion.
+fn profile_alias(block: &HostBlock) -> Result<String, String> {
     if block.aliases.iter().any(|a| is_wildcard_pattern(a)) {
         return Err("wildcard host pattern".to_string());
     }
+    match block.aliases.iter().find(|a| !a.is_empty()) {
+        None => Err("empty host alias".to_string()),
+        Some(_) => block
+            .aliases
+            .iter()
+            .find(|a| !a.starts_with('!'))
+            .cloned()
+            .ok_or_else(|| {
+                "its `Host` line only excludes hosts, and ssh applies such a line to no host"
+                    .to_string()
+            }),
+    }
+}
 
-    let kv = &block.kv;
+/// Convert the `Host` block at `index` of the file to a profile, with the
+/// values ssh reads for its host from every block ([`host_values`]), or the
+/// reason it is skipped: a wildcard pattern, no usable alias, or a value
+/// that cannot be imported.
+fn map_host_block(config: &SshConfig, index: usize) -> Result<ServerProfileExport, String> {
+    let alias = profile_alias(&config.blocks[index])?;
+    let kv = &host_values(config, &alias)?;
     // A port in digits outside 1 to 65535 already refused the whole file; a
     // service name is skipped, since ssh resolves it from a database this
     // import does not read, and taking 22 for it would be a guess.
@@ -528,7 +702,8 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
 
 // ============ Public API ============
 
-/// A `Host` block that was skipped (wildcard pattern or unusable alias).
+/// A `Host` block that was skipped, with the reason (a wildcard pattern, no
+/// usable alias, a line ssh refuses, or a value that cannot be imported).
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshSkippedRemote {
@@ -552,15 +727,30 @@ pub fn import_ssh_config(path: &Path) -> Result<SshImportResult, String> {
     let content = std::fs::read_to_string(path).map_err(|e| format!("read ssh config: {e}"))?;
 
     let (blocks, error) = parse_ssh_config(&content);
-    let total_remotes = blocks.len();
+    let config = SshConfig::new(blocks);
+    let total_remotes = config
+        .blocks
+        .iter()
+        .filter(|b| b.scope == Scope::Host)
+        .count();
     let mut servers = Vec::new();
     let mut skipped = Vec::new();
+    let mut seen = std::collections::HashSet::new();
 
-    for block in &blocks {
+    for (index, block) in config.blocks.iter().enumerate() {
+        if block.scope != Scope::Host {
+            continue;
+        }
         let display_name = block.aliases.first().cloned().unwrap_or_default();
-        let mapped = match &error {
-            Some(reason) => Err(reason.clone()),
-            None => map_host_block(block),
+        // ssh reads every block that names a host as one, so the host's
+        // profile comes from the first of them and holds the others' values.
+        let mapped = match (&error, profile_alias(block)) {
+            (Some(reason), _) => Err(reason.clone()),
+            (None, Ok(alias)) if !seen.insert(alias.clone()) => Err(
+                "an earlier `Host` block names the same host, and ssh reads the two as one: it is imported once, from the first"
+                    .to_string(),
+            ),
+            (None, _) => map_host_block(&config, index),
         };
         match mapped {
             Ok(profile) => servers.push(profile),
@@ -942,7 +1132,7 @@ Host web-?
     #[test]
     fn test_host_without_hostname_uses_alias() {
         let blocks = parse_ssh_config("Host fallbackhost\n  User bob\n").0;
-        let profile = map_host_block(&blocks[0]).expect("should map");
+        let profile = map_host_block(&SshConfig::new(blocks), 0).expect("should map");
         assert_eq!(profile.host, "fallbackhost");
         assert_eq!(profile.username, "bob");
     }
@@ -953,7 +1143,7 @@ Host web-?
             "Host keyed\n  HostName h.example.com\n  IdentityFile ~/.ssh/id_rsa\n",
         )
         .0;
-        let profile = map_host_block(&blocks[0]).expect("should map");
+        let profile = map_host_block(&SshConfig::new(blocks), 0).expect("should map");
         // Key referenced by path only: never a credential.
         assert!(profile.credential.is_none());
         assert_eq!(profile.has_stored_credential, Some(false));
@@ -1543,6 +1733,158 @@ Host roundtrip
         }
     }
 
+    /// A host takes from the other blocks that apply to it what its own
+    /// leaves unset, as `ssh -G` reads the same file: the lines before the
+    /// first `Host`, `Host` patterns with `*`, `?` and `!`, a second block of
+    /// the same host, `Match all`. A `Match` on another condition that may
+    /// set a value the host has none for yet skips the host.
+    #[test]
+    fn a_host_takes_what_other_blocks_set_as_ssh_reads_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        std::fs::write(
+            &config,
+            "IdentityFile /k/global\n\
+             Host * !b\n  User star\n\
+             Host a? z\n  Port 2202\n\
+             Host a\n  HostName a.example.com\n\
+             Host a\n  User second\n  IdentityFile /k/second\n\
+             Host !c\n  Port 2299\n\
+             Host b\n  HostName b.example.com\n\
+             Host ab\n\
+             Host z\n  User zown\n\
+             Host c\n\
+             Match all\n  HostName %h.m.example.com\n  ProxyJump pj\n\
+             Host b\n  Port 2400\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&config).unwrap();
+        let skipped: Vec<(&str, &str)> = result
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.reason.as_str()))
+            .collect();
+        assert_eq!(result.total_remotes, 10);
+        assert_eq!(
+            skipped,
+            [
+                ("*", "wildcard host pattern"),
+                ("a?", "wildcard host pattern"),
+                ("a", "an earlier `Host` block names the same host, and ssh reads the two as one: it is imported once, from the first"),
+                ("!c", "its `Host` line only excludes hosts, and ssh applies such a line to no host"),
+                ("b", "an earlier `Host` block names the same host, and ssh reads the two as one: it is imported once, from the first"),
+            ]
+        );
+        let got: Vec<(&str, &str, u32, &str, &str, &str)> = result
+            .servers
+            .iter()
+            .map(|s| {
+                let o = s.options.as_ref().unwrap();
+                (
+                    s.name.as_str(),
+                    s.host.as_str(),
+                    s.port,
+                    s.username.as_str(),
+                    o["private_key_path"].as_str().unwrap(),
+                    o.get("proxyJump").and_then(|v| v.as_str()).unwrap_or(""),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("a", "a.example.com", 22, "star", "/k/global", "pj"),
+                ("b", "b.example.com", 2400, "", "/k/global", "pj"),
+                ("ab", "ab.m.example.com", 2202, "star", "/k/global", "pj"),
+                ("z", "z.m.example.com", 2202, "star", "/k/global", "pj"),
+                ("c", "c.m.example.com", 22, "star", "/k/global", "pj"),
+            ]
+        );
+
+        // The two cases of the review: a `Match all` after the host gives it
+        // the `HostName` and `Port` it does not set, and never one it sets.
+        let match_all = dir.path().join("match_all");
+        std::fs::write(
+            &match_all,
+            "Host lab\n  HostName lab.example.com\n\
+             Host storage\n\
+             Match all\n  HostName storage.example.com\n  Port 2222\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&match_all).unwrap();
+        let hosts: Vec<(&str, &str, u32)> = result
+            .servers
+            .iter()
+            .map(|s| (s.name.as_str(), s.host.as_str(), s.port))
+            .collect();
+        assert_eq!(
+            hosts,
+            [
+                ("lab", "lab.example.com", 2222),
+                ("storage", "storage.example.com", 2222)
+            ]
+        );
+
+        let unevaluated = dir.path().join("unevaluated");
+        std::fs::write(
+            &unevaluated,
+            "Host e\n  HostName e.example.com\n  User eown\n  Port 2202\n\
+             Host d\n  HostName d.example.com\n\
+             Match host d.example.com\n  User md\n\
+             Match exec \"true\"\n  Port 2500\n\
+             Host f\n  User fown\n  Port 2201\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&unevaluated).unwrap();
+        let names: Vec<&str> = result.servers.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, ["e"]);
+        let skipped: Vec<(&str, &str)> = result
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.reason.as_str()))
+            .collect();
+        let line7 = "the `Match` block on line 7 of the file may set its `user`, and this import does not evaluate `Match` conditions; give the host its `user` in its own `Host` block and import again";
+        assert_eq!(skipped, [("d", line7), ("f", line7)]);
+
+        if std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        let lab = [
+            ("lab", "lab.example.com", 2222, "", "", ""),
+            ("storage", "storage.example.com", 2222, "", "", ""),
+        ];
+        let got = got.into_iter().map(|g| (&config, g));
+        for (file, (name, host, port, user, key, jump)) in got.chain(lab.map(|g| (&match_all, g))) {
+            let out = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(file)
+                .arg(name)
+                .output()
+                .unwrap();
+            let read = String::from_utf8_lossy(&out.stdout).to_string();
+            let first = |key: &str| {
+                read.lines()
+                    .find_map(|l| l.strip_prefix(&format!("{key} ")))
+                    .unwrap_or("")
+                    .to_string()
+            };
+            assert_eq!(first("hostname"), host, "{name}: {read}");
+            assert_eq!(first("port"), port.to_string(), "{name}: {read}");
+            if !user.is_empty() {
+                assert_eq!(first("user"), user, "{name}: {read}");
+            }
+            if file == &config {
+                assert_eq!(first("identityfile"), key, "{name}: {read}");
+                assert_eq!(first("proxyjump"), jump, "{name}: {read}");
+            }
+        }
+    }
+
     /// `%u`, `%d` and a `%r` with no `User` are the local account's, read
     /// from its passwd entry as ssh does, whatever `USER` and `HOME` say;
     /// so is the folder a leading `~/` stands for.
@@ -1734,7 +2076,7 @@ Host roundtrip
     /// imported value is the one `ssh -G` reports for the same file. A line
     /// ssh refuses (two values or none, a quote left open, a bad port) makes
     /// it refuse the whole file, so every host is skipped with that line,
-    /// and what a `Match` block sets is not taken for the host before it.
+    /// and a `Match all` block gives the host before it what it leaves unset.
     #[test]
     fn each_imported_value_is_what_openssh_reads() {
         let dir = tempfile::tempdir().unwrap();
@@ -1767,7 +2109,7 @@ Host roundtrip
             (by("eq").host.as_str(), by("eq").username.as_str()),
             ("e.example.com", "ops")
         );
-        assert_eq!(by("m").username, "");
+        assert_eq!(by("m").username, "matched");
         // A quote inside the comment of a `ProxyJump` line is not read.
         assert_eq!(by("pq").options.as_ref().unwrap()["proxyJump"], "j1");
         // `ProxyJump` ends at a `#` even inside a word, unlike the others.
