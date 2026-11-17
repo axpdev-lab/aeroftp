@@ -1529,7 +1529,8 @@ Host roundtrip
             &good,
             "Host esc\n  HostName h.example.com # prod\n  User 'o\\'brien'\n  IdentityFile \"C:\\\\Keys\\\\my id\"\n  ProxyJump j1,j2 # two hops\n\n\
              Host eq\n  HostName=e.example.com\n  User = ops\n\n\
-             Host m\n  HostName m.example.com\nMatch all\n  User matched\n",
+             Host m\n  HostName m.example.com\nMatch all\n  User matched\n\n\
+             Host pj\n  HostName p.example.com\n  ProxyJump jump.example.com#x\n",
         )
         .unwrap();
         let result = import_ssh_config(&good).unwrap();
@@ -1552,6 +1553,11 @@ Host roundtrip
             ("e.example.com", "ops")
         );
         assert_eq!(by("m").username, "");
+        // `ProxyJump` ends at a `#` even inside a word, unlike the others.
+        assert_eq!(
+            by("pj").options.as_ref().unwrap()["proxyJump"],
+            "jump.example.com"
+        );
 
         let bad = dir.path().join("bad");
         std::fs::write(
@@ -1619,5 +1625,10 @@ Host roundtrip
             "{got}"
         );
         assert!(got.lines().any(|l| l == "proxyjump j1,j2"), "{got}");
+        let got = read("pj");
+        assert!(
+            got.lines().any(|l| l == "proxyjump jump.example.com"),
+            "{got}"
+        );
     }
 }
