@@ -38,8 +38,8 @@ export interface ComponentInfo {
   license: string;
   repository?: string;
   source: 'cargo' | 'npm';
-  licenseFiles: { filename: string; content: string }[];
-  noticeFiles: { filename: string; content: string }[];
+  licenseFiles: { filename: string; content: string; vendored?: boolean }[];
+  noticeFiles: { filename: string; content: string; vendored?: boolean }[];
   authors?: string[];
   packageDir?: string;
 }
@@ -114,6 +114,10 @@ export const PINNED_FALLBACK_ATTRIBUTIONS: Record<string, FallbackAttribution> =
   'dispatch2@0.3.1': {
     author: 'Mads Marquart <mads@marquart.dk>, Mary <mary@mary.zone>',
     source: 'https://github.com/madsmtm/objc2/blob/master/crates/dispatch2/Cargo.toml (Cargo.toml authors; no copyright notice in repo)',
+  },
+  'whisper-rs-sys@0.15.0': {
+    author: 'the whisper-rs project (codeberg.org/tazz4843/whisper-rs)',
+    source: 'https://codeberg.org/tazz4843/whisper-rs (Cargo.toml repository; the crate declares no authors, and its only license file, whisper.cpp/LICENSE, is the license of the vendored whisper.cpp)',
   },
   'jni-macros@0.22.4': {
     author: 'jni team',
@@ -467,18 +471,18 @@ const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtu
 // A license or notice file by name, not a source file named after one
 // (copying.rs, copyright.mjs, copyright.pm, license.yml).
 const VENDORED_LICENSE_FILE =
-  /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode))?$/i;
+  /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
 
 export function readPackageFiles(
   dir: string,
   componentId: string,
   declaredLicenseFile?: string
 ): {
-  licenseFiles: { filename: string; content: string }[];
-  noticeFiles: { filename: string; content: string }[];
+  licenseFiles: { filename: string; content: string; vendored?: boolean }[];
+  noticeFiles: { filename: string; content: string; vendored?: boolean }[];
 } {
-  const licenseFiles: { filename: string; content: string }[] = [];
-  const noticeFiles: { filename: string; content: string }[] = [];
+  const licenseFiles: { filename: string; content: string; vendored?: boolean }[] = [];
+  const noticeFiles: { filename: string; content: string; vendored?: boolean }[] = [];
 
   if (!fs.existsSync(dir)) {
     throw new Error(`Package directory for ${componentId} does not exist at ${dir}`);
@@ -547,10 +551,11 @@ export function readPackageFiles(
             } else if (sub.isFile() && VENDORED_LICENSE_FILE.test(sub.name)) {
               const content = fs.readFileSync(path.join(d, sub.name), 'utf8').replace(/\r\n/g, '\n').trim();
               if (content.length === 0) continue;
+              // A vendored file describes the vendored code, not the package.
               if (/^(notice|copyright)/i.test(sub.name)) {
-                noticeFiles.push({ filename, content });
+                noticeFiles.push({ filename, content, vendored: true });
               } else {
-                licenseFiles.push({ filename, content });
+                licenseFiles.push({ filename, content, vendored: true });
               }
             }
           }
@@ -664,7 +669,7 @@ export function findPackageCopyrightNotices(
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
         // A notice inside a minified line ends where its comment does.
-        let cleaned = match[0].replace(/\s*(?:\*\/|-->).*$/, '').trim();
+        let cleaned = match[0].replace(/\s*(?:\*\/|-->).*$/, '').replace(/(?:\\n)?"[);,\s]*$/, '').trim();
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
@@ -781,21 +786,23 @@ export function collectNpmDependencies(
 
 interface LicenseTextGroup {
   text: string;
-  components: { name: string; version: string; filename: string; source: string; isLicenseText: boolean }[];
+  components: { name: string; version: string; filename: string; source: string; isLicenseText: boolean; vendored: boolean }[];
 }
 
 export function groupLicenseTexts(components: ComponentInfo[]): {
   groupedTexts: LicenseTextGroup[];
   componentsWithoutFiles: ComponentInfo[];
 } {
-  const textMap = new Map<string, { name: string; version: string; filename: string; source: string; isLicenseText: boolean }[]>();
+  const textMap = new Map<string, { name: string; version: string; filename: string; source: string; isLicenseText: boolean; vendored: boolean }[]>();
   const componentsWithoutFiles: ComponentInfo[] = [];
 
   for (const c of components) {
     const usableLicenseFiles = c.licenseFiles
       .map((f) => ({ ...f, content: f.content.replace(/\r\n/g, '\n') }))
       .filter((f) => f.content.trim().length > 0);
-    if (usableLicenseFiles.length === 0) {
+    // Only the package's own license files cover its license: a vendored
+    // library's COPYING does not, and the package then gets the standard text.
+    if (!usableLicenseFiles.some((f) => !f.vendored)) {
       componentsWithoutFiles.push(c);
     }
 
@@ -816,6 +823,7 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
         filename: f.filename,
         source: c.source,
         isLicenseText: f.isLicenseText,
+        vendored: Boolean(f.vendored),
       });
     }
   }
@@ -853,7 +861,11 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
 export function spdxDocumentAttribution(comp: ComponentInfo): { author: string | null; notice: string | null; file: string } | null {
   const doc = comp.noticeFiles.find((f) => /^SPDXVersion:/.test(f.content));
   if (!doc) return null;
-  const field = (name: string) => doc.content.match(new RegExp(`^${name}:\\s*(.+)$`, 'm'))?.[1].trim() ?? null;
+  // A field holds one line, or several between <text> and </text>.
+  const field = (name: string) => {
+    const m = doc.content.match(new RegExp(`^${name}:[ \\t]*(<text>[\\s\\S]*?</text>|.+)$`, 'm'));
+    return m ? m[1].replace(/^<text>|<\/text>$/g, '').replace(/\s+/g, ' ').trim() || null : null;
+  };
   const author = field('PackageSupplier')?.replace(/^(?:Organization|Person):\s*/, '') || null;
   const copyright = field('PackageCopyrightText');
   const notice = copyright && /[A-Za-z0-9]/.test(copyright) && !/^NOASSERTION|^NONE$/.test(copyright)
@@ -877,7 +889,8 @@ export function findBundledCodeUnderOtherLicenses(
   knownLicenseIds: Set<string>
 ): { license: string; notices: string[]; files: string[] }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
-  const licensedFolders = [...comp.licenseFiles, ...comp.noticeFiles]
+  // Only a license text covers the code of its folder; a NOTICE file does not.
+  const licensedFolders = comp.licenseFiles
     .map((f) => path.posix.dirname(f.filename))
     .filter((d) => d !== '.');
   const found = new Map<string, { notices: string[]; files: string[] }>();
@@ -906,13 +919,26 @@ export function findBundledCodeUnderOtherLicenses(
         const isOr = !/\bAND\b/.test(m[1]) && /\bOR\b|\//.test(m[1]);
         const undeclared = offered.filter((id) => !declared.has(id));
         if (undeclared.length === 0 || (isOr && undeclared.length < offered.length)) return;
-        // The copyright lines of the same header: the lines above, up to the
-        // start of the comment.
+        // The copyright lines of the same header, before or after the
+        // identifier: the comment lines around it, up to the comment's start
+        // and end, never into the next header.
+        const isCommentLine = (l: string) => /^\s*(?:\/\*|\*|\/\/|#)/.test(l);
+        let start = i;
+        while (start > 0 && start > i - 10 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
+          start--;
+          if (/\*\//.test(lines[start])) {
+            start++;
+            break;
+          }
+        }
+        let end = i;
+        while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 10 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
+          end++;
+        }
         const notices: string[] = [];
-        for (let j = i - 1; j >= 0 && j >= i - 10; j--) {
-          const text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').trim();
-          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) notices.unshift(text);
-          if (/^\s*\/\*/.test(lines[j])) break;
+        for (let j = start; j <= end; j++) {
+          const text = lines[j].replace(/^\s*(?:\/\*+!?|\*+|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trim();
+          if (/^(?:copyright\b|\(c\)|©)/i.test(text)) notices.push(text);
         }
         for (const id of isOr ? undeclared.slice(0, 1) : undeclared) {
           if (!found.has(id)) found.set(id, { notices: [], files: [] });
@@ -959,7 +985,8 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
       .map((l, i, all) =>
         /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*$/i.test(l) && i + 1 < all.length ? `${l} ${all[i + 1].trim()}` : l
       );
-  return [...comp.licenseFiles, ...comp.noticeFiles].some((f) =>
+  // The holders of vendored code are not the package's holders.
+  return [...comp.licenseFiles, ...comp.noticeFiles].filter((f) => !f.vendored).some((f) =>
     joinBrokenNotices(f.content)
       .some(
         (l) =>
@@ -1124,12 +1151,18 @@ export function generateNoticesMarkdown(
   }
 
   const seenAnchorIds = new Set<string>();
+  const withoutOwnLicense = new Set(componentsWithoutFiles.map((c) => `${c.source}:${c.name}@${c.version}`));
   let groupIndex = 1;
   for (const group of groupedTexts) {
     const newAnchors: string[] = [];
-    // A component's anchor leads to its license text, never to a notice file
-    // or an SPDX document that only names the license.
-    for (const comp of group.components.filter((c) => c.isLicenseText)) {
+    // A component's anchor leads to its own license text, never to a notice
+    // file or an SPDX document that only names the license, nor to a vendored
+    // library's license when the package has its own. A package whose only
+    // license text is vendored (unrar_sys, vendor/unrar/license.txt) is
+    // anchored there.
+    for (const comp of group.components.filter(
+      (c) => c.isLicenseText && (!c.vendored || withoutOwnLicense.has(`${c.source}:${c.name}@${c.version}`))
+    )) {
       const anchorId = `notice-${comp.name.replace(/_/g, '-')}`;
       if (!seenAnchorIds.has(anchorId)) {
         seenAnchorIds.add(anchorId);
@@ -1146,7 +1179,7 @@ export function generateNoticesMarkdown(
     for (const comp of group.components) {
       lines.push(`- \`${comp.name}@${comp.version}\` (${comp.source}, file: \`${comp.filename}\`)`);
       const fullComp = compMap.get(`${comp.source}:${comp.name}@${comp.version}`);
-      if (fullComp && fullComp.licenseFiles.length > 0 && !hasCopyrightHolderInFiles(fullComp)) {
+      if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && !hasCopyrightHolderInFiles(fullComp)) {
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
         const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded);
         if (pkgNotices.length > 0) {

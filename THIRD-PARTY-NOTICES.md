@@ -2023,7 +2023,6 @@ THE SOFTWARE.
 ```
 
 <a id="notice-acl-sys"></a>
-<a id="notice-lzma-sys"></a>
 
 ### Notice Entry 11
 
@@ -4225,6 +4224,7 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-libz-sys"></a>
 <a id="notice-lock-api"></a>
 <a id="notice-log"></a>
+<a id="notice-lzma-sys"></a>
 <a id="notice-markup5ever"></a>
 <a id="notice-mime"></a>
 <a id="notice-muda"></a>
@@ -4259,7 +4259,6 @@ DEALINGS IN THE SOFTWARE.
 <a id="notice-regex"></a>
 <a id="notice-regex-automata"></a>
 <a id="notice-regex-syntax"></a>
-<a id="notice-ring"></a>
 <a id="notice-rustc-version"></a>
 <a id="notice-rusticata-macros"></a>
 <a id="notice-rustls"></a>
@@ -27077,8 +27076,6 @@ XZ Utils Licensing
     information.
 ```
 
-<a id="notice-zstd-sys"></a>
-
 ### Notice Entry 365
 
 **Used by component(s):**
@@ -35811,6 +35808,8 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+<a id="notice-ring"></a>
+
 ### Notice Entry 495
 
 **Used by component(s):**
@@ -38218,7 +38217,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
 <a id="notice-spin"></a>
-<a id="notice-tracing-core"></a>
 <a id="notice-zip"></a>
 
 ### Notice Entry 548
@@ -39930,6 +39928,7 @@ SOFTWARE.
 <a id="notice-tokio-native-tls"></a>
 <a id="notice-tracing"></a>
 <a id="notice-tracing-attributes"></a>
+<a id="notice-tracing-core"></a>
 <a id="notice-tracing-log"></a>
 <a id="notice-tracing-subscriber"></a>
 
@@ -43670,6 +43669,7 @@ Apache License
 
 <a id="notice-zstd"></a>
 <a id="notice-zstd-safe"></a>
+<a id="notice-zstd-sys"></a>
 
 ### Notice Entry 653
 
@@ -44125,6 +44125,11 @@ Authors for the following components as listed in package manifests or reviewed 
   - Copyright 2017-2019 The UNIC Project Developers. (src/id.rs)
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
+- `unrar_sys@0.5.8` - SPDX: `MIT OR Apache-2.0` (authors: Danyel Bayraktar <rust@danyel.io>)
+  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
+  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
+  - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
+  - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
 - `winapi-i686-pc-windows-gnu@0.4.0` - SPDX: `MIT/Apache-2.0` (authors: Peter Atashian <retep998@gmail.com>)
   - Copyright © 2016 winapi-rs developers (src/lib.rs)
   - Copyright © 2016-2018 winapi-rs developers (build.rs)
@@ -45115,6 +45120,11 @@ Authors for the following components as listed in package manifests or reviewed 
   - Copyright 2017-2019 The UNIC Project Developers. (src/id.rs)
 - `unic-ucd-version@0.9.0` - SPDX: `MIT/Apache-2.0` (authors: The UNIC Project Developers)
   - Copyright 2017 The UNIC Project Developers. (src/lib.rs)
+- `unrar_sys@0.5.8` - SPDX: `MIT OR Apache-2.0` (authors: Danyel Bayraktar <rust@danyel.io>)
+  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
+  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
+  - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
+  - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
 - `webview2-com@0.38.2` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
   - No copyright notice is shipped in the package
 - `webview2-com-macros@0.8.1` - SPDX: `MIT` (authors: Peter Atashian, wravery contributors)
@@ -45545,6 +45555,17 @@ Exhibit B - "Incompatible With Secondary Licenses" Notice
 Authors for the following components as listed in package manifests or reviewed attributions:
 - `pharos@0.5.3` - SPDX: `Unlicense` (authors: Naja Melan <najamelan@autistici.org>)
   - No copyright notice is shipped in the package
+- `whisper-rs-sys@0.15.0` - SPDX: `Unlicense` (authors: the whisper-rs project (codeberg.org/tazz4843/whisper-rs))
+  - Copyright (C) 2024 Intel Corporation (whisper.cpp/ggml/include/ggml-sycl.h)
+  - Copyright (C) 2025 Codeplay Software Ltd. (whisper.cpp/ggml/src/ggml-sycl/quantize.hpp)
+  - Copyright (C) 2025 Intel Corporation (whisper.cpp/ggml/src/ggml-sycl/convert.hpp)
+  - Copyright (c) 2006, Matthias Kretz, <kretz@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2008, Alexander Neundorf, <neundorf@kde.org> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2011, Michael Jansen, <kde@michael-jansen.biz> (whisper.cpp/cmake/FindFFmpeg.cmake)
+  - Copyright (c) 2023 Jeffrey Quesnelle and Bowen Peng. (whisper.cpp/ggml/src/ggml-cpu/ops.cpp)
+  - Copyright (c) 2023-2024 The ggml authors (whisper.cpp/ggml/include/ggml-cann.h)
+  - Copyright 2024 Mozilla Foundation (whisper.cpp/ggml/src/ggml-cpu/llamafile/sgemm.cpp)
+  - SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com> (whisper.cpp/ggml/src/ggml-cpu/kleidiai/kernels.cpp)
 
 ```text
 This is free and unencumbered software released into the public domain.

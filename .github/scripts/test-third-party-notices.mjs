@@ -538,6 +538,108 @@ test('bundled code under a license the package does not declare: its header lice
   }
 });
 
+test('vendored license files: they keep their text but neither cover the package license nor take its anchor', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vendored-coverage-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('only-vendored/src/thirdparty/COPYING', 'Copyright (c) 2004 Bar Project\nRedistribution and use in source and binary forms.');
+    write('only-vendored/thirdparty/LICENSE.spdx', 'SPDXVersion: SPDX-2.1\nPackageCopyrightText: <text>2019 First Holder\n2020 Second Holder</text>\n');
+    write('own-and-vendored/LICENSE-MIT', 'MIT License\n\nCopyright (c) 2020 Own Holder\n\nPermission is hereby granted.');
+    // "Abc/" sorts before "LICENSE-MIT", so its group comes first.
+    write('own-and-vendored/Abc/COPYING', 'Copyright (c) 2004 Vendored Holder\nRedistribution and use in source and binary forms, vendored.');
+    write('holder-free-own/LICENSE', 'Permission is hereby granted, free of charge, to any person.');
+    write('holder-free-own/Abc/COPYING', 'Copyright (c) 2004 Vendored Holder\nRedistribution and use in source and binary forms, again.');
+    write('holder-free-own/src/lib.rs', '// Copyright 2024 Own Source Holder\n');
+    const component = (name) => ({
+      name,
+      version: '1.0.0',
+      license: 'MIT',
+      source: 'cargo',
+      packageDir: path.join(tmpDir, name),
+      authors: ['Wrapper Author'],
+      ...readPackageFiles(path.join(tmpDir, name), `${name}@1.0.0`),
+    });
+    const onlyVendored = component('only-vendored');
+    // A nested LICENSE.spdx is found, and is a notice.
+    assert.deepStrictEqual(onlyVendored.noticeFiles.map((f) => f.filename), ['thirdparty/LICENSE.spdx']);
+    assert.deepStrictEqual(onlyVendored.licenseFiles.map((f) => [f.filename, f.vendored]), [['src/thirdparty/COPYING', true]]);
+    const own = component('own-and-vendored');
+    const holderFree = component('holder-free-own');
+    const { componentsWithoutFiles } = groupLicenseTexts([onlyVendored, own, holderFree]);
+    assert.deepStrictEqual(componentsWithoutFiles.map((c) => c.name), ['only-vendored']);
+
+    const md = generateNoticesMarkdown([onlyVendored, own, holderFree], []);
+    // The holder of vendored code is not the package's holder: the package's
+    // own sources are still searched for its notice.
+    assert.match(md, /- `holder-free-own@1\.0\.0` \(cargo, file: `LICENSE`\)\n {2}- Copyright 2024 Own Source Holder \(src\/lib\.rs\)/);
+    // The package keeps the standard text of its own license.
+    assert.match(md, /### Standard License: MIT\n\n[^\n]*\n- `only-vendored@1\.0\.0` - SPDX: `MIT`/);
+    // A multi-line SPDX copyright field is read whole, without its delimiters.
+    assert.match(md, /- Copyright 2019 First Holder 2020 Second Holder \(thirdparty\/LICENSE\.spdx\)/);
+    // The vendored text is kept.
+    assert.match(md, /- `only-vendored@1\.0\.0` \(cargo, file: `src\/thirdparty\/COPYING`\)/);
+    // The anchor goes to the package's own license text when it has one.
+    const after = (id) => md.slice(md.indexOf(`<a id="${id}"></a>`)).split('\n```text\n')[1].split('\n')[0];
+    assert.strictEqual(after('notice-own-and-vendored'), 'MIT License');
+    // A package whose only license text is vendored is anchored at that text (unrar_sys).
+    assert.strictEqual(after('notice-only-vendored'), 'Copyright (c) 2004 Bar Project');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code headers: the copyright may follow the identifier, and only a license text covers its folder', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-header-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'ISC License\n\nCopyright (c) 2015 Wrapper Author');
+    write('src/NOTICE', 'This product includes software from the Vendor project.');
+    write('src/index.js', '/*\n * SPDX-License-Identifier: MIT\n * Copyright (c) 2024 Vendor\n */\n/*\n * Copyright (c) 2023 Next Header\n * SPDX-License-Identifier: ISC\n */\n');
+    write('src/two.js', '// Copyright (c) 2022 Slash Vendor\n// SPDX-License-Identifier: MIT\n// Copyright (c) 2023 Slash Vendor Two\nconst x = 1;\n// Copyright (c) 2021 Not In Header\n');
+    write('covered/LICENSE', 'Copyright (c) 2004 Covered Project\nPermission granted.');
+    write('covered/c.js', '/* Copyright (c) 2004 Covered Project\n * SPDX-License-Identifier: MIT */\n');
+    const comp = {
+      name: 'header-pkg',
+      version: '1.0.0',
+      license: 'ISC',
+      source: 'npm',
+      packageDir: tmpDir,
+      authors: ['Wrapper Author'],
+      ...readPackageFiles(tmpDir, 'header-pkg@1.0.0'),
+    };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
+      {
+        license: 'MIT',
+        notices: ['Copyright (c) 2024 Vendor', 'Copyright (c) 2022 Slash Vendor', 'Copyright (c) 2023 Slash Vendor Two'],
+        files: ['src/index.js', 'src/two.js'],
+      },
+    ]);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('findPackageCopyrightNotices: a notice inside a C string ends at the string', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'c-string-notice-fixture-'));
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'src', 'ver.hpp'), '#define MVersion L"\\nUNRAR Copyright (c) 1993-2024 Alexander Roshal\\n"\n');
+    assert.deepStrictEqual(
+      findPackageCopyrightNotices(tmpDir, []).map((n) => n.notice),
+      ['Copyright (c) 1993-2024 Alexander Roshal']
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('standard SPDX texts: preserves mandatory AND conjuncts even when expression contains OR', () => {
   const dummyComponent = {
     name: 'mixed-and-or-crate',
@@ -782,9 +884,9 @@ test('THIRD-PARTY-NOTICES.md contains expected critical crates and packages with
   assert.doesNotMatch(content, /\| aws-lc-fips-sys \|/);
 });
 
-test('fallback attributions: all 32 pinned entries declare a non-empty source and fail fast if missing', () => {
+test('fallback attributions: all 33 pinned entries declare a non-empty source and fail fast if missing', () => {
   const keys = Object.keys(PINNED_FALLBACK_ATTRIBUTIONS);
-  assert.strictEqual(keys.length, 32, 'Expected exactly 32 pinned fallback attributions');
+  assert.strictEqual(keys.length, 33, 'Expected exactly 33 pinned fallback attributions');
   for (const key of keys) {
     const entry = PINNED_FALLBACK_ATTRIBUTIONS[key];
     assert.ok(
