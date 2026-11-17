@@ -2737,7 +2737,13 @@ mod tests {
                 detail: None
             }
         );
-        assert_eq!(take(), [format!("PUT /trash/resources/restore?path={id}")]);
+        assert_eq!(
+            take(),
+            [
+                "GET /trash/resources?path=/&limit=1000&offset=0".to_string(),
+                format!("PUT /trash/resources/restore?path={id}")
+            ]
+        );
 
         let deleted = run(&mut provider, TrashOp::Delete { id: id.clone() })
             .await
@@ -2746,7 +2752,13 @@ mod tests {
             matches!(&deleted, TrashOutcome::Deleted { kind: TrashKind::Yandex, id: d, .. } if *d == id),
             "{deleted:?}"
         );
-        assert_eq!(take(), [format!("DELETE /trash/resources?path={id}")]);
+        assert_eq!(
+            take(),
+            [
+                "GET /trash/resources?path=/&limit=1000&offset=0".to_string(),
+                format!("DELETE /trash/resources?path={id}")
+            ]
+        );
 
         // Empty lists first (the counts it reports), then deletes the whole trash.
         let emptied = run(

@@ -3537,7 +3537,9 @@ mod tests {
             *calls.lock().unwrap(),
             [
                 "GET /3/drive/987654/trash",
+                "GET /3/drive/987654/trash",
                 "POST /2/drive/987654/trash/4242/restore",
+                "GET /3/drive/987654/trash",
                 "DELETE /2/drive/987654/trash/4242",
                 "GET /3/drive/987654/trash",
                 "DELETE /2/drive/987654/trash",

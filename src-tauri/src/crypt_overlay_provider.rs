@@ -11536,6 +11536,7 @@ pub(crate) mod tests {
             *calls.lock().unwrap(),
             [
                 "GET /trash_list?recursive=1",
+                "GET /trash_list?recursive=1",
                 "GET /trash_restore?fileid=4321"
             ]
         );

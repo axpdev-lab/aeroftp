@@ -4924,7 +4924,13 @@ Time:2026-01-01</Message>
                 detail: None
             }
         );
-        assert_eq!(take(), ["PUT /mycontainer/docs/report.txt?comp=undelete"]);
+        assert_eq!(
+            take(),
+            [
+                "GET /mycontainer?restype=container&comp=list&include=deleted",
+                "PUT /mycontainer/docs/report.txt?comp=undelete"
+            ]
+        );
 
         for op in [
             TrashOp::Delete { id: id.clone() },

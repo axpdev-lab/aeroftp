@@ -20662,7 +20662,7 @@ mod tests {
     /// delete of the soft-deleted rows under the bucket root only.
     #[tokio::test]
     async fn trash_dispatch_undeletes_a_marker_and_copies_a_version_forward() {
-        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
         const VERSIONS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
     <IsTruncated>false</IsTruncated>
@@ -20797,7 +20797,10 @@ mod tests {
         );
         assert_eq!(
             *seen.lock().unwrap(),
-            ["DELETE /test-bucket/docs/report.pdf?versionId=del-marker-001"]
+            [
+                "LIST prefix=",
+                "DELETE /test-bucket/docs/report.pdf?versionId=del-marker-001"
+            ]
         );
 
         seen.lock().unwrap().clear();
@@ -20820,7 +20823,10 @@ mod tests {
         );
         assert_eq!(
             *seen.lock().unwrap(),
-            ["PUT /test-bucket/docs/report.pdf? copy=/test-bucket/docs/report.pdf?versionId=v-002"]
+            [
+                "LIST prefix=",
+                "PUT /test-bucket/docs/report.pdf? copy=/test-bucket/docs/report.pdf?versionId=v-002"
+            ]
         );
 
         seen.lock().unwrap().clear();
@@ -20843,8 +20849,38 @@ mod tests {
         );
         assert_eq!(
             *seen.lock().unwrap(),
-            ["DELETE /test-bucket/docs/report.pdf?versionId=v-002"]
+            [
+                "LIST prefix=",
+                "DELETE /test-bucket/docs/report.pdf?versionId=v-002"
+            ]
         );
+
+        // `m::` would reach delete_version with no key and no version, and
+        // another flag or an empty part is no row: refused unsent. The live
+        // current version of cat.jpg and its older one are no trash rows
+        // either: one listing, no delete or copy.
+        for (crafted, listings) in [
+            ("m::", 0),
+            ("m::docs/report.pdf", 0),
+            ("m:del-marker-001:", 0),
+            ("x:v-002:docs/report.pdf", 0),
+            ("v:v-100:photos/cat.jpg", 1),
+            ("v:v-099:photos/cat.jpg", 1),
+        ] {
+            for op in [
+                TrashOp::Delete { id: crafted.into() },
+                TrashOp::Restore { id: crafted.into() },
+            ] {
+                seen.lock().unwrap().clear();
+                let got = run(&mut provider, op.clone()).await;
+                assert!(matches!(got, Err(TrashError::BadId(_))), "{op:?}: {got:?}");
+                assert_eq!(
+                    *seen.lock().unwrap(),
+                    vec!["LIST prefix="; listings],
+                    "{op:?}"
+                );
+            }
+        }
 
         seen.lock().unwrap().clear();
         let emptied = run(

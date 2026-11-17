@@ -69,6 +69,14 @@ pub fn sanitize_error_message(msg: &str) -> String {
                 "authorization: [REDACTED]",
             ),
             (r"[?&]key=[^&\s\)]*", "[REDACTED]"), // Google key= query parameter
+            // A credential a provider puts in a request URL, which a transport
+            // error prints whole: Azure SAS `sig`, pCloud `access_token`, S3
+            // presigned signatures, OAuth codes, tokens and secrets, share and file
+            // passwords, session ids.
+            (
+                r"(?i)([?&](?:sig|signature|access_token|refresh_token|token|client_secret|secret|oauth_token|oauth_token_secret|password|passwd|pass|linkpassword|file_password|session_id|sid|auth|api_key|apikey|code|x-amz-signature|x-amz-credential|x-amz-security-token)=)[^&\s\)#'\x22]*",
+                "${1}[REDACTED]",
+            ),
             (r"sk-ant-[A-Za-z0-9_\-]{20,}", "[REDACTED]"), // Anthropic API keys (check before generic sk-)
             (r"sk-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),     // OpenAI API keys
             (r"nvapi-[A-Za-z0-9_\-]{20,}", "[REDACTED]"),  // NVIDIA API keys
@@ -1998,6 +2006,65 @@ mod authorization_tests {
         let message = sanitize_error_message(body);
         assert!(!message.contains("dXNlcjpwYXNz"), "{message}");
         assert!(message.contains("host: a.example.org"), "{message}");
+    }
+
+    /// A transport error prints the request URL whole, with any credential
+    /// the provider put in its query: each one goes, the rest of the URL stays.
+    #[test]
+    fn a_credential_in_a_request_url_does_not_reach_an_error() {
+        let cases = [
+            (
+                "error sending request for url (https://acct.blob.core.windows.net/c?restype=container&comp=list&sv=2022-11-02&ss=b&sig=AbC%2Bd3fG%3D&se=2027-01-01)",
+                "AbC%2Bd3fG%3D",
+                "comp=list",
+            ),
+            (
+                "GET https://eapi.pcloud.com/listtrash?access_token=Zx9yW8vU7tS6&folderid=0: timed out",
+                "Zx9yW8vU7tS6",
+                "folderid=0",
+            ),
+            (
+                "403 for https://b.s3.amazonaws.com/k?X-Amz-Credential=AKIAEXAMPLE%2F20261117&X-Amz-Signature=9f8e7d6c5b4a",
+                "9f8e7d6c5b4a",
+                "b.s3.amazonaws.com/k",
+            ),
+            (
+                "POST https://api.example.org/token?client_secret=s3cr3tvalue&grant_type=refresh_token&refresh_token=rt-1234",
+                "s3cr3tvalue",
+                "grant_type=refresh_token",
+            ),
+            (
+                "GET https://api.pcloud.com/getfilepublink?fileid=7&linkpassword=Lp-4471: 500",
+                "Lp-4471",
+                "fileid=7",
+            ),
+            (
+                "400 for https://filelu.com/api/file/set_password?file_code=C1&file_password=Fp-9921",
+                "Fp-9921",
+                "file_code=C1",
+            ),
+            (
+                "GET https://api.example.org/authorize?oauth_token=Ot-5512&oauth_token_secret=Os-6613&x=1",
+                "Os-6613",
+                "x=1",
+            ),
+        ];
+        for (input, secret, kept) in cases {
+            let message = sanitize_error_message(input);
+            assert!(!message.contains(secret), "{message}");
+            assert!(message.contains(kept), "{message}");
+            assert!(message.contains("[REDACTED]"), "{message}");
+            assert_eq!(sanitize_error_message(&message), message);
+        }
+        assert!(!sanitize_error_message("x?refresh_token=rt-1234").contains("rt-1234"));
+        assert!(!sanitize_error_message("x?oauth_token=Ot-5512").contains("Ot-5512"));
+        // A query without credentials, and words that only look alike, stay.
+        for line in [
+            "GET https://api.example.org/list?prefix=docs&marker=a&max-keys=1000: 500",
+            "error code=500 in signature check",
+        ] {
+            assert_eq!(sanitize_error_message(line), line);
+        }
     }
 }
 

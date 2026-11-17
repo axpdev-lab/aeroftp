@@ -6744,7 +6744,10 @@ mod tests {
         );
         assert_eq!(
             *calls.lock().unwrap(),
-            ["/api/file/restore?file_code=CODE1&restore=1"]
+            [
+                "/api/files/deleted?",
+                "/api/file/restore?file_code=CODE1&restore=1"
+            ]
         );
 
         calls.lock().unwrap().clear();
@@ -6761,7 +6764,10 @@ mod tests {
         );
         assert_eq!(
             *calls.lock().unwrap(),
-            ["/api/file/permanent_delete?file_code=CODE1"]
+            [
+                "/api/files/deleted?",
+                "/api/file/permanent_delete?file_code=CODE1"
+            ]
         );
 
         calls.lock().unwrap().clear();
@@ -6782,11 +6788,11 @@ mod tests {
                 bytes: None,
             })
         );
-        // The audit listing, then the provider's own listing and delete.
+        // FileLu's empty counts what it deleted, so no audit listing first:
+        // the provider's own listing and delete.
         assert_eq!(
             *calls.lock().unwrap(),
             [
-                "/api/files/deleted?",
                 "/api/files/deleted?",
                 "/api/file/permanent_delete?file_code=CODE1",
             ]

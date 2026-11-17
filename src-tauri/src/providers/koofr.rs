@@ -2766,7 +2766,10 @@ mod tests {
         );
         assert_eq!(
             *calls.lock().unwrap(),
-            [r#"POST /trash/undelete {"files":[{"mountId":"mnt-1","path":"/docs/a.txt"}]}"#]
+            [
+                "GET /trash?pageSize=1000 ",
+                r#"POST /trash/undelete {"files":[{"mountId":"mnt-1","path":"/docs/a.txt"}]}"#
+            ]
         );
 
         calls.lock().unwrap().clear();

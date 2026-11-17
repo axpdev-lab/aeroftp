@@ -1146,6 +1146,118 @@ fn opaque(kind: TrashKind, part: &str) -> Res<&str> {
     )))
 }
 
+fn bad_shape(kind: TrashKind, id: &str) -> TrashError {
+    TrashError::BadId(format!(
+        "'{id}' is not a {} trash id: use an id as `trash list` shows it",
+        kind.label()
+    ))
+}
+
+/// The shape of an id from the CLI or the agent, checked before any request
+/// where the provider puts the id into the URL as it is. A Google Drive id
+/// is letters, digits, `_` and `-` (so `trash`, Drive's empty-trash
+/// endpoint, passes the shape and is stopped by [`listed`]); a OneDrive id
+/// adds `!` and may carry one `drive/item` slash; a Jottacloud id is a trash
+/// path below the trash root, with no dot segment; an S3 id is `m:` or `v:`,
+/// a version id and a key.
+fn check_shape(kind: TrashKind, id: &str) -> Res<()> {
+    let chars = |s: &str, extra: &[u8]| {
+        !s.is_empty()
+            && s.bytes()
+                .all(|b| b.is_ascii_alphanumeric() || extra.contains(&b))
+    };
+    let ok = match kind {
+        TrashKind::GoogleDrive => chars(id, b"_-"),
+        TrashKind::OneDrive => {
+            id != "root"
+                && match id.split_once('/') {
+                    Some((drive, item)) => chars(drive, b"!_-") && chars(item, b"!_-"),
+                    None => chars(id, b"!_-"),
+                }
+        }
+        TrashKind::Jottacloud => {
+            let clean = id.trim_start_matches('/');
+            !clean.is_empty()
+                && !clean.contains(['?', '#', '\\'])
+                && clean
+                    .split('/')
+                    .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
+        }
+        TrashKind::S3 => {
+            let (flag, rest) = split_id(kind, id)?;
+            let (version, key) = split_id(kind, rest)?;
+            matches!(flag.as_str(), "m" | "v") && !version.is_empty() && !key.is_empty()
+        }
+        // The checks the restore and delete arms make, made here too so a
+        // malformed id is refused before the listing as well.
+        TrashKind::PCloud => {
+            let (flag, item) = split_id(kind, id)?;
+            dir_flag(kind, &flag)?;
+            numeric(kind, item)?;
+            true
+        }
+        TrashKind::OpenDrive => {
+            let (flag, item) = split_id(kind, id)?;
+            dir_flag(kind, &flag)?;
+            opaque(kind, item)?;
+            true
+        }
+        TrashKind::Box => {
+            opaque(kind, split_id(kind, id)?.1)?;
+            true
+        }
+        TrashKind::KDrive => {
+            numeric(kind, id)?;
+            true
+        }
+        TrashKind::Nextcloud => {
+            nextcloud_item(kind, id)?;
+            true
+        }
+        TrashKind::Koofr => {
+            split_id(kind, id)?;
+            true
+        }
+        _ => true,
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(bad_shape(kind, id))
+    }
+}
+
+/// The folder whose listing holds `id` where the listing is per folder
+/// (Dropbox, B2: the id is the row's path); the whole trash elsewhere.
+fn listing_scope(kind: TrashKind, id: &str) -> String {
+    match kind {
+        TrashKind::Dropbox | TrashKind::B2 => match id.rsplit_once('/') {
+            Some((parent, _)) if !parent.is_empty() => parent.to_string(),
+            _ => "/".to_string(),
+        },
+        _ => String::new(),
+    }
+}
+
+/// A restore or delete from the CLI or the agent acts only on an id the
+/// provider's trash lists right now. Without this a live item's id would be
+/// deleted for good past the trash (Google Drive, OneDrive), and an endpoint
+/// name would pass for an item (`trash` on Drive empties the whole trash).
+/// The GUI passes ids from its own listing and does not come through here.
+async fn listed(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<()> {
+    let items = list(p, kind, &listing_scope(kind, id)).await?;
+    if items
+        .iter()
+        .any(|item| item.get("id").and_then(Value::as_str) == Some(id))
+    {
+        return Ok(());
+    }
+    Err(TrashError::BadId(format!(
+        "'{id}' is not in the {} trash now: use an id as `trash list` shows it",
+        kind.label()
+    )))
+}
+
 fn dir_flag(kind: TrashKind, flag: &str) -> Res<bool> {
     match flag {
         "d" => Ok(true),
@@ -1240,10 +1352,8 @@ async fn delete(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<O
             let (ty, item) = split_id(kind, id)?;
             box_delete(p, opaque(kind, item)?, &ty).await?
         }
-        TrashKind::Dropbox => {
-            dropbox_purge_allowed(p).await?;
-            dropbox_delete(p, id).await?
-        }
+        // `run` has checked the account tier before listing the id.
+        TrashKind::Dropbox => dropbox_delete(p, id).await?,
         TrashKind::Mega => mega_delete(p, &one).await?,
         TrashKind::Zoho => zoho_delete(p, &one).await?,
         TrashKind::Jottacloud => jottacloud_delete(p, &one).await?,
@@ -1298,6 +1408,11 @@ async fn empty(
     if kind == TrashKind::Dropbox {
         dropbox_purge_allowed(p).await?;
     }
+    if kind == TrashKind::FileLu && !dry_run {
+        // FileLu's empty reports how many went: no listing before it.
+        let done = filelu_empty(p).await?;
+        return Ok((Some(done.deleted as u64), None));
+    }
     // What is about to go, so the run is auditable and a dry run has an answer.
     let before = list(p, kind, path).await;
     if dry_run {
@@ -1311,10 +1426,6 @@ async fn empty(
     };
     match kind {
         TrashKind::Nextcloud => nextcloud_empty(p).await?,
-        TrashKind::FileLu => {
-            let done = filelu_empty(p).await?;
-            return Ok((Some(done.deleted as u64), None));
-        }
         TrashKind::Koofr => koofr_empty(p).await?,
         TrashKind::Jottacloud => {
             let (files, folders) = jottacloud_empty(p).await?;
@@ -1329,9 +1440,19 @@ async fn empty(
             let items = before.ok_or_else(|| {
                 TrashError::Failed("empty trash failed: the trash could not be listed".into())
             })?;
-            for item in &items {
+            // A delete that fails part way says what already went for good,
+            // as FileLu's empty does: a bare failure would hide it.
+            for (done, item) in items.iter().enumerate() {
                 let path = item.get("id").and_then(Value::as_str).unwrap_or_default();
-                dropbox_delete(p, path).await?;
+                if let Err(e) = dropbox_delete(p, path).await {
+                    if done == 0 {
+                        return Err(e);
+                    }
+                    return Err(TrashError::Partial(format!(
+                        "empty trash stopped after deleting {done} of {} items for good: {e}",
+                        items.len()
+                    )));
+                }
             }
         }
         _ => return Err(not_offered(kind, "empty")),
@@ -1361,6 +1482,8 @@ pub async fn run(provider: &mut dyn StorageProvider, op: TrashOp) -> Res<TrashOu
             if !caps.restore {
                 return Err(not_offered(kind, "restore"));
             }
+            check_shape(kind, &id)?;
+            listed(provider, kind, &id).await?;
             let detail = restore(provider, kind, &id).await?;
             Ok(TrashOutcome::Restored { kind, id, detail })
         }
@@ -1368,6 +1491,13 @@ pub async fn run(provider: &mut dyn StorageProvider, op: TrashOp) -> Res<TrashOu
             if !caps.delete {
                 return Err(not_offered(kind, "delete"));
             }
+            check_shape(kind, &id)?;
+            if kind == TrashKind::Dropbox {
+                // The tier check first: on basic and pro the answer is that
+                // the trash offers no delete, whatever the id.
+                dropbox_purge_allowed(provider).await?;
+            }
+            listed(provider, kind, &id).await?;
             let detail = delete(provider, kind, &id).await?;
             Ok(TrashOutcome::Deleted { kind, id, detail })
         }

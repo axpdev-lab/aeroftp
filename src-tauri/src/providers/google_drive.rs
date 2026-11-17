@@ -4434,6 +4434,28 @@ mod tests {
             Some("DELETE /drive/v3/files/FILE1")
         );
 
+        // `trash` is Drive's empty-trash endpoint and LIVE1 a file that is
+        // not in the trash: both pass the shape and are not listed, so they
+        // are refused after one listing with no restore or delete sent. A
+        // path or a query is refused before any request.
+        for crafted in ["trash", "LIVE1", "FILE1/../trash", "FILE1?x=1", "FILE 1"] {
+            let shaped = crafted.bytes().all(|b| b.is_ascii_alphanumeric());
+            for op in [
+                TrashOp::Delete { id: crafted.into() },
+                TrashOp::Restore { id: crafted.into() },
+            ] {
+                let before = requests.lock().unwrap().len();
+                let got = run(&mut provider, op.clone()).await;
+                assert!(matches!(got, Err(TrashError::BadId(_))), "{op:?}: {got:?}");
+                let sent = requests.lock().unwrap()[before..].to_vec();
+                assert!(
+                    sent.iter().all(|r| r.starts_with("GET /drive/v3/files")),
+                    "{op:?} sent more than a listing: {sent:?}"
+                );
+                assert_eq!(sent.len(), usize::from(shaped), "{op:?}: {sent:?}");
+            }
+        }
+
         let before = requests.lock().unwrap().len();
         let emptied = run(
             &mut provider,
@@ -4454,6 +4476,14 @@ mod tests {
         );
         let all = requests.lock().unwrap().clone();
         assert_eq!(all.len(), before, "a refused Empty sends nothing: {all:?}");
-        assert_eq!(all.len(), 3, "list, restore, delete: {all:?}");
+        let acted: Vec<_> = all
+            .iter()
+            .filter(|r| !r.starts_with("GET /drive/v3/files"))
+            .collect();
+        assert_eq!(
+            acted.len(),
+            2,
+            "one restore and one delete, each after a listing: {all:?}"
+        );
     }
 }

@@ -4402,6 +4402,8 @@ mod tests {
     /// files (7 bytes each) in the root, the revision lookup and restore,
     /// `permanently_delete`, and an account of the tier `tier`. Every call
     /// is recorded as `endpoint path` (just `endpoint` without a path).
+    /// `business_partial` is a business account whose `permanently_delete`
+    /// of `/draft.md` fails.
     async fn trash_dispatch_fixture(
         tier: &'static str,
     ) -> (
@@ -4409,7 +4411,7 @@ mod tests {
         std::sync::Arc<std::sync::Mutex<Vec<String>>>,
         tokio::task::JoinHandle<()>,
     ) {
-        use axum::{routing::any, Json, Router};
+        use axum::{response::IntoResponse, routing::any, Json, Router};
         use serde_json::{json, Value};
         let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
         let seen = calls.clone();
@@ -4439,10 +4441,22 @@ mod tests {
                         "entries": [{"rev": "r1", "size": 7, "is_restorable": true}]
                     })),
                     "files/restore" => Json(json!({"rev": "r1"})),
+                    "files/permanently_delete"
+                        if tier == "business_partial" && path == "/draft.md" =>
+                    {
+                        return (
+                            axum::http::StatusCode::CONFLICT,
+                            Json(json!({"error_summary": "path_lookup/not_found/"})),
+                        )
+                            .into_response()
+                    }
                     "files/permanently_delete" => Json(Value::Null),
-                    "users/get_current_account" => Json(json!({"account_type": {".tag": tier}})),
+                    "users/get_current_account" => Json(json!({
+                        "account_type": {".tag": tier.trim_end_matches("_partial")}
+                    })),
                     other => panic!("unexpected endpoint {other}"),
                 }
+                .into_response()
             }
         }));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -4507,6 +4521,10 @@ mod tests {
                 "files/list_folder",
                 "files/list_revisions /old.txt",
                 "files/list_revisions /draft.md",
+                // Restore checks the id is listed now, then restores it.
+                "files/list_folder",
+                "files/list_revisions /old.txt",
+                "files/list_revisions /draft.md",
                 "files/list_revisions /old.txt",
                 "files/restore /old.txt",
                 "users/get_current_account",
@@ -4543,6 +4561,9 @@ mod tests {
             *calls.lock().unwrap(),
             [
                 "users/get_current_account",
+                "files/list_folder",
+                "files/list_revisions /old.txt",
+                "files/list_revisions /draft.md",
                 "files/permanently_delete /old.txt",
                 "users/get_current_account",
                 "files/list_folder",
@@ -4551,6 +4572,58 @@ mod tests {
                 "files/permanently_delete /old.txt",
                 "files/permanently_delete /draft.md",
             ]
+        );
+    }
+
+    /// An empty whose second delete fails has already deleted the first row
+    /// for good: the answer is Partial and says how many went, not a bare
+    /// failure. A delete of an id that is not listed sends no
+    /// `permanently_delete`.
+    #[tokio::test]
+    async fn trash_dispatch_empty_that_stops_part_way_says_what_went() {
+        use crate::provider_trash::{run, TrashError, TrashOp};
+        let (mut p, calls, server) = trash_dispatch_fixture("business_partial").await;
+        let emptied = run(
+            &mut p,
+            TrashOp::Empty {
+                path: "/".into(),
+                dry_run: false,
+            },
+        )
+        .await;
+        let not_listed = run(
+            &mut p,
+            TrashOp::Delete {
+                id: "/live.txt".into(),
+            },
+        )
+        .await;
+        server.abort();
+        assert!(
+            server.await.is_err_and(|e| e.is_cancelled()),
+            "the test server must stop with the test"
+        );
+        match &emptied {
+            Err(TrashError::Partial(message)) => {
+                assert!(message.contains("1 of 2"), "{message}")
+            }
+            other => panic!("not a Partial: {other:?}"),
+        }
+        assert!(
+            matches!(not_listed, Err(TrashError::BadId(_))),
+            "{not_listed:?}"
+        );
+        let calls = calls.lock().unwrap().clone();
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|c| c.starts_with("files/permanently_delete"))
+                .collect::<Vec<_>>(),
+            [
+                "files/permanently_delete /old.txt",
+                "files/permanently_delete /draft.md"
+            ],
+            "{calls:?}"
         );
     }
 }

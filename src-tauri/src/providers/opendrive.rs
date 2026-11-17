@@ -3607,7 +3607,9 @@ mod tests {
         assert_eq!(
             take(),
             [
+                "GET /api/v1/folder/trashlist.json/sid",
                 "POST /api/v1/file/restore.json session_id=sid&file_id=FL1",
+                "GET /api/v1/folder/trashlist.json/sid",
                 "POST /api/v1/folder/restore.json session_id=sid&folder_id=FD7",
             ]
         );
@@ -3630,7 +3632,9 @@ mod tests {
         assert_eq!(
             take(),
             [
+                "GET /api/v1/folder/trashlist.json/sid",
                 "DELETE /api/v1/file.json/sid/FL1",
+                "GET /api/v1/folder/trashlist.json/sid",
                 "POST /api/v1/folder/remove.json session_id=sid&folder_id=FD7",
             ]
         );

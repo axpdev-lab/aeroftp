@@ -7618,6 +7618,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
+                "list prefix=docs start=",
                 "list prefix=docs/a.txt start=docs/a.txt",
                 "delete docs/a.txt hide-1",
             ]
@@ -7636,6 +7637,7 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             [
+                "list prefix=docs start=",
                 "list prefix=docs/a.txt start=docs/a.txt",
                 "delete docs/a.txt hide-1",
                 "delete docs/a.txt upl-1",

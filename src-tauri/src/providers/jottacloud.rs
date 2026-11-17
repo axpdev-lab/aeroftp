@@ -7037,7 +7037,7 @@ mod tests {
     /// and reports the server's own file and folder counts.
     #[tokio::test]
     async fn trash_dispatch_restores_by_cphash_and_reports_the_servers_counts() {
-        use crate::provider_trash::{run, TrashKind, TrashOp, TrashOutcome};
+        use crate::provider_trash::{run, TrashError, TrashKind, TrashOp, TrashOutcome};
         use std::sync::{Arc, Mutex};
         let calls: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&calls);
@@ -7136,6 +7136,7 @@ mod tests {
         assert_eq!(
             take(),
             [
+                "GET /user123/Jotta/Trash",
                 "GET /user123/Jotta/Archive/docs/report.txt",
                 "POST /user123/Jotta/Archive/docs/report.txt?cphash=true JSize=28 JMd5=9a6924f78982f7e759f371f08fb5d57e",
             ]
@@ -7154,8 +7155,32 @@ mod tests {
         );
         assert_eq!(
             take(),
-            ["POST /user123/Jotta/Trash/docs/report.txt?rm=true"]
+            [
+                "GET /user123/Jotta/Trash",
+                "POST /user123/Jotta/Trash/docs/report.txt?rm=true"
+            ]
         );
+
+        // `/` would be the trash root itself (`?rm=true` there), and a dot
+        // segment or a query another path: refused unsent. A well formed
+        // path that is not in the trash costs one listing and nothing else.
+        for (crafted, sent) in [
+            ("/", &[][..]),
+            ("", &[][..]),
+            ("/docs/../Archive/x", &[][..]),
+            ("/docs/report.txt?x=1", &[][..]),
+            ("//", &[][..]),
+            ("/docs/other.txt", &["GET /user123/Jotta/Trash"][..]),
+        ] {
+            for op in [
+                TrashOp::Delete { id: crafted.into() },
+                TrashOp::Restore { id: crafted.into() },
+            ] {
+                let got = run(&mut provider, op.clone()).await;
+                assert!(matches!(got, Err(TrashError::BadId(_))), "{op:?}: {got:?}");
+                assert_eq!(take(), sent, "{op:?}");
+            }
+        }
 
         // Empty lists first (the bytes it reports), then purges; the item
         // count is what the server says it purged, files plus folders.

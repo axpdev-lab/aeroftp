@@ -4154,7 +4154,9 @@ mod tests {
         assert_eq!(
             take(),
             [
+                "GET /trash_list?recursive=1",
                 "GET /trash_restore?fileid=1234",
+                "GET /trash_list?recursive=1",
                 "GET /trash_restore?folderid=77"
             ]
         );
@@ -4177,7 +4179,9 @@ mod tests {
         assert_eq!(
             take(),
             [
+                "GET /trash_list?recursive=1",
                 "GET /trash_clear?fileid=1234",
+                "GET /trash_list?recursive=1",
                 "GET /trash_clear?folderid=77"
             ]
         );

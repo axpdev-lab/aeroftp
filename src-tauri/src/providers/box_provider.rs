@@ -5128,7 +5128,9 @@ mod tests {
             *requests.lock().unwrap(),
             [
                 "GET /folders/trash/items",
+                "GET /folders/trash/items",
                 "POST /folders/F1",
+                "GET /folders/trash/items",
                 "DELETE /folders/F1/trash",
             ]
         );

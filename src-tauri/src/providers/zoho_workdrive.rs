@@ -7333,7 +7333,9 @@ mod tests {
             *calls.lock().unwrap(),
             [
                 "GET /workdrive/api/v1/privatespace/PS/trashedfiles",
+                "GET /workdrive/api/v1/privatespace/PS/trashedfiles",
                 "PATCH /workdrive/api/v1/files/Z1 status=1",
+                "GET /workdrive/api/v1/privatespace/PS/trashedfiles",
                 "PATCH /workdrive/api/v1/files/Z1 status=61",
             ]
         );

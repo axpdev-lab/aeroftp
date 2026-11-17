@@ -3808,6 +3808,65 @@ mod mcp_parity_tests {
         );
     }
 
+    /// The parameter names and the `action` enum of one tool in `AGENT_TOOLS`.
+    fn agent_tool_params(name: &str) -> (BTreeSet<String>, BTreeSet<String>) {
+        let source = include_str!("../../src/types/tools.ts");
+        let start = source
+            .find(&format!("        name: '{name}',"))
+            .unwrap_or_else(|| panic!("{name} in tools.ts"));
+        let end = start
+            + source[start..]
+                .find("        dangerLevel:")
+                .expect("end of the tool");
+        let mut params = BTreeSet::new();
+        let mut actions = BTreeSet::new();
+        for line in source[start..end].lines() {
+            let Some(rest) = line.trim_start().strip_prefix("{ name: '") else {
+                continue;
+            };
+            let param = rest.split('\'').next().unwrap_or_default().to_string();
+            if param == "action" {
+                let list = line
+                    .split("enum: [")
+                    .nth(1)
+                    .and_then(|r| r.split(']').next())
+                    .expect("action enum");
+                actions.extend(
+                    list.split(',')
+                        .map(|a| a.trim().trim_matches('\'').to_string())
+                        .filter(|a| !a.is_empty()),
+                );
+            }
+            params.insert(param);
+        }
+        (params, actions)
+    }
+
+    /// The app's AeroAgent sends the model the schema in tools.ts, the MCP
+    /// server the one in the Rust registry: for `remote_trash` they are the
+    /// same parameters and the same actions, so the agent in the app can do
+    /// what the MCP agent can (until this test the app's schema was S3 only).
+    #[test]
+    fn remote_trash_offers_the_app_agent_what_it_offers_the_mcp() {
+        let def = find_tool("remote_trash").expect("remote_trash in the registry");
+        let schema = &def.input_schema;
+        let rust_params: BTreeSet<String> = schema["properties"]
+            .as_object()
+            .expect("properties")
+            .keys()
+            .cloned()
+            .collect();
+        let rust_actions: BTreeSet<String> = schema["properties"]["action"]["enum"]
+            .as_array()
+            .expect("action enum")
+            .iter()
+            .filter_map(|a| a.as_str().map(str::to_string))
+            .collect();
+        let (ts_params, ts_actions) = agent_tool_params("remote_trash");
+        assert_eq!(ts_params, rust_params, "remote_trash parameters");
+        assert_eq!(ts_actions, rust_actions, "remote_trash actions");
+    }
+
     #[test]
     fn the_parity_lists_name_only_tools_the_mcp_serves() {
         let served: BTreeSet<&str> = crate::mcp::tools::tool_definitions()

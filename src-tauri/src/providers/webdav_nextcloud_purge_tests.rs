@@ -1115,7 +1115,10 @@ async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
     );
     assert_eq!(
         *hits.lock().unwrap(),
-        ["MOVE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001 -> /dav/trashbin/user/restore/a%2Etxt%2Ed1700000001"]
+        [
+            "PROPFIND /remote.php/dav/trashbin/user/trash/",
+            "MOVE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001 -> /dav/trashbin/user/restore/a%2Etxt%2Ed1700000001"
+        ]
     );
 
     hits.lock().unwrap().clear();
@@ -1132,7 +1135,10 @@ async fn trash_dispatch_moves_the_listed_id_to_restore_and_deletes_it() {
     );
     assert_eq!(
         *hits.lock().unwrap(),
-        ["DELETE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001"]
+        [
+            "PROPFIND /remote.php/dav/trashbin/user/trash/",
+            "DELETE /remote.php/dav/trashbin/user/trash/a%2Etxt%2Ed1700000001"
+        ]
     );
 
     // `.` and `..` would resolve to the trash collection and its parent.

@@ -5294,6 +5294,35 @@ mod tests {
             ),
             "{deleted:?}"
         );
+        // LIVE1 is a live item (a DELETE on it would delete it for good) and
+        // DRIVE/ITEM1 another drive's item: both are not in the trash, so one
+        // listing and nothing else. `root` and a path are refused unsent.
+        for (crafted, listings) in [
+            ("LIVE1", 1),
+            ("DRIVE/ITEM1", 1),
+            ("root", 0),
+            ("../ITEM1", 0),
+            ("a/b/c", 0),
+        ] {
+            for op in [
+                TrashOp::Delete { id: crafted.into() },
+                TrashOp::Restore { id: crafted.into() },
+            ] {
+                let before = requests.lock().unwrap().len();
+                let got = run(&mut p, op.clone()).await;
+                assert!(matches!(got, Err(TrashError::BadId(_))), "{op:?}: {got:?}");
+                let sent = requests.lock().unwrap()[before..].to_vec();
+                assert_eq!(
+                    sent,
+                    vec!["GET /v1.0/me/drive/special/deleted/children"; listings],
+                    "{op:?}"
+                );
+            }
+        }
+        requests
+            .lock()
+            .unwrap()
+            .retain(|r| r.starts_with("POST") || r.starts_with("DELETE") || r.starts_with("PATCH"));
         let emptied = run(
             &mut p,
             TrashOp::Empty {
@@ -5311,11 +5340,11 @@ mod tests {
             matches!(emptied, Err(TrashError::NotOffered(_))),
             "{emptied:?}"
         );
-        // A refused Empty sends nothing after the delete.
+        // Only the listed item was restored and deleted; a refused Empty
+        // sends nothing after the delete.
         assert_eq!(
             *requests.lock().unwrap(),
             [
-                "GET /v1.0/me/drive/special/deleted/children",
                 "POST /v1.0/me/drive/items/ITEM1/restore",
                 "DELETE /v1.0/me/drive/items/ITEM1",
             ]

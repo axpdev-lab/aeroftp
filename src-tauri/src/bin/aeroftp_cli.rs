@@ -101085,6 +101085,58 @@ api_key = kNaQ0gIj57D0wb8CFzBMYQQMoWUZUopy0HOLAMHtu0uD
         assert_eq!(code, 2);
     }
 
+    /// Each trash refusal or failure has its own exit code, in both output
+    /// formats: 4 no trash or not this operation, 2 a bad id, 5 a failure or
+    /// an empty that stopped part way.
+    #[test]
+    fn trash_error_exit_gives_each_refusal_its_code() {
+        let cases = [
+            (TrashError::NoTrash, 4),
+            (TrashError::NotOffered("only list".into()), 4),
+            (TrashError::BadId("not an id".into()), 2),
+            (TrashError::Failed("HTTP 500".into()), 5),
+            (TrashError::Partial("2 of 3 purged".into()), 5),
+        ];
+        for format in [OutputFormat::Text, OutputFormat::Json] {
+            for (error, code) in &cases {
+                assert_eq!(
+                    trash_error_exit(format, "restore", error),
+                    *code,
+                    "{error:?}"
+                );
+            }
+        }
+    }
+
+    /// A FileLu row shows its deletion instant when FileLu gives one, else
+    /// its age in minutes, hours or days, else a dash.
+    #[test]
+    fn filelu_deleted_label_prefers_the_instant_then_the_age() {
+        let label = |v: serde_json::Value| filelu_deleted_label(&v);
+        assert_eq!(
+            label(serde_json::json!({"deleted": "2026-11-17 10:00:00", "deleted_ago_sec": 5})),
+            "2026-11-17 10:00:00"
+        );
+        assert_eq!(
+            label(serde_json::json!({"deleted": "", "deleted_ago_sec": 3599})),
+            "59m ago"
+        );
+        assert_eq!(
+            label(serde_json::json!({"deleted_ago_sec": 3600})),
+            "1h ago"
+        );
+        assert_eq!(
+            label(serde_json::json!({"deleted_ago_sec": 86_399})),
+            "23h ago"
+        );
+        assert_eq!(
+            label(serde_json::json!({"deleted_ago_sec": 86_400})),
+            "1d ago"
+        );
+        assert_eq!(label(serde_json::json!({"deleted_ago_sec": "x"})), "-");
+        assert_eq!(label(serde_json::json!({})), "-");
+    }
+
     /// The real `cmd_sync`, as a dry run with `--delete`, against `remote`:
     /// the counts it returns are what the run would have done.
     fn plan_sync_with_delete(
