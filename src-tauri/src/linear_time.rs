@@ -11,6 +11,7 @@
 //! takes about as long either way; a step quadratic in the input takes PARTS
 //! times longer whole.
 
+use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 /// The input is cut in this many parts.
@@ -19,7 +20,8 @@ const PARTS: usize = 10;
 const BOUND: u32 = 3;
 
 /// The best time of `run` on `input(n)` whole and on `input(n / PARTS)`
-/// PARTS times, each result kept until the clock is read.
+/// PARTS times, each result kept until the clock is read. Inputs and results
+/// go through `black_box`, so an optimized build cannot drop or move the work.
 fn whole_and_parts<R>(
     n: usize,
     input: impl Fn(usize) -> String,
@@ -31,11 +33,14 @@ fn whole_and_parts<R>(
     let mut best_parts = Duration::MAX;
     for _ in 0..5 {
         let started = Instant::now();
-        let kept = run(&whole);
+        let kept = black_box(run(black_box(&whole)));
         best_whole = best_whole.min(started.elapsed());
         drop(kept);
         let started = Instant::now();
-        let kept: Vec<R> = parts.iter().map(|part| run(part)).collect();
+        let kept: Vec<R> = parts
+            .iter()
+            .map(|part| black_box(run(black_box(part))))
+            .collect();
         best_parts = best_parts.min(started.elapsed());
         drop(kept);
     }
@@ -54,4 +59,26 @@ pub(crate) fn assert_linear<R>(
         whole < parts * BOUND,
         "{what} is not linear: {whole:?} whole, {parts:?} in {PARTS} parts"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sum(text: &str) -> u64 {
+        text.bytes().map(u64::from).sum()
+    }
+
+    /// The helper itself: linear work passes, and work quadratic in the
+    /// input is past the bound.
+    #[test]
+    fn it_tells_linear_work_from_quadratic_work() {
+        assert_linear("a sum", 2_000_000, |n| "x".repeat(n), sum);
+        let prefix_sums = |text: &str| (0..text.len()).map(|i| sum(&text[..i])).sum::<u64>();
+        let (whole, parts) = whole_and_parts(10_000, |n| "x".repeat(n), prefix_sums);
+        assert!(
+            whole >= parts * BOUND,
+            "quadratic work read as linear: {whole:?} whole, {parts:?} in {PARTS} parts"
+        );
+    }
 }
