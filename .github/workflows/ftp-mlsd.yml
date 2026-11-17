@@ -236,6 +236,8 @@ jobs:
         working-directory: src-tauri
         run: |
           set -o pipefail
+          nproc; free -m; swapon --show
+          (while :; do echo "MEM $(date -u +%T) $(free -m | awk 'NR==2{print "used "$3" avail "$7} NR==3{print "swap "$3"/"$2}' | tr '\n' ' ')"; sleep 20; done) &
           cargo test --lib providers::ftp::live_listing_timeout -- \
             --ignored --nocapture | tee /tmp/listing-timeout.log
           ../scripts/assert-tests-ran.sh /tmp/listing-timeout.log =1 \
