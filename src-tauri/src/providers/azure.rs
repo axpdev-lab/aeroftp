@@ -4889,6 +4889,9 @@ Time:2026-01-01</Message>
         config.endpoint = Some(format!("http://{addr}"));
         let mut provider = AzureProvider::new(config);
         provider.connected = true;
+        // Inside a folder: the listing still names blobs from the container
+        // root, and the undelete must reach that blob, not one under it.
+        provider.current_prefix = "project/".to_string();
         let take = || std::mem::take(&mut *calls.lock().unwrap());
 
         let listed = run(&mut provider, TrashOp::List { path: "/".into() })

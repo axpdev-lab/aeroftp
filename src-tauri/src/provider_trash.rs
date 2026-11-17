@@ -497,8 +497,12 @@ pub async fn azure_list(p: &mut dyn StorageProvider) -> Res<Vec<RemoteEntry>> {
 
 pub async fn azure_undelete(p: &mut dyn StorageProvider, path: &str) -> Res<()> {
     let azure = concrete::<AzureProvider>(p, "Failed to access Azure provider")?;
+    // The deleted-blob listing names each blob from the container root, and
+    // `undelete_blob` resolves a relative name against the current folder,
+    // so the listed name goes in container-absolute.
+    let absolute = format!("/{}", path.trim_start_matches('/'));
     azure
-        .undelete_blob(path)
+        .undelete_blob(&absolute)
         .await
         .map_err(|e| e.to_string().into())
 }

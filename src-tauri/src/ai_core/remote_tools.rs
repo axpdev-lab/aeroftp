@@ -2262,7 +2262,11 @@ async fn provider_trash_tool(
         Err(e @ (TrashError::NoTrash | TrashError::NotOffered(_) | TrashError::BadId(_))) => {
             Err(invalid(e.to_string()))
         }
-        Err(e) => Err(ToolError::Exec(e.to_string())),
+        // The provider's message, as the app shows it, can carry a request
+        // header or URL: redact it before it reaches the agent.
+        Err(e) => Err(ToolError::Exec(crate::ai::sanitize_error_message(
+            &e.to_string(),
+        ))),
     }
 }
 
@@ -5323,6 +5327,11 @@ mod tests {
             use crate::provider_trash::{TrashKind, TrashOp, TrashOutcome};
             self.trash_ops.lock().unwrap().push(op.clone());
             let kind = TrashKind::PCloud;
+            if matches!(&op, TrashOp::Delete { id } if id == "f:fails") {
+                return Err(crate::provider_trash::TrashError::Failed(
+                    "purge failed: 401 for request with authorization: Bearer abcdefghijklmnopqrstuvwxyz0123".into(),
+                ));
+            }
             Ok(match op {
                 TrashOp::List { .. } => TrashOutcome::Listed {
                     kind,
@@ -7812,6 +7821,26 @@ mod tests {
 
     /// A provider with a trash manager other than S3 goes to the provider
     /// trash entry point, with the GUI's operations and the list's ids.
+    /// A provider failure reaches the agent without the credential its
+    /// message carried.
+    #[tokio::test]
+    async fn remote_trash_failure_reaches_the_agent_redacted() {
+        let backend = pcloud_backend();
+        let ctx = test_ctx(Arc::clone(&backend));
+        let error = remote_trash(
+            &ctx,
+            &json!({"server": "s", "action": "delete", "id": "f:fails"}),
+        )
+        .await
+        .expect_err("the provider failed");
+        let message = match error {
+            ToolError::Exec(message) => message,
+            other => panic!("not an execution error: {other:?}"),
+        };
+        assert!(message.starts_with("purge failed: 401"), "{message}");
+        assert!(!message.contains("abcdefghijklmnop"), "{message}");
+    }
+
     #[tokio::test]
     async fn remote_trash_off_s3_goes_through_the_provider_trash() {
         use crate::provider_trash::TrashOp;
