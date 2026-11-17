@@ -3522,7 +3522,12 @@ mod tests {
             on_signout_step_for_test(step, move || {
                 crate::user_partitions::set_active_user(&switch_conn, second)
                     .expect("switch to the second account");
-                drop(holder);
+                // Unlocked before the close: a child another thread spawns
+                // keeps a copy of the descriptor, and of its lock, until it
+                // execs.
+                if let Some(holder) = holder {
+                    let _ = holder.unlock();
+                }
             });
             OAuth2Manager::new()
                 .delete_tokens(OAuthProvider::Box, "shared-profile")

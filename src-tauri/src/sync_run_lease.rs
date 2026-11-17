@@ -58,9 +58,25 @@ pub(crate) fn native_work_settled() -> bool {
     NATIVE_WORK.load(Ordering::SeqCst) == 0
 }
 
+/// A folder pair's run lock, taken by [`acquire_at`].
+///
+/// It is unlocked when its last holder drops it, not left to the close: a
+/// child another thread spawns holds a copy of every descriptor of the
+/// process until it execs, and the lock belongs to the open file description
+/// that copy shares, so a pair released by the close alone stayed locked for
+/// a moment and the next run of it was refused as busy. A guard handed to a
+/// native intent writer ([`guard`]) keeps the pair locked until it drops too.
+pub(crate) struct PairLock(File);
+
+impl Drop for PairLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 struct Lease {
     pair: String,
-    file: Arc<File>,
+    file: Arc<PairLock>,
     /// Label of the window whose page began the run.
     window: String,
 }
@@ -224,7 +240,7 @@ fn acquire_at(dir: &Path, pair: String, window: &str, nonce: &str) -> Result<Str
         token.clone(),
         Lease {
             pair,
-            file: Arc::new(file),
+            file: Arc::new(PairLock(file)),
             window: window.to_owned(),
         },
     );
@@ -331,7 +347,7 @@ where
     .map_err(|_| "Sync run lock worker failed".to_string())?
 }
 
-pub(crate) fn guard(local: &str, remote: &str, token: &str) -> Result<Arc<File>, String> {
+pub(crate) fn guard(local: &str, remote: &str, token: &str) -> Result<Arc<PairLock>, String> {
     let pair = crate::sync::index_filename(local, remote);
     let registry = REGISTRY
         .lock()
@@ -547,12 +563,12 @@ window.__doc = 'doc' + crypto.randomUUID().split('-').join('');
     }
 
     /// Another handle can lock the pair's lock file (it is then unlocked at
-    /// once).
+    /// once, before the close: see [`PairLock`]).
     fn lock_file_is_free(dir: &Path, pair: &str) -> bool {
         std::fs::OpenOptions::new()
             .write(true)
             .open(dir.join(pair).with_extension("run-lock"))
-            .is_ok_and(|file| file.try_lock().is_ok())
+            .is_ok_and(|file| file.try_lock().is_ok() && file.unlock().is_ok())
     }
 
     /// The self-test build's whole program: run on the main thread (macOS
@@ -1315,6 +1331,42 @@ mod tests {
             b"replacement upload completed"
         );
         release(&second).unwrap();
+    }
+
+    /// A released pair is free at once, even while a copy of its lock's
+    /// descriptor is still open elsewhere: the copy a child spawned by another
+    /// thread holds until it execs, played here by a `try_clone`. Released by
+    /// the close alone, the pair stayed locked through that window and the
+    /// next run was refused as busy (see [`PairLock`]).
+    #[test]
+    fn a_released_pair_is_free_while_a_spawned_child_still_holds_its_descriptor() {
+        let dir = tempfile::tempdir().unwrap();
+        let pair = crate::sync::index_filename("/spawn-local", "/spawn-remote");
+        let window = "spawn-window";
+        let first = acquire_now(dir.path(), pair.clone(), window).unwrap();
+        let child_copy = REGISTRY.lock().unwrap().leases[&first]
+            .file
+            .0
+            .try_clone()
+            .unwrap();
+        release(&first).unwrap();
+        let second = acquire_now(dir.path(), pair.clone(), window)
+            .expect("a released pair is free while a child holds its descriptor");
+        release(&second).unwrap();
+        // The same through an orphan, the path a reload takes.
+        let lost = acquire_now(dir.path(), pair.clone(), window).unwrap();
+        let orphan_copy = REGISTRY.lock().unwrap().leases[&lost]
+            .file
+            .0
+            .try_clone()
+            .unwrap();
+        let orphans = orphan_window(window);
+        assert!(acquire_now(dir.path(), pair.clone(), window).is_err());
+        release_orphans(&orphans);
+        let live = acquire_now(dir.path(), pair, window)
+            .expect("a released orphan's pair is free while a child holds its descriptor");
+        release(&live).unwrap();
+        drop((child_copy, orphan_copy));
     }
 
     #[test]
