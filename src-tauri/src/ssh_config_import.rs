@@ -25,12 +25,14 @@ use std::path::{Path, PathBuf};
 
 // ============ Tilde expansion ============
 
-/// Expand a leading `~/` against `HOME` (unix/macOS) or `USERPROFILE`
-/// (Windows). Any other form (absolute path, bare `~user`) is returned
-/// unchanged: ssh itself only special-cases `~/` here.
+/// Expand a leading `~/` against the local account's home folder, as ssh
+/// does (`HOME=/tmp ssh -vvv` still loads `IdentityFile ~/k` from the
+/// passwd home; only `${HOME}` reads the environment). Any other form
+/// (absolute path, bare `~user`) is returned unchanged: ssh itself only
+/// special-cases `~/` here.
 fn shellexpand_tilde(p: &str) -> String {
     if let Some(rest) = p.strip_prefix("~/") {
-        if let Ok(h) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+        if let Some(h) = local_account().1 {
             let h = h.trim_end_matches('/');
             return format!("{h}/{rest}");
         }
@@ -48,8 +50,8 @@ struct SshTokens<'a> {
     alias: &'a str,
     /// `%h`: the host name (the alias itself inside `HostName`).
     host: &'a str,
-    /// `%r`: the remote user name.
-    user: &'a str,
+    /// `%r`: the remote user name, `None` when it cannot be known.
+    user: Option<&'a str>,
     /// `%p`: the port.
     port: u32,
 }
@@ -114,10 +116,10 @@ fn ssh_expand(
             Some(t) if allowed.contains(t) => match t {
                 'h' => Some(tokens.host.to_string()),
                 'n' => Some(tokens.alias.to_string()),
-                'r' => Some(tokens.user.to_string()),
+                'r' => tokens.user.map(str::to_string),
                 'p' => Some(tokens.port.to_string()),
-                'u' => env("USER").or_else(|| env("USERNAME")),
-                'd' => env("HOME").or_else(|| env("USERPROFILE")),
+                'u' => local_account().0,
+                'd' => local_account().1,
                 _ => None,
             },
             _ => None,
@@ -131,6 +133,50 @@ fn ssh_expand(
         out.push_str(&expanded);
     }
     Ok(out)
+}
+
+/// The local account's name and home folder, as ssh reads them for `%u`, `%d`
+/// and a `%r` with no `User`: on Unix the passwd entry of the effective user,
+/// not `USER` or `HOME` (`ssh -G` with `USER=foo` still gives the account's
+/// name); elsewhere the environment, as Win32-OpenSSH reads it.
+fn local_account() -> (Option<String>, Option<String>) {
+    #[cfg(unix)]
+    {
+        let mut pwd: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut buf = vec![0 as libc::c_char; 16 * 1024];
+        let mut result: *mut libc::passwd = std::ptr::null_mut();
+        // SAFETY: the buffers outlive the call, and the strings read below
+        // point into `buf`, which is alive while they are copied.
+        let rc = unsafe {
+            libc::getpwuid_r(
+                libc::geteuid(),
+                &mut pwd,
+                buf.as_mut_ptr(),
+                buf.len(),
+                &mut result,
+            )
+        };
+        if rc != 0 || result.is_null() {
+            return (None, None);
+        }
+        let field = |ptr: *const libc::c_char| {
+            (!ptr.is_null())
+                .then(|| {
+                    unsafe { std::ffi::CStr::from_ptr(ptr) }
+                        .to_str()
+                        .ok()
+                        .map(str::to_string)
+                })
+                .flatten()
+                .filter(|v| !v.is_empty())
+        };
+        (field(pwd.pw_name), field(pwd.pw_dir))
+    }
+    #[cfg(not(unix))]
+    {
+        let env = |name: &str| std::env::var(name).ok().filter(|v| !v.is_empty());
+        (env("USERNAME"), env("USERPROFILE"))
+    }
 }
 
 /// `true` if an alias is an ssh match pattern rather than a concrete host.
@@ -147,13 +193,12 @@ fn is_wildcard_pattern(alias: &str) -> bool {
 /// `ssh -F`), so detection is purely the per-OS default. Callers that need
 /// a different file pass it explicitly to [`import_ssh_config`].
 pub fn default_ssh_config_path() -> Option<PathBuf> {
+    // ssh reads `~/.ssh/config` from the account's passwd home, whatever
+    // `HOME` says (`HOME=/tmp/x ssh -G` ignores `/tmp/x/.ssh/config`).
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
-        if let Ok(home) = std::env::var("HOME") {
-            let path = PathBuf::from(home).join(".ssh").join("config");
-            if path.exists() {
-                return Some(path);
-            }
+        if let Some(path) = ssh_config_in(local_account().1) {
+            return Some(path);
         }
     }
 
@@ -168,6 +213,13 @@ pub fn default_ssh_config_path() -> Option<PathBuf> {
     }
 
     None
+}
+
+/// `<home>/.ssh/config`, when that file exists.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn ssh_config_in(home: Option<String>) -> Option<PathBuf> {
+    let path = PathBuf::from(home?).join(".ssh").join("config");
+    path.exists().then_some(path)
 }
 
 // ============ Parser ============
@@ -407,7 +459,7 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
     let mut tokens = SshTokens {
         alias: &alias,
         host: &alias,
-        user: "",
+        user: None,
         port,
     };
     let host = match kv.get("hostname").filter(|h| !h.is_empty()) {
@@ -419,7 +471,16 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
         Some(u) => ssh_expand("user name", u, "dhnpu", &tokens, true)?,
         None => String::new(),
     };
-    tokens.user = &username;
+    // With no `User`, ssh connects as the local account and expands `%r`
+    // to its name (ssh.c sets the user before it expands `IdentityFile`);
+    // when that name cannot be read, `%r` skips the host, never an empty
+    // name. The profile keeps no user name, as before.
+    let local_user = local_account().0;
+    tokens.user = if kv.contains_key("user") {
+        Some(&username)
+    } else {
+        local_user.as_deref()
+    };
 
     let mut options = serde_json::Map::new();
     if let Some(identity) = kv.get("identityfile").filter(|s| !s.is_empty()) {
@@ -968,10 +1029,10 @@ Host roundtrip
         assert_eq!(r.has_stored_credential, Some(false));
     }
 
+    /// ssh reads `~/.ssh/config` from the account's home, not from `HOME`,
+    /// and so does the detection: a config under another `HOME` is not it.
     #[test]
-    fn test_default_path_env_override() {
-        // ssh has no dedicated env var, so the override surface is HOME
-        // (unix/macOS) pointing at a temp dir that contains .ssh/config.
+    fn test_default_path_is_the_accounts_not_home() {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let _env = crate::test_env::lock();
@@ -982,16 +1043,23 @@ Host roundtrip
             ));
             std::fs::create_dir_all(dir.join(".ssh")).unwrap();
             std::fs::write(dir.join(".ssh").join("config"), "Host x\n").unwrap();
+            let in_dir = Some(dir.join(".ssh").join("config"));
+            assert_eq!(ssh_config_in(Some(dir.display().to_string())), in_dir);
+            assert_eq!(
+                ssh_config_in(Some(dir.join("none").display().to_string())),
+                None
+            );
 
             std::env::set_var("HOME", &dir);
             let detected = default_ssh_config_path();
-            assert_eq!(detected, Some(dir.join(".ssh").join("config")));
 
             match prev {
                 Some(v) => std::env::set_var("HOME", v),
                 None => std::env::remove_var("HOME"),
             }
             std::fs::remove_dir_all(&dir).ok();
+            assert_ne!(detected, in_dir);
+            assert_eq!(detected, ssh_config_in(local_account().1));
         }
     }
 
@@ -1475,6 +1543,62 @@ Host roundtrip
         }
     }
 
+    /// `%u`, `%d` and a `%r` with no `User` are the local account's, read
+    /// from its passwd entry as ssh does, whatever `USER` and `HOME` say;
+    /// so is the folder a leading `~/` stands for.
+    #[cfg(unix)]
+    #[test]
+    fn the_local_tokens_are_the_accounts_not_the_environment() {
+        let _env = crate::test_env::lock();
+        let (name, dir) = local_account();
+        let (name, dir) = (name.unwrap(), dir.unwrap());
+        let saved: Vec<_> = ["HOME", "USER"]
+            .iter()
+            .map(|k| (*k, std::env::var_os(k)))
+            .collect();
+        std::env::set_var("HOME", "/tmp/aeroftp-not-the-home");
+        std::env::set_var("USER", "not-the-user");
+        let dir_path = tempfile::tempdir().unwrap();
+        let source = dir_path.path().join("config");
+        std::fs::write(
+            &source,
+            "Host a\n  HostName h.example.com\n  IdentityFile %d/id_%u_%r\n\nHost t\n  HostName h.example.com\n  IdentityFile ~/k\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&source);
+        for (key, value) in saved {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+        let result = result.unwrap();
+        assert_eq!(result.servers.len(), 2, "{:?}", result.skipped.len());
+        let a = &result.servers[0];
+        assert_eq!(a.username, "");
+        assert_eq!(
+            a.options.as_ref().unwrap()["private_key_path"],
+            format!("{dir}/id_{name}_{name}")
+        );
+        assert_eq!(
+            result.servers[1].options.as_ref().unwrap()["private_key_path"],
+            format!("{dir}/k")
+        );
+        // A user name that cannot be read is refused, not taken as empty.
+        let unknown = SshTokens {
+            alias: "a",
+            host: "a",
+            user: None,
+            port: 22,
+        };
+        assert_eq!(
+            ssh_expand("key file path", "/k/id_%r", "dhnpru", &unknown, true),
+            Err(
+                "its key file path uses the ssh token %r, which AeroFTP cannot resolve".to_string()
+            )
+        );
+    }
+
     /// Whether this `ssh` expands `%` tokens in `User`, as OpenSSH does from
     /// 10.0: `User %n` reads as the alias there, and as `%n` before.
     fn ssh_expands_user_tokens(dir: &Path) -> bool {
@@ -1504,9 +1628,7 @@ Host roundtrip
         let _env = crate::test_env::lock();
         let secret = "s3cr3t-value-never-imported";
         std::env::set_var("AEROFTP_SSH_TEST_SECRET", secret);
-        let home = std::env::var("HOME")
-            .or_else(|_| std::env::var("USERPROFILE"))
-            .unwrap();
+        let home = local_account().1.unwrap();
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
         std::fs::write(
