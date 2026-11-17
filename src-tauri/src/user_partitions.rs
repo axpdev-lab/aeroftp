@@ -4207,7 +4207,9 @@ pub fn resolve_credential_for_user(
 }
 
 /// Owner-aware active-user reader. Only the proven legacy owner may fall back
-/// to the global vault; every other user reads exclusively from their partition.
+/// to the global vault, and not for a key another account holds a row for (the
+/// vault entry may be that account's); every other user reads exclusively from
+/// their partition.
 pub fn resolve_active_credential_owner_aware(
     store: &CredentialStore,
     credential_id: &str,
@@ -4398,11 +4400,48 @@ fn read_credential_owner_aware_inner(
     credential_id: &str,
     read_secret: &SecretReader<'_>,
 ) -> Result<Option<Zeroizing<String>>, String> {
-    if nonprofile_secret_owner(conn)? == Some(user_id) {
-        read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
-    } else {
-        get_user_credential_for(conn, root_key, user_id, credential_id)
+    if nonprofile_secret_owner(conn)? != Some(user_id) {
+        return get_user_credential_for(conn, root_key, user_id, credential_id);
     }
+    if let Some(own) = get_user_credential_for(conn, root_key, user_id, credential_id)? {
+        return Ok(Some(own));
+    }
+    // The vault keeps one entry per key, the last writer's: under a key another
+    // account holds a row for, it may be that account's secret. Refused only
+    // where the owner's own value always has a row of its own.
+    if owner_row_is_guaranteed(credential_id)
+        && another_account_holds_credential(conn, user_id, credential_id)?
+    {
+        return Ok(None);
+    }
+    read_credential_with_fallback_inner(conn, root_key, user_id, credential_id, read_secret)
+}
+
+/// The keys whose legacy owner value always has a partition row: the owner's
+/// one-time migration copies them (`copy_user_secrets_with_dek`) and every later
+/// write mirrors them, so the owner never needs the vault for them. Other keys
+/// (`server_modes_*`, AeroCrypt overlay secrets saved before accounts existed,
+/// native Proton sessions, singleton tokens) can hold the owner's value in the
+/// vault alone, and keep the vault fallback.
+fn owner_row_is_guaranteed(credential_id: &str) -> bool {
+    (credential_id.starts_with("server_") && !credential_id.starts_with("server_modes_"))
+        || credential_id.starts_with("ai_apikey_")
+        || matches!(credential_id, "github_oauth_token" | "github_pat")
+}
+
+/// True when an account other than `user_id` has a partition row for
+/// `credential_id`.
+fn another_account_holds_credential(
+    conn: &Connection,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM user_credentials WHERE credential_id = ?1 AND user_id <> ?2)",
+        params![credential_id, user_id],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("Read credential holders: {e}"))
 }
 
 /// Active-user dual writer (GUI): write the vault first, then mirror in-scope
@@ -12702,6 +12741,100 @@ mod tests {
             "legacy-secret"
         );
         assert_eq!(vault_reads.get(), 1, "legacy owner migrates on a miss");
+    }
+
+    /// The shared vault holds one entry per key, the last writer's: an entry
+    /// under a key another account holds a row for may be that account's
+    /// secret, so the legacy owner without a row of its own does not read it.
+    #[test]
+    fn owner_aware_reader_refuses_a_vault_entry_another_account_holds() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        assert_eq!(nonprofile_secret_owner(&conn).unwrap(), Some(owner.id));
+        let partner = create_passphrase_less_user(&mut conn, &root, "partner", None, None)
+            .expect("create partner");
+        set_user_credential_for(
+            &conn,
+            &root,
+            partner.id,
+            "server_shared",
+            "server",
+            "partner-secret",
+        )
+        .expect("seed partner row");
+        let vault_reads = std::cell::Cell::new(0u32);
+        let read = |_key: &str| {
+            vault_reads.set(vault_reads.get() + 1);
+            Ok(Some(Zeroizing::new("partner-secret".to_string())))
+        };
+
+        assert!(
+            read_credential_owner_aware_inner(&conn, &root, owner.id, "server_shared", &read)
+                .expect("owner read")
+                .is_none(),
+            "the owner does not read another account's vault entry"
+        );
+        assert_eq!(vault_reads.get(), 0, "the ambiguous entry is not read");
+
+        set_user_credential_for(
+            &conn,
+            &root,
+            owner.id,
+            "server_shared",
+            "server",
+            "owner-secret",
+        )
+        .expect("seed owner row");
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, owner.id, "server_shared", &read)
+                .expect("owner read")
+                .expect("own row")
+                .as_str(),
+            "owner-secret",
+            "the owner's own row still wins"
+        );
+        assert_eq!(
+            read_credential_owner_aware_inner(&conn, &root, owner.id, "server_legacy", &read)
+                .expect("legacy read")
+                .expect("legacy value")
+                .as_str(),
+            "partner-secret",
+            "a key nobody else holds still falls back to the vault"
+        );
+
+        // A key whose owner value can sit in the vault alone keeps the vault
+        // read: the value may be the owner's own.
+        for key in ["aerocrypt_overlay_pw_shared", "server_modes_shared"] {
+            set_user_credential_for(&conn, &root, partner.id, key, "crypt", "partner-row")
+                .expect("seed partner row");
+            assert_eq!(
+                read_credential_owner_aware_inner(&conn, &root, owner.id, key, &read)
+                    .expect("owner read")
+                    .expect("owner's vault value")
+                    .as_str(),
+                "partner-secret",
+                "{key}: the owner keeps reading its vault value"
+            );
+        }
+        set_user_credential_for(
+            &conn,
+            &root,
+            partner.id,
+            "ai_apikey_openai",
+            "ai_apikey",
+            "k",
+        )
+        .expect("seed partner key");
+        assert!(
+            read_credential_owner_aware_inner(&conn, &root, owner.id, "ai_apikey_openai", &read)
+                .expect("owner read")
+                .is_none(),
+            "an AI key another account holds is not read from the vault"
+        );
     }
 
     #[test]
