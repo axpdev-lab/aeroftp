@@ -319,6 +319,32 @@ pub struct S3cmdExportServer {
 /// its scheme, and `host_bucket` is `host_base` itself when the connection
 /// addresses buckets path-style (s3cmd's own path-style switch), else the
 /// `%(bucket)s.` template on that host.
+/// Every string of the profile that goes into `.s3cfg` stays one value: a
+/// line break in one would add keys to `[default]`, a `gpg_command` with
+/// `encrypt = True` among them, which s3cmd runs on the next upload. The
+/// endpoint needs no check: it is rebuilt from a parsed URL.
+fn unwritable_s3cmd_value(
+    server: &S3cmdExportServer,
+    passwords: &HashMap<String, String>,
+) -> Result<(), String> {
+    let option = |key: &str| {
+        server
+            .options
+            .as_ref()
+            .and_then(|o| o.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+    };
+    let line = crate::bridge_shared::export_line_value;
+    line("access key", &server.username)?;
+    line(
+        "secret",
+        crate::bridge_shared::export_secret(passwords, &server.id).unwrap_or(""),
+    )?;
+    line("region", option("region"))?;
+    line("bucket host template", option("hostBucket"))
+}
+
 pub fn export_s3cmd(
     servers: &[S3cmdExportServer],
     passwords: &HashMap<String, String>,
@@ -351,7 +377,9 @@ pub fn export_s3cmd(
             &s.username,
             s.options.as_ref(),
             s.provider_id.as_deref(),
-        ) {
+        )
+        .and_then(|ep| unwritable_s3cmd_value(s, passwords).map(|()| ep))
+        {
             Ok(ep) => chosen = Some((s, ep)),
             Err(reason) => outcome.skip(&s.name, reason),
         }
@@ -616,5 +644,76 @@ bucket_location = us-east-1
             "{body}"
         );
         assert!(body.contains("host_base = a.example.com"), "{body}");
+    }
+
+    /// A line break in a value added keys to `[default]`,
+    /// a `gpg_command` s3cmd runs (with `encrypt = True`) among them. Each
+    /// such profile is refused by name and field, and the next profile, a
+    /// non-ASCII region and a key with spaces included, is the one written.
+    #[test]
+    fn a_profile_whose_value_breaks_its_line_is_refused_and_the_next_is_written() {
+        let payload = "gpg_command = /tmp/run-me";
+        let profile = |name: &str, user: &str, options: serde_json::Value| -> S3cmdExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": format!("id-{name}"), "name": name, "host": "", "port": 443,
+                "username": user, "protocol": "s3", "providerId": "minio",
+                "options": options,
+            }))
+            .unwrap()
+        };
+        let options = |key: &str, value: &str| {
+            let mut o = serde_json::json!({"endpoint": "https://s3.example.com", "bucket": "b", "region": "eu-west-1"});
+            if !key.is_empty() {
+                o[key] = value.into();
+            }
+            o
+        };
+        for brk in crate::bridge_shared::LINE_BREAKS {
+            let hostile = format!("x{brk}encrypt = True{brk}{payload}");
+            let servers = vec![
+                profile("user", &hostile, options("", "")),
+                profile("region", "AKR", options("region", &hostile)),
+                profile("bucket", "AKB", options("hostBucket", &hostile)),
+                profile("secret", "AKS", options("", "")),
+                profile("legit", "AK LEGIT", options("region", "région-1")),
+            ];
+            let mut passwords: HashMap<String, String> = servers
+                .iter()
+                .map(|s| (s.id.clone(), "plain-secret".to_string()))
+                .collect();
+            passwords.insert("id-secret".into(), hostile.clone());
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("s3cfg");
+            let outcome = export_s3cmd(&servers, &passwords, &path).unwrap();
+            assert_eq!(outcome.exported, 1);
+            let refused: Vec<(&str, &str)> = outcome
+                .skipped
+                .iter()
+                .map(|s| (s.name.as_str(), s.reason.as_str()))
+                .collect();
+            for ((name, reason), field) in
+                refused
+                    .iter()
+                    .zip(["access key", "region", "bucket host template", "secret"])
+            {
+                assert!(
+                    reason.starts_with(&format!("its {field} ")),
+                    "{name}: {reason}"
+                );
+                assert!(!reason.contains(payload));
+            }
+            assert_eq!(
+                refused.iter().map(|(n, _)| *n).collect::<Vec<_>>(),
+                ["user", "region", "bucket", "secret"]
+            );
+            let body = std::fs::read_to_string(&path).unwrap();
+            crate::bridge_shared::assert_no_injected_line(&body, payload);
+            assert!(!body.contains("encrypt"), "{body}");
+            assert!(
+                body.contains("access_key = AK LEGIT\nsecret_key = plain-secret\n"),
+                "{body}"
+            );
+            assert!(body.contains("bucket_location = région-1\n"), "{body}");
+        }
     }
 }

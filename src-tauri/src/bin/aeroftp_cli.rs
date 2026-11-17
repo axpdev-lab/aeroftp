@@ -44073,8 +44073,21 @@ async fn cmd_export_winscp(
     };
 
     match export_winscp(&exportable, &collected.passwords, &target_path) {
-        Ok(count) => {
-            emit_export_success(json, "WinSCP.ini", count, &target_path, &collected.skipped);
+        Ok(outcome) => {
+            // The profiles this command filtered out, and the ones the
+            // exporter refused (a value that would break its line).
+            let mut skipped = collected.skipped.clone();
+            skipped.extend(
+                outcome
+                    .skipped
+                    .iter()
+                    .map(|s| (s.name.clone(), s.reason.clone())),
+            );
+            if outcome.exported == 0 {
+                emit_empty_export(json, &skipped);
+                return 4;
+            }
+            emit_export_success(json, "WinSCP.ini", outcome.exported, &target_path, &skipped);
             0
         }
         Err(e) => {

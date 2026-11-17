@@ -452,6 +452,18 @@ fn lftp_bookmark_name(name: &str) -> String {
 pub const LFTP_ENCODED_SLASH_ENDPOINT: &str =
     "WebDAV endpoint path contains an encoded slash (%2F) that an lftp bookmark cannot keep";
 
+/// A bookmark URL's host, written as it is: one word on its line.
+fn lftp_host(host: &str) -> Result<(), String> {
+    crate::bridge_shared::export_line_value("host", host)?;
+    if host.contains(char::is_whitespace) {
+        return Err(
+            "its host holds a space, which would end the bookmark's URL early; correct the profile and export again"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
 pub fn export_lftp(
     servers: &[LftpExportServer],
     passwords: &HashMap<String, String>,
@@ -513,6 +525,23 @@ pub fn export_lftp(
         let safe_name = lftp_bookmark_name(&server.name);
         if safe_name.is_empty() {
             outcome.skip(&server.name, "empty bookmark name");
+            continue;
+        }
+        // The host is the one part of the URL written as it is (the user,
+        // the secret and the folder are percent-encoded, a WebDAV endpoint
+        // is rebuilt from a parsed URL). A line break in it would add
+        // bookmarks of its own, and a space would end the URL early.
+        // The name keeps no control character either: the bookmark name
+        // turns whitespace into `_`, and nothing else.
+        let unwritable =
+            crate::bridge_shared::export_line_value("name", &server.name).and_then(|()| {
+                match endpoint {
+                    None => lftp_host(&server.host),
+                    Some(_) => Ok(()),
+                }
+            });
+        if let Err(reason) = unwritable {
+            outcome.skip(&server.name, reason);
             continue;
         }
         let safe_name = names.claim(&safe_name);
@@ -1051,6 +1080,67 @@ mystery gopher://old.example.com/0/
         assert!(
             body.contains("\nmy_lab-2 sftp://u@b.example.com\n"),
             "{body}"
+        );
+    }
+
+    /// A line break in the host added bookmarks of its own
+    /// to the file, and a space ended the URL early. Each such profile is
+    /// refused by name and field; a non-ASCII name and user still go out.
+    #[test]
+    fn a_profile_whose_host_or_name_breaks_its_line_is_refused() {
+        let payload = "evil sftp://attacker.example.com";
+        let profile = |name: &str, host: &str, user: &str| -> LftpExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": format!("id-{name}"), "name": name, "host": host,
+                "port": 22, "username": user, "protocol": "sftp"
+            }))
+            .unwrap()
+        };
+        for brk in crate::bridge_shared::LINE_BREAKS {
+            let servers = vec![
+                profile(&format!("name{brk}{payload}"), "h.example.com", "u"),
+                profile("host", &format!("h.example.com{brk}{payload}"), "u"),
+                profile("Büro nas", "nas.example.com", "élodie"),
+            ];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("bookmarks");
+            let outcome = export_lftp(&servers, &HashMap::new(), &path).unwrap();
+            assert_eq!(outcome.exported, 1, "{brk:?}: {:?}", outcome.skipped);
+            assert_eq!(outcome.skipped.len(), 2, "{:?}", outcome.skipped);
+            for (skip, (server, field)) in outcome
+                .skipped
+                .iter()
+                .zip(servers.iter().zip(["name", "host"]))
+            {
+                assert_eq!(skip.name, server.name);
+                assert!(
+                    skip.reason.starts_with(&format!("its {field} ")),
+                    "{}",
+                    skip.reason
+                );
+                assert!(!skip.reason.contains(payload));
+            }
+            let body = std::fs::read_to_string(&path).unwrap();
+            crate::bridge_shared::assert_no_injected_line(&body, payload);
+            assert!(
+                body.contains("\nBüro_nas sftp://%C3%A9lodie@nas.example.com\n"),
+                "{body}"
+            );
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bookmarks");
+        let outcome = export_lftp(
+            &[profile("spaced", "h.example.com x", "u")],
+            &HashMap::new(),
+            &path,
+        )
+        .unwrap();
+        assert!(
+            outcome.skipped[0]
+                .reason
+                .starts_with("its host holds a space"),
+            "{:?}",
+            outcome.skipped
         );
     }
 }

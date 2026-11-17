@@ -923,6 +923,30 @@ pub fn export_secret<'a>(
         .filter(|s| !s.is_empty())
 }
 
+/// Refuse a profile whose `field` would not stay one value of a
+/// line-oriented export (INI, ssh_config, a bookmark list). The reason names
+/// the field, never the value, which may be a secret.
+///
+/// A line break, or any other control character, ends the line the value is
+/// written on, and what follows becomes entries of their own in the file:
+/// an AWS `credential_process`, an ssh `ProxyCommand`, an s3cmd
+/// `gpg_command`, each a program the tool runs later. The value can come
+/// from what the user typed or from a file an earlier import read. Such a
+/// profile is refused, not cleaned: a value with the break removed would be
+/// another host, user or key than the profile holds, exported in silence.
+/// A tab stays: it ends no line.
+pub fn export_line_value(field: &str, value: &str) -> Result<(), String> {
+    if value
+        .chars()
+        .any(|c| (c.is_control() && c != '\t') || matches!(c, '\u{2028}' | '\u{2029}'))
+    {
+        return Err(format!(
+            "its {field} holds a line break or a control character, which would add entries of its own to the exported file; correct the profile and export again"
+        ));
+    }
+    Ok(())
+}
+
 /// The entry names one exported file gives out, so that no two profiles are
 /// written under one name.
 ///
@@ -1044,6 +1068,30 @@ pub(crate) fn two_profiles_named_lab<T: serde::de::DeserializeOwned>(
         ("id-b".to_string(), "secret-b".to_string()),
     ]);
     (servers, passwords)
+}
+
+/// Every way a value can end the line an export writes it on, for the
+/// exporter tests of [`export_line_value`]: each tool reads a bare CR, a
+/// NEL or a line separator as a line end as surely as a LF.
+#[cfg(test)]
+pub(crate) const LINE_BREAKS: [&str; 7] = [
+    "\n", "\r", "\r\n", "\u{0085}", "\u{2028}", "\u{2029}", "\u{0000}",
+];
+
+/// The exported text holds no control character but the LF that ends its
+/// own lines, and no part of `payload`.
+#[cfg(test)]
+pub(crate) fn assert_no_injected_line(text: &str, payload: &str) {
+    assert!(
+        !text.contains(payload),
+        "the payload reached the file:\n{text}"
+    );
+    assert!(
+        !text
+            .chars()
+            .any(|c| (c.is_control() && c != '\n') || matches!(c, '\u{2028}' | '\u{2029}')),
+        "a line break other than the file's own reached it: {text:?}"
+    );
 }
 
 /// What an importer read back, as sorted `(name, host, secret)`.

@@ -577,9 +577,9 @@ pub fn export_winscp(
     servers: &[WinScpExportServer],
     passwords: &std::collections::HashMap<String, String>,
     output_path: &Path,
-) -> Result<usize, String> {
+) -> Result<crate::bridge_shared::BridgeExportOutcome, String> {
     let mut ini = String::from("; WinSCP session file exported by AeroFTP\n\n");
-    let mut exported = 0;
+    let mut outcome = crate::bridge_shared::BridgeExportOutcome::default();
     // A second `[Sessions\<name>]` is not a second session, and
     // `[Sessions\Default%20Settings]` is WinSCP's default session, which the
     // import skips: a profile called that would set the defaults instead.
@@ -655,19 +655,33 @@ pub fn export_winscp(
             _ => continue, // Skip unsupported protocols
         };
 
+        let initial_path = server.initial_path.as_deref().filter(|p| !p.is_empty());
+        let region = (protocol == "s3")
+            .then_some(server.options.as_ref())
+            .flatten()
+            .and_then(|o| o.get("region"))
+            .and_then(|v| v.as_str());
+        // Every value is checked before any of it is written: a line break in
+        // one would add keys of its own to the session (or a section after
+        // it). They are refused, not stripped: a value with its break removed
+        // is another host or folder than the profile holds. The session name
+        // needs no check: `winscp_session_name` percent-encodes it.
+        let line = crate::bridge_shared::export_line_value;
+        let unwritable = line("host", &server.host)
+            .and_then(|()| line("user name", &server.username))
+            .and_then(|()| line("initial folder", initial_path.unwrap_or("")))
+            .and_then(|()| line("region", region.unwrap_or("")));
+        if let Err(reason) = unwritable {
+            outcome.skip(&server.name, reason);
+            continue;
+        }
+
         let encoded_name = names.claim(&winscp_session_name(&server.name));
 
-        // Sanitize values to prevent INI injection (strip newlines and bracket chars)
-        let sanitize = |s: &str| -> String {
-            s.chars()
-                .filter(|c| *c != '\n' && *c != '\r' && *c != '[' && *c != ']')
-                .collect()
-        };
-
         ini.push_str(&format!("[Sessions\\{}]\n", encoded_name));
-        ini.push_str(&format!("HostName={}\n", sanitize(&server.host)));
+        ini.push_str(&format!("HostName={}\n", server.host));
         ini.push_str(&format!("PortNumber={}\n", server.port));
-        ini.push_str(&format!("UserName={}\n", sanitize(&server.username)));
+        ini.push_str(&format!("UserName={}\n", server.username));
         ini.push_str(&format!("FSProtocol={}\n", fs_protocol));
         ini.push_str(&format!("Ftps={}\n", ftps));
 
@@ -679,18 +693,16 @@ pub fn export_winscp(
         }
 
         // Remote directory
-        if let Some(ref path) = server.initial_path {
-            if !path.is_empty() {
-                ini.push_str(&format!("RemoteDirectory={}\n", sanitize(path)));
-            }
+        if let Some(path) = initial_path {
+            ini.push_str(&format!("RemoteDirectory={}\n", path));
         }
 
         // S3-specific options
         if protocol == "s3" {
+            if let Some(region) = region {
+                ini.push_str(&format!("S3DefaultRegion={}\n", region));
+            }
             if let Some(ref opts) = server.options {
-                if let Some(region) = opts.get("region").and_then(|v| v.as_str()) {
-                    ini.push_str(&format!("S3DefaultRegion={}\n", region));
-                }
                 if opts
                     .get("forcePathStyle")
                     .and_then(|v| v.as_bool())
@@ -702,13 +714,13 @@ pub fn export_winscp(
         }
 
         ini.push('\n');
-        exported += 1;
+        outcome.exported += 1;
     }
 
     crate::bridge_shared::atomic_write_600(output_path, ini.as_bytes())
         .map_err(|e| format!("Write WinSCP config: {}", e))?;
 
-    Ok(exported)
+    Ok(outcome)
 }
 
 // uuid_v4 now lives in `crate::bridge_shared` (Refactor 6).
@@ -816,7 +828,9 @@ mod tests {
             crate::bridge_shared::uuid_v4()
         ));
         assert_eq!(
-            export_winscp(&servers, &HashMap::new(), &out).unwrap(),
+            export_winscp(&servers, &HashMap::new(), &out)
+                .unwrap()
+                .exported,
             names.len()
         );
         let ini = std::fs::read_to_string(&out).unwrap();
@@ -960,7 +974,12 @@ FSProtocol=1
             "aeroftp-winscp-scp-{}.ini",
             crate::bridge_shared::uuid_v4()
         ));
-        assert_eq!(export_winscp(&servers, &HashMap::new(), &out).unwrap(), 3);
+        assert_eq!(
+            export_winscp(&servers, &HashMap::new(), &out)
+                .unwrap()
+                .exported,
+            3
+        );
         let ini = std::fs::read_to_string(&out).unwrap();
         std::fs::remove_file(&out).ok();
         let protocols: Vec<&str> = ini
@@ -1111,7 +1130,10 @@ FSProtocol=1
         );
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("WinSCP.ini");
-        assert_eq!(export_winscp(&servers, &passwords, &path).unwrap(), 2);
+        assert_eq!(
+            export_winscp(&servers, &passwords, &path).unwrap().exported,
+            2
+        );
         let back = import_winscp(&path).unwrap();
         assert_eq!(
             crate::bridge_shared::names_hosts_secrets(&back.servers),
@@ -1140,7 +1162,12 @@ FSProtocol=1
                 .collect();
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("WinSCP.ini");
-        assert_eq!(export_winscp(&servers, &HashMap::new(), &path).unwrap(), 2);
+        assert_eq!(
+            export_winscp(&servers, &HashMap::new(), &path)
+                .unwrap()
+                .exported,
+            2
+        );
         let ini = std::fs::read_to_string(&path).unwrap();
         assert!(
             !ini.to_lowercase()
@@ -1309,12 +1336,103 @@ FSProtocol=1
             .unwrap();
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("WinSCP.ini");
-            assert_eq!(export_winscp(&[server], &HashMap::new(), &path).unwrap(), 1);
+            assert_eq!(
+                export_winscp(&[server], &HashMap::new(), &path)
+                    .unwrap()
+                    .exported,
+                1
+            );
             let ini = std::fs::read_to_string(&path).unwrap();
             assert!(
                 ini.lines().any(|line| line.trim() == expected_ftps),
                 "case {id} ({host}:{port}, options={options:?}) expected {expected_ftps}, got:\n{ini}"
             );
         }
+    }
+
+    /// The region was written raw, and the host, user and
+    /// folder had their line breaks stripped, which exported another host or
+    /// folder than the profile held, in silence. A line break in any of them
+    /// now refuses the profile by name and field (a raw one would add keys
+    /// such as `ProxyMethod=5` with a `ProxyLocalCommand` WinSCP runs);
+    /// non-ASCII values and a folder with spaces still go out as they are.
+    #[test]
+    fn a_profile_whose_value_breaks_its_line_is_refused() {
+        let payload = "ProxyLocalCommand=/tmp/run-me";
+        let profile =
+            |name: &str, host: &str, user: &str, path: &str, region: &str| -> WinScpExportServer {
+                serde_json::from_value(serde_json::json!({
+                    "id": format!("id-{name}"), "name": name, "host": host, "port": 443,
+                    "username": user, "protocol": "s3", "initialPath": path,
+                    "options": {"region": region},
+                }))
+                .unwrap()
+            };
+        for brk in crate::bridge_shared::LINE_BREAKS {
+            let hostile = format!("x{brk}ProxyMethod=5{brk}{payload}");
+            let servers = vec![
+                profile("host", &hostile, "u", "/", "eu-west-1"),
+                profile("user", "s3.example.com", &hostile, "/", "eu-west-1"),
+                profile("path", "s3.example.com", "u", &hostile, "eu-west-1"),
+                profile("region", "s3.example.com", "u", "/", &hostile),
+                profile(
+                    "Büro nas",
+                    "s3.example.com",
+                    "élodie",
+                    "/Mes documents/été",
+                    "région-1",
+                ),
+            ];
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("WinSCP.ini");
+            let outcome = export_winscp(&servers, &HashMap::new(), &path).unwrap();
+            assert_eq!(outcome.exported, 1, "{brk:?}: {:?}", outcome.skipped);
+            let fields = ["host", "user name", "initial folder", "region"];
+            assert_eq!(outcome.skipped.len(), fields.len(), "{:?}", outcome.skipped);
+            for (skip, (server, field)) in outcome.skipped.iter().zip(servers.iter().zip(fields)) {
+                assert_eq!(skip.name, server.name);
+                assert!(
+                    skip.reason.starts_with(&format!("its {field} ")),
+                    "{}",
+                    skip.reason
+                );
+                assert!(!skip.reason.contains(payload));
+            }
+            let ini = std::fs::read_to_string(&path).unwrap();
+            crate::bridge_shared::assert_no_injected_line(&ini, payload);
+            assert!(!ini.contains("ProxyMethod"), "{ini}");
+            assert!(
+                ini.contains("\nHostName=s3.example.com\nPortNumber=443\nUserName=élodie\n"),
+                "{ini}"
+            );
+            assert!(
+                ini.contains("\nRemoteDirectory=/Mes documents/été\n"),
+                "{ini}"
+            );
+            assert!(ini.contains("\nS3DefaultRegion=région-1\n"), "{ini}");
+        }
+    }
+
+    /// The old export stripped `[` and `]` from the host, user name and
+    /// folder, so an IPv6 host or a folder with brackets went out as another
+    /// server or folder. They are kept, and read back as written.
+    #[test]
+    fn a_bracketed_host_and_folder_go_out_and_come_back_as_written() {
+        let servers: Vec<WinScpExportServer> = vec![serde_json::from_value(serde_json::json!({
+            "id": "id-v6", "name": "v6", "host": "[::1]", "port": 22,
+            "username": "u", "protocol": "sftp", "initialPath": "/archive/[2026]",
+        }))
+        .unwrap()];
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("WinSCP.ini");
+        let outcome = export_winscp(&servers, &HashMap::new(), &path).unwrap();
+        assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+        let back = import_winscp(&path).unwrap();
+        assert_eq!(back.servers.len(), 1, "skipped: {}", back.skipped.len());
+        assert_eq!(back.servers[0].host, "[::1]");
+        assert_eq!(
+            back.servers[0].initial_path.as_deref(),
+            Some("/archive/[2026]")
+        );
     }
 }

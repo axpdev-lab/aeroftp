@@ -339,18 +339,40 @@ pub fn export_aws_credentials(
                 .filter(|s| !s.is_empty())
         };
 
+        let secret = crate::bridge_shared::export_secret(passwords, &server.id);
+        let token = opt_str("sessionToken");
+        let region = opt_str("region");
+        // Every string written below, before any of it is: a line break in
+        // one would add keys of its own (a `credential_process` the AWS tools
+        // run) to the profile or to another section.
+        let unwritable = crate::bridge_shared::export_line_value("name", &server.name)
+            .and_then(|()| crate::bridge_shared::export_line_value("access key", &server.username))
+            .and_then(|()| crate::bridge_shared::export_line_value("secret", secret.unwrap_or("")))
+            .and_then(|()| {
+                crate::bridge_shared::export_line_value(
+                    "session token",
+                    token.as_deref().unwrap_or(""),
+                )
+            })
+            .and_then(|()| {
+                crate::bridge_shared::export_line_value("region", region.as_deref().unwrap_or(""))
+            });
+        if let Err(reason) = unwritable {
+            outcome.skip(&server.name, reason);
+            continue;
+        }
+
         let profile = names.claim(&server.name);
         cred.push_str(&format!("[{}]\n", profile));
         cred.push_str(&format!("aws_access_key_id = {}\n", server.username));
-        if let Some(secret) = crate::bridge_shared::export_secret(passwords, &server.id) {
+        if let Some(secret) = secret {
             cred.push_str(&format!("aws_secret_access_key = {secret}\n"));
         }
-        if let Some(token) = opt_str("sessionToken") {
+        if let Some(token) = token {
             cred.push_str(&format!("aws_session_token = {token}\n"));
         }
         cred.push('\n');
 
-        let region = opt_str("region");
         let path_style = resolved.as_ref().is_some_and(|ep| ep.s3_path_style);
         let endpoint = resolved.map(|ep| ep.base_url());
         if region.is_some() || endpoint.is_some() {
@@ -570,6 +592,118 @@ region = eu-west-1
         match saved {
             Some(v) => std::env::set_var(key, v),
             None => std::env::remove_var(key),
+        }
+    }
+
+    /// A name or a value with a line break in it added sections and
+    /// keys of its own to the files, a `credential_process` the AWS tools
+    /// run among them. Each such profile is refused by name and field, and
+    /// the others, spaces and non-ASCII in their names included, still go
+    /// out exactly as they are.
+    #[test]
+    fn a_profile_whose_name_or_value_breaks_its_line_is_refused() {
+        let payload = "credential_process = /tmp/run-me";
+        let profile = |name: &str, user: &str, options: serde_json::Value| -> AwsExportServer {
+            serde_json::from_value(serde_json::json!({
+                "id": format!("id-{name}"), "name": name, "host": "", "port": 443,
+                "username": user, "protocol": "s3", "providerId": "minio",
+                "options": options,
+            }))
+            .unwrap()
+        };
+        let options = |extra: serde_json::Value| {
+            let mut o = serde_json::json!({"endpoint": "https://s3.example.com", "bucket": "b", "region": "eu-west-1"});
+            o.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            o
+        };
+        for brk in crate::bridge_shared::LINE_BREAKS {
+            let hostile = format!("x{brk}{payload}{brk}");
+            let cases: Vec<(AwsExportServer, &str)> = vec![
+                (
+                    profile(
+                        &format!("evil{brk}[other"),
+                        "AKN",
+                        options(serde_json::json!({})),
+                    ),
+                    "name",
+                ),
+                (
+                    profile("user", &hostile, options(serde_json::json!({}))),
+                    "access key",
+                ),
+                (
+                    profile(
+                        "token",
+                        "AKT",
+                        options(serde_json::json!({"sessionToken": hostile})),
+                    ),
+                    "session token",
+                ),
+                (
+                    profile(
+                        "region",
+                        "AKR",
+                        options(serde_json::json!({"region": hostile})),
+                    ),
+                    "region",
+                ),
+                (
+                    profile("secret", "AKS", options(serde_json::json!({}))),
+                    "secret",
+                ),
+            ];
+            let expected: Vec<(String, &str)> = cases
+                .iter()
+                .map(|(s, field)| (s.name.clone(), *field))
+                .collect();
+            let mut servers: Vec<AwsExportServer> = cases.into_iter().map(|(s, _)| s).collect();
+            servers.push(profile(
+                "Lab-östra-2",
+                "AKLEGIT",
+                options(serde_json::json!({})),
+            ));
+            let mut passwords: HashMap<String, String> = servers
+                .iter()
+                .map(|s| (s.id.clone(), "plain-secret".to_string()))
+                .collect();
+            passwords.insert("id-secret".into(), hostile.clone());
+
+            let dir = tempfile::tempdir().unwrap();
+            let path = dir.path().join("credentials");
+            let outcome = export_aws_credentials(&servers, &passwords, &path).unwrap();
+            assert_eq!(outcome.exported, 1, "{brk:?}: {:?}", outcome.skipped);
+            assert_eq!(
+                outcome.skipped.len(),
+                expected.len(),
+                "{brk:?}: {:?}",
+                outcome.skipped
+            );
+            for ((name, field), skip) in expected.iter().zip(&outcome.skipped) {
+                assert_eq!(&skip.name, name);
+                assert!(
+                    skip.reason.starts_with(&format!("its {field} ")),
+                    "{}",
+                    skip.reason
+                );
+                assert!(!skip.reason.contains(payload), "the reason shows the value");
+            }
+            let cred = std::fs::read_to_string(&path).unwrap();
+            let config = std::fs::read_to_string(dir.path().join("config")).unwrap();
+            crate::bridge_shared::assert_no_injected_line(&cred, payload);
+            crate::bridge_shared::assert_no_injected_line(&config, payload);
+            let sections = crate::bridge_shared::parse_ini_sections(&cred);
+            assert_eq!(
+                sections.keys().collect::<Vec<_>>(),
+                ["Lab-östra-2"],
+                "{cred}"
+            );
+            assert!(cred.contains("[Lab-östra-2]\naws_access_key_id = AKLEGIT\naws_secret_access_key = plain-secret\n"), "{cred}");
+            assert!(
+                config.contains("[profile Lab-östra-2]\nregion = eu-west-1\n"),
+                "{config}"
+            );
         }
     }
 
