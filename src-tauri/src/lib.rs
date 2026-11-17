@@ -9446,7 +9446,7 @@ fn copy_file_cancellable(
         let inherits = macos_acl::inherited_by_a_new_file(to).map_err(private)?;
         let folder = macos_acl::PrivateFolder::create(to).map_err(private)?;
         let temp = folder.path().join("copy");
-        let permissions = metadata.permissions();
+        let permissions = macos_copy_permissions(&source, folder.path(), metadata.permissions());
         let written = native_copy_macos(&source, &permissions, &temp, cancel).and_then(
             |(target, _)| {
                 secure_macos_copy(&source, &target, inherits, &permissions)
@@ -9868,6 +9868,8 @@ mod macos_acl {
         /// take: its read-back must refuse the copy.
         pub(super) static ACL_NOT_SET: std::cell::Cell<bool> =
             const { std::cell::Cell::new(false) };
+        /// Every volume reads as `nosuid` ([`super::macos_volume_allows_setuid`]).
+        pub(super) static NOSUID: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
         /// `fchflags` fails in [`super::stamp_macos_copy`].
         pub(super) static STAMP_FAILS: std::cell::Cell<bool> =
             const { std::cell::Cell::new(false) };
@@ -10486,9 +10488,10 @@ fn native_copy_macos(
 /// publication makes reachable only the state the copy ends with: the
 /// access list `COPYFILE_ALL` gives a new file there ([`macos_acl::copy_from`]),
 /// the source's owner and group where this account may set them (as
-/// `copyfile` tries, and ignores), then the source's mode. The source's
-/// dates are set here too, as `COPYFILE_STAT` sets them (access and
-/// modification): after the publication nothing may reach the access state
+/// `copyfile` tries, and ignores), then the mode [`macos_copy_permissions`]
+/// gives. The source's dates are set here too, before the access list, as
+/// `COPYFILE_STAT` sets them (access and modification): after the
+/// publication nothing may reach the access state
 /// again, and `fcopyfile` would, even for `COPYFILE_STAT` alone (it gives
 /// the owner read and write first, then sets the mode and owner once more).
 #[cfg(target_os = "macos")]
@@ -10499,8 +10502,17 @@ fn secure_macos_copy(
     permissions: &std::fs::Permissions,
 ) -> std::io::Result<()> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
-    macos_acl::copy_from(source, target, inherits)?;
     let original = source.metadata()?;
+    // The dates first: an access list taken from the source may deny the
+    // changing of attributes (`deny writeattr`), to the owner too.
+    target
+        .set_times(
+            std::fs::FileTimes::new()
+                .set_accessed(original.accessed()?)
+                .set_modified(original.modified()?),
+        )
+        .map_err(|e| std::io::Error::other(format!("its dates could not be copied: {e}")))?;
+    macos_acl::copy_from(source, target, inherits)?;
     let _ = std::os::unix::fs::fchown(target, Some(original.uid()), Some(original.gid()));
     target.set_permissions(permissions.clone())?;
     let held = target.metadata()?.permissions().mode() & 0o7777;
@@ -10510,13 +10522,50 @@ fn secure_macos_copy(
             "its mode reads back as {held:o}, not {want:o}"
         )));
     }
-    target
-        .set_times(
-            std::fs::FileTimes::new()
-                .set_accessed(original.accessed()?)
-                .set_modified(original.modified()?),
-        )
-        .map_err(|e| std::io::Error::other(format!("its dates could not be copied: {e}")))
+    Ok(())
+}
+
+/// The mode a macOS copy takes: the source's, less its setuid and setgid
+/// bits when either volume is mounted `nosuid`, as `copyfile_stat` drops
+/// them (Apple's copyfile-213). Set before the publication with the rest of
+/// the access ([`secure_macos_copy`]), never after it. A volume whose flags
+/// cannot be read counts as `nosuid`: the bits are dropped rather than
+/// copied on a guess.
+#[cfg(target_os = "macos")]
+fn macos_copy_permissions(
+    source: &std::fs::File,
+    folder: &std::path::Path,
+    permissions: std::fs::Permissions,
+) -> std::fs::Permissions {
+    use std::os::unix::fs::PermissionsExt;
+    let set_id = u32::from(libc::S_ISUID | libc::S_ISGID);
+    let mode = permissions.mode();
+    if mode & set_id == 0
+        || (macos_volume_allows_setuid(source)
+            && std::fs::File::open(folder).is_ok_and(|f| macos_volume_allows_setuid(&f)))
+    {
+        return permissions;
+    }
+    std::fs::Permissions::from_mode(mode & !set_id)
+}
+
+/// Whether the volume of `file` honours setuid and setgid bits (it is not
+/// mounted `nosuid`, as removable and user-mounted volumes often are).
+#[cfg(target_os = "macos")]
+fn macos_volume_allows_setuid(file: &std::fs::File) -> bool {
+    use std::os::fd::AsRawFd;
+    #[cfg(test)]
+    if macos_acl::NOSUID.with(std::cell::Cell::get) {
+        return false;
+    }
+    let mut volume = std::mem::MaybeUninit::<libc::statfs>::uninit();
+    // SAFETY: `file` owns the descriptor; the call writes `volume`.
+    if unsafe { libc::fstatfs(file.as_raw_fd(), volume.as_mut_ptr()) } != 0 {
+        return false;
+    }
+    // SAFETY: `fstatfs` returned 0, so it filled `volume`.
+    let flags = unsafe { volume.assume_init() }.f_flags;
+    flags & libc::MNT_NOSUID as u32 == 0
 }
 
 /// The file flags a copy takes from its source: the ones the owner may set,
@@ -10928,7 +10977,9 @@ mod native_local_copy_tests {
     /// and as it ends, the published copy holds the control's access (the
     /// finish used `fcopyfile`, which gave the owner read and write and set
     /// the mode again on the published copy), and it ends with the source's
-    /// flag and date.
+    /// flag and date. A source whose access list denies the changing of
+    /// attributes is published with its date. A setuid source keeps the bit,
+    /// and loses it, before the publication, when a volume is `nosuid`.
     #[cfg(target_os = "macos")]
     #[test]
     fn a_copy_gets_no_inherited_acl_until_it_is_published() {
@@ -11031,6 +11082,33 @@ mod native_local_copy_tests {
             "{}",
             String::from_utf8_lossy(&flagged.stderr)
         );
+        // An old date, then an access list that denies the changing of
+        // attributes (the dates included) to everyone, the owner too.
+        let write_protected = sources.path().join("write-protected.bin");
+        std::fs::write(&write_protected, vec![7u8; 3 << 20]).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&write_protected)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_accessed(old)
+                    .set_modified(old),
+            )
+            .unwrap();
+        chmod_a(&write_protected, "everyone deny writeattr");
+        let setuid = sources.path().join("setuid.bin");
+        std::fs::write(&setuid, vec![7u8; 3 << 20]).unwrap();
+        std::fs::set_permissions(&setuid, std::fs::Permissions::from_mode(0o4755)).unwrap();
+        assert_eq!(
+            access(&setuid).map(|(_, mode)| mode),
+            Ok(0o4755),
+            "the setuid source does not hold the bit, so the case proves nothing"
+        );
+        assert!(
+            matches!(access(&write_protected), Ok((Some(_), _))),
+            "the write-protected source has no ACL entry, so the case proves nothing"
+        );
         assert!(
             matches!(access(&plain), Ok((None, _))),
             "the plain source has an ACL of its own"
@@ -11049,10 +11127,15 @@ mod native_local_copy_tests {
             "access list does not take",
             "flags fail",
             "read-only source",
+            "write-protected source",
+            "setuid source",
+            "setuid source, nosuid volume",
         ] {
             let from = match case {
                 "restrictive source" => &restrictive,
                 "read-only source" => &read_only,
+                "write-protected source" => &write_protected,
+                "setuid source" | "setuid source, nosuid volume" => &setuid,
                 _ => &plain,
             };
             let dir = tempfile::tempdir().unwrap();
@@ -11076,6 +11159,19 @@ mod native_local_copy_tests {
             copyfile_all(from, &control_copy);
             let control = access(&control_copy);
             std::fs::remove_file(&control_copy).unwrap();
+            if case == "setuid source" && control.as_ref().map(|(_, mode)| *mode) != Ok(0o4755) {
+                wrong.push(format!(
+                    "{case}: the control holds {control:?}, not the setuid bit"
+                ));
+            }
+            // `copyfile_stat` drops the setuid and setgid bits when a volume
+            // is `nosuid`; the temporary folder's is not, so the control
+            // keeps them.
+            let control = if case == "setuid source, nosuid volume" {
+                control.map(|(acl, mode)| (acl, mode & !0o6000))
+            } else {
+                control
+            };
             let to = dir.path().join("copy.bin");
             if case == "name taken" {
                 std::fs::write(&to, b"theirs").unwrap();
@@ -11110,6 +11206,7 @@ mod native_local_copy_tests {
             macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(case == "folder stays open"));
             macos_acl::ACL_NOT_SET.with(|fails| fails.set(case == "access list does not take"));
             macos_acl::STAMP_FAILS.with(|fails| fails.set(case == "flags fail"));
+            macos_acl::NOSUID.with(|nosuid| nosuid.set(case == "setuid source, nosuid volume"));
             let finishing = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
             let finished = finishing.clone();
             macos_acl::FINISHING.with(|hook| {
@@ -11126,6 +11223,7 @@ mod native_local_copy_tests {
             macos_acl::FOLDER_CLEAR_FAILS.with(|fails| fails.set(false));
             macos_acl::ACL_NOT_SET.with(|fails| fails.set(false));
             macos_acl::STAMP_FAILS.with(|fails| fails.set(false));
+            macos_acl::NOSUID.with(|nosuid| nosuid.set(false));
             macos_acl::FINISHING.with(|hook| hook.borrow_mut().take());
             local_copy_publication::OBSERVER.with(|observer| observer.borrow_mut().take());
             macos_acl::FOLDER_MADE.with(|hook| hook.borrow_mut().take());
@@ -11143,9 +11241,13 @@ mod native_local_copy_tests {
             let seen = seen.borrow().clone();
             let stages: Vec<&str> = seen.iter().map(|(stage, _)| *stage).collect();
             let want_stages: &[&str] = match case {
-                "published" | "restrictive source" | "read-only source" | "flags fail" => {
-                    &["publishing"]
-                }
+                "published"
+                | "restrictive source"
+                | "read-only source"
+                | "write-protected source"
+                | "setuid source"
+                | "setuid source, nosuid volume"
+                | "flags fail" => &["publishing"],
                 "stop after the last read" | "name taken" => &["publishing", "removing"],
                 "access list does not take" => &["removing"],
                 _ => &[],
@@ -11185,7 +11287,12 @@ mod native_local_copy_tests {
             // reaches neither its mode, its owner nor its access list.
             let finishing = finishing.borrow().clone();
             let want_finishing = match case {
-                "published" | "restrictive source" | "read-only source" => 2,
+                "published"
+                | "restrictive source"
+                | "read-only source"
+                | "write-protected source"
+                | "setuid source"
+                | "setuid source, nosuid volume" => 2,
                 "flags fail" => 1,
                 _ => 0,
             };
@@ -11196,6 +11303,13 @@ mod native_local_copy_tests {
             {
                 wrong.push(format!(
                     "{case}: during the finish the copy held {finishing:?}, the control {control:?}"
+                ));
+            }
+            if case == "write-protected source"
+                && std::fs::metadata(&to).and_then(|copy| copy.modified()).ok() != Some(old)
+            {
+                wrong.push(format!(
+                    "{case}: {copied:?}, the copy does not hold the source's date"
                 ));
             }
             if case == "read-only source" {
@@ -11210,7 +11324,13 @@ mod native_local_copy_tests {
                 }
             }
             match case {
-                "published" | "restrictive source" | "read-only source" | "flags fail" => {
+                "published"
+                | "restrictive source"
+                | "read-only source"
+                | "write-protected source"
+                | "setuid source"
+                | "setuid source, nosuid volume"
+                | "flags fail" => {
                     let published = access(&to);
                     let failed = case == "flags fail";
                     if copied.is_err() != failed || published != control {
