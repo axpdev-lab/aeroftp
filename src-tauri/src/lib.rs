@@ -65,6 +65,8 @@ mod archive_source_tests;
 use archive_source::ArchiveAccess;
 mod authorization_redaction;
 pub(crate) mod compare_cancel;
+#[cfg(test)]
+mod linear_time;
 #[cfg(target_os = "linux")]
 mod localhost_security;
 mod mcp_client_bridge;

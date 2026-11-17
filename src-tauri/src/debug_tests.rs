@@ -1136,6 +1136,7 @@ pub async fn debug_test_provider_selftest(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::linear_time::assert_linear;
 
     #[derive(Deserialize)]
     struct RedactionCase {
@@ -1165,78 +1166,104 @@ mod tests {
     }
 
     /// H9: the URL userinfo scan is linear by construction: long
-    /// adversarial inputs (backslashes with no `@`, colons, bare `://`) end
-    /// well under the bound, through the whole pipeline too.
+    /// adversarial inputs (backslashes with no `@`, colons, bare `://`) take
+    /// the same time whole as in ten parts, through the whole pipeline too.
     #[test]
     fn the_url_userinfo_scan_stays_linear_on_adversarial_input() {
-        let inputs = [
-            format!("ftp://bob:{}x", "\\".repeat(200_000)),
-            format!("ftp://bob\\:{}", "\\".repeat(200_000)),
-            format!("ftp://{}", ":".repeat(200_000)),
-            format!("{}{}", "x".repeat(100_000), "://".repeat(100_000)),
-            "ftp://ftp://".repeat(50_000),
+        type Input = (&'static str, usize, fn(usize) -> String);
+        let inputs: [Input; 18] = [
+            ("backslashes after a colon", 200_000, |n| {
+                format!("ftp://bob:{}x", "\\".repeat(n))
+            }),
+            ("backslashes after an escaped colon", 200_000, |n| {
+                format!("ftp://bob\\:{}", "\\".repeat(n))
+            }),
+            ("colons", 200_000, |n| format!("ftp://{}", ":".repeat(n))),
+            ("bare ://", 100_000, |n| {
+                format!("{}{}", "x".repeat(n), "://".repeat(n))
+            }),
+            ("schemes", 50_000, |n| "ftp://ftp://".repeat(n)),
             // D1: long whitespace and many strings, valid JSON and not, and
             // a large valid JSON document with URLs throughout.
-            format!("{{\"a\":\"{}ftp://u:p@h\"}}", " ".repeat(200_000)),
-            serde_json::to_string(
-                &(0..20_000)
-                    .map(|n| format!("ftp://u{n}:p@h{n}/x"))
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap(),
-            serde_json::to_string(&vec!["s"; 20_000]).unwrap() + " tail",
-            "\"".repeat(200_000) + "ftp://u:p@h",
-            serde_json::json!({ "rows": (0..20_000).map(|n| serde_json::json!({
-                "id": n,
-                "url": format!("https://user{n}:secret@host{n}.example/p"),
-                "note": "x@y",
-            })).collect::<Vec<_>>() })
-            .to_string(),
+            ("whitespace in a token", 200_000, |n| {
+                format!("{{\"a\":\"{}ftp://u:p@h\"}}", " ".repeat(n))
+            }),
+            ("a JSON array of URLs", 20_000, |n| {
+                serde_json::to_string(
+                    &(0..n)
+                        .map(|k| format!("ftp://u{k}:p@h{k}/x"))
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+            }),
+            ("strings then text", 20_000, |n| {
+                serde_json::to_string(&vec!["s"; n]).unwrap() + " tail"
+            }),
+            ("quotes", 200_000, |n| "\"".repeat(n) + "ftp://u:p@h"),
+            ("a JSON document of rows", 20_000, |n| {
+                serde_json::json!({ "rows": (0..n).map(|k| serde_json::json!({
+                    "id": k,
+                    "url": format!("https://user{k}:secret@host{k}.example/p"),
+                    "note": "x@y",
+                })).collect::<Vec<_>>() })
+                .to_string()
+            }),
             // S1: 20k escaped tokens, each decoded once; a document of 20k
             // URLs serialized inside one string; twelve levels of nesting.
-            escaped_url_tokens(20_000),
-            serde_json::json!({ "log": serde_json::to_string(
-                &(0..20_000)
-                    .map(|n| format!("ftp://u{n}:p@h{n}/x"))
-                    .collect::<Vec<_>>(),
-            )
-            .unwrap() })
-            .to_string(),
-            (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(1000)), |inner, _| {
-                serde_json::json!({ "v": inner }).to_string()
+            ("escaped tokens", 20_000, escaped_url_tokens),
+            ("URLs serialized in a string", 20_000, |n| {
+                serde_json::json!({ "log": serde_json::to_string(
+                    &(0..n)
+                        .map(|k| format!("ftp://u{k}:p@h{k}/x"))
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap() })
+                .to_string()
+            }),
+            ("twelve levels of nesting", 100_000, |n| {
+                (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(n)), |inner, _| {
+                    serde_json::json!({ "v": inner }).to_string()
+                })
             }),
             // X2: long lines that are not JSON, full of backslashes, decoded
             // as a string body at every level: a backslash run halves at each one
             // (chains that re-form an escape are R1's, below).
-            format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(400_000)),
-            format!(
-                "log: {} https:\\/\\/bob:hunter2@h/p",
-                "x\\y".repeat(100_000)
-            ),
-            format!("log: {}", "\\/".repeat(200_000)),
-            format!("log: {}\\u0040", "\\u00".repeat(100_000)),
-            format!(
-                "log: {{\"a\":\"{}{}\"",
-                "x".repeat(200_000),
-                "\\".repeat(16)
-            ),
+            ("a backslash run", 400_000, |n| {
+                format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(n))
+            }),
+            ("backslashes between letters", 100_000, |n| {
+                format!("log: {} https:\\/\\/bob:hunter2@h/p", "x\\y".repeat(n))
+            }),
+            ("escaped slashes", 200_000, |n| {
+                format!("log: {}", "\\/".repeat(n))
+            }),
+            ("cut unicode escapes", 100_000, |n| {
+                format!("log: {}\\u0040", "\\u00".repeat(n))
+            }),
+            ("an unterminated token", 200_000, |n| {
+                format!("log: {{\"a\":\"{}{}\"", "x".repeat(n), "\\".repeat(16))
+            }),
         ];
-        for input in &inputs {
-            let started = std::time::Instant::now();
-            redact_url_userinfo(input);
-            assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        for (what, n, input) in inputs {
+            assert_linear(what, n, input, redact_url_userinfo);
         }
         // X2: masked at its level, whatever the backslashes before it.
-        for run in ["\\".repeat(400_000), "x\\y".repeat(100_000)] {
-            let line = format!("log: {run} https:\\/\\/bob:hunter2@h/p");
-            let started = std::time::Instant::now();
-            assert!(!redact(&line).contains("hunter2"));
-            assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        type Line = fn(usize) -> String;
+        let runs: [(&str, usize, Line); 2] = [
+            ("a backslash run, redacted", 400_000, |n| {
+                format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(n))
+            }),
+            ("backslashes between letters, redacted", 100_000, |n| {
+                format!("log: {} https:\\/\\/bob:hunter2@h/p", "x\\y".repeat(n))
+            }),
+        ];
+        for (what, n, line) in runs {
+            assert!(!redact(&line(n)).contains("hunter2"), "{what}");
+            assert_linear(what, n, line, redact);
         }
-        let finding = format!("ftp://bob:{}x", "\\".repeat(20_000));
-        let started = std::time::Instant::now();
-        assert_eq!(redact(&finding), finding);
-        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        let finding = |n: usize| format!("ftp://bob:{}x", "\\".repeat(n));
+        assert_eq!(redact(&finding(20_000)), finding(20_000));
+        assert_linear("a finding with no @", 20_000, finding, redact);
     }
 
     /// R1 (CodeRabbit 4575254533, Greptile 4575199182): chains of escapes
@@ -1266,21 +1293,17 @@ mod tests {
         for (name, chain) in chains {
             for n in [10_000, 100_000] {
                 for input in [chain(n), chain(n) + url] {
-                    let started = std::time::Instant::now();
                     // A stack depth of n would overflow here: it is bounded.
                     let masked = redact_url_userinfo(&input);
-                    // The bound of the long-line tests: far above a linear
-                    // scan under a parallel build (a 2 s bound failed there),
-                    // far below the minutes a quadratic one takes.
-                    assert!(
-                        started.elapsed() < std::time::Duration::from_secs(15),
-                        "{name} at {n}"
-                    );
                     assert!(!masked.contains("hunter2"), "{name} at {n}");
                     assert!(!redact(&input).contains("hunter2"), "{name} at {n}");
                     assert_eq!(redact_url_userinfo(&masked), masked, "{name} at {n}");
                 }
             }
+            // Unbounded, the work is quadratic in the chain: it would take
+            // ten times longer whole than in ten parts.
+            assert_linear(name, 30_000, chain, redact_url_userinfo);
+            assert_linear(name, 30_000, |n| chain(n) + url, redact_url_userinfo);
         }
         // Within the bound, decoded to the end: the userinfo alone.
         assert_eq!(
@@ -1396,18 +1419,21 @@ mod tests {
     /// look-around it was written with and the rule was dropped on the error.
     /// T3: the identity spans a credential covers are dropped in one walk.
     /// 20k URLs whose `secret@host` is also an e-mail, and 20k e-mails beside
-    /// them; and the walk's comparisons, counted: linear in the spans.
+    /// them; half of them redacted as fast whole as in ten parts; and the
+    /// walk's comparisons, counted: linear in the spans.
     #[test]
     fn the_identity_spans_a_credential_covers_are_dropped_in_linear_time() {
         let n = 20_000;
-        let input = (0..n)
-            .map(|k| format!("ftp://user{k}:secret@host{k}.example/x"))
-            .chain((0..n).map(|k| format!("mail{k}@x{k}.example")))
-            .collect::<Vec<_>>()
-            .join(" ");
-        let started = std::time::Instant::now();
+        let lines = |n: usize| {
+            (0..n)
+                .map(|k| format!("ftp://user{k}:secret@host{k}.example/x"))
+                .chain((0..n).map(|k| format!("mail{k}@x{k}.example")))
+                .collect::<Vec<_>>()
+                .join(" ")
+        };
+        let input = lines(n);
         let out = redact(&input);
-        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert_linear("URLs and e-mails", n / 2, lines, redact);
         assert!(!out.contains("secret") && !out.contains("user1:"));
         assert_eq!(
             regex::Regex::new(r"ftp://\*\*\*REDACTED\*\*\*@host\d+\.example/x")
