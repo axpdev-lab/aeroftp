@@ -178,23 +178,86 @@ pub fn default_ssh_config_path() -> Option<PathBuf> {
 struct HostBlock {
     aliases: Vec<String>,
     kv: HashMap<String, String>,
+    /// Why ssh would not read this block as written, from the first line
+    /// that says so; the host is skipped with it.
+    error: Option<String>,
 }
 
-/// Split an ssh config directive line into `(lowercased key, value)`.
-///
-/// ssh accepts either `Key value` or `Key = value`; tokens are separated by
-/// whitespace and the optional `=` is stripped.
-fn split_directive(line: &str) -> Option<(String, String)> {
-    let (k, v) = line.split_once(char::is_whitespace)?;
-    let value = v.trim().trim_start_matches('=').trim();
-    // A value in double quotes, as ssh reads it and as the export writes a
-    // key file path with spaces: the quotes are not part of it.
-    let value = value
-        .strip_prefix('"')
-        .and_then(|v| v.strip_suffix('"'))
-        .unwrap_or(value);
-    Some((k.to_lowercase(), value.to_string()))
+/// One ssh_config line as OpenSSH reads it (`process_config_line` in
+/// readconf.c and `argv_split` in misc.c, measured with `ssh -G` on 10.2p1):
+/// the keyword ends at whitespace or `=`, one `=` may follow it, and the rest
+/// splits into words. Outside quotes whitespace ends a word; `"` or `'` quote
+/// a part of one; `\\`, `\"` and `\'` (and `\ ` outside quotes) stand for the
+/// character after the backslash, any other backslash for itself; a word
+/// that starts with `#` ends the line. `Err` for a quote left open, which
+/// makes ssh refuse the whole file. `ProxyJump` is read differently: its
+/// value is the rest of the line up to the first `#`, quotes and spaces
+/// included (`ssh -G`: `ProxyJump a b` reads as `a b`, `ProxyJump a#b` as
+/// `a`), and comes back as one word.
+fn split_directive(line: &str) -> Option<Result<(String, Vec<String>), String>> {
+    let line = line.trim();
+    let end = line
+        .find(|c: char| c.is_whitespace() || c == '=')
+        .unwrap_or(line.len());
+    let (key, rest) = line.split_at(end);
+    if key.is_empty() {
+        return None;
+    }
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix('=').unwrap_or(rest);
+    let key = key.to_lowercase();
+    if key == "proxyjump" {
+        let jump = rest.split('#').next().unwrap_or("").trim();
+        return Some(Ok((key, vec![jump.to_string()])));
+    }
+    Some(ssh_words(rest).map(|words| (key, words)))
 }
+
+/// The words of an ssh_config line after its keyword; see [`split_directive`].
+fn ssh_words(s: &str) -> Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut chars = s.chars().peekable();
+    loop {
+        while chars.peek().is_some_and(|c| c.is_whitespace()) {
+            chars.next();
+        }
+        if matches!(chars.peek(), None | Some('#')) {
+            return Ok(words);
+        }
+        let mut word = String::new();
+        let mut quote = None;
+        while let Some(c) = chars.next() {
+            match c {
+                '\\' => match chars.peek().copied() {
+                    Some(next @ ('\\' | '\'' | '"')) => {
+                        word.push(next);
+                        chars.next();
+                    }
+                    Some(' ') if quote.is_none() => {
+                        word.push(' ');
+                        chars.next();
+                    }
+                    _ => word.push('\\'),
+                },
+                ' ' | '\t' if quote.is_none() => break,
+                '"' | '\'' if quote.is_none() => quote = Some(c),
+                c if quote == Some(c) => quote = None,
+                c => word.push(c),
+            }
+        }
+        if quote.is_some() {
+            return Err(
+                "a quote on one of its lines is never closed, so ssh refuses the whole file"
+                    .to_string(),
+            );
+        }
+        words.push(word);
+    }
+}
+
+/// The keywords the import reads that take one word (`ProxyJump` takes the
+/// rest of its line, see [`split_directive`]).
+const IMPORTED_KEYS: [&str; 4] = ["hostname", "port", "user", "identityfile"];
 
 /// Maximum number of `Host` blocks to parse, matching the other importers:
 /// each imported profile with a credential costs a whole-vault rewrite, so an
@@ -214,10 +277,27 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
             continue;
         }
 
-        let Some((key, value)) = split_directive(line) else {
+        let Some(parsed) = split_directive(line) else {
             continue;
         };
+        let (key, words) = match parsed {
+            Ok(parsed) => parsed,
+            Err(reason) => {
+                if let Some(block) = current.as_mut() {
+                    block.error.get_or_insert(reason);
+                }
+                continue;
+            }
+        };
 
+        if key == "match" {
+            // A `Match` block ends the `Host` block before it, and what it
+            // sets applies on its own conditions: none of it is this host's.
+            if let Some(block) = current.take() {
+                blocks.push(block);
+            }
+            continue;
+        }
         if key == "host" {
             if let Some(block) = current.take() {
                 blocks.push(block);
@@ -226,16 +306,21 @@ fn parse_ssh_config(content: &str) -> Vec<HostBlock> {
                 log::warn!("ssh config import: stopped at the {MAX_HOSTS}-host cap");
                 return blocks;
             }
-            let aliases: Vec<String> = value
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .filter(|s| !s.is_empty())
-                .collect();
+            let aliases: Vec<String> = words.into_iter().filter(|s| !s.is_empty()).collect();
             current = Some(HostBlock {
                 aliases,
                 kv: HashMap::new(),
+                error: None,
             });
         } else if let Some(block) = current.as_mut() {
+            // The keywords this import reads take one value; ssh refuses a
+            // line with more ("garbage at end of line").
+            if words.len() > 1 && IMPORTED_KEYS.contains(&key.as_str()) {
+                block.error.get_or_insert(format!(
+                    "its {key} line holds more than one value, which ssh refuses"
+                ));
+            }
+            let value = words.into_iter().next().unwrap_or_default();
             // First occurrence wins, matching ssh's own precedence.
             block.kv.entry(key).or_insert(value);
         }
@@ -260,6 +345,9 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
 
     if block.aliases.iter().any(|a| is_wildcard_pattern(a)) {
         return Err("wildcard host pattern".to_string());
+    }
+    if let Some(reason) = &block.error {
+        return Err(reason.clone());
     }
 
     let kv = &block.kv;
@@ -511,14 +599,16 @@ fn ssh_no_dollar(field: &str, value: &str, dollar: bool) -> Result<(), String> {
 }
 
 /// An `IdentityFile` path as ssh_config reads it: one with whitespace is
-/// written in double quotes (a path may hold spaces), and one with a double
-/// quote cannot be written at all, since the format has no escape for it.
-/// Nor can one with a backslash before another backslash, a quote or an
-/// apostrophe, or at the end of a quoted path: OpenSSH (`argv_split` in
-/// misc.c) drops that backslash, inside double quotes too, so the path would
-/// not read back as written (`ssh -G` on 10.2p1: `\\nas` reads as `\nas`,
-/// `id\'b` as `id'b`, and a last one before the closing quote gives "invalid
-/// quotes"). Any other backslash (`C:\Users\Me`, an unquoted `/keys/id\`)
+/// written in double quotes (a path may hold spaces). One with a double
+/// quote, or with a backslash before another backslash, a quote or an
+/// apostrophe, or at the end of a quoted path, is refused. OpenSSH
+/// (`argv_split` in misc.c) reads such a backslash as an escape, inside
+/// double quotes too (`ssh -G` on 10.2p1: `\\nas` reads as `\nas`, `id\'b` as
+/// `id'b`, `"a\"b"` as `a"b`, and a last one before the closing quote gives
+/// "invalid quotes"), so these paths could be written escaped. The export
+/// refuses them instead, as a choice: a reader of the file without that
+/// escape rule would take the doubled backslashes as written. Any other
+/// backslash (`C:\Users\Me`, an unquoted `/keys/id\`)
 /// is read as written. A path that starts with `#` or `=` is quoted too:
 /// unquoted, ssh would read a comment or a separator there (see
 /// [`ssh_word`]), and `"#id"` reads as `#id`. ssh expands `%` tokens and
@@ -529,7 +619,7 @@ fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains('"') {
         return Err(format!(
-            "its {field} holds a double quote, which ssh_config cannot write inside a value; rename the file and export again"
+            "its {field} holds a double quote, which this export does not write, since ssh would read it only as an escape; rename the file and export again"
         ));
     }
     // An apostrophe outside quotes opens a quoted part ssh never sees closed;
@@ -1423,5 +1513,111 @@ Host roundtrip
                 .collect::<Vec<_>>()
         };
         assert_eq!(read(&source), read(&exported));
+    }
+
+    /// Each line is read as OpenSSH reads it: a trailing comment, `Key=value`,
+    /// escapes, an apostrophe quote, and `ProxyJump` up to its comment. Every
+    /// imported value is the one `ssh -G` reports for the same file. A host
+    /// ssh would refuse (two values for one keyword, a quote left open) is
+    /// skipped with the reason, and what a `Match` block sets is not taken
+    /// for the host before it.
+    #[test]
+    fn each_imported_value_is_what_openssh_reads() {
+        let dir = tempfile::tempdir().unwrap();
+        let good = dir.path().join("good");
+        std::fs::write(
+            &good,
+            "Host esc\n  HostName h.example.com # prod\n  User 'o\\'brien'\n  IdentityFile \"C:\\\\Keys\\\\my id\"\n  ProxyJump j1,j2 # two hops\n\n\
+             Host eq\n  HostName=e.example.com\n  User = ops\n\n\
+             Host m\n  HostName m.example.com\nMatch all\n  User matched\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&good).unwrap();
+        assert_eq!(
+            result.skipped.len(),
+            0,
+            "{:?}",
+            result.skipped.iter().map(|s| &s.reason).collect::<Vec<_>>()
+        );
+        let by = |name: &str| result.servers.iter().find(|s| s.name == name).unwrap();
+        assert_eq!(
+            (by("esc").host.as_str(), by("esc").username.as_str()),
+            ("h.example.com", "o'brien")
+        );
+        let esc = by("esc").options.as_ref().unwrap();
+        assert_eq!(esc["private_key_path"], "C:\\Keys\\my id");
+        assert_eq!(esc["proxyJump"], "j1,j2");
+        assert_eq!(
+            (by("eq").host.as_str(), by("eq").username.as_str()),
+            ("e.example.com", "ops")
+        );
+        assert_eq!(by("m").username, "");
+
+        let bad = dir.path().join("bad");
+        std::fs::write(
+            &bad,
+            "Host two\n  HostName a b\n\nHost open\n  User \"x\n\nHost fine\n  HostName f.example.com\n",
+        )
+        .unwrap();
+        let result = import_ssh_config(&bad).unwrap();
+        let skipped: Vec<(&str, &str)> = result
+            .skipped
+            .iter()
+            .map(|s| (s.name.as_str(), s.reason.as_str()))
+            .collect();
+        assert_eq!(
+            skipped,
+            [
+                (
+                    "two",
+                    "its hostname line holds more than one value, which ssh refuses"
+                ),
+                (
+                    "open",
+                    "a quote on one of its lines is never closed, so ssh refuses the whole file"
+                ),
+            ]
+        );
+        assert_eq!(result.servers.len(), 1);
+
+        if std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            return;
+        }
+        // `ssh -G` on the good file: the same values for each host (a host
+        // without `User` gets the local user from ssh, so it is not compared).
+        let read = |alias: &str| {
+            let out = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(&good)
+                .arg(alias)
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        for alias in ["esc", "eq"] {
+            let got = read(alias);
+            let server = by(alias);
+            assert!(
+                got.lines()
+                    .any(|l| l == format!("hostname {}", server.host)),
+                "{got}"
+            );
+            assert!(
+                got.lines()
+                    .any(|l| l == format!("user {}", server.username)),
+                "{got}"
+            );
+        }
+        let got = read("esc");
+        assert!(
+            got.lines().any(|l| l == "identityfile C:\\Keys\\my id"),
+            "{got}"
+        );
+        assert!(got.lines().any(|l| l == "proxyjump j1,j2"), "{got}");
     }
 }
