@@ -493,9 +493,9 @@ export function readPackageFiles(
       if (declaredLicenseFile && path.resolve(fullPath) === path.resolve(dir, declaredLicenseFile)) {
         continue;
       }
-      if (/^notice/i.test(f)) {
+      if (/^(notice|copyright)/i.test(f)) {
         noticeFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
-      } else if (/^(licen[sc]e|copying|copyright|unlicense)/i.test(f)) {
+      } else if (/^(licen[sc]e|copying|unlicense)/i.test(f)) {
         licenseFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
       }
     } else if (entry.isDirectory() && ['vendor', 'whisper.cpp'].includes(entry.name)) {
@@ -508,7 +508,7 @@ export function readPackageFiles(
             const fullPath = path.join(subDir, sub.name);
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
-            if (/^notice/i.test(sub.name)) {
+            if (/^(notice|copyright)/i.test(sub.name)) {
               noticeFiles.push({ filename, content });
             } else {
               licenseFiles.push({ filename, content });
@@ -522,7 +522,7 @@ export function readPackageFiles(
                 const filename = `${entry.name}/${sub.name}/${n.name}`;
                 const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
                 if (content.length > 0) {
-                  if (/^notice/i.test(n.name)) {
+                  if (/^(notice|copyright)/i.test(n.name)) {
                     noticeFiles.push({ filename, content });
                   } else {
                     licenseFiles.push({ filename, content });
@@ -969,7 +969,10 @@ export function generateNoticesMarkdown(
       lines.push('');
 
       let licText = standardLicenses[licKey];
-      if (licText.includes('<copyright holders>') || licText.includes('<author>')) {
+      const hasPlaceholders =
+        /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/i.test(licText) ||
+        /<(?:copyright holders|author)>/i.test(licText);
+      if (hasPlaceholders) {
         const attributionLines: string[] = [];
         for (const comp of comps) {
           const key = `${comp.name}@${comp.version}`;
@@ -988,10 +991,12 @@ export function generateNoticesMarkdown(
             attributionLines.push(`No copyright notice is shipped upstream; authors${srcStr}: ${author} (${comp.name})`);
           }
         }
-        licText = licText.replace(/Copyright \(c\) <year> <copyright holders>/g, attributionLines.join('\n'));
-        licText = licText.replace(/Copyright \(c\) <year> <author>/g, attributionLines.join('\n'));
-        if (licText.includes('<copyright holders>') || licText.includes('<year>')) {
-          throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders> or <year>)`);
+        licText = licText.replace(
+          /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/gi,
+          attributionLines.join('\n')
+        );
+        if (/<(?:copyright holders|author)>/i.test(licText) || /Copyright \([cC]\) <(?:year|YEAR)>/i.test(licText)) {
+          throw new Error(`Standard license text for ${licKey} contains unpopulated placeholders (<copyright holders>, <year>, or <author>)`);
         }
       }
 
@@ -1005,7 +1010,10 @@ export function generateNoticesMarkdown(
     throw new Error('Generated notices contain unpopulated placeholders (<copyright holders> or see repository maintainers)');
   }
 
-  const idMatches = Array.from(output.matchAll(/\bid="([^"]+)"/g)).map((m) => m[1]);
+  // Exclude fenced code blocks from anchor validation so license texts containing id="..." don't trigger false positives.
+  // Match any markdown fenced block starting with 3 or more backticks and ending with a matching-length closing fence.
+  const proseOutsideCodeBlocks = output.replace(/(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?\n\1(?:\n|$)/g, '\n');
+  const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
   const seenIds = new Set<string>();
   for (const id of idMatches) {
     if (seenIds.has(id)) {

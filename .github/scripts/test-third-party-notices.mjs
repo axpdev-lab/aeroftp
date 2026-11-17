@@ -228,15 +228,16 @@ test('npm collection: walks lock entries by path and preserves multiple versions
   }
 });
 
-test('readPackageFiles: collects COPYRIGHT files together with license texts', () => {
+test('readPackageFiles: collects COPYRIGHT files into noticeFiles without suppressing license fallback', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-copyright-test-'));
   try {
     fs.writeFileSync(path.join(tmpDir, 'COPYRIGHT'), 'Copyright (c) 2024 Test Project Contributors');
     fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License text');
-    const { licenseFiles } = readPackageFiles(tmpDir, 'test-copyright-crate@1.0.0');
-    assert.strictEqual(licenseFiles.length, 2);
-    assert.ok(licenseFiles.some((f) => f.filename === 'COPYRIGHT'));
-    assert.ok(licenseFiles.some((f) => f.filename === 'LICENSE'));
+    const { licenseFiles, noticeFiles } = readPackageFiles(tmpDir, 'test-copyright-crate@1.0.0');
+    assert.strictEqual(licenseFiles.length, 1);
+    assert.strictEqual(noticeFiles.length, 1);
+    assert.strictEqual(licenseFiles[0].filename, 'LICENSE');
+    assert.strictEqual(noticeFiles[0].filename, 'COPYRIGHT');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -734,7 +735,8 @@ test('README.md notice links resolve to valid anchors in THIRD-PARTY-NOTICES.md'
 
 test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', () => {
   const noticesContent = fs.readFileSync(path.join(ROOT, 'THIRD-PARTY-NOTICES.md'), 'utf8');
-  const idMatches = Array.from(noticesContent.matchAll(/\bid="([^"]+)"/g)).map((m) => m[1]);
+  const proseOutsideCodeBlocks = noticesContent.replace(/(?:^|\n)(`{3,})[^\n]*\n[\s\S]*?\n\1(?:\n|$)/g, '\n');
+  const idMatches = Array.from(proseOutsideCodeBlocks.matchAll(/<a id="([^"]+)">/g)).map((m) => m[1]);
   assert.ok(idMatches.length > 0, 'Generated notices must contain anchors');
 
   const seenIds = new Set();
@@ -754,23 +756,91 @@ test('THIRD-PARTY-NOTICES.md: every anchor id in the generated file is unique', 
 
   // Specifically check previously duplicated IDs are now unique
   assert.strictEqual(
-    (noticesContent.match(/<a id="notice-unrar">/g) || []).length,
+    (proseOutsideCodeBlocks.match(/<a id="notice-unrar">/g) || []).length,
     1,
     'notice-unrar anchor must be emitted exactly once'
   );
   assert.strictEqual(
-    (noticesContent.match(/<a id="notice-typeid">/g) || []).length,
+    (proseOutsideCodeBlocks.match(/<a id="notice-typeid">/g) || []).length,
     1,
     'notice-typeid anchor must be emitted exactly once'
   );
   assert.strictEqual(
-    (noticesContent.match(/<a id="notice-wasm-streams">/g) || []).length,
+    (proseOutsideCodeBlocks.match(/<a id="notice-wasm-streams">/g) || []).length,
     1,
     'notice-wasm-streams anchor must be emitted exactly once'
   );
   assert.strictEqual(
-    (noticesContent.match(/<a id="notice-unrar-sys">/g) || []).length,
+    (proseOutsideCodeBlocks.match(/<a id="notice-unrar-sys">/g) || []).length,
     1,
     'notice-unrar-sys anchor must be emitted exactly once'
   );
+
+  // cesu8@1.1.0 attribution retained in standard license fallback alongside COPYRIGHT notice entry,
+  // bounded strictly to each matching standard-license section
+  const apacheSection = noticesContent.split('### Standard License: Apache-2.0')[1]?.split('### Standard License:')[0] || '';
+  assert.ok(apacheSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in Apache-2.0 standard license section');
+
+  const mitSection = noticesContent.split('### Standard License: MIT')[1]?.split('### Standard License:')[0] || '';
+  assert.ok(mitSection.includes('`cesu8@1.1.0`'), 'cesu8@1.1.0 must appear in MIT standard license section');
+
+  assert.match(noticesContent, /Eric Kidd <git@randomhacks\.net>/);
+});
+
+test('groupLicenseTexts: COPYRIGHT-only component receives both notice entry and standard license fallback', () => {
+  const comp = {
+    name: 'copyright-only-pkg',
+    version: '1.0.0',
+    license: 'Apache-2.0',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [{ filename: 'COPYRIGHT-RUST.txt', content: 'Copyright notice text' }],
+    authors: ['Author Name <author@example.com>'],
+  };
+  const { groupedTexts, componentsWithoutFiles } = groupLicenseTexts([comp]);
+  assert.strictEqual(componentsWithoutFiles.length, 1);
+  assert.strictEqual(componentsWithoutFiles[0].name, 'copyright-only-pkg');
+  assert.strictEqual(groupedTexts.length, 1);
+  assert.strictEqual(groupedTexts[0].components[0].filename, 'COPYRIGHT-RUST.txt');
+});
+
+test('standard SPDX texts: 0BSD fallback replaces uppercase (C) and <year>/<author> placeholders', () => {
+  const comp = {
+    name: 'test-0bsd-crate',
+    version: '1.0.0',
+    license: '0BSD',
+    source: 'cargo',
+    licenseFiles: [],
+    noticeFiles: [],
+    authors: ['ZeroBSD Author <zerobsd@example.com>'],
+  };
+  const out = generateNoticesMarkdown([comp], [], SPDX_STANDARD_LICENSES_FILE, []);
+  assert.match(out, /### Standard License: 0BSD/);
+  assert.match(out, /ZeroBSD Author <zerobsd@example\.com> \(test-0bsd-crate\)/);
+  assert.doesNotMatch(out, /<year>/i);
+  assert.doesNotMatch(out, /<author>/i);
+  assert.doesNotMatch(out, /<copyright holders>/i);
+});
+
+test('anchor validation: excludes fenced code blocks from duplicate anchor detection', () => {
+  const compA = {
+    name: 'crate-with-id-in-license',
+    version: '1.0.0',
+    license: 'MIT',
+    source: 'cargo',
+    licenseFiles: [
+      {
+        filename: 'LICENSE',
+        content:
+          'MIT License\n\nCode snippet with triple backticks:\n```\nconst x = 1;\n<a id="notice-crate-with-id-in-license"></a>\n```\nAnother snippet: id="foo"',
+      },
+    ],
+    noticeFiles: [],
+    authors: ['Test Author'],
+  };
+  // Should NOT throw duplicate anchor error even though the license text contains
+  // embedded triple-backtick fences (causing makeCodeBlock to use 4-backtick outer fences)
+  // and an embedded <a id="..."> matching the component anchor.
+  const out = generateNoticesMarkdown([compA], [], SPDX_STANDARD_LICENSES_FILE, []);
+  assert.match(out, /<a id="notice-crate-with-id-in-license"><\/a>/);
 });
