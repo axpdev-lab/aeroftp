@@ -1735,16 +1735,27 @@ impl MegaCmdProvider {
         // A handle names any node: it is fetched only as one of this file's
         // versions.
         let listed = self.list_versions(path).await?;
-        if !listed.iter().any(|v| v.id == version_id) {
+        let Some(size) = listed.iter().find(|v| v.id == version_id).map(|v| v.size) else {
             return Err(ProviderError::NotFound(format!(
                 "{path} has no version {version_id}"
             )));
-        }
+        };
         let head = listed.first().map(|v| v.id.clone());
         let temp = MegaTempFile::new("aeroftp_mega_version");
         let temp_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
         self.run_mega_transfer_with_reauth("mega-get", &[version_id, &temp_arg], Some(&|_| {}))
             .await?;
+        // MEGAcmd can exit with its failure on stdout, which reads as a
+        // success: a version is taken only whole, at the size it was listed
+        // with, or a restore would upload the cut file over the current one.
+        // A size the listing did not give (0) checks nothing.
+        let written = std::fs::metadata(&temp.0).map(|m| m.len()).unwrap_or(0);
+        if size > 0 && written != size {
+            return Err(ProviderError::TransferFailed(format!(
+                "MEGA sent {written} of the {size} bytes of version {version_id} of {path}: \
+                 nothing was changed, try again"
+            )));
+        }
         Ok((temp, head))
     }
 
@@ -3307,6 +3318,22 @@ mod tests {
         assert!(stand_in_log(&dir, "put.log").is_empty());
     }
 
+    /// MEGAcmd can report a failed get on stdout with a non-zero exit, which
+    /// the command runner takes as output: a version cut midway is never
+    /// uploaded over the file.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_cut_megacmd_version_is_not_restored() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        std::fs::write(dir.path().join("get-short"), "").unwrap();
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("3 of the 8 bytes")),
+            "{outcome:?}"
+        );
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn a_megacmd_version_is_downloaded_from_its_handle() {
@@ -3317,7 +3344,7 @@ mod tests {
             .download_version("/v.txt", "H:vAAAAAA1", target.to_str().unwrap())
             .await
             .expect("download");
-        assert_eq!(std::fs::metadata(&target).unwrap().len(), 1000);
+        assert_eq!(std::fs::metadata(&target).unwrap().len(), 8);
         assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA1"]);
         assert!(stand_in_log(&dir, "put.log").is_empty());
     }

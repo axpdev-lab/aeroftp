@@ -6365,6 +6365,47 @@ mod tests {
         );
     }
 
+    /// Row 0 of the dialog, `current`, is the file itself: its download is
+    /// the file's own (the live link, here answered 404 "gone", never a
+    /// version code), and its restore and delete send no request at all.
+    #[tokio::test]
+    async fn the_current_row_is_the_file_itself_for_every_version_operation() {
+        let current = super::super::CURRENT_VERSION_ID;
+        let (mut provider, calls) = provider_with_versions(AfterDelete::Removes).await;
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        let outcome = provider
+            .download_version("/d/f.txt", current, out.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("404") && m.contains("gone")),
+            "{outcome:?}"
+        );
+        let seen = calls.lock().unwrap().clone();
+        assert!(
+            seen.iter()
+                .any(|c| c.starts_with("/apiv2/file/direct_link")),
+            "{seen:?}"
+        );
+        assert!(seen.iter().all(|c| !c.starts_with("/api/")), "{seen:?}");
+
+        let before = calls.lock().unwrap().len();
+        assert!(matches!(
+            provider.restore_version("/d/f.txt", current).await,
+            Err(ProviderError::NotSupported(_))
+        ));
+        assert!(matches!(
+            provider.delete_version("/d/f.txt", current).await,
+            Err(ProviderError::NotSupported(_))
+        ));
+        assert_eq!(
+            calls.lock().unwrap().len(),
+            before,
+            "{:?}",
+            calls.lock().unwrap()
+        );
+    }
+
     /// A direct link answered with an error status fails the download, and
     /// the error page is not written as the file.
     #[tokio::test]

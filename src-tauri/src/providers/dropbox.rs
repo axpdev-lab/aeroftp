@@ -2046,7 +2046,7 @@ impl StorageProvider for DropboxProvider {
             "limit": 100
         });
 
-        let url = format!("{}/files/list_revisions", API_BASE);
+        let url = format!("{}/files/list_revisions", self.rpc_api_base());
 
         let response = self
             .client
@@ -2070,20 +2070,33 @@ impl StorageProvider for DropboxProvider {
             .text()
             .await
             .map_http_err(|e| ProviderError::Other(format!("Parse error: {}", e)))?;
-        // The current revision is the file's own `rev`.
+        // The current revision is the file's own `rev`. A deleted file keeps
+        // revisions it can be restored from: its metadata is asked with
+        // include_deleted (without it the call answers not_found), and row 0
+        // is then the deletion, so no earlier revision reads as current.
         let meta: DropboxMetadata = self
             .rpc_call(
                 "files/get_metadata",
-                &serde_json::json!({ "path": full_path }),
+                &serde_json::json!({ "path": full_path, "include_deleted": true }),
             )
             .await?;
-        let current = meta.rev.clone().map(|rev| super::FileVersion {
-            id: rev,
-            modified: meta.server_modified.clone(),
-            size: meta.size,
-            modified_by: None,
-            deleted: false,
-        });
+        let current = if meta.tag == "deleted" {
+            Some(super::FileVersion {
+                id: super::CURRENT_VERSION_ID.to_string(),
+                modified: None,
+                size: 0,
+                modified_by: None,
+                deleted: true,
+            })
+        } else {
+            meta.rev.clone().map(|rev| super::FileVersion {
+                id: rev,
+                modified: meta.server_modified.clone(),
+                size: meta.size,
+                modified_by: None,
+                deleted: false,
+            })
+        };
         revisions_in_dialog_order(&body, current)
     }
 
@@ -3460,6 +3473,55 @@ mod tests {
             "{text}"
         );
         server.abort();
+    }
+
+    /// A deleted file still lists the revisions it can be restored from:
+    /// its metadata is read with include_deleted, and row 0 is the deletion,
+    /// never its newest revision labelled current.
+    #[tokio::test]
+    async fn a_deleted_dropbox_file_lists_its_revisions_after_the_deletion() {
+        use axum::{http::StatusCode, routing::post, Json, Router};
+        use serde_json::{json, Value};
+        let app = Router::new()
+            .route(
+                "/files/list_revisions",
+                post(|| async {
+                    Json(json!({"is_deleted":true,"entries":[
+                        {"rev":"r1","size":3,"server_modified":"2026-01-01T00:00:00Z"},
+                        {"rev":"r2","size":5,"server_modified":"2026-01-02T00:00:00Z"}
+                    ]}))
+                }),
+            )
+            .route(
+                "/files/get_metadata",
+                post(|Json(request): Json<Value>| async move {
+                    if request["include_deleted"] == json!(true) {
+                        (
+                            StatusCode::OK,
+                            Json(json!({".tag":"deleted","name":"gone.txt","path_display":"/gone.txt"})),
+                        )
+                    } else {
+                        (
+                            StatusCode::CONFLICT,
+                            Json(json!({"error_summary":"path/not_found/","error":{".tag":"path"}})),
+                        )
+                    }
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let mut provider = fixture_connected();
+        provider.content_base_override = Some(format!("http://{addr}"));
+        let versions = provider.list_versions("/gone.txt").await.expect("versions");
+        server.abort();
+        let rows: Vec<(&str, bool)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted))
+            .collect();
+        assert_eq!(rows, [("current", true), ("r2", false), ("r1", false)]);
     }
 
     #[tokio::test]

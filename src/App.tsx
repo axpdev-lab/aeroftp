@@ -1628,6 +1628,10 @@ const App: React.FC = () => {
   const [showKDriveTrash, setShowKDriveTrash] = useState(false);
   const [showAzureTrash, setShowAzureTrash] = useState(false);
   const [showNextcloudTrash, setShowNextcloudTrash] = useState(false);
+  // The session the Nextcloud trash was opened on: its restore and delete act
+  // on the active provider, so the manager is shown only while that session
+  // is the one on screen, never over another connection.
+  const [nextcloudTrashSession, setNextcloudTrashSession] = useState<string | null>(null);
   const [shareLinkDialog, setShareLinkDialog] = useState<{ path: string; fileName: string; providerName: string; providerIcon?: React.ReactNode } | null>(null);
   const [fileLuFolderSettingsDialog, setFileLuFolderSettingsDialog] = useState<{
     path: string; name: string; filedrop: boolean; isPublic: boolean;
@@ -21206,7 +21210,7 @@ const App: React.FC = () => {
             onRefreshFiles={() => loadRemoteFiles(undefined, true)}
           />
         )}
-        {showNextcloudTrash && (
+        {showNextcloudTrash && nextcloudTrashSession === activeSessionId && (
           <NextcloudTrashManager
             providerName={getProviderById(liveConnectionParams.providerId ?? '')?.name ?? 'Nextcloud'}
             onClose={() => setShowNextcloudTrash(false)}
@@ -22525,7 +22529,10 @@ const App: React.FC = () => {
                       if (proto === 'webdav') {
                         const pid = liveConnectionParams.providerId;
                         if (pid && getProviderById(pid)?.features?.trash) {
-                          handler = () => setShowNextcloudTrash(true);
+                          handler = () => {
+                            setNextcloudTrashSession(activeSessionId);
+                            setShowNextcloudTrash(true);
+                          };
                         }
                       }
                       return handler ? (

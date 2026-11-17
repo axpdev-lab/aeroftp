@@ -1152,6 +1152,15 @@ impl ZohoWorkdriveProvider {
         }
     }
 
+    /// The region's download server, `https://<download domain>`.
+    fn download_base(&self) -> String {
+        #[cfg(test)]
+        if let Some(base) = &self.endpoint_override {
+            return format!("{base}/dl");
+        }
+        format!("https://{}", self.config.download_domain())
+    }
+
     /// Stream upload endpoint on the region's upload server.
     fn stream_upload_url(&self, host: &str) -> String {
         #[cfg(test)]
@@ -4348,8 +4357,8 @@ impl StorageProvider for ZohoWorkdriveProvider {
 
         // Download specific version via download domain with version parameter
         let download_url = format!(
-            "https://{}/v1/workdrive/download/{}?version={}",
-            self.config.download_domain(),
+            "{}/v1/workdrive/download/{}?version={}",
+            self.download_base(),
             file_id,
             urlencoding::encode(version_id)
         );
@@ -7276,6 +7285,72 @@ mod tests {
         assert_eq!(
             *calls.lock().unwrap(),
             ["DELETE /workdrive/api/v1/links/abc123"]
+        );
+    }
+
+    /// A restore is `POST /versions` with `revert_to` the version number and
+    /// `resource_id` the resolved file id (the per-file promote route answers
+    /// 404), and a version download asks the file's download with `?version=`
+    /// the number, never the resource id.
+    #[tokio::test]
+    async fn a_version_is_restored_and_downloaded_by_its_number_on_the_documented_routes() {
+        use std::sync::{Arc, Mutex};
+        let calls: Arc<Mutex<Vec<String>>> = Arc::default();
+        let seen = Arc::clone(&calls);
+        let app = axum::Router::new().fallback(axum::routing::any(
+            move |method: axum::http::Method, uri: axum::http::Uri, body: String| {
+                let line = format!(
+                    "{method} {}{} {body}",
+                    uri.path(),
+                    uri.query().map(|q| format!("?{q}")).unwrap_or_default()
+                );
+                seen.lock().unwrap().push(line.trim_end().to_string());
+                async move {
+                    match uri.path() {
+                        "/workdrive/api/v1/privatespace/PS/files" => (
+                            axum::http::StatusCode::OK,
+                            r#"{"data":[{"id":"FILE9","attributes":{"name":"f.txt","type":"file"}}]}"#,
+                        ),
+                        "/workdrive/api/v1/versions" => (axum::http::StatusCode::OK, "{}"),
+                        "/dl/v1/workdrive/download/FILE9" => (axum::http::StatusCode::OK, "old"),
+                        _ => (axum::http::StatusCode::NOT_FOUND, "unexpected endpoint"),
+                    }
+                }
+            },
+        ));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut p = ZohoWorkdriveProvider::new(config("com"));
+        p.endpoint_override = Some(format!("http://{addr}"));
+        p.test_access_token = Some("test-token".into());
+        p.connected = true;
+        p.privatespace_id = Some("PS".into());
+        p.current_folder_id = "PS".into();
+        p.folder_cache.insert("/".into(), "PS".into());
+
+        p.restore_version("/f.txt", "2.0").await.expect("restore");
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("f.txt");
+        p.download_version("/f.txt", "2.0", out.to_str().unwrap())
+            .await
+            .expect("download");
+        server.abort();
+        assert_eq!(std::fs::read_to_string(&out).unwrap(), "old");
+        let calls = calls.lock().unwrap().clone();
+        let restore: Vec<&String> = calls.iter().filter(|c| c.contains("/versions")).collect();
+        assert_eq!(restore.len(), 1, "{calls:?}");
+        assert!(
+            restore[0].starts_with("POST /workdrive/api/v1/versions {"),
+            "{calls:?}"
+        );
+        assert!(restore[0].contains(r#""revert_to":"2.0""#), "{calls:?}");
+        assert!(restore[0].contains(r#""resource_id":"FILE9""#), "{calls:?}");
+        assert!(
+            calls
+                .iter()
+                .any(|c| c == "GET /dl/v1/workdrive/download/FILE9?version=2.0"),
+            "{calls:?}"
         );
     }
 

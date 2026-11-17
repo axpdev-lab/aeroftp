@@ -1090,16 +1090,33 @@ fn parse_nextcloud_versions_listing(xml: &str) -> Result<Vec<ListedVersion>, Pro
     Ok(found)
 }
 
-/// The version id of a versions listing href: its last decoded segment.
-/// The version id of a row of the versions answer for `file_id`: only a
-/// direct child of `versions/<file_id>/`. A row under another file's id (a
-/// server or proxy answering for 43 in the listing of 42) is not this file's,
-/// and binding it to 42 would let a delete remove 42's version of that time.
-fn nextcloud_version_id_of_href(href: &str, file_id: &str) -> Option<String> {
-    let path = href.split(['?', '#']).next().unwrap_or("");
-    let mut segments = path.trim_end_matches('/').rsplit('/');
-    let last = segments.next()?;
-    if decode_one_segment(segments.next()?) != file_id || segments.next()? != "versions" {
+/// The version id of a row of the versions answer: only a direct child of
+/// the collection that was listed (`<root>/versions/<user>/versions/<file id>/`,
+/// path of `collection_url`), compared segment by segment, decoded. A row of
+/// another file's id, or of the same id under another user's collection (a
+/// server or proxy answering more than was asked), is not this file's, and
+/// binding it would let a delete remove this file's version of that time.
+fn nextcloud_version_id_of_href(href: &str, collection_url: &str) -> Option<String> {
+    let path_of = |s: &str| -> String {
+        let s = s.split(['?', '#']).next().unwrap_or("");
+        match s.split_once("://") {
+            Some((_, rest)) => rest
+                .find('/')
+                .map(|i| rest[i..].to_string())
+                .unwrap_or_default(),
+            None => s.to_string(),
+        }
+    };
+    let href = path_of(href);
+    let collection = path_of(collection_url);
+    let (parent, last) = href.trim_end_matches('/').rsplit_once('/')?;
+    let decoded = |p: &str| -> Vec<String> {
+        p.split('/')
+            .filter(|s| !s.is_empty())
+            .map(decode_one_segment)
+            .collect()
+    };
+    if decoded(parent) != decoded(collection.trim_end_matches('/')) {
         return None;
     }
     let id = decode_one_segment(last);
@@ -3286,12 +3303,22 @@ impl WebDavProvider {
         // from the versions endpoint, which may hold no body for it).
         // Nextcloud 25 leaves them out, and the file itself becomes row 0.
         let current = self.stat(path).await?;
+        // The file read by stat must still be the one whose versions were
+        // listed: replaced meanwhile, its metadata would head another file's
+        // history.
+        let now = self.nextcloud_file_id_of(path).await?;
+        if now != file_id {
+            return Err(ProviderError::NotFound(format!(
+                "{path} was replaced while its versions were listed (file id {file_id}, \
+                 now {now}): list its versions again"
+            )));
+        }
         let mtime = super::version_time_millis(current.modified.as_deref()) / 1000;
         let versions: Vec<super::FileVersion> = parse_nextcloud_versions_listing(&xml)?
             .into_iter()
             .filter(|row| !row.is_collection)
             .filter_map(|row| {
-                let version = nextcloud_version_id_of_href(&row.href, &file_id)?;
+                let version = nextcloud_version_id_of_href(&row.href, &url)?;
                 let epoch = version.parse::<i64>().unwrap_or(0);
                 let id = if mtime > 0 && epoch == mtime {
                     super::CURRENT_VERSION_ID.to_string()
@@ -7567,10 +7594,12 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let log: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let swap_listings: std::sync::Arc<std::sync::atomic::AtomicUsize> = Default::default();
         let seen = log.clone();
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let seen = seen.clone();
+                let swap_listings = swap_listings.clone();
                 async move {
                     let method = req.method().to_string();
                     let path = req.uri().path().to_string();
@@ -7626,6 +7655,29 @@ mod tests {
 <d:response><d:href>/remote.php/dav/versions/user/versions/46/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 <d:response><d:href>/remote.php/dav/versions/user/versions/46/1700000100</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 <d:response><d:href>/remote.php/dav/versions/user/versions/43/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/other/versions/46/1700000200</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/files/user/swap/") => {
+                            let n = swap_listings.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                            let id = if n == 0 { 47 } else { 48 };
+                            reply(
+                                207,
+                                &format!(r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
+<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><oc:fileid>{id}</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#),
+                            )
+                        }
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/47/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/versions/user/versions/47/1700000100</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/files/user/swap/e.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/files/user/swap/e.txt</d:href><d:propstat><d:prop><d:getcontentlength>9</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
                         ("PROPFIND", "/remote.php/dav/files/user/d.txt") => reply(
@@ -7718,13 +7770,31 @@ mod tests {
     /// d.txt, and a delete of it removed 46's version of that time. Only the
     /// rows under versions/46/ are listed.
     #[tokio::test]
-    async fn a_version_row_of_another_file_id_is_not_listed() {
+    async fn a_version_row_of_another_file_id_or_user_is_not_listed() {
         let (base, _log, server) = serve_nextcloud_versions().await;
         let mut provider = nextcloud_versions_provider(&base);
         let versions = provider.list_versions("/d.txt").await.expect("versions");
         server.abort();
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["current", "46:1700000100"]);
+    }
+
+    /// A file replaced between the versions answer and the stat of its
+    /// current contents: the listing would head file 47's history with 48's
+    /// metadata. It fails and asks for a new listing.
+    #[tokio::test]
+    async fn a_file_replaced_while_its_versions_are_listed_fails_the_listing() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let err = provider
+            .list_versions("/swap/e.txt")
+            .await
+            .expect_err("replaced");
+        server.abort();
+        assert!(
+            matches!(&err, ProviderError::NotFound(m) if m.contains("replaced") && m.contains("47") && m.contains("48")),
+            "{err:?}"
+        );
     }
 
     /// An author with an entity in it arrives as Text pieces around a

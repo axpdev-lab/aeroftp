@@ -5548,6 +5548,14 @@ pub fn preserve_remote_mtime(local_path: &str, remote_modified: Option<&str>) {
 /// RFC 2822 arm no WebDAV download ever kept its remote mtime, and a later
 /// sync saw every downloaded file as changed.
 pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
+    parse_remote_mtime_millis(modified_str).map(|millis| millis.div_euclid(1000))
+}
+
+/// [`parse_remote_mtime`] in milliseconds, keeping the fraction a shape carries
+/// (`2026-09-24T19:41:46.250Z`), for the orderings two events within one
+/// second must not tie on (the rows of a version list). Same shapes, same
+/// refusals: this is the single parser, the seconds form floors it.
+pub fn parse_remote_mtime_millis(modified_str: &str) -> Option<i64> {
     let trimmed = modified_str.trim();
     // FTP MLSD-derived listings end in `Z` or `UTC` with no offset.
     let clean_str = trimmed
@@ -5558,9 +5566,9 @@ pub fn parse_remote_mtime(modified_str: &str) -> Option<i64> {
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%dT%H:%M:%S%.f"))
         .or_else(|_| chrono::NaiveDateTime::parse_from_str(clean_str, "%Y-%m-%d %H:%M:%S%.f"))
-        .map(|ndt| ndt.and_utc().timestamp())
-        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp()))
-        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp()))
+        .map(|ndt| ndt.and_utc().timestamp_millis())
+        .or_else(|_| chrono::DateTime::parse_from_rfc3339(trimmed).map(|dt| dt.timestamp_millis()))
+        .or_else(|_| chrono::DateTime::parse_from_rfc2822(trimmed).map(|dt| dt.timestamp_millis()))
         .ok()
 }
 
@@ -5598,6 +5606,29 @@ mod parse_remote_mtime_tests {
         assert_eq!(parse_remote_mtime("yesterday"), None);
         assert_eq!(parse_remote_mtime("?"), None);
         assert_eq!(parse_remote_mtime(""), None);
+    }
+
+    #[test]
+    fn the_millisecond_form_keeps_the_fraction_and_the_seconds_form_floors_it() {
+        use super::parse_remote_mtime_millis;
+        assert_eq!(
+            parse_remote_mtime_millis("2026-09-24T19:41:46.250Z"),
+            Some(EXPECTED * 1000 + 250)
+        );
+        assert_eq!(
+            parse_remote_mtime_millis("2026-09-24T21:41:46.250+02:00"),
+            Some(EXPECTED * 1000 + 250)
+        );
+        assert_eq!(
+            parse_remote_mtime_millis("Thu, 24 Sep 2026 19:41:46 GMT"),
+            Some(EXPECTED * 1000)
+        );
+        assert_eq!(
+            parse_remote_mtime_millis("1969-12-31T23:59:59.500Z"),
+            Some(-500)
+        );
+        assert_eq!(parse_remote_mtime("1969-12-31T23:59:59.500Z"), Some(-1));
+        assert_eq!(parse_remote_mtime_millis("2026-09-24 19:41"), None);
     }
 }
 

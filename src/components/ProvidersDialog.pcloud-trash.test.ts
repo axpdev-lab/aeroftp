@@ -24,4 +24,14 @@ describe('Help > Providers pCloud Drive trash and versions', () => {
         expect(block).not.toMatch(/'versioning'/);
         expect(block).toMatch(/'shareLink'/);
     });
+
+    // Felicloud answers 404 on the Nextcloud versions endpoint (the versions
+    // app is off, measured 2026-11-16): its row lists trash but no versioning.
+    it('lists trash but no versioning on the Felicloud row', () => {
+        const start = src.indexOf("{ name: 'Felicloud'");
+        expect(start).toBeGreaterThan(-1);
+        const block = src.slice(start, src.indexOf('advanced:', start));
+        expect(block).not.toMatch(/'versioning'/);
+        expect(block).toMatch(/'trash'/);
+    });
 });

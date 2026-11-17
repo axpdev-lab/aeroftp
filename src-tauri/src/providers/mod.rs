@@ -450,8 +450,19 @@ impl VersionTempFile {
             options.mode(0o600);
         }
         options.open(&temp.0)?;
+        #[cfg(test)]
+        LAST_PRIVATE_VERSION_TEMP.with(|last| *last.borrow_mut() = Some(temp.0.clone()));
         Ok(temp)
     }
+}
+
+// The last private version temp file made on this thread, so a test checks
+// the cleanup of its own file and not a count of a directory that tests
+// running in parallel share.
+#[cfg(test)]
+thread_local! {
+    pub(crate) static LAST_PRIVATE_VERSION_TEMP: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 impl Drop for VersionTempFile {
@@ -517,18 +528,12 @@ pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
 }
 
 /// Milliseconds since the epoch of a provider version time, for
-/// [`versions_current_first`]'s `newest`; 0 when it reads none. RFC 3339 keeps
-/// its fraction (two B2 uploads in one second stay apart); every other form
-/// goes through the single parser [`crate::parse_remote_mtime`] (RFC 2822
-/// HTTP dates, naive UTC), whole seconds.
+/// [`versions_current_first`]'s `newest`; 0 when it reads none. Read by the
+/// single parser [`crate::parse_remote_mtime_millis`], which keeps the
+/// fraction (two B2 uploads in one second stay apart).
 pub fn version_time_millis(modified: Option<&str>) -> i64 {
-    let Some(text) = modified.map(str::trim) else {
-        return 0;
-    };
-    chrono::DateTime::parse_from_rfc3339(text)
-        .map(|time| time.timestamp_millis())
-        .ok()
-        .or_else(|| crate::parse_remote_mtime(text).map(|secs| secs.saturating_mul(1000)))
+    modified
+        .and_then(crate::parse_remote_mtime_millis)
         .unwrap_or(0)
 }
 

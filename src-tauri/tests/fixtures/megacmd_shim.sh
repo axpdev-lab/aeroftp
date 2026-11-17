@@ -23,7 +23,8 @@
 # (a file put at the path by another client). Every
 # mega-get source is appended to get.log, its local target to
 # get-targets.log, and every mega-put target to put.log; a file
-# get-writes-then-fails makes mega-get write 500 bytes and then refuse. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
+# get-writes-then-fails makes mega-get write 500 bytes and then refuse; get-short makes
+# it write 3 bytes, print its failure on stdout and exit 1. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
 # to <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
 # exits 9 with MEGAcmd's "Not found", as measured the same day.
 here=$(dirname "$0")
@@ -170,10 +171,21 @@ case "$(basename "$0")" in
             echo "Download failed: Write error" >&2
             exit 2
         fi
+        # A version handle gets the size its listing line above says.
+        n=1000
+        case "$1" in
+            H:*) n=$(awk -v h="$1" 'index($0, " " h " ") { print $4; exit }' "$0") ;;
+        esac
+        if [ -f "$here/get-short" ]; then
+            # Cut midway, the failure on stdout and a non-zero exit.
+            dd if=/dev/zero of="$2" bs=3 count=1 2>/dev/null
+            echo "Download failed: interrupted"
+            exit 1
+        fi
         for p in 10.00 50.00 90.00; do
             printf 'TRANSFERRING ||####..........||(9/30 MB:  %s %%) \000\r' "$p" >&2
         done
-        dd if=/dev/zero of="$2" bs=1000 count=1 2>/dev/null
+        dd if=/dev/zero of="$2" bs="$n" count=1 2>/dev/null
         printf '\nDownload finished: %s\n' "$2"
         printf 'TRANSFERRING ||##############||(30/30 MB: 100.00 %%) \000\n' >&2
         ;;

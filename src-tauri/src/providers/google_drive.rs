@@ -101,6 +101,19 @@ fn runner_part_size(total_size: u64) -> u64 {
 
 const DRIVE_FOLDER_MIME: &str = "application/vnd.google-apps.folder";
 
+/// A Google Docs, Sheets or Slides file has no revision Drive can send
+/// (`revisions.get?alt=media` answers fileNotDownloadable): its history lives
+/// in the editor. Its versions are refused before any revision request.
+fn refuse_workspace_revisions(file: &DriveFile, path: &str) -> Result<(), ProviderError> {
+    if file.mime_type.starts_with("application/vnd.google-apps.") {
+        return Err(ProviderError::NotSupported(format!(
+            "{path} is a Google Docs, Sheets or Slides file: Drive keeps its versions in the \
+             editor (File > Version history), open it there to restore one"
+        )));
+    }
+    Ok(())
+}
+
 fn is_drive_folder(file: &DriveFile) -> bool {
     file.mime_type == DRIVE_FOLDER_MIME
 }
@@ -1426,9 +1439,12 @@ impl GoogleDriveProvider {
         let parent_id = self
             .parent_folder_id(file_path_is_absolute, parent_path)
             .await?;
-        self.find_by_name(file_name, &parent_id)
+        let file = self
+            .find_by_name(file_name, &parent_id)
             .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        refuse_workspace_revisions(&file, path)?;
+        Ok(file)
     }
 
     /// The answer to a media GET of revision `version_id` of file `file_id`,
@@ -2601,6 +2617,7 @@ impl StorageProvider for GoogleDriveProvider {
             .find_by_name(file_name, &parent_id)
             .await?
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
+        refuse_workspace_revisions(&file, path)?;
 
         let url = format!(
             "{}/files/{}/revisions?fields=revisions(id,modifiedTime,size,lastModifyingUser)",
@@ -3883,7 +3900,9 @@ mod tests {
                                 n.eq_ignore_ascii_case(&name) && in_parent
                             })
                             .map(|(id, n, p)| {
-                                let mime = if n.contains('.') {
+                                let mime = if n.ends_with(".gdoc") {
+                                    "application/vnd.google-apps.document"
+                                } else if n.contains('.') {
                                     "text/plain"
                                 } else {
                                     "application/vnd.google-apps.folder"
@@ -4031,22 +4050,26 @@ mod tests {
         );
     }
 
+    /// A Google Docs file has no revision Drive sends: its versions are
+    /// refused for list, download and restore, and nothing is uploaded.
+    #[tokio::test]
+    async fn a_google_docs_file_offers_no_revision_to_fetch() {
+        let (mut p, changes) = provider_on_drive(&[("G1", "notes.gdoc", "root")]).await;
+        let local = tempfile::tempdir().unwrap();
+        let local = local.path().join("v").to_string_lossy().into_owned();
+        let docs = |r: Result<(), ProviderError>| matches!(r, Err(ProviderError::NotSupported(m)) if m.contains("Version history"));
+        assert!(docs(p.list_versions("/notes.gdoc").await.map(|_| ())));
+        assert!(docs(p.download_version("/notes.gdoc", "r1", &local).await));
+        assert!(docs(p.restore_version("/notes.gdoc", "r1").await));
+        assert!(changes.lock().unwrap().is_empty());
+        assert!(!std::path::Path::new(&local).exists());
+    }
+
     /// Drive cannot make a revision current: a restore fetches it and sends
     /// it as a new revision of the same file id, and leaves no temp file.
     #[tokio::test]
     async fn a_drive_revision_is_restored_as_a_new_revision_of_the_same_file() {
-        let temps = || {
-            std::fs::read_dir(std::env::temp_dir())
-                .unwrap()
-                .filter_map(Result::ok)
-                .filter(|e| {
-                    e.file_name()
-                        .to_string_lossy()
-                        .starts_with("aeroftp_drive_version_")
-                })
-                .count()
-        };
-        let before = temps();
+        crate::providers::LAST_PRIVATE_VERSION_TEMP.with(|last| *last.borrow_mut() = None);
         let (mut p, changes) = provider_on_drive(&[("F1", "a.txt", "root")]).await;
         p.restore_version("/a.txt", "r1").await.expect("restore");
         let changes = changes.lock().unwrap().clone();
@@ -4055,7 +4078,10 @@ mod tests {
             changes[0].starts_with("F1 ") && changes[0].contains("content of r1"),
             "{changes:?}"
         );
-        assert_eq!(temps(), before);
+        let temp = crate::providers::LAST_PRIVATE_VERSION_TEMP
+            .with(|last| last.borrow().clone())
+            .expect("the restore made its temp file on this thread");
+        assert!(!temp.exists(), "{temp:?} left behind");
     }
 
     /// A file put at the path while the revision downloads (F2 replacing

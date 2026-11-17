@@ -8059,6 +8059,8 @@ impl StorageProvider for S3Provider {
             // Tigris flags an entry of its soft-delete bin `SoftDeleted` (C4).
             let mut v_soft_deleted = false;
 
+            // A key past this one (`a.txt.bak` after `a.txt`) was listed.
+            let mut past_the_key = false;
             // Pagination fields
             let mut is_truncated = false;
             let mut next_key_marker: Option<String> = None;
@@ -8179,9 +8181,15 @@ impl StorageProvider for S3Provider {
                                 // version to restore with a CopyObject, which cannot
                                 // read it (C4).
                                 if let Some(ref vk) = v_key {
-                                    if filen_decode_listed_key(vk.clone(), page_encoded) == key
-                                        && !v_soft_deleted
-                                    {
+                                    let listed = filen_decode_listed_key(vk.clone(), page_encoded);
+                                    // Keys come in ascending order and the
+                                    // key is the shortest under its own
+                                    // prefix: a longer one means all its
+                                    // versions have been read.
+                                    if listed != key {
+                                        past_the_key = true;
+                                    }
+                                    if listed == key && !v_soft_deleted {
                                         let version_id = v_version_id
                                             .as_ref()
                                             .map(|v| v.trim().to_string())
@@ -8231,6 +8239,11 @@ impl StorageProvider for S3Provider {
                 buf.clear();
             }
 
+            // The prefix also lists every longer key (`a` lists `assets/`):
+            // once one is reached the rest of the bucket under it is not read.
+            if past_the_key {
+                break;
+            }
             match next_versions_page(
                 is_truncated,
                 next_key_marker,
@@ -15256,6 +15269,52 @@ mod tests {
             .map(|v| (v.id.as_str(), v.deleted))
             .collect();
         assert_eq!(rows, [("m3", true)]);
+    }
+
+    /// The prefix of a key lists every longer key too (`docs/a.txt` lists
+    /// `docs/a.txt.d/...`): the listing stops at the first of them, so a
+    /// download or restore, which reads the list to refuse a delete marker,
+    /// does not page through everything under it.
+    #[tokio::test]
+    async fn the_versions_of_a_key_are_read_without_paging_past_it() {
+        const LONGER_KEYS: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>true</IsTruncated>
+  <NextKeyMarker>docs/a.txt.d/0002</NextKeyMarker>
+  <NextVersionIdMarker>n2</NextVersionIdMarker>
+  <Version>
+    <Key>docs/a.txt</Key>
+    <VersionId>v2</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+    <Size>1</Size>
+  </Version>
+  <Version>
+    <Key>docs/a.txt.d/0001</Key>
+    <VersionId>n1</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+    <Size>1</Size>
+  </Version>
+</ListVersionsResult>"#;
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(LONGER_KEYS),
+            ..Default::default()
+        };
+        let (mut provider, _, log) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        let listings = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|seen| seen.method == "GET" && seen.uri.contains("versions"))
+            .count();
+        assert_eq!(listings, 1);
     }
 
     /// Reading a version by its id may be allowed where listing versions is
