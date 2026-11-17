@@ -27941,22 +27941,7 @@ fn copy_duplicate_secrets(
             }
         },
         |base, target_key| {
-            #[cfg(feature = "proton-native")]
-            if base == "proton_native_session" {
-                use ftp_client_gui_lib::providers::proton_native::vault;
-                return vault::discard_session_blocking(
-                    vault::SessionOwner::for_user(scoped_uid),
-                    new_id,
-                )
-                .map_err(|error| error.to_string());
-            }
-            let _ = base;
-            match scoped_uid {
-                Some(uid) => ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
-                    store, uid, target_key,
-                ),
-                None => store.delete(target_key).map_err(|error| error.to_string()),
-            }
+            profile_secret_copy::remove_copied_secret(store, scoped_uid, new_id, base, target_key)
         },
     )
     .map(|_| ())

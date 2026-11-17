@@ -19732,21 +19732,7 @@ pub(crate) fn copy_profile_secrets_for(
             }
         },
         |base, target_key| {
-            #[cfg(feature = "proton-native")]
-            if base == "proton_native_session" {
-                return providers::proton_native::vault::discard_session_blocking(
-                    providers::proton_native::vault::SessionOwner::for_user(user_id),
-                    target_id,
-                )
-                .map_err(|error| error.to_string());
-            }
-            let _ = base;
-            match user_id {
-                Some(user) => {
-                    user_partitions::delete_credential_for_user_dual(store, user, target_key)
-                }
-                None => store.delete(target_key).map_err(|error| error.to_string()),
-            }
+            profile_secret_copy::remove_copied_secret(store, user_id, target_id, base, target_key)
         },
     )
 }
@@ -19866,6 +19852,70 @@ mod copy_profile_secrets_for_tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn a_rollback_whose_partition_delete_fails_names_the_secret_left_behind() {
+        let env = Accounts::new();
+        let user = Some(env.other);
+        let refuse = "CREATE TRIGGER refuse_partition_delete BEFORE DELETE ON user_credentials \
+                      BEGIN SELECT RAISE(ABORT, 'partition locked'); END;";
+        let error = profile_secret_copy::copy_profile_secret_keys(
+            "srv_src",
+            "srv_copy",
+            [
+                "server_srv_src".to_string(),
+                "filen_api_key_srv_src".to_string(),
+            ],
+            |_| Ok(Some(zeroize::Zeroizing::new("value".to_string()))),
+            |base, key, value| {
+                if base == "server" {
+                    user_partitions::store_credential_for_user_dual(
+                        &env.store, env.other, key, value,
+                    )?;
+                    // Every partition delete from here on fails.
+                    user_partitions::open_or_init_cli()?
+                        .execute_batch(refuse)
+                        .map_err(|e| e.to_string())?;
+                    Ok(())
+                } else {
+                    Err("disk full".to_string())
+                }
+            },
+            |base, key| {
+                profile_secret_copy::remove_copied_secret(&env.store, user, "srv_copy", base, key)
+            },
+        )
+        .unwrap_err();
+        let conn = user_partitions::open_or_init_cli().unwrap();
+        conn.execute_batch("DROP TRIGGER refuse_partition_delete;")
+            .unwrap();
+        assert!(error.ends_with("remain in the keystore: server"), "{error}");
+        // The report is true: the partition copy is still there.
+        assert!(user_partitions::resolve_credential_for_user_owner_aware(
+            &env.store,
+            env.other,
+            "server_srv_copy"
+        )
+        .unwrap()
+        .is_some());
+        profile_secret_copy::remove_copied_secret(
+            &env.store,
+            user,
+            "srv_copy",
+            "server",
+            "server_srv_copy",
+        )
+        .unwrap();
+        assert_eq!(
+            user_partitions::resolve_credential_for_user_owner_aware(
+                &env.store,
+                env.other,
+                "server_srv_copy"
+            )
+            .unwrap(),
+            None
+        );
     }
 
     #[test]

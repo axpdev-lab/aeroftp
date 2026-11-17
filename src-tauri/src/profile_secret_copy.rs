@@ -56,6 +56,34 @@ pub fn copied_secret_type(base: &str) -> Option<&'static str> {
     }
 }
 
+/// Remove one copied secret, `<base>_<target_id>`, for the rollback of a failed
+/// copy made for `user_id` (`None`: no account model, vault only). Every store
+/// that holds it is cleaned with its error returned, so the rollback names each
+/// secret it could not remove.
+pub fn remove_copied_secret(
+    store: &CredentialStore,
+    user_id: Option<i64>,
+    target_id: &str,
+    base: &str,
+    target_key: &str,
+) -> Result<(), String> {
+    #[cfg(feature = "proton-native")]
+    if base == "proton_native_session" {
+        return crate::providers::proton_native::vault::discard_session_blocking(
+            crate::providers::proton_native::vault::SessionOwner::for_user(user_id),
+            target_id,
+        )
+        .map_err(|error| error.to_string());
+    }
+    let _ = (base, target_id);
+    match user_id {
+        Some(user) => {
+            crate::user_partitions::delete_credential_for_user_checked(store, user, target_key)
+        }
+        None => store.delete(target_key).map_err(|error| error.to_string()),
+    }
+}
+
 /// Copy the secrets named by `source_keys` (each `<base>_<source_id>`) onto
 /// `<base>_<target_id>`, all or nothing.
 ///

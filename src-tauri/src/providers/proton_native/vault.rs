@@ -544,6 +544,29 @@ pub fn delete_session(owner: SessionOwner, profile_id: Option<&str>) -> Result<(
     Ok(())
 }
 
+/// [`delete_session`] for a duplicate's rollback: the vault entry and the
+/// partition row are both attempted and every failure is returned, because the
+/// rollback must name a session it could not remove.
+fn delete_discarded_session(owner: SessionOwner, profile_id: &str) -> Result<(), ProviderError> {
+    let store = open_store()?;
+    let key = saved_key(&store, owner, Some(profile_id))?;
+    let mut errors = Vec::new();
+    if let Err(error) = store.delete(&key) {
+        errors.push(format!("the vault refused the delete: {error}"));
+    }
+    if let Some(user) = owner.user_id {
+        if let Err(error) = crate::user_partitions::delete_partition_credential_checked(user, &key)
+        {
+            errors.push(error);
+        }
+    }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(ProviderError::Other(errors.join("; ")))
+    }
+}
+
 /// Remove a failed local duplicate without revoking its source's shared
 /// remote session. The fresh destination still uses normal mutation guards.
 pub fn discard_session_blocking(
@@ -562,7 +585,7 @@ pub fn discard_session_blocking(
             let key = saved_key(&store, owner, Some(&profile_id))?;
             let _lease = lease_of_saved(owner, &key).await?;
             let _writes = session_writes();
-            delete_session(owner, Some(&profile_id))
+            delete_discarded_session(owner, &profile_id)
         })
     })
     .join()

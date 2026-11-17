@@ -285,6 +285,23 @@ fn native_cross_user_relocation_is_guarded_and_atomic() {
         "discard-uid"
     );
 
+    // A rollback that cannot remove the partition copy reports it.
+    vault::restore_session_blocking(owner, "discard-fail-copy", &raw).unwrap();
+    conn.execute_batch(
+        "CREATE TRIGGER refuse_partition_delete BEFORE DELETE ON user_credentials \
+         BEGIN SELECT RAISE(ABORT, 'partition locked'); END;",
+    )
+    .unwrap();
+    let refused = vault::discard_session_blocking(owner, "discard-fail-copy");
+    conn.execute_batch("DROP TRIGGER refuse_partition_delete;")
+        .unwrap();
+    let error = refused.unwrap_err().to_string();
+    assert!(error.contains("partition locked"), "{error}");
+    vault::discard_session_blocking(owner, "discard-fail-copy").unwrap();
+    assert!(vault::load_session(owner, Some("discard-fail-copy"))
+        .unwrap()
+        .is_none());
+
     // R1 is captured under the key locks. A real refresh store saves R2 in
     // another thread before relocation acquires its UID lease. A retained
     // SessionHold in the caller would deadlock this worker's partition mirror.
