@@ -297,20 +297,64 @@ pub struct SshExportServer {
 /// intentionally unused: secrets are never written. An `IdentityFile` line is
 /// emitted only when the profile already references a key by path.
 /// ssh `Host` patterns are whitespace separated, so an alias with a space
-/// would silently become two patterns. Collapse to a safe token.
+/// would silently become two patterns. Collapse to a safe token. The
+/// characters `ssh` refuses in a destination (`'`, `"`, `` ` ``, `$`, `\`,
+/// `;`, `&`, `<`, `>`, `|`, `(`, `)`, `{`, `}`, `,`: "hostname contains
+/// invalid characters") become `-` too: such an alias could never be used,
+/// and a quote on the `Host` line makes ssh refuse the whole file ("invalid
+/// quotes"), every other host in it included. A leading `-` is dropped:
+/// `ssh -work` reads it as an option.
 fn ssh_host_alias(name: &str) -> String {
-    name.trim().replace(char::is_whitespace, "-")
+    name.trim()
+        .chars()
+        .map(|c| {
+            if c.is_whitespace() || "'\"`$\\;&<>|(){},".contains(c) {
+                '-'
+            } else {
+                c
+            }
+        })
+        .collect::<String>()
+        .trim_start_matches('-')
+        .to_string()
+}
+
+/// Whether `value` holds a backslash that OpenSSH (`argv_split` in misc.c)
+/// reads as an escape, and drops: one before another backslash, a quote or
+/// an apostrophe, inside double quotes too, or the last one of a quoted
+/// value, before its closing quote.
+fn ssh_escapes(value: &str, quoted: bool) -> bool {
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        let escapes = match chars.peek() {
+            None => quoted,
+            Some(next) => matches!(next, '\\' | '\'' | '"'),
+        };
+        if c == '\\' && escapes {
+            return true;
+        }
+    }
+    false
 }
 
 /// One word of an ssh_config line (`HostName`, `User`, `ProxyJump`): a line
 /// break would start keywords of its own, a `ProxyCommand` or a
 /// `LocalCommand` ssh runs among them, and whitespace would end the value
-/// early, so the rest is read as more arguments.
+/// early, so the rest is read as more arguments. A quote or an apostrophe
+/// opens a quoted part, and one left open makes ssh refuse the whole file
+/// ("invalid quotes"); quoting does not help here (a quoted `ProxyJump`
+/// keeps its quotes), so such a value is refused, as is a backslash ssh would
+/// read as an escape ([`ssh_escapes`]).
 fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
     crate::bridge_shared::export_line_value(field, value)?;
-    if value.contains(char::is_whitespace) || value.contains('"') {
+    if value.contains(char::is_whitespace) || value.contains(['"', '\'']) {
         return Err(format!(
-            "its {field} holds whitespace or a double quote, which ssh would read as more than one value; correct the profile and export again"
+            "its {field} holds whitespace, a quote or an apostrophe, which ssh would read as more than one value or an open quote; correct the profile and export again"
+        ));
+    }
+    if ssh_escapes(value, false) {
+        return Err(format!(
+            "its {field} holds a backslash before a backslash, which ssh would read as an escape; correct the profile and export again"
         ));
     }
     Ok(value)
@@ -333,21 +377,16 @@ fn ssh_path(field: &str, value: &str) -> Result<String, String> {
             "its {field} holds a double quote, which ssh_config cannot write inside a value; rename the file and export again"
         ));
     }
-    // Only a quoted path has a closing quote for a last backslash to escape.
-    let quoted = value.contains(char::is_whitespace);
-    let mut chars = value.chars().peekable();
-    while let Some(c) = chars.next() {
-        let escapes = match chars.peek() {
-            None => quoted,
-            Some(next) => matches!(next, '\\' | '\'' | '"'),
-        };
-        if c == '\\' && escapes {
-            return Err(format!(
-                "its {field} holds a backslash before a backslash, a quote or its end, which ssh would read as an escape; move the key and export again"
-            ));
-        }
+    // An apostrophe outside quotes opens a quoted part ssh never sees closed;
+    // inside double quotes it is a letter. Only a quoted path has a closing
+    // quote for a last backslash to escape.
+    let quoted = value.contains(char::is_whitespace) || value.contains('\'');
+    if ssh_escapes(value, quoted) {
+        return Err(format!(
+            "its {field} holds a backslash before a backslash, a quote or its end, which ssh would read as an escape; move the key and export again"
+        ));
     }
-    Ok(if value.contains(char::is_whitespace) {
+    Ok(if quoted {
         format!("\"{value}\"")
     } else {
         value.to_string()
@@ -435,7 +474,7 @@ pub fn export_ssh_config(
         let lines = crate::bridge_shared::export_line_value("name", &server.name)
             .and_then(|()| {
                 if safe_alias.is_empty() {
-                    Err("its name is empty, and ssh finds a host only by its name; name the profile and export again".to_string())
+                    Err("its name is empty, or holds only characters ssh cannot use in a host alias, and ssh finds a host only by its name; rename the profile and export again".to_string())
                 } else {
                     Ok(())
                 }
@@ -876,6 +915,13 @@ Host roundtrip
                 serde_json::json!({"proxyJump": "\r\nbastion"}),
             ),
             sftp("tab", "h.example.com", "a\tb", none.clone()),
+            sftp("apostrophe user", "h.example.com", "o'brien", none.clone()),
+            sftp(
+                "escaped jump",
+                "h.example.com",
+                "u",
+                serde_json::json!({"proxyJump": "a\\\\b"}),
+            ),
             sftp(
                 "unc",
                 "h.example.com",
@@ -920,6 +966,11 @@ Host roundtrip
             ("key", "its key file path holds a line break"),
             ("jump", "its jump host holds a line break"),
             ("tab", "its user name holds whitespace"),
+            (
+                "apostrophe user",
+                "its user name holds whitespace, a quote or an apostrophe",
+            ),
+            ("escaped jump", "its jump host holds a backslash"),
             ("unc", "its key file path holds a backslash before"),
             ("trailing", "its key file path holds a backslash before"),
             ("apostrophe", "its key file path holds a backslash before"),
@@ -962,6 +1013,7 @@ Host roundtrip
             "C:\\Users\\me\\.ssh\\id",
             "/keys/My Keys/id\\#b",
             "/keys/id\\",
+            "/keys/id'backup",
         ];
         let servers: Vec<SshExportServer> = paths
             .iter()
@@ -998,6 +1050,35 @@ Host roundtrip
                 .filter_map(|l| l.strip_prefix("identityfile "))
                 .collect();
             assert_eq!(identity, [*path], "{stdout}");
+        }
+        // A name with an apostrophe or another character ssh refuses in a
+        // destination: its alias is usable, and the file stays readable for
+        // every host in it.
+        let named = [
+            sftp("Bob's server", "a.example.com", "u", serde_json::json!({})),
+            sftp("(work) nas", "b.example.com", "u", serde_json::json!({})),
+            sftp("plain", "c.example.com", "u", serde_json::json!({})),
+        ];
+        let outcome = export_ssh_config(&named, &HashMap::new(), &config).unwrap();
+        assert_eq!(outcome.exported, named.len(), "{:?}", outcome.skipped);
+        for (alias, host) in [
+            ("Bob-s-server", "a.example.com"),
+            ("work--nas", "b.example.com"),
+            ("plain", "c.example.com"),
+        ] {
+            let read = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(&config)
+                .arg(alias)
+                .output()
+                .unwrap();
+            let stdout = String::from_utf8_lossy(&read.stdout);
+            assert!(
+                read.status.success() && stdout.lines().any(|l| l == format!("hostname {host}")),
+                "{alias}: {stdout} {}",
+                String::from_utf8_lossy(&read.stderr)
+            );
         }
     }
 }
