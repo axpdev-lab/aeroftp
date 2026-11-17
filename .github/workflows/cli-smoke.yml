@@ -385,6 +385,8 @@ jobs:
         # Gate is set below baseline so CI passes today; raise per T8 Fase B/C/D
         # as new tests land. Target after Fase C (16 zero-coverage providers): 25%.
         run: |
+          nproc; free -m; swapon --show; df -h /
+          (while :; do echo "MEM $(date -u +%T) $(free -m | awk 'NR==2{print "used "$3" avail "$7} NR==3{print "swap "$3"/"$2}' | tr '\n' ' ')"; sleep 20; done) &
           # The three batch rendezvous-barrier tests assert wall-clock scheduler
           # overlap; under llvm-cov instrumentation (10x+ slowdown on the shared
           # runner) the rendezvous can exceed even a 30s budget. They gate
