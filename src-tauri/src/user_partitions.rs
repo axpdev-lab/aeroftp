@@ -4429,6 +4429,69 @@ fn owner_row_is_guaranteed(credential_id: &str) -> bool {
         || matches!(credential_id, "github_oauth_token" | "github_pat")
 }
 
+/// Residue of the dual write: every save of a non-owner's `server_` or
+/// `ai_apikey_` secret also wrote the shared vault, where the entry reads as
+/// the legacy owner's. At this account's unlock, each such entry is removed
+/// when all three hold: the key is one whose owner value always has a row
+/// ([`owner_row_is_guaranteed`]), the legacy owner has its own row for it (so
+/// it never reads this entry), and the vault value equals this account's row
+/// (the copy is provably this account's). Anything else is left as it is. A
+/// locked account is skipped until its unlock. Returns the keys removed.
+fn drop_vault_residue_of_user_inner(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    vault_keys: &[String],
+    read_secret: &SecretReader<'_>,
+    delete_secret: &dyn Fn(&str) -> Result<(), String>,
+) -> Result<Vec<String>, String> {
+    let Some(owner) = nonprofile_secret_owner(conn)? else {
+        return Ok(Vec::new());
+    };
+    if owner == user_id {
+        return Ok(Vec::new());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    let found = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
+        let mut residue = Vec::new();
+        for key in vault_keys.iter().filter(|key| {
+            owner_row_is_guaranteed(key)
+                && (key.starts_with("server_") || key.starts_with("ai_apikey_"))
+        }) {
+            let owner_has_row: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM user_credentials
+                     WHERE user_id = ?1 AND credential_id = ?2)",
+                    params![owner, key],
+                    |row| row.get(0),
+                )
+                .map_err(|e| format!("Read owner credential: {e}"))?;
+            if !owner_has_row {
+                continue;
+            }
+            let Some(own) = read_credential_with_dek(conn, uid, dek, key)? else {
+                continue;
+            };
+            let Some(vault) = read_secret(key)? else {
+                continue;
+            };
+            if *own == *vault {
+                residue.push(key.clone());
+            }
+        }
+        Ok(residue)
+    });
+    let residue = match found {
+        Ok(residue) => residue,
+        Err(e) if e == "USER_LOCKED" => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    for key in &residue {
+        delete_secret(key)?;
+    }
+    Ok(residue)
+}
+
 /// True when an account other than `user_id` has a partition row for
 /// `credential_id`.
 fn another_account_holds_credential(
@@ -12834,6 +12897,88 @@ mod tests {
                 .expect("owner read")
                 .is_none(),
             "an AI key another account holds is not read from the vault"
+        );
+    }
+
+    /// Fixture for the residue cleanup: the legacy owner and a partner, a vault
+    /// stub holding `vault`, and the keys the cleanup deleted.
+    fn residue_run(
+        conn: &Connection,
+        root: &[u8; 32],
+        user_id: i64,
+        vault: &[(&str, &str)],
+    ) -> (Vec<String>, Vec<String>) {
+        let keys: Vec<String> = vault.iter().map(|(k, _)| k.to_string()).collect();
+        let read = |key: &str| {
+            Ok(vault
+                .iter()
+                .find(|(k, _)| *k == key)
+                .map(|(_, v)| Zeroizing::new(v.to_string())))
+        };
+        let deleted = std::cell::RefCell::new(Vec::new());
+        let delete = |key: &str| {
+            deleted.borrow_mut().push(key.to_string());
+            Ok(())
+        };
+        let removed = drop_vault_residue_of_user_inner(conn, root, user_id, &keys, &read, &delete)
+            .expect("residue cleanup");
+        (removed, deleted.into_inner())
+    }
+
+    #[test]
+    fn a_partners_vault_copy_is_removed_only_when_provably_its_own_and_unneeded() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let owner = get_active_user(&conn)
+            .expect("active")
+            .expect("default active");
+        let partner = create_passphrase_less_user(&mut conn, &root, "partner", None, None)
+            .expect("create partner");
+        let seed = |user: i64, key: &str, kind: &str, value: &str| {
+            set_user_credential_for(&conn, &root, user, key, kind, value).expect("seed row");
+        };
+        // All three hold: guaranteed family, owner row, vault == partner row.
+        seed(owner.id, "server_both", "server", "owner-pw");
+        seed(partner.id, "server_both", "server", "partner-pw");
+        seed(owner.id, "ai_apikey_openai", "ai_apikey", "owner-key");
+        seed(partner.id, "ai_apikey_openai", "ai_apikey", "partner-key");
+        // The owner has no row: the vault value may be the one it reads.
+        seed(partner.id, "server_ownerless", "server", "partner-pw");
+        // The vault holds something else than the partner's row.
+        seed(owner.id, "server_differs", "server", "owner-pw");
+        seed(partner.id, "server_differs", "server", "partner-pw");
+        // A family whose owner value can sit in the vault alone.
+        seed(owner.id, "aerocrypt_overlay_pw_x", "crypt", "owner-crypt");
+        seed(
+            partner.id,
+            "aerocrypt_overlay_pw_x",
+            "crypt",
+            "partner-crypt",
+        );
+        let vault = [
+            ("server_both", "partner-pw"),
+            ("ai_apikey_openai", "partner-key"),
+            ("server_ownerless", "partner-pw"),
+            ("server_differs", "owner-pw"),
+            ("aerocrypt_overlay_pw_x", "partner-crypt"),
+        ];
+
+        let (removed, deleted) = residue_run(&conn, &root, partner.id, &vault);
+        assert_eq!(removed, vec!["server_both", "ai_apikey_openai"]);
+        assert_eq!(deleted, removed, "only the provable copies leave the vault");
+        assert_eq!(
+            get_user_credential_for(&conn, &root, owner.id, "server_both")
+                .expect("owner read")
+                .expect("owner row kept")
+                .as_str(),
+            "owner-pw",
+            "the owner still reads its own row"
+        );
+        let (by_owner, _) = residue_run(&conn, &root, owner.id, &vault);
+        assert!(
+            by_owner.is_empty(),
+            "the legacy owner's unlock removes nothing"
         );
     }
 
