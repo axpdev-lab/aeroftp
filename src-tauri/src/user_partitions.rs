@@ -3713,9 +3713,14 @@ fn copy_one_credential(
 /// When `owns_global_secrets` is true the user also receives the non-profile
 /// per-user globals (`ai_apikey_*`, `github_oauth_token`, `github_pat`).
 /// `github_pem_*` / `github_app_credentials` are machine-global (MUV-0) and are
-/// deliberately NOT migrated.
+/// deliberately NOT migrated. A `server_<id>` of a profile id another account
+/// also holds is taken by the legacy owner only: the vault entry may be that
+/// account's, and a copy would keep it in this partition after its owner
+/// changes or removes it. Reading is unchanged: the fallback reader still
+/// gives the vault entry to an account that has no row of its own.
 fn copy_user_secrets_with_dek(
     conn: &Connection,
+    root_secret: &SecretKey,
     user_id: i64,
     dek: &SecretKey,
     owns_global_secrets: bool,
@@ -3737,14 +3742,26 @@ fn copy_user_secrets_with_dek(
     let mut migrated = 0usize;
 
     for id in &profile_ids {
-        migrated += copy_one_credential(
-            &tx,
-            user_id,
-            dek,
-            &format!("server_{id}"),
-            "server",
-            read_secret,
-        )?;
+        let shared = || -> Result<bool, String> {
+            let tag = user_crypto::metadata_tag(root_secret, b"profile-uid", id)?;
+            tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM server_profiles
+                 WHERE profile_uid = ?1 AND user_id <> ?2)",
+                params![tag, user_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Read profile holders: {e}"))
+        };
+        if owns_global_secrets || !shared()? {
+            migrated += copy_one_credential(
+                &tx,
+                user_id,
+                dek,
+                &format!("server_{id}"),
+                "server",
+                read_secret,
+            )?;
+        }
         // Another account's private tokens are not taken from the vault here:
         // the vault key is the legacy owner's, also of a profile id both hold.
         // [`align_private_tokens_inner`] moves the ones of its own profiles.
@@ -3800,7 +3817,15 @@ fn migrate_user_credentials_inner(
     let owns_global_secrets = nonprofile_secret_owner(conn)? == Some(user_id);
     let root_secret = user_crypto::secret_key_from_bytes(root_key);
     let outcome = with_user_dek(conn, &root_secret, user_id, |uid, dek| {
-        copy_user_secrets_with_dek(conn, uid, dek, owns_global_secrets, vault_keys, read_secret)
+        copy_user_secrets_with_dek(
+            conn,
+            &root_secret,
+            uid,
+            dek,
+            owns_global_secrets,
+            vault_keys,
+            read_secret,
+        )
     });
     match outcome {
         Ok(migrated) => {
@@ -9230,6 +9255,49 @@ mod tests {
         );
         assert!(deleted.borrow().is_empty());
         assert!(private_tokens_aligned(&conn, other.id).unwrap());
+    }
+
+    /// The migration of an account other than the legacy owner takes the
+    /// `server_<id>` of its own profiles, and not the one of a profile id the
+    /// legacy owner also holds, whose vault entry may be the owner's. That
+    /// account still reads the vault entry through the fallback, as before.
+    #[test]
+    fn a_shared_profile_ids_password_is_not_copied_to_another_account() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(1);
+        let root = test_root();
+        let other = create_passphrase_less_user(&mut conn, &root, "Other", None, None).unwrap();
+        clear_user_session();
+        let profile = |id: &str| {
+            json!({"id": id, "name": id, "protocol": "sftp", "host": "example.com",
+                   "port": 22, "username": "u"})
+        };
+        replace_server_profiles_for(
+            &mut conn,
+            &root,
+            other.id,
+            &[profile("profile-0"), profile("own")],
+        )
+        .unwrap();
+        let (keys, read) = fake_vault(&[
+            ("server_profile-0", "owners-password"),
+            ("server_own", "own-password"),
+        ]);
+        migrate_user_credentials_inner(&conn, &root, other.id, &keys, &read).unwrap();
+        let row = |key: &str| {
+            get_user_credential_for(&conn, &root, other.id, key)
+                .unwrap()
+                .map(|value| value.to_string())
+        };
+        assert_eq!(row("server_own").as_deref(), Some("own-password"));
+        assert_eq!(row("server_profile-0"), None);
+        assert_eq!(
+            read_credential_with_fallback_inner(&conn, &root, other.id, "server_profile-0", &read)
+                .unwrap()
+                .map(|value| value.to_string())
+                .as_deref(),
+            Some("owners-password")
+        );
     }
 
     /// On a filesystem without file locks the list lock excludes nobody: the
