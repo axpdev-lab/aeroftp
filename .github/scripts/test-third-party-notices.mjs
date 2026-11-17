@@ -1206,3 +1206,83 @@ test('compMap: distinguishes Cargo and npm components with identical name and ve
     fs.rmSync(tmpDirNpm, { recursive: true, force: true });
   }
 });
+
+test('hasCopyrightHolderInFiles: distinguishes true holders from CC0-1.0 non-holder boilerplate and respects start-of-line semantics', () => {
+  const cc0Text = `Creative Commons Legal Code\n\nCC0 1.0 Universal\n\nStatement of Purpose\n\nThe laws of most jurisdictions throughout the world automatically confer exclusive Copyright and Related Rights (defined below) upon the creator and subsequent owner(s) (each and all, an "owner") of an original work of authorship and/or a database (each, a "Work").\n\n1. Copyright and Related Rights. A Work made available under CC0 may be protected by copyright and related or neighboring rights ("Copyright and Related Rights"). Copyright and Related Rights include, but are not limited to, the following:\n\n2. Waiver. To the greatest extent permitted by, but not in contravention of, applicable law, Affirmer hereby overtly, fully, permanently, irrevocably and unconditionally waives, abandons, and surrenders all of Affirmer's Copyright and Related Rights...\n\n3. Public License Fallback. ...irrevocable and unconditional license to exercise Affirmer's Copyright and Related Rights in the Work...\n`;
+
+  // Full CC0-1.0 text gives false
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({
+      licenseFiles: [{ filename: 'LICENSE-CC0', content: cc0Text }],
+      noticeFiles: [],
+    }),
+    false
+  );
+
+  // Required true cases:
+  // 1. Portions Copyright 2014 X
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({
+      licenseFiles: [{ filename: 'LICENSE', content: 'Portions Copyright 2014 X\n' }],
+      noticeFiles: [],
+    }),
+    true
+  );
+
+  // 2. SPDX-FileCopyrightText: 2020 X
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({
+      licenseFiles: [{ filename: 'LICENSE', content: 'SPDX-FileCopyrightText: 2020 X\n' }],
+      noticeFiles: [],
+    }),
+    true
+  );
+
+  // 3. gtk-rs line
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({
+      licenseFiles: [
+        {
+          filename: 'COPYRIGHT',
+          content: 'Copyrights in the gtk-rs Project project are retained by their contributors.\n',
+        },
+      ],
+      noticeFiles: [],
+    }),
+    true
+  );
+
+  // 4. unrar line
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({
+      licenseFiles: [
+        {
+          filename: 'license.txt',
+          content:
+            '   1. All copyrights to RAR and the utility UnRAR are exclusively owned by the author - Alexander Roshal.\n',
+        },
+      ],
+      noticeFiles: [],
+    }),
+    true
+  );
+
+  // Mutation check: removing start-of-line requirement turns CC0 text to true
+  const mutatedHolderRegex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
+  const boilerplateRegex =
+    /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
+  const mutatedMatches = cc0Text
+    .split('\n')
+    .some((l) => !boilerplateRegex.test(l) && mutatedHolderRegex.test(l));
+  assert.strictEqual(mutatedMatches, true, 'Mutation: removing start-of-line requirement causes CC0 text to match (turns red)');
+
+  // Also verify in THIRD-PARTY-NOTICES.md that the 5 CC0 crates have "No copyright notice is shipped in the package"
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const noticesContent = fs.readFileSync(noticesFile, 'utf8');
+  for (const crate of ['async_io_stream@0.3.3', 'ws_stream_wasm@0.7.5', 'dunce@1.0.5', 'notify@8.2.1', 'whisper-rs@0.16.0']) {
+    assert.match(
+      noticesContent,
+      new RegExp(`- \`${crate.replace('+', '\\+')}\`[^\n]*\n\\s+- No copyright notice is shipped in the package`)
+    );
+  }
+});

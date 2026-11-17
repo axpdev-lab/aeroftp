@@ -831,10 +831,17 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
 }
 
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
-  const holderRegex = /(copyright|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
-  const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
+  const boilerplateRegex =
+    /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
+  // Case 2: keyword followed by year, (c), or © anywhere on the line
+  const case2Regex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*(?:[0-9]{4}|\(c\)|©)/i;
+  // Case 1: begins the line after optional comment leader, list marker, or prefixes (SPDX-FileCopyrightText, PackageCopyrightText, Portions, Original work, All)
+  // followed by keyword (copyrights?, (c), ©) and then [0-9]{4} or [A-Z]
+  const case1Regex =
+    /^\s*(?:(?:\/\/+|\/\*+|\*+|#+|--+|;+)\s*)?(?:(?:\d+[\.\)]\s+)?all\s+|portions(?:\s+of)?\s+|original\s+work:?\s*)?(?:copyrights?|\(c\)|©|spdx-filecopyrighttext:|packagecopyrighttext:)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
+
   return [...comp.licenseFiles, ...comp.noticeFiles].some((f) =>
-    f.content.split('\n').some((l) => holderRegex.test(l) && !boilerplateRegex.test(l))
+    f.content.split('\n').some((l) => !boilerplateRegex.test(l) && (case1Regex.test(l) || case2Regex.test(l)))
   );
 }
 

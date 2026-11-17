@@ -6700,7 +6700,9 @@ SOFTWARE.
 
 **Used by component(s):**
 - `async_io_stream@0.3.3` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 - `ws_stream_wasm@0.7.5` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 This is free and unencumbered software released into the public domain.
@@ -9654,6 +9656,7 @@ Software.
 - `constant_time_eq@0.4.2` (cargo, file: `LICENSE-CC0`)
 - `constant_time_eq@0.6.1` (cargo, file: `LICENSE-CC0`)
 - `dunce@1.0.5` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 Creative Commons Legal Code
@@ -28465,6 +28468,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 **Used by component(s):**
 - `notify@8.2.1` (cargo, file: `LICENSE-CC0`)
+  - No copyright notice is shipped in the package
 
 ```text
 Creative Commons CC0 1.0 Universal
@@ -40230,6 +40234,7 @@ THE SOFTWARE.
 
 **Used by component(s):**
 - `whisper-rs@0.16.0` (cargo, file: `LICENSE`)
+  - No copyright notice is shipped in the package
 
 ```text
 This is free and unencumbered software released into the public domain.
