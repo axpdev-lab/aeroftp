@@ -1301,7 +1301,7 @@ export const PROVIDERS: ProviderConfig[] = [
             {
                 ...COMMON_FIELDS.bucket,
                 label: 'Bucket (top-level Filen folder)',
-                placeholder: 'Press Fetch to list your folders',
+                placeholder: 'Press {ui:connection.discovery.fetch} to list your folders',
                 helpText: 'Filen Desktop serves every top-level folder of your Filen drive as an S3 bucket. Pick the folder to open. Files directly in the Filen root are not reachable over S3: use the native Filen connection or the Filen Desktop WebDAV bridge for those.',
             },
         ],
@@ -1313,11 +1313,11 @@ export const PROVIDERS: ProviderConfig[] = [
             'Open Filen Desktop and sign in with your Filen account',
             'Go to Settings > Network Drive > S3',
             'Choose an access key and secret key (different from your account)',
-            'Leave the Access key and Secret key blank to use Filen Desktop\'s default "admin"/"admin"; AeroFTP fills them automatically (it does not store them silently)',
+            'Leave {ui:connection.accessKeyId} and {ui:connection.secretAccessKey} blank to use Filen Desktop\'s default "admin"/"admin"; AeroFTP fills them automatically (it does not store them silently)',
             'Toggle "Enabled" and pick port 1800 (default) or a custom one',
-            'Default in Filen Desktop is HTTPS with a self-signed certificate; this preset matches that. If you switched Filen Desktop to plain HTTP, open Edit and change the endpoint scheme to http://',
-            'Region stays "filen" (handled automatically)',
-            'Enter the keys, then press Fetch next to Bucket: Filen Desktop lists every top-level folder of your Filen drive as a bucket. Pick the one to open. Files directly in the Filen root are not reachable over S3.',
+            'Filen Desktop serves HTTPS with a self-signed certificate by default, or plain HTTP if you switched it: AeroFTP detects which one when it connects, so there is nothing to change here',
+            'The S3 region is "filen", set by AeroFTP',
+            'Enter the keys, then press {ui:connection.discovery.fetch} next to {field:bucket}: Filen Desktop lists every top-level folder of your Filen drive as a bucket. Pick the one to open. Files directly in the Filen root are not reachable over S3.',
             'For full feature parity (storage quota, trash, share-link passwords, versioning, file/folder passwords, TOTP passthrough) connect through the native Filen API attachment instead: it covers everything this S3 bridge cannot expose.',
             'Keep Filen Desktop running while you connect from AeroFTP',
         ],
@@ -1351,8 +1351,8 @@ export const PROVIDERS: ProviderConfig[] = [
             'Sign in to S3Drive (free plan includes 12 GB on Storj)',
             'In the S3Drive desktop app open Settings, then "Setup with Rclone"',
             'Generate the rclone configuration to reveal the S3 credentials issued for your account',
-            'Copy access_key_id, secret_access_key and the bucket name into the fields here',
-            'Endpoint and Region come from the same rclone snippet: open "Advanced" below if your values differ from the defaults (storage.kapsa.io / us-east-1)',
+            'Copy access_key_id, secret_access_key and the bucket name into {ui:connection.accessKeyId}, {ui:connection.secretAccessKey} and {field:bucket}',
+            'The same rclone snippet names the endpoint: if it is not storage.kapsa.io, open {ui:protocol.advanced}, press {ui:common.edit}, then {ui:protocol.advancedUnlock}, and change {ui:protocol.s3Endpoint}. The region is us-east-1, set by AeroFTP',
         ],
     },
     {
@@ -1470,7 +1470,7 @@ export const PROVIDERS: ProviderConfig[] = [
         stable: true,
         fields: [
             { ...COMMON_FIELDS.username, placeholder: 'Your Puter username', helpText: 'Token auth: use -token as the username (literal)' },
-            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set Server to https://dav.puter.com/<username> (the {username} path resolves to -token otherwise)' },
+            { ...COMMON_FIELDS.password, helpText: 'Your Puter password; with 2FA enabled, append the code (appended verification codes expire and may stop authenticating later requests; use -token authentication for persistent connections). Token auth: the auth token as password with -token as username, and set {ui:connection.endpointUrl} to https://dav.puter.com/<username> under {ui:protocol.advanced} ({ui:common.edit}, then {ui:protocol.advancedUnlock}): the {username} path resolves to -token otherwise' },
         ],
         setupInstructions: [
             'The free plan is very limited: 25 MB in total, no card, useful to try and evaluate Puter, not for real use; a paid Puter plan adds storage',
@@ -1568,7 +1568,7 @@ export const PROVIDERS: ProviderConfig[] = [
         setupInstructions: [
             'The free plan has no time limit but limited use: 1 GB, at most 50 MB per file and 50 files, no card',
             'Sign in to your LifetimeCloud profile, enable WebDAV, and generate a WebDAV token (if compromised, regenerate it)',
-            'Enter that WebDAV token in the WebDAV token field above, not your LifetimeCloud account password',
+            'Enter that token in {field:password}, not your LifetimeCloud account password',
             'Plain WebDAV transfers are HTTPS-only without provider-side end-to-end encryption, and WebDAV deletes are permanent (no Trash)',
             'Files uploaded from the LifetimeCloud website or apps are listed over WebDAV but download as encrypted data: download those from the website',
             'Optional: enable an AeroCrypt or rclone-crypt overlay in this profile for client-side encryption',
@@ -1621,8 +1621,8 @@ export const PROVIDERS: ProviderConfig[] = [
         setupInstructions: [
             'Install MEGAcmd from https://mega.io/cmd',
             'Open the MEGAcmd terminal and run: login your-email@example.com',
-            'Just connect: AeroFTP runs "mega-webdav /" itself to start the bridge and read its address (no manual step). Fetch URL below is an optional manual refresh.',
-            'If you enabled TLS in MEGAcmd (webdav -tls /), switch the Protocol field below to HTTPS',
+            'Just connect: AeroFTP runs "mega-webdav /" itself to start the bridge and read its address (no manual step). {ui:connection.forms.fetchUrl} below is an optional manual refresh.',
+            'If you enabled TLS in MEGAcmd (webdav -tls /), press {ui:connection.forms.fetchUrl}: {ui:connection.endpointUrl} then holds the https:// address MEGAcmd serves',
         ],
     },
     {
@@ -1656,9 +1656,9 @@ export const PROVIDERS: ProviderConfig[] = [
             'Open Filen Desktop and sign in with your Filen account',
             'Go to Settings > Network Drive > WebDAV',
             'Choose a username and password (different from your account)',
-            'Leave the WebDAV username and password blank to use Filen Desktop\'s default "admin"/"admin"; AeroFTP fills them automatically (it does not store them silently)',
+            'Leave {field:username} and {field:password} blank to use Filen Desktop\'s default "admin"/"admin"; AeroFTP fills them automatically (it does not store them silently)',
             'Toggle "Enabled" and pick port 1900 (default) or a custom one',
-            'Note the HTTP Protocol setting (HTTP or HTTPS) and pick the same value in the Protocol field below',
+            'Filen Desktop serves HTTP or HTTPS as its HTTP Protocol setting says: AeroFTP detects which one when it connects, so there is nothing to match here',
             'Keep Filen Desktop running while you connect from AeroFTP',
         ],
     },
@@ -2384,6 +2384,17 @@ const isExplicitS3Host = (host?: string | null): boolean => {
     // Requested 173).
     return h !== '' && s3ProviderForEndpoint(h) !== 'amazon-s3';
 };
+
+/**
+ * A preset whose endpoint the user must type: the endpoint field is required
+ * and the preset has no endpoint of its own, neither fixed nor computed from a
+ * template (Backblaze, IDrive e2, MinIO, Neon, Oracle Cloud, Storj). The form
+ * shows that field in the main form rather than under Advanced.
+ */
+export const presetNeedsUserEndpoint = (provider?: ProviderConfig | null): boolean =>
+    !!provider?.fields?.some((field) => field.key === 'endpoint' && field.required)
+    && !provider.defaults?.endpoint
+    && !provider.defaults?.endpointTemplate;
 
 /**
  * Region a preset uses when the profile stores none: its default region, else,

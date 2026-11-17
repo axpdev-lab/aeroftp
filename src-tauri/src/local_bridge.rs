@@ -362,6 +362,77 @@ mod tests {
         assert!(!is_local_bridge_authority("example.com", 1900));
     }
 
+    /// A loopback bridge answering every connection with one HTTP response,
+    /// over TLS with a self-signed certificate when `tls` is set: a Filen
+    /// Desktop bridge serves one or the other, as its HTTP Protocol setting
+    /// says. 401 because any status proves the scheme. Returns the port and
+    /// the accept task, which the test stops.
+    async fn bridge(tls: bool) -> (u16, tokio::task::JoinHandle<()>) {
+        use std::sync::Arc;
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        const RESPONSE: &[u8] =
+            b"HTTP/1.1 401 Unauthorized\r\ncontent-length: 0\r\nconnection: close\r\n\r\n";
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".to_string()]).unwrap();
+        let key = rustls_pki_types::PrivateKeyDer::Pkcs8(
+            rustls_pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der()),
+        );
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(vec![certified.cert.der().clone()], key)
+        .unwrap();
+        let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                let acceptor = acceptor.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    if tls {
+                        let Ok(mut stream) = acceptor.accept(stream).await else {
+                            return;
+                        };
+                        let _ = stream.read(&mut buf).await;
+                        let _ = stream.write_all(RESPONSE).await;
+                        let _ = stream.shutdown().await;
+                    } else {
+                        let mut stream = stream;
+                        let _ = stream.read(&mut buf).await;
+                        let _ = stream.write_all(RESPONSE).await;
+                        let _ = stream.shutdown().await;
+                    }
+                });
+            }
+        });
+        (port, server)
+    }
+
+    /// The Filen presets tell the user there is no scheme to set: the probe
+    /// finds the one the bridge serves, HTTPS or plain HTTP.
+    #[tokio::test]
+    async fn the_probe_finds_the_scheme_the_bridge_serves() {
+        let (https, https_server) = bridge(true).await;
+        let (http, http_server) = bridge(false).await;
+        assert_eq!(
+            detect_bridge_scheme("127.0.0.1", https).await,
+            Some("https")
+        );
+        assert_eq!(detect_bridge_scheme("127.0.0.1", http).await, Some("http"));
+        // Both bridges are stopped: each task owns its listener, so cancelled
+        // and dropped means the listener is closed.
+        for server in [https_server, http_server] {
+            server.abort();
+            let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), server)
+                .await
+                .expect("bridge still running");
+            assert!(stopped.unwrap_err().is_cancelled());
+        }
+    }
+
     #[tokio::test]
     async fn reconcile_passes_through_non_bridge_urls_without_probing() {
         // Non-bridge URLs return unchanged and never touch the network.

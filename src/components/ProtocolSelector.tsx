@@ -30,7 +30,8 @@ import {
 import { ProviderType, FtpTlsMode, isSshProtocol } from '../types';
 import { scpFallbackAllowed, withScpFallback } from '../utils/scpFallback';
 import { useTranslation } from '../i18n';
-import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent } from '../providers';
+import { getProviderById, resolveS3Endpoint, jurisdictionSegment, s3TemplateParams, endpointNeedsCleartextConsent, presetNeedsUserEndpoint } from '../providers';
+import { resolvePresetText } from '../providers/presetText';
 import { CopyLinkButton } from './common/CopyLinkButton';
 import { Bucket } from './connectionMethodIcons';
 import { DiscoverableTargetField, type ConnectionTarget } from './common/DiscoverableTargetField';
@@ -900,6 +901,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
         const accountIdField = providerConfig?.fields?.find(f => f.key === 'accountId');
         const jurisdictionField = providerConfig?.fields?.find(f => f.key === 'jurisdiction');
         const hasRegionSelect = regionField?.type === 'select' && regionField?.options;
+        // A preset's own text names a control of this form by reference.
+        const presetText = (text: string) => resolvePresetText(text, providerConfig, t);
 
         // Endpoint architecture:
         // - hasEndpointTemplate: endpoint computed from region/accountId (Wasabi, DO, Cloudflare R2)
@@ -962,17 +965,18 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
             onChange(updatedOptions);
         };
 
-        // Providers where endpoint must stay visible (user-specific or self-hosted)
-        const VISIBLE_ENDPOINT_PROVIDERS = new Set(['minio', 'oracle-cloud', 'storj']);
-        // Endpoint in Advanced: all non-generic providers except those needing visible endpoint
+        // Endpoint in Advanced: every non-generic preset, except one whose
+        // endpoint the user must type (no preset endpoint to fall back on): a
+        // required field hidden under Advanced reads as a form with nothing
+        // left to fill.
         const endpointInAdvanced = !providerConfig?.isGeneric && !!providerConfig?.id
-            && !VISIBLE_ENDPOINT_PROVIDERS.has(providerConfig.id)
+            && !presetNeedsUserEndpoint(providerConfig)
             && (hasPresetEndpoint || hasUserEndpointField);
         // Preset endpoints are disabled in Advanced until unlocked
         const endpointDisabled = hasPresetEndpoint && !presetUnlocked['endpoint'];
 
         // Endpoint placeholder: use template pattern when available
-        const endpointPlaceholder = endpointField?.placeholder
+        const endpointPlaceholder = (endpointField?.placeholder && presetText(endpointField.placeholder))
             || (providerConfig?.defaults?.endpointTemplate ? t('protocol.endpointTemplateExample', { template: providerConfig.defaults.endpointTemplate.replace(/\{(\w+)\}/g, '<$1>') }) : null)
             || t('protocol.endpointPlaceholder');
 
@@ -989,8 +993,8 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                     onDiscover={discoverS3Targets || (async () => [])}
                     canDiscover={canDiscoverS3Targets && !!discoverS3Targets}
                     disabled={disabled}
-                    placeholder={bucketField?.placeholder || t('protocol.bucketPlaceholder')}
-                    helpText={!isEditing ? bucketField?.helpText : undefined}
+                    placeholder={(bucketField?.placeholder && presetText(bucketField.placeholder)) || t('protocol.bucketPlaceholder')}
+                    helpText={!isEditing && bucketField?.helpText ? presetText(bucketField.helpText) : undefined}
                     required
                     resetKey={s3DiscoveryResetKey}
                 />
@@ -1201,7 +1205,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     onChange={(e) => handleAccountIdChange(e.target.value)}
                                     disabled={disabled}
                                     className={`px-4 py-2.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 ${endpointFixedPart ? 'rounded-l-lg border-r-0 flex-1 min-w-0' : 'rounded-lg w-full'}`}
-                                    placeholder={accountIdField.placeholder || t('protocol.accountId')}
+                                    placeholder={(accountIdField.placeholder && presetText(accountIdField.placeholder)) || t('protocol.accountId')}
                                     required={accountIdField.required}
                                 />
                                 {endpointFixedPart && (
@@ -1233,10 +1237,10 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             </div>
                         )}
                         {!isEditing && accountIdField.helpText && !presetUnlocked['endpointSuffix'] && (
-                            <p className="text-xs text-gray-500 mt-1">{accountIdField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(accountIdField.helpText)}</p>
                         )}
                         {!isEditing && jurisdictionField?.helpText && !presetUnlocked['endpointSuffix'] && (
-                            <p className="text-xs text-gray-500 mt-1">{jurisdictionField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(jurisdictionField.helpText)}</p>
                         )}
                     </div>
                 )}
@@ -1303,7 +1307,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                     />
                                 )}
                                 {!isEditing && endpointField?.helpText && (
-                                    <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                    <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                 )}
                             </div>
                         )}
@@ -1341,7 +1345,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                             />
                         )}
                         {!isEditing && endpointField?.helpText && (
-                            <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                            <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                         )}
                     </div>
                 )}
@@ -1396,7 +1400,7 @@ export const ProtocolFields: React.FC<ProtocolFieldsProps> = ({
                                         placeholder={endpointPlaceholder}
                                     />
                                     {!isEditing && endpointField?.helpText && (
-                                        <p className="text-xs text-gray-500 mt-1">{endpointField.helpText}</p>
+                                        <p className="text-xs text-gray-500 mt-1">{presetText(endpointField.helpText)}</p>
                                     )}
                                 </div>
                                 <Checkbox
