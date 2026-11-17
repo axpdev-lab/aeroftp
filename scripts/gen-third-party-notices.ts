@@ -651,6 +651,14 @@ export function readPackageFiles(
   return { licenseFiles, noticeFiles };
 }
 
+// A copyright line with a template slot is a template, not a notice: a
+// generator script's "Copyright 1995-$YEAR The OpenSSL Project Authors", a
+// format string's "Copyright (c) 1993-%d Alexander Roshal", a license
+// template's "Copyright (c) <year> <owner>". Only attribution lists drop it;
+// a license text is reproduced as shipped, placeholders included.
+const TEMPLATE_NOTICE =
+  /\$\{?[A-Za-z_]+\}?|%[0-9]*[dsu]\b|<(?:year|yyyy|owner|authors?|copyright holders?)>|\[(?:year|yyyy|fullname|owner|name of copyright owner)\]|\{(?:year|yyyy|owner|authors?)\}/i;
+
 /**
  * Scans locked package sources (header comments of source files, README, and AUTHORS/COPYRIGHT/NOTICE files)
  * for copyright notices. Deduplicates notices and returns them sorted deterministically.
@@ -713,7 +721,7 @@ export function findPackageCopyrightNotices(
       const fieldValue = field ? field[1].trim() : continued;
       if (fieldValue) {
         const notice = /^(?:copyright\b|\(c\)|©)/i.test(fieldValue) ? fieldValue : `Copyright ${fieldValue}`;
-        if (/[A-Za-z0-9]/.test(fieldValue) && !seenNotice.has(notice)) {
+        if (/[A-Za-z0-9]/.test(fieldValue) && !TEMPLATE_NOTICE.test(notice) && !seenNotice.has(notice)) {
           seenNotice.add(notice);
           notices.push({ notice, file: f.rel });
         }
@@ -744,7 +752,7 @@ export function findPackageCopyrightNotices(
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
-        if (cleaned.length > 0 && !seenNotice.has(cleaned)) {
+        if (cleaned.length > 0 && !TEMPLATE_NOTICE.test(cleaned) && !seenNotice.has(cleaned)) {
           seenNotice.add(cleaned);
           notices.push({ notice: cleaned, file: f.rel });
         }

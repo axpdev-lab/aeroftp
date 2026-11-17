@@ -872,6 +872,33 @@ test('standard-license fallback: choices come from the parsed expression, a conj
   );
 });
 
+test('findPackageCopyrightNotices: a template copyright line is no notice, a license text keeps its placeholders', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'template-notice-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('apps/progs.pl', 'print "/*\\n * Copyright 1995-$YEAR The Example Project Authors. All Rights Reserved.\\n */\\n";\n');
+    write('src/loclang.hpp', '#define MCopyright "\\nCopyright (c) 1993-%d Example Author   %d %s %d"\n');
+    write('src/tmpl.c', '/* Copyright (c) <year> <owner>. */\n/* Copyright (c) [year] [fullname] */\n/* Copyright ${YEAR} ${OWNER} */\n');
+    write('src/real.c', '/* Copyright (c) 2001 Real Holder <real@example.org> */\n');
+    write('debian/copyright', 'Copyright: <year> <copyright holders>\nCopyright: 2010 Field Holder\n');
+    const notices = findPackageCopyrightNotices(tmpDir).map((n) => n.notice);
+    assert.deepStrictEqual(notices, ['Copyright (c) 2001 Real Holder <real@example.org>', 'Copyright 2010 Field Holder']);
+
+    // A license file is reproduced as shipped, its placeholder included.
+    fs.rmSync(path.join(tmpDir, 'debian'), { recursive: true });
+    write('LICENSE', 'MIT License\n\nCopyright (c) <year> <owner>\n\nPermission is hereby granted, free of charge.');
+    const comp = { name: 'template-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Real Holder'], ...readPackageFiles(tmpDir, 'template-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    assert.ok(md.includes('```text\nMIT License\n\nCopyright (c) <year> <owner>\n'), 'the license text keeps its placeholder');
+    assert.doesNotMatch(md, /^ {2}- .*(?:\$YEAR|%d|<year>|\[year\]|\$\{YEAR\})/m, 'no attribution line carries a template slot');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('bundled code: a leftover placeholder in the reproduced text fails', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-placeholder-fixture-'));
   try {

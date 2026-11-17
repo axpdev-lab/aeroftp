@@ -31583,7 +31583,6 @@ SOFTWARE.
   - Copyright (c) 2025, Intel Corporation. All Rights Reserved. (openssl/crypto/aes/asm/aes-cfb-avx512.pl)
   - Copyright (c) 2025, Julian Zhu <julian.oerv@isrc.iscas.ac.cn> (openssl/crypto/md5/asm/md5-riscv64-zbb.pl)
   - Copyright (c) 2025, Julian Zhu <jz531210@gmail.com> (openssl/crypto/sha/asm/sha256-loongarch64.pl)
-  - Copyright 1995-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/progs.pl)
   - Copyright 1995-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/a_octet.c)
   - Copyright 1995-2017 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_print.c)
   - Copyright 1995-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/errstr.c)
@@ -31595,8 +31594,6 @@ SOFTWARE.
   - Copyright 1995-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/lib/http_server.c)
   - Copyright 1995-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/asn1parse.c)
   - Copyright 1995-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/dgst.c)
-  - Copyright 1998-$YEAR The OpenSSL Authors. All rights reserved.\\0 (openssl/util/mkrc.pl)
-  - Copyright 1998-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_prime.pl)
   - Copyright 1998-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/ncbc_enc.c)
   - Copyright 1998-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/rand_key.c)
   - Copyright 1998-2021 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/bn/bn_prime.h)
@@ -31613,7 +31610,6 @@ SOFTWARE.
   - Copyright 1999-2024 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/p5_pbev2.c)
   - Copyright 1999-2025 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkcs8.c)
   - Copyright 1999-2026 The OpenSSL Project Authors. All Rights Reserved. (openssl/apps/pkcs12.c)
-  - Copyright 2000-$YEAR The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/charmap.pl)
   - Copyright 2000-2016 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/tasn_typ.c)
   - Copyright 2000-2018 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/des/asm/des_enc.m4)
   - Copyright 2000-2020 The OpenSSL Project Authors. All Rights Reserved. (openssl/crypto/asn1/x_long.c)
@@ -42233,8 +42229,6 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `unrar_sys@0.5.8` (cargo, file: `vendor/unrar/license.txt`)
-  - Copyright (c) 1993-%d Alexander Roshal (vendor/unrar/loclang.hpp)
-  - Copyright (c) 1993-%d Alexander Roshal   %d %s %d (vendor/unrar/loclang.hpp)
   - Copyright (c) 2004-2006 Intel Corporation - All Rights Reserved (vendor/unrar/crc.cpp)
   - Copyright (c) 2004-2006 Intel Corporation. (vendor/unrar/acknow.txt)
 
