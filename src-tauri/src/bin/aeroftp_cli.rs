@@ -27908,6 +27908,10 @@ fn copy_duplicate_secrets(
         new_id,
         ftp_client_gui_lib::per_profile_vault_keys(source_id, protocol),
         |key| match scoped_uid {
+            // A key with no partition home is read as its connection reads it.
+            Some(uid) if profile_secret_copy::is_shared_vault_key(key) => {
+                ftp_client_gui_lib::user_partitions::resolve_credential_for_user(store, uid, key)
+            }
             // Owner-aware: a shared vault entry under the same key may be another
             // account's (an imported profile keeps its id), so only the proven
             // legacy owner falls back to it.

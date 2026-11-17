@@ -19697,6 +19697,10 @@ pub(crate) fn copy_profile_secrets_for(
         target_id,
         per_profile_vault_keys(source_id, protocol),
         |key| match user_id {
+            // A key with no partition home is read as its connection reads it.
+            Some(user) if profile_secret_copy::is_shared_vault_key(key) => {
+                user_partitions::resolve_credential_for_user(store, user, key)
+            }
             // Owner-aware: a shared vault entry under the same key may be another
             // account's (an imported profile keeps its id), so only the proven
             // legacy owner falls back to it.
@@ -19832,6 +19836,36 @@ mod copy_profile_secrets_for_tests {
             .unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn a_duplicate_made_by_a_second_account_keeps_its_filen_and_onedrive_keys() {
+        let env = Accounts::new();
+        // Saved as the editor and the connect-time capture save them, with the
+        // second account active: shared vault, no partition row.
+        for (key, value) in [
+            ("filen_api_key_srv_src", "FILEN-KEY"),
+            ("onedrive_drive_id_srv_src", "b!drive"),
+        ] {
+            user_partitions::store_active_credential_dual(&env.store, key, value).unwrap();
+        }
+        let copied =
+            copy_profile_secrets_for(&env.store, Some(env.other), "srv_src", "srv_copy", None)
+                .unwrap();
+        assert_eq!(copied.get("filen_api_key"), Some(&true));
+        assert_eq!(copied.get("onedrive_drive_id"), Some(&true));
+        for (key, value) in [
+            ("filen_api_key_srv_copy", "FILEN-KEY"),
+            ("onedrive_drive_id_srv_copy", "b!drive"),
+        ] {
+            assert_eq!(
+                user_partitions::resolve_credential_for_user(&env.store, env.other, key)
+                    .unwrap()
+                    .map(|value| value.to_string()),
+                Some(value.to_string()),
+                "{key}"
+            );
+        }
     }
 
     #[test]

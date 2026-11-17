@@ -20,6 +20,24 @@ pub fn read_vault_secret(
     }
 }
 
+/// True for a secret no writer gives a partition home: the editor saves the
+/// Filen API key through `store_credential` and the OneDrive drive id and type
+/// are captured at connect, both into the shared vault, unless an import or a
+/// relocation gave the account a row. Connections and exports read them from
+/// the account's row first, then the vault (`get_credential`,
+/// `resolve_active_credential` in the profile export), so a duplicate reads
+/// them the same way: the owner-aware reader would skip them for any account
+/// but the legacy owner and the copy would lose them.
+pub fn is_shared_vault_key(key: &str) -> bool {
+    [
+        "filen_api_key_",
+        "onedrive_drive_id_",
+        "onedrive_drive_type_",
+    ]
+    .iter()
+    .any(|prefix| key.starts_with(prefix))
+}
+
 /// The partition credential type a copied secret is written with, `None` for a
 /// plain server secret. Tokens are typed so that, for a user other than the
 /// legacy owner, they get a partition row of their kind instead of landing only
@@ -303,5 +321,27 @@ mod tests {
         assert_eq!(copied_secret_type("oauth__client_id"), None);
         assert_eq!(copied_secret_type("server"), None);
         assert_eq!(copied_secret_type("filen_api_key"), None);
+    }
+
+    #[test]
+    fn only_keys_without_a_partition_home_are_read_from_the_shared_vault() {
+        for key in [
+            "filen_api_key_srv",
+            "onedrive_drive_id_srv",
+            "onedrive_drive_type_srv",
+        ] {
+            assert!(is_shared_vault_key(key), "{key}");
+        }
+        for key in [
+            "server_srv",
+            "server_modes_srv",
+            "oauth_google_srv",
+            "jottacloud_refresh_srv",
+            "aerocrypt_overlay_pw_srv",
+            "proton_native_session_srv",
+            "github_oauth_srv",
+        ] {
+            assert!(!is_shared_vault_key(key), "{key}");
+        }
     }
 }
