@@ -275,7 +275,9 @@ enum Criterion {
 /// The conditions of a `Match` line, or why ssh refuses the whole file for
 /// it (`ssh -G` on 10.2p1: a bare `Match`, a condition it does not know, a
 /// condition with no value, and `all` followed by another condition are each
-/// "Bad Match condition"). A condition may be written `name=value`.
+/// "Bad Match condition"; so is an empty value, except for `tagged` and
+/// `command`, and a value given to `all`, `canonical` or `final`). A
+/// condition may be written `name=value`.
 fn parse_match(words: &[String]) -> Result<Vec<(bool, Criterion)>, String> {
     if words.is_empty() {
         return Err("gives `Match` no condition".to_string());
@@ -292,6 +294,11 @@ fn parse_match(words: &[String]) -> Result<Vec<(bool, Criterion)>, String> {
             None => (word, None),
         };
         let name = name.to_ascii_lowercase();
+        // `all`, `canonical` and `final` take no value: `Match final=x` is
+        // "missing argument" to ssh.
+        if matches!(name.as_str(), "all" | "canonical" | "final") && inline.is_some() {
+            return Err(format!("gives the `Match` condition `{name}` a value"));
+        }
         let criterion = match name.as_str() {
             "all" if criteria.is_empty() && words.len() > 1 => {
                 return Err("combines `Match all` with another condition".to_string())
@@ -301,11 +308,13 @@ fn parse_match(words: &[String]) -> Result<Vec<(bool, Criterion)>, String> {
             "final" => Criterion::Final,
             "host" | "originalhost" | "user" | "localuser" | "exec" | "localnetwork" | "tagged"
             | "version" | "sessiontype" | "command" => {
+                // An empty value is refused too, except for `tagged` and
+                // `command` (`ssh -G`: `Match tagged ""` applies).
                 let value = match inline {
                     Some(value) => Some(value.to_string()),
                     None => rest.next().cloned(),
                 }
-                .filter(|v| !v.is_empty())
+                .filter(|v| !v.is_empty() || matches!(name.as_str(), "tagged" | "command"))
                 .ok_or_else(|| format!("gives the `Match` condition `{name}` no value"))?;
                 match name.as_str() {
                     "host" => Criterion::Host(value),
@@ -359,6 +368,15 @@ fn split_directive(line: &str) -> Option<Result<(String, Vec<String>), String>> 
     let rest = rest.trim_start();
     let rest = rest.strip_prefix('=').unwrap_or(rest);
     let key = key.to_lowercase();
+    if key == "proxycommand" {
+        // The command is the rest of the line as written, quotes and `#`
+        // included (`ssh -G`: `ProxyCommand "none"` and `ProxyCommand none
+        // # c` are commands, not `none`); a quote left open is refused.
+        if let Err(reason) = ssh_words(rest) {
+            return Some(Err(reason));
+        }
+        return Some(Ok((key, vec![rest.trim().to_string()])));
+    }
     if key == "proxyjump" {
         // ssh splits the line into words first (`argv_split`), so a quote
         // left open is refused here too: `ProxyJump "j` gives "invalid
@@ -430,7 +448,7 @@ fn ssh_line_error(key: &str, words: &[String]) -> Option<String> {
     if key == "match" {
         return parse_match(words).err();
     }
-    let reads = IMPORTED_KEYS.contains(&key) || key == "proxyjump" || key == "host";
+    let reads = IMPORTED_KEYS.contains(&key) || PROXY_KEYS.contains(&key) || key == "host";
     let first = words.first().map(String::as_str).unwrap_or("");
     if !reads {
         None
@@ -805,7 +823,7 @@ fn match_host(values: &HashMap<String, String>, alias: &str) -> String {
         .filter(|h| !h.is_empty())
         .and_then(|h| ssh_expand("host", h, "h", &tokens, false).ok())
         .unwrap_or_else(|| alias.to_string())
-        .to_lowercase()
+        .to_ascii_lowercase()
 }
 
 /// Whether a `Match` line holds for `alias` with the values read so far:
@@ -853,7 +871,7 @@ fn match_holds(
 /// `Match host` and `originalhost` do.
 fn pattern_list_matches(list: &str, name: &str, any_case: bool) -> bool {
     let (list, name) = if any_case {
-        (list.to_lowercase(), name.to_lowercase())
+        (list.to_ascii_lowercase(), name.to_ascii_lowercase())
     } else {
         (list.to_string(), name.to_string())
     };
@@ -907,13 +925,14 @@ fn map_host_block(config: &SshConfig, index: usize) -> Result<ServerProfileExpor
         user: None,
         port,
     };
-    // ssh lowercases the host name, `%h` included (`ssh -vvv A` with
-    // `IdentityFile /k/%h_%n` loads `/k/a_A`).
+    // ssh lowercases the host name, `%h` included, in ASCII only (`ssh -vvv
+    // A` with `IdentityFile /k/%h_%n` loads `/k/a_A`; `HostName ÄB.De` is
+    // `Äb.de`).
     let host = match kv.get("hostname").filter(|h| !h.is_empty()) {
         Some(h) => ssh_expand("host", h, "h", &tokens, false)?,
         None => alias.clone(),
     }
-    .to_lowercase();
+    .to_ascii_lowercase();
     tokens.host = &host;
     let username = match kv.get("user") {
         Some(u) => ssh_expand("user name", u, "dhnpu", &tokens, true)?,
@@ -2115,7 +2134,8 @@ Host roundtrip
         );
 
         // `ProxyCommand` and `ProxyJump` are one setting, the first wins; a
-        // command skips its host. `CanonicalizeHostname` reads the file a
+        // command skips its host, quoted or followed by a `#` (`ssh -G`
+        // keeps the rest of the line as the command). `CanonicalizeHostname` reads the file a
         // second time; with `CanonicalDomains`, DNS may rename the host.
         let proxy = dir.path().join("proxy");
         std::fs::write(
@@ -2124,7 +2144,12 @@ Host roundtrip
              Host pj\n  ProxyJump j\n  ProxyCommand nc %h %p\n\
              Host cy\n  CanonicalizeHostname yes\n  HostName real2.example.com\n\
              Host real2.example.com\n  User r2\n\
-             Host cn\n  CanonicalizeHostname yes\n  CanonicalDomains example.com\n",
+             Host cn\n  CanonicalizeHostname yes\n  CanonicalDomains example.com\n\
+             Host pq\n  ProxyCommand \"none\"\n  ProxyJump j\n\
+             Host pk\n  ProxyCommand none # c\n\
+             Host pe\n  ProxyCommand \"\"\n\
+             Host pn\n  ProxyCommand =NoNe\n  ProxyJump j3\n\
+             Host ua\n  HostName ÄB.De\n",
         )
         .unwrap();
         let result = import_ssh_config(&proxy).unwrap();
@@ -2138,6 +2163,9 @@ Host roundtrip
             [
                 ("pc", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
                 ("cn", "ssh may rename its host through DNS (`CanonicalizeHostname` with `CanonicalDomains`) and read the file again for the new name, which this import cannot know; set the full host name in `HostName` and turn `CanonicalizeHostname` off for it to import it"),
+                ("pq", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
+                ("pk", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
+                ("pe", "ssh reaches it through a `ProxyCommand`, which AeroFTP does not run; use `ProxyJump` for a jump host and import again"),
             ]
         );
         let proxy_got: Vec<(&str, &str, u32, &str, &str, &str)> = result
@@ -2164,6 +2192,10 @@ Host roundtrip
             ("pj", "pj", 22, "", "", "j"),
             ("cy", "real2.example.com", 22, "r2", "", ""),
             ("real2.example.com", "real2.example.com", 22, "r2", "", ""),
+            // `none` is the word alone, any case; ssh lowercases the host in
+            // ASCII only.
+            ("pn", "pn", 22, "", "", ""),
+            ("ua", "Äb.de", 22, "", "", ""),
         ];
         assert_eq!(proxy_got, proxy_want);
 
@@ -2185,6 +2217,9 @@ Host roundtrip
              Host none\n  ProxyJump NONE\n\
              Host up\n  HostName Up.Example.com\n\
              Match host UP.example.COM\n  User upcase\n\
+             Host ub\n  HostName ÄB.De\n\
+             Match host äb.de\n  User wrong\n\
+             Match host Äb.DE\n  User ub\n\
              Host *\n  ProxyJump j2\n\
              Match final\n",
         )
@@ -2224,6 +2259,8 @@ Host roundtrip
             ("plain", "plain", 2202, "", "", ""),
             ("none", "none", 2202, "", "", ""),
             ("up", "up.example.com", 2202, "upcase", "", "j2"),
+            // Only ASCII letters are compared in any case.
+            ("ub", "Äb.de", 2202, "ub", "", "j2"),
         ];
         assert_eq!(decided_got, decided_want);
 
@@ -2237,7 +2274,9 @@ Host roundtrip
              Match host f.example.com exec \"false\"\n  User mf\n\
              Match host nomatch exec \"x\"\n  User never\n\
              Match exec \"true\"\n  Port 2500\n\
-             Host g\n  User gu\n",
+             Host g\n  User gu\n\
+             Match tagged \"\"\n  Compression yes\n\
+             Match command=\n  Compression yes\n",
         )
         .unwrap();
         let result = import_ssh_config(&unevaluated).unwrap();
@@ -2653,6 +2692,26 @@ Host roundtrip
                 "Host fine\n  HostName f.example.com\nMatch all host x\n  Port 1\n",
                 3,
                 "combines `Match all` with another condition",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch tagged\n  Port 1\n",
+                3,
+                "gives the `Match` condition `tagged` no value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch final=x\n  Port 1\n",
+                3,
+                "gives the `Match` condition `final` a value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\nMatch host a all=\n  Port 1\n",
+                3,
+                "gives the `Match` condition `all` a value",
+            ),
+            (
+                "Host fine\n  HostName f.example.com\n  ProxyCommand\n",
+                3,
+                "gives `proxycommand` no value",
             ),
         ];
         let bad = dir.path().join("bad");
