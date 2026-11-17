@@ -296,9 +296,9 @@ impl FtpDownloadExecutor {
                 Err(error) => {
                     last_error = error;
 
-                    if self.cancel_token.is_cancelled()
-                        || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-                    {
+                    // The token, never the text (U12): a remote name in the
+                    // error can say `cancelled`.
+                    if self.cancel_token.is_cancelled() {
                         break;
                     }
 
@@ -345,9 +345,7 @@ impl FtpDownloadExecutor {
             return TransferOutcome::Success;
         }
 
-        let failure = if self.cancel_token.is_cancelled()
-            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-        {
+        let failure = if self.cancel_token.is_cancelled() {
             TransferFailure::new(
                 TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",
@@ -625,9 +623,9 @@ impl FtpUploadExecutor {
                 Err(error) => {
                     last_error = error;
 
-                    if self.cancel_token.is_cancelled()
-                        || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-                    {
+                    // The token, never the text (U12): a remote name in the
+                    // error can say `cancelled`.
+                    if self.cancel_token.is_cancelled() {
                         break;
                     }
 
@@ -673,9 +671,7 @@ impl FtpUploadExecutor {
             return TransferOutcome::Success;
         }
 
-        let failure = if self.cancel_token.is_cancelled()
-            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-        {
+        let failure = if self.cancel_token.is_cancelled() {
             TransferFailure::new(
                 TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",

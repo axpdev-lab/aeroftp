@@ -13,6 +13,18 @@ import type { SyncErrorInfo, SyncErrorKind } from '../types';
 type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
 
 /**
+ * The text of a command error as the user sees it. A sync runner's command
+ * returns a fixed message that ends with the classification made natively
+ * from the full error (`[sync-error:<kind>:<retryable>]`, sync.rs
+ * `ipc_error_message`); `classify_transfer_error` reads that tag, and nothing
+ * shown to the user (toast, activity log, queue row, run report, journal)
+ * carries it.
+ */
+export function withoutErrorTag(text: string): string {
+  return text.replace(/\s*\[sync-error:[a-z_]+:(?:true|false)\]\s*$/, '');
+}
+
+/**
  * Classify a failed transfer with the backend's classifier
  * (`classify_transfer_error`, sync.rs `classify_sync_error`), the one the
  * executors use. It reads the OS error code, so a full disk or a reset

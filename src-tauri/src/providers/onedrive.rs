@@ -1510,6 +1510,12 @@ impl OneDriveProvider {
 
 #[async_trait]
 impl StorageProvider for OneDriveProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        self.oauth_manager
+            .sync_owner_identity(&self.oauth_config())
+            .map(Some)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

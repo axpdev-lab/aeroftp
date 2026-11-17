@@ -140,6 +140,102 @@ enum JfsLook {
     IncompleteUpload,
 }
 
+/// Rotated refresh chains this process could not persist, by owning account
+/// and vault key. Jotta consumes a chain at every exchange, so a rotation the
+/// partition refused (an account that was locked meanwhile) is the only live
+/// chain left: it is kept here, zeroized on drop, and read before the stored
+/// one by that account only, until an exchange persists the next rotation.
+/// It does not outlive the process; what it covers is a disconnect, which
+/// clears the provider's own copy.
+static PENDING_ROTATIONS: std::sync::LazyLock<std::sync::Mutex<PendingRotations>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// The chain of each (owning account, vault key) a rotation could not store.
+type PendingRotations = HashMap<(Option<i64>, String), zeroize::Zeroizing<String>>;
+
+/// The one owner a chain's pending rotation and its deletion are recorded
+/// under: the storage the chain lives in. The explicit legacy scope
+/// (`LEGACY_ONLY_ACCOUNT`), no account, and the legacy owner's account all
+/// read and write the shared vault copy, so all three are `None`: a delete
+/// through any of them stops a rotation of the others. Any other account's
+/// chain is its own. Reading which account is the legacy owner can fail.
+fn chain_owner(user: Option<i64>) -> Result<Option<i64>, String> {
+    match user {
+        None => Ok(None),
+        Some(user) if user == crate::user_partitions::LEGACY_ONLY_ACCOUNT => Ok(None),
+        Some(user) => {
+            let (_, shared) = crate::user_partitions::credential_owner_and_fallback(Some(user))?;
+            Ok((!shared).then_some(user))
+        }
+    }
+}
+
+/// When each stored chain was last deleted in this process, by (owning
+/// account, vault key), on a clock only deletions move. A connection keeps the
+/// clock it began at (`chain_since`): what it rotates afterwards is not written
+/// to a key deleted since, so an exchange that was waiting on Jotta while the
+/// profile was deleted or signed out does not store its chain again.
+static DELETED_CHAINS: std::sync::LazyLock<std::sync::Mutex<DeletedChains>> =
+    std::sync::LazyLock::new(Default::default);
+
+#[derive(Default)]
+struct DeletedChains {
+    clock: u64,
+    at: HashMap<(Option<i64>, String), u64>,
+}
+
+impl DeletedChains {
+    /// Whether `account` of `owner` was deleted after `since`.
+    fn deleted_since(&self, owner: Option<i64>, account: &str, since: u64) -> bool {
+        self.at
+            .get(&(owner, account.to_string()))
+            .is_some_and(|&at| at > since)
+    }
+}
+
+fn deletion_clock() -> u64 {
+    DELETED_CHAINS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clock
+}
+
+pub(crate) fn is_refresh_chain(account: &str) -> bool {
+    account == "jottacloud_refresh" || account.starts_with("jottacloud_refresh_")
+}
+
+/// Run `delete`, the removal of every stored copy (vault and partition) of the
+/// chain `account` of `user` (`None`: no account, never one activated since
+/// the caller read it): a sign-out or a deleted profile. Once it succeeds the rotation this process kept for it is
+/// dropped, since it is read ahead of the stored one and a reconnect would
+/// store it again, and the deletion is recorded for the connections that began
+/// before it. A rotation is written under the same lock, so it lands wholly
+/// before the delete, which removes it, or after, and skips the key; a
+/// connection reads the clock under it too, so none begins halfway through
+/// and reads a copy not yet removed. Any other account is not a refresh chain
+/// and is only deleted.
+pub(crate) fn delete_refresh_chain<E: From<String>>(
+    user: Option<i64>,
+    account: &str,
+    delete: impl FnOnce() -> Result<(), E>,
+) -> Result<(), E> {
+    if !is_refresh_chain(account) {
+        return delete();
+    }
+    // Before anything is deleted: an owner that cannot be read records nothing.
+    let key = (chain_owner(user).map_err(E::from)?, account.to_string());
+    let mut deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
+    delete()?;
+    deleted.clock += 1;
+    let clock = deleted.clock;
+    PENDING_ROTATIONS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&key);
+    deleted.at.insert(key, clock);
+    Ok(())
+}
+
 pub struct JottacloudProvider {
     config: JottacloudConfig,
     client: reqwest::Client,
@@ -161,6 +257,22 @@ pub struct JottacloudProvider {
     /// when the caller has not bound a profile (legacy singleton key path).
     /// Issue #214.
     profile_id: String,
+    /// The account whose refresh chain this provider reads and rotates.
+    /// AeroCloud binds the account its connection began with
+    /// (`set_credential_user`); any other caller is bound by `connect` to the
+    /// account active when it begins ([`Self::bind_credential_owner`]), so a
+    /// switch during the exchange can neither lend it another account's chain
+    /// nor persist the rotated one into another account. `None` only before
+    /// the first connection.
+    credential_user: Option<i64>,
+    /// The owner its pending rotations and the deletions it heeds are
+    /// recorded under ([`chain_owner`] of `credential_user`), read with the
+    /// binding, before any exchange. `None` before the first connection:
+    /// nothing is filed then.
+    rotation_owner: Option<Option<i64>>,
+    /// The [`DELETED_CHAINS`] clock when this connection began: a key deleted
+    /// later is not written back.
+    chain_since: u64,
     /// The JFS base of a local double, in tests.
     #[cfg(test)]
     jfs_base_override: Option<String>,
@@ -195,6 +307,9 @@ impl JottacloudProvider {
             refresh_source_account: None,
             current_path: "/".to_string(),
             profile_id: String::new(),
+            credential_user: None,
+            rotation_owner: None,
+            chain_since: deletion_clock(),
             #[cfg(test)]
             jfs_base_override: None,
             #[cfg(test)]
@@ -218,6 +333,37 @@ impl JottacloudProvider {
             return base;
         }
         JFS_BASE
+    }
+
+    /// Read and persist the refresh chain for the account `user` whichever is
+    /// active (see `credential_user`).
+    pub fn set_credential_user(&mut self, user: Option<i64>) {
+        self.credential_user = user;
+    }
+
+    /// Bind an unbound provider to the account active now, before any token
+    /// exchange: the chain is read for it and its rotation written to it.
+    /// Decided after the exchange, a lookup that failed lost the successor
+    /// Jotta had already issued (the stored chain is consumed by then), and
+    /// one that answered after a switch sent it to the other account. A
+    /// failed lookup is an error here, before anything is sent; no account
+    /// at all is the legacy stores (`LEGACY_ONLY_ACCOUNT`). The owner its
+    /// rotations are filed under is read here too, for the same reason.
+    fn bind_credential_owner(&mut self) -> Result<(), ProviderError> {
+        let unreadable = |e: String| {
+            ProviderError::ConnectionFailed(format!(
+                "jottacloud: the active account could not be read: {e}"
+            ))
+        };
+        if self.credential_user.is_none() {
+            let owner = crate::user_partitions::active_user_id_for_write().map_err(unreadable)?;
+            self.credential_user =
+                Some(owner.unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT));
+        }
+        if self.rotation_owner.is_none() {
+            self.rotation_owner = Some(chain_owner(self.credential_user).map_err(unreadable)?);
+        }
+        Ok(())
     }
 
     /// Bind this provider to a server profile so the persisted Jotta refresh
@@ -454,95 +600,171 @@ impl JottacloudProvider {
     /// Persist the rotated chain, off the async worker (see
     /// [`crate::credential_store::off_async_worker`]).
     fn persist_refresh_token(&self) {
-        crate::credential_store::off_async_worker(|| self.persist_refresh_token_now())
+        let Some(owner) = self.rotation_owner else {
+            jotta_log("Refresh token not persisted: no connection began");
+            return;
+        };
+        // Held through the writes: see `delete_refresh_chain`.
+        let deleted = DELETED_CHAINS.lock().unwrap_or_else(|e| e.into_inner());
+        // A chain loaded from a key deleted since is the authorization that
+        // delete removed: it is written to no key, its own included.
+        let source_deleted = self
+            .refresh_source_account
+            .as_deref()
+            .is_some_and(|source| deleted.deleted_since(owner, source, self.chain_since));
+        let accounts: Vec<String> = Self::refresh_persist_accounts(
+            &self.profile_id,
+            self.refresh_source_account.as_deref(),
+        )
+        .into_iter()
+        .filter(|account| {
+            !source_deleted && !deleted.deleted_since(owner, account, self.chain_since)
+        })
+        .collect();
+        if accounts.is_empty() {
+            jotta_log("Refresh token not persisted: its stored chain was deleted meanwhile");
+            return;
+        }
+        let written =
+            crate::credential_store::off_async_worker(|| self.persist_refresh_token_now(&accounts));
+        let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+        for account in accounts {
+            // Per key: a key left unwritten still holds the chain Jotta
+            // consumed, whatever happened to the others.
+            if written.contains(&account) {
+                pending.remove(&(owner, account));
+            } else {
+                // Jotta has consumed the stored chain: the rotated one is the
+                // only one left. Kept for its account (never another's) until
+                // a later exchange persists the chain it rotates to.
+                pending.insert((owner, account), zeroize::Zeroizing::new(self.chain_json()));
+            }
+        }
     }
 
-    fn persist_refresh_token_now(&self) {
+    /// The live chain as it is persisted.
+    fn chain_json(&self) -> String {
+        serde_json::json!({
+            "refresh_token": self.refresh_token.expose_secret(),
+            "token_endpoint": self.token_endpoint,
+            "username": self.username,
+        })
+        .to_string()
+    }
+
+    /// The keys of `accounts` every copy of the rotated chain was written to.
+    fn persist_refresh_token_now(&self, accounts: &[String]) -> Vec<String> {
         let data = serde_json::json!({
             "refresh_token": self.refresh_token.expose_secret(),
             "token_endpoint": self.token_endpoint,
             "username": self.username,
         });
         let json = data.to_string();
-        let accounts = Self::refresh_persist_accounts(
-            &self.profile_id,
-            self.refresh_source_account.as_deref(),
-        );
         // Another user's chain stays in its partition only: the shared vault
         // and its singleton belong to the legacy owner.
-        let private_user =
-            match crate::user_partitions::private_token_user(None, "jottacloud_refresh") {
-                Ok(user) => user,
-                Err(e) => {
-                    jotta_log(&format!("Refresh token not persisted: {}", e));
-                    return;
-                }
-            };
-        let write_all = |store: &crate::credential_store::CredentialStore| -> bool {
-            if let Some(user) = private_user {
-                return accounts
-                    .iter()
-                    .filter(|account| account.as_str() != "jottacloud_refresh")
-                    .all(|account| {
-                        crate::user_partitions::store_credential_for_user(
-                            store,
-                            user,
-                            account,
-                            "jottacloud_refresh",
-                            &json,
-                        )
-                        .is_ok()
-                    });
+        let private_user = match crate::user_partitions::private_token_user(
+            self.credential_user,
+            "jottacloud_refresh",
+        ) {
+            Ok(user) => user,
+            Err(e) => {
+                jotta_log(&format!("Refresh token not persisted: {}", e));
+                return Vec::new();
             }
-            let mut ok = true;
-            for account in &accounts {
-                if store.store(account, &json).is_err() {
-                    ok = false;
-                    continue;
-                }
-                // MUV-4: mirror into the active user's partition (per-profile only).
-                if account != "jottacloud_refresh"
-                    && crate::user_partitions::mirror_active_credential(
+        };
+        // The keys this chain may be written to. A private chain is never
+        // written to the singleton: that key is left unwritten, so its
+        // rotation stays pending for this process.
+        let writable: Vec<&String> = accounts
+            .iter()
+            .filter(|account| private_user.is_none() || account.as_str() != "jottacloud_refresh")
+            .collect();
+        let write = |store: &crate::credential_store::CredentialStore, account: &str| -> bool {
+            if let Some(user) = private_user {
+                return crate::user_partitions::store_credential_for_user(
+                    store,
+                    user,
+                    account,
+                    "jottacloud_refresh",
+                    &json,
+                )
+                .is_ok();
+            }
+            if store.store(account, &json).is_err() {
+                return false;
+            }
+            // MUV-4: mirror into the active user's partition (per-profile only).
+            account == "jottacloud_refresh"
+                || match self.credential_user {
+                    Some(user) => crate::user_partitions::mirror_credential_for_user_typed(
+                        store,
+                        user,
+                        account,
+                        "jottacloud_refresh",
+                        &json,
+                    ),
+                    None => crate::user_partitions::mirror_active_credential(
                         store,
                         account,
                         "jottacloud_refresh",
                         &json,
-                    )
-                    .is_err()
-                {
-                    ok = false;
+                    ),
+                }
+                .is_ok()
+        };
+        let mut written: Vec<String> = Vec::new();
+        let mut write_missing = |store: &crate::credential_store::CredentialStore| {
+            for account in &writable {
+                if !written.contains(account) && write(store, account) {
+                    written.push((*account).clone());
                 }
             }
-            ok
+            written.len() == writable.len()
         };
         if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-            if write_all(&store) {
+            if write_missing(&store) {
                 jotta_log(&format!(
                     "Refresh token persisted to vault ({} key(s))",
-                    accounts.len()
+                    writable.len()
                 ));
-                return;
+                return written;
             }
         }
         // Try auto-init vault. Also a second attempt after a failed write: Jotta has
         // already rotated the chain, and the old one in the vault is of no use.
         if crate::credential_store::CredentialStore::init().is_ok() {
             if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
-                if write_all(&store) {
+                if write_missing(&store) {
                     jotta_log("Refresh token persisted to auto-initialized vault");
-                    return;
+                    return written;
                 }
             }
         }
         // Readers prefer the partition row: a stale one holds a rotated chain, so this
         // must not read as a success.
         jotta_log("Refresh token NOT fully persisted: the vault or the partition refused it");
+        written
     }
 
     /// Read one refresh chain: the active user's partition, falling back to the
     /// shared vault only for the legacy owner (owner-aware).
-    fn load_refresh_chain(account: &str) -> Option<(String, String, String)> {
-        let store = crate::credential_store::CredentialStore::from_cache()?;
+    /// `user`: the bound account (see `credential_user`), `None` the active one.
+    /// A rotation this process could not persist (`PENDING_ROTATIONS`) is
+    /// that account's live chain, ahead of the stored one Jotta consumed;
+    /// `owner` is the one it is filed under (see `rotation_owner`).
+    fn load_refresh_chain(
+        user: Option<i64>,
+        owner: Option<Option<i64>>,
+        account: &str,
+    ) -> Option<(String, String, String)> {
+        // An owner that was never read reads nothing: the stored chain may be
+        // the one a pending rotation replaced, which Jotta has consumed.
+        let owner = owner?;
+        let pending = PENDING_ROTATIONS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&(owner, account.to_string()))
+            .cloned();
         let parse = |json: String| -> Option<(String, String, String)> {
             let v: serde_json::Value = serde_json::from_str(&json).ok()?;
             let rt = v["refresh_token"].as_str()?.to_string();
@@ -554,17 +776,33 @@ impl JottacloudProvider {
                 Some((rt, te, un))
             }
         };
-        crate::user_partitions::resolve_active_credential_owner_aware(&store, account)
-            .ok()
-            .flatten()
-            .and_then(|json| parse(json.to_string()))
+        let store = crate::credential_store::CredentialStore::from_cache()?;
+        // The owner-aware read checks the account first (it exists, it is
+        // unlocked): a pending rotation is that account's secret too, and is
+        // not handed out while the read is refused. It stays for later.
+        let stored = match user {
+            Some(user) => crate::user_partitions::resolve_credential_for_user_owner_aware(
+                &store, user, account,
+            ),
+            None => crate::user_partitions::resolve_active_credential_owner_aware(&store, account),
+        }
+        .ok()?;
+        if let Some(chain) = pending.and_then(|json| parse(json.to_string())) {
+            return Some(chain);
+        }
+        stored.and_then(|json| parse(json.to_string()))
     }
 
     /// Try to connect using a persisted refresh token (no login token needed).
     async fn try_connect_with_refresh(&mut self) -> Result<bool, ProviderError> {
+        self.bind_credential_owner()?;
+        // The connection begins here, the login-token path of `connect` included.
+        self.chain_since = deletion_clock();
         let own = self.refresh_token_account();
         for account in Self::refresh_chain_candidates(&self.profile_id) {
-            let Some((rt, te, un)) = Self::load_refresh_chain(&account) else {
+            let Some((rt, te, un)) =
+                Self::load_refresh_chain(self.credential_user, self.rotation_owner, &account)
+            else {
                 continue;
             };
             jotta_log(&format!(
@@ -615,15 +853,39 @@ impl JottacloudProvider {
                 // with the same `invalid_grant` on the other station.
                 // Another user's chain lived only in its partition; the vault
                 // key of the same name belongs to the legacy owner.
-                let private =
-                    crate::user_partitions::private_token_user(None, "jottacloud_refresh")
-                        .map_or(true, |user| user.is_some());
+                // A pending rotation Jotta refused is dead too: dropped,
+                // unless a newer rotation has replaced it meanwhile.
+                if let Some(owner) = self.rotation_owner {
+                    let key = (owner, account.clone());
+                    let mut pending = PENDING_ROTATIONS.lock().unwrap_or_else(|e| e.into_inner());
+                    let refused = pending.get(&key).is_some_and(|json| {
+                        serde_json::from_str::<serde_json::Value>(json)
+                            .ok()
+                            .and_then(|v| v["refresh_token"].as_str().map(|t| t == rt))
+                            .unwrap_or(false)
+                    });
+                    if refused {
+                        pending.remove(&key);
+                    }
+                }
+                let private = crate::user_partitions::private_token_user(
+                    self.credential_user,
+                    "jottacloud_refresh",
+                )
+                .map_or(true, |user| user.is_some());
                 if !private {
                     if let Some(store) = crate::credential_store::CredentialStore::from_cache() {
                         let _ = store.delete(&account);
                     }
                 }
-                crate::user_partitions::unmirror_active_credential(&account);
+                match self.credential_user {
+                    Some(user) => {
+                        crate::user_partitions::unmirror_credential_for_user_best_effort_any(
+                            user, &account,
+                        )
+                    }
+                    None => crate::user_partitions::unmirror_active_credential(&account),
+                }
                 continue;
             }
 
@@ -1474,6 +1736,10 @@ impl StorageProvider for JottacloudProvider {
     async fn connect(&mut self) -> Result<(), ProviderError> {
         jotta_log("Connecting to Jottacloud");
 
+        // Before the refresh attempt, whose failures fall back to the login
+        // token: an account that cannot be read stops the connection before
+        // either token is spent.
+        self.bind_credential_owner()?;
         // Strategy: try persisted refresh token first (avoids consuming the single-use login token).
         // If that fails, fall back to the login token from config.
         let used_refresh = refresh_or_login_token(self.try_connect_with_refresh().await)?;
@@ -3489,6 +3755,1552 @@ fn token_exchange_refusal(body: &str) -> ProviderError {
 mod tests {
     /// #1506 row 164: the OAuth `error` code decides a spent login token,
     /// whatever language or wording the description is in.
+    /// Two accounts hold a Jottacloud refresh chain under one profile id.
+    /// The provider is bound to the first (as AeroCloud binds the account
+    /// its connection began with); the second account is activated by the
+    /// token endpoint itself, while the exchange is in flight. The chain sent
+    /// is the first account's, the rotated chain is persisted for the first
+    /// account, and the second account's chain is untouched.
+    #[test]
+    fn a_bound_refresh_exchange_reads_and_persists_the_capturing_account() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        // A process-global vault, session and environment: its own process.
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_bound_refresh_exchange_reads_and_persists_the_capturing_account",
+        ) {
+            return;
+        }
+
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let previous_xdg = std::env::var_os("XDG_CONFIG_HOME");
+        let previous_passphrase = std::env::var_os("AEROFTP_USER_PASSPHRASE");
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-owner-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-owner-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        // The endpoint tells the test the exchange arrived, then answers only
+        // once the test has switched the account: the switch lands while the
+        // exchange is in flight, on the thread that holds the session lock.
+        let (arrived_tx, arrived_rx) = std::sync::mpsc::channel::<()>();
+        let (switched_tx, switched_rx) = tokio::sync::oneshot::channel::<()>();
+        let switched_rx = Arc::new(tokio::sync::Mutex::new(Some(switched_rx)));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    let arrived_tx = arrived_tx.clone();
+                    let switched_rx = switched_rx.clone();
+                    async move {
+                        sent.lock().unwrap().push(body);
+                        arrived_tx.send(()).unwrap();
+                        if let Some(switched) = switched_rx.lock().await.take() {
+                            let _ = switched.await;
+                        }
+                        axum::Json(serde_json::json!({
+                            "access_token": "access-first",
+                            "refresh_token": "rotated-first",
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        let key = "jottacloud_refresh_shared";
+        for (user, token) in [(first.id, "first-chain"), (second.id, "second-chain")] {
+            partitions::store_credential_for_user(
+                &store,
+                user,
+                key,
+                "jottacloud_refresh",
+                &chain(token),
+            )
+            .expect("store the account's chain");
+        }
+
+        let mut provider = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("shared");
+        provider.set_credential_user(Some(first.id));
+        let exchange = runtime.spawn(async move {
+            let reconnected = provider.try_connect_with_refresh().await;
+            (provider, reconnected)
+        });
+        arrived_rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the exchange reached the endpoint");
+        partitions::set_active_user(&conn, second.id).expect("switch during the exchange");
+        switched_tx.send(()).unwrap();
+        let (_provider, reconnected) = runtime.block_on(exchange).unwrap();
+        assert!(reconnected.expect("the exchange succeeds"));
+
+        let sent = sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 1);
+        assert!(sent[0].contains("refresh_token=first-chain"), "{}", sent[0]);
+        assert!(!sent[0].contains("second-chain"));
+        let read = |user| {
+            partitions::resolve_credential_for_user(&store, user, key)
+                .expect("read")
+                .map(|value| value.to_string())
+                .unwrap_or_default()
+        };
+        assert!(
+            read(first.id).contains("rotated-first"),
+            "persisted for the first"
+        );
+        assert!(
+            read(second.id).contains("second-chain"),
+            "the second is untouched"
+        );
+        assert!(!read(second.id).contains("rotated-first"));
+        assert_eq!(
+            partitions::get_active_user(&conn).unwrap().map(|u| u.id),
+            Some(second.id),
+            "the switch did happen during the exchange"
+        );
+
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+        match previous_xdg {
+            Some(value) => std::env::set_var("XDG_CONFIG_HOME", value),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+        match previous_passphrase {
+            Some(value) => std::env::set_var("AEROFTP_USER_PASSPHRASE", value),
+            None => std::env::remove_var("AEROFTP_USER_PASSPHRASE"),
+        }
+    }
+
+    /// The bound account is protected and gets locked during the exchange
+    /// (the switch clears its session): the rotated chain cannot be written
+    /// to its partition. It is not lost with the provider: the next exchange
+    /// for that account sends it, and once the account is unlocked again the
+    /// chain that exchange rotates to is persisted in its partition.
+    #[test]
+    fn a_rotation_the_locked_account_could_not_store_survives_until_it_can() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_rotation_the_locked_account_could_not_store_survives_until_it_can",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-locked-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-locked-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let protected = partitions::create_user(
+            &mut conn,
+            &root_key,
+            "Protected",
+            None,
+            None,
+            Some("protected-passphrase"),
+        )
+        .expect("create a protected account")
+        .id;
+        partitions::set_active_user(&conn, protected).expect("activate the protected account");
+        partitions::unlock_user(&conn, &root_key, protected, Some("protected-passphrase"))
+            .expect("unlock it");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (arrived_tx, arrived_rx) = std::sync::mpsc::channel::<()>();
+        let (switched_tx, switched_rx) = tokio::sync::oneshot::channel::<()>();
+        let switched_rx = Arc::new(tokio::sync::Mutex::new(Some(switched_rx)));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    let arrived_tx = arrived_tx.clone();
+                    let switched_rx = switched_rx.clone();
+                    async move {
+                        let call = {
+                            let mut sent = sent.lock().unwrap();
+                            sent.push(body);
+                            sent.len()
+                        };
+                        if call == 1 {
+                            arrived_tx.send(()).unwrap();
+                            if let Some(switched) = switched_rx.lock().await.take() {
+                                let _ = switched.await;
+                            }
+                        }
+                        axum::Json(serde_json::json!({
+                            "access_token": format!("access-{call}"),
+                            "refresh_token": format!("rotated-{call}"),
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let key = "jottacloud_refresh_locked";
+        partitions::store_credential_for_user(
+            &store,
+            protected,
+            key,
+            "jottacloud_refresh",
+            &serde_json::json!({
+                "refresh_token": "stored-chain", "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string(),
+        )
+        .expect("store the protected account's chain");
+        let bound = || {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id("locked");
+            provider.set_credential_user(Some(protected));
+            provider
+        };
+
+        // The first exchange: the switch lands while it is in flight and the
+        // protected account's session is cleared, so its partition is locked.
+        let mut provider = bound();
+        let exchange = runtime.spawn(async move {
+            let reconnected = provider.try_connect_with_refresh().await;
+            (provider, reconnected)
+        });
+        arrived_rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the exchange reached the endpoint");
+        partitions::set_active_user(&conn, first).expect("switch away");
+        switched_tx.send(()).unwrap();
+        let (provider, reconnected) = runtime.block_on(exchange).unwrap();
+        assert!(reconnected.expect("the exchange succeeds"));
+        drop(provider);
+        let stored = || {
+            partitions::open_or_init_cli()
+                .and_then(|conn| {
+                    conn.query_row(
+                        "SELECT COUNT(*) FROM user_credentials WHERE user_id = ?1 AND credential_id = ?2",
+                        rusqlite::params![protected, key],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .map_err(|e| e.to_string())
+                })
+                .unwrap()
+        };
+        assert_eq!(
+            stored(),
+            1,
+            "the stored (consumed) chain is still the only row"
+        );
+
+        // D10: back on the account, still locked: the pending rotation is
+        // not handed out (the owner-aware read refuses), so nothing is sent.
+        partitions::set_active_user(&conn, protected).expect("back to the protected account");
+        let mut locked = bound();
+        let refused = runtime.block_on(locked.try_connect_with_refresh());
+        assert!(
+            !refused.unwrap_or(false),
+            "no exchange while the account is locked"
+        );
+        assert_eq!(
+            sent.lock().unwrap().len(),
+            1,
+            "no token request while locked"
+        );
+
+        // The account is unlocked again; a new provider for it exchanges the
+        // rotated chain, not the consumed one, and persists the next one.
+        partitions::unlock_user(&conn, &root_key, protected, Some("protected-passphrase"))
+            .expect("unlock it again");
+        let mut provider = bound();
+        let reconnected = runtime.block_on(provider.try_connect_with_refresh());
+        assert!(reconnected.expect("the second exchange succeeds"));
+        let sent = sent.lock().unwrap().clone();
+        assert_eq!(sent.len(), 2);
+        assert!(
+            sent[0].contains("refresh_token=stored-chain"),
+            "{}",
+            sent[0]
+        );
+        assert!(sent[1].contains("refresh_token=rotated-1"), "{}", sent[1]);
+        let persisted = partitions::resolve_credential_for_user(&store, protected, key)
+            .unwrap()
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        assert!(persisted.contains("rotated-2"), "persisted once unlocked");
+
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+    }
+
+    /// D11: Jotta refuses a pending rotation (`invalid_grant`): it is dropped
+    /// from the cache, so a replacement chain stored for the account
+    /// afterwards is the one the next connection submits.
+    #[test]
+    fn a_refused_pending_rotation_does_not_hide_its_replacement() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_refused_pending_rotation_does_not_hide_its_replacement",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-refused-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-refused-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    async move {
+                        let refused = body.contains("refresh_token=pending-rotation");
+                        sent.lock().unwrap().push(body);
+                        if refused {
+                            return (
+                                axum::http::StatusCode::BAD_REQUEST,
+                                axum::Json(serde_json::json!({"error": "invalid_grant"})),
+                            );
+                        }
+                        (
+                            axum::http::StatusCode::OK,
+                            axum::Json(serde_json::json!({
+                                "access_token": "access", "refresh_token": "rotated-replacement",
+                                "expires_in": 3600,
+                            })),
+                        )
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        let key = "jottacloud_refresh_refused".to_string();
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new(chain("pending-rotation")),
+        );
+        let bound = || {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id("refused");
+            provider.set_credential_user(Some(first));
+            provider
+        };
+        let mut provider = bound();
+        let _ = runtime.block_on(provider.try_connect_with_refresh());
+        assert!(
+            !PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(None, key.clone())),
+            "the refused rotation is dropped"
+        );
+        // A replacement chain is stored for the account; the next
+        // connection submits it.
+        partitions::store_credential_for_user(
+            &store,
+            first,
+            &key,
+            "jottacloud_refresh",
+            &chain("replacement"),
+        )
+        .expect("store the replacement");
+        let mut provider = bound();
+        assert!(runtime
+            .block_on(provider.try_connect_with_refresh())
+            .unwrap());
+        let sent = sent.lock().unwrap().clone();
+        assert!(
+            sent[0].contains("refresh_token=pending-rotation"),
+            "{}",
+            sent[0]
+        );
+        assert!(
+            sent.last().unwrap().contains("refresh_token=replacement"),
+            "{sent:?}"
+        );
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+    }
+
+    /// The account a delete names owns it, whatever the key: a Jottacloud
+    /// chain is not prefix-classified, so deleting the first account's chain
+    /// while the second was active dropped the second's kept rotation and
+    /// left the first's. A delete naming no account (`purge_profile_secrets`
+    /// read none) is no account's: it once read the account activated since,
+    /// and took the second's partition copy and rotation with the vault's.
+    #[test]
+    fn a_delete_drops_the_rotation_of_the_account_it_names() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_delete_drops_the_rotation_of_the_account_it_names",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-named-delete-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-named-delete-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        partitions::set_active_user(&conn, second).expect("activate the second account");
+        let key = "jottacloud_refresh_named".to_string();
+        // The first account owns the shared vault: its rotations are filed
+        // under no account, the second's under its own.
+        for owner in [None, Some(second)] {
+            PENDING_ROTATIONS.lock().unwrap().insert(
+                (owner, key.clone()),
+                zeroize::Zeroizing::new(format!("pending-{owner:?}")),
+            );
+        }
+        let kept = |owner: Option<i64>| {
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(owner, key.clone()))
+        };
+        partitions::delete_credential_dual_as(&store, Some(first), &key).unwrap();
+        let named = (kept(None), kept(Some(second)));
+        partitions::store_credential_for_user(&store, second, &key, "jottacloud_refresh", "chain")
+            .expect("store the second's chain");
+        store.store(&key, "chain").expect("store the vault copy");
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new("pending-none".to_string()),
+        );
+        partitions::delete_credential_dual_as(&store, None, &key).unwrap();
+        let ownerless = (
+            store.get(&key).is_ok(),
+            partitions::resolve_credential_for_user(&store, second, &key)
+                .expect("read")
+                .is_some(),
+            kept(Some(second)),
+            PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(None, key.clone())),
+        );
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != &key);
+        CredentialStore::clear_cache();
+        assert_eq!(
+            named,
+            (false, true),
+            "the named account's rotation goes, the active one's stays"
+        );
+        assert_eq!(
+            ownerless,
+            (false, true, true, false),
+            "(vault, second's partition copy, second's rotation, no account's rotation) \
+             after a delete naming no account"
+        );
+    }
+
+    /// A partition that refused to delete a refresh chain was ignored: the
+    /// delete answered Ok and was recorded, and the copy left there is read
+    /// ahead of the vault. The delete fails now, for both entrypoints, and
+    /// records nothing.
+    #[test]
+    fn a_refresh_chain_the_partition_keeps_fails_its_delete() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_refresh_chain_the_partition_keeps_fails_its_delete",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-kept-copy-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-kept-copy-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let key = "jottacloud_refresh_kept".to_string();
+        partitions::store_credential_for_user(&store, first, &key, "jottacloud_refresh", "chain")
+            .expect("store the chain");
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new("pending".to_string()),
+        );
+        partitions::PARTITION_DELETE_REFUSED.with(|refused| refused.set(true));
+        let mut wrong = Vec::new();
+        for entrypoint in ["for user", "as"] {
+            store.store(&key, "chain").expect("store the vault copy");
+            let deleted = match entrypoint {
+                "for user" => partitions::delete_credential_for_user_dual(&store, first, &key),
+                _ => partitions::delete_credential_dual_as(&store, Some(first), &key),
+            };
+            let recorded = DELETED_CHAINS
+                .lock()
+                .unwrap()
+                .at
+                .contains_key(&(None, key.clone()));
+            let kept = PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(None, key.clone()));
+            if deleted.is_ok() || recorded || !kept {
+                wrong.push(format!(
+                    "{entrypoint}: {deleted:?}, recorded {recorded}, rotation kept {kept}"
+                ));
+            }
+        }
+        partitions::PARTITION_DELETE_REFUSED.with(|refused| refused.set(false));
+        let partition = partitions::resolve_credential_for_user(&store, first, &key)
+            .expect("read")
+            .is_some();
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != &key);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(partition, "the refused copy is still there");
+    }
+
+    /// A failed account lookup was read as no account: a delete removed the
+    /// vault copy and kept the partition's, which readers prefer, and an
+    /// unbound provider filed its unstored rotation under the legacy stores'
+    /// owner. Both delete entry points refuse now before either copy
+    /// changes, and the rotation is filed under no owner.
+    #[test]
+    fn a_failed_account_lookup_deletes_nothing_and_files_no_rotation() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_failed_account_lookup_deletes_nothing_and_files_no_rotation",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-lookup-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-lookup-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let key = "jottacloud_refresh_lookup".to_string();
+        partitions::store_credential_for_user(&store, first, &key, "jottacloud_refresh", "chain")
+            .expect("store the chain");
+        store.store(&key, "chain").expect("store the vault copy");
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.clone()),
+            zeroize::Zeroizing::new("pending".to_string()),
+        );
+        partitions::ACCOUNT_LOOKUP_FAILS.store(true, std::sync::atomic::Ordering::SeqCst);
+        let mut wrong = Vec::new();
+        for entrypoint in ["active", "gui"] {
+            let deleted = match entrypoint {
+                "active" => partitions::delete_active_credential_dual(&store, &key),
+                _ => tauri::async_runtime::block_on(crate::delete_credential_for_active_account(
+                    CredentialStore::from_cache().expect("cached vault"),
+                    key.clone(),
+                )),
+            };
+            let vault = store.get(&key).is_ok();
+            let recorded = DELETED_CHAINS
+                .lock()
+                .unwrap()
+                .at
+                .keys()
+                .any(|(_, account)| account == &key);
+            let kept = PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(None, key.clone()));
+            if deleted.is_ok() || !vault || recorded || !kept {
+                wrong.push(format!(
+                    "{entrypoint}: {deleted:?}, vault kept {vault}, recorded {recorded}, rotation kept {kept}"
+                ));
+            }
+        }
+        // An unbound provider whose rotated chain finds no account to go to.
+        let mut provider = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("unbound-lookup");
+        provider.refresh_token = SecretString::from("successor".to_string());
+        provider.persist_refresh_token();
+        partitions::ACCOUNT_LOOKUP_FAILS.store(false, std::sync::atomic::Ordering::SeqCst);
+        let unbound = "jottacloud_refresh_unbound-lookup";
+        let filed: Vec<_> = PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .keys()
+            .filter(|(_, account)| account == unbound)
+            .map(|(owner, _)| *owner)
+            .collect();
+        let stored = store.get(unbound).is_ok();
+        let partition = partitions::resolve_credential_for_user(&store, first, &key)
+            .expect("read")
+            .is_some();
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != &key && account != unbound);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(partition, "the partition copy is still there");
+        assert!(filed.is_empty(), "rotation filed under {filed:?}");
+        assert!(!stored, "the successor reached the vault");
+    }
+
+    /// An account store that is there but cannot be read is not "no account":
+    /// taken for one, a delete removed the vault copy and kept the partition
+    /// copy readers prefer. An active value that is not an id, no active
+    /// account while accounts exist, and a file that is not a database are
+    /// errors for both delete entry points, and both copies stay. The same
+    /// delete on the restored store goes through (the control).
+    #[test]
+    fn an_account_store_that_cannot_be_read_deletes_neither_copy() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::an_account_store_that_cannot_be_read_deletes_neither_copy",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-corrupt-store-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-corrupt-store-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let first = partitions::get_active_user(&partitions::open_or_init_cli().expect("DB"))
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let database = partitions::cli_db_path().expect("partition DB path");
+        let key = "jottacloud_refresh_corrupt";
+        let delete = |entrypoint: &str| match entrypoint {
+            "active" => partitions::delete_active_credential_dual(&store, key),
+            _ => tauri::async_runtime::block_on(crate::delete_credential_for_active_account(
+                CredentialStore::from_cache().expect("cached vault"),
+                key.to_string(),
+            )),
+        };
+        let mut wrong = Vec::new();
+        for case in ["not an id", "no active account", "not a database"] {
+            for entrypoint in ["active", "gui"] {
+                partitions::store_credential_for_user(
+                    &store,
+                    first,
+                    key,
+                    "jottacloud_refresh",
+                    "chain",
+                )
+                .expect("store the partition copy");
+                store.store(key, "chain").expect("store the vault copy");
+                let conn = partitions::open_or_init_cli().expect("DB");
+                conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+                    .expect("checkpoint");
+                let saved = std::fs::read(&database).expect("back up the DB");
+                match case {
+                    "not an id" => {
+                        conn.execute(
+                            "UPDATE global_state SET value = 'garbage' WHERE key = 'active_user_id'",
+                            [],
+                        )
+                        .expect("corrupt the active value");
+                        drop(conn);
+                    }
+                    "no active account" => {
+                        conn.execute("DELETE FROM global_state WHERE key = 'active_user_id'", [])
+                            .expect("drop the active value");
+                        drop(conn);
+                    }
+                    _ => {
+                        drop(conn);
+                        for suffix in ["-wal", "-shm"] {
+                            let mut side = database.clone().into_os_string();
+                            side.push(suffix);
+                            let _ = std::fs::remove_file(side);
+                        }
+                        std::fs::write(&database, vec![0x5a; 8192]).expect("overwrite the DB");
+                    }
+                }
+                let deleted = delete(entrypoint);
+                std::fs::write(&database, &saved).expect("restore the DB");
+                for suffix in ["-wal", "-shm"] {
+                    let mut side = database.clone().into_os_string();
+                    side.push(suffix);
+                    let _ = std::fs::remove_file(side);
+                }
+                let vault = store.get(key).is_ok();
+                let partition = partitions::resolve_credential_for_user(&store, first, key)
+                    .expect("read the restored store")
+                    .is_some();
+                if deleted.is_ok() || !vault || !partition {
+                    wrong.push(format!(
+                        "{case} ({entrypoint}): {deleted:?}, vault kept {vault}, partition kept {partition}"
+                    ));
+                }
+                let control = delete(entrypoint);
+                let vault = store.get(key).is_ok();
+                let partition = partitions::resolve_credential_for_user(&store, first, key)
+                    .expect("read")
+                    .is_some();
+                if control.is_err() || vault || partition {
+                    wrong.push(format!(
+                        "control after {case} ({entrypoint}): {control:?}, vault {vault}, partition {partition}"
+                    ));
+                }
+            }
+        }
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A delete removed the vault copy, recorded itself, and only then the
+    /// partition copy: a connection that began in between took the new clock,
+    /// read the partition copy, and stored its rotated chain again. Both
+    /// copies go before a connection can begin now. The connection starts
+    /// inside the partition step and is given time to finish there.
+    #[test]
+    fn a_connection_begun_during_a_delete_reads_no_copy_left() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_connection_begun_during_a_delete_reads_no_copy_left",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-midway-delete-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-midway-delete-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    async move {
+                        sent.lock().unwrap().push(body);
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": "rotated",
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let key = "jottacloud_refresh_midway";
+        let chain = serde_json::json!({
+            "refresh_token": "stored", "token_endpoint": endpoint, "username": "jotta-user",
+        })
+        .to_string();
+        partitions::store_credential_for_user(&store, first, key, "jottacloud_refresh", &chain)
+            .expect("store the chain");
+        store.store(key, &chain).expect("store the vault copy");
+        // Built first: building reads the deletion clock, which the partition
+        // step below runs under.
+        let mut provider = JottacloudProvider::new(JottacloudConfig {
+            login_token: SecretString::from(String::new()),
+            device: "Jotta".into(),
+            mountpoint: "Archive".into(),
+            initial_path: None,
+        })
+        .with_profile_id("midway");
+        provider.set_credential_user(Some(first));
+        let mut connection = None;
+        partitions::delete_credential_dual_with(
+            &store,
+            key,
+            || Some(first),
+            |user| {
+                let started = runtime.spawn(async move {
+                    let connected = provider.try_connect_with_refresh().await;
+                    (provider, connected)
+                });
+                let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+                while !started.is_finished() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                connection = Some(started);
+                partitions::unmirror_credential_for_user_best_effort_any(user, key);
+                Ok(())
+            },
+        )
+        .unwrap();
+        let (_provider, connected) = runtime
+            .block_on(connection.expect("the partition step ran"))
+            .unwrap();
+        let refreshed = std::mem::take(&mut *sent.lock().unwrap());
+        let vault = store.get(key).ok().map(|value| value.to_string());
+        let partition = partitions::resolve_credential_for_user(&store, first, key)
+            .expect("read")
+            .map(|value| value.to_string());
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+        assert_eq!(
+            (connected.ok(), refreshed, vault, partition),
+            (Some(false), Vec::<String>::new(), None, None),
+            "the connection found a copy the delete had not removed yet"
+        );
+    }
+
+    /// An exchange already waiting on Jotta when its profile is deleted must
+    /// not store the chain it gets back: the delete removed the stored copies,
+    /// and writing the rotated chain restored the authorization it took away.
+    /// A chain the profile loaded from the shared singleton is written to the
+    /// profile's own key too: deleting the singleton must keep it from both.
+    #[test]
+    fn a_refresh_answered_after_its_chain_was_deleted_stores_nothing() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::Arc;
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_refresh_answered_after_its_chain_was_deleted_stores_nothing",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-held-refresh-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-held-refresh-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        // The endpoint says the exchange arrived, then answers only once the
+        // test has deleted the chain.
+        let (arrived_tx, arrived_rx) = std::sync::mpsc::channel::<()>();
+        let held = Arc::new(tokio::sync::Mutex::new(
+            None::<tokio::sync::oneshot::Receiver<()>>,
+        ));
+        let (endpoint, server) = runtime.block_on(async {
+            let held = held.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |_body: String| {
+                    let arrived_tx = arrived_tx.clone();
+                    let held = held.clone();
+                    async move {
+                        arrived_tx.send(()).unwrap();
+                        if let Some(deleted) = held.lock().await.take() {
+                            let _ = deleted.await;
+                        }
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": "rotated",
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = serde_json::json!({
+            "refresh_token": "stored", "token_endpoint": endpoint, "username": "jotta-user",
+        })
+        .to_string();
+        // (profile, the key its chain is loaded from and deleted under, the
+        // account the provider is bound to, the account the delete names).
+        // The explicit legacy scope reads the vault, which a delete naming no
+        // account and one naming the legacy owner (the first account) both
+        // remove: one storage, so either delete stops its rotation.
+        let legacy = partitions::LEGACY_ONLY_ACCOUNT;
+        assert_eq!(
+            partitions::credential_owner_and_fallback(Some(first)).expect("legacy owner"),
+            (Some(first), true),
+            "the first account owns the shared vault"
+        );
+        let mut wrong = Vec::new();
+        for (profile, loaded, bound, deleter) in [
+            ("held", "jottacloud_refresh_held", first, Some(first)),
+            ("from-singleton", "jottacloud_refresh", first, Some(first)),
+            (
+                "legacy-scope",
+                "jottacloud_refresh_legacy-scope",
+                legacy,
+                None,
+            ),
+            (
+                "legacy-owner-delete",
+                "jottacloud_refresh_legacy-owner-delete",
+                legacy,
+                Some(first),
+            ),
+        ] {
+            if bound != legacy {
+                partitions::store_credential_for_user(
+                    &store,
+                    first,
+                    loaded,
+                    "jottacloud_refresh",
+                    &chain,
+                )
+                .expect("store the chain");
+            }
+            store.store(loaded, &chain).expect("store the vault copy");
+            let (deleted_tx, deleted_rx) = tokio::sync::oneshot::channel::<()>();
+            *runtime.block_on(held.lock()) = Some(deleted_rx);
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id(profile);
+            provider.set_credential_user(Some(bound));
+            let exchange = runtime.spawn(async move {
+                let connected = provider.try_connect_with_refresh().await;
+                (provider, connected)
+            });
+            arrived_rx
+                .recv_timeout(std::time::Duration::from_secs(20))
+                .expect("the exchange reached the endpoint");
+            match deleter {
+                None => partitions::delete_credential_dual_as(&store, None, loaded).unwrap(),
+                Some(user) => {
+                    partitions::delete_credential_for_user_dual(&store, user, loaded).unwrap()
+                }
+            }
+            deleted_tx.send(()).unwrap();
+            let (_provider, connected) = runtime.block_on(exchange).unwrap();
+            if !matches!(connected, Ok(true)) {
+                wrong.push(format!("{profile}: {connected:?}"));
+            }
+            for key in [format!("jottacloud_refresh_{profile}"), loaded.to_string()] {
+                let vault = store.get(&key).is_ok();
+                let partition = partitions::resolve_credential_for_user(&store, first, &key)
+                    .expect("read")
+                    .is_some();
+                let pending = PENDING_ROTATIONS
+                    .lock()
+                    .unwrap()
+                    .keys()
+                    .any(|(_, account)| account == &key);
+                if vault || partition || pending {
+                    wrong.push(format!(
+                        "{profile}: {key} stored after the delete (vault {vault}, partition {partition}, pending {pending})"
+                    ));
+                }
+            }
+        }
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// An unbound provider decided its rotation's owner after the exchange: a
+    /// lookup that failed then stored the successor nowhere (Jotta had
+    /// consumed the stored chain, so a dropped provider left only a new login
+    /// to reconnect), and a failed lookup before the read skipped the pending
+    /// successor and refreshed with the consumed predecessor. The owner is
+    /// fixed when the connection begins: a lookup failing during the
+    /// exchange changes nothing, the next connection refreshes with the
+    /// successor, and one failing at the start refuses before anything is
+    /// sent.
+    #[test]
+    fn an_unbound_rotation_keeps_the_owner_its_connection_began_with() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::atomic::Ordering;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::an_unbound_rotation_keeps_the_owner_its_connection_began_with",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-unbound-owner-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-unbound-owner-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        // Each exchange is recorded; the first answers only once released.
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (arrived_tx, arrived_rx) = std::sync::mpsc::channel::<()>();
+        let held = Arc::new(tokio::sync::Mutex::new(
+            None::<tokio::sync::oneshot::Receiver<()>>,
+        ));
+        let (endpoint, server) = runtime.block_on(async {
+            let (sent, held) = (sent.clone(), held.clone());
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let (sent, held, arrived_tx) = (sent.clone(), held.clone(), arrived_tx.clone());
+                    async move {
+                        let rotated = format!("successor-{}", {
+                            let mut sent = sent.lock().unwrap();
+                            sent.push(body);
+                            sent.len()
+                        });
+                        let _ = arrived_tx.send(());
+                        if let Some(release) = held.lock().await.take() {
+                            let _ = release.await;
+                        }
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": rotated,
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let key = "jottacloud_refresh_unbound";
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        partitions::store_credential_for_user(
+            &store,
+            first,
+            key,
+            "jottacloud_refresh",
+            &chain("stored"),
+        )
+        .expect("store the chain");
+        store
+            .store(key, &chain("stored"))
+            .expect("store the vault copy");
+        let unbound = || {
+            JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id("unbound")
+        };
+        let mut wrong = Vec::new();
+
+        // The lookup fails while the exchange waits on Jotta.
+        let (release_tx, release_rx) = tokio::sync::oneshot::channel::<()>();
+        *runtime.block_on(held.lock()) = Some(release_rx);
+        let mut provider = unbound();
+        let exchange = runtime.spawn(async move {
+            let connected = provider.try_connect_with_refresh().await;
+            (provider, connected)
+        });
+        arrived_rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("the exchange reached the endpoint");
+        partitions::ACCOUNT_LOOKUP_FAILS.store(true, Ordering::SeqCst);
+        release_tx.send(()).unwrap();
+        let (provider, connected) = runtime.block_on(exchange).unwrap();
+        partitions::ACCOUNT_LOOKUP_FAILS.store(false, Ordering::SeqCst);
+        if !matches!(connected, Ok(true)) {
+            wrong.push(format!("first connection: {connected:?}"));
+        }
+        drop(provider);
+        // The lookup is back, the provider is gone: the next connection
+        // refreshes with the successor.
+        let mut provider = unbound();
+        let reconnected = runtime.block_on(provider.try_connect_with_refresh());
+        drop(provider);
+        let second = sent.lock().unwrap().get(1).cloned();
+        if !matches!(reconnected, Ok(true))
+            || !second
+                .as_deref()
+                .is_some_and(|body| body.contains("successor-1"))
+        {
+            wrong.push(format!("reconnection: {reconnected:?}, sent {second:?}"));
+        }
+
+        // A pending successor and its consumed predecessor, and a lookup
+        // failing before the read: refused before anything is sent.
+        PENDING_ROTATIONS.lock().unwrap().insert(
+            (None, key.to_string()),
+            zeroize::Zeroizing::new(chain("pending-successor")),
+        );
+        partitions::ACCOUNT_LOOKUP_FAILS.store(true, Ordering::SeqCst);
+        let before = sent.lock().unwrap().len();
+        let mut provider = unbound();
+        let refused = runtime.block_on(provider.try_connect_with_refresh());
+        partitions::ACCOUNT_LOOKUP_FAILS.store(false, Ordering::SeqCst);
+        let after: Vec<String> = sent.lock().unwrap()[before..].to_vec();
+        if refused.is_ok() || !after.is_empty() {
+            wrong.push(format!(
+                "failed lookup at the start: {refused:?}, sent {after:?}"
+            ));
+        }
+        let kept = PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .contains_key(&(None, key.to_string()));
+
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != key);
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(kept, "the pending successor is still there");
+    }
+
+    /// A connection with no profile (an unsaved one: the factory sets a
+    /// profile only from `profile_id`) bound to an account that does not own
+    /// the shared vault has no key of its own: the singleton is the legacy
+    /// owner's. Its rotated chain was written nowhere, the write was taken
+    /// for a success, and the pending successor was dropped, so the next
+    /// connection sent the predecessor Jotta had consumed. Nothing is
+    /// written now, the successor stays pending, and the next connection
+    /// sends it. A connection with a profile next loads that pending
+    /// singleton and writes only its own key: success is per key, so the
+    /// singleton's newest successor stays pending too, and the last
+    /// connection without a profile sends it.
+    #[test]
+    fn a_rotation_with_no_key_of_its_own_stays_pending_for_the_next_connection() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::a_rotation_with_no_key_of_its_own_stays_pending_for_the_next_connection",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-no-profile-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-no-profile-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let mut conn = partitions::open_or_init_cli().expect("partition DB");
+        let root_key = store.derive_user_partition_wrapping_key();
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("create second account")
+            .id;
+        partitions::set_active_user(&conn, second).expect("activate the second account");
+        assert_eq!(
+            partitions::credential_owner_and_fallback(Some(second)).expect("owner"),
+            (Some(second), false),
+            "the second account does not own the shared vault"
+        );
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    async move {
+                        let rotated = format!("successor-{}", {
+                            let mut sent = sent.lock().unwrap();
+                            sent.push(body);
+                            sent.len()
+                        });
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": rotated,
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let key = "jottacloud_refresh";
+        let chain = serde_json::json!({
+            "refresh_token": "stored", "token_endpoint": endpoint, "username": "jotta-user",
+        })
+        .to_string();
+        partitions::store_credential_for_user(&store, second, key, key, &chain)
+            .expect("store the second account's chain");
+        let no_profile = || {
+            JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+        };
+        let mut wrong = Vec::new();
+        let mut provider = no_profile();
+        let connected = runtime.block_on(provider.try_connect_with_refresh());
+        drop(provider);
+        if !matches!(connected, Ok(true)) {
+            wrong.push(format!("first connection: {connected:?}"));
+        }
+        let pending = PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .contains_key(&(Some(second), key.to_string()));
+        let vault = store.get(key).is_ok();
+        // No profile, then a profile, then no profile again: each sends the
+        // newest successor of the chain it loads.
+        for (step, profile, expected) in [
+            ("profile-bound", Some("bound"), "successor-1"),
+            ("no profile again", None, "successor-2"),
+        ] {
+            let mut provider = no_profile();
+            if let Some(profile) = profile {
+                provider = provider.with_profile_id(profile);
+            }
+            let reconnected = runtime.block_on(provider.try_connect_with_refresh());
+            drop(provider);
+            let resent = sent.lock().unwrap().last().cloned();
+            if !matches!(reconnected, Ok(true))
+                || !resent
+                    .as_deref()
+                    .is_some_and(|body| body.contains(&format!("refresh_token={expected}&")))
+            {
+                wrong.push(format!(
+                    "{step}: {reconnected:?}, sent {resent:?}, expected {expected}"
+                ));
+            }
+        }
+        let own =
+            partitions::resolve_credential_for_user(&store, second, "jottacloud_refresh_bound")
+                .expect("read")
+                .is_some_and(|json| json.contains("successor-2"));
+        if !own {
+            wrong.push("profile-bound: its own key does not hold successor-2".to_string());
+        }
+        PENDING_ROTATIONS
+            .lock()
+            .unwrap()
+            .retain(|(_, account), _| account != key && account != "jottacloud_refresh_bound");
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        assert!(
+            pending,
+            "the successor is pending after the first connection"
+        );
+        assert!(!vault, "the successor reached the legacy owner's singleton");
+    }
+
+    /// A rotation this process could not persist is read ahead of the stored
+    /// chain. Deleting the stored chain (a deleted profile, the vault's
+    /// delete) left it in place, and the next connection refreshed with it
+    /// and stored the authorization the user had removed. Every delete path
+    /// drops it, and the vault's delete takes the partition copy too: the
+    /// next connection finds no chain and sends no refresh.
+    #[test]
+    fn deleting_a_stored_chain_drops_its_pending_rotation() {
+        use crate::credential_store::CredentialStore;
+        use crate::user_partitions as partitions;
+        use std::sync::{Arc, Mutex};
+        if !crate::provider_commands::isolated_account_fixture::in_isolated_child(
+            "providers::jottacloud::tests::deleting_a_stored_chain_drops_its_pending_rotation",
+        ) {
+            return;
+        }
+        let _env = crate::test_env::lock();
+        let _partition = partitions::test_lock();
+        let temporary = tempfile::TempDir::new().expect("temporary config");
+        std::env::set_var("XDG_CONFIG_HOME", temporary.path());
+        std::env::remove_var("AEROFTP_USER_PASSPHRASE");
+        CredentialStore::clear_cache();
+        CredentialStore::bootstrap_master_password("jotta-signout-test-pass").expect("bootstrap");
+        CredentialStore::unlock_with_master("jotta-signout-test-pass", None).expect("unlock");
+        let store = CredentialStore::from_cache().expect("cached vault");
+        partitions::init_or_migrate_cli(&store).expect("init partitions");
+        let conn = partitions::open_or_init_cli().expect("partition DB");
+        let first = partitions::get_active_user(&conn)
+            .expect("active user")
+            .expect("first account")
+            .id;
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .unwrap();
+        let sent = Arc::new(Mutex::new(Vec::<String>::new()));
+        let (endpoint, server) = runtime.block_on(async {
+            let sent = sent.clone();
+            let app = axum::Router::new().route(
+                "/token",
+                axum::routing::post(move |body: String| {
+                    let sent = sent.clone();
+                    async move {
+                        sent.lock().unwrap().push(body);
+                        axum::Json(serde_json::json!({
+                            "access_token": "access", "refresh_token": "rotated",
+                            "expires_in": 3600,
+                        }))
+                    }
+                }),
+            );
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let endpoint = format!("http://{}/token", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+            (endpoint, server)
+        });
+        let chain = |token: &str| {
+            serde_json::json!({
+                "refresh_token": token, "token_endpoint": endpoint, "username": "jotta-user",
+            })
+            .to_string()
+        };
+        let bound = |profile: &str| {
+            let mut provider = JottacloudProvider::new(JottacloudConfig {
+                login_token: SecretString::from(String::new()),
+                device: "Jotta".into(),
+                mountpoint: "Archive".into(),
+                initial_path: None,
+            })
+            .with_profile_id(profile);
+            provider.set_credential_user(Some(first));
+            provider
+        };
+        // "purged": a deleted profile (`purge_profile_secrets` with an active
+        // account); "deleted": the vault's own delete (`delete_credential`,
+        // for the account active now); "pending-only": a delete naming no
+        // account, as `purge_profile_secrets` without one calls it, of a key
+        // with nothing stored, only the rotation kept for no account. Every
+        // path runs, so a failure names each one that went wrong.
+        let mut wrong = Vec::new();
+        for profile in ["purged", "deleted", "pending-only"] {
+            // The first account owns the shared vault: its rotations, like
+            // those of no account, are filed under `None`.
+            let owner: Option<i64> = None;
+            let key = format!("jottacloud_refresh_{profile}");
+            if profile != "pending-only" {
+                partitions::store_credential_for_user(
+                    &store,
+                    first,
+                    &key,
+                    "jottacloud_refresh",
+                    &chain("stored"),
+                )
+                .expect("store the chain");
+                store
+                    .store(&key, &chain("stored"))
+                    .expect("store the vault copy");
+            }
+            PENDING_ROTATIONS.lock().unwrap().insert(
+                (owner, key.clone()),
+                zeroize::Zeroizing::new(chain("pending-rotation")),
+            );
+            match profile {
+                "purged" => partitions::delete_credential_for_user_dual(&store, first, &key),
+                "deleted" => partitions::delete_credential_dual_as(
+                    &store,
+                    partitions::active_user_id_for_write().expect("active account"),
+                    &key,
+                ),
+                _ => partitions::delete_credential_dual_as(&store, None, &key),
+            }
+            .unwrap();
+            let kept = PENDING_ROTATIONS
+                .lock()
+                .unwrap()
+                .contains_key(&(owner, key.clone()));
+            let mut provider = bound(profile);
+            let connected = runtime.block_on(provider.try_connect_with_refresh());
+            let refreshed = std::mem::take(&mut *sent.lock().unwrap());
+            if kept || matches!(connected, Ok(true)) || !refreshed.is_empty() {
+                wrong.push(format!(
+                    "{profile}: rotation kept {kept}, connected {connected:?}, sent {refreshed:?}"
+                ));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+        server.abort();
+        drop(runtime);
+        CredentialStore::clear_cache();
+    }
+
     #[test]
     fn a_spent_login_token_is_read_from_the_oauth_error_code() {
         let spent = super::token_exchange_refusal(

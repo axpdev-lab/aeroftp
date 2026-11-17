@@ -205,19 +205,31 @@ describe('a drop on the other panel writes into the folder it was dropped on', (
   // Retry runs the callback the queue row was given, later, when the panel
   // may show another folder: it writes where the drop was queued for.
   it('Retry of an upload writes into the folder it was dropped on', async () => {
-    const f = fixture({ folders: { [LOCAL]: [local('up.txt')] } });
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt')] },
+      fail: (command, call) => command === 'provider_upload_file' && call === 1 ? 'Upload HTTP 503 Service Unavailable' : undefined,
+    });
     await f.drop([local('up.txt')], false, INBOX, 'local');
+    expect(f.row('q0')).toMatchObject({ status: 'error' });
     const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
     await retry();
     expect(f.written()).toEqual([`${INBOX}/up.txt`, `${INBOX}/up.txt`]);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
   });
 
   it('Retry of a download writes into the folder it was dropped on', async () => {
-    const f = fixture({ folders: { [REMOTE]: [remote('a.txt')] } });
+    const f = fixture({
+      folders: { [REMOTE]: [remote('a.txt')] },
+      fail: (command, call) => command === 'provider_download_file' && call === 1 ? 'Download HTTP 503 Service Unavailable' : undefined,
+    });
     await f.drop([remote('a.txt')], true, SUB);
+    expect(f.row('q0')).toMatchObject({ status: 'error' });
     const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
     await retry();
     expect(f.written()).toEqual([`${SUB}/a.txt`, `${SUB}/a.txt`]);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
   });
 
   it('a nested row of panel 2 is uploaded from panel 2, into the folder dropped on', async () => {

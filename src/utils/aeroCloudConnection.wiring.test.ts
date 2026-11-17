@@ -11,6 +11,7 @@ import { isSshProtocol } from '../types';
 import { AEROCLOUD_OPEN_SUPERSEDED } from './liveConnection';
 import locationCases from '../shared/path-location-cases.json';
 import { LOCAL, REMOTE, fixture } from '../components/appTransfers.testkit';
+import { isDeletionCancelled } from './localTrash';
 
 const start = app.indexOf('const connectToCloudServer = async');
 const end = app.indexOf('// Helper: navigate to remote folder', start);
@@ -751,7 +752,7 @@ it('shows the folder the server returned when a kept session enters the AeroClou
   // The breadcrumb shows the displayed path, and uploads go to the remote
   // path: both are the folder the server returned, not /cloud/sub. An upload
   // with no folder of its own takes currentRemotePath (its default below).
-  expect(app).toContain("const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath) => {");
+  expect(app).toContain("const uploadMultipleFiles = withBatchLatch(async (filesOverride?: string[], localPanelId: 'local' | 'local2' = focusedLocalPanelId, remoteDir: string = currentRemotePath, stopsAtStart?: number) => {");
   expect(spy('setCurrentRemoteDisplayPath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setCurrentRemotePath')).toHaveBeenLastCalledWith('/cloud');
   expect(spy('setRemoteBreadcrumb')).toHaveBeenLastCalledWith(listing);
@@ -822,15 +823,18 @@ it.each([
 
 /** App's own `deleteRemoteFile`, with the IPC, the guard and the dialogs mocked. */
 async function appDelete() {
-  const source = app.slice(app.indexOf('  const deleteRemoteFile = ('), app.indexOf('\n  const renameFile = ('));
+  // With App's own target capture, which the delete takes before it asks.
+  const source = app.slice(app.indexOf('  const captureGuiTarget ='), app.indexOf('\n  const getOverwriteDestination ='))
+    + app.slice(app.indexOf('  const deleteRemoteFile = ('), app.indexOf('\n  const renameFile = ('));
   const { code } = await transformWithOxc(source, 'delete.ts');
-  const invoke = vi.fn(async () => undefined);
+  const invoke = vi.fn(async (command: string) => command === 'provider_gui_target_epoch' ? 7 : undefined);
   const context: Record<string, unknown> = {
     remoteActionGuard: () => () => {}, invoke, notify: { success: vi.fn(), error: vi.fn() }, t: (key: string) => key,
     liveConnectionParams: { protocol: 'webdav' }, gitHubRepoInfo: null, setGitHubCommitDialog: vi.fn(),
     humanLog: { logStart: () => 'log', logSuccess: vi.fn(), logError: vi.fn() },
     usesProviderApi: () => true, aeroVaultOverlaySession: null, confirmBeforeDelete: false,
     setConfirmDialog: vi.fn(), loadRemoteFiles: vi.fn(async () => undefined),
+    deleteGesturesRef: { current: [] }, isDeletionCancelled,
   };
   const deleteRemoteFile = new Function(...Object.keys(context), `${code}; return deleteRemoteFile;`)(...Object.values(context)) as (path: string, isDir: boolean) => void;
   return { deleteRemoteFile, invoke };
@@ -984,21 +988,21 @@ it('sends every legacy FTP path as a folder the tab means, never one the server 
     'change_directory { path: folder }', // the AeroCloud folder placed by the connection builder
     'change_directory { path: legacyPath }', // the Up / navigation target, resolved below
     'change_directory { path: newRemotePath }', // the sync base joined with a '/'-led tail
-    'create_remote_folder { path: syncNavDialog.targetPath }',
-    'change_directory { path: syncNavDialog.targetPath }',
+    'create_remote_folder { path: syncNavDialog.targetPath, expectedGuiTarget }',
+    'change_directory { path: syncNavDialog.targetPath, expectedGuiTarget }',
     'download_folder { params }', // remote_path from the listing entry
     'download_file { params }', // remote_path from the listing entry
     'upload_folder { params }', // remote_path joined onto the folder the tab shows
-    'upload_file { params: { local_path: localFilePath, remote_path: remotePath } as UploadParams }',
-    'save_remote_file { path: file.path, content, expectedGeneration }',
-    'delete_remote_file { path: file.path }',
-    'rename_remote_file { from: file.path, to: destPath }',
-    'delete_remote_file { path: file.path, isDir: file.is_dir }',
-    'delete_remote_file { path, isDir }',
-    'rename_remote_file { from: path, to: newPath }',
-    'rename_remote_file { from: path, to: newPath }',
-    'rename_remote_file { from: oldPath, to: newPath }',
-    'create_remote_folder { path }', // currentRemotePath joined with the new name
+    'upload_file { params: { local_path: localFilePath, remote_path: remotePath, expected_gui_target: expectedGuiTarget } as UploadParams }',
+    'save_remote_file { path: file.path, content, expectedGeneration, expectedGuiTarget }',
+    'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',
+    'rename_remote_file { from: file.path, to: destPath, expectedGuiTarget }',
+    'delete_remote_file { path: file.path, isDir: file.is_dir, expectedGuiTarget, operationId }',
+    'delete_remote_file { path, isDir, expectedGuiTarget, operationId }',
+    'rename_remote_file { from: path, to: newPath, expectedGuiTarget }',
+    'rename_remote_file { from: path, to: newPath, expectedGuiTarget }',
+    'rename_remote_file { from: oldPath, to: newPath, expectedGuiTarget }',
+    'create_remote_folder { path, expectedGuiTarget }', // currentRemotePath joined with the new name
   ]);
   expect(calls.join('\n')).not.toMatch(/['"`]\.{1,2}['"`]|path: ['"`][^/]/);
 

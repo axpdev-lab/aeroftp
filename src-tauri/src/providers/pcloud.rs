@@ -504,7 +504,11 @@ impl PCloudProvider {
             .get_valid_token(&config)
             .await
             .map_err(|e| {
-                ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                if matches!(e, ProviderError::TargetChanged) {
+                    e
+                } else {
+                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                }
             })?;
         Ok(secret.expose_secret().to_string())
     }
@@ -653,7 +657,11 @@ impl PCloudProvider {
                 .get_valid_token(&config)
                 .await
                 .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    if matches!(e, ProviderError::TargetChanged) {
+                        e
+                    } else {
+                        ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    }
                 })?
                 .expose_secret()
                 .to_string()
@@ -665,7 +673,11 @@ impl PCloudProvider {
                 .get_valid_token(&config)
                 .await
                 .map_err(|e| {
-                    ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    if matches!(e, ProviderError::TargetChanged) {
+                        e
+                    } else {
+                        ProviderError::AuthenticationFailed(format!("pCloud token error: {}", e))
+                    }
                 })?
                 .expose_secret()
                 .to_string()
@@ -887,6 +899,12 @@ impl PCloudProvider {
 
 #[async_trait]
 impl StorageProvider for PCloudProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        self.oauth_manager
+            .sync_owner_identity(&self.oauth_config())
+            .map(Some)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }

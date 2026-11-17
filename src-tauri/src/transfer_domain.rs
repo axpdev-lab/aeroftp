@@ -46,6 +46,8 @@ pub enum TransferFailureKind {
     Cancelled,
     /// Authentication / credential failure (never congestion).
     Auth,
+    /// Session authorization changed; terminal for the entire job.
+    TargetChanged,
     /// Hard storage / quota limit (never congestion).
     QuotaExceeded,
     /// One file over the destination's per-file size limit (never congestion,
@@ -146,6 +148,7 @@ pub fn transfer_failure_from_transfer_error(error: &TransferError) -> TransferFa
             error.kind,
             TransferErrorKind::Cancelled
                 | TransferErrorKind::Auth
+                | TransferErrorKind::TargetChanged
                 | TransferErrorKind::NotFound
                 | TransferErrorKind::PermissionDenied
                 | TransferErrorKind::QuotaExceeded
@@ -179,6 +182,7 @@ fn transfer_error_kind_from_failure_kind(kind: TransferFailureKind) -> TransferE
         TransferFailureKind::RemoteIo => TransferErrorKind::RemoteIo,
         TransferFailureKind::Cancelled => TransferErrorKind::Cancelled,
         TransferFailureKind::Auth => TransferErrorKind::Auth,
+        TransferFailureKind::TargetChanged => TransferErrorKind::TargetChanged,
         TransferFailureKind::QuotaExceeded => TransferErrorKind::QuotaExceeded,
         TransferFailureKind::FileTooLarge => TransferErrorKind::FileTooLarge,
         TransferFailureKind::Unknown => TransferErrorKind::Unknown,
@@ -199,6 +203,7 @@ fn transfer_failure_kind_from_error_kind(kind: TransferErrorKind) -> TransferFai
         TransferErrorKind::RemoteIo => TransferFailureKind::RemoteIo,
         TransferErrorKind::Cancelled => TransferFailureKind::Cancelled,
         TransferErrorKind::Auth => TransferFailureKind::Auth,
+        TransferErrorKind::TargetChanged => TransferFailureKind::TargetChanged,
         TransferErrorKind::QuotaExceeded => TransferFailureKind::QuotaExceeded,
         TransferErrorKind::FileTooLarge => TransferFailureKind::FileTooLarge,
         TransferErrorKind::NotConnected => TransferFailureKind::ConnectionLost,
@@ -399,6 +404,9 @@ pub fn user_facing_transfer_failure_message(kind: &TransferFailureKind) -> &'sta
         TransferFailureKind::RemoteIo => "Remote storage error during transfer",
         TransferFailureKind::Cancelled => "Transfer cancelled by user",
         TransferFailureKind::Auth => "Authentication failed during transfer",
+        TransferFailureKind::TargetChanged => {
+            "CONNECTION_CHANGED: the remote target changed; reconnect and compare again"
+        }
         TransferFailureKind::QuotaExceeded => "Storage quota exceeded during transfer",
         TransferFailureKind::FileTooLarge => "File is larger than the destination accepts",
         TransferFailureKind::Unknown => "Transfer failed",
@@ -407,6 +415,24 @@ pub fn user_facing_transfer_failure_message(kind: &TransferFailureKind) -> &'sta
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn target_change_survives_redaction_and_round_trip_without_retry() {
+        let error = crate::transfer_dag::TransferError::from_provider(
+            &crate::providers::ProviderError::TargetChanged,
+        );
+        let failure = super::transfer_failure_from_transfer_error(&error);
+        assert_eq!(failure.kind, super::TransferFailureKind::TargetChanged);
+        assert!(!failure.retryable);
+        assert!(failure.message.starts_with("CONNECTION_CHANGED"));
+        let restored = super::transfer_error_from_failure(&failure);
+        assert_eq!(
+            restored.kind,
+            crate::transfer_dag::TransferErrorKind::TargetChanged
+        );
+        assert_eq!(restored.retry, crate::transfer_dag::RetryDirective::Never);
+        assert!(!restored.idempotent);
+    }
+
     use super::*;
 
     #[test]

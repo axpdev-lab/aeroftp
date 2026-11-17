@@ -12,7 +12,7 @@ use tauri::{AppHandle, State};
 
 use crate::provider_commands::{ProviderState, TransferOperationGuard};
 use crate::transfer_bulk::{SyncBulkItem, SyncBulkResult};
-use crate::transfer_event_sink::{AppHandleSink, TransferEventSink};
+use crate::transfer_event_sink::TransferEventSink;
 use crate::transfer_settings::{DEFAULT_TIMEOUT_SECONDS, MAX_TIMEOUT_SECONDS, MIN_TIMEOUT_SECONDS};
 
 /// The directions the connected provider moves through its native bulk.
@@ -38,7 +38,11 @@ async fn bulk_support(state: &ProviderState) -> BulkSupport {
 /// native call. AeroSync asks once when a run starts; a provider without
 /// the bulk keeps the run on its single-file commands.
 #[tauri::command]
-pub async fn provider_bulk_support(state: State<'_, ProviderState>) -> Result<BulkSupport, String> {
+pub async fn provider_bulk_support(
+    state: State<'_, ProviderState>,
+    expected_gui_target: Option<u64>,
+) -> Result<BulkSupport, String> {
+    let _target = state.pin_gui_target(expected_gui_target).await?;
     Ok(bulk_support(&state).await)
 }
 
@@ -53,9 +57,44 @@ pub async fn provider_sync_transfer_bulk(
     upload: bool,
     items: Vec<SyncBulkItem>,
     timeout_seconds: Option<u64>,
+    expected_gui_target: Option<u64>,
+    sync_run_lease: Option<String>,
 ) -> Result<Vec<SyncBulkResult>, String> {
-    let sink: Arc<dyn TransferEventSink> = Arc::new(AppHandleSink::new(app));
-    sync_transfer_bulk(&state, &sink, upload, &items, timeout_seconds).await
+    let _native_work = crate::sync_run_lease::admit(sync_run_lease.as_deref())?;
+    // A file's failure event crosses to the webview as its fixed message too.
+    let sink: Arc<dyn TransferEventSink> = Arc::new(
+        crate::provider_commands::RunnerEventSink::new(app, "provider_sync_transfer_bulk"),
+    );
+    let results = crate::provider_commands::ipc_result(
+        "provider_sync_transfer_bulk",
+        sync_transfer_bulk(
+            &state,
+            &sink,
+            upload,
+            &items,
+            timeout_seconds,
+            expected_gui_target,
+        )
+        .await,
+    )?;
+    Ok(redacted_bulk_results(results))
+}
+
+/// A file's failure crosses to the webview like a command error: as its fixed
+/// message (see [`crate::provider_commands::ipc_result`]). Its text has no
+/// typed origin here, so it gets the generic class only: never a
+/// cancellation, a restricted character, a status or a marker. A file the
+/// owner change stopped is the typed `SyncBulkResult::TargetChanged`.
+fn redacted_bulk_results(results: Vec<SyncBulkResult>) -> Vec<SyncBulkResult> {
+    results
+        .into_iter()
+        .map(|result| match result {
+            SyncBulkResult::Failed { message } => SyncBulkResult::Failed {
+                message: crate::sync::ipc_error_message("provider_sync_transfer_bulk", &message),
+            },
+            other => other,
+        })
+        .collect()
 }
 
 async fn sync_transfer_bulk(
@@ -64,7 +103,12 @@ async fn sync_transfer_bulk(
     upload: bool,
     items: &[SyncBulkItem],
     timeout_seconds: Option<u64>,
-) -> Result<Vec<SyncBulkResult>, String> {
+    expected_gui_target: Option<u64>,
+) -> Result<Vec<SyncBulkResult>, crate::sync::IpcError> {
+    let _target = state
+        .pin_gui_target(expected_gui_target)
+        .await
+        .map_err(crate::sync::IpcError::from_native_pin)?;
     if items.is_empty() {
         return Ok(Vec::new());
     }
@@ -82,7 +126,8 @@ async fn sync_transfer_bulk(
         return Err(format!(
             "{} has no native bulk on this connection",
             if upload { "Upload" } else { "Download" }
-        ));
+        )
+        .into());
     }
     // A disconnect or a session swap waits for this run, as for every
     // transfer that works on the shared provider.
@@ -234,9 +279,33 @@ mod tests {
             .collect()
     }
 
-    async fn run(state: &ProviderState, upload: bool) -> Result<Vec<SyncBulkResult>, String> {
+    async fn run(
+        state: &ProviderState,
+        upload: bool,
+    ) -> Result<Vec<SyncBulkResult>, crate::sync::IpcError> {
         let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
-        sync_transfer_bulk(state, &sink, upload, &items(), None).await
+        sync_transfer_bulk(state, &sink, upload, &items(), None, None).await
+    }
+
+    #[tokio::test]
+    async fn stale_gui_bulk_is_refused_before_the_replacement_provider_is_used() {
+        let (state, calls) = connected(true);
+        {
+            let _change = state
+                .transfer_owner_write(std::time::Duration::from_secs(1))
+                .await
+                .unwrap();
+            state.advance_gui_target();
+        }
+        let sink: Arc<dyn TransferEventSink> = Arc::new(NoopTransferSink);
+        let error = sync_transfer_bulk(&state, &sink, true, &items(), None, Some(0))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, crate::sync::IpcError::Marker("CONNECTION_CHANGED")),
+            "{error:?}"
+        );
+        assert_eq!(*calls.lock().unwrap(), 0);
     }
 
     #[tokio::test]
@@ -284,7 +353,7 @@ mod tests {
         let (state, calls) = connected(true);
         state.active_crypt_overlay.store(true, Ordering::SeqCst);
         state.overlay_wrapped.store(false, Ordering::SeqCst);
-        let refused = run(&state, true).await.unwrap_err();
+        let refused = run(&state, true).await.unwrap_err().text();
         assert!(refused.contains("Upload is blocked"), "{refused}");
         assert_eq!(*calls.lock().unwrap(), 0);
         let (state, calls) = connected(true);

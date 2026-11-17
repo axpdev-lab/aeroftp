@@ -129,8 +129,8 @@ pub trait TransferEventSink: Send + Sync {
 ///   `transfer_batch_completed` flush the latest pending sample for that lane
 ///   before the terminal emission, then reject late progress;
 /// - serialized field names and types are unchanged.
-pub struct AppHandleSink {
-    app: tauri::AppHandle,
+pub struct AppHandleSink<R: tauri::Runtime = tauri::Wry> {
+    app: tauri::AppHandle<R>,
     governor: Arc<ProgressGovernor>,
     /// Last batch_id observed on this sink (from started/progress). Used to
     /// flush on `emit_batch_completed` because [`TransferBatchResult`] has no
@@ -138,8 +138,8 @@ pub struct AppHandleSink {
     last_batch_id: Mutex<Option<String>>,
 }
 
-impl AppHandleSink {
-    pub fn new(app: tauri::AppHandle) -> Self {
+impl<R: tauri::Runtime> AppHandleSink<R> {
+    pub fn new(app: tauri::AppHandle<R>) -> Self {
         Self {
             app,
             governor: gui_progress_governor(),
@@ -148,7 +148,7 @@ impl AppHandleSink {
     }
 
     /// Construct with an explicit governor (unit tests / isolated scopes).
-    pub fn with_governor(app: tauri::AppHandle, governor: Arc<ProgressGovernor>) -> Self {
+    pub fn with_governor(app: tauri::AppHandle<R>, governor: Arc<ProgressGovernor>) -> Self {
         Self {
             app,
             governor,
@@ -170,7 +170,7 @@ impl AppHandleSink {
     }
 }
 
-impl TransferEventSink for AppHandleSink {
+impl<R: tauri::Runtime> TransferEventSink for AppHandleSink<R> {
     fn emit_transfer_event(&self, event: TransferEvent) {
         use tauri::Emitter;
         let lane_key = crate::progress_governor::transfer_lane(&event.transfer_id);
@@ -245,7 +245,7 @@ impl TransferEventSink for AppHandleSink {
 ///
 /// Prefer this (or [`AppHandleSink`]) over raw `app.emit("transfer_event", …)`
 /// so every active surface shares the ≤10 Hz policy.
-pub fn emit_gui_transfer_event(app: &tauri::AppHandle, event: TransferEvent) {
+pub fn emit_gui_transfer_event<R: tauri::Runtime>(app: &tauri::AppHandle<R>, event: TransferEvent) {
     AppHandleSink::new(app.clone()).emit_transfer_event(event);
 }
 

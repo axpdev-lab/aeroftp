@@ -410,6 +410,10 @@ pub struct CloudService {
     /// ([`cloud_provider_factory::OpenedCloudProvider::endpoint`]), which a
     /// watcher plan is checked against before it runs.
     connection_endpoint: Option<String>,
+    /// The account the connection reads for
+    /// ([`cloud_provider_factory::OpenedCloudProvider::reads_account`]),
+    /// which a watcher plan is checked against before it runs.
+    connection_account: Option<i64>,
     revoked_receipts: Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     receipt_root_cache:
         std::sync::Mutex<Option<(PathBuf, LocalRootIdentity, Option<serde_json::Value>)>>,
@@ -507,6 +511,7 @@ impl CloudService {
             cloud_receipts: Arc::default(),
             connection_identity: None,
             connection_endpoint: None,
+            connection_account: None,
             revoked_receipts: Arc::default(),
             receipt_root_cache: std::sync::Mutex::new(None),
             #[cfg(test)]
@@ -1510,6 +1515,10 @@ impl CloudService {
             cloud_remote_metadata: self
                 .retain_remote_observations(plan.remote_observations.clone(), &rows),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
+            read_seq: plan.index.as_ref().and_then(|index| index.read_seq),
         };
         if let Err(e) = save_sync_index(&idx) {
             tracing::warn!("Failed to save AeroCloud sync index: {}", e);
@@ -1556,6 +1565,10 @@ impl CloudService {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
+            read_seq: None,
         });
         // The prior index was migrated when it was loaded, and the keys the
         // migration could not vouch for are not saved with it: written back
@@ -1654,6 +1667,13 @@ impl CloudService {
         direction: CompareDirection,
     ) {
         for key in prior.unverified_keys.clone() {
+            // A key an interrupted run fenced is unverified for another
+            // reason: equal copies do not say which of them the run wrote,
+            // so it stays an interrupted-sync conflict for the user, with no
+            // baseline and no receipt.
+            if prior.pending_recovery_keys.contains(&key) {
+                continue;
+            }
             let (Some(local), Some(remote)) = (locals.get(&key), remotes.get(&key)) else {
                 continue;
             };
@@ -3775,6 +3795,8 @@ pub(crate) struct ConnectedCloudProvider {
     identity: Option<String>,
     /// [`cloud_provider_factory::OpenedCloudProvider::endpoint`].
     endpoint: Option<String>,
+    /// [`cloud_provider_factory::OpenedCloudProvider::reads_account`].
+    account: Option<i64>,
     /// The remote folder the saved settings still hold when this connect
     /// placed the folder for its run only (nothing saved): the scheduler
     /// reads the entry under that folder's key next time.
@@ -3820,6 +3842,12 @@ pub(crate) struct ProfileResolution {
     /// False without an unlocked vault: no name was resolved, so `by_name`
     /// and `by_reference` say nothing.
     pub(crate) names_read: bool,
+    /// The account the connection began with
+    /// ([`cloud_provider_factory::OpenedCloudProvider::account`]): the names
+    /// are resolved on its list, the endpoint is compared with its settings,
+    /// and nothing is written once another account is active (U9). `None`
+    /// outside a captured connection (tests): the active list.
+    pub(crate) captured: Option<crate::user_partitions::GuiAccountSnapshot>,
 }
 
 impl ProfileResolution {
@@ -3828,20 +3856,39 @@ impl ProfileResolution {
     /// another profile if it changed while connecting. Without an unlocked
     /// vault no name resolves, so only an entry pinned to the connected id
     /// can be placed.
+    #[cfg(test)]
     pub(crate) fn for_connection(
         store: Option<&credential_store::CredentialStore>,
         config: &CloudConfig,
         connected: Option<String>,
     ) -> Result<Self, String> {
+        Self::for_captured_connection(store, config, connected, None)
+    }
+
+    /// [`Self::for_connection`] for a connection that captured `captured`:
+    /// the names are resolved on that account's list, whichever is active.
+    pub(crate) fn for_captured_connection(
+        store: Option<&credential_store::CredentialStore>,
+        config: &CloudConfig,
+        connected: Option<String>,
+        captured: Option<&crate::user_partitions::GuiAccountSnapshot>,
+    ) -> Result<Self, String> {
+        let captured = captured.cloned();
         let Some(store) = store else {
             return Ok(Self {
                 connected,
                 by_name: None,
                 by_reference: None,
                 names_read: false,
+                captured,
             });
         };
-        let profiles = crate::user_partitions::mcp_list_active_server_profiles(store)?;
+        let reads = captured.as_ref().map(|account| {
+            account
+                .user
+                .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT)
+        });
+        let profiles = crate::user_partitions::mcp_list_server_profiles(store, reads)?;
         let id_of = |profile: Option<&serde_json::Value>| {
             profile
                 .and_then(|p| p.get("id"))
@@ -3861,6 +3908,17 @@ impl ProfileResolution {
                 &config.server_profile,
             )),
             names_read: true,
+            captured,
+        })
+    }
+
+    /// The account the names and the endpoint are read for: the captured
+    /// one, the legacy owner only for a legacy capture; `None`, the active.
+    fn reads_account(&self) -> Option<i64> {
+        self.captured.as_ref().map(|account| {
+            account
+                .user
+                .unwrap_or(crate::user_partitions::LEGACY_ONLY_ACCOUNT)
         })
     }
 }
@@ -4025,7 +4083,12 @@ async fn anchor_and_save_login_relative_remote_folder(
             Some(crate::user_partitions::ProfileListLock::acquire_for_path(
                 &crate::user_partitions::cli_db_path()?,
             )?),
-            ProfileResolution::for_connection(Some(store), config, resolution.connected.clone())?,
+            ProfileResolution::for_captured_connection(
+                Some(store),
+                config,
+                resolution.connected.clone(),
+                resolution.captured.as_ref(),
+            )?,
         ),
         None => (None, resolution.clone()),
     };
@@ -4056,7 +4119,11 @@ async fn anchor_and_save_login_relative_remote_folder(
         };
         let reaches = endpoint.is_some()
             && matches!(
-                cloud_provider_factory::current_endpoint_fingerprint(store, entry),
+                cloud_provider_factory::current_endpoint_fingerprint(
+                    store,
+                    entry,
+                    resolution.reads_account(),
+                ),
                 Ok(Some(now)) if Some(now.as_str()) == endpoint
             );
         if !reaches {
@@ -4130,32 +4197,47 @@ async fn anchor_and_save_login_relative_remote_folder(
     {
         edit();
     }
-    let mut persisted = false;
-    if place_config {
-        persisted |= cloud_config::with_cloud_config_mut(|stored| {
-            let unplaced = config_unplaced(stored);
-            if unplaced {
-                stored.remote_folder = placed.clone();
-            } else {
-                key_still_used |= keeps_the_key(stored);
-            }
-            Ok(unplaced)
-        })?;
-    }
-    if place_pairs {
-        persisted |= cloud_pairs::with_cloud_pairs_mut(|pairs| {
-            let mut moved = false;
-            for pair in pairs.pairs.iter_mut() {
-                if pair_unplaced(pair) {
-                    pair.remote_path = placed.clone();
-                    moved = true;
+    // The placement was resolved for the account the connection began with
+    // (U9): written while another one is active, it would carry that
+    // account's login folder into entries this one resolves. The account is
+    // compared and the files written in one critical section (the session
+    // and the active-account row held, the profile list already locked): a
+    // switch first refuses the run with nothing persisted.
+    let mut write = || -> Result<bool, String> {
+        let mut persisted = false;
+        if place_config {
+            persisted |= cloud_config::with_cloud_config_mut(|stored| {
+                let unplaced = config_unplaced(stored);
+                if unplaced {
+                    stored.remote_folder = placed.clone();
                 } else {
-                    key_still_used |= keeps_the_key(&pair.to_cloud_config());
+                    key_still_used |= keeps_the_key(stored);
                 }
-            }
-            Ok(moved)
-        })?;
-    }
+                Ok(unplaced)
+            })?;
+        }
+        if place_pairs {
+            persisted |= cloud_pairs::with_cloud_pairs_mut(|pairs| {
+                let mut moved = false;
+                for pair in pairs.pairs.iter_mut() {
+                    if pair_unplaced(pair) {
+                        pair.remote_path = placed.clone();
+                        moved = true;
+                    } else {
+                        key_still_used |= keeps_the_key(&pair.to_cloud_config());
+                    }
+                }
+                Ok(moved)
+            })?;
+        }
+        Ok(persisted)
+    };
+    let persisted = match resolution.captured.as_ref() {
+        Some(captured) => crate::credential_store::off_async_worker(|| {
+            crate::user_partitions::with_gui_account_snapshot_holding_the_list_lock(captured, write)
+        })?,
+        None => write()?,
+    };
     // The saved entries now carry the absolute folder, so the scheduler
     // reads them under its key: what the scan ledger held under the `~` key
     // (a request, a floor) moves with them. Every caller that places, the
@@ -4247,16 +4329,29 @@ async fn compose_aerocloud_connection(
     store: &credential_store::CredentialStore,
     persist_placement: bool,
 ) -> Result<ConnectedCloudProvider, String> {
+    // The account every read below answers for: the captured one, or the
+    // legacy owner only (never the active account for a legacy capture, U9).
+    let reads = opened.reads_account();
     let mut provider = opened.provider;
+    let Some(account) = reads else {
+        let _ = provider.disconnect().await;
+        return Err("the connection captured no account".into());
+    };
     // A `~/...` remote folder is placed under the login folder here, on the
     // raw provider (through the overlay `~` is a ciphertext name), and the
     // absolute value persisted: the cycle below, its index identity and every
     // later connect read the placed folder, never the `~` form.
     // A preview places the folder for its own run only: the saved target
     // changes when a cycle that executes places it.
+    // The placement reads the profiles of the captured account, and writes
+    // nothing once another one is active.
     let remote_folder = if persist_placement {
-        let resolution =
-            ProfileResolution::for_connection(Some(store), config, opened.profile_id.clone())?;
+        let resolution = ProfileResolution::for_captured_connection(
+            Some(store),
+            config,
+            opened.profile_id.clone(),
+            opened.account.as_ref(),
+        )?;
         anchor_and_save_login_relative_remote_folder(
             &mut *provider,
             config,
@@ -4283,6 +4378,8 @@ async fn compose_aerocloud_connection(
         opened.profile_id,
         config,
         store,
+        account,
+        opened.account.as_ref(),
     )
     .await;
     // A connect that fails after a placement for this run only gives the
@@ -4298,19 +4395,27 @@ async fn compose_aerocloud_connection(
         provider,
         identity: opened.identity,
         endpoint: opened.endpoint,
+        account: Some(account),
         saved_folder,
     })
 }
 
 /// The overlays of [`compose_aerocloud_connection`], on the folder placed.
+/// `account` is the one the connection reads for and `captured` its
+/// snapshot (U9): the binding and the overlay stack are that account's, and
+/// an unchanged snapshot at the end proves no switch happened meanwhile.
 async fn wrap_aerocloud_connection(
     mut provider: Box<dyn StorageProvider>,
     overlay_binding: serde_json::Value,
     profile_id: Option<String>,
     config: &CloudConfig,
     store: &credential_store::CredentialStore,
+    account: i64,
+    captured: Option<&crate::user_partitions::GuiAccountSnapshot>,
 ) -> Result<Box<dyn StorageProvider>, String> {
-    if cloud_provider_factory::current_overlay_binding(config, store)? != overlay_binding {
+    if cloud_provider_factory::current_overlay_binding(config, store, Some(account))?
+        != overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err("Profile encryption binding changed while connecting; retry the cycle".into());
     }
@@ -4324,6 +4429,7 @@ async fn wrap_aerocloud_connection(
             .or(config.server_profile_id.as_deref()),
         &config.server_profile,
         store,
+        account,
     )
     .await
     .map_err(|e| format!("overlay stack refused the sync: {e}"))?;
@@ -4342,11 +4448,24 @@ async fn wrap_aerocloud_connection(
             config.compress_level,
         ));
     }
-    if cloud_provider_factory::current_overlay_binding(config, store)? != overlay_binding {
+    if cloud_provider_factory::current_overlay_binding(config, store, Some(account))?
+        != overlay_binding
+    {
         let _ = provider.disconnect().await;
         return Err(
             "Profile encryption binding changed during overlay composition; retry the cycle".into(),
         );
+    }
+    // The overlay stack read the profile and its keys for the active account.
+    // The snapshot carries the activation revision, so an unchanged one
+    // proves that account was the connection's all along (A, B, A included).
+    if let Some(captured) = captured {
+        if let Err(error) = crate::credential_store::off_async_worker(|| {
+            cloud_provider_factory::account_unchanged(captured)
+        }) {
+            let _ = provider.disconnect().await;
+            return Err(error);
+        }
     }
     Ok(provider)
 }
@@ -4778,6 +4897,10 @@ mod baseline_tests {
                 cloud_receipts: [("f.txt".into(), receipt)].into(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: Default::default(),
+                pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
+                read_seq: None,
             };
             let row = cmp(
                 SyncStatus::Identical,
@@ -4910,6 +5033,46 @@ mod baseline_tests {
             index.unverified_keys.clear();
             index = serde_json::from_str(&serde_json::to_string(&index).unwrap()).unwrap();
         }
+    }
+
+    /// A key fenced by an interrupted run sits in both `unverified_keys` and
+    /// `pending_recovery_keys`. Equal copies on both sides do not restore its
+    /// trust: its marker, its fence and its old baseline stay, while a key
+    /// that only a migration rewrote is verified beside it.
+    #[test]
+    fn a_pending_recovery_key_is_not_verified_as_a_migrated_baseline() {
+        let old = SyncIndexEntry {
+            size: 9,
+            modified: fi(9, 900).modified,
+            is_dir: false,
+            uploaded_at: None,
+        };
+        let mut index = SyncIndex::new("/local".into(), "/remote".into());
+        for key in ["fenced.txt", "migrated.txt"] {
+            index.files.insert(key.into(), old.clone());
+            index.unverified_keys.insert(key.into());
+        }
+        index.pending_recovery_keys.insert("fenced.txt".into());
+        let files = HashMap::from([
+            ("fenced.txt".to_string(), fi(5, 1000)),
+            ("migrated.txt".to_string(), fi(5, 1000)),
+        ]);
+        CloudService::verify_migrated_baseline(
+            &mut index,
+            &files,
+            &files,
+            &CompareOptions::default(),
+            CompareDirection::LocalToRemote,
+        );
+        assert!(index.unverified_keys.contains("fenced.txt"));
+        assert!(index.pending_recovery_keys.contains("fenced.txt"));
+        assert_eq!(
+            index.files["fenced.txt"].size, 9,
+            "its baseline is untouched"
+        );
+        assert!(!index.unverified_keys.contains("migrated.txt"));
+        assert_eq!(index.files["migrated.txt"].size, 5);
+        assert!(index.cloud_receipts.is_empty());
     }
 
     #[test]
@@ -6112,6 +6275,10 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
+            read_seq: None,
         };
         let next = build_comparison_results_with_index(
             HashMap::from([("f.txt".to_string(), now_local)]),
@@ -6488,6 +6655,10 @@ mod baseline_tests {
                 cloud_receipts: Default::default(),
                 cloud_remote_metadata: Default::default(),
                 unverified_keys: std::collections::HashSet::from(["sub/b.txt".to_string()]),
+                pending_recovery_keys: Default::default(),
+                target_identity: None,
+                history_only_keys: Default::default(),
+                read_seq: None,
             };
             let svc = CloudService::new();
             svc.unsettled.lock().unwrap().push("f.txt".to_string());
@@ -7455,6 +7626,7 @@ mod baseline_tests {
                 }),
                 identity: None,
                 endpoint: None,
+                account: None,
                 saved_folder: None,
             };
             sync_opened_config(config, opened, None, true)
@@ -7566,6 +7738,7 @@ mod baseline_tests {
             by_name: Some(id.to_string()),
             by_reference: Some(id.to_string()),
             names_read: true,
+            captured: None,
         }
     }
 
@@ -7637,6 +7810,7 @@ mod baseline_tests {
                 by_name: Some("id-b".to_string()),
                 by_reference: Some("id-a".to_string()),
                 names_read: true,
+                captured: None,
             };
             anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym, None, None)
                 .await
@@ -8566,7 +8740,7 @@ mod baseline_tests {
         store: &credential_store::CredentialStore,
         config: &CloudConfig,
     ) -> Option<String> {
-        cloud_provider_factory::current_endpoint_fingerprint(store, config).unwrap()
+        cloud_provider_factory::current_endpoint_fingerprint(store, config, None).unwrap()
     }
 
     /// A config and a pair, both by the name "nas", on `~/docs` from `/sync/a`.
@@ -8664,6 +8838,236 @@ mod baseline_tests {
                     "vault open at add: {vault_open_at_add}"
                 );
             }
+        });
+    }
+
+    /// Two accounts on one vault, the first active: its id, the second's, and
+    /// a connection to the partition database. The first holds `nas` as
+    /// `srv_a`; the second holds `profiles` as given.
+    fn two_accounts(
+        store: &credential_store::CredentialStore,
+        second_profiles: &[serde_json::Value],
+    ) -> (i64, i64, rusqlite::Connection) {
+        use crate::user_partitions as partitions;
+        set_saved_profiles(store, &[("srv_a", "nas")]);
+        let mut conn = partitions::open_or_init_cli().unwrap();
+        let root_key = store.derive_user_partition_wrapping_key();
+        let first = partitions::get_active_user(&conn)
+            .unwrap()
+            .expect("first account");
+        let second = partitions::create_user(&mut conn, &root_key, "Second", None, None, None)
+            .expect("second account");
+        partitions::replace_server_profiles_for(&mut conn, &root_key, second.id, second_profiles)
+            .expect("the second account's profiles");
+        partitions::set_active_user(&conn, first.id).unwrap();
+        (first.id, second.id, conn)
+    }
+
+    /// U9 on #1568's placement (combined tree): the connection captured the
+    /// first account, and the second is activated after the connect, before
+    /// the placement takes the profile-list lock (a switch takes that lock
+    /// too, so none lands while the placement holds it). The run is refused
+    /// and neither the config nor the pair is written: the `~` form stays on
+    /// disk. Control: without the switch both are placed.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_switch_before_the_placement_write_refuses_and_persists_nothing() {
+        with_scratch_index(async {
+            use crate::user_partitions as partitions;
+            // The tests switch the active account.
+            let _partition = partitions::test_lock();
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let (first, second, conn) = two_accounts(&store, &[]);
+            for switch in [false, true] {
+                partitions::set_active_user(&conn, first).unwrap();
+                let config = seed_unplaced_entries();
+                let captured = partitions::gui_account_snapshot().unwrap();
+                assert_eq!(captured.user, Some(first));
+                let resolution = ProfileResolution::for_captured_connection(
+                    Some(&store),
+                    &config,
+                    Some("srv_a".into()),
+                    Some(&captured),
+                )
+                .unwrap();
+                if switch {
+                    *BEFORE_PLACEMENT_LOCK.lock().unwrap() = Some(Box::new(move || {
+                        let conn = crate::user_partitions::open_or_init_cli().unwrap();
+                        crate::user_partitions::set_active_user(&conn, second).unwrap();
+                    }));
+                }
+                let mut provider = MemoryProvider {
+                    login_folder: Some("/home/u".to_string()),
+                    ..Default::default()
+                };
+                let placed = anchor_login_relative_remote_folder(
+                    &mut provider,
+                    &config,
+                    &resolution,
+                    Some(&store),
+                    connected_endpoint(&store, &config).as_deref(),
+                )
+                .await;
+                if switch {
+                    let err = placed.unwrap_err();
+                    assert!(err.starts_with("ACCOUNT_CHANGED:"), "{err}");
+                    assert_eq!(
+                        saved_forms(),
+                        ("~/docs".to_string(), "~/docs".to_string()),
+                        "nothing persisted across the switch"
+                    );
+                } else {
+                    assert_eq!(placed.unwrap().as_deref(), Some("/home/u/docs"));
+                    assert_eq!(
+                        saved_forms(),
+                        ("/home/u/docs".to_string(), "/home/u/docs".to_string())
+                    );
+                }
+            }
+        });
+    }
+
+    /// U9 on #1568's placement reads (combined tree): the second account
+    /// holds a homonym `nas` (`srv_x`) on another host and is active by the
+    /// time the placement resolves. The names resolve on the captured first
+    /// account's list and the endpoint is that account's settings; read on
+    /// the active list they would be the homonym's.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_placement_reads_the_captured_accounts_profiles_across_a_switch() {
+        with_scratch_index(async {
+            use crate::user_partitions as partitions;
+            // The tests switch the active account.
+            let _partition = partitions::test_lock();
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let homonym = serde_json::json!({
+                "id": "srv_x", "name": "nas", "protocol": "ftp", "host": "10.9.9.9",
+                "port": 2121, "username": "x", "options": {"tlsMode": "none"},
+            });
+            let (first, second, conn) = two_accounts(&store, &[homonym]);
+            let config = CloudConfig {
+                enabled: true,
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                ..Default::default()
+            };
+            let captured = partitions::gui_account_snapshot().unwrap();
+            assert_eq!(captured.user, Some(first));
+            let first_endpoint = connected_endpoint(&store, &config);
+            partitions::set_active_user(&conn, second).unwrap();
+            let active = ProfileResolution::for_connection(Some(&store), &config, None).unwrap();
+            assert_eq!(
+                active.by_name.as_deref(),
+                Some("srv_x"),
+                "the control reads the active list"
+            );
+            assert_ne!(connected_endpoint(&store, &config), first_endpoint);
+
+            let resolution = ProfileResolution::for_captured_connection(
+                Some(&store),
+                &config,
+                Some("srv_a".into()),
+                Some(&captured),
+            )
+            .unwrap();
+            assert_eq!(resolution.by_name.as_deref(), Some("srv_a"));
+            assert_eq!(resolution.by_reference.as_deref(), Some("srv_a"));
+            assert_eq!(
+                cloud_provider_factory::current_endpoint_fingerprint(
+                    &store,
+                    &config,
+                    resolution.reads_account()
+                )
+                .unwrap(),
+                first_endpoint,
+                "the endpoint is the captured account's settings"
+            );
+        });
+    }
+
+    /// The protocol is a read made for the connection (combined tree): a
+    /// caller read it on the first account's list (`ftp`), then the second
+    /// account, whose `nas` speaks SFTP, was activated before the capture.
+    /// The connection is built with the captured second account's protocol,
+    /// so its endpoint is the one its saved entries name and the placement
+    /// is persisted, not demoted to this run. Without a switch a config
+    /// that still carries the default `ftp` on an SFTP profile connects with
+    /// SFTP too. And `create_cloud_connection` dispatches on that config.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn the_connection_takes_the_captured_accounts_protocol() {
+        with_scratch_index(async {
+            use crate::user_partitions as partitions;
+            // The tests switch the active account.
+            let _partition = partitions::test_lock();
+            let (_vault_dir, store, _guard) = open_test_vault();
+            let sftp = serde_json::json!({
+                "id": "srv_a", "name": "nas", "protocol": "sftp", "host": "127.0.0.1",
+                "port": 22, "username": "u", "options": {},
+            });
+            let (_first, second, conn) = two_accounts(&store, &[sftp]);
+            let mut config = CloudConfig {
+                enabled: true,
+                remote_folder: "~/docs".to_string(),
+                server_profile: "nas".to_string(),
+                ..Default::default()
+            };
+            cloud_provider_factory::apply_saved_profile_protocol(&store, &mut config);
+            assert_eq!(
+                config.protocol_type, "ftp",
+                "the pre-read, on the first account"
+            );
+            partitions::set_active_user(&conn, second).unwrap();
+            let reads = partitions::gui_account_snapshot().unwrap().user;
+            assert_eq!(reads, Some(second));
+
+            let connecting =
+                cloud_provider_factory::connecting_config(Some(&store), &config, reads);
+            assert_eq!(connecting.protocol_type, "sftp");
+            let built = cloud_provider_factory::connecting_endpoint(&store, &config, reads);
+            assert!(built.is_some());
+            assert_eq!(
+                built,
+                cloud_provider_factory::current_endpoint_fingerprint(&store, &config, reads)
+                    .unwrap(),
+                "the connection's endpoint is the one its entries name"
+            );
+
+            // No switch: the default `ftp` on the SFTP profile connects with SFTP.
+            let default = CloudConfig {
+                protocol_type: "ftp".to_string(),
+                ..config.clone()
+            };
+            assert_eq!(
+                cloud_provider_factory::connecting_config(Some(&store), &default, reads)
+                    .protocol_type,
+                "sftp"
+            );
+            // A config whose profile the account does not hold keeps its own.
+            let unknown = CloudConfig {
+                server_profile: "elsewhere".to_string(),
+                protocol_type: "webdav".to_string(),
+                ..config.clone()
+            };
+            assert_eq!(
+                cloud_provider_factory::connecting_config(Some(&store), &unknown, reads)
+                    .protocol_type,
+                "webdav"
+            );
+
+            let source = include_str!("cloud_provider_factory.rs");
+            let body = &source[source
+                .find("pub(crate) async fn create_cloud_connection(")
+                .unwrap()..];
+            let body = &body[..body.find("\n}\n").unwrap()];
+            let built_at = body
+                .find("connecting_config(store.as_ref(), config, reads)")
+                .unwrap();
+            let dispatched_at = body.find("open_cloud_connection(&config, reads)").unwrap();
+            assert!(
+                built_at < dispatched_at,
+                "the dispatch reads the captured protocol"
+            );
         });
     }
 
@@ -8969,6 +9373,7 @@ mod baseline_tests {
                 by_name: Some("id-b".to_string()),
                 by_reference: Some("id-a".to_string()),
                 names_read: true,
+                captured: None,
             };
             anchor_login_relative_remote_folder(&mut provider, &by_id, &homonym, None, None)
                 .await
@@ -9008,6 +9413,7 @@ mod baseline_tests {
                 by_name: Some("id-a".to_string()),
                 by_reference: Some("id-a".to_string()),
                 names_read: true,
+                captured: None,
             };
             anchor_login_relative_remote_folder(&mut provider, &by_id, &both, None, None)
                 .await
@@ -9163,6 +9569,10 @@ mod baseline_tests {
             });
             seed_ftp_profile(&store, "srv_a", ftp.port, Some(binding));
             seed_aerocrypt_overlay(&store, "srv_a");
+            // As at startup, the legacy list is migrated into the active
+            // account before any connection: the connect captures that
+            // account, and the rename below writes where it read.
+            crate::user_partitions::init_or_migrate_cli(&store).unwrap();
             let local = tempfile::tempdir().unwrap();
             let mut config = aerocloud_config(local.path(), "/docs/sync", "srv_a");
             config.server_profile_id = None;
@@ -9367,6 +9777,10 @@ mod baseline_tests {
             let ftp = scripted_ftp_server("/home/u").await;
             let (_vault_dir, store, _guard) = open_test_vault();
             seed_ftp_profile(&store, "srv_l", ftp.port, None);
+            // As at startup, the legacy list is migrated into the active
+            // account before any connection, so no read during the run
+            // activates an account the connection did not capture.
+            crate::user_partitions::init_or_migrate_cli(&store).unwrap();
             let local = tempfile::tempdir().unwrap();
             for locks in [false, true] {
                 let mut config = aerocloud_config(local.path(), "~/docs", "srv_l");
@@ -12153,6 +12567,10 @@ mod baseline_tests {
             cloud_receipts: Default::default(),
             cloud_remote_metadata: Default::default(),
             unverified_keys: Default::default(),
+            pending_recovery_keys: Default::default(),
+            target_identity: None,
+            history_only_keys: Default::default(),
+            read_seq: None,
         };
         let gone = CloudService::gone_on_both(
             &config,
@@ -12596,6 +13014,10 @@ mod secval_b_tests {
                             cloud_receipts: Default::default(),
                             cloud_remote_metadata: Default::default(),
                             unverified_keys: Default::default(),
+                            pending_recovery_keys: Default::default(),
+                            target_identity: None,
+                            history_only_keys: Default::default(),
+                            read_seq: None,
                         })
                         .unwrap();
                         let remote_time = DateTime::<Utc>::from_timestamp(1_760_000_000, 0)
