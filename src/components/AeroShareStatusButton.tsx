@@ -57,7 +57,7 @@ export function AeroShareStatusButton() {
       aria-pressed={receiving}
     >
       <Share2 size={12} />
-      <span>{t('aeroShare.feature')}</span>
+      <span data-statusbar-label="launcher">{t('aeroShare.feature')}</span>
       {receiving && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
     </button>
   );

@@ -2,11 +2,12 @@
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Globe, HardDrive, Wifi, WifiOff, Code, FolderSync, Cloud, ArrowUpDown, ScrollText, Download, Bug, FolderOpen, Bot, AlertTriangle, ShieldCheck, Loader2, Calculator, X, Info } from 'lucide-react';
 import { useTranslation, useI18n } from '../i18n';
 import { AVAILABLE_LANGUAGES } from '../i18n/types';
 import { AeroShareStatusButton } from './AeroShareStatusButton';
+import { useStatusBarFit } from './useStatusBarFit';
 import { formatBytes } from '../utils/formatters';
 import { quotaChipLabel } from '../utils/quotaChipLabel';
 import {
@@ -143,6 +144,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     const languageLabel = `${t('common.language')}: ${languageNativeName ?? language.toUpperCase()}`;
     const { thresholds: quotaThresholds } = useStorageThresholds();
     const [aiStatus, setAiStatus] = useState<AIStatus>('idle');
+    const barRef = useRef<HTMLDivElement>(null);
+    const leftRef = useRef<HTMLDivElement>(null);
+    const rightRef = useRef<HTMLDivElement>(null);
+    useStatusBarFit(barRef, leftRef, rightRef);
 
     useEffect(() => {
         const handler = (e: Event) => {
@@ -153,29 +158,34 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     }, []);
 
     return (
-        <div role="status" aria-label={t('statusBar.ariaLabel')} className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
+        <div ref={barRef} role="status" aria-label={t('statusBar.ariaLabel')} className="h-7 bg-gray-100 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 select-none shrink-0 overflow-hidden">
             {/* Left: Connection Status */}
-            <div className="flex items-center gap-4 min-w-0 flex-1">
+            {/* The left cluster clips its own content: whatever does not fit
+                is cut here, never drawn under the right cluster. The path
+                gives way first, then the right labels (useStatusBarFit), then
+                the server name down to a minimum; the badges keep their
+                width. */}
+            <div ref={leftRef} className="flex items-center gap-4 min-w-0 flex-1 overflow-hidden">
                 {/* A live session stays visible from anywhere, including the
                     hub: it is the one piece of state you can act on while
                     looking at My Servers. "Not connected" on the hub is not
                     state, it is the page restating itself, so it is dropped
                     there and kept everywhere a file panel exists. */}
                 {(isConnected || !hubVisible) && (
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
                         {isConnected ? (
                             <>
-                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                                <Wifi size={12} className="text-green-500" />
-                                <span className="font-medium text-green-600 dark:text-green-400 truncate max-w-[200px]">
+                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shrink-0" />
+                                <Wifi size={12} className="text-green-500 shrink-0" />
+                                <span className="font-medium text-green-600 dark:text-green-400 truncate max-w-[200px]" title={serverInfo || undefined} data-statusbar-name>
                                     {serverInfo || t('statusBar.connected')}
                                 </span>
                             </>
                         ) : (
                             <>
-                                <div className="w-2 h-2 rounded-full bg-gray-400" />
-                                <WifiOff size={12} className="text-gray-400" />
-                                <span className="text-gray-500">{t('statusBar.notConnected')}</span>
+                                <div className="w-2 h-2 rounded-full bg-gray-400 shrink-0" />
+                                <WifiOff size={12} className="text-gray-400 shrink-0" />
+                                <span className="text-gray-500 truncate" data-statusbar-name>{t('statusBar.notConnected')}</span>
                             </>
                         )}
                     </div>
@@ -183,7 +193,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
                 {/* Connection Security Badges */}
                 {isConnected && connectionSecurity === 'insecure' && (
-                    <div className="flex items-center px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 cursor-default"
+                    <div className="flex items-center shrink-0 px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 cursor-default"
                         title={t('statusBar.insecureConnectionUnencrypted')}
                     >
                         <AlertTriangle size={13} />
@@ -191,7 +201,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 )}
 
                 {isConnected && connectionSecurity === 'warning' && (
-                    <div className="flex items-center px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-default"
+                    <div className="flex items-center shrink-0 px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 cursor-default"
                         title={t('statusBar.insecureConnectionTitle')}
                     >
                         <AlertTriangle size={13} />
@@ -199,7 +209,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 )}
 
                 {isConnected && connectionSecurity === 'secure' && secureProtocol && (
-                    <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 cursor-default"
+                    <div className="flex items-center gap-1 shrink-0 px-2 py-0.5 rounded bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 cursor-default"
                         title={t('statusBar.secureConnectionTitle', { protocol: secureProtocol })}
                     >
                         <ShieldCheck size={12} />
@@ -207,13 +217,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                     </div>
                 )}
 
-                {isConnected && gitHubStatus}
+                {isConnected && gitHubStatus && <div className="flex items-center shrink-0">{gitHubStatus}</div>}
 
                 {/* Update Available Button */}
                 {updateAvailable?.has_update && (
                     <button
                         onClick={onShowUpdateToast}
-                        className="flex items-center gap-1.5 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md cursor-pointer"
+                        className="flex items-center gap-1.5 shrink-0 px-2.5 py-0.5 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-full text-[11px] font-medium hover:from-violet-600 hover:to-purple-700 transition-all shadow-sm hover:shadow-md cursor-pointer"
                         title={`${t('statusBar.updateAvailable')}: AeroFTP v${updateAvailable.latest_version}`}
                     >
                         <Download size={11} />
@@ -222,13 +232,13 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                 )}
 
                 {/* Separator */}
-                {!hubVisible && <div className="w-px h-4 bg-gray-300 dark:bg-gray-600" />}
+                {!hubVisible && <div className="w-px h-4 shrink-0 bg-gray-300 dark:bg-gray-600" />}
 
                 {/* Current Path. Suppressed on the hub, where no file panel is
                     mounted behind it and the value is a leftover from the last
                     view rather than a description of this one. */}
                 {!hubVisible && (
-                <div className="flex items-center gap-1.5 min-w-0 truncate">
+                <div className="flex items-center gap-1.5 min-w-0 truncate" data-statusbar-path>
                     {activePanel === 'remote' ? (
                         <>
                             <Globe size={12} className="text-blue-500 shrink-0" />
@@ -260,7 +270,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             </div>
 
             {/* Right: File Count + Sync + DevTools */}
-            <div className="flex items-center gap-4 min-w-0 shrink overflow-hidden">
+            <div ref={rightRef} className="relative flex items-center gap-4 min-w-0 shrink overflow-hidden">
                 {/* Storage Quota: shares thresholds + tone palette with the
                     MyServers card storage bar so the dual panel and the intro
                     hub stay visually consistent (emerald → amber → red). */}
@@ -316,7 +326,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                                 <div className="w-20 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full overflow-hidden">
                                     {bar}
                                 </div>
-                                <span className="text-[10px] tabular-nums">{label}</span>
+                                <span data-statusbar-label="status" className="text-[10px] tabular-nums">{label}</span>
                             </button>
                             {running && onCancelUsedScan && (
                                 <button
@@ -352,7 +362,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.usedScanHint')}
                     >
                         <Calculator size={12} />
-                        <span>{t('statusBar.usedScanAction')}</span>
+                        <span data-statusbar-label="status">{t('statusBar.usedScanAction')}</span>
                     </button>
                 )}
 
@@ -403,7 +413,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusbar.showProgress')}
                     >
                         <Loader2 size={12} className="animate-spin" />
-                        <span className="text-[10px] font-medium">{t('transfer.progress')}</span>
+                        <span data-statusbar-label="status" className="text-[10px] font-medium">{t('transfer.progress')}</span>
                     </button>
                 )}
 
@@ -418,7 +428,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusbar.transferQueue')}
                     >
                         <ArrowUpDown size={12} className={transferQueueActive ? 'animate-pulse' : ''} />
-                        <span>{t('statusbar.queue')}</span>
+                        <span data-statusbar-label="status">{t('statusbar.queue')}</span>
                         {transferQueueCount > 0 && (
                             <span className="px-1.5 py-0.5 text-[10px] font-medium bg-orange-500 text-white rounded-full min-w-[18px] text-center">
                                 {transferQueueCount}
@@ -441,7 +451,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusbar.activityLog')}
                     >
                         <ScrollText size={12} />
-                        <span>{t('statusbar.log')}</span>
+                        <span data-statusbar-label="status">{t('statusbar.log')}</span>
                         {activityLogCount > 0 && (
                             <span className="px-1 text-[9px] font-semibold leading-none bg-emerald-500 text-white rounded-full min-w-[16px] h-[16px] inline-flex items-center justify-center">
                                 {activityLogCount > 99 ? '99+' : activityLogCount}
@@ -461,7 +471,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.aerofileTitle')}
                     >
                         <FolderOpen size={12} />
-                        <span>{t('statusBar.aerofile')}</span>
+                        <span data-statusbar-label="launcher">{t('statusBar.aerofile')}</span>
                     </button>
                 )}
 
@@ -480,7 +490,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={cloudPaused ? t('cloud.paused') : t('statusbar.aerocloudTitle')}
                     >
                         <Cloud size={12} className={cloudSyncing ? 'animate-pulse' : ''} />
-                        <span>{cloudSyncing ? t('statusBar.syncing') : cloudEnabled && cloudPaused ? t('cloud.paused') : t('cloud.title')}</span>
+                        <span data-statusbar-label="launcher">{cloudSyncing ? t('statusBar.syncing') : cloudEnabled && cloudPaused ? t('cloud.paused') : t('cloud.title')}</span>
                         {cloudSyncing && <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-ping" />}
                     </button>
                 )}
@@ -497,7 +507,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.syncFiles')}
                     >
                         <FolderSync size={12} />
-                        <span>{t('syncPanel.title')}</span>
+                        <span data-statusbar-label="launcher">{t('syncPanel.title')}</span>
                     </button>
                 )}
 
@@ -512,7 +522,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.aeroagentTitle')}
                     >
                         <Bot size={12} className={aiStatus === 'streaming' ? 'animate-pulse' : ''} />
-                        <span>{t('statusBar.aeroagent')}</span>
+                        <span data-statusbar-label="launcher">{t('statusBar.aeroagent')}</span>
                         {aiStatus === 'streaming' && (
                             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
                         )}
@@ -533,7 +543,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.debugModeActive')}
                     >
                         <Bug size={12} />
-                        <span className="font-mono font-bold text-[10px]">{t('statusBar.debugBadge')}</span>
+                        <span data-statusbar-label="status" className="font-mono font-bold text-[10px]">{t('statusBar.debugBadge')}</span>
                     </button>
                 )}
 
@@ -548,7 +558,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                         title={t('statusBar.devTools')}
                     >
                         <Code size={12} />
-                        <span>{t('statusBar.devTools')}</span>
+                        <span data-statusbar-label="launcher">{t('statusBar.devTools')}</span>
                     </button>
                 )}
 
