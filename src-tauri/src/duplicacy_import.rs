@@ -672,8 +672,8 @@ pub fn export_duplicacy(
 
     let body = serde_json::to_vec_pretty(&serde_json::Value::Array(entries.clone()))
         .map_err(|e| format!("serialize preferences: {e}"))?;
-    crate::bridge_shared::atomic_write_600(out, &body)?;
     outcome.exported = entries.len();
+    crate::bridge_shared::write_export(outcome.exported, out, &body)?;
     Ok(outcome)
 }
 

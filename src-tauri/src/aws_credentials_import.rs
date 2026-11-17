@@ -398,9 +398,9 @@ pub fn export_aws_credentials(
         outcome.exported += 1;
     }
 
-    crate::bridge_shared::atomic_write_600(out, cred.as_bytes())?;
+    crate::bridge_shared::write_export(outcome.exported, out, cred.as_bytes())?;
     let config_path = out.with_file_name("config");
-    crate::bridge_shared::atomic_write_600(&config_path, config.as_bytes())?;
+    crate::bridge_shared::write_export(outcome.exported, &config_path, config.as_bytes())?;
 
     Ok(outcome)
 }

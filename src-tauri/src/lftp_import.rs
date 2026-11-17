@@ -604,7 +604,7 @@ pub fn export_lftp(
         outcome.exported += 1;
     }
 
-    crate::bridge_shared::atomic_write_600(out, body.as_bytes())?;
+    crate::bridge_shared::write_export(outcome.exported, out, body.as_bytes())?;
     Ok(outcome)
 }
 

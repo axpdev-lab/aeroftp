@@ -655,7 +655,7 @@ pub fn export_ssh_config(
             Err(reason) => outcome.skip(&server.name, reason),
         }
     }
-    crate::bridge_shared::atomic_write_600(out, output.as_bytes())?;
+    crate::bridge_shared::write_export(outcome.exported, out, output.as_bytes())?;
     Ok(outcome)
 }
 

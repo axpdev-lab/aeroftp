@@ -239,6 +239,20 @@ pub(crate) fn json_map(
 
 // ============ Atomic secret-bearing write ============
 
+/// Writes an export's file through [`atomic_write_600`], unless the export
+/// wrote no profile: then the destination is left as it was. A file holding
+/// only the format's header would replace one the user may already have (a
+/// `WinSCP.ini`, an `~/.ssh/config` with hosts of its own), for an export
+/// that reports nothing exported. Every bridge exporter writes its file
+/// through here; Cyberduck, which writes one file per bookmark, creates its
+/// folder only when it writes the first one.
+pub(crate) fn write_export(exported: usize, path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if exported == 0 {
+        return Ok(());
+    }
+    atomic_write_600(path, bytes)
+}
+
 /// Atomic write (temp + rename) with `0600` on unix. Mandatory for any
 /// exported file that carries a secret (restic env script, duplicacy
 /// preferences, kopia storage block, aws/mc/s3cmd native files).

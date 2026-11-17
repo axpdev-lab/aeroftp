@@ -717,7 +717,7 @@ pub fn export_winscp(
         outcome.exported += 1;
     }
 
-    crate::bridge_shared::atomic_write_600(output_path, ini.as_bytes())
+    crate::bridge_shared::write_export(outcome.exported, output_path, ini.as_bytes())
         .map_err(|e| format!("Write WinSCP config: {}", e))?;
 
     Ok(outcome)

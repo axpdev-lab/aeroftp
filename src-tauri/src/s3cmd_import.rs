@@ -439,8 +439,8 @@ pub fn export_s3cmd(
     ));
     body.push_str(&format!("bucket_location = {region}\n"));
 
-    crate::bridge_shared::atomic_write_600(out, body.as_bytes())?;
     outcome.exported = 1;
+    crate::bridge_shared::write_export(outcome.exported, out, body.as_bytes())?;
     Ok(outcome)
 }
 

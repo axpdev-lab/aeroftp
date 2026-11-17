@@ -6110,7 +6110,7 @@ pub fn export_rclone(
     // bridge exporters use: its temp file is O_EXCL/0600 (so a symlink planted
     // at a predictable sibling path cannot capture the secrets) and it unlinks
     // itself on any early return instead of leaving a partial cleartext file.
-    crate::bridge_shared::atomic_write_600(file_path, output.as_bytes())
+    crate::bridge_shared::write_export(outcome.exported, file_path, output.as_bytes())
         .map_err(|e| format!("Write rclone.conf: {}", e))?;
 
     Ok(outcome)
