@@ -353,6 +353,14 @@ jobs:
           sudo docker image prune --all --force >/dev/null 2>&1 || true
           echo "After:"; df -h /
 
+      - name: Add swap
+        run: |
+          sudo fallocate -l 8G /swapfile-coverage
+          sudo chmod 600 /swapfile-coverage
+          sudo mkswap /swapfile-coverage >/dev/null
+          sudo swapon /swapfile-coverage
+          swapon --show
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
         with:
