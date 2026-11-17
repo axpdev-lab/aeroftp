@@ -307,9 +307,15 @@ pub struct SshExportServer {
 /// wildcards (`Host prod*` would hand this profile's host, user and key to
 /// `prodfoo`), `!` negates the pattern, and `ssh a@b` connects to `b` as
 /// user `a`. A leading `-` is dropped, so a leading `!` is too: `ssh -work`
-/// reads it as an option.
+/// reads it as an option. So are a leading `=`, which ssh reads as the
+/// separator after `Host` (`Host =prod` is `Host prod`, and would take that
+/// name from a profile called `prod`), and a leading `#`, which starts a
+/// comment and leaves the block matching no host. A leading `ssh://` makes
+/// `ssh` read the alias as a URI and look up the host after it, so it
+/// becomes `ssh-`.
 fn ssh_host_alias(name: &str) -> String {
-    name.trim()
+    let alias = name
+        .trim()
         .chars()
         .map(|c| {
             if c.is_whitespace() || "'\"`$\\;&<>|(){},*?!@".contains(c) {
@@ -318,9 +324,12 @@ fn ssh_host_alias(name: &str) -> String {
                 c
             }
         })
-        .collect::<String>()
-        .trim_start_matches('-')
-        .to_string()
+        .collect::<String>();
+    let alias = alias.trim_start_matches(['-', '=', '#']);
+    match alias.strip_prefix("ssh://") {
+        Some(rest) => format!("ssh-{rest}"),
+        None => alias.to_string(),
+    }
 }
 
 /// Whether `value` holds a backslash that OpenSSH (`argv_split` in misc.c)
@@ -1058,9 +1067,11 @@ Host roundtrip
         // A name with an apostrophe or another character ssh refuses in a
         // destination: its alias is usable, and the file stays readable for
         // every host in it.
-        // A name with a wildcard, a negation or an `@` gets a plain alias:
-        // `prod*` and `web?` come first, and must not hand their host to
-        // `prodfoo` and `web1`, which ssh matches first-come.
+        // A name with a wildcard, a negation, an `@`, a leading `=` or `#`,
+        // or an `ssh://` in front gets an alias that ssh resolves to its own
+        // profile. `prod*`, `web?`, `=lab` and `ssh://box` come before the
+        // host each of them would otherwise take, since ssh uses the first
+        // block that matches.
         let named = [
             sftp("Bob's server", "a.example.com", "u", serde_json::json!({})),
             sftp("(work) nas", "b.example.com", "u", serde_json::json!({})),
@@ -1071,20 +1082,21 @@ Host roundtrip
             sftp("web1", "g.example.com", "u", serde_json::json!({})),
             sftp("!nas", "h.example.com", "u", serde_json::json!({})),
             sftp("a@b", "i.example.com", "u", serde_json::json!({})),
+            sftp("=lab", "j.example.com", "u", serde_json::json!({})),
+            sftp("lab", "k.example.com", "u", serde_json::json!({})),
+            sftp("ssh://box", "l.example.com", "u", serde_json::json!({})),
+            sftp("box", "m.example.com", "u", serde_json::json!({})),
+            sftp("#tag", "n.example.com", "u", serde_json::json!({})),
         ];
         let outcome = export_ssh_config(&named, &HashMap::new(), &config).unwrap();
         assert_eq!(outcome.exported, named.len(), "{:?}", outcome.skipped);
-        for (alias, host) in [
-            ("Bob-s-server", "a.example.com"),
-            ("work--nas", "b.example.com"),
-            ("plain", "c.example.com"),
-            ("prod-", "d.example.com"),
-            ("prodfoo", "e.example.com"),
-            ("web-", "f.example.com"),
-            ("web1", "g.example.com"),
-            ("nas", "h.example.com"),
-            ("a-b", "i.example.com"),
-        ] {
+        let written = std::fs::read_to_string(&config).unwrap();
+        let aliases: Vec<&str> = written
+            .lines()
+            .filter_map(|l| l.strip_prefix("Host "))
+            .collect();
+        assert_eq!(aliases.len(), named.len(), "{written}");
+        for (alias, server) in aliases.iter().zip(&named) {
             let read = std::process::Command::new("ssh")
                 .arg("-G")
                 .arg("-F")
@@ -1094,8 +1106,12 @@ Host roundtrip
                 .unwrap();
             let stdout = String::from_utf8_lossy(&read.stdout);
             assert!(
-                read.status.success() && stdout.lines().any(|l| l == format!("hostname {host}")),
-                "{alias}: {stdout} {}",
+                read.status.success()
+                    && stdout
+                        .lines()
+                        .any(|l| l == format!("hostname {}", server.host)),
+                "{} as {alias}: {stdout} {}",
+                server.name,
                 String::from_utf8_lossy(&read.stderr)
             );
         }
