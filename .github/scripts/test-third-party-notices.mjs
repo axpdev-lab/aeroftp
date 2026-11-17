@@ -961,7 +961,7 @@ test('property: no component marked with "No copyright notice is shipped" has co
   const npm = collectNpmDependencies();
   const allComponents = [...cargo, ...npm];
 
-  const copyrightPattern = /(?:copyright\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4})\s+[A-Za-z0-9]/i;
+  const copyrightPattern = /(?:copyright:?\s*(?:\([cC]\)|©|\d{4})|\([cC]\)\s*\d{4}|©\s*\d{4}|SPDX-FileCopyrightText:\s*\S)\s*[A-Za-z0-9]/i;
   const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright law|copyright (license|and|or|to|in|is|of|for|statement)|copyrighted|copyright_|copyright:? *$/i;
   const cocoaApiRegex = /NSCopyright|kMDItemCopyright|kFontCopyright|AuthorizationCopyRights/i;
 
@@ -1056,6 +1056,45 @@ test('property: grep scan error propagates and fails validation instead of being
     },
     /Grep scan failed \(status 2\)/
   );
+});
+
+test('holder-free license: SPDX headers and REUSE Copyright fields are notices, a yearless "Copyright (c)" is no holder', () => {
+  assert.strictEqual(
+    hasCopyrightHolderInFiles({ licenseFiles: [{ filename: 'LICENSE', content: 'Copyright (c)\n' }], noticeFiles: [] }),
+    false
+  );
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'holder-free-spdx-reuse-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'LICENSE'), 'MIT License\n\nPermission is hereby granted, free of charge...\n');
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(path.join(tmpDir, 'src', 'lib.rs'), '// SPDX-FileCopyrightText: 2024 Alice Example\npub fn f() {}\n');
+    fs.mkdirSync(path.join(tmpDir, '.reuse'));
+    fs.writeFileSync(
+      path.join(tmpDir, '.reuse', 'dep5'),
+      'Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/\r\n\r\nFiles: *\r\nCopyright: 2021 Kathryn Long <k@example.com>\r\n  2022 Second Holder\r\nLicense: MIT\r\n'
+    );
+    fs.writeFileSync(path.join(tmpDir, 'README.md'), 'Copyright: see the LICENSE file\n');
+    const readFiles = readPackageFiles(tmpDir, 'MIT');
+    const comp = {
+      name: 'fixture-spdx-reuse',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'MIT',
+      authors: ['Fixture Author'],
+      repository: 'https://example.com/fixture',
+      packageDir: tmpDir,
+      licenseFiles: readFiles.licenseFiles,
+      noticeFiles: readFiles.noticeFiles,
+    };
+    const out = generateNoticesMarkdown([comp], []);
+    assert.match(out, /- SPDX-FileCopyrightText: 2024 Alice Example \(src\/lib\.rs\)/);
+    assert.match(out, /- Copyright 2021 Kathryn Long <k@example\.com> \(\.reuse\/dep5\)/);
+    assert.match(out, /- Copyright 2022 Second Holder \(\.reuse\/dep5\)/);
+    assert.doesNotMatch(out, /see the LICENSE file/);
+    assert.doesNotMatch(out, /fixture-spdx-reuse.*\n\s+- No copyright notice is shipped in the package/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test('holder-free license: extracts source notices for components with holder-free license files', () => {
@@ -1222,6 +1261,13 @@ test('hasCopyrightHolderInFiles: a list item or prose after the keyword is not a
   assert.strictEqual(holder('(c) 2020 Alice Example\n'), true);
   assert.strictEqual(holder('Copyright (c) The camino Contributors\n'), true);
   assert.strictEqual(holder('Copyright Mozilla Foundation\n'), true);
+  assert.strictEqual(holder('Copyright (c) zune-image developers\n'), true);
+  assert.strictEqual(holder('Copyright (c) .NET Foundation and Contributors\n'), true);
+  assert.strictEqual(holder('Copyright (c) anatawa12 2023\n'), true);
+  assert.strictEqual(
+    holder('This work is derived in part from the `linked-hash-map` crate, Copyright (c)\n2015 The Rust Project Developers\n'),
+    true
+  );
   assert.strictEqual(holder('© Kornel Lesiński\n'), true);
   assert.strictEqual(holder('// Copyright Alice Example\n'), true);
   assert.strictEqual(holder('Copyrights in the `rustix` project are retained by their contributors.\n'), true);

@@ -1449,7 +1449,8 @@ SOFTWARE.
   - No copyright notice is shipped in the package
 - `field-offset@0.3.6` (cargo, file: `LICENSE-APACHE`)
 - `half@2.7.1` (cargo, file: `LICENSE-APACHE`)
-  - No copyright notice is shipped in the package
+  - Copyright 2021 Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
+  - Copyright Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
 - `image@0.25.10` (cargo, file: `LICENSE-APACHE`)
   - Copyright (c) 2018 Guillaume Gomez (src/lib.rs)
   - copyright (C) 1991-2014, Thomas G. Lane, Guido Vollbeding. (src/codecs/jpeg/transform.rs)
@@ -1499,7 +1500,8 @@ SOFTWARE.
 - `time-core@0.1.9` (cargo, file: `LICENSE-Apache`)
 - `time-macros@0.2.32` (cargo, file: `LICENSE-Apache`)
 - `widestring@1.2.1` (cargo, file: `LICENSE-APACHE`)
-  - No copyright notice is shipped in the package
+  - Copyright 2021 Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
+  - Copyright Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
 
 ```text
 Apache License
@@ -20868,7 +20870,8 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `half@2.7.1` (cargo, file: `LICENSE-MIT`)
-  - No copyright notice is shipped in the package
+  - Copyright 2021 Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
+  - Copyright Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
 - `ident_case@1.0.1` (cargo, file: `LICENSE`)
   - Copyright 2017 Serde Developers (src/lib.rs)
 - `papaya@0.2.5` (cargo, file: `LICENSE.md`)
@@ -20876,7 +20879,8 @@ DEALINGS IN THE SOFTWARE.
 - `simdutf8@0.1.5` (cargo, file: `LICENSE-MIT`)
   - No copyright notice is shipped in the package
 - `widestring@1.2.1` (cargo, file: `LICENSE-MIT`)
-  - No copyright notice is shipped in the package
+  - Copyright 2021 Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
+  - Copyright Kathryn Long <squeeself@gmail.com> (.reuse/dep5)
 
 ```text
 MIT License

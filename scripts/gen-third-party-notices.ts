@@ -617,9 +617,26 @@ export function findPackageCopyrightNotices(
     }
     // Binary files (a NUL byte near the start, as grep -I decides) hold no notice.
     if (buf.subarray(0, 8000).includes(0)) continue;
-    const lines = buf.toString('utf8').split('\n');
+    const lines = buf.toString('utf8').split(/\r?\n/);
 
+    // In a machine-readable copyright file (REUSE .reuse/dep5, debian/copyright)
+    // a `Copyright:` field names holders on its line and on the indented lines
+    // that continue it.
+    const isCopyrightFormat = /(?:^|\/)(?:\.reuse\/dep5|debian\/copyright)$/.test(f.rel);
+    let inCopyrightField = false;
     for (const rawLine of lines) {
+      const field = isCopyrightFormat ? rawLine.match(/^Copyright:\s*(.*)$/i) : null;
+      const continued = inCopyrightField && /^\s+\S/.test(rawLine) ? rawLine.trim() : null;
+      inCopyrightField = field !== null || continued !== null;
+      const fieldValue = field ? field[1].trim() : continued;
+      if (fieldValue) {
+        const notice = /^(?:copyright\b|\(c\)|©)/i.test(fieldValue) ? fieldValue : `Copyright ${fieldValue}`;
+        if (/[A-Za-z0-9]/.test(fieldValue) && !seenNotice.has(notice)) {
+          seenNotice.add(notice);
+          notices.push({ notice, file: f.rel });
+        }
+        continue;
+      }
       let line = rawLine
         .replace(/^\s*(?:\/\/[\/!]?|\/\*+|\*+|\#+|<!--)\s*/, '')
         .replace(/(?:\*\/|-->)\s*$/, '')
@@ -636,6 +653,7 @@ export function findPackageCopyrightNotices(
       // A notice at the start of the line, or a dated one inside it
       // ("/*! regenerator-runtime -- Copyright (c) 2014-present, Facebook").
       const match =
+        line.match(/^SPDX-FileCopyrightText:\s*\S.*/) ??
         line.match(/^(?:(?:\([cC]\)|©)\s+[0-9]{4}|[Cc]opyright\s+(?:\([cC]\)|©|[0-9]{4}|by\s+[A-Z]|[A-Z])).*/) ??
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
@@ -824,17 +842,19 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   const boilerplateRegex =
     /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
-  // A keyword followed by a year, (c) or ©, anywhere on the line.
-  const datedRegex = /(?:copyrights?|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*(?:[0-9]{4}|\(c\)|©)/i;
+  // A keyword followed by a year (after an optional (c) or ©), anywhere on the line.
+  const datedRegex = /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*[`'"\[\(<]*[0-9]{4}/i;
   // Without a year, the keyword must begin the line (after a comment leader)
-  // and be followed by a name, which starts with a capital letter: this keeps
-  // prose such as "Copyright has been waived" out. A bare "(c)" at the start
+  // and be followed by a name: any name after an explicit (c) or ©
+  // ("Copyright (c) zune-image developers", "Copyright (c) .NET Foundation"),
+  // a capitalized one after the bare keyword, which keeps prose such as
+  // "Copyright has been waived" out. A bare "(c)" at the start
   // of a line is a list item in license texts (Apache-2.0 4(c) "(c) You must
   // retain ..."), so it counts only with a year, above.
   const lead = String.raw`^\s*(?:(?:\/\/+|\/\*+|\*+|#+|--+|;+)\s*)?`;
   const namedRegex = new RegExp(
     lead +
-      String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*(?:\([cC]\)|©)?\s*[\x60'"\[\(<]*[A-Z0-9]`
+      String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:(?:[Cc]opyrights?|COPYRIGHTS?)\s*(?:\([cC]\)|©)\s*[\x60'"\[\(<]*[A-Za-z0-9.]|(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*[\x60'"\[\(<]*[A-Z0-9])`
   );
   // Statements that name the holders without a name after the keyword.
   const statementRegex = new RegExp(
@@ -843,9 +863,16 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
     'i'
   );
 
+  // A notice broken after its marker ("..., Copyright (c)" then "2015 The Rust
+  // Project Developers") is read with the line that continues it.
+  const joinBrokenNotices = (content: string) =>
+    content
+      .split(/\r?\n/)
+      .map((l, i, all) =>
+        /(?:copyrights?|\(c\)|©)\s*(?:\(c\)|©)?\s*$/i.test(l) && i + 1 < all.length ? `${l} ${all[i + 1].trim()}` : l
+      );
   return [...comp.licenseFiles, ...comp.noticeFiles].some((f) =>
-    f.content
-      .split('\n')
+    joinBrokenNotices(f.content)
       .some(
         (l) =>
           !boilerplateRegex.test(l) && (datedRegex.test(l) || namedRegex.test(l) || statementRegex.test(l))
