@@ -38,6 +38,10 @@ fn shellexpand_tilde(p: &str) -> String {
     p.to_string()
 }
 
+/// The environment variables an imported `${VAR}` may read: the local user
+/// name and home folder, as `%u` and `%d` do.
+const SSH_IMPORT_ENV: [&str; 5] = ["HOME", "USER", "USERNAME", "USERPROFILE", "LOGNAME"];
+
 /// The values ssh substitutes for `%` tokens in one `Host` block.
 struct SshTokens<'a> {
     /// `%n`: the alias the block was looked up by.
@@ -58,6 +62,12 @@ struct SshTokens<'a> {
 /// not `%r`). A token AeroFTP cannot resolve here, such as `%C` or `%l`, is
 /// an error, and the host is skipped with it rather than imported with a
 /// value no client reads as written.
+///
+/// The file being imported is not trusted, so `${VAR}` reads only the
+/// variables in [`SSH_IMPORT_ENV`], which name the local user and home
+/// folder. Any other name (`${AWS_SECRET_ACCESS_KEY}` in a `User` line would
+/// hand that secret to the profile, the window and the server) skips the
+/// host with the variable's name, and its value is never read.
 fn ssh_expand(
     field: &str,
     value: &str,
@@ -79,8 +89,17 @@ fn ssh_expand(
                     None => break false,
                 }
             };
-            let found = closed.then(|| env(&name)).flatten().ok_or_else(|| {
-                format!("its {field} reads the environment variable `{name}`, which is not set or not closed")
+            if !closed {
+                return Err(format!("its {field} holds a `${{` that is never closed"));
+            }
+            if !SSH_IMPORT_ENV.contains(&name.as_str()) {
+                return Err(format!(
+                    "its {field} reads the environment variable `{name}`, which an import does not read; only {} are expanded",
+                    SSH_IMPORT_ENV.join(", ")
+                ));
+            }
+            let found = env(&name).ok_or_else(|| {
+                format!("its {field} reads the environment variable `{name}`, which is not set")
             })?;
             out.push_str(&found);
             continue;
@@ -1308,13 +1327,19 @@ Host roundtrip
     /// resolve skips the host with its reason.
     #[test]
     fn an_imported_token_is_expanded_as_ssh_reads_it() {
-        // No `%d` or `%u` here: another test in this module points `HOME` at
-        // a temporary folder while this one runs.
+        // The import and `ssh -G` read the environment, which other tests in
+        // this crate change under this lock.
+        let _env = crate::test_env::lock();
+        let secret = "s3cr3t-value-never-imported";
+        std::env::set_var("AEROFTP_SSH_TEST_SECRET", secret);
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap();
         let dir = tempfile::tempdir().unwrap();
         let source = dir.path().join("source");
         std::fs::write(
             &source,
-            "Host al\n  HostName %h.example.com\n  Port 2200\n  User %n-x\n  IdentityFile /keys/id_%h_%r_%%\n  ProxyJump %r@jump.%h\n\nHost tok\n  HostName h.example.com\n  IdentityFile /keys/%C\n\nHost noenv\n  HostName h.example.com\n  User ${AEROFTP_SSH_TEST_UNSET_VARIABLE}\n",
+            "Host al\n  HostName %h.example.com\n  Port 2200\n  User %n-x\n  IdentityFile %d/id_%h_%r_%%\n  ProxyJump %r@jump.%h\n\nHost tok\n  HostName h.example.com\n  IdentityFile /keys/%C\n\nHost secret\n  HostName h.example.com\n  User ${AEROFTP_SSH_TEST_SECRET}\n\nHost open\n  HostName h.example.com\n  IdentityFile /keys/${HOME\n",
         )
         .unwrap();
         let result = import_ssh_config(&source).unwrap();
@@ -1323,7 +1348,8 @@ Host roundtrip
             .iter()
             .map(|s| (s.name.as_str(), s.reason.as_str()))
             .collect();
-        assert_eq!(skipped.len(), 2, "{skipped:?}");
+        std::env::remove_var("AEROFTP_SSH_TEST_SECRET");
+        assert_eq!(skipped.len(), 3, "{skipped:?}");
         assert_eq!(skipped[0].0, "tok");
         assert!(
             skipped[0]
@@ -1331,13 +1357,23 @@ Host roundtrip
                 .starts_with("its key file path uses the ssh token %C"),
             "{skipped:?}"
         );
-        assert_eq!(skipped[1].0, "noenv");
+        assert_eq!(skipped[1].0, "secret");
         assert!(
-            skipped[1]
-                .1
-                .starts_with("its user name reads the environment variable"),
+            skipped[1].1.starts_with(
+                "its user name reads the environment variable `AEROFTP_SSH_TEST_SECRET`, which an import does not read"
+            ),
             "{skipped:?}"
         );
+        assert_eq!(skipped[2].0, "open");
+        assert!(
+            skipped[2]
+                .1
+                .starts_with("its key file path holds a `${` that is never closed"),
+            "{skipped:?}"
+        );
+        let everything = serde_json::to_string(&result.servers).unwrap()
+            + &serde_json::to_string(&result.skipped).unwrap();
+        assert!(!everything.contains(secret), "{everything}");
         assert_eq!(result.servers.len(), 1);
         let al = &result.servers[0];
         assert_eq!(al.host, "al.example.com");
@@ -1346,7 +1382,7 @@ Host roundtrip
         let options = al.options.as_ref().unwrap();
         assert_eq!(
             options["private_key_path"],
-            "/keys/id_al.example.com_al-x_%"
+            format!("{home}/id_al.example.com_al-x_%")
         );
         assert_eq!(options["proxyJump"], "al-x@jump.al.example.com");
 
@@ -1356,7 +1392,11 @@ Host roundtrip
         export_ssh_config(&[profile], &HashMap::new(), &exported).unwrap();
         let written = std::fs::read_to_string(&exported).unwrap();
         assert!(
-            written.contains("  IdentityFile /keys/id_al.example.com_al-x_%%\n"),
+            written.contains(&format!(
+                "  IdentityFile {home}/id_al.example.com_al-x_%%\n"
+            )) || written.contains(&format!(
+                "  IdentityFile \"{home}/id_al.example.com_al-x_%%\"\n"
+            )),
             "{written}"
         );
         if std::process::Command::new("ssh")
