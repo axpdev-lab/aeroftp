@@ -1909,6 +1909,37 @@ fn private_tokens_keep_to_their_account(store: &CredentialStore, legacy_id: i64,
         assert_eq!(store.get(key).unwrap(), "legacy-owners-token", "{key}");
         store.delete(key).unwrap();
     }
+    // With the partition DB unopenable, the rollback still removes a plain
+    // secret from the vault and returns the error; a private token's vault
+    // key, whose owner only the DB names, is kept.
+    let unopenable = || Err("Open partition DB: refused".to_string());
+    store
+        .store("oauth_dropbox_copy-target", "legacy-owners-token")
+        .unwrap();
+    let kept = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "oauth_dropbox_copy-target",
+    )
+    .unwrap_err();
+    assert!(kept.contains("Open partition DB: refused"), "{kept}");
+    assert_eq!(
+        store.get("oauth_dropbox_copy-target").unwrap(),
+        "legacy-owners-token"
+    );
+    store.delete("oauth_dropbox_copy-target").unwrap();
+    store.store("server_copy-target", "server").unwrap();
+    let removed = users::delete_credential_checked_with(
+        store,
+        unopenable(),
+        private_id,
+        "server_copy-target",
+    )
+    .unwrap_err();
+    assert!(removed.contains("Open partition DB: refused"), "{removed}");
+    assert!(store.get("server_copy-target").is_err());
+
     users::store_credential_for_user_dual(store, private_id, "server_copy-target", "server")
         .unwrap();
     assert_eq!(store.get("server_copy-target").unwrap(), "server");

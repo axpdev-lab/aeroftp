@@ -5132,10 +5132,38 @@ pub fn delete_credential_for_user_checked(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    let conn = open_or_init_cli()?;
-    let partition = delete_user_credential_for(&conn, user_id, credential_id);
-    if vault_copy_is_another_accounts(&conn, user_id, credential_id)? {
-        return partition;
+    let conn = open_or_init_cli();
+    delete_credential_checked_with(
+        store,
+        conn.as_ref().map_err(Clone::clone),
+        user_id,
+        credential_id,
+    )
+}
+
+/// [`delete_credential_for_user_checked`] on `conn`, the partition DB or why it
+/// could not be opened. Without it the vault entry of any other secret is still
+/// deleted, and the open error returned beside it; the vault key of a private
+/// token is kept, since only the DB tells whether it is this account's.
+pub(crate) fn delete_credential_checked_with(
+    store: &CredentialStore,
+    conn: Result<&Connection, String>,
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    let partition = conn
+        .clone()
+        .and_then(|conn| delete_user_credential_for(conn, user_id, credential_id));
+    if private_token_type(credential_id).is_some() {
+        match conn.and_then(|conn| vault_copy_is_another_accounts(conn, user_id, credential_id)) {
+            Ok(true) => return partition,
+            Ok(false) => {}
+            Err(error) => {
+                return Err(format!(
+                    "{error}; the vault key was kept, since without the partition database it cannot be told whose it is"
+                ))
+            }
+        }
     }
     let vault = store
         .delete(credential_id)
