@@ -302,13 +302,17 @@ pub struct SshExportServer {
 /// `;`, `&`, `<`, `>`, `|`, `(`, `)`, `{`, `}`, `,`: "hostname contains
 /// invalid characters") become `-` too: such an alias could never be used,
 /// and a quote on the `Host` line makes ssh refuse the whole file ("invalid
-/// quotes"), every other host in it included. A leading `-` is dropped:
-/// `ssh -work` reads it as an option.
+/// quotes"), every other host in it included. So do the characters a
+/// `Host` line reads as a pattern or `ssh` reads as a user: `*` and `?` are
+/// wildcards (`Host prod*` would hand this profile's host, user and key to
+/// `prodfoo`), `!` negates the pattern, and `ssh a@b` connects to `b` as
+/// user `a`. A leading `-` is dropped, so a leading `!` is too: `ssh -work`
+/// reads it as an option.
 fn ssh_host_alias(name: &str) -> String {
     name.trim()
         .chars()
         .map(|c| {
-            if c.is_whitespace() || "'\"`$\\;&<>|(){},".contains(c) {
+            if c.is_whitespace() || "'\"`$\\;&<>|(){},*?!@".contains(c) {
                 '-'
             } else {
                 c
@@ -1054,10 +1058,19 @@ Host roundtrip
         // A name with an apostrophe or another character ssh refuses in a
         // destination: its alias is usable, and the file stays readable for
         // every host in it.
+        // A name with a wildcard, a negation or an `@` gets a plain alias:
+        // `prod*` and `web?` come first, and must not hand their host to
+        // `prodfoo` and `web1`, which ssh matches first-come.
         let named = [
             sftp("Bob's server", "a.example.com", "u", serde_json::json!({})),
             sftp("(work) nas", "b.example.com", "u", serde_json::json!({})),
             sftp("plain", "c.example.com", "u", serde_json::json!({})),
+            sftp("prod*", "d.example.com", "u", serde_json::json!({})),
+            sftp("prodfoo", "e.example.com", "u", serde_json::json!({})),
+            sftp("web?", "f.example.com", "u", serde_json::json!({})),
+            sftp("web1", "g.example.com", "u", serde_json::json!({})),
+            sftp("!nas", "h.example.com", "u", serde_json::json!({})),
+            sftp("a@b", "i.example.com", "u", serde_json::json!({})),
         ];
         let outcome = export_ssh_config(&named, &HashMap::new(), &config).unwrap();
         assert_eq!(outcome.exported, named.len(), "{:?}", outcome.skipped);
@@ -1065,6 +1078,12 @@ Host roundtrip
             ("Bob-s-server", "a.example.com"),
             ("work--nas", "b.example.com"),
             ("plain", "c.example.com"),
+            ("prod-", "d.example.com"),
+            ("prodfoo", "e.example.com"),
+            ("web-", "f.example.com"),
+            ("web1", "g.example.com"),
+            ("nas", "h.example.com"),
+            ("a-b", "i.example.com"),
         ] {
             let read = std::process::Command::new("ssh")
                 .arg("-G")
