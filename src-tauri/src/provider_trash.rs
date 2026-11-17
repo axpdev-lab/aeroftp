@@ -1102,6 +1102,36 @@ async fn list(p: &mut dyn StorageProvider, kind: TrashKind, path: &str) -> Res<V
     })
 }
 
+/// An id part these providers put into a request URL as it is: a number on
+/// pCloud and kDrive. Anything else is refused before any request, so an
+/// empty or crafted id can never reach, say, pCloud's `trash_clear` without
+/// its item, which empties the whole trash.
+fn numeric(kind: TrashKind, part: &str) -> Res<&str> {
+    if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) {
+        return Ok(part);
+    }
+    Err(TrashError::BadId(format!(
+        "'{part}' is not a {} trash item: the item part of the id is a number",
+        kind.label()
+    )))
+}
+
+/// OpenDrive's and Box's item ids are letters, digits, `_`, `-` and `=`, and
+/// go into the request path unencoded: nothing else gets through.
+fn opaque(kind: TrashKind, part: &str) -> Res<&str> {
+    if !part.is_empty()
+        && part
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'='))
+    {
+        return Ok(part);
+    }
+    Err(TrashError::BadId(format!(
+        "'{part}' is not a {} trash item id",
+        kind.label()
+    )))
+}
+
 fn dir_flag(kind: TrashKind, flag: &str) -> Res<bool> {
     match flag {
         "d" => Ok(true),
@@ -1138,7 +1168,7 @@ async fn restore(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<
         TrashKind::OneDrive => onedrive_restore(p, id).await?,
         TrashKind::Box => {
             let (ty, item) = split_id(kind, id)?;
-            box_restore(p, item, &ty).await?
+            box_restore(p, opaque(kind, item)?, &ty).await?
         }
         // The GUI sends the row's `rev`; `restore_file` does not read it.
         TrashKind::Dropbox => dropbox_restore(p, id, "").await?,
@@ -1155,15 +1185,15 @@ async fn restore(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<
         TrashKind::OpenDrive => {
             let (flag, item) = split_id(kind, id)?;
             let is_dir = dir_flag(kind, &flag)?;
-            opendrive_restore(p, &[(item.to_string(), is_dir)]).await?
+            opendrive_restore(p, &[(opaque(kind, item)?.to_string(), is_dir)]).await?
         }
         TrashKind::Yandex => yandex_restore(p, &one).await?,
         TrashKind::PCloud => {
             let (flag, item) = split_id(kind, id)?;
             let is_dir = dir_flag(kind, &flag)?;
-            pcloud_restore(p, item, is_dir).await?
+            pcloud_restore(p, numeric(kind, item)?, is_dir).await?
         }
-        TrashKind::KDrive => kdrive_restore(p, id).await?,
+        TrashKind::KDrive => kdrive_restore(p, numeric(kind, id)?).await?,
         TrashKind::Azure => azure_undelete(p, id).await?,
         TrashKind::B2 => b2_restore(p, id).await?,
         TrashKind::S3 => {
@@ -1194,7 +1224,7 @@ async fn delete(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<O
         TrashKind::OneDrive => onedrive_delete(p, id).await?,
         TrashKind::Box => {
             let (ty, item) = split_id(kind, id)?;
-            box_delete(p, item, &ty).await?
+            box_delete(p, opaque(kind, item)?, &ty).await?
         }
         TrashKind::Dropbox => {
             dropbox_purge_allowed(p).await?;
@@ -1206,15 +1236,15 @@ async fn delete(p: &mut dyn StorageProvider, kind: TrashKind, id: &str) -> Res<O
         TrashKind::OpenDrive => {
             let (flag, item) = split_id(kind, id)?;
             let is_dir = dir_flag(kind, &flag)?;
-            opendrive_delete(p, &[(item.to_string(), is_dir)]).await?
+            opendrive_delete(p, &[(opaque(kind, item)?.to_string(), is_dir)]).await?
         }
         TrashKind::Yandex => yandex_delete(p, &one).await?,
         TrashKind::PCloud => {
             let (flag, item) = split_id(kind, id)?;
             let is_dir = dir_flag(kind, &flag)?;
-            pcloud_delete(p, item, is_dir).await?
+            pcloud_delete(p, numeric(kind, item)?, is_dir).await?
         }
-        TrashKind::KDrive => kdrive_delete(p, id).await?,
+        TrashKind::KDrive => kdrive_delete(p, numeric(kind, id)?).await?,
         TrashKind::B2 => {
             let versions = b2_delete(p, id).await?;
             return Ok(Some(json!({ "versions_purged": versions })));
@@ -1300,6 +1330,14 @@ async fn empty(
 pub async fn run(provider: &mut dyn StorageProvider, op: TrashOp) -> Res<TrashOutcome> {
     let kind = trash_kind(provider).ok_or(TrashError::NoTrash)?;
     let caps = trash_caps(kind);
+    if let TrashOp::Restore { id } | TrashOp::Delete { id } = &op {
+        if id.trim().is_empty() {
+            return Err(TrashError::BadId(format!(
+                "an empty id is not a {} trash item: use an id as `trash list` shows it",
+                kind.label()
+            )));
+        }
+    }
     match op {
         TrashOp::List { path } => Ok(TrashOutcome::Listed {
             kind,

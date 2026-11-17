@@ -2206,6 +2206,19 @@ async fn provider_trash_tool(
         tool: "remote_trash".to_string(),
         reason,
     };
+    // The S3 arguments scope or name an S3 version. Dropping one here would
+    // widen a restore, delete or empty past what the caller asked for.
+    for name in ["prefix", "key", "version_id"] {
+        if args
+            .get(name)
+            .and_then(Value::as_str)
+            .is_some_and(|v| !v.is_empty())
+        {
+            return Err(invalid(format!(
+                "'{name}' is for an S3 trash; on this provider use 'id' as action=list gives it, and 'path' to list a folder"
+            )));
+        }
+    }
     let op = match action {
         "list" => TrashOp::List {
             path: normalize_path_arg(args, "path", "/"),
@@ -2227,10 +2240,18 @@ async fn provider_trash_tool(
             if !dry_run && !get_bool_opt(args, "confirm").unwrap_or(false) {
                 return Err(invalid("action=empty with dry_run=false permanently deletes everything in the trash: set confirm=true to acknowledge it, or omit dry_run for a preview".to_string()));
             }
-            TrashOp::Empty {
-                path: normalize_path_arg(args, "path", "/"),
-                dry_run,
+            let path = normalize_path_arg(args, "path", "/");
+            // Only Dropbox empties what it lists under a folder; every other
+            // provider empties its whole trash, so a folder is refused rather
+            // than silently widened.
+            if path != "/"
+                && backend.provider_type().await != Some(crate::providers::ProviderType::Dropbox)
+            {
+                return Err(invalid(format!(
+                    "action=empty covers the whole trash on this provider, not '{path}': omit path"
+                )));
             }
+            TrashOp::Empty { path, dry_run }
         }
         other => {
             return Err(invalid(format!(
@@ -7819,8 +7840,27 @@ mod tests {
         Arc::new(FakeBackend::sample().with_provider_type(ProviderType::PCloud))
     }
 
-    /// A provider with a trash manager other than S3 goes to the provider
-    /// trash entry point, with the GUI's operations and the list's ids.
+    /// An S3 scope argument, or a folder on a whole-trash empty, is refused
+    /// before the backend is asked for anything.
+    #[tokio::test]
+    async fn remote_trash_off_s3_refuses_a_scope_it_would_drop() {
+        let backend = pcloud_backend();
+        let ctx = test_ctx(Arc::clone(&backend));
+        for args in [
+            json!({"server": "s", "action": "empty", "prefix": "projects/old/", "dry_run": false, "confirm": true}),
+            json!({"server": "s", "action": "delete", "id": "f:42", "key": "a.txt"}),
+            json!({"server": "s", "action": "restore", "id": "f:42", "version_id": "v1"}),
+            json!({"server": "s", "action": "empty", "path": "/docs", "dry_run": false, "confirm": true}),
+        ] {
+            let refused = remote_trash(&ctx, &args).await;
+            assert!(
+                matches!(refused, Err(ToolError::InvalidArgs { .. })),
+                "{args}: {refused:?}"
+            );
+        }
+        assert!(backend.trash_ops.lock().unwrap().is_empty());
+    }
+
     /// A provider failure reaches the agent without the credential its
     /// message carried.
     #[tokio::test]
@@ -7841,6 +7881,8 @@ mod tests {
         assert!(!message.contains("abcdefghijklmnop"), "{message}");
     }
 
+    /// A provider with a trash manager other than S3 goes to the provider
+    /// trash entry point, with the GUI's operations and the list's ids.
     #[tokio::test]
     async fn remote_trash_off_s3_goes_through_the_provider_trash() {
         use crate::provider_trash::TrashOp;

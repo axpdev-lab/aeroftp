@@ -4182,6 +4182,22 @@ mod tests {
             ]
         );
 
+        // `trash_clear` without its item empties the whole trash, so an id
+        // whose item is not a number never reaches it.
+        for id in ["f:", "f:abc", "f:1&folderid=2", "d: 7", ""] {
+            for op in [
+                TrashOp::Delete { id: id.into() },
+                TrashOp::Restore { id: id.into() },
+            ] {
+                let refused = run(&mut provider, op.clone()).await;
+                assert!(
+                    matches!(refused, Err(crate::provider_trash::TrashError::BadId(_))),
+                    "{op:?}: {refused:?}"
+                );
+            }
+        }
+        assert_eq!(take(), Vec::<String>::new(), "a refused id sent a request");
+
         // Empty lists first (the counts it reports), then clears the whole trash.
         let emptied = run(
             &mut provider,

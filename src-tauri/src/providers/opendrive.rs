@@ -3635,6 +3635,23 @@ mod tests {
             ]
         );
 
+        // The item id goes into the request path unencoded: one that could
+        // reach another endpoint, such as the one that empties the trash, is
+        // refused before any request.
+        for id in ["f:../../folder/trash.json/sid", "f:FL1?x=1", "f:", "d:a/b"] {
+            for op in [
+                TrashOp::Delete { id: id.into() },
+                TrashOp::Restore { id: id.into() },
+            ] {
+                let refused = run(&mut provider, op.clone()).await;
+                assert!(
+                    matches!(refused, Err(crate::provider_trash::TrashError::BadId(_))),
+                    "{op:?}: {refused:?}"
+                );
+            }
+        }
+        assert_eq!(take(), Vec::<String>::new(), "a refused id sent a request");
+
         // Empty lists first (the counts it reports), then deletes the trash.
         let emptied = run(
             &mut provider,
