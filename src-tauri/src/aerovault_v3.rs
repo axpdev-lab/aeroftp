@@ -2147,6 +2147,35 @@ mod tests {
         );
     }
 
+    /// The GUI maps the crate's error text to a message
+    /// (`ERROR_PATTERNS` in src/components/vault/useVaultState.ts): a wrong
+    /// password must give a text one of its wrong-password patterns takes,
+    /// or the user reads the raw crypto error.
+    #[test]
+    fn a_wrong_password_gives_a_text_the_gui_reads_as_a_wrong_password() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wrong-password.aerovault");
+        let path = path.to_str().unwrap();
+        let opts = aerovault::v3::CreateOptionsV3::new(path, "the-right-password-1");
+        aerovault::v3::VaultV3::create(&opts).unwrap();
+        aerovault::v3::VaultV3::open(path, "the-right-password-1").unwrap();
+        let err = match aerovault::v3::VaultV3::open(path, "a-wrong-password-2") {
+            Ok(_) => panic!("a wrong password opened the vault"),
+            Err(e) => e,
+        };
+        let lower = err.to_lowercase();
+        assert!(
+            [
+                "aes-kw unwrap failed",
+                "key unwrap failed",
+                "wrong password"
+            ]
+            .iter()
+            .any(|p| lower.contains(p)),
+            "no wrong-password pattern of useVaultState.ts takes {err:?}"
+        );
+    }
+
     #[test]
     fn level_to_profile_maps_known_levels() {
         assert_eq!(level_to_profile(3), "fast");

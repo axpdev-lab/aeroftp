@@ -32,6 +32,8 @@ export interface VaultProgress {
 const ERROR_PATTERNS: [RegExp, string][] = [
     [/invalid (password|hmac|key|mac)/i, 'vault.errors.wrongPassword'],
     [/wrong password/i, 'vault.errors.wrongPassword'],
+    // AEROVAULT3 reports a wrong password as a failed AES-KW key unwrap.
+    [/(aes-kw|key) unwrap failed/i, 'vault.errors.wrongPassword'],
     [/decryption failed/i, 'vault.errors.wrongPassword'],
     [/authentication failed/i, 'vault.errors.wrongPassword'],
     [/not (a valid |an? )?(aerovault|vault)/i, 'vault.errors.notAVault'],
