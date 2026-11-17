@@ -1412,14 +1412,16 @@ impl StorageProvider for MegaCmdProvider {
         let output = self
             .run_mega_cmd_with_reauth("mega-ls", &["-l", "--versions", &abs_path])
             .await?;
-        // Each id is the epoch that version was written; the current one,
-        // listed by MEGAcmd too, is the latest.
+        // Each id is the modification time of that version. MEGAcmd lists
+        // the current one first (measured on 2.6.0); its time can be older
+        // than an earlier version's (a restore uploads old contents with
+        // their old time), so the place tells it, not the time.
         let versions = super::mega_df::parse_mega_ls_versions(&output);
+        let head = versions.first().map(|v| v.id.clone());
         let epoch = |v: &FileVersion| v.id.parse::<i64>().unwrap_or(0);
-        let latest = versions.iter().map(epoch).max();
         Ok(super::versions_current_first(
             versions,
-            |v| Some(epoch(v)) == latest,
+            |v| Some(&v.id) == head.as_ref(),
             || None,
             epoch,
         ))
@@ -1712,6 +1714,25 @@ impl MegaCmdProvider {
         }
         let abs_path = self.resolve_path(path);
         refuse_mega_wildcard_name(&abs_path)?;
+        // `<path>#<time>` takes the first version of that time: two of them
+        // (contents written in one second, or a version restored with its
+        // old time) cannot be told apart, so neither is fetched.
+        let listed = self.list_versions(path).await?;
+        match listed.iter().filter(|v| v.id == version_id).count() {
+            0 => {
+                return Err(ProviderError::NotFound(format!(
+                    "{path} has no version {version_id}"
+                )))
+            }
+            1 => {}
+            _ => {
+                return Err(ProviderError::NotSupported(format!(
+                    "Two versions of {path} carry the time {version_id}: MEGAcmd addresses a \
+                     version by its time and cannot tell them apart. Download it from the MEGA \
+                     app instead"
+                )))
+            }
+        }
         let temp = MegaTempFile::new("aeroftp_mega_version");
         let temp_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
         let versioned = format!("{abs_path}#{version_id}");
@@ -3165,6 +3186,45 @@ mod tests {
             ids,
             [("1794840780", 13), ("1794840777", 12), ("1794840775", 8)]
         );
+    }
+
+    /// After a restore the current version carries the old time of the
+    /// contents it brought back: it is still row 0, told by its place.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_current_megacmd_version_is_told_by_its_place_not_its_time() {
+        let (mut provider, _dir) = provider_with_stand_in_versions();
+        let versions = provider.list_versions("/w.txt").await.expect("versions");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["1794840700", "1794840790", "1794840780"]);
+    }
+
+    /// Two versions of one time have one `#<time>` address: neither is
+    /// fetched, a version of a time no other one carries is.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_version_whose_time_is_shared_is_not_fetched() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("old.txt");
+        let downloaded = provider
+            .download_version("/x.txt", "1794840777", target.to_str().unwrap())
+            .await;
+        let restored = provider.restore_version("/x.txt", "1794840777").await;
+        for outcome in [&downloaded, &restored] {
+            assert!(
+                matches!(outcome, Err(ProviderError::NotSupported(m)) if m.contains("cannot tell them apart")),
+                "{outcome:?}"
+            );
+        }
+        assert!(stand_in_log(&dir, "get.log").is_empty());
+        assert!(stand_in_log(&dir, "put.log").is_empty());
+        assert!(!target.exists());
+        provider
+            .download_version("/x.txt", "1794840790", target.to_str().unwrap())
+            .await
+            .expect("an unshared time is fetched");
+        assert_eq!(stand_in_log(&dir, "get.log"), ["/x.txt#1794840790"]);
     }
 
     #[cfg(unix)]

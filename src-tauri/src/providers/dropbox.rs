@@ -2077,7 +2077,14 @@ impl StorageProvider for DropboxProvider {
                 &serde_json::json!({ "path": full_path }),
             )
             .await?;
-        revisions_in_dialog_order(&body, meta.rev.as_deref())
+        let current = meta.rev.clone().map(|rev| super::FileVersion {
+            id: rev,
+            modified: meta.server_modified.clone(),
+            size: meta.size,
+            modified_by: None,
+            deleted: false,
+        });
+        revisions_in_dialog_order(&body, current)
     }
 
     async fn download_version(
@@ -2674,12 +2681,14 @@ impl StorageProvider for DropboxProvider {
 
 /// A `files/list_revisions` answer in the order every `list_versions`
 /// answers in ([`super::versions_current_first`]). Dropbox lists the current
-/// revision too and leaves the order unspecified; the file's own `rev` names
-/// the current one.
+/// revision too and leaves the order unspecified; `current`, the file's own
+/// metadata, names the current one, and is row 0 itself when the list does
+/// not hold that revision yet.
 fn revisions_in_dialog_order(
     body: &str,
-    current_rev: Option<&str>,
+    current: Option<super::FileVersion>,
 ) -> Result<Vec<super::FileVersion>, ProviderError> {
+    let current_rev = current.as_ref().map(|v| v.id.clone());
     #[derive(Deserialize)]
     struct RevisionEntry {
         rev: String,
@@ -2703,9 +2712,12 @@ fn revisions_in_dialog_order(
                 deleted: false,
             })
             .collect(),
-        |v| Some(v.id.as_str()) == current_rev,
-        || None,
-        |v| super::version_time_secs(v.modified.as_deref()),
+        |v| Some(&v.id) == current_rev.as_ref(),
+        // A revision uploaded between the two calls is the file's rev but
+        // not in the list yet: it is row 0 from the metadata, so no listed
+        // revision is labelled Current.
+        || current,
+        |v| super::version_time_millis(v.modified.as_deref()),
     ))
 }
 
@@ -4430,11 +4442,27 @@ mod tests {
             {"rev":"a1","size":8,"server_modified":"2026-11-16T15:00:00Z"},
             {"rev":"a3","size":16,"server_modified":"2026-11-16T15:02:00Z"}
         ]}"#;
-        let versions = super::revisions_in_dialog_order(body, Some("a3")).expect("parse");
+        let current = |rev: &str| {
+            Some(crate::providers::FileVersion {
+                id: rev.to_string(),
+                modified: Some("2026-11-16T15:03:00Z".to_string()),
+                size: 20,
+                modified_by: None,
+                deleted: false,
+            })
+        };
+        let versions = super::revisions_in_dialog_order(body, current("a3")).expect("parse");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["a3", "a2", "a1"]);
+        assert_eq!(versions[0].size, 16, "the listed row, not the metadata");
         // The current revision is told by the file's rev, not by its time.
-        let versions = super::revisions_in_dialog_order(body, Some("a2")).expect("parse");
+        let versions = super::revisions_in_dialog_order(body, current("a2")).expect("parse");
         assert_eq!(versions[0].id, "a2");
+        // a4 was uploaded after the listing: row 0 is a4 from the metadata,
+        // and a3 stays below it with its Restore.
+        let versions = super::revisions_in_dialog_order(body, current("a4")).expect("parse");
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["a4", "a3", "a2", "a1"]);
+        assert_eq!(versions[0].size, 20);
     }
 }

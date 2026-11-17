@@ -410,7 +410,7 @@ pub fn versions_current_first(
 /// own definition, the latest one written (B2: a download by name serves the
 /// most recent upload); `modified` is the server's upload time.
 pub fn versions_latest_first(versions: Vec<FileVersion>) -> Vec<FileVersion> {
-    let time = |v: &FileVersion| version_time_secs(v.modified.as_deref());
+    let time = |v: &FileVersion| version_time_millis(v.modified.as_deref());
     let latest = versions.iter().map(time).max();
     versions_current_first(versions, |v| Some(time(v)) == latest, || None, time)
 }
@@ -423,7 +423,7 @@ pub fn versions_after_the_file(versions: Vec<FileVersion>, file: &RemoteEntry) -
         versions,
         |_| false,
         || Some(current_version_of(file)),
-        |v| version_time_secs(v.modified.as_deref()),
+        |v| version_time_millis(v.modified.as_deref()),
     )
 }
 
@@ -494,12 +494,18 @@ pub fn current_version_of(file: &RemoteEntry) -> FileVersion {
 /// it [`FileVersion::deleted`]: a delete or hide marker has no contents, and
 /// the dialog hides both buttons on it, so the CLI and the agent tools get
 /// the same answer from the backend.
+///
+/// A listing that fails decides nothing: reading one version by its id may
+/// be allowed where listing them is not (S3 `s3:GetObjectVersion` without
+/// `s3:ListBucketVersions`), and the server itself refuses a marker's id.
 pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
     version_id: &str,
 ) -> Result<(), ProviderError> {
-    let versions = provider.list_versions(path).await?;
+    let Ok(versions) = provider.list_versions(path).await else {
+        return Ok(());
+    };
     if versions.iter().any(|v| v.id == version_id && v.deleted) {
         return Err(ProviderError::NotSupported(
             "This version is a delete marker: the file was deleted then and it has no \
@@ -510,11 +516,20 @@ pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
     Ok(())
 }
 
-/// Seconds since the epoch of a provider version time, read by the single
-/// parser [`crate::parse_remote_mtime`] (RFC 3339, RFC 2822 HTTP dates, naive
-/// UTC), for [`versions_current_first`]'s `newest`; 0 when it reads none.
-pub fn version_time_secs(modified: Option<&str>) -> i64 {
-    modified.and_then(crate::parse_remote_mtime).unwrap_or(0)
+/// Milliseconds since the epoch of a provider version time, for
+/// [`versions_current_first`]'s `newest`; 0 when it reads none. RFC 3339 keeps
+/// its fraction (two B2 uploads in one second stay apart); every other form
+/// goes through the single parser [`crate::parse_remote_mtime`] (RFC 2822
+/// HTTP dates, naive UTC), whole seconds.
+pub fn version_time_millis(modified: Option<&str>) -> i64 {
+    let Some(text) = modified.map(str::trim) else {
+        return 0;
+    };
+    chrono::DateTime::parse_from_rfc3339(text)
+        .map(|time| time.timestamp_millis())
+        .ok()
+        .or_else(|| crate::parse_remote_mtime(text).map(|secs| secs.saturating_mul(1000)))
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -536,7 +551,7 @@ mod versions_order_tests {
     }
 
     fn newest(v: &FileVersion) -> i64 {
-        version_time_secs(v.modified.as_deref())
+        version_time_millis(v.modified.as_deref())
     }
 
     #[test]
@@ -598,17 +613,34 @@ mod versions_order_tests {
     }
 
     #[test]
+    fn the_latest_of_two_uploads_in_one_second_comes_first() {
+        let at = |id: &str, time: &str| FileVersion {
+            modified: Some(time.to_string()),
+            ..row(id, 0)
+        };
+        let listed = vec![
+            at("older", "2026-11-16T19:54:44.100+00:00"),
+            at("newer", "2026-11-16T19:54:44.900+00:00"),
+        ];
+        assert_eq!(ids(&versions_latest_first(listed)), ["newer", "older"]);
+    }
+
+    #[test]
     fn version_times_read_rfc3339_and_http_dates() {
         assert_eq!(
-            version_time_secs(Some("2023-11-14T22:13:20Z")),
-            1_700_000_000
+            version_time_millis(Some("2023-11-14T22:13:20Z")),
+            1_700_000_000_000
         );
         assert_eq!(
-            version_time_secs(Some("Tue, 14 Nov 2023 22:13:20 GMT")),
-            1_700_000_000
+            version_time_millis(Some("2023-11-14T22:13:20.250Z")),
+            1_700_000_000_250
         );
-        assert_eq!(version_time_secs(Some("16Nov2026 15:53:00")), 0);
-        assert_eq!(version_time_secs(None), 0);
+        assert_eq!(
+            version_time_millis(Some("Tue, 14 Nov 2023 22:13:20 GMT")),
+            1_700_000_000_000
+        );
+        assert_eq!(version_time_millis(Some("16Nov2026 15:53:00")), 0);
+        assert_eq!(version_time_millis(None), 0);
     }
 }
 

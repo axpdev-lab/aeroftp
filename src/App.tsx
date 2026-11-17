@@ -22521,7 +22521,7 @@ const App: React.FC = () => {
                       }
                       // The Nextcloud trash API: offered on the WebDAV presets whose
                       // registry entry declares trash (the Nextcloud family), so the
-                      // flag and the button cannot disagree (versioningClaims.test.ts).
+                      // flag and the button cannot disagree (featureClaims.test.ts).
                       if (proto === 'webdav') {
                         const pid = liveConnectionParams.providerId;
                         if (pid && getProviderById(pid)?.features?.trash) {

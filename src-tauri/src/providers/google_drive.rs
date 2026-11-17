@@ -1401,6 +1401,317 @@ impl GoogleDriveProvider {
             .to_string();
         Ok(session_uri)
     }
+
+    /// The file whose revisions `path` addresses.
+    async fn revision_file(&mut self, path: &str) -> Result<DriveFile, ProviderError> {
+        let file_path_is_absolute = path.starts_with('/');
+        let file_path = path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
+            (&file_path[..pos], &file_path[pos + 1..])
+        } else {
+            ("", file_path)
+        };
+        let parent_id = self
+            .parent_folder_id(file_path_is_absolute, parent_path)
+            .await?;
+        self.find_by_name(file_name, &parent_id)
+            .await?
+            .ok_or_else(|| ProviderError::NotFound(path.to_string()))
+    }
+
+    /// Revision `version_id` of file `file_id`, streamed into `local_path`
+    /// (an existing file keeps its permissions, the 0600 of a restore's temp
+    /// file): never held whole in memory.
+    async fn download_revision(
+        &mut self,
+        file_id: &str,
+        version_id: &str,
+        local_path: &str,
+    ) -> Result<(), ProviderError> {
+        use futures_util::StreamExt;
+        use tokio::io::AsyncWriteExt;
+        // KE-B2.4: revision download also honours --drive-acknowledge-abuse
+        // because Google flags the underlying file, not a specific version.
+        let url = format!(
+            "{}/files/{}/revisions/{}?alt=media{}",
+            self.drive_api(),
+            file_id,
+            version_id,
+            self.acknowledge_abuse_suffix()
+        );
+
+        let response = self
+            .client
+            .get(&url)
+            .header(AUTHORIZATION, self.auth_header().await?)
+            .send()
+            .await
+            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let text = response.text().await.unwrap_or_default();
+            return Err(ProviderError::TransferFailed(format!(
+                "Download revision failed: {}",
+                sanitize_api_error(&text)
+            )));
+        }
+
+        let expected = response.content_length();
+        let mut file = tokio::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(local_path)
+            .await
+            .map_err(ProviderError::IoError)?;
+        let mut stream = response.bytes_stream();
+        let mut written: u64 = 0;
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk.map_err(|e| ProviderError::TransferFailed(e.to_string()))?;
+            file.write_all(&chunk)
+                .await
+                .map_err(ProviderError::IoError)?;
+            written += chunk.len() as u64;
+        }
+        file.flush().await.map_err(ProviderError::IoError)?;
+        if let Some(expected) = expected.filter(|expected| *expected != written) {
+            return Err(ProviderError::TransferFailed(format!(
+                "Revision download cut short: received {written} of {expected} bytes"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Upload `local_path` to `remote_path`: a new revision of `into` when
+    /// given (a file id resolved once by the caller, as a restore does, so a
+    /// file put at the path meanwhile is left alone), else of the file the
+    /// path names, else a new file.
+    async fn upload_into(
+        &mut self,
+        local_path: &str,
+        remote_path: &str,
+        into: Option<String>,
+        on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
+    ) -> Result<(), ProviderError> {
+        let total_size = tokio::fs::metadata(local_path)
+            .await
+            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?
+            .len();
+
+        let path_is_absolute = remote_path.starts_with('/');
+        let path = remote_path.trim_matches('/');
+        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
+            (&path[..pos], &path[pos + 1..])
+        } else {
+            ("", path)
+        };
+
+        let (parent_id, existing_file_id) = match into {
+            // Parents are sent only for a new file.
+            Some(file_id) => (String::new(), Some(file_id)),
+            None => {
+                let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
+                // Check if file already exists in target folder: update instead of creating duplicate
+                let existing_file_id = self
+                    .find_by_name(file_name, &parent_id)
+                    .await?
+                    .filter(|f| f.mime_type != "application/vnd.google-apps.folder")
+                    .map(|f| f.id);
+                (parent_id, existing_file_id)
+            }
+        };
+
+        const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
+
+        if total_size > RESUMABLE_THRESHOLD {
+            // Resumable upload for large files: stream from file handle.
+            // Checked before the session opens, so a refusal leaves none behind.
+            let source = super::upload_source::UploadSource::observe(local_path).await?;
+            source.ensure_size(total_size, "Google Drive upload")?;
+            let mut metadata = if existing_file_id.is_some() {
+                // Update: only send name, no parents (already in correct folder)
+                serde_json::json!({ "name": file_name })
+            } else {
+                serde_json::json!({
+                    "name": file_name,
+                    "parents": [parent_id]
+                })
+            };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
+
+            // Step 1: Initiate resumable upload session
+            let init_url = if let Some(ref fid) = existing_file_id {
+                format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
+            } else {
+                format!("{}/files?uploadType=resumable", self.upload_api())
+            };
+
+            let init_request = if existing_file_id.is_some() {
+                self.client.patch(&init_url)
+            } else {
+                self.client.post(&init_url)
+            };
+
+            let init_response = init_request
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(CONTENT_TYPE, "application/json; charset=UTF-8")
+                .header("X-Upload-Content-Length", total_size.to_string())
+                .body(metadata.to_string())
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !init_response.status().is_success() {
+                let text = init_response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "Resumable init failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+
+            let session_uri = init_response
+                .headers()
+                .get("location")
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| ProviderError::Other("No upload session URI returned".to_string()))?
+                .to_string();
+
+            // Step 2: Upload in 10MB chunks from file handle
+            const CHUNK_SIZE: usize = 10 * 1024 * 1024;
+            let mut file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
+            let mut offset: u64 = 0;
+
+            while offset < total_size {
+                use tokio::io::AsyncReadExt;
+                let remaining = (total_size - offset) as usize;
+                let this_chunk = std::cmp::min(CHUNK_SIZE, remaining);
+                let mut chunk = vec![0u8; this_chunk];
+                file.read_exact(&mut chunk)
+                    .await
+                    .map_err(|e| ProviderError::Other(format!("Read chunk error: {}", e)))?;
+
+                let end = offset + this_chunk as u64;
+                // The last chunk publishes the file: refuse a mixture of two versions.
+                if end == total_size {
+                    if let Err(error) = source.ensure_unchanged("Google Drive upload").await {
+                        let _ = self.client.delete(&session_uri).send().await;
+                        return Err(error);
+                    }
+                }
+                let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
+
+                let chunk_response = self
+                    .client
+                    .put(&session_uri)
+                    .header(CONTENT_TYPE, "application/octet-stream")
+                    .header("Content-Range", &range)
+                    .body(chunk)
+                    .send()
+                    .await
+                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+                let status = chunk_response.status().as_u16();
+                if status != 200 && status != 201 && status != 308 {
+                    let text = chunk_response.text().await.unwrap_or_default();
+                    return Err(ProviderError::Other(format!(
+                        "Chunk upload failed: {}",
+                        sanitize_api_error(&text)
+                    )));
+                }
+
+                offset = end;
+                if let Some(ref cb) = on_progress {
+                    cb(offset, total_size);
+                }
+            }
+        } else {
+            // Simple multipart upload for files up to 5 MB: the metadata part,
+            // then the file streamed from disk. The file reports its bytes as
+            // they go out; 100 percent waits for Drive's answer (see
+            // `UploadProgress`).
+            let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
+            progress.start();
+            let file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
+
+            let mut metadata = if existing_file_id.is_some() {
+                serde_json::json!({ "name": file_name })
+            } else {
+                serde_json::json!({
+                    "name": file_name,
+                    "parents": [parent_id]
+                })
+            };
+            if let Some(date) = super::local_modified_rfc3339(local_path) {
+                metadata["modifiedTime"] = serde_json::json!(date);
+            }
+
+            let boundary = "aeroftp_boundary";
+            let mut head = Vec::new();
+            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            head.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
+            head.extend_from_slice(metadata.to_string().as_bytes());
+            head.extend_from_slice(b"\r\n");
+            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            head.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+            let tail = format!("\r\n--{}--", boundary).into_bytes();
+            let body_len = head.len() as u64 + total_size + tail.len() as u64;
+            use futures_util::StreamExt;
+            let body = reqwest::Body::wrap_stream(
+                futures_util::stream::once(async move {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from(head))
+                })
+                .chain(progress.file_stream(file))
+                .chain(futures_util::stream::once(async move {
+                    Ok::<_, std::io::Error>(bytes::Bytes::from(tail))
+                })),
+            );
+
+            let url = if let Some(ref fid) = existing_file_id {
+                format!("{}/files/{}?uploadType=multipart", self.upload_api(), fid)
+            } else {
+                format!("{}/files?uploadType=multipart", self.upload_api())
+            };
+
+            let request = if existing_file_id.is_some() {
+                self.client.patch(&url)
+            } else {
+                self.client.post(&url)
+            };
+
+            let response = request
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .header(
+                    CONTENT_TYPE,
+                    format!("multipart/related; boundary={}", boundary),
+                )
+                // A streamed body under an explicit length goes out unchunked,
+                // as the buffer it replaces did.
+                .header(reqwest::header::CONTENT_LENGTH, body_len)
+                .body(body)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+
+            if !response.status().is_success() {
+                let text = response.text().await.unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "Upload failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+
+            progress.complete();
+        }
+
+        info!("Uploaded {} to {}", local_path, remote_path);
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -1701,218 +2012,8 @@ impl StorageProvider for GoogleDriveProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        let total_size = tokio::fs::metadata(local_path)
+        self.upload_into(local_path, remote_path, None, on_progress)
             .await
-            .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?
-            .len();
-
-        let path_is_absolute = remote_path.starts_with('/');
-        let path = remote_path.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = path.rfind('/') {
-            (&path[..pos], &path[pos + 1..])
-        } else {
-            ("", path)
-        };
-
-        let parent_id = self.parent_folder_id(path_is_absolute, parent_path).await?;
-
-        // Check if file already exists in target folder: update instead of creating duplicate
-        let existing_file_id = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .filter(|f| f.mime_type != "application/vnd.google-apps.folder")
-            .map(|f| f.id);
-
-        const RESUMABLE_THRESHOLD: u64 = 5 * 1024 * 1024; // 5MB
-
-        if total_size > RESUMABLE_THRESHOLD {
-            // Resumable upload for large files: stream from file handle.
-            // Checked before the session opens, so a refusal leaves none behind.
-            let source = super::upload_source::UploadSource::observe(local_path).await?;
-            source.ensure_size(total_size, "Google Drive upload")?;
-            let mut metadata = if existing_file_id.is_some() {
-                // Update: only send name, no parents (already in correct folder)
-                serde_json::json!({ "name": file_name })
-            } else {
-                serde_json::json!({
-                    "name": file_name,
-                    "parents": [parent_id]
-                })
-            };
-            if let Some(date) = super::local_modified_rfc3339(local_path) {
-                metadata["modifiedTime"] = serde_json::json!(date);
-            }
-
-            // Step 1: Initiate resumable upload session
-            let init_url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=resumable", self.upload_api(), fid)
-            } else {
-                format!("{}/files?uploadType=resumable", self.upload_api())
-            };
-
-            let init_request = if existing_file_id.is_some() {
-                self.client.patch(&init_url)
-            } else {
-                self.client.post(&init_url)
-            };
-
-            let init_response = init_request
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(CONTENT_TYPE, "application/json; charset=UTF-8")
-                .header("X-Upload-Content-Length", total_size.to_string())
-                .body(metadata.to_string())
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !init_response.status().is_success() {
-                let text = init_response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Resumable init failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            let session_uri = init_response
-                .headers()
-                .get("location")
-                .and_then(|v| v.to_str().ok())
-                .ok_or_else(|| ProviderError::Other("No upload session URI returned".to_string()))?
-                .to_string();
-
-            // Step 2: Upload in 10MB chunks from file handle
-            const CHUNK_SIZE: usize = 10 * 1024 * 1024;
-            let mut file = tokio::fs::File::open(local_path)
-                .await
-                .map_err(|e| ProviderError::Other(format!("Open file error: {}", e)))?;
-            let mut offset: u64 = 0;
-
-            while offset < total_size {
-                use tokio::io::AsyncReadExt;
-                let remaining = (total_size - offset) as usize;
-                let this_chunk = std::cmp::min(CHUNK_SIZE, remaining);
-                let mut chunk = vec![0u8; this_chunk];
-                file.read_exact(&mut chunk)
-                    .await
-                    .map_err(|e| ProviderError::Other(format!("Read chunk error: {}", e)))?;
-
-                let end = offset + this_chunk as u64;
-                // The last chunk publishes the file: refuse a mixture of two versions.
-                if end == total_size {
-                    if let Err(error) = source.ensure_unchanged("Google Drive upload").await {
-                        let _ = self.client.delete(&session_uri).send().await;
-                        return Err(error);
-                    }
-                }
-                let range = format!("bytes {}-{}/{}", offset, end - 1, total_size);
-
-                let chunk_response = self
-                    .client
-                    .put(&session_uri)
-                    .header(CONTENT_TYPE, "application/octet-stream")
-                    .header("Content-Range", &range)
-                    .body(chunk)
-                    .send()
-                    .await
-                    .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-                let status = chunk_response.status().as_u16();
-                if status != 200 && status != 201 && status != 308 {
-                    let text = chunk_response.text().await.unwrap_or_default();
-                    return Err(ProviderError::Other(format!(
-                        "Chunk upload failed: {}",
-                        sanitize_api_error(&text)
-                    )));
-                }
-
-                offset = end;
-                if let Some(ref cb) = on_progress {
-                    cb(offset, total_size);
-                }
-            }
-        } else {
-            // Simple multipart upload for files up to 5 MB: the metadata part,
-            // then the file streamed from disk. The file reports its bytes as
-            // they go out; 100 percent waits for Drive's answer (see
-            // `UploadProgress`).
-            let progress = super::upload_progress::UploadProgress::new(on_progress, total_size);
-            progress.start();
-            let file = tokio::fs::File::open(local_path)
-                .await
-                .map_err(|e| ProviderError::Other(format!("Read error: {}", e)))?;
-
-            let mut metadata = if existing_file_id.is_some() {
-                serde_json::json!({ "name": file_name })
-            } else {
-                serde_json::json!({
-                    "name": file_name,
-                    "parents": [parent_id]
-                })
-            };
-            if let Some(date) = super::local_modified_rfc3339(local_path) {
-                metadata["modifiedTime"] = serde_json::json!(date);
-            }
-
-            let boundary = "aeroftp_boundary";
-            let mut head = Vec::new();
-            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-            head.extend_from_slice(b"Content-Type: application/json; charset=UTF-8\r\n\r\n");
-            head.extend_from_slice(metadata.to_string().as_bytes());
-            head.extend_from_slice(b"\r\n");
-            head.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
-            head.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
-            let tail = format!("\r\n--{}--", boundary).into_bytes();
-            let body_len = head.len() as u64 + total_size + tail.len() as u64;
-            use futures_util::StreamExt;
-            let body = reqwest::Body::wrap_stream(
-                futures_util::stream::once(async move {
-                    Ok::<_, std::io::Error>(bytes::Bytes::from(head))
-                })
-                .chain(progress.file_stream(file))
-                .chain(futures_util::stream::once(async move {
-                    Ok::<_, std::io::Error>(bytes::Bytes::from(tail))
-                })),
-            );
-
-            let url = if let Some(ref fid) = existing_file_id {
-                format!("{}/files/{}?uploadType=multipart", self.upload_api(), fid)
-            } else {
-                format!("{}/files?uploadType=multipart", self.upload_api())
-            };
-
-            let request = if existing_file_id.is_some() {
-                self.client.patch(&url)
-            } else {
-                self.client.post(&url)
-            };
-
-            let response = request
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .header(
-                    CONTENT_TYPE,
-                    format!("multipart/related; boundary={}", boundary),
-                )
-                // A streamed body under an explicit length goes out unchunked,
-                // as the buffer it replaces did.
-                .header(reqwest::header::CONTENT_LENGTH, body_len)
-                .body(body)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-            if !response.status().is_success() {
-                let text = response.text().await.unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "Upload failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-
-            progress.complete();
-        }
-
-        info!("Uploaded {} to {}", local_path, remote_path);
-        Ok(())
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
@@ -2536,70 +2637,24 @@ impl StorageProvider for GoogleDriveProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        let file_path_is_absolute = path.starts_with('/');
-        let file_path = path.trim_matches('/');
-        let (parent_path, file_name) = if let Some(pos) = file_path.rfind('/') {
-            (&file_path[..pos], &file_path[pos + 1..])
-        } else {
-            ("", file_path)
-        };
-
-        let parent_id = self
-            .parent_folder_id(file_path_is_absolute, parent_path)
-            .await?;
-
-        let file = self
-            .find_by_name(file_name, &parent_id)
-            .await?
-            .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
-
-        // KE-B2.4: revision download also honours --drive-acknowledge-abuse
-        // because Google flags the underlying file, not a specific version.
-        let url = format!(
-            "{}/files/{}/revisions/{}?alt=media{}",
-            self.drive_api(),
-            file.id,
-            version_id,
-            self.acknowledge_abuse_suffix()
-        );
-
-        let response = self
-            .client
-            .get(&url)
-            .header(AUTHORIZATION, self.auth_header().await?)
-            .send()
+        let file = self.revision_file(path).await?;
+        self.download_revision(&file.id, version_id, local_path)
             .await
-            .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-
-        if !response.status().is_success() {
-            let text = response.text().await.unwrap_or_default();
-            return Err(ProviderError::TransferFailed(format!(
-                "Download revision failed: {}",
-                sanitize_api_error(&text)
-            )));
-        }
-
-        let bytes = response
-            .bytes()
-            .await
-            .map_http_err(|e| ProviderError::TransferFailed(e.to_string()))?;
-
-        tokio::fs::write(local_path, &bytes)
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        Ok(())
     }
 
     /// Drive has no call that makes a revision current: the revision is
     /// fetched to a private temp file (0600, removed on every exit) and sent
     /// as a new revision of the same file, which keeps its id and history.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
+        // The file id is resolved once: a file put at the path while the
+        // revision downloads is left alone, the revision goes back to its own
+        // file.
+        let file = self.revision_file(path).await?;
         let temp = super::VersionTempFile::create_private("aeroftp_drive_version")
             .map_err(ProviderError::IoError)?;
         let local = temp.0.to_string_lossy().into_owned();
-        self.download_version(path, version_id, &local).await?;
-        self.upload(&local, path, None).await
+        self.download_revision(&file.id, version_id, &local).await?;
+        self.upload_into(&local, path, Some(file.id), None).await
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -3239,7 +3294,7 @@ fn revisions_in_dialog_order(
         versions,
         |v| Some(v.id.as_str()) == head,
         || None,
-        |v| super::version_time_secs(v.modified.as_deref()),
+        |v| super::version_time_millis(v.modified.as_deref()),
     ))
 }
 
@@ -3941,6 +3996,57 @@ mod tests {
             "{changes:?}"
         );
         assert_eq!(temps(), before);
+    }
+
+    /// A file put at the path while the revision downloads (F2 replacing
+    /// F1) is left alone: the path is resolved once and the revision goes
+    /// back to F1.
+    #[tokio::test]
+    async fn a_drive_restore_keeps_the_file_id_it_resolved_first() {
+        use axum::response::IntoResponse;
+        use std::sync::{Arc, Mutex};
+        let patches: Arc<Mutex<Vec<String>>> = Arc::default();
+        let searches = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let (seen, searched) = (Arc::clone(&patches), Arc::clone(&searches));
+        let app =
+            axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
+                let (seen, searched) = (Arc::clone(&seen), Arc::clone(&searched));
+                async move {
+                    let method = req.method().as_str().to_string();
+                    let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
+                    // Read the body whole: a reply sent while the client is
+                    // still writing the upload can reset the connection.
+                    let _ = axum::body::to_bytes(req.into_body(), 1 << 16).await;
+                    if method == "PATCH" {
+                        let id = url.path().rsplit('/').next().unwrap_or("").to_string();
+                        seen.lock().unwrap().push(id.clone());
+                        return axum::Json(serde_json::json!({ "id": id })).into_response();
+                    }
+                    if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
+                        return "content of r1".into_response();
+                    }
+                    // The first search finds F1; F2 is there from then on.
+                    let n = searched.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    let id = if n == 0 { "F1" } else { "F2" };
+                    axum::Json(serde_json::json!({ "files": [
+                        { "id": id, "name": "a.txt", "mimeType": "text/plain", "parents": ["root"] }
+                    ]}))
+                    .into_response()
+                }
+            }));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let mut provider = test_provider();
+        provider.connected = true;
+        provider.api_origin_override = Some(base);
+        provider.test_access_token = Some("t".to_string());
+        provider
+            .restore_version("/a.txt", "r1")
+            .await
+            .expect("restore");
+        server.abort();
+        assert_eq!(*patches.lock().unwrap(), ["F1"]);
     }
 
     /// Drive keeps `photos` beside `Photos` as two folders, and the exact

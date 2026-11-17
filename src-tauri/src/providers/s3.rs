@@ -8250,16 +8250,11 @@ impl StorageProvider for S3Provider {
             all_versions.len(),
             key
         );
-        // Markers alone leave nothing to restore (a key whose only version
-        // sits in a soft-delete bin): no versions.
-        if all_versions.iter().all(|v| v.deleted) {
-            all_versions.clear();
-        }
         Ok(super::versions_current_first(
             all_versions,
             |v| latest_ids.contains(&v.id),
             || None,
-            |v| super::version_time_secs(v.modified.as_deref()),
+            |v| super::version_time_millis(v.modified.as_deref()),
         ))
     }
 
@@ -13256,6 +13251,8 @@ mod tests {
         rename: RenameHeader,
         stats: Option<(u16, &'static str)>,
         versions_xml: Option<&'static str>,
+        /// ListObjectVersions answers 403 (no `s3:ListBucketVersions`).
+        versions_denied: bool,
     }
 
     impl Default for TigrisDoubleConfig {
@@ -13264,6 +13261,7 @@ mod tests {
                 rename: RenameHeader::Honor,
                 stats: None,
                 versions_xml: None,
+                versions_denied: false,
             }
         }
     }
@@ -13360,6 +13358,12 @@ mod tests {
                         );
                     }
                     match method.as_str() {
+                        "GET" if key.is_empty()
+                            && query.contains_key("versions")
+                            && config.versions_denied =>
+                        {
+                            reply(403, &[], b"<Error><Code>AccessDenied</Code></Error>".to_vec())
+                        }
                         "GET" if key.is_empty() && query.contains_key("versions") => reply(
                             200,
                             &[],
@@ -15222,6 +15226,56 @@ mod tests {
             matches!(restored, Err(ProviderError::NotSupported(_))),
             "{restored:?}"
         );
+    }
+
+    /// A key whose contents were purged and whose delete marker remains
+    /// still lists that marker: its id is what a delete of it needs.
+    #[tokio::test]
+    async fn a_key_with_only_its_delete_marker_lists_the_marker() {
+        const MARKER_ONLY: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult>
+  <IsTruncated>false</IsTruncated>
+  <DeleteMarker>
+    <Key>docs/a.txt</Key>
+    <VersionId>m3</VersionId>
+    <IsLatest>true</IsLatest>
+    <LastModified>2026-11-05T12:00:00.000Z</LastModified>
+  </DeleteMarker>
+</ListVersionsResult>"#;
+        let config = TigrisDoubleConfig {
+            versions_xml: Some(MARKER_ONLY),
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[], config).await;
+        let versions = provider
+            .list_versions("/docs/a.txt")
+            .await
+            .expect("versions");
+        let rows: Vec<(&str, bool)> = versions
+            .iter()
+            .map(|v| (v.id.as_str(), v.deleted))
+            .collect();
+        assert_eq!(rows, [("m3", true)]);
+    }
+
+    /// Reading a version by its id may be allowed where listing versions is
+    /// not: the marker check does not turn a refused listing into a refused
+    /// download.
+    #[tokio::test]
+    async fn a_known_version_downloads_without_the_right_to_list_versions() {
+        let config = TigrisDoubleConfig {
+            versions_denied: true,
+            ..Default::default()
+        };
+        let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "A")], config).await;
+        assert!(provider.list_versions("/docs/a.txt").await.is_err());
+        let local = tempfile::tempdir().unwrap();
+        let target = local.path().join("v2");
+        provider
+            .download_version("/docs/a.txt", "v2", target.to_str().unwrap())
+            .await
+            .expect("download by version id");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "A");
     }
 
     #[tokio::test]

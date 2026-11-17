@@ -16,7 +16,9 @@
 # file path; `mega-ls -l /same` lists a folder holding a file of its own name,
 # opened by the `path:` line MEGAcmd 2.6 writes before a folder's listing.
 # `mega-ls -l --versions /v.txt` lists v.txt and its chain of three, the
-# current one first, as MEGAcmd 2.6.0 lists it (measured 2026-11-16). Every
+# current one first, as MEGAcmd 2.6.0 lists it (measured 2026-11-16);
+# `/w.txt` has a current version older in time than the one below it (a
+# restore keeps the old time) and `/x.txt` two versions of one time. Every
 # mega-get source is appended to get.log, its local target to
 # get-targets.log, and every mega-put target to put.log; a file
 # get-writes-then-fails makes mega-get write 500 bytes and then refuse. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
@@ -53,6 +55,20 @@ case "$(basename "$0")" in
             echo '----    3           13 16Nov2026 15:53:00 v.txt#1794840780'
             echo '----    2           12 16Nov2026 15:52:57 v.txt#1794840777'
             echo '----    1            8 16Nov2026 15:52:55 v.txt#1794840775'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/w.txt" ]; then
+            echo 'Versions of w.txt:'
+            echo '----    3            8 16Nov2026 15:51:40 w.txt#1794840700'
+            echo '----    2           13 16Nov2026 15:53:10 w.txt#1794840790'
+            echo '----    1            8 16Nov2026 15:53:00 w.txt#1794840780'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/x.txt" ]; then
+            echo 'Versions of x.txt:'
+            echo '----    3           13 16Nov2026 15:53:10 x.txt#1794840790'
+            echo '----    2           12 16Nov2026 15:52:57 x.txt#1794840777'
+            echo '----    1            8 16Nov2026 15:52:57 x.txt#1794840777'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then
