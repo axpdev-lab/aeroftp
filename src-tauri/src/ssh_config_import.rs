@@ -319,12 +319,33 @@ fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
 /// An `IdentityFile` path as ssh_config reads it: one with whitespace is
 /// written in double quotes (a path may hold spaces), and one with a double
 /// quote cannot be written at all, since the format has no escape for it.
+/// Nor can one with a backslash before another backslash, a quote or an
+/// apostrophe, or at the end of a quoted path: OpenSSH (`argv_split` in
+/// misc.c) drops that backslash, inside double quotes too, so the path would
+/// not read back as written (`ssh -G` on 10.2p1: `\\nas` reads as `\nas`,
+/// `id\'b` as `id'b`, and a last one before the closing quote gives "invalid
+/// quotes"). Any other backslash (`C:\Users\Me`, an unquoted `/keys/id\`)
+/// is read as written.
 fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains('"') {
         return Err(format!(
             "its {field} holds a double quote, which ssh_config cannot write inside a value; rename the file and export again"
         ));
+    }
+    // Only a quoted path has a closing quote for a last backslash to escape.
+    let quoted = value.contains(char::is_whitespace);
+    let mut chars = value.chars().peekable();
+    while let Some(c) = chars.next() {
+        let escapes = match chars.peek() {
+            None => quoted,
+            Some(next) => matches!(next, '\\' | '\'' | '"'),
+        };
+        if c == '\\' && escapes {
+            return Err(format!(
+                "its {field} holds a backslash before a backslash, a quote or its end, which ssh would read as an escape; move the key and export again"
+            ));
+        }
     }
     Ok(if value.contains(char::is_whitespace) {
         format!("\"{value}\"")
@@ -814,9 +835,21 @@ Host roundtrip
         let second = dir.path().join("second");
         let outcome = export_ssh_config(&again, &HashMap::new(), &second).unwrap();
         assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
-        assert_eq!(
-            std::fs::read_to_string(&first).unwrap(),
-            std::fs::read_to_string(&second).unwrap()
+        // The same file but for the `# Exported:` time, which may tick
+        // between the two exports.
+        let body = |path: &std::path::Path| {
+            std::fs::read_to_string(path)
+                .unwrap()
+                .lines()
+                .filter(|l| !l.starts_with("# Exported: "))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        assert_eq!(body(&first), body(&second));
+        assert!(
+            body(&first).contains("  IdentityFile \"/home/u/My Keys/id_ed25519\"\n"),
+            "{}",
+            body(&first)
         );
     }
 
@@ -843,6 +876,36 @@ Host roundtrip
                 serde_json::json!({"proxyJump": "\r\nbastion"}),
             ),
             sftp("tab", "h.example.com", "a\tb", none.clone()),
+            sftp(
+                "unc",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "\\\\nas\\My Keys\\id"}),
+            ),
+            sftp(
+                "trailing",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "C:\\My Keys\\"}),
+            ),
+            sftp(
+                "apostrophe",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "/keys/My Keys/id\\'backup"}),
+            ),
+            sftp(
+                "bare apostrophe",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "/keys/id\\'backup"}),
+            ),
+            sftp(
+                "windows",
+                "h.example.com",
+                "u",
+                serde_json::json!({"private_key_path": "C:\\Users\\John Doe\\.ssh\\id"}),
+            ),
             sftp("\n", "h.example.com", "u", none.clone()),
             sftp("   ", "h.example.com", "u", none.clone()),
             sftp("good", "h.example.com", "u", none.clone()),
@@ -850,13 +913,20 @@ Host roundtrip
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config");
         let outcome = export_ssh_config(&servers, &HashMap::new(), &path).unwrap();
-        assert_eq!(outcome.exported, 1, "{:?}", outcome.skipped);
+        assert_eq!(outcome.exported, 2, "{:?}", outcome.skipped);
         let want = [
             ("lead", "its host holds a line break"),
             ("trail", "its user name holds a line break"),
             ("key", "its key file path holds a line break"),
             ("jump", "its jump host holds a line break"),
             ("tab", "its user name holds whitespace"),
+            ("unc", "its key file path holds a backslash before"),
+            ("trailing", "its key file path holds a backslash before"),
+            ("apostrophe", "its key file path holds a backslash before"),
+            (
+                "bare apostrophe",
+                "its key file path holds a backslash before",
+            ),
             ("\n", "its name holds a line break"),
             ("   ", "its name is empty"),
         ];
@@ -865,12 +935,69 @@ Host roundtrip
             assert_eq!(skip.name, name);
             assert!(skip.reason.starts_with(reason), "{name:?}: {}", skip.reason);
         }
-        assert_eq!(
-            std::fs::read_to_string(&path)
-                .unwrap()
-                .matches("Host ")
-                .count(),
-            1
+        let config = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(config.matches("Host ").count(), 2, "{config}");
+        assert!(
+            config.contains("  IdentityFile \"C:\\Users\\John Doe\\.ssh\\id\"\n"),
+            "{config}"
         );
+    }
+
+    /// The exported key paths as OpenSSH itself reads them (`ssh -G`), where
+    /// an `ssh` is installed: each reads back as the profile holds it.
+    #[test]
+    fn openssh_reads_each_exported_key_path_as_written() {
+        if std::process::Command::new("ssh")
+            .arg("-V")
+            .output()
+            .is_err()
+        {
+            eprintln!("no ssh here: the quoting is pinned by the export tests only");
+            return;
+        }
+        let paths = [
+            "/home/u/.ssh/id_ed25519",
+            "/home/u/My Keys/id_ed25519",
+            "C:\\Users\\John Doe\\.ssh\\id",
+            "C:\\Users\\me\\.ssh\\id",
+            "/keys/My Keys/id\\#b",
+            "/keys/id\\",
+        ];
+        let servers: Vec<SshExportServer> = paths
+            .iter()
+            .enumerate()
+            .map(|(i, path)| {
+                sftp(
+                    &format!("k{i}"),
+                    "h.example.com",
+                    "u",
+                    serde_json::json!({"private_key_path": path}),
+                )
+            })
+            .collect();
+        let dir = tempfile::tempdir().unwrap();
+        let config = dir.path().join("config");
+        let outcome = export_ssh_config(&servers, &HashMap::new(), &config).unwrap();
+        assert_eq!(outcome.exported, paths.len(), "{:?}", outcome.skipped);
+        for (i, path) in paths.iter().enumerate() {
+            let read = std::process::Command::new("ssh")
+                .arg("-G")
+                .arg("-F")
+                .arg(&config)
+                .arg(format!("k{i}"))
+                .output()
+                .unwrap();
+            assert!(
+                read.status.success(),
+                "{path}: {}",
+                String::from_utf8_lossy(&read.stderr)
+            );
+            let stdout = String::from_utf8_lossy(&read.stdout);
+            let identity: Vec<&str> = stdout
+                .lines()
+                .filter_map(|l| l.strip_prefix("identityfile "))
+                .collect();
+            assert_eq!(identity, [*path], "{stdout}");
+        }
     }
 }
