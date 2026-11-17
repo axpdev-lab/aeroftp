@@ -146,10 +146,20 @@ async fn session(
 }
 
 async fn provider_with(script: Script) -> (FtpProvider, Arc<Mutex<Wire>>) {
+    let (provider, wire, _server) = provider_with_server(script).await;
+    (provider, wire)
+}
+
+/// As [`provider_with`], with the server task, for a test that runs many
+/// exchanges and stops each server when its exchange is done: a detached one
+/// keeps its listener until the test ends.
+async fn provider_with_server(
+    script: Script,
+) -> (FtpProvider, Arc<Mutex<Wire>>, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
     let wire = Arc::new(Mutex::new(Wire::default()));
-    tokio::spawn(serve(listener, Arc::clone(&wire), script));
+    let server = tokio::spawn(serve(listener, Arc::clone(&wire), script));
     let config = FtpConfig {
         host: "127.0.0.1".to_string(),
         port,
@@ -165,7 +175,7 @@ async fn provider_with(script: Script) -> (FtpProvider, Arc<Mutex<Wire>>) {
         .connect()
         .await
         .expect("connect to the scripted server");
-    (provider, wire)
+    (provider, wire, server)
 }
 
 /// A server whose first connection answers `SITE` with `on_first`, and every
@@ -512,7 +522,7 @@ async fn a_burst_of_preliminary_replies_is_followed_in_linear_time() {
             burst.extend_from_slice(b"150 x\r\n");
         }
         burst.extend_from_slice(b"200 Done\r\n");
-        let (mut provider, wire) = provider_with(reply(&burst)).await;
+        let (mut provider, wire, server) = provider_with_server(reply(&burst)).await;
         let started = std::time::Instant::now();
         let run = run_site_command(
             &mut provider,
@@ -527,6 +537,14 @@ async fn a_burst_of_preliminary_replies_is_followed_in_linear_time() {
         assert_eq!(code, 200);
         assert_eq!(lines.last().map(String::as_str), Some("200 Done"));
         assert_eq!(wire.lock().unwrap().site_lines().len(), 1);
+        // 55 exchanges: each server is stopped with its exchange, so none
+        // keeps its listener for the rest of the test. The task owns the
+        // listener: cancelled and dropped means the listener is closed.
+        server.abort();
+        let stopped = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .expect("server still running");
+        assert!(stopped.unwrap_err().is_cancelled());
         elapsed
     }
     const WHOLE: usize = 128 * 1024;
