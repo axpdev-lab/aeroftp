@@ -254,9 +254,13 @@ fn ssh_words(s: &str) -> Result<Vec<String>, String> {
 const IMPORTED_KEYS: [&str; 4] = ["hostname", "port", "user", "identityfile"];
 
 /// Why ssh refuses a whole file for this line, for the keywords this import
-/// reads: a quote left open, a second value, no value, or a port that is not
-/// a number from 1 to 65535 (`ssh -G` on 10.2p1: "invalid quotes", "garbage
-/// at end of line", "Missing argument", "Bad port"). ssh checks every line,
+/// reads: a quote left open, a second value, no value, or a port written in
+/// digits that is not from 1 to 65535 (`ssh -G` on 10.2p1: "invalid quotes",
+/// "garbage at end of line", "Missing argument", "Bad port"). A port that is
+/// not all digits is a service name to ssh (`Port ssh` is 22, `Port http`
+/// 80, `Port Ssh` a "Bad port"), looked up in the system's services
+/// database, which this import does not read: [`map_host_block`] skips only
+/// that host. ssh checks every line,
 /// before the first `Host` and inside a `Match` block too, and then reads
 /// none of the hosts. A keyword this import does not read is left to ssh:
 /// which ones exist, and how many values each takes, depends on its version.
@@ -269,13 +273,22 @@ fn ssh_line_error(key: &str, words: &[String]) -> Option<String> {
         Some(format!("gives `{key}` no value"))
     } else if words.len() > 1 && IMPORTED_KEYS.contains(&key) {
         Some(format!("gives `{key}` more than one value"))
-    } else if key == "port" && !first.parse::<u16>().is_ok_and(|p| p != 0) {
+    } else if key == "port"
+        && port_digits(first).is_some_and(|p| p.parse::<u16>().map_or(true, |p| p == 0))
+    {
         Some(format!(
             "gives `port` the value `{first}`, which is not a port from 1 to 65535"
         ))
     } else {
         None
     }
+}
+
+/// The digits of a port written as a number, with the `+` ssh accepts in
+/// front (`Port +22` is 22), or `None` for anything else.
+fn port_digits(value: &str) -> Option<&str> {
+    let digits = value.strip_prefix('+').unwrap_or(value);
+    (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())).then_some(digits)
 }
 
 /// Maximum number of `Host` blocks to parse, matching the other importers:
@@ -374,10 +387,15 @@ fn map_host_block(block: &HostBlock) -> Result<ServerProfileExport, String> {
     }
 
     let kv = &block.kv;
-    let port = kv
-        .get("port")
-        .and_then(|p| p.parse::<u32>().ok())
-        .unwrap_or(22);
+    // A port in digits outside 1 to 65535 already refused the whole file; a
+    // service name is skipped, since ssh resolves it from a database this
+    // import does not read, and taking 22 for it would be a guess.
+    let port = match kv.get("port") {
+        Some(p) => p.parse::<u16>().map(u32::from).map_err(|_| {
+            format!("its port `{p}` is not a number, and a service name is not looked up here; write the port number and import again")
+        })?,
+        None => 22,
+    };
     // ssh expands `HostName` first (its `%h` is the alias), then the others
     // against that host name: the order the tokens are resolved in below.
     let mut tokens = SshTokens {
@@ -1691,9 +1709,9 @@ Host roundtrip
                 "gives `port` the value `65536`",
             ),
             (
-                "Host fine\n  HostName f.example.com\n  Port 22x\n",
+                "Host fine\n  HostName f.example.com\n  Port 99999999999999999999\n",
                 3,
-                "gives `port` the value `22x`",
+                "gives `port` the value `99999999999999999999`",
             ),
         ];
         let bad = dir.path().join("bad");
@@ -1716,6 +1734,27 @@ Host roundtrip
                     .reason
                     .ends_with("so ssh refuses the whole file and reads none of its hosts"));
             }
+        }
+        // A service name skips only its host: `Port ssh` is port 22 to ssh,
+        // but only through the system's services database.
+        for name in ["ssh", "22x"] {
+            std::fs::write(
+                &bad,
+                format!("Host fine\n  HostName f.example.com\nHost svc\n  Port {name}\n"),
+            )
+            .unwrap();
+            let result = import_ssh_config(&bad).unwrap();
+            assert_eq!(result.servers.len(), 1, "{name}");
+            assert_eq!(result.servers[0].name, "fine");
+            assert_eq!(result.skipped.len(), 1, "{name}");
+            assert_eq!(result.skipped[0].name, "svc");
+            assert!(
+                result.skipped[0]
+                    .reason
+                    .starts_with(&format!("its port `{name}` is not a number")),
+                "{}",
+                result.skipped[0].reason
+            );
         }
         // A port ssh reads as a number: `+22` and `022` are port 22.
         std::fs::write(
