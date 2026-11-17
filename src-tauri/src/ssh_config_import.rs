@@ -357,12 +357,21 @@ fn ssh_escapes(value: &str, quoted: bool) -> bool {
 /// opens a quoted part, and one left open makes ssh refuse the whole file
 /// ("invalid quotes"); quoting does not help here (a quoted `ProxyJump`
 /// keeps its quotes), so such a value is refused, as is a backslash ssh would
-/// read as an escape ([`ssh_escapes`]).
+/// read as an escape ([`ssh_escapes`]). So is a value that starts with `#`,
+/// which ssh reads as a comment, leaving the keyword without its argument
+/// and the whole file refused ("Missing argument"), or with `=`, which ssh
+/// reads as the separator after the keyword and drops (`User =ops` is
+/// `User ops`).
 fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains(char::is_whitespace) || value.contains(['"', '\'']) {
         return Err(format!(
             "its {field} holds whitespace, a quote or an apostrophe, which ssh would read as more than one value or an open quote; correct the profile and export again"
+        ));
+    }
+    if value.starts_with(['#', '=']) {
+        return Err(format!(
+            "its {field} starts with `#` or `=`, which ssh would read as a comment or as the separator after the keyword; correct the profile and export again"
         ));
     }
     if ssh_escapes(value, false) {
@@ -382,7 +391,9 @@ fn ssh_word<'a>(field: &str, value: &'a str) -> Result<&'a str, String> {
 /// not read back as written (`ssh -G` on 10.2p1: `\\nas` reads as `\nas`,
 /// `id\'b` as `id'b`, and a last one before the closing quote gives "invalid
 /// quotes"). Any other backslash (`C:\Users\Me`, an unquoted `/keys/id\`)
-/// is read as written.
+/// is read as written. A path that starts with `#` or `=` is quoted too:
+/// unquoted, ssh would read a comment or a separator there (see
+/// [`ssh_word`]), and `"#id"` reads as `#id`.
 fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     crate::bridge_shared::export_line_value(field, value)?;
     if value.contains('"') {
@@ -393,7 +404,9 @@ fn ssh_path(field: &str, value: &str) -> Result<String, String> {
     // An apostrophe outside quotes opens a quoted part ssh never sees closed;
     // inside double quotes it is a letter. Only a quoted path has a closing
     // quote for a last backslash to escape.
-    let quoted = value.contains(char::is_whitespace) || value.contains('\'');
+    let quoted = value.contains(char::is_whitespace)
+        || value.contains('\'')
+        || value.starts_with(['#', '=']);
     if ssh_escapes(value, quoted) {
         return Err(format!(
             "its {field} holds a backslash before a backslash, a quote or its end, which ssh would read as an escape; move the key and export again"
@@ -435,8 +448,16 @@ fn ssh_host_lines(server: &SshExportServer) -> Result<String, String> {
     let key_file = opt("private_key_path")
         .map(|k| ssh_path("key file path", k))
         .transpose()?;
+    // `ProxyJump` alone also ends its value at a `#` inside it (`ssh -G`:
+    // `ProxyJump a#b` reads as `a`).
     let proxy = opt("proxyJump")
-        .map(|p| ssh_word("jump host", p))
+        .map(|p| match ssh_word("jump host", p)? {
+            p if p.contains('#') => Err(
+                "its jump host holds `#`, which ssh would read as the start of a comment; correct the profile and export again"
+                    .to_string(),
+            ),
+            p => Ok(p),
+        })
         .transpose()?;
 
     let mut block = String::new();
@@ -965,6 +986,26 @@ Host roundtrip
                 "u",
                 serde_json::json!({"private_key_path": "C:\\Users\\John Doe\\.ssh\\id"}),
             ),
+            sftp("hash user", "h.example.com", "#ops", none.clone()),
+            sftp("equals host", "=h.example.com", "u", none.clone()),
+            sftp(
+                "hash jump",
+                "h.example.com",
+                "u",
+                serde_json::json!({"proxyJump": "#bastion"}),
+            ),
+            sftp(
+                "equals jump",
+                "h.example.com",
+                "u",
+                serde_json::json!({"proxyJump": "=bastion"}),
+            ),
+            sftp(
+                "inner hash jump",
+                "h.example.com",
+                "u",
+                serde_json::json!({"proxyJump": "bastion#2"}),
+            ),
             sftp("\n", "h.example.com", "u", none.clone()),
             sftp("   ", "h.example.com", "u", none.clone()),
             sftp("good", "h.example.com", "u", none.clone()),
@@ -991,6 +1032,11 @@ Host roundtrip
                 "bare apostrophe",
                 "its key file path holds a backslash before",
             ),
+            ("hash user", "its user name starts with `#` or `=`"),
+            ("equals host", "its host starts with `#` or `=`"),
+            ("hash jump", "its jump host starts with `#` or `=`"),
+            ("equals jump", "its jump host starts with `#` or `=`"),
+            ("inner hash jump", "its jump host holds `#`"),
             ("\n", "its name holds a line break"),
             ("   ", "its name is empty"),
         ];
@@ -1027,6 +1073,8 @@ Host roundtrip
             "/keys/My Keys/id\\#b",
             "/keys/id\\",
             "/keys/id'backup",
+            "#id_ed25519",
+            "=id_ed25519",
         ];
         let servers: Vec<SshExportServer> = paths
             .iter()
