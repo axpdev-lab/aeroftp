@@ -19663,8 +19663,9 @@ where
 /// delete/export. Returns a map `base_prefix -> bool` of which secrets were
 /// copied, so the caller can set the duplicate's `hasStored*` flags. All or
 /// nothing ([`profile_secret_copy::copy_profile_secret_keys`]): a secret that
-/// cannot be read or written fails the command with nothing left under
-/// `target_id`, so the caller saves no duplicate.
+/// cannot be read or written fails the command and the caller saves no
+/// duplicate. The secrets already written are removed; one whose removal also
+/// fails is named in the error, since it stays under `target_id`.
 #[tauri::command]
 async fn copy_profile_secrets(
     source_id: String,
@@ -19680,37 +19681,46 @@ async fn copy_profile_secrets(
     if expected_user_id.is_some() && expected_user_id != user_id {
         return Err(user_partitions::ACCOUNT_CHANGED.to_string());
     }
+    copy_profile_secrets_for(&store, user_id, &source_id, &target_id, protocol.as_deref())
+}
+
+/// The body of [`copy_profile_secrets`] for an explicit store and account.
+pub(crate) fn copy_profile_secrets_for(
+    store: &credential_store::CredentialStore,
+    user_id: Option<i64>,
+    source_id: &str,
+    target_id: &str,
+    protocol: Option<&str>,
+) -> Result<std::collections::HashMap<String, bool>, String> {
     profile_secret_copy::copy_profile_secret_keys(
-        &source_id,
-        &target_id,
-        per_profile_vault_keys(&source_id, protocol.as_deref()),
+        source_id,
+        target_id,
+        per_profile_vault_keys(source_id, protocol),
         |key| match user_id {
-            Some(user) => user_partitions::resolve_credential_for_user(&store, user, key),
-            None => profile_secret_copy::read_vault_secret(&store, key),
+            // Owner-aware: a shared vault entry under the same key may be another
+            // account's (an imported profile keeps its id), so only the proven
+            // legacy owner falls back to it.
+            Some(user) => {
+                user_partitions::resolve_credential_for_user_owner_aware(store, user, key)
+            }
+            None => profile_secret_copy::read_vault_secret(store, key),
         },
         |base, target_key, value| {
             #[cfg(feature = "proton-native")]
             if base == "proton_native_session" {
                 return providers::proton_native::vault::restore_session_blocking(
                     providers::proton_native::vault::SessionOwner::for_user(user_id),
-                    &target_id,
+                    target_id,
                     value,
                 )
                 .map_err(|error| error.to_string());
             }
-            let kind = if profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
-                Some("oauth")
-            } else if base == "proton_native_session" {
-                Some("proton_native_session")
-            } else {
-                None
-            };
-            match (user_id, kind) {
+            match (user_id, profile_secret_copy::copied_secret_type(base)) {
                 (Some(user), Some(kind)) => user_partitions::store_credential_for_user_typed_dual(
-                    &store, user, target_key, kind, value,
+                    store, user, target_key, kind, value,
                 ),
                 (Some(user), None) => {
-                    user_partitions::store_credential_for_user_dual(&store, user, target_key, value)
+                    user_partitions::store_credential_for_user_dual(store, user, target_key, value)
                 }
                 (None, _) => store
                     .store(target_key, value)
@@ -19720,29 +19730,146 @@ async fn copy_profile_secrets(
         |base, target_key| {
             #[cfg(feature = "proton-native")]
             if base == "proton_native_session" {
-                let _ = providers::proton_native::vault::discard_session_blocking(
+                return providers::proton_native::vault::discard_session_blocking(
                     providers::proton_native::vault::SessionOwner::for_user(user_id),
-                    &target_id,
-                );
-                return;
+                    target_id,
+                )
+                .map_err(|error| error.to_string());
             }
             let _ = base;
             match user_id {
                 Some(user) => {
-                    if user_partitions::delete_credential_for_user_dual(&store, user, target_key)
-                        .is_ok()
-                    {
-                        user_partitions::unmirror_credential_for_user_best_effort_any(
-                            user, target_key,
-                        );
-                    }
+                    user_partitions::delete_credential_for_user_dual(store, user, target_key)
                 }
-                None => {
-                    let _ = store.delete(target_key);
-                }
+                None => store.delete(target_key).map_err(|error| error.to_string()),
             }
         },
     )
+}
+
+#[cfg(test)]
+mod copy_profile_secrets_for_tests {
+    use super::*;
+    use credential_store::CredentialStore;
+
+    /// An isolated vault whose default user is the legacy owner, plus a second
+    /// account that is not.
+    struct Accounts {
+        _dir: tempfile::TempDir,
+        prev_data_root: Option<std::path::PathBuf>,
+        prev_xdg: Option<std::ffi::OsString>,
+        store: CredentialStore,
+        other: i64,
+        _guard: std::sync::MutexGuard<'static, ()>,
+        // Declared last so it is released after the vault is locked again.
+        _partitions: user_partitions::TestLock,
+    }
+
+    impl Accounts {
+        fn new() -> Self {
+            // Same order as every other vault test: environment, then partitions.
+            let guard = crate::test_env::lock();
+            let partitions = user_partitions::test_lock();
+            CredentialStore::lock();
+            let dir = tempfile::TempDir::new().unwrap();
+            let prev_data_root = portable::set_test_data_root(Some(dir.path().to_path_buf()));
+            let prev_xdg = std::env::var_os("XDG_CONFIG_HOME");
+            std::env::set_var("XDG_CONFIG_HOME", dir.path());
+            CredentialStore::bootstrap_master_password("test-master-password-copy").unwrap();
+            CredentialStore::unlock_with_master("test-master-password-copy", None).unwrap();
+            let store = CredentialStore::from_cache().unwrap();
+            user_partitions::init_or_migrate_cli(&store).unwrap();
+            let owner = user_partitions::cli_get_active_user(&store)
+                .unwrap()
+                .unwrap();
+            user_partitions::ensure_credential_user_unlocked(owner.id).unwrap();
+            let other = user_partitions::cli_create_user(&store, "partner", None, None, None)
+                .unwrap()
+                .id;
+            user_partitions::cli_set_active_user(&store, other).unwrap();
+            user_partitions::ensure_credential_user_unlocked(other).unwrap();
+            Self {
+                _dir: dir,
+                prev_data_root,
+                prev_xdg,
+                store,
+                other,
+                _guard: guard,
+                _partitions: partitions,
+            }
+        }
+    }
+
+    impl Drop for Accounts {
+        fn drop(&mut self) {
+            CredentialStore::lock();
+            portable::set_test_data_root(self.prev_data_root.take());
+            match &self.prev_xdg {
+                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+                None => std::env::remove_var("XDG_CONFIG_HOME"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_duplicate_never_receives_a_shared_vault_secret_of_another_account() {
+        let env = Accounts::new();
+        // The legacy owner's password under an id the other account imported too.
+        env.store
+            .store("server_srv_shared", "owner-password")
+            .unwrap();
+        let copied =
+            copy_profile_secrets_for(&env.store, Some(env.other), "srv_shared", "srv_copy", None)
+                .unwrap();
+        assert_eq!(copied.get("server"), Some(&false));
+        assert!(env.store.get("server_srv_copy").is_err());
+        assert_eq!(
+            user_partitions::resolve_credential_for_user_owner_aware(
+                &env.store,
+                env.other,
+                "server_srv_copy"
+            )
+            .unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn a_duplicated_oauth_token_stays_private_to_its_account() {
+        let env = Accounts::new();
+        let token = "{\"access_token\":\"tok\"}";
+        user_partitions::store_imported_credential_for_user(
+            &env.store,
+            env.other,
+            "oauth_google_srv_src",
+            Some("oauth"),
+            token,
+        )
+        .unwrap();
+        let copied = copy_profile_secrets_for(
+            &env.store,
+            Some(env.other),
+            "srv_src",
+            "srv_copy",
+            Some("googledrive"),
+        )
+        .unwrap();
+        assert_eq!(copied.get("oauth_google"), Some(&true));
+        assert!(
+            env.store.get("oauth_google_srv_copy").is_err(),
+            "the copied token must not reach the shared vault"
+        );
+        assert_eq!(
+            user_partitions::resolve_credential_for_user_owner_aware(
+                &env.store,
+                env.other,
+                "oauth_google_srv_copy"
+            )
+            .unwrap()
+            .map(|value| value.to_string()),
+            Some(token.to_string())
+        );
+    }
 }
 
 #[tauri::command]

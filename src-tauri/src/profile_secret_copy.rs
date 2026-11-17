@@ -20,6 +20,24 @@ pub fn read_vault_secret(
     }
 }
 
+/// The partition credential type a copied secret is written with, `None` for a
+/// plain server secret. Tokens are typed so that, for a user other than the
+/// legacy owner, they get a partition row of their kind instead of landing only
+/// in the shared vault. `oauth__client_id` is app configuration, not a token.
+pub fn copied_secret_type(base: &str) -> Option<&'static str> {
+    if crate::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
+        Some("oauth")
+    } else if base == "proton_native_session" {
+        Some("proton_native_session")
+    } else if base == "jottacloud_refresh" {
+        Some("jottacloud_refresh")
+    } else if base.starts_with("oauth_") && !base.starts_with("oauth__") {
+        Some("oauth")
+    } else {
+        None
+    }
+}
+
 /// Copy the secrets named by `source_keys` (each `<base>_<source_id>`) onto
 /// `<base>_<target_id>`, all or nothing.
 ///
@@ -27,7 +45,9 @@ pub fn read_vault_secret(
 /// stores one secret under its target key, `remove` deletes one target key.
 /// Every source secret is read before anything is written, so a secret that
 /// cannot be read stops the copy with nothing written. When a write fails,
-/// every target key already written, and the one that failed, is removed. A
+/// every target key already written, and the one that failed, is removed; a
+/// removal that fails does not stop the others, and the error then names each
+/// secret kind left under the target id, since the copy is not clean. A
 /// copy without a secret its source has would connect without it, or fall
 /// back to a shared token that may be another account's. Errors name the
 /// secret's kind (`base`), never its value.
@@ -45,7 +65,7 @@ pub fn copy_profile_secret_keys<Read, Write, Remove>(
 where
     Read: FnMut(&str) -> Result<Option<Zeroizing<String>>, String>,
     Write: FnMut(&str, &str, &Zeroizing<String>) -> Result<(), String>,
-    Remove: FnMut(&str, &str),
+    Remove: FnMut(&str, &str) -> Result<(), String>,
 {
     let source_suffix = format!("_{source_id}");
     let mut copied = HashMap::new();
@@ -70,13 +90,25 @@ where
     for (base, value) in to_write {
         let target_key = format!("{base}_{target_id}");
         if let Err(error) = write(&base, &target_key, &value) {
-            remove(&base, &target_key);
-            for (base, key) in written.iter().rev() {
-                remove(base, key);
+            let mut left = Vec::new();
+            if remove(&base, &target_key).is_err() {
+                left.push(base.clone());
             }
-            return Err(format!(
+            for (written_base, key) in written.iter().rev() {
+                if remove(written_base, key).is_err() {
+                    left.push(written_base.clone());
+                }
+            }
+            let mut message = format!(
                 "The {base} secret could not be written to the copy, so the copy was not created: {error}"
-            ));
+            );
+            if !left.is_empty() {
+                message.push_str(&format!(
+                    "; these secrets could not be removed from the copy's id {target_id} and remain in the keystore: {}",
+                    left.join(", ")
+                ));
+            }
+            return Err(message);
         }
         copied.insert(base.clone(), true);
         written.push((base, target_key));
@@ -106,6 +138,7 @@ mod tests {
         entries: RefCell<BTreeMap<String, String>>,
         fail_read: Option<String>,
         fail_write: Option<String>,
+        fail_remove: Option<String>,
     }
 
     impl Vault {
@@ -119,6 +152,7 @@ mod tests {
                 ),
                 fail_read: None,
                 fail_write: None,
+                fail_remove: None,
             }
         }
 
@@ -143,7 +177,11 @@ mod tests {
                     Ok(())
                 },
                 |_, key| {
+                    if self.fail_remove.as_deref() == Some(key) {
+                        return Err("keystore locked".to_string());
+                    }
                     self.entries.borrow_mut().remove(key);
+                    Ok(())
                 },
             )
         }
@@ -222,9 +260,48 @@ mod tests {
             vec!["server_other".to_string()],
             |key| Ok(vault.entries.borrow().get(key).cloned().map(Zeroizing::new)),
             |_, _, _| Ok(()),
-            |_, _| {},
+            |_, _| Ok(()),
         )
         .unwrap();
         assert!(copied.is_empty());
+    }
+
+    #[test]
+    fn a_removal_that_fails_does_not_stop_the_others_and_is_named_in_the_error() {
+        let mut vault = Vault::new(&[
+            ("server", "pw"),
+            ("filen_api_key", "key"),
+            ("oauth_dropbox_token", "tok"),
+        ]);
+        vault.fail_write = Some(format!("oauth_dropbox_token_{TARGET}"));
+        // The rollback visits filen_api_key before server: server must still go.
+        vault.fail_remove = Some(format!("filen_api_key_{TARGET}"));
+        let error = vault
+            .copy(&["server", "filen_api_key", "oauth_dropbox_token"])
+            .unwrap_err();
+        assert_eq!(vault.target_keys(), vec![format!("filen_api_key_{TARGET}")]);
+        assert!(error.contains("disk full"), "{error}");
+        assert!(
+            error.contains("remain in the keystore: filen_api_key"),
+            "the secret left behind must be named: {error}"
+        );
+        assert!(!error.contains("pw"), "{error}");
+    }
+
+    #[test]
+    fn tokens_are_copied_with_their_type_and_server_secrets_are_not() {
+        assert_eq!(copied_secret_type("oauth_dropbox"), Some("oauth"));
+        assert_eq!(copied_secret_type("github_oauth"), Some("oauth"));
+        assert_eq!(
+            copied_secret_type("jottacloud_refresh"),
+            Some("jottacloud_refresh")
+        );
+        assert_eq!(
+            copied_secret_type("proton_native_session"),
+            Some("proton_native_session")
+        );
+        assert_eq!(copied_secret_type("oauth__client_id"), None);
+        assert_eq!(copied_secret_type("server"), None);
+        assert_eq!(copied_secret_type("filen_api_key"), None);
     }
 }

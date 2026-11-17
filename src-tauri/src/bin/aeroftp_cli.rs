@@ -27908,9 +27908,14 @@ fn copy_duplicate_secrets(
         new_id,
         ftp_client_gui_lib::per_profile_vault_keys(source_id, protocol),
         |key| match scoped_uid {
-            Some(uid) => ftp_client_gui_lib::user_partitions::cli_read_credential_with_fallback(
-                store, uid, key,
-            ),
+            // Owner-aware: a shared vault entry under the same key may be another
+            // account's (an imported profile keeps its id), so only the proven
+            // legacy owner falls back to it.
+            Some(uid) => {
+                ftp_client_gui_lib::user_partitions::resolve_credential_for_user_owner_aware(
+                    store, uid, key,
+                )
+            }
             None => profile_secret_copy::read_vault_secret(store, key),
         },
         |base, target_key, value| {
@@ -27924,32 +27929,30 @@ fn copy_duplicate_secrets(
                 )
                 .map_err(|error| error.to_string());
             }
-            if ftp_client_gui_lib::profile_auth::DURABLE_KEY_PREFIXES.contains(&base) {
-                dual_store_typed_cred_checked(store, scoped_uid, target_key, "oauth", value)
-            } else if base == "proton_native_session" {
-                dual_store_typed_cred_checked(
-                    store,
-                    scoped_uid,
-                    target_key,
-                    "proton_native_session",
-                    value,
-                )
-            } else {
-                dual_store_server_cred_checked(store, scoped_uid, target_key, value)
+            match profile_secret_copy::copied_secret_type(base) {
+                Some(kind) => {
+                    dual_store_typed_cred_checked(store, scoped_uid, target_key, kind, value)
+                }
+                None => dual_store_server_cred_checked(store, scoped_uid, target_key, value),
             }
         },
         |base, target_key| {
             #[cfg(feature = "proton-native")]
             if base == "proton_native_session" {
                 use ftp_client_gui_lib::providers::proton_native::vault;
-                let _ = vault::discard_session_blocking(
+                return vault::discard_session_blocking(
                     vault::SessionOwner::for_user(scoped_uid),
                     new_id,
-                );
-                return;
+                )
+                .map_err(|error| error.to_string());
             }
             let _ = base;
-            dual_delete_server_cred(store, scoped_uid, target_key);
+            match scoped_uid {
+                Some(uid) => ftp_client_gui_lib::user_partitions::delete_credential_for_user_dual(
+                    store, uid, target_key,
+                ),
+                None => store.delete(target_key).map_err(|error| error.to_string()),
+            }
         },
     )
     .map(|_| ())
