@@ -78,6 +78,11 @@
 #           Flatpak host-config snapshots, and encrypted backup preview/restore
 #           which never materializes or accepts sibling -wal sidecars.
 #           Upgrade requires rusqlite 0.41+ and Rust 1.89+; documented below.)
+# Reviewed: 2026-11-17 (RUSTSEC-2026-0544 freshly published 2026-11-11: zlib heap
+#           buffer overflow in gz_vacate() on a stalled non-blocking gzwrite. BUMPED
+#           libz-sys 1.1.31 -> 1.1.33 (the only path is libssh2-sys <- ssh2), lock
+#           version and checksum only. Added RUSTSEC-2026-0543, chrono unmaintained,
+#           all versions affected, no maintained release to move to; see below.)
 
 [advisories]
 ignore = [
@@ -451,6 +456,32 @@ ignore = [
     #
     # Exit path: remove this ignore when AeroFTP bumps to rusqlite >= 0.41.0.
     "RUSTSEC-2026-0459",  # libsqlite3-sys via C SQLite CVE-2026-119375 (isolated app DBs and no-WAL backup flow; upgrade needs rusqlite 0.41+ and Rust 1.89)
+
+    # ----------------------------------------------------------------
+    # RUSTSEC-2026-0543 - chrono unmaintained
+    # ----------------------------------------------------------------
+    # Unmaintained is the whole advisory: it names no vulnerability, every
+    # version is affected and no maintained chrono release exists to move to
+    # (upstream: chronotope/chrono#1768; the advisory recommends jiff or time).
+    #
+    # Reach: chrono 0.4.45 is a direct dependency of aeroftp (388 `chrono::`
+    # sites in 93 files of src-tauri/src) and of peer-l0 (4 sites). Its inputs
+    # include remote data: 23 files call its parsers directly
+    # (parse_from_rfc3339, parse_from_rfc2822, parse_from_str), provider
+    # timestamps among them. The shared mtime parser crate::parse_remote_mtime
+    # (lib.rs), one of those 23, is called from 38 sites in 12 files and
+    # returns None on a malformed string (no unwrap, expect or indexing).
+    #
+    # Why no replacement now: 11 other crates in the graph depend on chrono
+    # (aerovault, iroh-blobs, libunftp, oauth2, openidconnect, russh-sftp,
+    # sigstore, suppaftp fork, tough, trash, unftp-core), so moving our own
+    # code to jiff would not take chrono out of the build; it would ship two
+    # date libraries instead of one.
+    #
+    # Exit path: remove this ignore when a maintained chrono release appears,
+    # or move aeroftp and peer-l0 to jiff once those dependents no longer
+    # pull chrono in.
+    "RUSTSEC-2026-0543",  # chrono unmaintained (no maintained release; 11 dependents in the graph, replacement would ship two date libraries)
 ]
 
 # We do NOT ignore "informational" advisories blanket-style. Each ignore is
