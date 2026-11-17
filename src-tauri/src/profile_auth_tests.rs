@@ -261,6 +261,114 @@ async fn round_trip() {
     );
     assert_eq!(readiness(&scope, &google).unwrap(), "valid");
 
+    // A profile id with path separators (an imported remote name) takes the
+    // same expired-token path: the refresh runs under a lease whose file name
+    // is made safe inside the token folder, and nothing is created outside it.
+    let separator_id = "rclone-team/drive..\\x-1";
+    let account = format!("oauth_google_{separator_id}");
+    scope
+        .write(&account, &serde_json::to_string(&tokens).unwrap())
+        .unwrap();
+    let mut separated = oauth_config(
+        ProviderType::GoogleDrive,
+        separator_id,
+        &("fixture-client".into(), "fixture-client-secret".into()),
+        "",
+        19899,
+    )
+    .unwrap();
+    separated.token_url = format!("{endpoint}/oauth2-token");
+    let refreshes = |log: &Mutex<Vec<(String, String, String)>>| {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|(p, _, b)| p == "/oauth2-token" && b.contains("grant_type=refresh_token"))
+            .count()
+    };
+    let before = refreshes(&captured);
+    assert_eq!(
+        OAuth2Manager::new()
+            .get_valid_token(&separated)
+            .await
+            .unwrap()
+            .expose_secret(),
+        "oauth-refreshed"
+    );
+    assert_eq!(
+        refreshes(&captured),
+        before + 1,
+        "the expired token was refreshed"
+    );
+    // The whole `delete_tokens` path refused on ENOLCK, with the vault open
+    // and the legacy owner active: its partition row, the vault entry and the
+    // memory copy all stay; with the lock the same call removes all three.
+    #[cfg(unix)]
+    {
+        use crate::providers::oauth2::OAuthProvider;
+        let manager = OAuth2Manager::new();
+        manager
+            .store_tokens(OAuthProvider::Box, "enolck-profile", &tokens)
+            .unwrap();
+        let account = "oauth_box_enolck-profile";
+        assert!(store.get(account).is_ok());
+        let legacy_owner = users::cli_get_active_user(&store).unwrap().unwrap();
+        let partition_rows = || {
+            users::open_or_init_cli()
+                .unwrap()
+                .query_row(
+                    "SELECT COUNT(*) FROM user_credentials WHERE user_id=?1 AND credential_id=?2",
+                    rusqlite::params![legacy_owner.id, account],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap()
+        };
+        assert_eq!(partition_rows(), 1, "the legacy owner's partition mirror");
+        crate::providers::oauth2::seed_memory_token_for_test(account, &store.get(account).unwrap());
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the memory cache starts populated"
+        );
+        crate::providers::oauth2::force_signout_enolck_for_test(true);
+        let refused = manager.delete_tokens(OAuthProvider::Box, "enolck-profile");
+        crate::providers::oauth2::force_signout_enolck_for_test(false);
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|e| e.to_string().contains("nothing was signed out")),
+            "{refused:?}"
+        );
+        assert!(store.get(account).is_ok(), "the vault entry stays");
+        assert_eq!(partition_rows(), 1, "the partition row stays");
+        assert!(
+            crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the refused sign-out leaves the memory copy"
+        );
+        assert!(manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+        manager
+            .delete_tokens(OAuthProvider::Box, "enolck-profile")
+            .unwrap();
+        assert!(store.get(account).is_err(), "the retry removes it");
+        assert_eq!(partition_rows(), 0, "and the partition row");
+        assert!(
+            !crate::providers::oauth2::memory_token_cache_contains_for_test(account),
+            "the retry removes the memory copy"
+        );
+        assert!(!manager.has_tokens(OAuthProvider::Box, "enolck-profile"));
+    }
+    let token_dir = crate::portable::aeroftp_data_root()
+        .unwrap()
+        .join("oauth_tokens");
+    assert!(
+        !token_dir.join("refresh-oauth_google_rclone-team").exists(),
+        "the separator made no folder"
+    );
+    assert!(
+        !token_dir
+            .join("refresh-oauth_google_rclone-team_drive___x-1.lock")
+            .exists(),
+        "the lease is released after the refresh"
+    );
+
     let github =
         json!({"id":"fixture-github","name":"synthetic","protocol":"github","host":"owner/repo"});
     execute_at(

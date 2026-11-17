@@ -293,7 +293,7 @@ fn server_path(reply: String) -> String {
 /// entered again with a `CWD`: a relative one (`home/u`, from a server whose
 /// `PWD` answers relative paths) is resolved from where the server stands
 /// now, and names another folder.
-fn names_one_folder(path: &str) -> bool {
+pub(crate) fn names_one_folder(path: &str) -> bool {
     let bytes = path.as_bytes();
     path.starts_with('/')
         || (bytes.len() >= 3
@@ -718,16 +718,17 @@ impl FtpProvider {
     /// without the "invalid response" that `is_stale_data_connection_error`
     /// reads as one: the callers that reconnect and try again on a stale
     /// session sent the whole file a second time for a refusal.
+    ///
+    /// The reply keeps its status typed and never its text (U6): a final
+    /// `451 upstream said HTTP 403` is a transient 451 to the IPC classifier,
+    /// not a refusal read out of the server's words.
     fn transfer_verdict_error(err: FtpError) -> ProviderError {
         match err {
-            FtpError::UnexpectedResponse(response)
-                if matches!(response.status.code() / 100, 4 | 5) =>
-            {
-                ProviderError::TransferFailed(format!(
-                    "the server refused the transfer: {response}"
-                ))
-            }
-            other => ProviderError::TransferFailed(other.to_string()),
+            FtpError::UnexpectedResponse(response) => ProviderError::FtpRefused {
+                code: response.status.code() as u16,
+                during: AT_THE_END_OF_THE_TRANSFER.to_string(),
+            },
+            other => ProviderError::TransferFailed(format!("{other}{AT_THE_END_OF_THE_TRANSFER}")),
         }
     }
 
@@ -737,6 +738,14 @@ impl FtpProvider {
     /// is how suppaftp prints every refused reply, so routing a SITE command
     /// through here would send each refused administrative command twice.
     fn is_stale_data_connection_error(err: &ProviderError) -> bool {
+        // 125 (a data connection already open) and 425 (none could be
+        // opened), as the typed status the reply left (T8). A positive reply
+        // (below 400) where an error was raised was not the reply the command
+        // waited for: the session is out of step, as suppaftp's "invalid
+        // response" text used to say (U6).
+        if let ProviderError::FtpRefused { code, .. } = err {
+            return matches!(code, 125 | 425) || *code < 400;
+        }
         let message = match err {
             ProviderError::ServerError(msg)
             | ProviderError::TransferFailed(msg)
@@ -788,8 +797,14 @@ impl FtpProvider {
     /// still open from an earlier operation (425 / "already open") or a
     /// control stream suppaftp could not parse. Safe to redial and send
     /// again. A dropped connection is not in it: it may come after the
-    /// transfer landed.
+    /// transfer landed. Neither is a reply that ends the transfer
+    /// ([`Self::transfer_verdict_error`]), a positive one included: it comes
+    /// after the bytes, which the server may have stored.
     fn is_desync_before_transfer_error(err: &ProviderError) -> bool {
+        if let ProviderError::FtpRefused { code, during } = err {
+            return during != AT_THE_END_OF_THE_TRANSFER
+                && (matches!(code, 125 | 425) || *code < 400);
+        }
         let message = match err {
             ProviderError::ServerError(msg)
             | ProviderError::TransferFailed(msg)
@@ -797,6 +812,9 @@ impl FtpProvider {
             | ProviderError::Other(msg) => msg,
             _ => return false,
         };
+        if message.ends_with(AT_THE_END_OF_THE_TRANSFER) {
+            return false;
+        }
         let lower = message.to_lowercase();
         lower.contains("data connection is already open")
             || (lower.contains("425") && lower.contains("data connection"))
@@ -983,7 +1001,7 @@ impl FtpProvider {
                     return Ok(entries);
                 }
                 Err(err) => {
-                    let provider_err = ProviderError::ServerError(err.to_string());
+                    let provider_err = ftp_failure(&err);
                     tracing::debug!(
                         "[FTP] MLSD failed for {}: {}. Disabling MLSD for this provider: the \
                          flag outlives the session and is re-read on reconnect.",
@@ -1030,21 +1048,13 @@ impl FtpProvider {
                 (Err(list_err), Ok(())) => {
                     return Err(
                         Self::classify_missing_path("listing", &base_path, &list_err)
-                            .unwrap_or_else(|| {
-                                ProviderError::ServerError(Self::doing(
-                                    "listing", &base_path, list_err,
-                                ))
-                            }),
+                            .unwrap_or_else(|| ftp_failure(&list_err)),
                     )
                 }
                 (Ok(Some(_)), Err(restore_err)) => return Err(restore_err),
-                (Err(list_err), Err(restore_err)) => {
-                    return Err(ProviderError::ServerError(Self::doing(
-                        "listing",
-                        &base_path,
-                        format!("{list_err}; and {restore_err}"),
-                    )))
-                }
+                // The listing's failure, typed; the unrestored directory is
+                // the next command's to find (its redial checks the session).
+                (Err(list_err), Err(_restore_err)) => return Err(ftp_failure(&list_err)),
             }
         } else {
             let stream = self.stream_mut()?;
@@ -1059,7 +1069,7 @@ impl FtpProvider {
                             FtpError::ConnectionError(_) => {
                                 ProviderError::ConnectionFailed(e.to_string())
                             }
-                            _ => ProviderError::ServerError(e.to_string()),
+                            _ => ftp_failure(&e),
                         }));
                 }
             }
@@ -1206,7 +1216,7 @@ impl FtpProvider {
                 return ProviderError::AlreadyExists(to.to_string());
             }
         }
-        ProviderError::ServerError(err.to_string())
+        ftp_failure(&err)
     }
 
     /// Whether a refusal says the name is taken: "exists", and none of the
@@ -1225,12 +1235,26 @@ impl FtpProvider {
     /// field is our mirror of the server's state, and restoring to what we
     /// believe rather than to where we actually were is how a listing leaves
     /// the connection pointing somewhere else.
+    ///
+    /// The folder it leaves stays owed ([`Self::owed_folder`]) until
+    /// [`Self::restore_cwd`] stands in it again: a command cancelled in
+    /// between, or a restore refused, has the next command redial to that
+    /// folder instead of to `target`, which a relative path would then name.
     async fn cwd_into(&mut self, target: &str) -> Result<String, ProviderError> {
-        let stream = self.stream_mut()?;
-        let saved = stream.pwd().await.map_err(|e| {
-            ProviderError::ServerError(format!("{e} (while asking the server where we are)"))
-        })?;
-        if let Err(e) = stream.cwd(target).await {
+        let saved = self
+            .stream_mut()?
+            .pwd()
+            .await
+            .map_err(|e| ftp_failure(&e))?;
+        // A folder a cancelled redial owes already is the caller's: it stays.
+        let owes = self.owed_folder.is_none();
+        if owes {
+            self.owed_folder = Some(saved.clone());
+        }
+        if let Err(e) = self.stream_mut()?.cwd(target).await {
+            if owes {
+                self.owed_folder = None;
+            }
             return Err(Self::classify_cwd_failure("entering", target, &e));
         }
         // The mirror follows the server immediately, so it is never a lie even
@@ -1321,17 +1345,26 @@ impl FtpProvider {
         };
         let text = response.to_string();
         if response.status != Status::FileUnavailable {
-            return ProviderError::ServerError(Self::doing(operation, target, &text));
+            return ftp_failure_during(err, format!(" (while {operation} {target})"));
         }
         // A 550 on CWD is not only "it is not there": it is also what a server
         // sends for a directory you may not enter. Reading every one as
         // NotFound turns an inaccessible directory into a nonexistent one,
         // which is the mistake this change already made once on mkdir and had
         // corrected by a live server.
+        // Decided on the reply, reported without it (T8).
         if super::types::message_names_a_missing_path_for(&text, target) {
-            ProviderError::NotFound(Self::doing(operation, target, &text))
+            ProviderError::NotFound(Self::doing(
+                operation,
+                target,
+                "FTP status 550: no such folder",
+            ))
         } else {
-            ProviderError::InvalidPath(Self::doing(operation, target, &text))
+            ProviderError::InvalidPath(Self::doing(
+                operation,
+                target,
+                "FTP status 550: the server refused the folder",
+            ))
         }
     }
 
@@ -1341,11 +1374,34 @@ impl FtpProvider {
     /// the worst shape this can take: the listing succeeds, the connection is
     /// left in another directory, and the damage appears later in an unrelated
     /// operation with nothing to connect it back to here.
+    ///
+    /// When it fails, the session still stands in the folder
+    /// [`Self::cwd_into`] entered: it is marked
+    /// [`Self::abandoned_command`], so the next command redials to the folder
+    /// still owed instead of running a relative path there.
     async fn restore_cwd(&mut self, saved: &str) -> Result<(), ProviderError> {
+        if !names_one_folder(saved) {
+            self.abandoned_command.store(true, Ordering::Relaxed);
+            // No folder in the message, as in `restore_working_directory`:
+            // it is the server's own report, not a path the caller gave, and
+            // the error crosses IPC and the logs.
+            return Err(ProviderError::InvalidPath(
+                "the session's folder was reported as a relative path, which cannot be \
+                 entered again: change to an absolute folder to go on"
+                    .to_string(),
+            ));
+        }
         let stream = self.stream_mut()?;
-        match stream.cwd(saved).await {
+        let back = stream.cwd(saved).await;
+        if back.is_err() {
+            self.abandoned_command.store(true, Ordering::Relaxed);
+        }
+        match back {
             Ok(()) => {
                 self.current_path = saved.to_string();
+                if self.owed_folder.as_deref() == Some(saved) {
+                    self.owed_folder = None;
+                }
                 Ok(())
             }
             // The same command as `cwd_into`, so the same classification. It
@@ -1380,8 +1436,15 @@ impl FtpProvider {
             return None;
         }
         let text = response.to_string();
-        super::types::message_names_a_missing_path_for(&text, path)
-            .then(|| ProviderError::NotFound(Self::doing(operation, path, &text)))
+        // Decided on the reply, reported without it (T8).
+        let code = response.status.code();
+        super::types::message_names_a_missing_path_for(&text, path).then(|| {
+            ProviderError::NotFound(Self::doing(
+                operation,
+                path,
+                format!("FTP status {code}: no such file or folder"),
+            ))
+        })
     }
 
     /// Classify a STOR failure instead of calling everything a transfer error.
@@ -1459,9 +1522,19 @@ impl FtpProvider {
                 response.status,
                 Status::FileUnavailable | Status::BadFilename
             ) {
-                let text = response.to_string();
-                return ProviderError::InvalidPath(Self::doing(operation, path, &text));
+                let code = response.status.code();
+                return ProviderError::InvalidPath(Self::doing(
+                    operation,
+                    path,
+                    format!("FTP status {code}: the server refused the name"),
+                ));
             }
+            // Any other refusal: its status, typed, with what we were doing,
+            // never the server's text (T8).
+            return ProviderError::FtpRefused {
+                code: response.status.code() as u16,
+                during: format!(" (while {operation} {path})"),
+            };
         }
         ProviderError::TransferFailed(Self::doing(operation, path, err))
     }
@@ -1478,7 +1551,7 @@ impl FtpProvider {
                 return ProviderError::InvalidPath(Self::doing(operation, path, io));
             }
         }
-        ProviderError::ServerError(err.to_string())
+        ftp_failure_during(&err, format!(" (while {operation} {path})"))
     }
 
     /// A remote path carrying CR or LF, refused before any command is sent.
@@ -1622,8 +1695,16 @@ impl FtpProvider {
             Err(error) => return Err(error),
         };
 
+        // A server that reads `-a` as a pathname lists the folder named `-a`
+        // instead, where a same-named file would pass for this one: with such
+        // an entry here a dot name not shown by the bare listing is unknown,
+        // never missing and never found.
+        let ambiguous = entries.iter().any(|e| e.name == "-a");
         let found = match entries.into_iter().find(|e| e.name == name) {
             Some(entry) => Some(entry),
+            None if name.starts_with('.') && ambiguous => {
+                return Err(ProviderError::Other("LIST -a is ambiguous here: the folder holds an entry named -a, so a dot-prefixed name cannot be looked up".into()))
+            }
             // A bare LIST hides dotfiles on vsftpd and its kin, and a server
             // with MLST never reaches this listing, so a dotfile that is
             // there read as missing: a non-recursive delete then listed the
@@ -1673,9 +1754,45 @@ impl FtpProvider {
         let stream = self.stream_mut()?;
         let size = stream.size(path).await.map_err(|e| {
             Self::classify_missing_path("reading size of", path, &e)
-                .unwrap_or_else(|| ProviderError::ServerError(e.to_string()))
+                .unwrap_or_else(|| ftp_failure(&e))
         })?;
         Ok(size as u64)
+    }
+}
+
+/// An FTP failure at the provider boundary (T8): a refused reply keeps only
+/// its status, typed ([`ProviderError::FtpRefused`]), never the server's text,
+/// which can hold anything (`425 ... HTTP 403`); any other failure keeps the
+/// client library's own description.
+/// What an [`FtpError`] may say in an error: a reply by its status only
+/// ("FTP status 530: command rejected"), never its text, which a server can
+/// fill with anything (an echoed credential, a word the classifier reads, U6).
+/// The other kinds are our own or the transport's words.
+fn ftp_error_text(err: &FtpError) -> String {
+    match err {
+        FtpError::UnexpectedResponse(reply) => {
+            format!("FTP status {}: command rejected", reply.status.code())
+        }
+        other => other.to_string(),
+    }
+}
+
+fn ftp_failure(err: &FtpError) -> ProviderError {
+    ftp_failure_during(err, String::new())
+}
+
+/// The phase of a reply read after a transfer's data
+/// ([`FtpProvider::transfer_verdict_error`]).
+const AT_THE_END_OF_THE_TRANSFER: &str = " (at the end of the transfer)";
+
+/// [`ftp_failure`] saying what we were doing (`" (while deleting /a)"`).
+fn ftp_failure_during(err: &FtpError, during: String) -> ProviderError {
+    match err {
+        FtpError::UnexpectedResponse(reply) => ProviderError::FtpRefused {
+            code: reply.status.code() as u16,
+            during,
+        },
+        other => ProviderError::ServerError(other.to_string()),
     }
 }
 
@@ -1733,14 +1850,14 @@ impl FtpProvider {
         let mut outcome = self.stream_mut()?.pwd().await;
         if let Err(err) = &outcome {
             if self.closed_control_failure(err).await {
-                let failure = ProviderError::ServerError(err.to_string());
+                let failure = ftp_failure(err);
                 let saved = self.current_path.clone();
                 self.reconnect_after_data_error("PWD", &saved, &failure)
                     .await?;
                 outcome = self.stream_mut()?.pwd().await;
             }
         }
-        let path = server_path(outcome.map_err(|e| ProviderError::ServerError(e.to_string()))?);
+        let path = server_path(outcome.map_err(|e| ftp_failure(&e))?);
         self.current_path = path.clone();
         Ok(path)
     }
@@ -1762,14 +1879,18 @@ impl FtpProvider {
         let mut outcome = self.stream_mut()?.cwd(path).await;
         if let Err(err) = &outcome {
             if self.closed_control_failure(err).await {
-                let failure = ProviderError::InvalidPath(err.to_string());
+                let failure = ProviderError::InvalidPath(ftp_error_text(err));
                 self.reconnect_after_data_error("CWD", path, &failure)
                     .await?;
                 outcome = self.stream_mut()?.cwd(path).await;
             }
         }
-        outcome.map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
-        let reported = self.stream_mut()?.pwd().await;
+        outcome.map_err(|e| ProviderError::InvalidPath(ftp_error_text(&e)))?;
+        let reported = self
+            .stream_mut()?
+            .pwd()
+            .await
+            .map_err(|e| ftp_error_text(&e));
         match folder_entered(reported, Some(path)) {
             Ok(folder) => {
                 // The caller's folder now: nothing a cancelled redial owed
@@ -1802,12 +1923,9 @@ impl FtpProvider {
         }
         self.redial_if_a_reply_is_pending().await?;
         let stream = self.stream_mut()?;
-        stream
-            .cdup()
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+        stream.cdup().await.map_err(|e| ftp_failure(&e))?;
 
-        let reported = stream.pwd().await;
+        let reported = stream.pwd().await.map_err(|e| ftp_error_text(&e));
         match folder_entered(reported, None) {
             Ok(folder) => {
                 self.owed_folder = None;
@@ -1845,8 +1963,11 @@ impl FtpProvider {
         self.connect().await?;
         let stream = self.stream_mut()?;
         let entered = match stream.cwd(target).await {
-            Ok(()) => folder_entered(stream.pwd().await, Some(target)),
-            Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
+            Ok(()) => folder_entered(
+                stream.pwd().await.map_err(|e| ftp_error_text(&e)),
+                Some(target),
+            ),
+            Err(e) => Err(ProviderError::InvalidPath(ftp_error_text(&e))),
         };
         self.owed_folder = None;
         match entered {
@@ -1880,7 +2001,7 @@ impl FtpProvider {
             Err("it is a relative folder".to_string())
         } else {
             match self.stream_mut() {
-                Ok(stream) => stream.cwd(&recorded).await.map_err(|e| e.to_string()),
+                Ok(stream) => stream.cwd(&recorded).await.map_err(|e| ftp_error_text(&e)),
                 Err(e) => Err(e.to_string()),
             }
         };
@@ -1899,6 +2020,22 @@ impl FtpProvider {
 
 #[async_trait]
 impl StorageProvider for FtpProvider {
+    fn sync_owner_identity(&self) -> Result<Option<zeroize::Zeroizing<String>>, ProviderError> {
+        use secrecy::ExposeSecret;
+        serde_json::to_string(&(
+            "ftp",
+            &self.config.host,
+            self.config.port,
+            &self.config.username,
+            self.config.password.expose_secret(),
+            format!("{:?}", self.config.tls_mode),
+            self.tls_downgraded,
+            &self.config.initial_path,
+        ))
+        .map(|value| Some(zeroize::Zeroizing::new(value)))
+        .map_err(|_| ProviderError::TargetChanged)
+    }
+
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
@@ -1933,13 +2070,13 @@ impl StorageProvider for FtpProvider {
                 // Plain FTP - no TLS
                 FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?
             }
             FtpTlsMode::Explicit => {
                 // Explicit TLS (AUTH TLS) - connect plain, then upgrade
                 let stream = FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
                 // Never a silent fall back to plaintext: say how to choose
                 // plain FTP on purpose (#1506 Requested 198, a saved profile
@@ -1947,7 +2084,7 @@ impl StorageProvider for FtpProvider {
                 stream
                     .into_secure(connector, &domain)
                     .await
-                    .map_err(tls_upgrade_refused)?
+                    .map_err(|e| tls_upgrade_refused(ftp_error_text(&e)))?
             }
             FtpTlsMode::Implicit => {
                 // Implicit TLS - TLS from the start, no AUTH TLS (port 990)
@@ -1956,7 +2093,10 @@ impl StorageProvider for FtpProvider {
                 FtpControl::connect_secure_implicit(&addr, connector, &domain)
                     .await
                     .map_err(|e| {
-                        ProviderError::ConnectionFailed(format!("Implicit TLS failed: {}", e))
+                        ProviderError::ConnectionFailed(format!(
+                            "Implicit TLS failed: {}",
+                            ftp_error_text(&e)
+                        ))
                     })?
             }
             FtpTlsMode::ExplicitIfAvailable => {
@@ -1965,7 +2105,7 @@ impl StorageProvider for FtpProvider {
                 // is a security risk. If TLS fails, return an error instead.
                 let stream = FtpControl::connect(&addr)
                     .await
-                    .map_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+                    .map_err(|e| ProviderError::ConnectionFailed(ftp_error_text(&e)))?;
                 let connector = FtpsConnector(self.make_tls_connector()?);
                 match stream.into_secure(connector, &domain).await {
                     Ok(secure) => {
@@ -1980,7 +2120,7 @@ impl StorageProvider for FtpProvider {
                             self.config.port,
                             e
                         );
-                        return Err(tls_upgrade_refused(e));
+                        return Err(tls_upgrade_refused(ftp_error_text(&e)));
                     }
                 }
             }
@@ -1998,7 +2138,7 @@ impl StorageProvider for FtpProvider {
         stream
             .login(self.config.username.as_str(), pwd)
             .await
-            .map_err(|e| ProviderError::AuthenticationFailed(e.to_string()))?;
+            .map_err(|e| ProviderError::AuthenticationFailed(ftp_error_text(&e)))?;
 
         // Implicit FTPS encrypts the session from the first byte, but a server
         // keeps the data connections in the clear until the client asks for
@@ -2012,7 +2152,10 @@ impl StorageProvider for FtpProvider {
                     .custom_command(command, &[Status::CommandOk])
                     .await
                     .map_err(|e| {
-                        ProviderError::ConnectionFailed(format!("{command} refused: {e}"))
+                        ProviderError::ConnectionFailed(format!(
+                            "{command} refused: {}",
+                            ftp_error_text(&e)
+                        ))
                     })?;
             }
         }
@@ -2021,7 +2164,7 @@ impl StorageProvider for FtpProvider {
         stream
             .transfer_type(FileType::Binary)
             .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
+            .map_err(|e| ftp_failure(&e))?;
 
         // The login folder is the only `~` this protocol has: many servers do
         // not expand `CWD ~`, so it is read here, before `initial_path` moves
@@ -2055,7 +2198,7 @@ impl StorageProvider for FtpProvider {
                     stream
                         .cwd(&target)
                         .await
-                        .map_err(|e| ProviderError::InvalidPath(e.to_string()))?;
+                        .map_err(|e| ProviderError::InvalidPath(ftp_error_text(&e)))?;
                 }
             }
         }
@@ -2085,12 +2228,7 @@ impl StorageProvider for FtpProvider {
         };
 
         // Get current directory (normalize Windows backslashes from FTP servers)
-        self.current_path = server_path(
-            stream
-                .pwd()
-                .await
-                .map_err(|e| ProviderError::ServerError(e.to_string()))?,
-        );
+        self.current_path = server_path(stream.pwd().await.map_err(|e| ftp_failure(&e))?);
 
         self.stream = Some(stream);
         self.abandoned_command.store(false, Ordering::Relaxed);
@@ -2187,6 +2325,40 @@ impl StorageProvider for FtpProvider {
         outcome
     }
 
+    /// Stand again in the folder a folder transfer left, or close the session
+    /// as lost there ([`Self::lose_folder`]), as a redial does
+    /// ([`Self::restore_working_directory`]): never stay usable in the
+    /// scanned folder while the caller believes it is back.
+    ///
+    /// - A relative folder is entered from the folder the session stands in
+    ///   now, so it would name another one: it is not sent.
+    /// - The folder is owed ([`Self::owed_folder`]) before the server is
+    ///   asked, so a return dropped during its `CWD` or `PWD` has the next
+    ///   command redial to it, not to the scanned one.
+    /// - A refused return (the folder is gone, a 550) leaves the session lost
+    ///   in it, so a later relative command sends nothing.
+    async fn return_to_folder(&mut self, folder: &str) -> Result<(), ProviderError> {
+        if !names_one_folder(folder) {
+            self.lose_folder(folder);
+            return Err(ProviderError::InvalidPath(
+                "the folder the session left was reported as a relative path, which cannot be \
+                 entered again: change to an absolute folder to go on"
+                    .to_string(),
+            ));
+        }
+        self.owed_folder = Some(folder.to_string());
+        match self.cd(folder).await {
+            Ok(()) => {
+                self.owed_folder = None;
+                Ok(())
+            }
+            Err(err) => {
+                self.lose_folder(folder);
+                Err(err)
+            }
+        }
+    }
+
     fn download_was_refused(&self) -> bool {
         self.download_time.is_refused()
     }
@@ -2205,172 +2377,192 @@ impl StorageProvider for FtpProvider {
         local_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.download_time.begin();
-        // Used up here: an early return must not leave it for the next file.
-        let mut source_refused = std::mem::take(&mut self.expects_moved_source);
-        Self::refuse_line_breaks("downloading", remote_path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        // No-op when the provider is already connected (CLI path); connects
-        // a `clone_for_transfer()` worker on its first transfer (generic
-        // clone-pool path), mirroring SFTP.
-        self.ensure_connected().await?;
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.download_time.begin();
+            // Used up here: an early return must not leave it for the next file.
+            let mut source_refused = std::mem::take(&mut self.expects_moved_source);
+            Self::refuse_line_breaks("downloading", remote_path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            // No-op when the provider is already connected (CLI path); connects
+            // a `clone_for_transfer()` worker on its first transfer (generic
+            // clone-pool path), mirroring SFTP.
+            self.ensure_connected().await?;
 
-        // Get file size for progress + intra-file gating.
-        //
-        // A failure here used to become 0 and the download carried on. That
-        // discarded the one thing the server had just told us, and it did it
-        // three ways at once: a progress bar with a fabricated total, the
-        // intra-file parallelism silently disabled because 0 is below every
-        // cutoff, and, when the file simply was not there, a RETR issued
-        // anyway for a path the server had already refused.
-        //
-        // Only a reply that names a missing path is turned into an answer.
-        // Servers legitimately refuse SIZE for other reasons (notably in ASCII
-        // mode), and those keep the previous behaviour exactly: fall back to 0
-        // and let the transfer decide. Refusing a download because SIZE was
-        // unavailable would break working setups, which is the trade this
-        // whole change exists to avoid.
-        let total_size = {
-            let stream = self.stream_mut()?;
-            match stream.size(remote_path).await {
-                Ok(size) => size as u64,
-                Err(err) => match Self::classify_missing_path("downloading", remote_path, &err) {
-                    Some(missing) => return Err(missing),
-                    None => {
-                        if self.multi_thread_streams >= 2 {
-                            report_download_fallback("FTP: SIZE was unavailable");
+            // Get file size for progress + intra-file gating.
+            //
+            // A failure here used to become 0 and the download carried on. That
+            // discarded the one thing the server had just told us, and it did it
+            // three ways at once: a progress bar with a fabricated total, the
+            // intra-file parallelism silently disabled because 0 is below every
+            // cutoff, and, when the file simply was not there, a RETR issued
+            // anyway for a path the server had already refused.
+            //
+            // Only a reply that names a missing path is turned into an answer.
+            // Servers legitimately refuse SIZE for other reasons (notably in ASCII
+            // mode), and those keep the previous behaviour exactly: fall back to 0
+            // and let the transfer decide. Refusing a download because SIZE was
+            // unavailable would break working setups, which is the trade this
+            // whole change exists to avoid.
+            let total_size = {
+                let stream = self.stream_mut()?;
+                match stream.size(remote_path).await {
+                    Ok(size) => size as u64,
+                    Err(err) => match Self::classify_missing_path("downloading", remote_path, &err)
+                    {
+                        Some(missing) => return Err(missing),
+                        None => {
+                            if self.multi_thread_streams >= 2 {
+                                report_download_fallback("FTP: SIZE was unavailable");
+                            }
+                            0
                         }
-                        0
-                    }
-                },
-            }
-        };
-
-        // PD-FTP-1: intra-file parallelism. Engaged only when the user
-        // opted in (`set_multi_thread_download(streams >= 2, ...)`), the
-        // file is at/above the cutoff, and a real connection spec exists so
-        // we can re-dial N independent FTP connections. Without all three
-        // this is a no-op and the single-stream path below is unchanged:
-        // honest non-regression, no protocol overclaim.
-        let mut on_progress = on_progress;
-        // R21: the provider gate method (shared planner: explicit cutoff +
-        // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
-        // the single-file path agrees with batch and pget.
-        let planned_mt = self.planned_download_segments(total_size);
-        if planned_mt >= 2
-            && !source_refused
-            && self.connection_spec.is_some()
-            && !self.restart_unsupported
-        {
-            let (attempt_progress, fallback_progress) =
-                super::multi_thread::share_progress(on_progress.take());
-            on_progress = fallback_progress;
-            match self
-                .parallel_download_if_unchanged(
-                    remote_path,
-                    local_path,
-                    total_size,
-                    attempt_progress,
-                )
-                .await
-            {
-                Ok(true) => return Ok(()),
-                // Refused, not failed: one stream reads one consistent view of
-                // the object, which is what the parallel path could not
-                // promise here, and it reports through the half of the
-                // progress callback that stayed here.
-                Ok(false) => source_refused = true,
-                // Every window past byte 0 opens with REST, and a server
-                // without restart support refuses all of them; one stream
-                // from byte 0 needs no REST at all. Not a failure of the
-                // file, so the download goes on rather than ending here.
-                Err(ProviderError::NotSupported(why)) => {
-                    self.restart_unsupported = true;
-                    tracing::warn!("FTP intra-file download refused: {why}");
-                    report_download_fallback(
-                        "FTP: the server does not support restarting a transfer",
-                    );
+                    },
                 }
-                Err(e) => return Err(e),
+            };
+
+            // PD-FTP-1: intra-file parallelism. Engaged only when the user
+            // opted in (`set_multi_thread_download(streams >= 2, ...)`), the
+            // file is at/above the cutoff, and a real connection spec exists so
+            // we can re-dial N independent FTP connections. Without all three
+            // this is a no-op and the single-stream path below is unchanged:
+            // honest non-regression, no protocol overclaim.
+            let mut on_progress = on_progress;
+            // R21: the provider gate method (shared planner: explicit cutoff +
+            // provider floor via the setter, 16 clamp, 1 MiB minimum window), so
+            // the single-file path agrees with batch and pget.
+            let planned_mt = self.planned_download_segments(total_size);
+            if planned_mt >= 2
+                && !source_refused
+                && self.connection_spec.is_some()
+                && !self.restart_unsupported
+            {
+                let (attempt_progress, fallback_progress) =
+                    super::multi_thread::share_progress(on_progress.take());
+                on_progress = fallback_progress;
+                match self
+                    .parallel_download_if_unchanged(
+                        remote_path,
+                        local_path,
+                        total_size,
+                        attempt_progress,
+                    )
+                    .await
+                {
+                    Ok(true) => return Ok(()),
+                    // Refused, not failed: one stream reads one consistent view of
+                    // the object, which is what the parallel path could not
+                    // promise here, and it reports through the half of the
+                    // progress callback that stayed here.
+                    Ok(false) => source_refused = true,
+                    // Every window past byte 0 opens with REST, and a server
+                    // without restart support refuses all of them; one stream
+                    // from byte 0 needs no REST at all. Not a failure of the
+                    // file, so the download goes on rather than ending here.
+                    Err(ProviderError::NotSupported(why)) => {
+                        self.restart_unsupported = true;
+                        tracing::warn!("FTP intra-file download refused: {why}");
+                        report_download_fallback(
+                            "FTP: the server does not support restarting a transfer",
+                        );
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+
+            if source_refused {
+                self.download_after_refusal(remote_path, local_path, total_size, on_progress)
+                    .await
+            } else {
+                self.download_single_reconnecting(remote_path, local_path, total_size, on_progress)
+                    .await
             }
         }
-
-        if source_refused {
-            self.download_after_refusal(remote_path, local_path, total_size, on_progress)
-                .await
-        } else {
-            self.download_single_reconnecting(remote_path, local_path, total_size, on_progress)
-                .await
-        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn download_to_bytes(&mut self, remote_path: &str) -> Result<Vec<u8>, ProviderError> {
-        Self::refuse_line_breaks("downloading", remote_path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        let limit = super::MAX_DOWNLOAD_TO_BYTES;
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<Vec<u8>, ProviderError> = async {
+            Self::refuse_line_breaks("downloading", remote_path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            let limit = super::MAX_DOWNLOAD_TO_BYTES;
 
-        // PD-FTP-1: dial the connection so an in-memory read works on a
-        // `clone_for_transfer()` pool worker too, symmetric with the
-        // streaming `download()`. A no-op when already connected.
-        self.ensure_connected().await?;
+            // PD-FTP-1: dial the connection so an in-memory read works on a
+            // `clone_for_transfer()` pool worker too, symmetric with the
+            // streaming `download()`. A no-op when already connected.
+            self.ensure_connected().await?;
 
-        let stream = self.stream_mut()?;
+            let stream = self.stream_mut()?;
 
-        // Check file size first if server supports SIZE command
-        if let Ok(size) = stream.size(remote_path).await {
-            if size as u64 > limit {
+            // Check file size first if server supports SIZE command
+            if let Ok(size) = stream.size(remote_path).await {
+                if size as u64 > limit {
+                    return Err(ProviderError::TransferFailed(format!(
+                        "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
+                        size as f64 / 1_048_576.0,
+                        limit as f64 / 1_048_576.0,
+                    )));
+                }
+            }
+
+            // No TYPE I here: connect() already put the session in binary mode
+            // (the same invariant upload_single relies on).
+
+            // Download using retr_as_stream
+            let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
+                Ok(opened) => opened,
+                Err(err) => return Err(self.refused_data_open("reading", remote_path, err)),
+            };
+            let data_stream = match opened {
+                Some(data_stream) => data_stream,
+                None => return Err(self.after_timed_out_open("reading", remote_path).await),
+            };
+
+            // H2: Read with size cap to prevent OOM
+            let mut data = Vec::new();
+            let limit_usize = (limit + 1) as usize;
+            let mut channel = DataChannel::new(self, data_stream, "reading", remote_path);
+            loop {
+                let mut buf = [0u8; 8192];
+                let n = channel.read(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+                data.extend_from_slice(&buf[..n]);
+                if data.len() > limit_usize {
+                    break;
+                }
+            }
+            let bytes_read = data.len();
+
+            // Finalize the stream
+            channel
+                .close()
+                .await?
+                .map_err(Self::transfer_verdict_error)?;
+
+            if bytes_read as u64 > limit {
                 return Err(ProviderError::TransferFailed(format!(
-                    "File too large for in-memory download ({:.1} MB). Use streaming download for files over {:.0} MB.",
-                    size as f64 / 1_048_576.0,
+                    "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
                     limit as f64 / 1_048_576.0,
                 )));
             }
+
+            Ok(data)
+
         }
-
-        // No TYPE I here: connect() already put the session in binary mode
-        // (the same invariant upload_single relies on).
-
-        // Download using retr_as_stream
-        let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
-            Ok(opened) => opened,
-            Err(err) => return Err(self.refused_data_open("reading", remote_path, err)),
-        };
-        let data_stream = match opened {
-            Some(data_stream) => data_stream,
-            None => return Err(self.after_timed_out_open("reading", remote_path).await),
-        };
-
-        // H2: Read with size cap to prevent OOM
-        let mut data = Vec::new();
-        let limit_usize = (limit + 1) as usize;
-        let mut channel = DataChannel::new(self, data_stream, "reading", remote_path);
-        loop {
-            let mut buf = [0u8; 8192];
-            let n = channel.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            data.extend_from_slice(&buf[..n]);
-            if data.len() > limit_usize {
-                break;
-            }
-        }
-        let bytes_read = data.len();
-
-        // Finalize the stream
-        channel
-            .close()
-            .await?
-            .map_err(Self::transfer_verdict_error)?;
-
-        if bytes_read as u64 > limit {
-            return Err(ProviderError::TransferFailed(format!(
-                "Download exceeded {:.0} MB size limit. Use streaming download for large files.",
-                limit as f64 / 1_048_576.0,
-            )));
-        }
-
-        Ok(data)
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn upload(
@@ -2379,174 +2571,240 @@ impl StorageProvider for FtpProvider {
         remote_path: &str,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        Self::refuse_line_breaks("uploading", remote_path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
-        // and carries only the spec; it must dial its own control+data
-        // connection on the first transfer. `download()` and `read_range()`
-        // already do this; `upload()` omitted it, so every clone-pool upload
-        // (folder upload, multi-file batch via the executor) failed with
-        // `NotConnected`. A no-op when the provider is already connected.
-        self.ensure_connected().await?;
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            Self::refuse_line_breaks("uploading", remote_path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            // PD-FTP-1: a `clone_for_transfer()` pool worker starts unconnected
+            // and carries only the spec; it must dial its own control+data
+            // connection on the first transfer. `download()` and `read_range()`
+            // already do this; `upload()` omitted it, so every clone-pool upload
+            // (folder upload, multi-file batch via the executor) failed with
+            // `NotConnected`. A no-op when the provider is already connected.
+            self.ensure_connected().await?;
 
-        // One reconnect-and-retry on a desynced control connection (same
-        // reused-session recovery as download); a fresh CLI connection never
-        // hits it, so this is a no-op for the single-shot path. Progress is
-        // dropped on the rare retry (the transfer still completes).
-        match self
-            .upload_single(local_path, remote_path, on_progress)
-            .await
-        {
-            Ok(()) => Ok(()),
-            // Only a session that was out of step before the transfer is
-            // dialled again and sent once more. A dropped connection (reset,
-            // broken pipe, in any language) can come after the server stored
-            // the bytes, and a second STOR then replaced the file and could
-            // overwrite a concurrent change (CodeRabbit, #1520): that outcome
-            // is returned as it is.
-            Err(err) if Self::is_desync_before_transfer_error(&err) => {
-                self.reconnect_after_data_error("STOR", remote_path, &err)
-                    .await?;
-                self.upload_single(local_path, remote_path, None).await
+            // One reconnect-and-retry on a desynced control connection (same
+            // reused-session recovery as download); a fresh CLI connection never
+            // hits it, so this is a no-op for the single-shot path. Progress is
+            // dropped on the rare retry (the transfer still completes).
+            match self
+                .upload_single(local_path, remote_path, on_progress)
+                .await
+            {
+                Ok(()) => Ok(()),
+                // Only a session that was out of step before the transfer is
+                // dialled again and sent once more. A dropped connection (reset,
+                // broken pipe, in any language) can come after the server stored
+                // the bytes, and a second STOR then replaced the file and could
+                // overwrite a concurrent change (CodeRabbit, #1520): that outcome
+                // is returned as it is.
+                Err(err) if Self::is_desync_before_transfer_error(&err) => {
+                    self.reconnect_after_data_error("STOR", remote_path, &err)
+                        .await?;
+                    self.upload_single(local_path, remote_path, None).await
+                }
+                Err(err) => Err(self.name_the_missing_parent(remote_path, err).await),
             }
-            Err(err) => Err(self.name_the_missing_parent(remote_path, err).await),
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn mkdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        let attempt = {
-            let stream = self.stream_mut()?;
-            stream.mkdir(path).await
-        };
-        match attempt {
-            Ok(()) => Ok(()),
-            // Every MKD failure used to become one generic ServerError, so
-            // "it is already there" and "you may not" arrived indistinguishable
-            // and callers that wanted to be idempotent had to guess.
-            //
-            // Unlike the other defects in this change, the answer is NOT always
-            // on the wire. Measured against the repo's vsftpd fixture, a
-            // duplicate mkdir replies "550 Create directory operation failed."
-            // with no mention of existence at all: the same text it uses for a
-            // refusal. Some servers do say "File exists"; vsftpd does not.
-            //
-            // So the directory is asked about rather than guessed at, always.
-            // An earlier version took a shortcut when the reply did say
-            // something like "File exists", to spare those servers a round
-            // trip. That shortcut skipped the check below, and a server saying
-            // "550 File exists" because a FILE holds the name would have been
-            // answered "the directory is already there": an idempotent caller
-            // carries on and the first upload into it fails somewhere else.
-            // The saving was one round trip on a failure; the cost was that the
-            // guarantee held on one branch and not the other, and depended on
-            // how a server chooses to word a sentence. This whole change exists
-            // because a fix that rested on the wording of a reply turned out to
-            // rest on nothing.
-            //
-            // The question is asked with CWD rather than with a stat, and that
-            // choice carries the whole cost of this branch. A stat here would
-            // be free only on servers that advertise MLST; on the rest it falls
-            // back to listing the PARENT directory and searching it, so every
-            // duplicate mkdir would cost a listing proportional to the parent's
-            // size, and a recursive upload walks a mkdir ladder over every
-            // ancestor, paying that once per level of an existing tree. CWD is
-            // two commands regardless of the server and regardless of how large
-            // the directory is.
-            //
-            // It also answers a better question. A stat says "something is
-            // here" and the directory-ness has to be read off it; CWD cannot
-            // succeed on a file at all, so "it is there AND it is a directory"
-            // is the only thing a success can mean. The guarantee stops being
-            // derived and becomes intrinsic.
-            //
-            // A 550 that is neither stays the generic error it always was:
-            // claiming "permission denied" for a reply that does not say so
-            // would trade a vague answer for a wrong one.
-            Err(FtpError::UnexpectedResponse(response))
-                if response.status == Status::FileUnavailable =>
-            {
-                match self.confirm_directory_exists(path).await {
-                    Ok(()) => Err(ProviderError::AlreadyExists(path.to_string())),
-                    // The directory is not there, so the mkdir failed for its
-                    // own reason and that is what the caller gets.
-                    Err(ProviderError::NotFound(_)) => Err(ProviderError::ServerError(
-                        Self::doing("creating", path, response),
-                    )),
-                    // Anything else is about the probe, not about the mkdir,
-                    // and one of those is the probe having entered the
-                    // directory and failed to come back out. Collapsing that
-                    // into the generic mkdir error would be the discarded
-                    // restore this change exists to remove, returning in the
-                    // one place a restore can fail during a probe.
-                    Err(probe_failure) => Err(probe_failure),
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            let attempt = {
+                let stream = self.stream_mut()?;
+                stream.mkdir(path).await
+            };
+            match attempt {
+                Ok(()) => Ok(()),
+                // Every MKD failure used to become one generic ServerError, so
+                // "it is already there" and "you may not" arrived indistinguishable
+                // and callers that wanted to be idempotent had to guess.
+                //
+                // Unlike the other defects in this change, the answer is NOT always
+                // on the wire. Measured against the repo's vsftpd fixture, a
+                // duplicate mkdir replies "550 Create directory operation failed."
+                // with no mention of existence at all: the same text it uses for a
+                // refusal. Some servers do say "File exists"; vsftpd does not.
+                //
+                // So the directory is asked about rather than guessed at, always.
+                // An earlier version took a shortcut when the reply did say
+                // something like "File exists", to spare those servers a round
+                // trip. That shortcut skipped the check below, and a server saying
+                // "550 File exists" because a FILE holds the name would have been
+                // answered "the directory is already there": an idempotent caller
+                // carries on and the first upload into it fails somewhere else.
+                // The saving was one round trip on a failure; the cost was that the
+                // guarantee held on one branch and not the other, and depended on
+                // how a server chooses to word a sentence. This whole change exists
+                // because a fix that rested on the wording of a reply turned out to
+                // rest on nothing.
+                //
+                // The question is asked with CWD rather than with a stat, and that
+                // choice carries the whole cost of this branch. A stat here would
+                // be free only on servers that advertise MLST; on the rest it falls
+                // back to listing the PARENT directory and searching it, so every
+                // duplicate mkdir would cost a listing proportional to the parent's
+                // size, and a recursive upload walks a mkdir ladder over every
+                // ancestor, paying that once per level of an existing tree. CWD is
+                // two commands regardless of the server and regardless of how large
+                // the directory is.
+                //
+                // It also answers a better question. A stat says "something is
+                // here" and the directory-ness has to be read off it; CWD cannot
+                // succeed on a file at all, so "it is there AND it is a directory"
+                // is the only thing a success can mean. The guarantee stops being
+                // derived and becomes intrinsic.
+                //
+                // A 550 that is neither stays the generic error it always was:
+                // claiming "permission denied" for a reply that does not say so
+                // would trade a vague answer for a wrong one.
+                Err(FtpError::UnexpectedResponse(response))
+                    if response.status == Status::FileUnavailable =>
+                {
+                    match self.confirm_directory_exists(path).await {
+                        Ok(()) => Err(ProviderError::AlreadyExists(path.to_string())),
+                        // The directory is not there, so the mkdir failed for its
+                        // own reason and that is what the caller gets.
+                        // Its status, never the server's text (U6).
+                        Err(ProviderError::NotFound(_)) => {
+                            Err(ProviderError::ServerError(Self::doing(
+                                "creating",
+                                path,
+                                format_args!(
+                                    "FTP status {}: command rejected",
+                                    response.status.code()
+                                ),
+                            )))
+                        }
+                        // Anything else is about the probe, not about the mkdir,
+                        // and one of those is the probe having entered the
+                        // directory and failed to come back out. Collapsing that
+                        // into the generic mkdir error would be the discarded
+                        // restore this change exists to remove, returning in the
+                        // one place a restore can fail during a probe.
+                        Err(probe_failure) => Err(probe_failure),
+                    }
                 }
+                Err(e) => Err(ftp_failure(&e)),
             }
-            Err(e) => Err(ProviderError::ServerError(e.to_string())),
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn delete(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .rm(path)
-            .await
-            .map_err(|e| Self::classify_command_refusal("delete", path, e))?;
-        Ok(())
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            let stream = self.stream_mut()?;
+            stream
+                .rm(path)
+                .await
+                .map_err(|e| Self::classify_command_refusal("delete", path, e))?;
+            Ok(())
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn rmdir(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        // `RMD` refuses a directory that is not empty on the server. A reply
-        // that says so (ProFTPD, Pure-FTPd, IIS: "Directory not empty") is
-        // `DirectoryNotEmpty`. vsftpd's bare "Remove directory operation
-        // failed." says no more than that, so the directory is looked into
-        // (dotfiles included): one that still holds entries is
-        // `DirectoryNotEmpty` too, and only a refusal of an empty or
-        // unreadable directory stays a server error (permissions, a lock).
-        let refused = self.stream_mut()?.rmdir(path).await;
-        let Err(error) = refused else {
-            return Ok(());
-        };
-        match Self::classify_command_refusal("rmdir", path, error) {
-            ProviderError::ServerError(text) if reply_names_not_empty(&text) => {
-                Err(ProviderError::DirectoryNotEmpty(text))
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            // `RMD` refuses a directory that is not empty on the server. A reply
+            // that says so (ProFTPD, Pure-FTPd, IIS: "Directory not empty") is
+            // `DirectoryNotEmpty`. vsftpd's bare "Remove directory operation
+            // failed." says no more than that, so the directory is looked into
+            // (dotfiles included): one that still holds entries is
+            // `DirectoryNotEmpty` too, and only a refusal of an empty or
+            // unreadable directory stays a server error (permissions, a lock).
+            let refused = self.stream_mut()?.rmdir(path).await;
+            let Err(error) = refused else {
+                return Ok(());
+            };
+            // Read on the reply before it becomes a typed status (T8).
+            let says_not_empty = matches!(&error, FtpError::UnexpectedResponse(reply)
+                if reply_names_not_empty(&reply.to_string()));
+            match Self::classify_command_refusal("rmdir", path, error) {
+                ProviderError::ServerError(_) | ProviderError::FtpRefused { .. }
+                    if says_not_empty =>
+                {
+                    Err(ProviderError::DirectoryNotEmpty(format!(
+                        "{path} is not empty"
+                    )))
+                }
+                refusal @ (ProviderError::ServerError(_) | ProviderError::FtpRefused { .. }) => {
+                    match self.list_for_delete(path).await {
+                        Ok(entries) if !entries.is_empty() => {
+                            Err(ProviderError::DirectoryNotEmpty(format!(
+                                "{path} holds {} entries",
+                                entries.len()
+                            )))
+                        }
+                        _ => Err(refusal),
+                    }
+                }
+                other => Err(other),
             }
-            ProviderError::ServerError(text) => match self.list_for_delete(path).await {
-                Ok(entries) if !entries.is_empty() => Err(ProviderError::DirectoryNotEmpty(
-                    format!("{text} ({path} holds {} entries)", entries.len()),
-                )),
-                _ => Err(ProviderError::ServerError(text)),
-            },
-            other => Err(other),
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn rmdir_recursive(&mut self, path: &str) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        // Include hidden dotfiles so the final RMD does not fail with 550 on a
-        // directory that still holds an invisible `.aeroftp-crypt.json` / `.env`
-        // etc. (see list_inner_opts). SFTP/WebDAV already return dotfiles; FTP is
-        // the outlier that relies on the server to hide them on a bare LIST.
-        //
-        // A LIST row whose name is absolute is taken as the path itself, and
-        // a name with `..` resolves above the folder: every entry must be
-        // inside the folder before any of them is deleted.
-        let entries = crate::sync_core::listing_to_remove(path, self.list_for_delete(path).await?)?;
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            // Include hidden dotfiles so the final RMD does not fail with 550 on a
+            // directory that still holds an invisible `.aeroftp-crypt.json` / `.env`
+            // etc. (see list_inner_opts). SFTP/WebDAV already return dotfiles; FTP is
+            // the outlier that relies on the server to hide them on a bare LIST.
+            //
+            // A LIST row whose name is absolute is taken as the path itself, and
+            // a name with `..` resolves above the folder: every entry must be
+            // inside the folder before any of them is deleted.
+            let entries =
+                crate::sync_core::listing_to_remove(path, self.list_for_delete(path).await?)?;
 
-        // Delete contents first
-        for entry in entries {
-            if entry.is_walkable_dir() {
-                // Use Box::pin for recursive async call
-                Box::pin(self.rmdir_recursive(&entry.path)).await?;
-            } else {
-                self.delete(&entry.path).await?;
+            // Delete contents first
+            for entry in entries {
+                if entry.is_walkable_dir() {
+                    // Use Box::pin for recursive async call
+                    Box::pin(self.rmdir_recursive(&entry.path)).await?;
+                } else {
+                    self.delete(&entry.path).await?;
+                }
             }
-        }
 
-        // Now delete the empty directory
-        self.rmdir(path).await
+            // Now delete the empty directory
+            self.rmdir(path).await
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     /// RNFR/RNTO, after refusing an occupied destination. The trait promises
@@ -2556,76 +2814,136 @@ impl StorageProvider for FtpProvider {
     /// first; a file written there between the look and the RNTO is still
     /// overwritten on the servers that overwrite.
     async fn rename(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
-        if from == to {
-            return Ok(());
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            let (from, to) = (from.trim_end_matches('/'), to.trim_end_matches('/'));
+            if from == to {
+                return Ok(());
+            }
+            if self.holds_another_item_at(from, to).await {
+                return Err(ProviderError::AlreadyExists(to.to_string()));
+            }
+            self.rename_on_server(from, to).await
         }
-        if self.holds_another_item_at(from, to).await {
-            return Err(ProviderError::AlreadyExists(to.to_string()));
-        }
-        self.rename_on_server(from, to).await
+        .await;
+        guard.disarm();
+        outcome
     }
 
     /// RNFR/RNTO without the look: where the server renames over an existing
     /// file it does so in one step (the POSIX rename it maps to is atomic);
     /// where it refuses, so does this.
     async fn replace(&mut self, from: &str, to: &str) -> Result<(), ProviderError> {
-        if from.trim_end_matches('/') == to.trim_end_matches('/') {
-            return Ok(());
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            if from.trim_end_matches('/') == to.trim_end_matches('/') {
+                return Ok(());
+            }
+            self.rename_on_server(from, to).await
         }
-        self.rename_on_server(from, to).await
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn stat(&mut self, path: &str) -> Result<RemoteEntry, ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        match self.stat_inner(path).await {
-            Ok(entry) => Ok(entry),
-            Err(err) if Self::read_may_redial(&err) => {
-                self.reconnect_after_data_error("STAT", path, &err).await?;
-                self.stat_inner(path).await
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<RemoteEntry, ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            match self.stat_inner(path).await {
+                Ok(entry) => Ok(entry),
+                Err(err) if Self::read_may_redial(&err) => {
+                    self.reconnect_after_data_error("STAT", path, &err).await?;
+                    self.stat_inner(path).await
+                }
+                Err(err) => Err(err),
             }
-            Err(err) => Err(err),
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn size(&mut self, path: &str) -> Result<u64, ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        match self.size_inner(path).await {
-            Ok(size) => Ok(size),
-            Err(err) if Self::read_may_redial(&err) => {
-                self.reconnect_after_data_error("SIZE", path, &err).await?;
-                self.size_inner(path).await
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<u64, ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            match self.size_inner(path).await {
+                Ok(size) => Ok(size),
+                Err(err) if Self::read_may_redial(&err) => {
+                    self.reconnect_after_data_error("SIZE", path, &err).await?;
+                    self.size_inner(path).await
+                }
+                Err(err) => Err(err),
             }
-            Err(err) => Err(err),
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn exists(&mut self, path: &str) -> Result<bool, ProviderError> {
-        match self.stat(path).await {
-            Ok(_) => Ok(true),
-            Err(ProviderError::NotFound(_)) => Ok(false),
-            Err(e) => Err(e),
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<bool, ProviderError> = async {
+            match self.stat(path).await {
+                Ok(_) => Ok(true),
+                Err(ProviderError::NotFound(_)) => Ok(false),
+                Err(e) => Err(e),
+            }
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn keep_alive(&mut self) -> Result<(), ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        let stream = self.stream_mut()?;
-        stream
-            .noop()
-            .await
-            .map_err(|e| ProviderError::ServerError(e.to_string()))?;
-        Ok(())
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            let stream = self.stream_mut()?;
+            stream.noop().await.map_err(|e| ftp_failure(&e))?;
+            Ok(())
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn server_info(&mut self) -> Result<String, ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        // FTP doesn't have a standard server info command
-        // Return basic connection info
-        Ok(format!(
-            "FTP Server: {}:{}",
-            self.config.host, self.config.port
-        ))
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<String, ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            // FTP doesn't have a standard server info command
+            // Return basic connection info
+            Ok(format!(
+                "FTP Server: {}:{}",
+                self.config.host, self.config.port
+            ))
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     fn supports_find(&self) -> bool {
@@ -2633,82 +2951,94 @@ impl StorageProvider for FtpProvider {
     }
 
     async fn find(&mut self, path: &str, pattern: &str) -> Result<Vec<RemoteEntry>, ProviderError> {
-        let matcher = GlobBuilder::new(pattern)
-            .case_insensitive(true)
-            .literal_separator(true)
-            .build()
-            .map_err(|e| {
-                ProviderError::InvalidConfig(format!("Invalid find pattern '{}': {}", pattern, e))
-            })?
-            .compile_matcher();
-        let mut results = Vec::new();
-        let search_path = if path.is_empty() || path == "." {
-            self.current_path.clone()
-        } else {
-            path.to_string()
-        };
-        let mut walk = crate::sync_core::FindWalk::new(&search_path);
-        let root = search_path.clone();
-        let mut dirs_to_scan = vec![search_path];
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<Vec<RemoteEntry>, ProviderError> = async {
+            let matcher = GlobBuilder::new(pattern)
+                .case_insensitive(true)
+                .literal_separator(true)
+                .build()
+                .map_err(|e| {
+                    ProviderError::InvalidConfig(format!(
+                        "Invalid find pattern '{}': {}",
+                        pattern, e
+                    ))
+                })?
+                .compile_matcher();
+            let mut results = Vec::new();
+            let search_path = if path.is_empty() || path == "." {
+                self.current_path.clone()
+            } else {
+                path.to_string()
+            };
+            let mut walk = crate::sync_core::FindWalk::new(&search_path);
+            let root = search_path.clone();
+            let mut dirs_to_scan = vec![search_path];
 
-        while let Some(dir) = dirs_to_scan.pop() {
-            // Save current_path, list, restore
-            let saved = self.current_path.clone();
-            self.current_path = dir.clone();
-            let entries = match self.list(&dir).await {
-                Ok(e) => e,
-                // A folder searched that cannot be read is not an empty result,
-                // and a failure that is not about one folder fails the search.
-                Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
-                    // The server may stand in the failed folder: relative commands
-                    // after this would act there. A lost connection has none to move.
-                    // Restore this stream within the existing bound. Public cd now
-                    // retries navigation and must not redial during error cleanup.
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(5),
-                        self.restore_cwd(&saved),
-                    )
-                    .await
-                    {
-                        Ok(Ok(())) => {}
-                        Ok(Err(_)) => self.current_path = saved,
-                        Err(_) => {
-                            // CWD may still owe a reply: never reuse this stream.
-                            self.stream = None;
-                            self.current_path = saved;
+            while let Some(dir) = dirs_to_scan.pop() {
+                // Save current_path, list, restore
+                let saved = self.current_path.clone();
+                self.current_path = dir.clone();
+                let entries = match self.list(&dir).await {
+                    Ok(e) => e,
+                    // A folder searched that cannot be read is not an empty result,
+                    // and a failure that is not about one folder fails the search.
+                    Err(e) if dir == root || !super::listing_failure_is_the_folders(&e) => {
+                        // The server may stand in the failed folder: relative commands
+                        // after this would act there. A lost connection has none to move.
+                        // Restore this stream within the existing bound. Public cd now
+                        // retries navigation and must not redial during error cleanup.
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(5),
+                            self.restore_cwd(&saved),
+                        )
+                        .await
+                        {
+                            Ok(Ok(())) => {}
+                            Ok(Err(_)) => self.current_path = saved,
+                            Err(_) => {
+                                // CWD may still owe a reply: never reuse this stream.
+                                self.stream = None;
+                                self.current_path = saved;
+                            }
+                        }
+                        return Err(e);
+                    }
+                    Err(_) => {
+                        self.current_path = saved;
+                        continue;
+                    }
+                };
+                self.current_path = saved;
+
+                // A row whose name points outside the folder searched, or back
+                // onto it, is neither followed nor reported: skipped with a
+                // warning, as a folder that cannot be listed is skipped.
+                let sorted = walk.sort(&dir, entries);
+                for (path, step) in &sorted.refused {
+                    tracing::warn!(
+                        "[FTP] find: skipping {path:?}, named in {dir}: {}",
+                        step.reason()
+                    );
+                }
+                dirs_to_scan.extend(sorted.follow);
+                for entry in sorted.entries {
+                    if matcher.is_match(&entry.name) {
+                        results.push(entry);
+                        if results.len() >= 500 {
+                            return Ok(results);
                         }
                     }
-                    return Err(e);
                 }
-                Err(_) => {
-                    self.current_path = saved;
-                    continue;
-                }
-            };
-            self.current_path = saved;
+            }
 
-            // A row whose name points outside the folder searched, or back
-            // onto it, is neither followed nor reported: skipped with a
-            // warning, as a folder that cannot be listed is skipped.
-            let sorted = walk.sort(&dir, entries);
-            for (path, step) in &sorted.refused {
-                tracing::warn!(
-                    "[FTP] find: skipping {path:?}, named in {dir}: {}",
-                    step.reason()
-                );
-            }
-            dirs_to_scan.extend(sorted.follow);
-            for entry in sorted.entries {
-                if matcher.is_match(&entry.name) {
-                    results.push(entry);
-                    if results.len() >= 500 {
-                        return Ok(results);
-                    }
-                }
-            }
+            Ok(results)
         }
-
-        Ok(results)
+        .await;
+        guard.disarm();
+        outcome
     }
 
     fn supports_resume(&self) -> bool {
@@ -2722,124 +3052,136 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        self.download_time.begin();
-        // Out of place this provider keeps no part: its downloads write
-        // through `AtomicFile`, which removes its temporary when it fails. An
-        // offset handed in out of place was measured on someone else's part
-        // (a crash leftover, another server's download), and writing the
-        // tail at it into the destination joined two files, or left a run of
-        // zeros where the destination was missing. In place the destination
-        // is the part, gone on from at `offset` as before.
-        // In place, a server that cannot restart gets the whole file again
-        // from byte 0: `download` writes the destination from the start.
-        if !super::atomic_write::inplace_active() || self.restart_unsupported {
-            return self.download(remote_path, local_path, on_progress).await;
-        }
-        Self::refuse_line_breaks("resuming", remote_path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
-
-        // PD-FTP-1: the transfer executor calls `resume_download()` instead of
-        // `download()` whenever a retry carries a partial offset, so a resumed
-        // download on a `clone_for_transfer()` pool worker hit `NotConnected`.
-        // Dial the connection first, symmetric with `download()`/`upload()`/
-        // `read_range()`. A no-op when already connected.
-        self.ensure_connected().await?;
-
-        let stream = self.stream_mut()?;
-
-        // Get total file size. Same reading as `download`, and the case is more
-        // likely here rather than less: between the interrupted attempt and the
-        // resume there is time for the remote file to go away, and a resume of
-        // something that is no longer there is exactly the condition this is
-        // for. Any other SIZE failure keeps the previous fallback.
-        let total_size = match stream.size(remote_path).await {
-            Ok(size) => size as u64,
-            Err(err) => match Self::classify_missing_path("resuming", remote_path, &err) {
-                Some(missing) => return Err(missing),
-                None => 0,
-            },
-        };
-
-        // No TYPE I here: connect() already put the session in binary mode
-        // (the same invariant upload_single relies on).
-
-        // Queue the offset; suppaftp sends REST immediately before RETR, after PASV.
-        stream.resume_transfer(offset as usize).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to prepare FTP restart offset: {}", e))
-        })?;
-
-        // Retrieve from offset
-        let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
-            Ok(opened) => opened,
-            Err(err) => {
-                let refused = self.refused_restart_open("resuming", remote_path, offset, err);
-                if !matches!(refused, ProviderError::NotSupported(_)) {
-                    return Err(refused);
-                }
-                // No restart at all on this server: start again from byte 0
-                // instead of failing every attempt at the same offset.
-                self.restart_unsupported = true;
-                tracing::warn!("{refused}; downloading {remote_path} again from byte 0");
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            self.download_time.begin();
+            // Out of place this provider keeps no part: its downloads write
+            // through `AtomicFile`, which removes its temporary when it fails. An
+            // offset handed in out of place was measured on someone else's part
+            // (a crash leftover, another server's download), and writing the
+            // tail at it into the destination joined two files, or left a run of
+            // zeros where the destination was missing. In place the destination
+            // is the part, gone on from at `offset` as before.
+            // In place, a server that cannot restart gets the whole file again
+            // from byte 0: `download` writes the destination from the start.
+            if !super::atomic_write::inplace_active() || self.restart_unsupported {
                 return self.download(remote_path, local_path, on_progress).await;
             }
-        };
-        let data_stream = match opened {
-            Some(data_stream) => data_stream,
-            None => return Err(self.after_timed_out_open("resuming", remote_path).await),
-        };
+            Self::refuse_line_breaks("resuming", remote_path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            use tokio::io::{AsyncSeekExt, AsyncWriteExt as _};
 
-        // H3: Stream directly to file instead of buffering entire file in memory
-        let mut file = tokio::fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
+            // PD-FTP-1: the transfer executor calls `resume_download()` instead of
+            // `download()` whenever a retry carries a partial offset, so a resumed
+            // download on a `clone_for_transfer()` pool worker hit `NotConnected`.
+            // Dial the connection first, symmetric with `download()`/`upload()`/
+            // `read_range()`. A no-op when already connected.
+            self.ensure_connected().await?;
 
-        // Seek to the resume offset (no set_len: preserve existing bytes before offset)
-        file.seek(std::io::SeekFrom::Start(offset))
-            .await
-            .map_err(ProviderError::IoError)?;
+            let stream = self.stream_mut()?;
 
-        // Stream chunks from FTP data stream directly to disk
-        let mut transferred = offset;
-        let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
-        let mut channel = DataChannel::new(self, data_stream, "resuming", remote_path);
-        loop {
-            let n = channel.read(&mut buf).await?;
-            if n == 0 {
-                break;
-            }
-            crate::transfer_dag::throttle::charge(
-                crate::transfer_dag::governor::TransferDirection::Download,
-                n as u64,
-            )
-            .await;
-            file.write_all(&buf[..n])
+            // Get total file size. Same reading as `download`, and the case is more
+            // likely here rather than less: between the interrupted attempt and the
+            // resume there is time for the remote file to go away, and a resume of
+            // something that is no longer there is exactly the condition this is
+            // for. Any other SIZE failure keeps the previous fallback.
+            let total_size = match stream.size(remote_path).await {
+                Ok(size) => size as u64,
+                Err(err) => match Self::classify_missing_path("resuming", remote_path, &err) {
+                    Some(missing) => return Err(missing),
+                    None => 0,
+                },
+            };
+
+            // No TYPE I here: connect() already put the session in binary mode
+            // (the same invariant upload_single relies on).
+
+            // Queue the offset; suppaftp sends REST immediately before RETR, after PASV.
+            stream.resume_transfer(offset as usize).await.map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                    "Failed to prepare FTP restart offset: {}",
+                    ftp_error_text(&e)
+                ))
+            })?;
+
+            // Retrieve from offset
+            let opened = match Self::open_with_cap(stream.retr_as_stream(remote_path)).await {
+                Ok(opened) => opened,
+                Err(err) => {
+                    let refused = self.refused_restart_open("resuming", remote_path, offset, err);
+                    if !matches!(refused, ProviderError::NotSupported(_)) {
+                        return Err(refused);
+                    }
+                    // No restart at all on this server: start again from byte 0
+                    // instead of failing every attempt at the same offset.
+                    self.restart_unsupported = true;
+                    tracing::warn!("{refused}; downloading {remote_path} again from byte 0");
+                    return self.download(remote_path, local_path, on_progress).await;
+                }
+            };
+            let data_stream = match opened {
+                Some(data_stream) => data_stream,
+                None => return Err(self.after_timed_out_open("resuming", remote_path).await),
+            };
+
+            // H3: Stream directly to file instead of buffering entire file in memory
+            let mut file = tokio::fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(local_path)
                 .await
                 .map_err(ProviderError::IoError)?;
-            transferred += n as u64;
 
-            if let Some(ref progress) = on_progress {
-                progress(transferred, total_size);
+            // Seek to the resume offset (no set_len: preserve existing bytes before offset)
+            file.seek(std::io::SeekFrom::Start(offset))
+                .await
+                .map_err(ProviderError::IoError)?;
+
+            // Stream chunks from FTP data stream directly to disk
+            let mut transferred = offset;
+            let mut buf = vec![0u8; 64 * 1024]; // 64 KB chunks
+            let mut channel = DataChannel::new(self, data_stream, "resuming", remote_path);
+            loop {
+                let n = channel.read(&mut buf).await?;
+                if n == 0 {
+                    break;
+                }
+                crate::transfer_dag::throttle::charge(
+                    crate::transfer_dag::governor::TransferDirection::Download,
+                    n as u64,
+                )
+                .await;
+                file.write_all(&buf[..n])
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                transferred += n as u64;
+
+                if let Some(ref progress) = on_progress {
+                    progress(transferred, total_size);
+                }
             }
+
+            // The channel is released AFTER the local flush, not before: its `Drop`
+            // is the only thing that poisons the session, and a flush that fails
+            // between the two would otherwise drop an unfinished stream while
+            // leaving the session alive. suppaftp 12 drains that `226` before the
+            // next command, so it is no longer read as that command's answer, but
+            // the transfer's own verdict would be lost with it.
+            file.flush().await.map_err(ProviderError::IoError)?;
+            channel
+                .close()
+                .await?
+                .map_err(Self::transfer_verdict_error)?;
+
+            Ok(())
         }
-
-        // The channel is released AFTER the local flush, not before: its `Drop`
-        // is the only thing that poisons the session, and a flush that fails
-        // between the two would otherwise drop an unfinished stream while
-        // leaving the session alive. suppaftp 12 drains that `226` before the
-        // next command, so it is no longer read as that command's answer, but
-        // the transfer's own verdict would be lost with it.
-        file.flush().await.map_err(ProviderError::IoError)?;
-        channel
-            .close()
-            .await?
-            .map_err(Self::transfer_verdict_error)?;
-
-        Ok(())
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn resume_upload(
@@ -2849,98 +3191,107 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         on_progress: Option<Box<dyn Fn(u64, u64) + Send>>,
     ) -> Result<(), ProviderError> {
-        Self::refuse_line_breaks("uploading", remote_path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        use tokio::io::{AsyncReadExt, AsyncSeekExt};
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            Self::refuse_line_breaks("uploading", remote_path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
-        let total_size = tokio::fs::metadata(local_path)
-            .await
-            .map_err(ProviderError::IoError)?
-            .len();
+            let total_size = tokio::fs::metadata(local_path)
+                .await
+                .map_err(ProviderError::IoError)?
+                .len();
 
-        if offset >= total_size {
-            return Ok(()); // Nothing to upload
-        }
-
-        // Open file and seek to offset for streaming append
-        let mut file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(ProviderError::IoError)?;
-        file.seek(std::io::SeekFrom::Start(offset))
-            .await
-            .map_err(ProviderError::IoError)?;
-
-        let stream = self.stream_mut()?;
-
-        // No TYPE I here: connect() already put the session in binary mode
-        // (the same invariant upload_single relies on).
-
-        // Open the data channel under the cap every other open on this provider
-        // already had. `append_file` did the open AND the whole transfer in one
-        // call, so there was nowhere for the cap to sit, and an `APPE` the
-        // server takes without answering waited for as long as the process
-        // lived: the one transfer entry point still unbounded. Same shape as
-        // `upload_single`, one verb apart.
-        let opened = match Self::open_with_cap(stream.append_with_stream(remote_path)).await {
-            Ok(opened) => opened,
-            Err(err) => return Err(self.refused_store(remote_path, err)),
-        };
-        let data_stream = match opened {
-            Some(data_stream) => data_stream,
-            None => {
-                return Err(self
-                    .after_timed_out_open("resuming the upload of", remote_path)
-                    .await)
+            if offset >= total_size {
+                return Ok(()); // Nothing to upload
             }
-        };
-        // From here the server considers the data channel open, and every exit
-        // below has to leave the session in a state the next command can trust.
-        // The guard owns the channel: an error propagated with `?` drops it, and
-        // `Drop` takes the session rather than handing on one whose data channel
-        // was never closed. That covers the exit this type never sees as well,
-        // the failure reading the LOCAL file below, which is not a channel
-        // operation and still leaves the channel open behind it.
-        let mut channel =
-            DataChannel::new(self, data_stream, "resuming the upload of", remote_path);
 
-        let mut chunk = [0u8; 65536];
-        let mut sent = offset;
-        loop {
-            let n = file
-                .read(&mut chunk)
+            // Open file and seek to offset for streaming append
+            let mut file = tokio::fs::File::open(local_path)
                 .await
                 .map_err(ProviderError::IoError)?;
-            if n == 0 {
-                break;
+            file.seek(std::io::SeekFrom::Start(offset))
+                .await
+                .map_err(ProviderError::IoError)?;
+
+            let stream = self.stream_mut()?;
+
+            // No TYPE I here: connect() already put the session in binary mode
+            // (the same invariant upload_single relies on).
+
+            // Open the data channel under the cap every other open on this provider
+            // already had. `append_file` did the open AND the whole transfer in one
+            // call, so there was nowhere for the cap to sit, and an `APPE` the
+            // server takes without answering waited for as long as the process
+            // lived: the one transfer entry point still unbounded. Same shape as
+            // `upload_single`, one verb apart.
+            let opened = match Self::open_with_cap(stream.append_with_stream(remote_path)).await {
+                Ok(opened) => opened,
+                Err(err) => return Err(self.refused_store(remote_path, err)),
+            };
+            let data_stream = match opened {
+                Some(data_stream) => data_stream,
+                None => {
+                    return Err(self
+                        .after_timed_out_open("resuming the upload of", remote_path)
+                        .await)
+                }
+            };
+            // From here the server considers the data channel open, and every exit
+            // below has to leave the session in a state the next command can trust.
+            // The guard owns the channel: an error propagated with `?` drops it, and
+            // `Drop` takes the session rather than handing on one whose data channel
+            // was never closed. That covers the exit this type never sees as well,
+            // the failure reading the LOCAL file below, which is not a channel
+            // operation and still leaves the channel open behind it.
+            let mut channel =
+                DataChannel::new(self, data_stream, "resuming the upload of", remote_path);
+
+            let mut chunk = [0u8; 65536];
+            let mut sent = offset;
+            loop {
+                let n = file
+                    .read(&mut chunk)
+                    .await
+                    .map_err(ProviderError::IoError)?;
+                if n == 0 {
+                    break;
+                }
+                crate::transfer_dag::throttle::charge(
+                    crate::transfer_dag::governor::TransferDirection::Upload,
+                    n as u64,
+                )
+                .await;
+                channel.write_all(&chunk[..n]).await?;
+                sent += n as u64;
+                if let Some(ref progress) = on_progress {
+                    progress(sent, total_size);
+                }
             }
-            crate::transfer_dag::throttle::charge(
-                crate::transfer_dag::governor::TransferDirection::Upload,
-                n as u64,
-            )
-            .await;
-            channel.write_all(&chunk[..n]).await?;
-            sent += n as u64;
-            if let Some(ref progress) = on_progress {
-                progress(sent, total_size);
+
+            channel.flush().await?;
+            // The end of data as `upload_single` signals it: `close` sends our
+            // close_notify and FIN after the last byte, then reads the 226.
+            if let Err(e) = channel.close_upload().await? {
+                // The finalise is the last word on the transfer. A failure here
+                // leaves the control channel mid-sentence, and the guard is already
+                // settled, so nothing else would discard it: do it here.
+                self.stream = None;
+                return Err(Self::transfer_verdict_error(e));
             }
-        }
 
-        channel.flush().await?;
-        // The end of data as `upload_single` signals it: `close` sends our
-        // close_notify and FIN after the last byte, then reads the 226.
-        if let Err(e) = channel.close_upload().await? {
-            // The finalise is the last word on the transfer. A failure here
-            // leaves the control channel mid-sentence, and the guard is already
-            // settled, so nothing else would discard it: do it here.
-            self.stream = None;
-            return Err(Self::transfer_verdict_error(e));
-        }
+            if let Some(progress) = on_progress {
+                progress(total_size, total_size);
+            }
 
-        if let Some(progress) = on_progress {
-            progress(total_size, total_size);
+            Ok(())
         }
-
-        Ok(())
+        .await;
+        guard.disarm();
+        outcome
     }
 
     fn supports_chmod(&self) -> bool {
@@ -2950,33 +3301,45 @@ impl StorageProvider for FtpProvider {
     /// `SITE CHMOD` through [`Self::site_command`], so it has a deadline and
     /// takes any 2xx as done (vsftpd and others do not all answer `200`).
     async fn chmod(&mut self, path: &str, mode: u32) -> Result<(), ProviderError> {
-        use ftp_site::{NotSentReason, SiteOutcome, UnknownCause};
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<(), ProviderError> = async {
+            use ftp_site::{NotSentReason, SiteOutcome, UnknownCause};
 
-        let args =
-            ftp_site::SiteArgs::verbatim(format!("CHMOD {mode:o} {path}")).map_err(|_| {
-                ProviderError::InvalidPath(format!("cannot send SITE CHMOD for {path:?}"))
-            })?;
-        // A standard verb with a one-line reply: no settle window, so a
-        // recursive chmod does not wait after every file.
-        let opts = ftp_site::SiteOptions::default().with_settle(std::time::Duration::ZERO);
-        match self.site_command(&args, &opts).await {
-            SiteOutcome::Replied { reply, .. } if (200..300).contains(&reply.code) => Ok(()),
-            SiteOutcome::Replied { reply, .. } => Err(ProviderError::ServerError(format!(
-                "the server refused SITE CHMOD on {path}: {}",
-                reply.lines.join(" ")
-            ))),
-            SiteOutcome::NotSent(NotSentReason::NotConnected) => Err(ProviderError::NotConnected),
-            SiteOutcome::NotSent(reason) => Err(ProviderError::ConnectionFailed(format!(
-                "SITE CHMOD on {path} was not sent: {reason:?}"
-            ))),
-            SiteOutcome::Unknown {
-                cause: UnknownCause::Timeout,
-                ..
-            } => Err(ProviderError::Timeout),
-            SiteOutcome::Unknown { cause, .. } => Err(ProviderError::ConnectionLost(format!(
-                "no complete reply to SITE CHMOD on {path} ({cause:?})"
-            ))),
+            let args =
+                ftp_site::SiteArgs::verbatim(format!("CHMOD {mode:o} {path}")).map_err(|_| {
+                    ProviderError::InvalidPath(format!("cannot send SITE CHMOD for {path:?}"))
+                })?;
+            // A standard verb with a one-line reply: no settle window, so a
+            // recursive chmod does not wait after every file.
+            let opts = ftp_site::SiteOptions::default().with_settle(std::time::Duration::ZERO);
+            match self.site_command(&args, &opts).await {
+                SiteOutcome::Replied { reply, .. } if (200..300).contains(&reply.code) => Ok(()),
+                // The status alone, never the reply's text (T8).
+                SiteOutcome::Replied { reply, .. } => Err(ProviderError::FtpRefused {
+                    code: reply.code,
+                    during: format!(" (while changing the mode of {path})"),
+                }),
+                SiteOutcome::NotSent(NotSentReason::NotConnected) => {
+                    Err(ProviderError::NotConnected)
+                }
+                SiteOutcome::NotSent(reason) => Err(ProviderError::ConnectionFailed(format!(
+                    "SITE CHMOD on {path} was not sent: {reason:?}"
+                ))),
+                SiteOutcome::Unknown {
+                    cause: UnknownCause::Timeout,
+                    ..
+                } => Err(ProviderError::Timeout),
+                SiteOutcome::Unknown { cause, .. } => Err(ProviderError::ConnectionLost(format!(
+                    "no complete reply to SITE CHMOD on {path} ({cause:?})"
+                ))),
+            }
         }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     fn supports_checksum(&self) -> bool {
@@ -3015,8 +3378,17 @@ impl StorageProvider for FtpProvider {
         &mut self,
         path: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        self.remote_checksum(path, None).await
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<std::collections::HashMap<String, String>, ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            self.remote_checksum(path, None).await
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     async fn checksum_for(
@@ -3024,8 +3396,17 @@ impl StorageProvider for FtpProvider {
         path: &str,
         algorithm: &str,
     ) -> Result<std::collections::HashMap<String, String>, ProviderError> {
-        self.redial_if_a_reply_is_pending().await?;
-        self.remote_checksum(path, Some(algorithm)).await
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<std::collections::HashMap<String, String>, ProviderError> = async {
+            self.redial_if_a_reply_is_pending().await?;
+            self.remote_checksum(path, Some(algorithm)).await
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 
     fn transfer_optimization_hints(&self) -> super::TransferOptimizationHints {
@@ -3154,107 +3535,121 @@ impl StorageProvider for FtpProvider {
         offset: u64,
         len: u64,
     ) -> Result<Vec<u8>, ProviderError> {
-        Self::refuse_line_breaks("reading a range of", path)?;
-        self.redial_if_a_reply_is_pending().await?;
-        const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
-        if len > MAX_READ_RANGE {
-            return Err(ProviderError::Other(format!(
-                "Read range size {} exceeds maximum {} bytes",
-                len, MAX_READ_RANGE
-            )));
-        }
+        // Marks the session when this command is dropped before it
+        // returns: the next command redials instead of reading this
+        // one's late reply as its own (M3).
+        let guard = AbandonGuard::arm(&self.abandoned_command);
+        let outcome: Result<Vec<u8>, ProviderError> = async {
+            Self::refuse_line_breaks("reading a range of", path)?;
+            self.redial_if_a_reply_is_pending().await?;
+            const MAX_READ_RANGE: u64 = 100 * 1024 * 1024; // 100 MB
+            if len > MAX_READ_RANGE {
+                return Err(ProviderError::Other(format!(
+                    "Read range size {} exceeds maximum {} bytes",
+                    len, MAX_READ_RANGE
+                )));
+            }
 
-        // PD-FTP-1 mirror of the SFTP path: clone-for-transfer workers
-        // start unconnected and self-dial on first transfer. The GUI
-        // segmented engine calls `read_range` directly on the pool
-        // worker, so without this self-dial every segmented download
-        // against a clone pool fails with `Not connected`.
-        self.ensure_connected().await?;
-        // Already refused once on this server: the same REST would cost a
-        // passive connection and be refused again. Byte 0 needs no REST.
-        if offset > 0 && self.restart_unsupported {
-            return Err(ProviderError::NotSupported(Self::doing(
-                "reading a range of",
-                &format!("{path} from byte {offset}"),
-                "the server does not support restarting a transfer",
-            )));
-        }
-        // No TYPE I here: connect() already put the session in binary mode
-        // (the same invariant upload_single relies on).
-        let stream = self.stream_mut()?;
+            // PD-FTP-1 mirror of the SFTP path: clone-for-transfer workers
+            // start unconnected and self-dial on first transfer. The GUI
+            // segmented engine calls `read_range` directly on the pool
+            // worker, so without this self-dial every segmented download
+            // against a clone pool fails with `Not connected`.
+            self.ensure_connected().await?;
+            // Already refused once on this server: the same REST would cost a
+            // passive connection and be refused again. Byte 0 needs no REST.
+            if offset > 0 && self.restart_unsupported {
+                return Err(ProviderError::NotSupported(Self::doing(
+                    "reading a range of",
+                    &format!("{path} from byte {offset}"),
+                    "the server does not support restarting a transfer",
+                )));
+            }
+            // No TYPE I here: connect() already put the session in binary mode
+            // (the same invariant upload_single relies on).
+            let stream = self.stream_mut()?;
 
-        // Queue the offset; REST is sent by the next RETR, after PASV.
-        stream.resume_transfer(offset as usize).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to prepare FTP restart offset: {}", e))
-        })?;
+            // Queue the offset; REST is sent by the next RETR, after PASV.
+            stream.resume_transfer(offset as usize).await.map_err(|e| {
+                ProviderError::TransferFailed(format!(
+                "Failed to prepare FTP restart offset: {}",
+                ftp_error_text(&e)
+            ))
+            })?;
 
-        let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
-            Ok(opened) => opened,
-            Err(err) => {
-                let refused = self.refused_restart_open("reading a range of", path, offset, err);
-                if matches!(refused, ProviderError::NotSupported(_)) {
-                    self.restart_unsupported = true;
+            let opened = match Self::open_with_cap(stream.retr_as_stream(path)).await {
+                Ok(opened) => opened,
+                Err(err) => {
+                    let refused = self.refused_restart_open("reading a range of", path, offset, err);
+                    if matches!(refused, ProviderError::NotSupported(_)) {
+                        self.restart_unsupported = true;
+                    }
+                    return Err(refused);
                 }
-                return Err(refused);
-            }
-        };
-        let data_stream = match opened {
-            Some(data_stream) => data_stream,
-            None => return Err(self.after_timed_out_open("reading a range of", path).await),
-        };
+            };
+            let data_stream = match opened {
+                Some(data_stream) => data_stream,
+                None => return Err(self.after_timed_out_open("reading a range of", path).await),
+            };
 
-        // Read exactly `len` bytes (or until EOF if file is shorter).
-        //
-        // The destination IS the read buffer here, a moving slice of it, which
-        // is why the channel takes the slice per read instead of owning one.
-        let mut buf = vec![0u8; len as usize];
-        let mut total_read = 0usize;
-        let mut channel = DataChannel::new(self, data_stream, "reading a range of", path);
-        while total_read < len as usize {
-            let n = channel.read(&mut buf[total_read..]).await?;
-            if n == 0 {
-                break;
-            }
-            total_read += n;
-        }
-        let read_whole = total_read == len as usize;
-        buf.truncate(total_read);
-
-        if read_whole {
-            // Bounded FTP reads intentionally stop before EOF. The bytes asked
-            // for arrived whole, over TCP or TLS, and what the server says about
-            // the early close concerns only the part it did not send; servers
-            // say different things (`426` on vsftpd and ProFTPD, a `150 ...
-            // seconds (measured here)` rate line on Pure-FTPd, which reuses the
-            // code of its last reply). Any reply is accepted, and a session
-            // that did not end on `226` or `250` is closed rather than trusted. A server
-            // that never answers is not waited for past the budget: the
-            // dropped close takes the session.
-            match tokio::time::timeout(EARLY_STOP_BUDGET, channel.close()).await {
-                Ok(Ok(Ok(()))) => {}
-                Ok(Ok(Err(err))) => {
-                    tracing::debug!(
-                        "reading a range of {path}: {err} after the range was read whole"
-                    );
-                    let _ = self.disconnect().await;
+            // Read exactly `len` bytes (or until EOF if file is shorter).
+            //
+            // The destination IS the read buffer here, a moving slice of it, which
+            // is why the channel takes the slice per read instead of owning one.
+            let mut buf = vec![0u8; len as usize];
+            let mut total_read = 0usize;
+            let mut channel = DataChannel::new(self, data_stream, "reading a range of", path);
+            while total_read < len as usize {
+                let n = channel.read(&mut buf[total_read..]).await?;
+                if n == 0 {
+                    break;
                 }
-                Ok(Err(_)) | Err(_) => {}
+                total_read += n;
             }
-            return Ok(buf);
-        }
+            let read_whole = total_read == len as usize;
+            buf.truncate(total_read);
 
-        // A read that ended SHORT of the range is another matter: a file that
-        // ends inside the range is confirmed with `226`, and an error after a
-        // short read is the server cutting the transfer, so those bytes are not
-        // the range.
-        if let Err(err) = channel.close().await? {
-            let _ = self.disconnect().await;
-            return Err(ProviderError::TransferFailed(format!(
-                "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {err}"
-            )));
-        }
+            if read_whole {
+                // Bounded FTP reads intentionally stop before EOF. The bytes asked
+                // for arrived whole, over TCP or TLS, and what the server says about
+                // the early close concerns only the part it did not send; servers
+                // say different things (`426` on vsftpd and ProFTPD, a `150 ...
+                // seconds (measured here)` rate line on Pure-FTPd, which reuses the
+                // code of its last reply). Any reply is accepted, and a session
+                // that did not end on `226` or `250` is closed rather than trusted. A server
+                // that never answers is not waited for past the budget: the
+                // dropped close takes the session.
+                match tokio::time::timeout(EARLY_STOP_BUDGET, channel.close()).await {
+                    Ok(Ok(Ok(()))) => {}
+                    Ok(Ok(Err(err))) => {
+                        tracing::debug!(
+                            "reading a range of {path}: {err} after the range was read whole"
+                        );
+                        let _ = self.disconnect().await;
+                    }
+                    Ok(Err(_)) | Err(_) => {}
+                }
+                return Ok(buf);
+            }
 
-        Ok(buf)
+            // A read that ended SHORT of the range is another matter: a file that
+            // ends inside the range is confirmed with `226`, and an error after a
+            // short read is the server cutting the transfer, so those bytes are not
+            // the range.
+            if let Err(err) = channel.close().await? {
+                let _ = self.disconnect().await;
+                return Err(ProviderError::TransferFailed(format!(
+                    "reading a range of {path}: the server ended the transfer after {total_read} of {len} bytes: {}",
+                    ftp_error_text(&err)
+                )));
+            }
+
+            Ok(buf)
+
+        }
+        .await;
+        guard.disarm();
+        outcome
     }
 }
 
@@ -4499,6 +4894,16 @@ impl FtpProvider {
         }
     }
 
+    /// Close the session as lost in `folder`, the folder the caller believes
+    /// it stands in and the session could not enter again. No command runs
+    /// until a `cd` to an absolute folder (or `cd_up`) opens a session again.
+    fn lose_folder(&mut self, folder: &str) {
+        self.owed_folder = None;
+        self.stream = None;
+        self.current_path = folder.to_string();
+        self.folder_lost = true;
+    }
+
     /// Put the redialed session back in the directory the caller left it in.
     ///
     /// `connect()` lands where login (and `initial_path`) puts it, and it
@@ -4532,10 +4937,7 @@ impl FtpProvider {
         // session stands in, and names another folder than the one left:
         // the session is closed as lost instead.
         if !names_one_folder(previous) {
-            self.owed_folder = None;
-            self.stream = None;
-            self.current_path = previous.to_string();
-            self.folder_lost = true;
+            self.lose_folder(previous);
             return Err(ProviderError::InvalidPath(
                 "reconnected, but the session's folder was reported as a relative path, which \
                  cannot be entered again: change to an absolute folder to go on"
@@ -4548,8 +4950,11 @@ impl FtpProvider {
             return Err(ProviderError::NotConnected);
         };
         let entered = match stream.cwd(previous).await {
-            Ok(()) => folder_entered(stream.pwd().await, Some(previous)),
-            Err(e) => Err(ProviderError::InvalidPath(e.to_string())),
+            Ok(()) => folder_entered(
+                stream.pwd().await.map_err(|e| ftp_error_text(&e)),
+                Some(previous),
+            ),
+            Err(e) => Err(ProviderError::InvalidPath(ftp_error_text(&e))),
         };
         guard.disarm();
         self.owed_folder = None;
@@ -4559,9 +4964,7 @@ impl FtpProvider {
                 Ok(())
             }
             Err(err) => {
-                self.stream = None;
-                self.current_path = previous.to_string();
-                self.folder_lost = true;
+                self.lose_folder(previous);
                 Err(err)
             }
         }
@@ -4626,15 +5029,25 @@ impl FtpProvider {
                 return ProviderError::NotSupported(Self::doing(
                     operation,
                     &at_offset,
-                    format_args!("the server does not support restarting a transfer: {err}"),
+                    format_args!(
+                        "FTP status {}: the server does not support restarting a transfer",
+                        response.status.code()
+                    ),
                 ));
             }
         }
-        let reply = err.to_string();
+        let reply = ftp_error_text(&err);
         match Self::classify_data_failure(operation, path, err) {
             ProviderError::TransferFailed(_) => {
                 ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))
             }
+            // A refused offset: retryable, said as a refused restart, and its
+            // status, never the server's text (T8).
+            ProviderError::FtpRefused { code, .. } => ProviderError::TransferFailed(Self::doing(
+                operation,
+                &at_offset,
+                format!("FTP status {code}: restart refused"),
+            )),
             classified => classified,
         }
     }
@@ -5215,11 +5628,7 @@ impl FtpProvider {
                     self.stream_mut()?
                         .custom_command(format!("OPTS HASH {label}"), &[Status::CommandOk])
                         .await
-                        .map_err(|e| {
-                            ProviderError::ServerError(format!(
-                                "The server refused OPTS HASH {label}: {e}"
-                            ))
-                        })?;
+                        .map_err(|e| ftp_failure(&e))?;
                     self.hash.hash_selected = Some(label);
                 }
                 let response = self
@@ -5228,10 +5637,7 @@ impl FtpProvider {
                     .await
                     .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
                 let (key, hex) = parse_hash_reply(&response.body).ok_or_else(|| {
-                    ProviderError::ServerError(format!(
-                        "Unrecognised HASH reply: {}",
-                        String::from_utf8_lossy(&response.body).trim()
-                    ))
+                    ProviderError::ServerError("Unrecognised HASH reply".to_string())
                 })?;
                 result.insert(key, hex);
             }
@@ -5249,10 +5655,7 @@ impl FtpProvider {
                     .await
                     .map_err(|e| Self::classify_data_failure("hashing", path, e))?;
                 let hex = parse_legacy_reply(&response.body).ok_or_else(|| {
-                    ProviderError::ServerError(format!(
-                        "Unrecognised {verb} reply: {}",
-                        String::from_utf8_lossy(&response.body).trim()
-                    ))
+                    ProviderError::ServerError(format!("Unrecognised {verb} reply"))
                 })?;
                 result.insert(key.to_string(), hex);
             }
@@ -5305,7 +5708,10 @@ async fn ftp_download_one_range(
         let stream = worker.stream_mut()?;
         // Queue the offset; REST is sent by the next RETR, after PASV.
         stream.resume_transfer(start as usize).await.map_err(|e| {
-            ProviderError::TransferFailed(format!("Failed to prepare FTP restart offset: {}", e))
+            ProviderError::TransferFailed(format!(
+                "Failed to prepare FTP restart offset: {}",
+                ftp_error_text(&e)
+            ))
         })?;
     }
 
@@ -6318,6 +6724,258 @@ pub(crate) fn reply_names_not_empty(reply: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    /// T8: an FTP refusal crosses the provider boundary as its status,
+    /// typed, never as the server's text. A 425 whose text holds `HTTP 403`
+    /// (an upload's data connection) stays a 425 at the IPC boundary:
+    /// retryable, not a permission refusal; and the text is gone.
+    #[test]
+    fn an_ftp_refusal_crosses_the_boundary_as_its_status_not_its_text() {
+        let reply = |status, body: &str| {
+            FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+                status,
+                body.as_bytes().to_vec(),
+            ))
+        };
+        let refused = FtpProvider::map_store_error(
+            "/up.bin",
+            reply(
+                Status::CannotOpenDataConnection,
+                "425 Cannot open data connection: upstream said HTTP 403 Forbidden",
+            ),
+        );
+        assert!(
+            matches!(refused, ProviderError::FtpRefused { code: 425, .. }),
+            "{refused:?}"
+        );
+        assert!(!refused.to_string().contains("403"), "{refused}");
+        let rendered =
+            crate::sync::ipc_error_render("upload_file", &crate::sync::IpcError::from(refused));
+        assert!(rendered.contains("(FTP 425)"), "{rendered}");
+        assert!(!rendered.contains("permission_denied"), "{rendered}");
+        assert!(rendered.ends_with(":true]"), "retryable: {rendered}");
+        // A command refusal too, and the stale-session check still knows 425.
+        let command = FtpProvider::classify_command_refusal(
+            "delete",
+            "/a",
+            reply(Status::CannotOpenDataConnection, "425 HTTP 403"),
+        );
+        assert!(matches!(
+            command,
+            ProviderError::FtpRefused { code: 425, .. }
+        ));
+        assert!(FtpProvider::is_stale_data_connection_error(&command));
+    }
+
+    /// U6: the reply that ends a transfer (upload, resumed upload, download:
+    /// all read it through `transfer_verdict_error`) keeps its status typed.
+    /// A `451` whose text says `HTTP 403` is a transient 451 at the IPC
+    /// boundary, retryable and not a permission refusal, and the text is
+    /// gone. It is no stale session either, so it is not sent again; an
+    /// unexpected POSITIVE reply is (the session is out of step).
+    #[test]
+    fn a_final_transfer_reply_crosses_the_boundary_as_its_status_not_its_text() {
+        let reply = |status, body: &str| {
+            FtpError::UnexpectedResponse(suppaftp::types::Response::new(
+                status,
+                body.as_bytes().to_vec(),
+            ))
+        };
+        let verdict = FtpProvider::transfer_verdict_error(reply(
+            Status::from(451),
+            "451 upstream said HTTP 403 Forbidden",
+        ));
+        assert!(
+            matches!(verdict, ProviderError::FtpRefused { code: 451, .. }),
+            "{verdict:?}"
+        );
+        assert!(!verdict.to_string().contains("403"), "{verdict}");
+        assert!(!verdict.to_string().contains("upstream"), "{verdict}");
+        let rendered =
+            crate::sync::ipc_error_render("upload_file", &crate::sync::IpcError::from(verdict));
+        assert!(rendered.contains("(FTP 451)"), "{rendered}");
+        assert!(!rendered.contains("permission_denied"), "{rendered}");
+        assert!(rendered.ends_with(":true]"), "retryable: {rendered}");
+        let refused =
+            FtpProvider::transfer_verdict_error(reply(Status::FileUnavailable, "550 HTTP 403"));
+        assert!(!FtpProvider::is_stale_data_connection_error(&refused));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&refused));
+        // A 226 read where a refusal was raised: out of step, so a read is
+        // redialed; but it came after the bytes, so an upload is not sent
+        // again.
+        let out_of_step = FtpProvider::transfer_verdict_error(reply(
+            Status::ClosingDataConnection,
+            "226 Transfer complete",
+        ));
+        assert!(FtpProvider::is_stale_data_connection_error(&out_of_step));
+        assert!(!FtpProvider::is_desync_before_transfer_error(&out_of_step));
+    }
+
+    /// U6, both FTP implementations: no reply text is formatted into an
+    /// error. A reply's words are read only to decide (the decision lines
+    /// below); an error says the status (`ftp_error_text`, `ftp_failure`,
+    /// `FtpManager::safe_ftp_error`). Every other place that turns an error
+    /// value into text is listed with the reason it holds no reply, so a new
+    /// one fails here until it is shown not to.
+    #[test]
+    fn no_ftp_reply_text_is_formatted_into_an_error() {
+        // The source without its `#[cfg(test)] mod … { … }` blocks (rustfmt
+        // closes a top-level module with a `}` alone on its line).
+        fn production(source: &str) -> Vec<&str> {
+            let mut kept = Vec::new();
+            let mut lines = source.lines().peekable();
+            while let Some(line) = lines.next() {
+                if line == "#[cfg(test)]"
+                    && lines
+                        .peek()
+                        .is_some_and(|next| next.contains("mod ") && next.ends_with('{'))
+                {
+                    for skipped in lines.by_ref() {
+                        if skipped == "}" {
+                            break;
+                        }
+                    }
+                    continue;
+                }
+                kept.push(line);
+            }
+            kept
+        }
+        let to_text = regex::Regex::new(
+            r"\b(e|err|error|other|response|reply)\.to_string\(\)|\{(e|err|error|other|response|reply)(:\?)?\}|,\s*(e|err|error|other|response|reply)\s*$|doing\([^)]*,\s*(e|err|error|other|response|reply)\)|format!\(.*,\s*(e|err|error|other|response|reply)\)",
+        )
+        .unwrap();
+        let log = regex::Regex::new(r"tracing::|\b(warn|debug|info|error|trace)!\(").unwrap();
+        let allowed: &[(&str, &str)] = &[
+            // providers/ftp.rs
+            (
+                r#""changed directory, but the server did not report the folder entered: {e}""#,
+                "folder_entered: callers pass ftp_error_text",
+            ),
+            (
+                "Err(e) => Err(e.to_string()),",
+                "return_to_the_recorded_folder: stream_mut's own ProviderError",
+            ),
+            (
+                r#""{failure}; returning to the recorded folder failed too ({e}): the session's folder is unknown, so it was closed""#,
+                "return_to_the_recorded_folder: e is ftp_error_text or our own words",
+            ),
+            (
+                r#""TLS upgrade failed: {error}. The server did not accept explicit TLS, so the \"#,
+                "callers pass ftp_error_text",
+            ),
+            (
+                r#".map_err(|e| ProviderError::ConnectionFailed(format!("TLS setup failed: {e}")))"#,
+                "a local rustls configuration error",
+            ),
+            (
+                r#"other => ProviderError::TransferFailed(format!("{other}{AT_THE_END_OF_THE_TRANSFER}")),"#,
+                "transfer_verdict_error: not a reply (that arm is above)",
+            ),
+            (
+                "ProviderError::ConnectionFailed(e.to_string())",
+                "the ConnectionError arm: a transport error",
+            ),
+            (
+                ") && Self::reply_says_the_name_is_taken(&response.to_string())",
+                "decision only",
+            ),
+            (
+                r#"format!("{reply} (while {operation} {path})")"#,
+                "doing: its callers are checked here",
+            ),
+            (
+                "return ProviderError::ServerError(Self::doing(operation, target, err));",
+                "classify_cwd_failure: let-else, not a reply",
+            ),
+            ("let text = response.to_string();", "decision only"),
+            (
+                "ProviderError::TransferFailed(Self::doing(operation, path, err))",
+                "classify_data_failure: replies returned above",
+            ),
+            (
+                "ProviderError::TransferFailed(Self::doing(operation, &at_offset, reply))",
+                "reply is ftp_error_text",
+            ),
+            (
+                r#"aeroftp-cli mkdir -p '{parent}' (the server refused the upload with: {err})""#,
+                "a ProviderError already classified",
+            ),
+            (
+                "other => other.to_string(),",
+                "ftp_error_text: not a reply (that arm is above)",
+            ),
+            (
+                "other => ProviderError::ServerError(other.to_string()),",
+                "ftp_failure_during: not a reply (that arm is above)",
+            ),
+            (
+                "if reply_names_not_empty(&reply.to_string()));",
+                "decision only",
+            ),
+            ("pattern, e", "a glob pattern error"),
+            (
+                r#""reading a range of {path}: {err} after the range was read whole""#,
+                "a log line",
+            ),
+            (
+                r#"Err(ProviderError::TransferFailed(format!("{}: {}", what, e)))"#,
+                "an io::Error of a write",
+            ),
+            (
+                "Ok(Err(e)) => Err(ProviderError::TransferFailed(e.to_string())),",
+                "an io::Error of a read",
+            ),
+            (
+                "} else if super::types::is_session_closed_error_message(&e.to_string()) {",
+                "an io::Error, decision only",
+            ),
+            (
+                r#"ProviderError::ConnectionLost(format!("Range read error: {e}"))"#,
+                "an io::Error",
+            ),
+            (
+                r#"ProviderError::TransferFailed(format!("Range read error: {e}"))"#,
+                "an io::Error",
+            ),
+            // ftp.rs
+            (
+                ".map_err(|e| FtpManagerError::OperationFailed(e.to_string()))?;",
+                "an io::Error of a read",
+            ),
+            (
+                r#".map_err(|e| FtpManagerError::OperationFailed(format!("Write error: {}", e)))?;"#,
+                "an io::Error of a write",
+            ),
+        ];
+        let mut seen = std::collections::HashSet::new();
+        let mut unexplained = Vec::new();
+        for (file, source) in [
+            ("providers/ftp.rs", include_str!("ftp.rs")),
+            ("ftp.rs", include_str!("../ftp.rs")),
+        ] {
+            for line in production(source) {
+                let line = line.trim();
+                if line.starts_with("//") || !to_text.is_match(line) || log.is_match(line) {
+                    continue;
+                }
+                match allowed.iter().find(|(text, _)| *text == line) {
+                    Some((text, _)) => {
+                        seen.insert(*text);
+                    }
+                    None => unexplained.push(format!("{file}: {line}")),
+                }
+            }
+        }
+        assert!(unexplained.is_empty(), "{unexplained:#?}");
+        let stale: Vec<_> = allowed
+            .iter()
+            .filter(|(text, _)| !seen.contains(text))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "allowed lines no longer present: {stale:#?}"
+        );
+    }
 
     use super::*;
 
@@ -6553,9 +7211,16 @@ mod tests {
             // without touching the test; it is also blind to the case a reviewer
             // would most want flagged, a change that reclassifies the failure
             // into a third thing nobody considered.
+            // T8: the refusal keeps its status, typed, and what we were
+            // doing; the server's text is gone.
             assert!(
-                matches!(err, ProviderError::TransferFailed(_)),
-                "{code} {body} must remain TransferFailed: {err:?}"
+                matches!(err, ProviderError::FtpRefused { code: c, .. } if u32::from(c) == code),
+                "{code} {body} must be its typed status: {err:?}"
+            );
+            let rendered = err.to_string();
+            assert!(
+                rendered.contains("/srv/data/report.csv") && !rendered.contains(body),
+                "{rendered}"
             );
         }
 
@@ -6610,14 +7275,13 @@ mod tests {
             (
                 421,
                 "421 Service not available, closing control connection",
-                "ServerError",
+                "FtpRefused",
             ),
-            (450, "450 Requested file action not taken", "ServerError"),
-            // Permanent, but about the session and not the path. Kept as
-            // ServerError on purpose: a wrong retry costs two round trips, a
-            // false statement about the path costs the reader's trust.
-            (530, "530 Not logged in", "ServerError"),
-            (500, "500 Unknown command", "ServerError"),
+            (450, "450 Requested file action not taken", "FtpRefused"),
+            // Permanent, but about the session and not the path. Its typed
+            // status (T8), never a statement about the path.
+            (530, "530 Not logged in", "FtpRefused"),
+            (500, "500 Unknown command", "FtpRefused"),
         ];
         for (code, body, expected) in cases {
             let got =
@@ -6625,20 +7289,25 @@ mod tests {
             let actual = match got {
                 ProviderError::NotFound(_) => "NotFound",
                 ProviderError::InvalidPath(_) => "InvalidPath",
-                ProviderError::ServerError(_) => "ServerError",
+                ProviderError::FtpRefused { .. } => "FtpRefused",
                 ref other => panic!("{code}: unexpected variant {other:?}"),
             };
             assert_eq!(
                 actual, *expected,
                 "CWD {code} ({body:?}) classified as {actual}, expected {expected}"
             );
-            // Whatever the verdict, the server's own words survive it. A
-            // classification that replaces the reply with a sentence of ours
-            // leaves the user with our guess and no way back to the fact.
+            // Whatever the verdict, the status and the target survive it, and
+            // the server's text does not (T8): it can hold anything, and the
+            // classifier must never read a status out of it.
             let rendered = got.to_string();
             assert!(
-                rendered.contains(body) && rendered.contains("/target"),
-                "CWD {code}: the reply or the target was dropped from {rendered:?}"
+                rendered.contains(&code.to_string()) && rendered.contains("/target"),
+                "CWD {code}: the status or the target was dropped from {rendered:?}"
+            );
+            let words = body.split_once(' ').map_or(*body, |(_, words)| words);
+            assert!(
+                !rendered.contains(words),
+                "CWD {code}: the reply's text is in {rendered:?}"
             );
         }
     }
@@ -8412,9 +9081,10 @@ mod rename_contract_tests {
             },
         )
         .await;
+        // A denial is the typed refusal (T8), never a missing path.
         assert!(matches!(
             denied.list("/private").await,
-            Err(ProviderError::ServerError(_))
+            Err(ProviderError::FtpRefused { .. })
         ));
     }
 
@@ -8467,6 +9137,10 @@ mod rename_contract_tests {
         rnto_refuses_taken: bool,
         /// `LIST -a` is refused; a bare LIST still answers.
         list_all_refused: bool,
+        /// `LIST -a` is read as a pathname: it lists the folder named `-a`.
+        dash_a_as_path: bool,
+        /// A bare LIST also shows the subfolders, as directory rows.
+        list_dirs: bool,
         /// The directory the session opens in after login, as a chrooted or
         /// jailed account reports it; `/` by default.
         login_dir: Option<&'static str>,
@@ -8479,6 +9153,12 @@ mod rename_contract_tests {
         /// `PWD` answers the folder without its leading `/` (`home/u`), as a
         /// server that reports relative paths does.
         relative_pwd: bool,
+        /// STOR stores the bytes and ends with `200`, a positive reply that
+        /// is not the `226` the transfer waits for.
+        stor_ends_with_200: bool,
+        /// STOR stores the bytes and ends with a malformed status line that
+        /// suppaftp rejects as `BadResponse` ("Response contains an invalid syntax").
+        stor_ends_with_malformed_reply: bool,
     }
 
     /// One scripted control connection of a server that holds the files
@@ -8575,6 +9255,17 @@ mod rename_contract_tests {
                     if stalled {
                         continue;
                     }
+                    // `!refuse CWD <folder>`: that CWD refused, once.
+                    let refuse = format!("!refuse CWD {target}");
+                    let refused = {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != &refuse);
+                        held.len() != before
+                    };
+                    if refused {
+                        "550 Failed to change directory.\r\n".to_string()
+                    } else {
                     let is_dir = target == "/"
                         || files
                             .lock()
@@ -8586,6 +9277,7 @@ mod rename_contract_tests {
                         "250 Directory changed\r\n".to_string()
                     } else {
                         "550 Failed to change directory.\r\n".to_string()
+                    }
                     }
                 }
                 "RMD" => {
@@ -8600,7 +9292,14 @@ mod rename_contract_tests {
                 }
                 "DELE" => {
                     log.lock().unwrap().push(format!("DELE {argument}"));
-                    files.lock().unwrap().retain(|f| f != &argument);
+                    // A relative name is deleted in the folder the session
+                    // stands in, as a server resolves it.
+                    let target = if argument.starts_with('/') {
+                        argument.clone()
+                    } else {
+                        format!("{}/{argument}", cwd.trim_end_matches('/'))
+                    };
+                    files.lock().unwrap().retain(|f| f != &target);
                     "250 Deleted\r\n".to_string()
                 }
                 "STOR" => {
@@ -8620,7 +9319,13 @@ mod rename_contract_tests {
                         }
                     }
                     files.lock().unwrap().push(target);
-                    "226 Transfer complete\r\n".to_string()
+                    if quirks.stor_ends_with_200 {
+                        "200 Command okay\r\n".to_string()
+                    } else if quirks.stor_ends_with_malformed_reply {
+                        "malformed completion line\r\n".to_string()
+                    } else {
+                        "226 Transfer complete\r\n".to_string()
+                    }
                 }
                 "LIST" if quirks.list_only && argument == "/missing" => {
                     "550 No such file or directory\r\n".to_string()
@@ -8628,8 +9333,22 @@ mod rename_contract_tests {
                 "LIST" if quirks.list_all_refused && argument.starts_with("-a") => {
                     "550 Permission denied\r\n".to_string()
                 }
+                // `!stall LIST -a` in the files: that listing unanswered, once.
+                "LIST"
+                    if argument.starts_with("-a") && {
+                        let mut held = files.lock().unwrap();
+                        let before = held.len();
+                        held.retain(|f| f != "!stall LIST -a");
+                        held.len() != before
+                    } =>
+                {
+                    continue;
+                }
                 "LIST" => {
                     let (all, target) = match argument.strip_prefix("-a") {
+                        Some(_) if quirks.dash_a_as_path => {
+                            (true, format!("{}/-a", cwd.trim_end_matches('/')))
+                        }
                         Some(_) => (true, cwd.clone()),
                         None if argument.is_empty() => (false, cwd.clone()),
                         None => (false, argument.clone()),
@@ -8641,14 +9360,28 @@ mod rename_contract_tests {
                         row(target.rsplit('/').next().unwrap_or(&target))
                     } else {
                         let dir = target.trim_end_matches('/');
-                        held.iter()
+                        let mut rows: String = held
+                            .iter()
                             .filter_map(|f| {
                                 let (parent, name) = f.rsplit_once('/')?;
                                 (parent == dir
                                     && (all || !quirks.hides_dotfiles || !name.starts_with('.')))
                                 .then(|| row(name))
                             })
-                            .collect()
+                            .collect();
+                        if quirks.list_dirs {
+                            let mut subdirs: Vec<&str> = held
+                                .iter()
+                                .filter_map(|f| f.strip_prefix(&format!("{dir}/")))
+                                .filter_map(|rest| rest.split_once('/').map(|(sub, _)| sub))
+                                .collect();
+                            subdirs.sort_unstable();
+                            subdirs.dedup();
+                            for sub in subdirs {
+                                rows.push_str(&format!("drwxr-xr-x 1 u g 0 Jan 01 2024 {sub}\r\n"));
+                            }
+                        }
+                        rows
                     };
                     if write.write_all(b"150 Here comes the listing\r\n").await.is_err() {
                         return;
@@ -9152,7 +9885,8 @@ mod rename_contract_tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 
     #[tokio::test]
@@ -9202,7 +9936,8 @@ mod rename_contract_tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 
     /// In a write-only drop folder the listing is refused, so the look for an
@@ -9240,7 +9975,8 @@ mod rename_contract_tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 
     /// Where neither LIST nor SIZE can see the destination, a server that
@@ -9302,6 +10038,65 @@ mod rename_contract_tests {
             .await
             .expect("a plain file is deleted");
         assert_eq!(*log.lock().unwrap(), ["DELE /d/.env"]);
+    }
+
+    /// A server that reads `-a` as a pathname lists the folder named `-a`, and
+    /// a same-named dotfile there would pass for the one asked about. With an
+    /// entry named `-a` in the bare listing a dot name it does not show is
+    /// neither found nor missing; without one, `LIST -a` finds it as before.
+    #[tokio::test]
+    async fn a_dotfile_lookup_refuses_a_folder_named_dash_a() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            dash_a_as_path: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/-a", "/d/-a/.env"], quirks).await;
+        let refused = provider.stat("/d/.env").await;
+        assert!(
+            matches!(&refused, Err(ProviderError::Other(message)) if message.contains("ambiguous")),
+            "{refused:?}"
+        );
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/d/b.txt"], quirks).await;
+        let found = provider
+            .stat("/d/.env")
+            .await
+            .expect("an unambiguous dotfile is found");
+        assert_eq!(found.name, ".env");
+    }
+
+    /// The same through a backup receipt check, with `-a` a real folder of the
+    /// bare listing: an ambiguous receipt is not a file, an unambiguous one is.
+    #[tokio::test]
+    async fn a_receipt_beside_a_folder_named_dash_a_is_not_accepted() {
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            dash_a_as_path: true,
+            list_dirs: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/-a/.env"], quirks).await;
+        let refused = crate::sync_backup::provider_receipt_is_file(&mut provider, "/d/.env").await;
+        assert!(refused.is_err(), "unknown, not a file: {refused:?}");
+        let quirks = Quirks {
+            list_only: true,
+            hides_dotfiles: true,
+            list_dirs: true,
+            ..Quirks::default()
+        };
+        let (mut provider, _) = provider_on_server_with(&["/d/.env", "/d/sub/x.txt"], quirks).await;
+        assert!(
+            crate::sync_backup::provider_receipt_is_file(&mut provider, "/d/.env")
+                .await
+                .unwrap()
+        );
     }
 
     /// vsftpd refuses `RMD` of a directory that is not empty with a bare 550
@@ -9598,6 +10393,183 @@ mod rename_contract_tests {
         assert!(!held.contains(&"/d/x3.txt".to_string()), "{held:?}");
     }
 
+    /// A stat of a dotfile enters its folder for a hidden listing. Cancelled
+    /// during that `LIST -a`, or with both the listing and the way back
+    /// refused, it used to leave the next redial returning to that folder (or
+    /// no redial at all), so a relative delete from `/home/u` removed
+    /// `/d/x.txt`. The folder it left stays owed until the session stands in
+    /// it again: the delete removes `/home/u/x.txt`.
+    #[tokio::test]
+    async fn a_hidden_listing_cancelled_or_unrestored_never_leaves_the_session_in_its_folder() {
+        // Every case runs, so a failure names each one that went wrong.
+        let mut wrong = Vec::new();
+        for refused in [false, true] {
+            let quirks = Quirks {
+                list_only: true,
+                hides_dotfiles: true,
+                list_all_refused: refused,
+                login_dir: Some("/home/u"),
+                ..Quirks::default()
+            };
+            let (mut provider, _log, files) =
+                provider_on_server_holding(&["/home/u/x.txt", "/d/x.txt", "/d/.env"], quirks, None)
+                    .await;
+            assert_eq!(provider.current_path, "/home/u");
+            if refused {
+                files
+                    .lock()
+                    .unwrap()
+                    .push("!refuse CWD /home/u".to_string());
+                assert!(provider.stat("/d/.env").await.is_err(), "both refused");
+            } else {
+                files.lock().unwrap().push("!stall LIST -a".to_string());
+                let cancelled = tokio::time::timeout(
+                    std::time::Duration::from_millis(500),
+                    provider.stat("/d/.env"),
+                )
+                .await;
+                assert!(cancelled.is_err(), "the hidden listing was answered");
+            }
+            provider
+                .delete("x.txt")
+                .await
+                .expect("a relative delete after the stat");
+            let held = files.lock().unwrap().clone();
+            if !held.contains(&"/d/x.txt".to_string())
+                || held.contains(&"/home/u/x.txt".to_string())
+            {
+                let case = if refused { "unrestored" } else { "cancelled" };
+                wrong.push(format!("{case}: {held:?}"));
+            }
+        }
+        assert!(wrong.is_empty(), "{wrong:#?}");
+    }
+
+    /// A server that stores the upload and ends it with an unexpected `200`
+    /// has the bytes already: the upload is not sent a second time, which
+    /// could replace a change made after the first one landed.
+    #[tokio::test]
+    async fn an_upload_ended_by_an_unexpected_positive_reply_is_sent_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_200: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(&[], quirks, None).await;
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/up.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(files.lock().unwrap().contains(&"/up.txt".to_string()));
+    }
+
+    /// CodeRabbit 4580537998: a server that stores the upload and sends a
+    /// malformed completion line makes suppaftp return `BadResponse` ("Response
+    /// contains an invalid syntax"). `transfer_verdict_error` preserves the
+    /// post-data phase for every finalization failure, so `upload` sends
+    /// `STOR` once instead of reconnecting and overwriting the file.
+    #[tokio::test]
+    async fn an_upload_ended_by_a_malformed_completion_reply_is_sent_once() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_malformed_reply: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, files) = provider_on_server_holding(&[], quirks, None).await;
+        let outcome = provider
+            .upload(local.to_str().unwrap(), "/up.txt", None)
+            .await;
+        assert!(outcome.is_err(), "{outcome:?}");
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(files.lock().unwrap().contains(&"/up.txt".to_string()));
+    }
+
+    /// The same upload through the transfer executor the queue runs: the
+    /// typed error loses the phase there (`TransferError::from_provider`), so
+    /// the executor must not replay it either. It makes one attempt, and its
+    /// failure is never retried, whatever class the final reply gets.
+    #[tokio::test]
+    async fn an_upload_ended_by_an_unexpected_positive_reply_is_sent_once_by_the_executor() {
+        use crate::transfer_orchestrator::TransferExecutor;
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("x.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let quirks = Quirks {
+            list_only: true,
+            log_commands: true,
+            stor_ends_with_200: true,
+            ..Quirks::default()
+        };
+        let (provider, log, _files) = provider_on_server_holding(&[], quirks, None).await;
+        let executor = crate::provider_transfer_executor::ProviderUploadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(tokio::sync::Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            crate::transfer_settings::ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 3,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            None,
+            tokio_util::sync::CancellationToken::new(),
+            crate::provider_transfer_executor::ProviderExecutorSessionModel::LockedSingle {
+                provider_type: Some(ProviderType::Ftp),
+            },
+            crate::transfer_dag::TransferCapabilities::default(),
+        );
+        let outcome = executor
+            .execute(crate::transfer_domain::TransferEntry {
+                id: "up".to_string(),
+                display_name: "up.txt".to_string(),
+                remote_path: "/up.txt".to_string(),
+                local_path: local.to_string_lossy().into_owned(),
+                size: 3,
+                modified: None,
+            })
+            .await;
+        let crate::transfer_domain::TransferOutcome::Failed(failure) = outcome else {
+            panic!("a final 200 after the data is not a success: {outcome:?}");
+        };
+        let stors = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.starts_with("STOR"))
+            .count();
+        assert_eq!(stors, 1, "{:?}", log.lock().unwrap());
+        assert!(!failure.retryable, "{failure:?}");
+        assert_eq!(
+            failure.to_transfer_error().retry,
+            crate::transfer_dag::RetryDirective::Never
+        );
+        assert_eq!(executor.take_transfer_attempts("up"), Some(1));
+    }
+
     /// The way out of a lost folder, cancelled after its `connect` and
     /// before its `CWD` was answered, left a session in the login folder
     /// that no longer counted as lost: a relative upload stored there. The
@@ -9728,6 +10700,149 @@ mod rename_contract_tests {
         assert_eq!(provider.current_path, "docs");
     }
 
+    /// A folder transfer walks its tree with `cd` and then returns to the
+    /// folder `pwd` reported before. Reported relative (`docs`), that folder
+    /// names `/docs/a/docs` from the scanned `/docs/a`: the session is closed
+    /// as lost there instead, no command runs until an absolute `cd`, and the
+    /// refusal names no folder.
+    #[tokio::test]
+    async fn returning_to_a_relative_folder_after_a_scan_enters_no_folder_of_that_name() {
+        let quirks = Quirks {
+            login_dir: Some("/docs"),
+            relative_pwd: true,
+            log_commands: true,
+            ..Quirks::default()
+        };
+        let (mut provider, log, _files) =
+            provider_on_server_holding(&["/docs/a/docs/trap.txt", "/docs/b.txt"], quirks, None)
+                .await;
+        let before = provider.pwd().await.unwrap();
+        assert_eq!(before, "docs");
+        provider.cd("/docs/a").await.unwrap();
+
+        let refused = provider
+            .return_to_folder(&before)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(!refused.contains("docs"), "{refused}");
+        assert!(
+            !provider.is_connected(),
+            "the session was kept in the scanned folder"
+        );
+        assert_eq!(provider.current_path, "docs");
+
+        log.lock().unwrap().clear();
+        let relative = provider.cd("x").await.unwrap_err().to_string();
+        assert!(!relative.contains("docs"), "{relative}");
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "a command ran while the folder was lost: {:?}",
+            log.lock().unwrap()
+        );
+        provider.cd("/docs").await.unwrap();
+        assert!(provider.is_connected());
+        let names: Vec<String> = provider
+            .list(".")
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect();
+        assert!(names.contains(&"b.txt".to_string()), "{names:?}");
+    }
+
+    /// A return dropped during its `CWD` still owes the folder: the next
+    /// relative upload redials to `/shown` and stores there, not in the
+    /// scanned `/tree` the session stood in.
+    #[tokio::test]
+    async fn a_return_dropped_during_its_cwd_still_owes_the_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("c.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let (mut provider, _log, files) = provider_on_server_holding(
+            &["/shown/a.txt", "/tree/b.txt"],
+            Quirks {
+                login_dir: Some("/shown"),
+                log_commands: true,
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        provider.cd("/tree").await.unwrap();
+        files.lock().unwrap().push("!stall CWD /shown".to_string());
+        let dropped = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            provider.return_to_folder(&before),
+        )
+        .await;
+        assert!(dropped.is_err(), "the return was answered: {dropped:?}");
+        provider
+            .upload(local, "c.txt", None)
+            .await
+            .expect("the upload after the dropped return");
+        let held = files.lock().unwrap().clone();
+        assert!(held.contains(&"/shown/c.txt".to_string()), "{held:?}");
+        assert!(!held.contains(&"/tree/c.txt".to_string()), "{held:?}");
+    }
+
+    /// A refused return (the folder went away during the scan) leaves the
+    /// session lost in `/shown`, not usable in the scanned `/tree`: two
+    /// relative uploads store nothing.
+    #[tokio::test]
+    async fn a_refused_return_leaves_no_session_in_the_scanned_folder() {
+        let directory = tempfile::tempdir().unwrap();
+        let local = directory.path().join("c.txt");
+        std::fs::write(&local, b"abc").unwrap();
+        let local = local.to_str().unwrap();
+        let (mut provider, log, files) = provider_on_server_holding(
+            &["/shown/a.txt", "/tree/b.txt"],
+            Quirks {
+                login_dir: Some("/shown"),
+                log_commands: true,
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        provider.cd("/tree").await.unwrap();
+        files.lock().unwrap().push("!refuse CWD /shown".to_string());
+        assert!(provider.return_to_folder(&before).await.is_err());
+        assert!(!provider.is_connected(), "the session was kept in /tree");
+        assert_eq!(provider.current_path, "/shown");
+        for _ in 0..2 {
+            assert!(provider.upload(local, "c.txt", None).await.is_err());
+        }
+        let sent = log.lock().unwrap().clone();
+        assert!(!sent.iter().any(|c| c.starts_with("STOR")), "{sent:?}");
+        let held = files.lock().unwrap().clone();
+        assert!(!held.contains(&"/tree/c.txt".to_string()), "{held:?}");
+    }
+
+    /// An absolute folder is entered again as `cd` enters it.
+    #[tokio::test]
+    async fn returning_to_an_absolute_folder_after_a_scan_enters_it() {
+        let (mut provider, _log, _files) = provider_on_server_holding(
+            &["/docs/a/x.txt", "/docs/b.txt"],
+            Quirks {
+                login_dir: Some("/docs"),
+                ..Quirks::default()
+            },
+            None,
+        )
+        .await;
+        let before = provider.pwd().await.unwrap();
+        assert_eq!(before, "/docs");
+        provider.cd("/docs/a").await.unwrap();
+        provider.return_to_folder(&before).await.unwrap();
+        assert!(provider.is_connected());
+        assert_eq!(provider.pwd().await.unwrap(), "/docs");
+    }
+
     /// Every redial returns to the folder it left only when that folder
     /// names one folder: a relative one (`home/u/docs`) is not entered from
     /// the login folder, where it names `/home/u/home/u/docs`.
@@ -9788,7 +10903,8 @@ mod rename_contract_tests {
             matches!(outcome, Err(ProviderError::AlreadyExists(_))),
             "{outcome:?}"
         );
-        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+        let seen = log.lock().unwrap().clone();
+        assert!(seen.is_empty(), "{seen:?}");
     }
 }
 
@@ -11040,8 +12156,9 @@ mod transfer_verdict_tests {
             .filter(|line| line.starts_with("STOR"))
             .count();
         assert_eq!(stors, 1, "the refused file was sent again: {outcome:?}");
+        // U6: the verdict keeps its status typed, never the reply's text.
         assert!(
-            matches!(outcome, Err(ProviderError::TransferFailed(ref m)) if m.contains("552")),
+            matches!(outcome, Err(ProviderError::FtpRefused { code: 552, .. })),
             "{outcome:?}"
         );
     }
@@ -11160,6 +12277,10 @@ pub(crate) mod walk_scope_tests {
         Reply421,
         StallRestore,
         CloseAfter421,
+        /// `/shown` opens once; every later CWD into it is refused with 550.
+        RefuseReturnToShown,
+        /// `PWD` reports the current folder without its leading `/`.
+        RelativePwd,
     }
 
     /// One control connection of a server without MLSD that holds
@@ -11181,6 +12302,7 @@ pub(crate) mod walk_scope_tests {
         let mut data: Option<TcpListener> = None;
         let mut cwd = "/".to_string();
         let mut find_failed = false;
+        let mut shown_opened = false;
         let held = |path: &str| listings.iter().any(|(folder, _)| *folder == path);
         while let Ok(Some(line)) = lines.next_line().await {
             let (cmd, argument) = line.split_once(' ').unwrap_or((line.as_str(), ""));
@@ -11198,7 +12320,14 @@ pub(crate) mod walk_scope_tests {
                 "PASS" => "230 logged in\r\n".to_string(),
                 "FEAT" => "211-Features:\r\n UTF8\r\n211 End\r\n".to_string(),
                 "MLST" | "MLSD" => "500 Unknown command\r\n".to_string(),
-                "PWD" => format!("257 \"{cwd}\" is current\r\n"),
+                "PWD" => {
+                    let reported = if matches!(mode, FindFailureMode::RelativePwd) && cwd != "/" {
+                        cwd.trim_start_matches('/')
+                    } else {
+                        cwd.as_str()
+                    };
+                    format!("257 \"{reported}\" is current\r\n")
+                }
                 "CWD" => {
                     let target = resolve(&cwd, &argument);
                     if matches!(mode, FindFailureMode::StallRestore) && find_failed && target == "/"
@@ -11207,7 +12336,12 @@ pub(crate) mod walk_scope_tests {
                         while let Ok(Some(_)) = lines.next_line().await {}
                         return;
                     }
-                    if target.ends_with("/down") {
+                    if matches!(mode, FindFailureMode::RefuseReturnToShown)
+                        && target == "/shown"
+                        && std::mem::replace(&mut shown_opened, true)
+                    {
+                        "550 Failed to change directory.\r\n".to_string()
+                    } else if target.ends_with("/down") {
                         find_failed = true;
                         if matches!(mode, FindFailureMode::CloseAfter421) {
                             let _ = write.write_all(b"421 Service not available.\r\n").await;
@@ -11288,6 +12422,21 @@ pub(crate) mod walk_scope_tests {
     /// too.
     pub(crate) async fn tree_server(listings: Listings) -> (u16, Arc<Mutex<Vec<String>>>) {
         tree_server_with_restore_mode(listings, FindFailureMode::Reply421).await
+    }
+
+    /// A [`tree_server`] that lets a session into `/shown` once and refuses
+    /// every later CWD into it: a session that leaves `/shown` cannot go back.
+    pub(crate) async fn tree_server_refusing_return_to_shown(
+        listings: Listings,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, FindFailureMode::RefuseReturnToShown).await
+    }
+
+    /// A [`tree_server`] whose `PWD` reports relative paths (`shown` for `/shown`).
+    pub(crate) async fn tree_server_with_relative_pwd(
+        listings: Listings,
+    ) -> (u16, Arc<Mutex<Vec<String>>>) {
+        tree_server_with_restore_mode(listings, FindFailureMode::RelativePwd).await
     }
 
     async fn tree_server_with_restore_mode(
@@ -11655,6 +12804,8 @@ mod abandoned_command_tests {
         Silent,
         /// Answered 400 ms late, after the client has given up on it.
         Late,
+        /// Passive mode answered at once; a `DELE` answered 400 ms late.
+        LateDele,
     }
 
     /// A server that logs every command line and answers each one, the
@@ -11682,6 +12833,10 @@ mod abandoned_command_tests {
                             "PASV" | "EPSV" if passive == Passive::Late => {
                                 tokio::time::sleep(Duration::from_millis(400)).await;
                                 "227 Entering Passive Mode (127,0,0,1,0,1)\r\n"
+                            }
+                            "DELE" if passive == Passive::LateDele => {
+                                tokio::time::sleep(Duration::from_millis(400)).await;
+                                "250 deleted\r\n"
                             }
                             "USER" => "331 password please\r\n",
                             "PASS" => "230 logged in\r\n",
@@ -11761,6 +12916,37 @@ mod abandoned_command_tests {
         provider.disconnect().await.unwrap();
         tokio::time::sleep(Duration::from_millis(200)).await;
         assert!(sent(&log, "QUIT"), "{:?}", log.lock().unwrap());
+    }
+
+    /// M3: a delete dropped after its `DELE` was sent (a Cancel) leaves its
+    /// reply to come. The next command redials instead of reading that
+    /// `250` as its own answer, and a later delete works on the new session.
+    #[tokio::test]
+    async fn a_cancelled_delete_leaves_no_late_reply_for_the_next_command() {
+        let (port, log) = server(Passive::LateDele).await;
+        let mut provider = connected(port).await;
+        tokio::select! {
+            _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
+            _ = tokio::time::sleep(Duration::from_millis(150)) => {}
+        }
+        assert!(sent(&log, "DELE"), "{:?}", log.lock().unwrap());
+        let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
+            .await
+            .expect("the command must end")
+            .expect("the command must succeed on a fresh session");
+        assert_eq!(path, "/");
+        tokio::time::timeout(Duration::from_secs(5), provider.delete("/b.txt"))
+            .await
+            .expect("the delete must end")
+            .expect("the delete must read its own reply");
+        let logins = log
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|line| line.to_uppercase().starts_with("USER"))
+            .count();
+        assert_eq!(logins, 2, "{:?}", log.lock().unwrap());
+        provider.disconnect().await.unwrap();
     }
 
     /// After an abandoned listing whose reply comes late, the next command redials instead of reading it.

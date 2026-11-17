@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet: AI-assisted (see AI-TRANSPARENCY.md)
 
-import { act, createElement, useEffect } from 'react';
+import { act, createElement, useEffect, Suspense, startTransition } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useLatestCallback } from './useLatestCallback';
@@ -51,4 +51,23 @@ describe('useLatestCallback', () => {
         expect(subscriptions.length).toBe(1);
         expect(subscriptions[0]()).toBe('c');
     });
+    it('does not publish a value from a suspended render that never commits', async () => {
+        const pending = new Promise<void>(() => undefined);
+        let suspended = false;
+        let read!: () => boolean;
+        const Probe = ({ active, suspend }: { active: boolean; suspend: boolean }) => {
+            read = useLatestCallback(() => active);
+            if (suspend) { suspended = true; throw pending; }
+            return null;
+        };
+        const view = (active: boolean, suspend: boolean) => createElement(Suspense, { fallback: null }, createElement(Probe, { active, suspend }));
+        await mount(view(false, false));
+        expect(read()).toBe(false);
+        await act(async () => { startTransition(() => root!.render(view(true, true))); });
+        expect(suspended).toBe(true);
+        expect(read()).toBe(false);
+        await act(async () => root!.render(view(false, false)));
+        expect(read()).toBe(false);
+    });
+
 });

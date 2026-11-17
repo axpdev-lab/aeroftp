@@ -1073,7 +1073,7 @@ async function liveTabChecks() {
     ].join('\n');
     const { code } = await transformWithOxc(source, 'live-tab.ts');
     const params = { protocol: 'ftp', server: 'example.test', username: 'u', password: '' };
-    const target = { params, profileId: null, oauthLogins: 0, overlay: null };
+    const target = { params, profileId: null, oauthLogins: 0, overlay: null, aeroVault: null };
     class QueuedTargetChangedError extends Error {}
     const ctx = {
         useRef: <T,>(current: T) => ({ current }),
@@ -1089,6 +1089,8 @@ async function liveTabChecks() {
         backendUncertainRef: { current: false },
         backendConfirmationsRef: { current: 0 },
         backendReplacementSeqRef: { current: 0 },
+        // The AeroVault overlay a queued transfer was planned under (none).
+        aeroVaultSessionRef: { current: null },
         isConnected: true,
         isSameConnection: () => true,
         liveConnectionParams: params,
@@ -2832,9 +2834,10 @@ describe('The transfer queue after a sign-in put the tab aside', () => {
                 isOAuthProvider: () => false,
                 isFourSharedProvider: () => false,
                 liveOverlay: () => null,
+                aeroVaultSessionRef: { current: null },
             };
             const fn = new Function(...Object.keys(ctx), `${code}; return queuedTargetProblem;`)(...Object.values(ctx));
-            return fn({ params: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' }, profileId: null, oauthLogins: 0, overlay: null });
+            return fn({ params: { protocol: 'ftp', server: 'example.test', username: 'u', password: '' }, profileId: null, oauthLogins: 0, overlay: null, aeroVault: null });
         };
         // parkActiveSession sets isConnected(false).
         expect(problem(false)).toBe('transfer.queuedForAnotherServer');

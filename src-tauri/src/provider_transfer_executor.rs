@@ -337,7 +337,17 @@ pub enum SegmentedDownloadError {
         message: String,
         reason: &'static str,
     },
+    /// A range connection the provider refused to create, with its typed
+    /// error: an owner change stays the typed `TargetChanged`.
+    #[error("{message}")]
+    CloneRefused {
+        message: String,
+        error: crate::providers::ProviderError,
+    },
 }
+
+/// Why a run stopped before its windows: a range connection was refused.
+const CLONE_REFUSED: &str = "an independent range connection could not be created";
 
 /// Why a run stopped before its windows: the object no longer has the planned size.
 const SOURCE_SIZE_CHANGED: &str = "the source size no longer matches the segmented plan";
@@ -361,6 +371,7 @@ impl SegmentedDownloadError {
             Self::Cancelled => None,
             Self::Unavailable { reason, .. } => Some(reason),
             Self::Failed(_) => Some("the segmented download failed"),
+            Self::CloneRefused { .. } => Some(CLONE_REFUSED),
         }
     }
 
@@ -598,15 +609,15 @@ async fn run_provider_segmented_windows(
                 for mut w in workers {
                     let _ = w.disconnect().await;
                 }
-                return Err(SegmentedDownloadError::unavailable(
-                    format!(
+                return Err(SegmentedDownloadError::CloneRefused {
+                    message: format!(
                         "segmented download: clone {} of {} failed: {}",
                         i + 1,
                         segments,
                         e
                     ),
-                    "an independent range connection could not be created",
-                ));
+                    error: e,
+                });
             }
         }
     }
@@ -1322,15 +1333,17 @@ impl ProviderDownloadExecutor {
         self
     }
 
-    async fn clone_worker(&self) -> Result<WarmWorker, String> {
+    /// A worker for one file; the provider's typed refusal (an owner change, a
+    /// cancellation) is kept, never turned into text.
+    async fn clone_worker(&self) -> Result<WarmWorker, crate::providers::ProviderError> {
         if let Some(worker) = self.warm_workers.take().await {
             return Ok(worker);
         }
         let provider_lock = self.provider.lock().await;
         provider_lock
             .as_ref()
-            .ok_or_else(|| "Provider disconnected".to_string())
-            .and_then(|provider| provider.clone_for_transfer().map_err(|e| e.to_string()))
+            .ok_or(crate::providers::ProviderError::NotConnected)
+            .and_then(|provider| provider.clone_for_transfer())
             .map(WarmWorker::fresh)
     }
 
@@ -1338,7 +1351,10 @@ impl ProviderDownloadExecutor {
         let mut provider_lock = self.provider.lock().await;
         match provider_lock.as_mut() {
             Some(provider) => self.execute_with_provider(entry, provider.as_mut()).await,
-            None => self.failed_download(entry, "Provider disconnected".to_string()),
+            None => self.failed_download(
+                entry,
+                DownloadAttemptFailure::Text("Provider disconnected".to_string()),
+            ),
         }
     }
 
@@ -1351,13 +1367,13 @@ impl ProviderDownloadExecutor {
         self.emit_download_start(&entry, &file_transfer_id);
 
         let retry_policy = self.runtime_settings.retry_policy();
-        let mut last_error = String::new();
+        let mut last_error = DownloadAttemptFailure::Text(String::new());
 
         // Kept across attempts: a retry after a refusal reads the moved object too.
         let mut source_refused = false;
         for attempt in 0..=retry_policy.max_retries {
             if self.cancel_token.is_cancelled() {
-                last_error = "Transfer cancelled by user".to_string();
+                last_error = DownloadAttemptFailure::Cancelled;
                 break;
             }
 
@@ -1366,7 +1382,7 @@ impl ProviderDownloadExecutor {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_millis(delay)) => {}
                     _ = self.cancel_token.cancelled() => {
-                        last_error = "Transfer cancelled by user".to_string();
+                        last_error = DownloadAttemptFailure::Cancelled;
                         break;
                     }
                 }
@@ -1398,9 +1414,9 @@ impl ProviderDownloadExecutor {
                     if attempt_is_over(self.cancel_token.is_cancelled(), &last_error) {
                         break;
                     }
-                    let err_info =
-                        crate::sync::classify_sync_error(&last_error, Some(&entry.remote_path));
-                    if attempt >= retry_policy.max_retries || !err_info.retryable {
+                    if attempt >= retry_policy.max_retries
+                        || !last_error.retryable(&entry.remote_path)
+                    {
                         break;
                     }
                     warn!(
@@ -1408,7 +1424,7 @@ impl ProviderDownloadExecutor {
                         entry.remote_path,
                         attempt + 1,
                         retry_policy.max_retries,
-                        err_info.message
+                        last_error.text()
                     );
                 }
             }
@@ -1424,7 +1440,7 @@ impl ProviderDownloadExecutor {
         file_transfer_id: &str,
         attempt: u32,
         source_refused: &mut bool,
-    ) -> Result<(), String> {
+    ) -> Result<(), DownloadAttemptFailure> {
         let remote_path = entry.remote_path.clone();
         let local_path = entry.local_path.clone();
 
@@ -1524,14 +1540,11 @@ impl ProviderDownloadExecutor {
         let cancel = self.cancel_token.clone();
         let result = tokio::select! {
             biased;
-            _ = cancel.cancelled() => Err("Transfer cancelled by user".to_string()),
+            _ = cancel.cancelled() => Err(DownloadAttemptFailure::Cancelled),
             res = tokio::time::timeout(Duration::from_secs(effective_timeout), dl_future) => {
                 match res {
-                    Ok(result) => result.map_err(|e| e.to_string()),
-                    Err(_) => Err(format!(
-                        "Download timed out after {} seconds",
-                        effective_timeout
-                    )),
+                    Ok(result) => result.map_err(DownloadAttemptFailure::Provider),
+                    Err(_) => Err(DownloadAttemptFailure::TimedOut(effective_timeout)),
                 }
             }
         };
@@ -1644,7 +1657,15 @@ impl ProviderDownloadExecutor {
                         ));
                     }
                 }
-                SegmentedAttempt::Finished(Err(e.to_string()))
+                // A refused clone keeps its typed error, as the direct clone
+                // path does: an owner change stops the job's queued items.
+                SegmentedAttempt::Finished(Err(match e {
+                    e if e.is_cancelled() => DownloadAttemptFailure::Cancelled,
+                    SegmentedDownloadError::CloneRefused { error, .. } => {
+                        DownloadAttemptFailure::Provider(error)
+                    }
+                    e => DownloadAttemptFailure::Text(e.to_string()),
+                }))
             }
         }
     }
@@ -1688,19 +1709,18 @@ impl ProviderDownloadExecutor {
         });
     }
 
-    fn failed_download(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
-        // Classify from the raw provider string once; domain carrier keeps
-        // typed congestion / Retry-After while the public event stays redacted.
-        let failure = if self.cancel_token.is_cancelled()
-            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-        {
-            TransferFailure::new(
-                crate::transfer_domain::TransferFailureKind::Cancelled,
-                "Transfer cancelled by user",
-                false,
-            )
+    fn failed_download(
+        &self,
+        entry: TransferEntry,
+        last_error: DownloadAttemptFailure,
+    ) -> TransferOutcome {
+        // Typed: a cancellation is our flag or the provider's typed one, an
+        // owner change the typed `TargetChanged`; the domain carrier keeps
+        // congestion and Retry-After while the public event stays redacted.
+        let failure = if self.cancel_token.is_cancelled() {
+            DownloadAttemptFailure::Cancelled.into_failure()
         } else {
-            TransferFailure::from_raw_message(&last_error)
+            last_error.into_failure()
         };
 
         self.sink.emit_transfer_event(crate::TransferEvent {
@@ -1716,6 +1736,79 @@ impl ProviderDownloadExecutor {
         });
 
         TransferOutcome::Failed(failure)
+    }
+}
+
+/// How one download attempt failed. A cancellation and an owner change are
+/// the typed variants only: the text of a provider's error is the server's
+/// sentence and never decides either (a server can write the cancellation
+/// phrase or the `CONNECTION_CHANGED: ` marker into it).
+#[derive(Debug)]
+enum DownloadAttemptFailure {
+    Provider(crate::providers::ProviderError),
+    TimedOut(u64),
+    Cancelled,
+    /// Text with no typed error behind it (no worker, no provider, a
+    /// segmented reading): its class only, never an owner change.
+    Text(String),
+}
+
+impl DownloadAttemptFailure {
+    /// The text the retry classification reads and the log shows.
+    fn text(&self) -> String {
+        match self {
+            Self::Provider(error) => error.to_string(),
+            Self::TimedOut(seconds) => format!("Download timed out after {seconds} seconds"),
+            Self::Cancelled => "Transfer cancelled by user".into(),
+            Self::Text(text) => text.clone(),
+        }
+    }
+
+    /// Whether another attempt may help: a typed provider error by its own
+    /// directive (`TransferError::from_provider`: an owner change or a
+    /// permanent refusal is never retried, whatever its detail says, a
+    /// "timeout" included); a timeout yes; text by its class.
+    fn retryable(&self, path: &str) -> bool {
+        match self {
+            Self::Provider(error) => {
+                crate::transfer_dag::TransferError::from_provider(error).retry
+                    != crate::transfer_dag::error::RetryDirective::Never
+            }
+            Self::TimedOut(_) => true,
+            Self::Cancelled => false,
+            Self::Text(text) => crate::sync::classify_sync_error(text, Some(path)).retryable,
+        }
+    }
+
+    fn is_cancellation(&self) -> bool {
+        matches!(
+            self,
+            Self::Cancelled | Self::Provider(crate::providers::ProviderError::Cancelled)
+        )
+    }
+
+    fn into_failure(self) -> TransferFailure {
+        match self {
+            Self::Cancelled | Self::Provider(crate::providers::ProviderError::Cancelled) => {
+                TransferFailure::new(
+                    crate::transfer_domain::TransferFailureKind::Cancelled,
+                    "Transfer cancelled by user",
+                    false,
+                )
+            }
+            // Typed: only `ProviderError::TargetChanged` is an owner change.
+            Self::Provider(error) => TransferFailure::from_transfer_error(
+                &crate::transfer_dag::TransferError::from_provider(&error),
+            ),
+            Self::TimedOut(seconds) => TransferFailure::new(
+                crate::transfer_domain::TransferFailureKind::Timeout,
+                format!("Download timed out after {seconds} seconds"),
+                true,
+            ),
+            Self::Text(text) => TransferFailure::from_transfer_error(
+                &crate::transfer_dag::TransferError::from_untrusted_text(text),
+            ),
+        }
     }
 }
 
@@ -1839,15 +1932,17 @@ impl ProviderUploadExecutor {
         self
     }
 
-    async fn clone_worker(&self) -> Result<WarmWorker, String> {
+    /// A worker for one file; the provider's typed refusal (an owner change, a
+    /// cancellation) is kept, never turned into text.
+    async fn clone_worker(&self) -> Result<WarmWorker, crate::providers::ProviderError> {
         if let Some(worker) = self.warm_workers.take().await {
             return Ok(worker);
         }
         let provider_lock = self.provider.lock().await;
         provider_lock
             .as_ref()
-            .ok_or_else(|| "Provider disconnected".to_string())
-            .and_then(|provider| provider.clone_for_transfer().map_err(|e| e.to_string()))
+            .ok_or(crate::providers::ProviderError::NotConnected)
+            .and_then(|provider| provider.clone_for_transfer())
             .map(WarmWorker::fresh)
     }
 
@@ -2088,9 +2183,8 @@ impl ProviderUploadExecutor {
     }
 
     fn failed_upload(&self, entry: TransferEntry, last_error: String) -> TransferOutcome {
-        let failure = if self.cancel_token.is_cancelled()
-            || crate::transfer_dag::error::message_names_a_cancellation(&last_error)
-        {
+        // The token, never the text (U12).
+        let failure = if self.cancel_token.is_cancelled() {
             TransferFailure::new(
                 crate::transfer_domain::TransferFailureKind::Cancelled,
                 "Transfer cancelled by user",
@@ -2219,7 +2313,7 @@ impl TransferExecutor for ProviderDownloadExecutor {
                 self.warm_workers.park(worker, &outcome).await;
                 outcome
             }
-            Err(error) => self.failed_download(entry, error),
+            Err(error) => self.failed_download(entry, DownloadAttemptFailure::Provider(error)),
         };
         drop(session_lease);
         outcome
@@ -2317,7 +2411,16 @@ impl TransferExecutor for ProviderUploadExecutor {
                 self.warm_workers.park(worker, &outcome).await;
                 outcome
             }
-            Err(error) => self.failed_upload(entry, error),
+            Err(error) => {
+                if self.cancel_token.is_cancelled() {
+                    self.failed_upload(entry, "Transfer cancelled by user".into())
+                } else {
+                    self.emit_upload_failure(
+                        entry,
+                        UploadAttemptFailure::Provider(error).into_failure(),
+                    )
+                }
+            }
         };
         drop(session_lease);
         outcome
@@ -2520,8 +2623,8 @@ async fn transfer_entry_upload_size(entry: &TransferEntry) -> u64 {
 /// message too, so a cancellation the PROVIDER reported was retried to the
 /// policy limit and only then labelled cancelled: two readers of the same
 /// question, disagreeing, with the wasteful answer running first.
-fn attempt_is_over(locally_cancelled: bool, last_error: &str) -> bool {
-    locally_cancelled || crate::transfer_dag::error::message_names_a_cancellation(last_error)
+fn attempt_is_over(locally_cancelled: bool, last_error: &DownloadAttemptFailure) -> bool {
+    locally_cancelled || last_error.is_cancellation()
 }
 
 /// How the segmented path left one download attempt.
@@ -2529,7 +2632,7 @@ enum SegmentedAttempt {
     /// Not applicable: one stream reads the file, as listed.
     NotTaken,
     /// Done, or failed in a way the retry envelope answers.
-    Finished(Result<(), String>),
+    Finished(Result<(), DownloadAttemptFailure>),
     /// The object or the server turned the windows down: one stream reads it on
     /// this same attempt.
     Refused,
@@ -2736,17 +2839,65 @@ mod tests {
     /// was wasted work against an operation nobody wanted finished.
     #[test]
     fn a_cancellation_ends_the_attempt_whichever_side_reported_it() {
-        assert!(super::attempt_is_over(true, "connection reset by peer"));
-        assert!(super::attempt_is_over(false, "request cancelled"));
-        assert!(super::attempt_is_over(false, "Transfer cancelled by user"));
+        use super::DownloadAttemptFailure as Failure;
+        use crate::providers::ProviderError;
+        let server = |text: &str| Failure::Provider(ProviderError::Other(text.into()));
+        assert!(super::attempt_is_over(
+            true,
+            &server("connection reset by peer")
+        ));
+        assert!(super::attempt_is_over(
+            false,
+            &Failure::Provider(ProviderError::Cancelled)
+        ));
+        assert!(super::attempt_is_over(false, &Failure::Cancelled));
 
         // An ordinary failure still gets its retries.
-        assert!(!super::attempt_is_over(false, "connection reset by peer"));
-        // And a NEGATED cancellation is an ordinary failure, so it keeps them.
         assert!(!super::attempt_is_over(
             false,
-            "the transfer could not be cancelled"
+            &server("connection reset by peer")
         ));
+        // A server's sentence that says "cancelled" is not a cancellation.
+        assert!(!super::attempt_is_over(
+            false,
+            &server("Transfer cancelled by user")
+        ));
+        assert!(!super::attempt_is_over(
+            false,
+            &server("the transfer could not be cancelled")
+        ));
+    }
+
+    /// 4557680629: a server's text that opens with the owner-change marker,
+    /// carried by a provider error on the download executor's path, is not an
+    /// owner change, and its cancellation phrase is not a cancellation; only
+    /// the typed errors are.
+    #[test]
+    fn a_server_marker_on_the_download_path_is_not_an_owner_change() {
+        use super::DownloadAttemptFailure as Failure;
+        use crate::providers::ProviderError;
+        use crate::transfer_domain::TransferFailureKind;
+        let forged = Failure::Provider(ProviderError::Other(
+            "CONNECTION_CHANGED: the authorization changed; reconnect and compare again".into(),
+        ));
+        assert_ne!(
+            forged.into_failure().kind,
+            TransferFailureKind::TargetChanged
+        );
+        let phrase = Failure::Provider(ProviderError::Other("Transfer cancelled by user".into()));
+        assert_ne!(phrase.into_failure().kind, TransferFailureKind::Cancelled);
+        assert_eq!(
+            Failure::Provider(ProviderError::TargetChanged)
+                .into_failure()
+                .kind,
+            TransferFailureKind::TargetChanged
+        );
+        assert_eq!(
+            Failure::Provider(ProviderError::Cancelled)
+                .into_failure()
+                .kind,
+            TransferFailureKind::Cancelled
+        );
     }
     /// The memory a segmented download plans to hold does not grow with the
     /// file.
@@ -3564,6 +3715,13 @@ mod tests {
         moved_source_expected: bool,
         native_refusal: bool,
         upload_script: Option<UploadScript>,
+        /// The error of a failed download, in place of a retryable timeout.
+        failure: Option<fn() -> crate::providers::ProviderError>,
+        /// The error `clone_for_transfer` refuses with, when set.
+        clone_refusal: Option<fn() -> crate::providers::ProviderError>,
+        /// How many clones succeed before `clone_refusal` applies.
+        clones_before_refusal: usize,
+        clone_calls: std::sync::atomic::AtomicUsize,
     }
 
     /// A writer that prepares its own lazy session before committing. Its
@@ -3604,6 +3762,10 @@ mod tests {
                 moved_source_expected: false,
                 native_refusal: false,
                 upload_script: None,
+                failure: None,
+                clone_refusal: None,
+                clones_before_refusal: 0,
+                clone_calls: std::sync::atomic::AtomicUsize::new(0),
             }
         }
 
@@ -3624,6 +3786,15 @@ mod tests {
         fn clone_for_transfer(
             &self,
         ) -> Result<Box<dyn StorageProvider>, crate::providers::ProviderError> {
+            let call = self
+                .clone_calls
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if let Some(refusal) = self
+                .clone_refusal
+                .filter(|_| call >= self.clones_before_refusal)
+            {
+                return Err(refusal());
+            }
             if self.ranges.is_none() {
                 return Err(crate::providers::ProviderError::NotSupported(
                     "clone".to_string(),
@@ -3750,6 +3921,9 @@ mod tests {
                     if call == *cancel_call {
                         token.cancel();
                     }
+                }
+                if let Some(failure) = self.failure {
+                    return Err(failure());
                 }
                 // "timeout" classifies as retryable via classify_sync_error.
                 return Err(crate::providers::ProviderError::TransferFailed(
@@ -4521,6 +4695,83 @@ mod tests {
         }
     }
 
+    /// A range connection refused for an owner change after the eligibility
+    /// probe keeps its type on the segmented path: the attempt fails as an
+    /// owner change (which stops the remaining queued items), as the direct
+    /// clone path's does, never as an ordinary text failure.
+    #[tokio::test]
+    async fn a_typed_clone_refusal_keeps_its_kind_on_the_segmented_path() {
+        use crate::providers::ProviderError;
+        // The refused clone reports the fallback notice: held for the whole
+        // test, so another test's exact queue assertion never sees it.
+        let _warning_queue = crate::providers::WARNING_QUEUE_TEST_LOCK.lock().await;
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.ranges = Some(ScriptedRanges {
+            started: Arc::new(tokio::sync::Notify::new()),
+            release: Arc::new(tokio::sync::Notify::new()),
+            downloads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            fail: false,
+            block_metadata: None,
+            cancel_on_metadata: None,
+            metadata_calls: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            stall: None,
+        });
+        // The reading before the windows finds the planned size.
+        provider.stat_reading = StatReading::Answers(64 * 1024 * 1024, None);
+        // The eligibility probe clones; the windows' clones are refused.
+        provider.clone_refusal = Some(|| ProviderError::TargetChanged);
+        provider.clones_before_refusal = 1;
+        let executor = ProviderDownloadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(None)),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 0,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(2),
+                sftp_download_preset: None,
+            },
+            CancellationToken::new(),
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type: ProviderType::S3,
+                max_leases: 4,
+            },
+            TransferCapabilities::default(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let mut entry = retry_entry(dir.path());
+        entry.size = 64 * 1024 * 1024;
+        match executor
+            .try_segmented_download_attempt(&mut provider, &entry, None)
+            .await
+        {
+            SegmentedAttempt::Finished(Err(failure)) => {
+                assert!(
+                    matches!(
+                        failure,
+                        DownloadAttemptFailure::Provider(ProviderError::TargetChanged)
+                    ),
+                    "{}",
+                    failure.text()
+                );
+                assert_eq!(
+                    failure.into_failure().kind,
+                    crate::transfer_domain::TransferFailureKind::TargetChanged
+                );
+            }
+            SegmentedAttempt::NotTaken => panic!("the segmented path was not taken"),
+            SegmentedAttempt::Refused => panic!("refused by the source"),
+            SegmentedAttempt::Finished(Ok(())) => panic!("finished"),
+        }
+        assert!(
+            provider
+                .clone_calls
+                .load(std::sync::atomic::Ordering::SeqCst)
+                >= 2
+        );
+    }
+
     /// Windows the source refuses do not end the attempt: the same call goes on
     /// with one stream, and the entry takes the time of what carried the bytes.
     #[tokio::test]
@@ -4645,6 +4896,87 @@ mod tests {
             local_path: dir.join("out.bin").to_string_lossy().to_string(),
             size: 2,
             modified: None,
+        }
+    }
+
+    /// D12: a worker the provider refuses to clone for an owner change keeps
+    /// that type through `clone_worker`: the file fails as an owner change
+    /// (which stops the whole job), never as an ordinary text failure.
+    #[tokio::test]
+    async fn a_typed_clone_refusal_keeps_its_kind() {
+        use crate::providers::ProviderError;
+        let mut provider = FlakyDownloadProvider::fail_first(0);
+        provider.clone_refusal = Some(|| ProviderError::TargetChanged);
+        let executor = ProviderDownloadExecutor::new(
+            Arc::new(crate::transfer_event_sink::NoopTransferSink),
+            Arc::new(Mutex::new(Some(
+                Box::new(provider) as Box<dyn StorageProvider>
+            ))),
+            ResolvedTransferSettings {
+                requested_max_concurrent: 1,
+                max_concurrent: 1,
+                retry_count: 2,
+                timeout_seconds: 30,
+                download_segments: crate::transfer_settings::ResolvedDownloadSegments::explicit(1),
+                sftp_download_preset: None,
+            },
+            CancellationToken::new(),
+            ProviderExecutorSessionModel::HttpClonePool {
+                provider_type: ProviderType::S3,
+                max_leases: 2,
+            },
+            TransferCapabilities::default(),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let lease = executor
+            .session_pool(1)
+            .acquire()
+            .await
+            .expect("a pool lease");
+        match executor
+            .execute_with_session(retry_entry(dir.path()), lease)
+            .await
+        {
+            TransferOutcome::Failed(failure) => assert_eq!(
+                failure.kind,
+                crate::transfer_domain::TransferFailureKind::TargetChanged
+            ),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// D13: a typed permanent failure is never retried, whatever its detail
+    /// says: one provider call for an owner change and for a not-found whose
+    /// text mentions a timeout; a retryable failure still gets its retries.
+    #[tokio::test]
+    async fn a_typed_permanent_download_failure_is_not_retried() {
+        use crate::providers::ProviderError;
+        for (failure, attempts) in [
+            (
+                (|| ProviderError::TargetChanged) as fn() -> ProviderError,
+                1,
+            ),
+            (
+                || ProviderError::NotFound("lookup timeout: no such object".into()),
+                1,
+            ),
+            (
+                || ProviderError::TransferFailed("connection timeout mid-stream".into()),
+                3,
+            ),
+        ] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let mut provider = FlakyDownloadProvider::fail_first(10);
+            provider.failure = Some(failure);
+            let executor = retry_download_executor(provider, 2, CancellationToken::new());
+            let outcome = executor.execute(retry_entry(dir.path())).await;
+            assert!(!matches!(outcome, TransferOutcome::Success), "{outcome:?}");
+            assert_eq!(
+                executor.take_transfer_attempts("flaky"),
+                Some(attempts),
+                "{:?}",
+                failure()
+            );
         }
     }
 

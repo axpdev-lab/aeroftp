@@ -10,6 +10,7 @@ import { isCancelledTransferError } from '../utils/transferQueueJournal';
 import app from '../App.tsx?raw';
 import { DEFAULT_CONFIG, useCircuitBreaker } from '../hooks/useCircuitBreaker';
 import { INBOX, LOCAL, REMOTE, SUB, fixture, folder, local, remote, type Options } from './appTransfers.testkit';
+import { dispatchGuardForGesture } from './transferQueueActions';
 
 // The circuit breaker keeps its state in refs: outside React, one call of the
 // hook is one breaker.
@@ -56,16 +57,18 @@ const { code: pickerCode } = await transformWithOxc(
 );
 async function uploadPicked(f: ReturnType<typeof fixture>, circuit: ReturnType<typeof breaker>, picked = [`${LOCAL}/up.txt`], onPick = () => {}) {
   const context = {
-    withBatchLatch: <T,>(fn: T) => fn, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
+    withBatchLatch: <T,>(fn: T) => fn, batchGenerationRef: { current: 0 }, transfersInFlightRef: { current: 0 }, isConnected: true, focusedLocalPanelId: 'local', currentRemotePath: REMOTE,
     getActiveLocalState: () => f.panels.local, resetOverwriteSettings: vi.fn(),
     pickFile: vi.fn(async () => { onPick(); return picked; }), t: (key: string) => key,
     splitForFileBatch, usesProviderApi, liveConnectionParams: f.liveConnectionParams, loadRemoteFiles: f.loadRemoteFiles,
-    batchCancelledRef: f.batchCancelledRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
+    batchCancelledRef: f.batchCancelledRef, stopCountRef: f.stopCountRef, cancelLevelRef: { current: 0 }, circuitBreaker: circuit,
     invoke: f.invoke, settings: { autoStartTransfers: true }, sessions: [{ id: 'A' }], activeSessionId: 'A',
     transferQueue: f.transferQueue, recordQueueDescriptor: vi.fn(), retryCallbacksRef: f.retryCallbacksRef,
+    dispatchGuardForGesture, withTransferGeneration: <T,>(fn: T) => fn, registerTransferCallback: (id: string, cb: () => Promise<void>) => { f.retryCallbacksRef.current.set(id, cb); },
     // App's own target checks and file batch, over the fixture's live
     // connection, which a test can switch while the picker is open.
     ...f.targetChecks,
+    captureGuiTarget: async (check: () => void) => { check(); const epoch = await f.invoke('provider_gui_target_epoch'); check(); return epoch; },
     QueuedTargetChangedError: Error,
     uploadFile: f.uploadFile, notify: f.notify, checkOverwrite: f.checkOverwrite,
     humanLog: f.humanLog, isCancelledTransferError,
@@ -293,6 +296,179 @@ describe('a failed file is seen by its queue row, the retry and the circuit brea
     await f.retryAllFailedItems();
     expect(attempts(f, UPLOAD)).toBe(2);
     expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  // A Stop counts as well as setting the flag (cancelTransfer). A row's Retry
+  // after it is a new gesture of the user's, which the earlier Stop of its
+  // batch must not cancel.
+  it.each(['upload', 'download'] as const)('a Retry after a real Stop of its batch sends the file again (%s)', async direction => {
+    const fail = (_command: string, call: number) => (call === 1 ? 'No such file or directory' : undefined);
+    let f: ReturnType<typeof fixture>;
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')] }, breaker: breaker(), fail });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')] }, breaker: breaker(), fail });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    expect(attempts(f, command)).toBe(1);
+    // A hard Stop: the backend's cancel is raised too (Hiron's CLI pass on
+    // #1561): the Retry clears it before its dispatch, as a batch does.
+    f.hardStop();
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(attempts(f, command)).toBe(2);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.nativeCancel.current).toBe(false);
+  });
+
+  // CodeRabbit 4580538010: a file routed through runFileBatch's singleDispatcher
+  // (e.g. a resumed upload alongside a batch file) rearms native cancellation
+  // on Retry or Start after a hard Stop, and cancels if a Stop lands during its
+  // epoch read without clearing the native flag raised by that Stop.
+  it('a batch-dispatched single-file Retry after a hard Stop rearms native cancellation and sends the file', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'No such file or directory' });
+
+    f.hardStop();
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(2);
+    expect(f.row('q1')).toMatchObject({ status: 'completed' });
+    expect(f.nativeCancel.current).toBe(false);
+  });
+
+  // CodeRabbit CLI on #1561 (App.tsx rearmNativeCancelForRow): a hard Stop
+  // whose cancel the backend runs before the row's reset loses it to that
+  // reset, for every transfer the Stop meant. The row raises it again.
+  it('a hard Stop that lands while a Retry resets native cancellation keeps it raised', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+
+    const original = f.invoke.getMockImplementation()!;
+    f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+      // The Stop's cancel reaches the backend first, then the row's reset.
+      if (command === 'reset_cancel_flag') f.hardStop();
+      return original(command, args);
+    });
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.nativeCancel.current).toBe(true);
+    const resetAt = f.invoke.mock.calls.findIndex(([command]) => command === 'reset_cancel_flag');
+    expect(f.invoke.mock.calls.slice(resetAt + 1).map(([command]) => command)).toContain('cancel_transfer');
+  });
+
+  it('a Stop during a batch-dispatched single-file Retry epoch read cancels without clearing native cancellation', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt'), local('b.txt')], [REMOTE]: [remote('up.txt')] },
+      policy: 'overwrite',
+      breaker: breaker(),
+      fail: (command, call) => (command === UPLOAD && call === 1 ? 'No such file or directory' : undefined),
+    });
+    f.checkOverwrite.mockResolvedValueOnce({ action: 'resume', destinationExists: true });
+    await f.drop([local('up.txt'), local('b.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+
+    const original = f.invoke.getMockImplementation()!;
+    f.invoke.mockImplementation(async (command: string, args?: Record<string, any>) => {
+      if (command === 'provider_gui_target_epoch') f.hardStop();
+      return original(command, args);
+    });
+    const retry = f.retryCallbacksRef.current.get('q1')!;
+    f.transferQueue.retryItem('q1');
+    await retry();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.nativeCancel.current).toBe(true);
+    expect(f.row('q1')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
+  });
+
+  // CodeRabbit 4579437718: a staged single file started after an intervening
+  // Stop is a new gesture, sent; a Stop during that Start still cancels it.
+  const stagedSingle = async (direction: 'upload' | 'download', extra: Partial<Parameters<typeof fixture>[0]> = {}) => {
+    let f: ReturnType<typeof fixture>;
+    if (direction === 'upload') {
+      f = fixture({ folders: { [LOCAL]: [local('up.txt')], [REMOTE]: extra.policy ? [remote('up.txt')] : [] }, autoStart: false, ...extra });
+      await f.drop([local('up.txt')], false, REMOTE, 'local');
+    } else {
+      f = fixture({ folders: { [REMOTE]: [remote('a.txt')], [SUB]: extra.policy ? [local('a.txt')] : [] }, autoStart: false, ...extra });
+      await f.drop([remote('a.txt')], true, SUB);
+    }
+    return f;
+  };
+  it.each(['upload', 'download'] as const)('a staged single file started after a Stop is sent (%s)', async direction => {
+    const f = await stagedSingle(direction);
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    expect(attempts(f, command)).toBe(0);
+    expect(f.row('q0')).toMatchObject({ status: 'staged' });
+    f.hardStop();
+    const [start] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.startStaged('q0');
+    await start();
+    expect(attempts(f, command)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'completed' });
+  });
+
+  it.each(['upload', 'download'] as const)('a Stop during a staged single file\'s Start sends nothing (%s)', async direction => {
+    const f = await stagedSingle(direction, { policy: 'overwrite' });
+    const command = direction === 'upload' ? UPLOAD : DOWNLOAD;
+    f.hardStop();
+    f.checkOverwrite.mockImplementation(async () => {
+      f.stopCountRef.current += 1;
+      f.batchCancelledRef.current = true;
+      return { action: 'overwrite', destinationExists: true };
+    });
+    const [start] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.startStaged('q0');
+    await start();
+    expect(f.checkOverwrite).toHaveBeenCalled();
+    expect(attempts(f, command)).toBe(0);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
+  });
+
+  // A Stop that lands during the Retry's own await (here its overwrite
+  // question), before the native dispatch, still cancels that Retry.
+  it('a Stop during a Retry, before its dispatch, sends nothing', async () => {
+    const f = fixture({
+      folders: { [LOCAL]: [local('up.txt')], [REMOTE]: [remote('up.txt')] }, breaker: breaker(), policy: 'overwrite',
+      fail: (_command, call) => (call === 1 ? 'No such file or directory' : undefined),
+    });
+    await f.drop([local('up.txt')], false, REMOTE, 'local');
+    expect(attempts(f, UPLOAD)).toBe(1);
+    f.checkOverwrite.mockImplementation(async () => {
+      f.stopCountRef.current += 1;
+      f.batchCancelledRef.current = true;
+      return { action: 'overwrite', destinationExists: true };
+    });
+    const [retry] = [...f.retryCallbacksRef.current.values()];
+    f.transferQueue.retryItem('q0');
+    await retry();
+    expect(f.checkOverwrite).toHaveBeenCalled();
+    expect(attempts(f, UPLOAD)).toBe(1);
+    expect(f.row('q0')).toMatchObject({ status: 'error', error: 'transfer.cancelledByUser', cancelled: true });
   });
 
   it('a Stop during Retry All Failed retries no further row', async () => {
@@ -549,4 +725,39 @@ describe('a switch to another server while the file picker is open', () => {
     await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`]);
     expect(f.written()).toEqual([`${REMOTE}/up.txt`, `${REMOTE}/b.txt`]);
   });
+});
+
+it('does not dispatch multiple picker files after Stop while the picker is open', async () => {
+  const f = fixture({ folders: { [LOCAL]: [local('up.txt'), local('b.txt')] } });
+  await uploadPicked(f, breaker(), [`${LOCAL}/up.txt`, `${LOCAL}/b.txt`], () => {
+    f.stopCountRef.current++;
+    f.batchCancelledRef.current = true;
+  });
+  expect(f.written()).toEqual([]);
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+});
+
+it.each(['upload', 'download'] as const)('creates no pending %s rows after Stop during destination listing', async direction => {
+  const entry = direction === 'upload' ? folder(local('dir')) : folder(remote('dir'));
+  const destination = direction === 'upload' ? INBOX : SUB;
+  const f = fixture({ folders: { [LOCAL]: [folder(local('dir'))], [REMOTE]: [folder(remote('dir'))], [destination]: [] } });
+  let finish!: () => void;
+  let listing = false;
+  const held = new Promise<void>(resolve => { finish = resolve; });
+  const original = f.invoke.getMockImplementation()!;
+  f.invoke.mockImplementation(async (cmd: string, args?: Record<string, any>) => {
+    if (cmd === (direction === 'upload' ? 'provider_list_files' : 'get_local_files') && args?.path === destination) {
+      listing = true;
+      await held;
+    }
+    return original(cmd, args);
+  });
+  const pending = f.drop([entry], direction === 'download', destination, 'local');
+  await vi.waitFor(() => expect(listing).toBe(true));
+  f.stopCountRef.current++;
+  f.batchCancelledRef.current = true;
+  finish();
+  await pending;
+  expect(f.transferQueue.addItem).not.toHaveBeenCalled();
+  expect(f.written()).toEqual([]);
 });

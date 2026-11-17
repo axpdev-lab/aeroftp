@@ -586,6 +586,110 @@ pub(crate) fn active_user_id(conn: &Connection) -> Result<Option<i64>, String> {
     }
 }
 
+/// One statement observes account selection and its key revision together.
+/// This is metadata only: no vault read, DEK unwrap or KDF per GUI command.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct GuiAccountSnapshot {
+    pub(crate) user: Option<i64>,
+    activation_revision: i64,
+    dek_verifier: Vec<u8>,
+    has_passphrase: bool,
+    session_generation: u64,
+}
+
+/// A snapshot for a test that plays account changes without a database.
+#[cfg(test)]
+pub(crate) fn gui_account_snapshot_for_test(
+    user: Option<i64>,
+    activation_revision: i64,
+) -> GuiAccountSnapshot {
+    GuiAccountSnapshot {
+        user,
+        activation_revision,
+        dek_verifier: Vec::new(),
+        has_passphrase: false,
+        session_generation: 0,
+    }
+}
+
+pub(crate) fn gui_account_snapshot() -> Result<GuiAccountSnapshot, String> {
+    gui_account_snapshot_from(&open_or_init_cli()?)
+}
+
+pub(crate) fn with_gui_account_snapshot<T>(
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut conn = open_or_init_cli()?;
+    let _lock = ProfileListLock::acquire(&conn)?;
+    let _session = hold_session()?;
+    with_gui_account_snapshot_in(&mut conn, expected, publish)
+}
+
+/// [`with_gui_account_snapshot`] for a caller that already holds the
+/// [`ProfileListLock`] of this database (the lock is not re-entrant): the
+/// AeroCloud placement, which resolves the profile names under it and then
+/// writes. The session and the active-account row are held as there, so no
+/// switch, lock or unlock lands between the check and the write.
+pub(crate) fn with_gui_account_snapshot_holding_the_list_lock<T>(
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let mut conn = open_or_init_cli()?;
+    let _session = hold_session()?;
+    with_gui_account_snapshot_in(&mut conn, expected, publish)
+}
+
+fn with_gui_account_snapshot_in<T>(
+    conn: &mut Connection,
+    expected: &GuiAccountSnapshot,
+    publish: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    let tx = conn
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    if &gui_account_snapshot_from(&tx)? != expected {
+        return Err(ACCOUNT_CHANGED.into());
+    }
+    // No await inside publish: session, active-account row and publication
+    // are one critical section, including other desktop/CLI processes.
+    publish()
+}
+
+fn gui_account_snapshot_from(conn: &Connection) -> Result<GuiAccountSnapshot, String> {
+    let row = conn.query_row(
+        "SELECT s.value, s.updated_at, COALESCE(u.dek_verifier, X''), COALESCE(u.has_passphrase, 0)
+         FROM global_state s LEFT JOIN users u ON u.id = CAST(s.value AS INTEGER) WHERE s.key = ?1",
+        params![ACTIVE_USER_KEY],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, Vec<u8>>(2)?, row.get::<_, bool>(3)?)),
+    ).optional().map_err(|e| format!("Read GUI account revision: {e}"))?;
+    let (user, activation_revision, dek_verifier, has_passphrase) = match row {
+        Some((value, rev, verifier, protected)) => (
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(
+                    value
+                        .trim()
+                        .parse::<i64>()
+                        .map_err(|_| ACCOUNT_CHANGED.to_string())?,
+                )
+            },
+            rev,
+            verifier,
+            protected,
+        ),
+        None => (None, 0, Vec::new(), false),
+    };
+    Ok(GuiAccountSnapshot {
+        user,
+        activation_revision,
+        dek_verifier,
+        has_passphrase,
+        session_generation: session_generation(),
+    })
+}
+
 fn upsert_global_state(
     tx: &Transaction<'_>,
     key: &str,
@@ -595,7 +699,7 @@ fn upsert_global_state(
     tx.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CASE WHEN excluded.key = 'active_user_id' THEN MAX(global_state.updated_at + 1, excluded.updated_at) ELSE excluded.updated_at END",
         params![key, value, updated_at],
     )
     .map_err(|e| format!("Write global_state[{key}]: {e}"))?;
@@ -1480,7 +1584,7 @@ fn set_active_user_row(conn: &Connection, user_id: i64) -> Result<(), String> {
     conn.execute(
         "INSERT INTO global_state(key, value, updated_at)
          VALUES (?1, ?2, ?3)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = MAX(global_state.updated_at + 1, excluded.updated_at)",
         params![ACTIVE_USER_KEY, user_id.to_string(), now],
     )
     .map_err(|e| format!("Set active user: {e}"))?;
@@ -1741,7 +1845,7 @@ thread_local! {
 }
 
 /// Whether a failed lock says the filesystem has no file locks at all.
-fn file_locks_unavailable(error: &std::io::Error) -> bool {
+pub(crate) fn file_locks_unavailable(error: &std::io::Error) -> bool {
     #[cfg(unix)]
     if error.raw_os_error() == Some(libc::ENOLCK) {
         return true;
@@ -3271,6 +3375,108 @@ pub fn get_user_credential_for(
     })
 }
 
+/// Conditional refresh of an existing owned credential. Resolve the DEK before
+/// SQLite's write reservation, preserving the session -> SQLite lock order.
+/// A missing or replaced row is never recreated with a stale refresh result.
+pub(crate) fn replace_user_credential_if_unchanged(
+    conn: &Connection,
+    root_key: &[u8; 32],
+    user_id: i64,
+    credential_id: &str,
+    credential_type: &str,
+    update: (&str, &str),
+    require_active_user: bool,
+) -> Result<bool, String> {
+    if credential_id.is_empty() || credential_type.is_empty() {
+        return Err("CREDENTIAL_ID_AND_TYPE_REQUIRED".to_owned());
+    }
+    let root_secret = user_crypto::secret_key_from_bytes(root_key);
+    with_user_dek(conn, &root_secret, user_id, |user_id, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin conditional credential refresh: {e}"))?;
+        if require_active_user && active_user_id(&tx)? != Some(user_id) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let current = read_credential_with_dek(&tx, user_id, dek, credential_id)?;
+        use subtle::ConstantTimeEq;
+        if !current
+            .as_ref()
+            .is_some_and(|secret| bool::from(secret.as_bytes().ct_eq(update.0.as_bytes())))
+        {
+            return Ok(false);
+        }
+        set_user_credential_with_dek(&tx, user_id, dek, credential_id, credential_type, update.1)?;
+        tx.commit()
+            .map_err(|e| format!("Commit conditional credential refresh: {e}"))?;
+        Ok(true)
+    })
+}
+
+/// Guard an implicit GUI account during a global/memory token update. Resolve
+/// the session before SQLite, and never perform network I/O inside `refresh`.
+pub(crate) fn with_unchanged_active_credential_user<R>(
+    store: Option<&CredentialStore>,
+    expected: Option<i64>,
+    refresh: impl FnOnce() -> Result<R, String>,
+) -> Result<R, String> {
+    let conn = open_or_init_cli()?;
+    let apply = || {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+                .map_err(|e| format!("Begin active authorization refresh: {e}"))?;
+        if active_user_id(&tx)? != expected {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let result = refresh()?;
+        tx.commit()
+            .map_err(|e| format!("Commit active authorization refresh: {e}"))?;
+        Ok(result)
+    };
+    match expected {
+        Some(user) if store.is_some() => {
+            let root = Zeroizing::new(
+                store
+                    .expect("checked store")
+                    .derive_user_partition_wrapping_key(),
+            );
+            let key = user_crypto::secret_key_from_bytes(&root);
+            with_user_dek(&conn, &key, user, |_, _| apply())
+        }
+        _ => {
+            let _session = hold_session()?;
+            if let Some(user) = expected {
+                ensure_credential_user_unlocked(user)?;
+            }
+            apply()
+        }
+    }
+}
+
+/// Compute a domain-separated journal owner tag with the active partition's
+/// real DEK. No derived key or credential fingerprint leaves this boundary.
+pub(crate) fn sync_owner_tag_for_user(
+    store: &CredentialStore,
+    user: i64,
+    material: &str,
+) -> Result<String, String> {
+    let conn = open_or_init_cli()?;
+    let root = Zeroizing::new(store.derive_user_partition_wrapping_key());
+    let root = user_crypto::secret_key_from_bytes(&root);
+    with_user_dek(&conn, &root, user, |user, dek| {
+        let tx =
+            rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Deferred)
+                .map_err(|e| format!("Begin journal owner check: {e}"))?;
+        if active_user_id(&tx)? != Some(user) {
+            return Err(ACCOUNT_CHANGED.to_owned());
+        }
+        let tag = user_crypto::metadata_tag(dek, b"sync-journal-owner-v1", material)?;
+        tx.commit()
+            .map_err(|e| format!("Commit journal owner check: {e}"))?;
+        Ok(tag)
+    })
+}
+
 /// Delete one secret from a user's partition. No DEK is required: a row is
 /// removed by its `(user_id, credential_id)` key without decrypting anything.
 pub fn delete_user_credential_for(
@@ -3741,19 +3947,48 @@ fn muv3_credential_type(credential_id: &str) -> Option<&'static str> {
     }
 }
 
-/// Active user id resolved quietly without an AppHandle. Returns `None` on any
-/// error (DB unopenable, no active user): callers use it only to decide whether
-/// a best-effort mirror is possible, never to gate the authoritative vault write.
-fn active_user_id_quiet() -> Option<i64> {
-    let conn = open_or_init_cli().ok()?;
-    active_user_id(&conn).ok().flatten()
+/// Remove `credential_id` from `user_id`'s partition, reporting a failure:
+/// a sign-out must not go on while a partition copy it could not remove stays
+/// readable (`unmirror_credential_for_user_best_effort_any` drops the error).
+pub(crate) fn try_unmirror_active_credential(
+    user_id: i64,
+    credential_id: &str,
+) -> Result<(), String> {
+    delete_user_credential_for(&open_or_init_cli()?, user_id, credential_id)
 }
 
-/// The active account for a write that readers must see: a lookup that fails is an
-/// error, since a partition row may be holding the old value. `None` means no account.
-fn active_user_id_for_write() -> Result<Option<i64>, String> {
-    active_user_id(&open_or_init_cli()?)
+/// The active account for a write or a delete that readers must see: a lookup
+/// that fails is an error, since a partition row may be holding the old value.
+/// So is a store that cannot be opened or read, an active value that is not
+/// an id, and no active account while accounts exist (no writer leaves that
+/// state: the one that creates the first account activates it). `Ok(None)`
+/// is a confirmed absence: no account at all.
+pub(crate) fn active_user_id_for_write() -> Result<Option<i64>, String> {
+    #[cfg(test)]
+    if ACCOUNT_LOOKUP_FAILS.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err("Active account lookup: refused".to_string());
+    }
+    let conn = open_or_init_cli()?;
+    if let Some(user) = active_user_id(&conn)? {
+        return Ok(Some(user));
+    }
+    let accounts: i64 = conn
+        .query_row("SELECT COUNT(*) FROM users", [], |row| row.get(0))
+        .map_err(|e| format!("Read accounts: {e}"))?;
+    if accounts == 0 {
+        Ok(None)
+    } else {
+        Err("Active account lookup: accounts exist but none is active".to_string())
+    }
 }
+
+/// The active account cannot be read (an unopenable partition DB), on every
+/// thread: a connection reads it on the runtime's. Set only inside an
+/// isolated child (`isolated_account_fixture::in_isolated_child`), whose
+/// process runs that one test.
+#[cfg(test)]
+pub(crate) static ACCOUNT_LOOKUP_FAILS: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 /// Save a secret of `profile_id` for the accounts that hold that profile, whichever
 /// is active: another account's token must not land in the active one's partition.
@@ -3862,6 +4097,10 @@ pub(crate) fn mirror_credential_for_user_typed(
     credential_type: &str,
     secret: &str,
 ) -> Result<(), String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        // The legacy owner has no partition: the vault entry is its copy.
+        return Ok(());
+    }
     let conn = open_or_init_cli()?;
     mirror_into_partition(
         &conn,
@@ -3924,20 +4163,11 @@ fn partition_row_exists(
     .map_err(|e| format!("Read credential row: {e}"))
 }
 
-/// Best-effort removal of one in-scope secret from `user_id`'s partition. No DEK
-/// is needed (DELETE by key); errors are swallowed because the vault delete is
-/// the part that matters during the dual-write rollout. This is the partition
-/// half of an explicit user delete, never a mass purge (that is MUV-6).
-fn unmirror_credential_for_user_best_effort(user_id: i64, credential_id: &str) {
-    if muv3_credential_type(credential_id).is_none() {
-        return;
-    }
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-}
-
-/// Like [`unmirror_credential_for_user_best_effort`] but without the prefix
-/// classifier gate. For explicitly-typed call-sites (OAuth/Jottacloud, MUV-4)
-/// that already know the key is in scope.
+/// Best-effort removal of one secret from `user_id`'s partition, whatever its
+/// key. No DEK is needed (DELETE by key); errors are swallowed because the
+/// vault delete is the part that matters during the dual-write rollout. This
+/// is the partition half of an explicit user delete, never a mass purge (that
+/// is MUV-6).
 pub fn unmirror_credential_for_user_best_effort_any(user_id: i64, credential_id: &str) {
     if let Ok(conn) = open_or_init_cli() {
         let _ = delete_user_credential_for(&conn, user_id, credential_id);
@@ -3968,6 +4198,9 @@ pub fn resolve_credential_for_user(
     user_id: i64,
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        return get_optional_secret(store, credential_id);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user(&conn, store, user_id, credential_id)
@@ -3993,6 +4226,9 @@ pub fn resolve_credential_for_user_owner_aware(
     user_id: i64,
     credential_id: &str,
 ) -> Result<Option<Zeroizing<String>>, String> {
+    if user_id == LEGACY_ONLY_ACCOUNT {
+        return get_optional_secret(store, credential_id);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     read_credential_for_user_owner_aware(&conn, store, user_id, credential_id)
@@ -4033,7 +4269,22 @@ pub(crate) fn legacy_credential_owner_id() -> Result<Option<i64>, String> {
 /// whether that user may read pre-partition global credentials, on one
 /// connection. No user means the installation has not entered the multi-user
 /// ownership model yet, so the legacy fallback stays open.
+/// The account a reader names when the connection began with NO active
+/// account (T9): the legacy owner only, never whichever account is active by
+/// the time it reads. `i64::MIN` is no row id (AUTOINCREMENT ids are
+/// positive), so any reader or writer not taught about it finds no account
+/// and fails closed; it never falls back to the active one, since it is not
+/// `None`. Taught: [`credential_owner_and_fallback`], [`mcp_list_server_profiles`],
+/// [`resolve_credential_for_user`], [`resolve_credential_for_user_owner_aware`]
+/// (the legacy stores) and [`mirror_credential_for_user_typed`] (no partition
+/// to mirror into).
+pub const LEGACY_ONLY_ACCOUNT: i64 = i64::MIN;
+
 pub fn credential_owner_and_fallback(explicit: Option<i64>) -> Result<(Option<i64>, bool), String> {
+    if explicit == Some(LEGACY_ONLY_ACCOUNT) {
+        // The legacy owner: no partition, the legacy stores only.
+        return Ok((None, true));
+    }
     let conn = open_or_init_cli()?;
     let user = match explicit {
         Some(user) => Some(user),
@@ -4461,21 +4712,14 @@ pub fn restore_credential_op_for_user(
 /// Active-user dual delete (GUI): delete from the vault and best-effort from the
 /// active user's partition. Part of an explicit user delete, never a purge.
 /// The account is the one active when the call starts, as for
-/// [`store_active_credential_dual`].
+/// [`store_active_credential_dual`]. A lookup that fails is an error before
+/// either copy changes: read as no account, it deleted the vault copy and
+/// left the partition's, which readers prefer.
 pub fn delete_active_credential_dual(
     store: &CredentialStore,
     credential_id: &str,
 ) -> Result<(), String> {
-    delete_credential_dual_as(store, active_user_for_delete(credential_id), credential_id)
-}
-
-/// The account a GUI delete removes the mirror from, read when the request
-/// arrives; `None` for keys that are never mirrored.
-pub fn active_user_for_delete(credential_id: &str) -> Option<i64> {
-    muv3_credential_type(credential_id)
-        .is_some()
-        .then(active_user_id_quiet)
-        .flatten()
+    delete_credential_dual_as(store, active_user_id_for_write()?, credential_id)
 }
 
 /// [`delete_active_credential_dual`] for `user_id`, the account active when
@@ -4489,29 +4733,58 @@ pub fn delete_credential_dual_as(
         store,
         credential_id,
         || user_id,
-        |user_id| unmirror_credential_for_user_best_effort(user_id, credential_id),
+        |user_id| unmirror_deleted_credential(user_id, credential_id),
     )
 }
 
+/// The partition half of a delete. A Jottacloud refresh chain left in the
+/// partition is read ahead of the vault, so its removal must succeed or the
+/// delete fails, and no deletion is recorded; any other key is best-effort,
+/// as during the dual-write rollout.
+fn unmirror_deleted_credential(user_id: i64, credential_id: &str) -> Result<(), String> {
+    if crate::providers::jottacloud::is_refresh_chain(credential_id) {
+        #[cfg(test)]
+        if PARTITION_DELETE_REFUSED.with(std::cell::Cell::get) {
+            return Err("Delete credential from partition: refused".to_string());
+        }
+        return try_unmirror_active_credential(user_id, credential_id)
+            .map_err(|e| format!("Delete credential from partition: {e}"));
+    }
+    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    Ok(())
+}
+
+#[cfg(test)]
+thread_local! {
+    /// The partition refuses the delete of a refresh chain.
+    pub(crate) static PARTITION_DELETE_REFUSED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// [`delete_active_credential_dual`] with the account lookup and the unmirror
-/// passed in: `active_user` runs before the vault delete.
-fn delete_credential_dual_with(
+/// passed in: `active_user` runs before the vault delete. The account it gives
+/// owns the deletion whatever the key, and `None` is no account: never one
+/// activated since the caller read it. That account's partition copy goes, and
+/// so does a Jottacloud rotation kept for it. Both copies go inside
+/// [`delete_refresh_chain`], so no connection begins between them and reads
+/// the one left.
+///
+/// [`delete_refresh_chain`]: crate::providers::jottacloud::delete_refresh_chain
+pub(crate) fn delete_credential_dual_with(
     store: &CredentialStore,
     credential_id: &str,
     active_user: impl FnOnce() -> Option<i64>,
-    unmirror: impl FnOnce(i64),
+    unmirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
-    let user_id = muv3_credential_type(credential_id)
-        .is_some()
-        .then(active_user)
-        .flatten();
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    if let Some(user_id) = user_id {
-        unmirror(user_id);
-    }
-    Ok(())
+    let user_id = active_user();
+    crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+        match user_id {
+            Some(user_id) => unmirror(user_id),
+            None => Ok(()),
+        }
+    })
 }
 
 /// Explicit-user dual delete (CLI `--user`): vault delete + best-effort removal
@@ -4521,11 +4794,12 @@ pub fn delete_credential_for_user_dual(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    store
-        .delete(credential_id)
-        .map_err(|e| format!("Delete credential from vault: {e}"))?;
-    unmirror_credential_for_user_best_effort_any(user_id, credential_id);
-    Ok(())
+    crate::providers::jottacloud::delete_refresh_chain(Some(user_id), credential_id, || {
+        store
+            .delete(credential_id)
+            .map_err(|e| format!("Delete credential from vault: {e}"))?;
+        unmirror_deleted_credential(user_id, credential_id)
+    })
 }
 
 // --- MUV-4: OAuth / Jottacloud token cutover (explicit-type dual-write) ------
@@ -4557,10 +4831,13 @@ pub fn mirror_active_credential(
 }
 
 /// Best-effort removal of one secret from the active user's partition. The
-/// partition half of an explicit token delete (OAuth/Jottacloud logout).
+/// partition half of an explicit token delete (OAuth/Jottacloud logout). An
+/// account that cannot be read is logged, not taken for no account.
 pub fn unmirror_active_credential(credential_id: &str) {
-    if let Some(user_id) = active_user_id_quiet() {
-        unmirror_credential_for_user_best_effort_any(user_id, credential_id);
+    match active_user_id_for_write() {
+        Ok(Some(user_id)) => unmirror_credential_for_user_best_effort_any(user_id, credential_id),
+        Ok(None) => {}
+        Err(e) => tracing::warn!("Partition copy of a credential not removed: {e}"),
     }
 }
 
@@ -6074,11 +6351,32 @@ pub fn cli_set_user_setting(
 /// user or the partition errors (downgrade). A locked partition refuses access;
 /// MUV-6 drops the fallback once the vault is purged.
 pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Value>, String> {
+    mcp_list_server_profiles(store, None)
+}
+
+/// [`mcp_list_active_server_profiles`] for the account `user`, whichever is
+/// active now: a connection bound to the account it began with reads that
+/// account's list across a switch (`cloud_provider_factory`). `None` reads
+/// the active account, as the MCP server does. An account that no longer
+/// exists refuses, never falls back to another list.
+pub fn mcp_list_server_profiles(
+    store: &CredentialStore,
+    user: Option<i64>,
+) -> Result<Vec<Value>, String> {
+    if user == Some(LEGACY_ONLY_ACCOUNT) {
+        return read_legacy_server_profiles_blob(store);
+    }
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
-    let active = match get_active_user(&conn)? {
-        Some(user) => user,
-        None => return read_legacy_server_profiles_blob(store),
+    let active = match user {
+        Some(id) => list_users(&conn)?
+            .into_iter()
+            .find(|candidate| candidate.id == id)
+            .ok_or_else(|| "The account this connection began with no longer exists".to_string())?,
+        None => match get_active_user(&conn)? {
+            Some(user) => user,
+            None => return read_legacy_server_profiles_blob(store),
+        },
     };
 
     // Unlock a passphrase-protected active user transiently from the env so the
@@ -6095,11 +6393,16 @@ pub fn mcp_list_active_server_profiles(store: &CredentialStore) -> Result<Vec<Va
     }
 
     let mut root_key = store.derive_user_partition_wrapping_key();
-    let result = list_active_server_profiles(&conn, &root_key);
+    let result = match user {
+        Some(id) => list_server_profiles_for(&conn, &root_key, id),
+        None => list_active_server_profiles(&conn, &root_key),
+    };
     root_key.zeroize();
     match result {
         Ok(profiles) => Ok(profiles),
-        Err(e) if e == "NO_ACTIVE_USER" => read_legacy_server_profiles_blob(store),
+        Err(e) if user.is_none() && e == "NO_ACTIVE_USER" => {
+            read_legacy_server_profiles_blob(store)
+        }
         Err(e) => Err(e),
     }
 }
@@ -7754,6 +8057,78 @@ mod tests {
         assert_eq!(profiles.len(), 1);
     }
 
+    #[test]
+    fn gui_account_display_edits_preserve_owner_but_key_changes_do_not() {
+        let _guard = test_lock();
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate_legacy_payloads(&mut conn, None, None, &test_root()).unwrap();
+        let before = gui_account_snapshot_from(&conn).unwrap();
+        let user = before.user.unwrap();
+        rename_user(&conn, user, "Renamed fixture").unwrap();
+        set_user_avatar(&conn, user, Some("X"), Some("#123456")).unwrap();
+        reorder_users(&mut conn, &[user]).unwrap();
+        set_default_user(&mut conn, user, true).unwrap();
+        assert!(before == gui_account_snapshot_from(&conn).unwrap());
+        conn.execute(
+            "UPDATE users SET dek_verifier = ?1 WHERE id = ?2",
+            params![vec![0x55u8; 32], user],
+        )
+        .unwrap();
+        assert!(before != gui_account_snapshot_from(&conn).unwrap());
+    }
+
+    #[test]
+    fn gui_owner_changed_during_drain_cannot_publish_a_connection() {
+        let _guard = test_lock();
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO global_state(key,value,updated_at) VALUES(?1,'1',1)",
+            [ACTIVE_USER_KEY],
+        )
+        .unwrap();
+        let before = gui_account_snapshot_from(&conn).unwrap();
+        // Account selection changed while the asynchronous drain was away.
+        conn.execute(
+            "UPDATE global_state SET value='2',updated_at=2 WHERE key=?1",
+            [ACTIVE_USER_KEY],
+        )
+        .unwrap();
+        let published = std::cell::Cell::new(false);
+        assert!(with_gui_account_snapshot_in(&mut conn, &before, || {
+            published.set(true);
+            Ok(())
+        })
+        .is_err());
+        assert!(!published.get());
+        let current = gui_account_snapshot_from(&conn).unwrap();
+        with_gui_account_snapshot_in(&mut conn, &current, || {
+            published.set(true);
+            Ok(())
+        })
+        .unwrap();
+        assert!(published.get());
+    }
+
+    #[test]
+    fn gui_account_activation_revision_rejects_aba_even_in_one_millisecond() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        init_db_schema(&conn).unwrap();
+        let tx = conn.transaction().unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "1", 123).unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "2", 123).unwrap();
+        upsert_global_state(&tx, ACTIVE_USER_KEY, "1", 122).unwrap();
+        let (value, revision): (String, i64) = tx
+            .query_row(
+                "SELECT value, updated_at FROM global_state WHERE key = ?1",
+                [ACTIVE_USER_KEY],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(value, "1");
+        assert_eq!(revision, 125);
+    }
+
     fn test_root() -> [u8; 32] {
         [7u8; 32]
     }
@@ -7804,7 +8179,10 @@ mod tests {
                 active.set(2);
                 Some(user)
             },
-            |user_id| unmirrored.set(Some(user_id)),
+            |user_id| {
+                unmirrored.set(Some(user_id));
+                Ok(())
+            },
         )
         .unwrap();
         assert!(store.get("server_switch").is_err());
@@ -8094,6 +8472,97 @@ mod tests {
         )
         .expect("migrate");
         conn
+    }
+
+    #[test]
+    fn conditional_owned_refresh_distinguishes_gui_switch_from_explicit_cli_owner() {
+        let _guard = test_lock();
+        let mut conn = migrated_conn(0);
+        let root = test_root();
+        let a = get_active_user(&conn).unwrap().unwrap().id;
+        let b = create_user(&mut conn, &root, "Other user", None, None, None)
+            .unwrap()
+            .id;
+        set_user_credential_for(&conn, &root, a, "oauth_fixture", "oauth", "A").unwrap();
+        set_active_user(&conn, b).unwrap();
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            a,
+            "oauth_fixture",
+            "oauth",
+            ("A", "rotated-A"),
+            true
+        )
+        .is_err());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, a, "oauth_fixture")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "A"
+        );
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            a,
+            "oauth_fixture",
+            "oauth",
+            ("A", "rotated-A"),
+            false
+        )
+        .unwrap());
+        assert!(get_user_credential_for(&conn, &root, b, "oauth_fixture")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn conditional_owned_refresh_preserves_new_login_and_signed_out_row() {
+        let _guard = test_lock();
+        let conn = migrated_conn(0);
+        let root = test_root();
+        let user = get_active_user(&conn).unwrap().unwrap().id;
+        set_user_credential_for(&conn, &root, user, "oauth_fixture", "oauth", "A").unwrap();
+        set_user_credential_for(&conn, &root, user, "oauth_fixture", "oauth", "B").unwrap();
+        assert!(!replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            ("A", "refresh-A"),
+            true,
+        )
+        .unwrap());
+        assert_eq!(
+            get_user_credential_for(&conn, &root, user, "oauth_fixture")
+                .unwrap()
+                .unwrap()
+                .as_str(),
+            "B"
+        );
+        assert!(replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            ("B", "refresh-B"),
+            true,
+        )
+        .unwrap());
+        delete_user_credential_for(&conn, user, "oauth_fixture").unwrap();
+        assert!(!replace_user_credential_if_unchanged(
+            &conn,
+            &root,
+            user,
+            "oauth_fixture",
+            "oauth",
+            ("refresh-B", "resurrected"),
+            true,
+        )
+        .unwrap());
     }
 
     /// A vault from before the naming rule migrates with two profiles of one

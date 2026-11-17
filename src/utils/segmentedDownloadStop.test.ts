@@ -28,9 +28,12 @@ describe('GUI segmented download cancellation wiring', () => {
     expect(errorBranch).toContain("e.is_cancelled()");
     expect(errorBranch).not.toContain("message_names_a_cancellation");
     const cancellationBranch = errorBranch.slice(0, errorBranch.indexOf('warn!('));
-    expect(cancellationBranch).toContain('emit_gui_transfer_event');
+    // The error event carries the native cancellation, typed (G5), and the
+    // command returns the same.
+    expect(cancellationBranch).toContain('emit_runner_error_event');
     expect(cancellationBranch).toContain('event_type: "error"');
-    expect(cancellationBranch).toContain('return Err(');
+    expect(cancellationBranch).toContain('&crate::sync::IpcError::Cancelled');
+    expect(cancellationBranch).toContain('return Err(crate::sync::IpcError::Cancelled)');
   });
 });
 

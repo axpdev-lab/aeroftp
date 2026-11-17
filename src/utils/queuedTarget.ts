@@ -24,6 +24,10 @@ export interface QueuedTarget {
    *  (`null` without one): a vault id is the kind and the owner, so another
    *  vault of the same kind in the same session has the same one. */
   overlay: string | null;
+  /** The AeroVault overlay session open on the remote panel (`null` without
+   *  one): another vault opened on the same connection keeps the server and
+   *  its epoch, so only this tells the two vaults apart. */
+  aeroVault: string | null;
 }
 
 /**

@@ -165,7 +165,7 @@ impl EmptyDirRemote for crate::ftp::FtpManager {
         let listed = self.list_files().await;
         // A session left inside the listed folder would run every later GUI
         // operation from there: a failed return is the answer, not the count.
-        self.change_dir(&original)
+        self.return_to_folder(&original)
             .await
             .map_err(|e| ProviderError::ServerError(e.to_string()))?;
         listed

@@ -60,6 +60,7 @@ const ENTRY_STATUS_TINT: Record<string, string> = {
     skipped: 'text-gray-500 dark:text-gray-400',
     pending: 'text-gray-500 dark:text-gray-400',
     in_progress: 'text-blue-600 dark:text-blue-300',
+    transferred: 'text-blue-600 dark:text-blue-300',
 };
 
 export const JournalHistoryDialog: React.FC<JournalHistoryDialogProps> = ({

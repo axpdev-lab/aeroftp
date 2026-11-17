@@ -511,7 +511,7 @@ fn still_on_disk(p: &str) -> bool {
     }
 }
 
-pub fn follow_delete(app: &AppHandle, path: &str) {
+pub fn follow_delete<R: tauri::Runtime>(app: &AppHandle<R>, path: &str) {
     let Some(db) = app.try_state::<FileTagsDb>() else {
         return;
     };
