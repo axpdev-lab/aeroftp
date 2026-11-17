@@ -150,12 +150,14 @@ mod tests {
             .collect()
     }
 
-    /// A vault holding the source's secrets, where reading `fail_read` or
-    /// writing `fail_write` fails.
+    /// A vault holding the source's secrets, where reading `fail_read`,
+    /// writing `fail_write` (nothing stored), writing `store_then_fail` (the
+    /// value stored, then an error) or removing `fail_remove` fails.
     struct Vault {
         entries: RefCell<BTreeMap<String, String>>,
         fail_read: Option<String>,
         fail_write: Option<String>,
+        store_then_fail: Option<String>,
         fail_remove: Option<String>,
     }
 
@@ -170,6 +172,7 @@ mod tests {
                 ),
                 fail_read: None,
                 fail_write: None,
+                store_then_fail: None,
                 fail_remove: None,
             }
         }
@@ -192,6 +195,9 @@ mod tests {
                     self.entries
                         .borrow_mut()
                         .insert(key.to_string(), value.to_string());
+                    if self.store_then_fail.as_deref() == Some(key) {
+                        return Err("partition mirror failed".to_string());
+                    }
                     Ok(())
                 },
                 |_, key| {
@@ -321,6 +327,23 @@ mod tests {
         assert_eq!(copied_secret_type("oauth__client_id"), None);
         assert_eq!(copied_secret_type("server"), None);
         assert_eq!(copied_secret_type("filen_api_key"), None);
+    }
+
+    #[test]
+    fn a_write_that_stored_its_value_before_failing_is_removed_with_the_earlier_ones() {
+        let mut vault = Vault::new(&[
+            ("server", "pw"),
+            ("oauth_dropbox_token", "tok"),
+            ("filen_api_key", "key"),
+        ]);
+        // The vault write lands, then the partition mirror fails.
+        vault.store_then_fail = Some(format!("filen_api_key_{TARGET}"));
+        let error = vault
+            .copy(&["server", "oauth_dropbox_token", "filen_api_key"])
+            .unwrap_err();
+        assert!(error.contains("filen_api_key"), "{error}");
+        assert!(!error.contains("remain in the keystore"), "{error}");
+        assert!(vault.target_keys().is_empty(), "{:?}", vault.target_keys());
     }
 
     #[test]
