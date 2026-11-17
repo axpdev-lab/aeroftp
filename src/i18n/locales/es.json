@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Formato de bóveda",
                 "zipArchives": "Archivos ZIP"
             },
-            "thirdPartyLicenses": "Licencias de terceros"
+            "thirdPartyLicenses": "Licencias de terceros",
+            "thirdPartyLicensesOpenFailed": "No se pudieron abrir los avisos de licencia. Están disponibles en línea en {url}"
         },
         "support": {
             "title": "Apoyar AeroFTP",

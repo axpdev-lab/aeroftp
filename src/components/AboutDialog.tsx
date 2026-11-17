@@ -22,7 +22,7 @@ import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation, type TranslationFunction } from '../i18n';
 import { openUrl } from '../utils/openUrl';
-import { openThirdPartyLicenses } from '../utils/thirdPartyLicenses';
+import { GITHUB_NOTICES_URL, openThirdPartyLicenses } from '../utils/thirdPartyLicenses';
 import { useDraggableModal } from '../hooks/useDraggableModal';
 import { copyText } from '../utils/clipboard';
 
@@ -125,6 +125,7 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
     const [appVersion, setAppVersion] = useState('0.0.0');
     const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
     const [copied, setCopied] = useState(false);
+    const [licensesOpenFailed, setLicensesOpenFailed] = useState(false);
     const [latestVersions, setLatestVersions] = useState<Record<string, string>>({});
     const [libStatus, setLibStatus] = useState<Record<string, LibStatus>>({});
     const [checking, setChecking] = useState(false);
@@ -323,11 +324,16 @@ export const AboutDialog: React.FC<AboutDialogProps> = ({ isOpen, onClose }) => 
                                 </button>
                                 <div className="mt-1">
                                     <button
-                                        onClick={() => openThirdPartyLicenses()}
+                                        onClick={async () => setLicensesOpenFailed(!(await openThirdPartyLicenses()).success)}
                                         className="text-[11px] text-gray-500 dark:text-gray-400 hover:text-blue-500 dark:hover:text-cyan-400 underline transition-colors font-mono inline-block"
                                     >
                                         {t('about.thirdPartyLicenses') || 'Third-Party Licenses'}
                                     </button>
+                                    {licensesOpenFailed && (
+                                        <p role="alert" className="text-[10px] text-red-500 dark:text-red-400 font-mono mt-1 select-text break-all">
+                                            {t('about.thirdPartyLicensesOpenFailed', { url: GITHUB_NOTICES_URL })}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 

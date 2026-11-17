@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Hvelfingarsnið",
                 "zipArchives": "ZIP-safnskrár"
             },
-            "thirdPartyLicenses": "Leyfi þriðja aðila"
+            "thirdPartyLicenses": "Leyfi þriðja aðila",
+            "thirdPartyLicensesOpenFailed": "Ekki tókst að opna leyfistilkynningarnar. Þær eru aðgengilegar á netinu á {url}"
         },
         "support": {
             "title": "Styðja AeroFTP",

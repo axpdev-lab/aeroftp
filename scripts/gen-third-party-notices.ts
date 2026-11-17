@@ -465,6 +465,62 @@ export function isGplCompatible(expr: string): boolean {
   return result;
 }
 
+/**
+ * The choices an SPDX expression offers, each the terms it requires together:
+ * "MIT OR (Apache-2.0 AND BSD-3-Clause)" gives [["MIT"], ["Apache-2.0",
+ * "BSD-3-Clause"]], and a conjunct binds every choice, whatever whitespace
+ * separates it ("(MIT OR Apache-2.0)<tab>AND<tab>BSD-3-Clause-Clear" gives two
+ * choices, both with BSD-3-Clause-Clear). A term keeps its exception
+ * ("Apache-2.0 WITH LLVM-exception"). Null when the expression does not parse.
+ */
+export function spdxAlternatives(expr: string): string[][] | null {
+  const tokens = tokenizeSpdx(expr);
+  if (tokens.length === 0) return null;
+  let pos = 0;
+  const isOp = (t: string | undefined, op: string) => t !== undefined && t.toUpperCase() === op;
+  const and = (a: string[][], b: string[][]) => a.flatMap((x) => b.map((y) => [...new Set([...x, ...y])]));
+  function parseOr(): string[][] | null {
+    let res = parseAnd();
+    while (res && isOp(tokens[pos], 'OR')) {
+      pos++;
+      const rhs = parseAnd();
+      res = rhs && [...res, ...rhs];
+    }
+    return res;
+  }
+  function parseAnd(): string[][] | null {
+    let res = parseFactor();
+    while (res && isOp(tokens[pos], 'AND')) {
+      pos++;
+      const rhs = parseFactor();
+      res = rhs && and(res, rhs);
+    }
+    return res;
+  }
+  function parseFactor(): string[][] | null {
+    const t = tokens[pos];
+    if (t === undefined || t === ')') return null;
+    if (t === '(') {
+      pos++;
+      const inner = parseOr();
+      if (!inner || tokens[pos] !== ')') return null;
+      pos++;
+      return inner;
+    }
+    if (OPERATOR_TOKENS.has(t.toUpperCase())) return null;
+    pos++;
+    if (isOp(tokens[pos], 'WITH')) {
+      const ex = tokens[pos + 1];
+      if (ex === undefined || OPERATOR_TOKENS.has(ex.toUpperCase())) return null;
+      pos += 2;
+      return [[`${t} WITH ${ex}`]];
+    }
+    return [[t]];
+  }
+  const result = parseOr();
+  return result && pos === tokens.length ? result : null;
+}
+
 // Folders whose license files describe no code that ships: tests, fixtures,
 // examples, CI, and node_modules (its packages are components of their own).
 const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtures?|examples?|benches)$/i;
@@ -473,6 +529,13 @@ const VENDORED_SKIP_DIR = /^(?:\.git|\.github|node_modules|tests?|testdata|fixtu
 // src/license_header, a lowercase name after the separator).
 const VENDORED_LICENSE_FILE =
   /^(?:licen[sc]e|copying|unlicense|notice|copyright)(?:[-_][^.]*)?(?:\.(?:txt|md|markdown|rst|info-zip|apache|mit|bsd|gplv[23]|lgplv2\.1|unicode|spdx))?$/i;
+// A REUSE license folder (LICENSES/MIT.txt, LICENSES/BSD-3-Clause.txt) names
+// its files after the license, not with a license word.
+const LICENSE_DIR = /^licen[sc]es?$/i;
+// Inside such a folder a file is license text when it is a text document;
+// a source folder named license/ (src/license/mod.rs) holds code, and a
+// README there describes the folder.
+const LICENSE_DIR_TEXT_FILE = /^(?!(?:readme|changelog|index|makefile)(?:\.|$))(?:[^.]+(?:\.[^.]+)*\.(?:txt|md|markdown|rst)|[^.]+)$/i;
 
 export function readPackageFiles(
   dir: string,
@@ -551,8 +614,8 @@ export function readPackageFiles(
               if (!VENDORED_SKIP_DIR.test(sub.name)) walkVendored(path.join(d, sub.name), filename);
             } else if (
               sub.isFile() &&
-              VENDORED_LICENSE_FILE.test(sub.name) &&
-              !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name) &&
+              ((VENDORED_LICENSE_FILE.test(sub.name) && !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name)) ||
+                (LICENSE_DIR.test(path.basename(d)) && LICENSE_DIR_TEXT_FILE.test(sub.name))) &&
               // The declared license_file is the package's own, read by step 1.
               !(declaredLicenseFile && path.resolve(d, sub.name) === path.resolve(dir, declaredLicenseFile))
             ) {
@@ -889,7 +952,17 @@ export function spdxDocumentAttribution(comp: ComponentInfo): { author: string |
  * the vendored code and are listed with its license, not with the package's.
  */
 export function vendoredFolders(comp: ComponentInfo): string[] {
-  return [...new Set([...comp.licenseFiles, ...comp.noticeFiles].filter((f) => f.vendored).map((f) => path.posix.dirname(f.filename)))].sort(compareStrings);
+  return [...new Set([...comp.licenseFiles, ...comp.noticeFiles].filter((f) => f.vendored).map((f) => vendoredRoot(f.filename)))].sort(compareStrings);
+}
+
+/**
+ * The folder of the vendored code a vendored license file describes: its own
+ * folder, or for a file in a REUSE license folder (vendor/lib/LICENSES/MIT.txt)
+ * the folder that holds it (vendor/lib).
+ */
+export function vendoredRoot(filename: string): string {
+  const dir = path.posix.dirname(filename);
+  return LICENSE_DIR.test(path.posix.basename(dir)) && dir.includes('/') ? path.posix.dirname(dir) : dir;
 }
 
 /**
@@ -905,6 +978,29 @@ export function noOwnNoticeLine(comp: ComponentInfo): string {
 }
 
 /**
+ * The holder a copyright line names, without the keyword, the years and a
+ * trailing "All rights reserved": "Copyright (c) 2019-2024 Tauri Programme" is
+ * "Tauri Programme".
+ */
+export function holderOfNotice(notice: string): string {
+  return notice
+    .replace(/^\s*(?:(?:copyright|\(c\)|©)\s*)+/i, '')
+    .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[,\s]*)+/i, '')
+    .replace(/\.?\s*all rights reserved\.?.*$/i, '')
+    .replace(/[.,;\s]+$/, '')
+    .trim();
+}
+
+/**
+ * SPDX-License-Identifier values in shipped headers that name no license, each
+ * with where it was found and what it stands for. They are left out of the
+ * bundled-code scan; any other identifier without a standard text fails it.
+ */
+export const UNREPRODUCIBLE_HEADER_IDS: Record<string, string> = {
+  'Apache-2.inner': 'muda 0.19 (src/menu.rs, src/items/*.rs): a typo of Apache-2.0, which muda declares (Apache-2.0 OR MIT)',
+};
+
+/**
  * Code a package bundles under a license it does not declare, found by the
  * SPDX-License-Identifier header of the bundled file: qrcode.react (ISC)
  * bundles the QR Code generator (MIT) in lib/index.js. Returns one entry per
@@ -913,15 +1009,25 @@ export function noOwnNoticeLine(comp: ComponentInfo): string {
  * header itself when it carries its own permission text, and the files. A
  * license file in the same folder does not cover a header: which license a
  * text grants is not known here, and libssh2's ChaCha files are BSD-2-Clause
- * beside its BSD-3-Clause COPYING. An identifier with no standard text (a typo
- * such as "Apache-2.inner") is not a license the notices can reproduce and is
- * left out.
+ * beside its BSD-3-Clause COPYING. A REUSE folder names its texts by
+ * identifier, so a header in vendored code under a license with no standard
+ * text is covered by the text that code's LICENSES/ folder ships. A header
+ * under a license the package
+ * declares gives an entry marked declared, with its holders and files only: the
+ * package's own text covers it, and its holders are listed with the package.
+ * A license with no standard text fails the generation; a known upstream typo
+ * (UNREPRODUCIBLE_HEADER_IDS) is no license and is left out.
  */
 export function findBundledCodeUnderOtherLicenses(
   comp: ComponentInfo,
   knownLicenseIds: Set<string>
-): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }[] {
+): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
+  // The license texts a REUSE folder of vendored code ships, by identifier
+  // (the file name) and the folder of the code they cover.
+  const shippedTexts = comp.licenseFiles
+    .filter((f) => f.vendored && LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
+    .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: vendoredRoot(f.filename) }));
   const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
   const isCommentLine = (l: string) => /^\s*(?:\/\*|\*|\/\/|#)/.test(l);
   const stripLeader = (l: string) => l.replace(/^\s*(?:\/\*+!?|\*+\/?|\/\/+|#+)\s?/, '').replace(/\s*\*\/.*$/, '').trimEnd();
@@ -939,26 +1045,79 @@ export function findBundledCodeUnderOtherLicenses(
       lines.forEach((line, i) => {
         const m = line.match(/SPDX-License-Identifier:\s*(.+?)\s*(?:\*\/|-->)?\s*$/);
         if (!m) return;
-        let ids: string[];
-        try {
-          ids = extractSpdxLicenseIds(m[1]);
-        } catch {
-          return;
+        // The choices of the header's expression. One whose licenses the
+        // package declares covers the code: its holders are still kept, as
+        // declared. Otherwise the first choice whose texts all exist is
+        // reproduced, and with none the generation fails: a license the
+        // notices cannot reproduce is never dropped. A known upstream typo is
+        // no license and is left out (UNREPRODUCIBLE_HEADER_IDS).
+        const parsed = spdxAlternatives(m[1]);
+        if (!parsed) return;
+        const alternatives = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
+        if (alternatives.length === 0) return;
+        // A term is covered by the package's declared license. A license with no
+        // standard text is also covered by the text the package ships beside the
+        // vendored code (libssh2/LICENSES/FSFULLR.txt for
+        // libssh2/docs/INSTALL-AUTOTOOLS.md), which the notices reproduce with
+        // that code; one with a standard text keeps its bundled-code entry, so a
+        // header with its own terms is still reproduced.
+        const shippedTerm = (t: string) =>
+          t.split(' WITH ').every(
+            (id) => !knownLicenseIds.has(id) && shippedTexts.some((x) => x.id === id && entryRel.startsWith(`${x.root}/`))
+          );
+        const declaredTerm = (t: string) => declared.has(t.split(' WITH ')[0]);
+        const undeclaredOf = (terms: string[]) => terms.filter((t) => !declaredTerm(t) && !shippedTerm(t));
+        const covering = alternatives.find((terms) => undeclaredOf(terms).length === 0);
+        let chosen: string[];
+        if (covering) {
+          chosen = covering.filter(declaredTerm);
+          if (chosen.length === 0) return;
+        } else {
+          const reproducible = alternatives.find((terms) =>
+            undeclaredOf(terms).every((t) => t.split(' WITH ').every((id) => knownLicenseIds.has(id)))
+          );
+          if (!reproducible) {
+            const missing = undeclaredOf(alternatives[0]).flatMap((t) => t.split(' WITH ')).find((id) => !knownLicenseIds.has(id));
+            throw new Error(
+              `${comp.name}@${comp.version} bundles ${entryRel} under '${m[1]}', but no standard text exists for '${missing}': add it to the standard license texts, or to UNREPRODUCIBLE_HEADER_IDS when the identifier is an upstream typo`
+            );
+          }
+          chosen = undeclaredOf(reproducible);
         }
-        const offered = ids.filter((id) => knownLicenseIds.has(id));
-        const isOr = !/\bAND\b/.test(m[1]) && /\bOR\b|\//.test(m[1]);
-        const undeclared = offered.filter((id) => !declared.has(id));
-        if (undeclared.length === 0 || (isOr && undeclared.length < offered.length)) return;
         // The whole comment block around the identifier, up to its start and
         // end, never into the next header.
-        let start = i;
-        while (start > 0 && start > i - 80 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
-          if (/\*\//.test(lines[start - 1])) break;
-          start--;
+        // Inside a block comment the block runs from its opening to its
+        // closing delimiter, whether or not its lines are starred.
+        let open = -1;
+        for (let k = i; k >= 0 && k > i - 80; k--) {
+          if (/\/\*/.test(lines[k]) && (k === i || !/\*\//.test(lines[k].slice(lines[k].lastIndexOf('/*'))))) {
+            open = k;
+            break;
+          }
+          if (k < i && /\*\//.test(lines[k])) break;
         }
+        let close = -1;
+        if (open !== -1) {
+          for (let k = i; k < lines.length && k < i + 80; k++) {
+            if (/\*\//.test(k === open ? lines[k].slice(lines[k].lastIndexOf('/*') + 2) : lines[k])) {
+              close = k;
+              break;
+            }
+          }
+        }
+        let start = i;
         let end = i;
-        while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 80 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
-          end++;
+        if (open !== -1 && close !== -1) {
+          start = open;
+          end = close;
+        } else {
+          while (start > 0 && start > i - 80 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
+            if (/\*\//.test(lines[start - 1])) break;
+            start--;
+          }
+          while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 80 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
+            end++;
+          }
         }
         const block = lines.slice(start, end + 1).map(stripLeader);
         // Only a line that names a holder is a notice: "copyright notice and
@@ -975,14 +1134,13 @@ export function findBundledCodeUnderOtherLicenses(
         // A header with its own permission text is reproduced as shipped.
         const blockText = block.join('\n').replace(/^\n+|\n+$/g, '');
         const carriesTerms = /permission to use|permission is hereby granted|redistribution and use/i.test(blockText);
-        for (const id of isOr ? undeclared.slice(0, 1) : undeclared) {
-          const exception = m[1].match(new RegExp(`(?:^|[\\s(])${id.replace(/[.+]/g, '\\$&')}\\s+WITH\\s+([A-Za-z0-9.+-]+)`))?.[1];
-          const key = exception ? `${id} WITH ${exception}` : id;
+        for (const license of chosen) {
+          const key = `${covering ? 'declared' : 'other'}\u0000${license}`;
           if (!found.has(key)) found.set(key, { notices: [], files: [], headers: [] });
           const entryFound = found.get(key)!;
           for (const n of notices) if (!entryFound.notices.includes(n)) entryFound.notices.push(n);
           if (!entryFound.files.includes(entryRel)) entryFound.files.push(entryRel);
-          if (carriesTerms) {
+          if (carriesTerms && !covering) {
             const same = entryFound.headers.find((h) => h.text === blockText);
             if (same) same.files.push(entryRel);
             else entryFound.headers.push({ text: blockText, files: [entryRel] });
@@ -992,7 +1150,10 @@ export function findBundledCodeUnderOtherLicenses(
     }
   };
   walk(comp.packageDir, '');
-  return [...found.keys()].sort(compareStrings).map((license) => ({ license, ...found.get(license)! }));
+  return [...found.keys()].sort(compareStrings).map((key) => {
+    const [kind, license] = key.split('\u0000');
+    return { license, ...found.get(key)!, ...(kind === 'declared' ? { declared: true } : {}) };
+  });
 }
 
 /**
@@ -1141,6 +1302,24 @@ export function generateNoticesMarkdown(
   for (const c of allComponents) {
     compMap.set(`${c.source}:${c.name}@${c.version}`, c);
   }
+  // The bundled headers of each package, read once: the package listing takes
+  // the holders of a license the package declares, the bundled-code section
+  // the others.
+  const bundledCache = new Map<ComponentInfo, ReturnType<typeof findBundledCodeUnderOtherLicenses>>();
+  let knownLicenseIds: Set<string> | undefined;
+  const bundledOf = (comp: ComponentInfo) => {
+    if (!comp.packageDir) return [];
+    if (!knownLicenseIds) {
+      if (!fs.existsSync(spdxLicensesFile)) {
+        throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
+      }
+      knownLicenseIds = new Set(Object.keys(JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'))));
+    }
+    if (!bundledCache.has(comp)) bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds));
+    return bundledCache.get(comp)!;
+  };
+  const listedDeclaredHolders = new Set<string>();
+  const listedVendoredRoots = new Map<string, string>();
   const { groupedTexts, componentsWithoutFiles } = groupLicenseTexts(allComponents);
 
   const activeExceptions = nonFreeExceptions.filter((exc) =>
@@ -1255,11 +1434,18 @@ export function generateNoticesMarkdown(
       lines.push(`- \`${comp.name}@${comp.version}\` (${comp.source}, file: \`${comp.filename}\`)`);
       const fullComp = compMap.get(`${comp.source}:${comp.name}@${comp.version}`);
       if (fullComp && comp.vendored && fullComp.packageDir) {
-        // The notices of vendored code, from its own folder.
-        const dir = path.posix.dirname(comp.filename);
+        // The notices of vendored code, from its own folder, listed once: a
+        // REUSE folder gives the same code several license texts.
+        const dir = vendoredRoot(comp.filename);
+        const rootKey = `${comp.source}:${comp.name}@${comp.version}:${dir}`;
+        if (listedVendoredRoots.has(rootKey)) {
+          lines.push(`  - The notices of \`${dir}/\` are listed with \`${listedVendoredRoots.get(rootKey)}\``);
+          continue;
+        }
+        listedVendoredRoots.set(rootKey, comp.filename);
         const inDir = [...fullComp.licenseFiles, ...fullComp.noticeFiles]
-          .filter((f) => path.posix.dirname(f.filename) === dir)
-          .map((f) => path.posix.basename(f.filename));
+          .filter((f) => vendoredRoot(f.filename) === dir)
+          .map((f) => f.filename.slice(dir.length + 1));
         const nested = vendoredFolders(fullComp)
           .filter((d) => d.startsWith(`${dir}/`))
           .map((d) => d.slice(dir.length + 1));
@@ -1267,6 +1453,27 @@ export function generateNoticesMarkdown(
           lines.push(`  - ${n.notice} (${dir}/${n.file})`);
         }
         continue;
+      }
+      if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && hasCopyrightHolderInFiles(fullComp)) {
+        // The package's files name its holders, so its files are not scanned:
+        // the holders of bundled headers under its own license are listed
+        // here, once per package.
+        const compKey = `${comp.source}:${comp.name}@${comp.version}`;
+        if (!listedDeclaredHolders.has(compKey)) {
+          listedDeclaredHolders.add(compKey);
+          // A holder the package's own files already name is attributed there.
+          const ownText = fullComp.licenseFiles.filter((f) => !f.vendored).map((f) => f.content).join('\n');
+          const byNotice = new Map<string, string[]>();
+          for (const b of bundledOf(fullComp).filter((x) => x.declared)) {
+            for (const n of b.notices.filter((x) => !ownText.includes(holderOfNotice(x)))) {
+              if (!byNotice.has(n)) byNotice.set(n, []);
+              if (!byNotice.get(n)!.includes(b.license)) byNotice.get(n)!.push(b.license);
+            }
+          }
+          for (const [n, licenses] of byNotice) {
+            lines.push(`  - ${n} (in a source header under ${licenses.sort(compareStrings).join(', ')})`);
+          }
+        }
       }
       if (fullComp && fullComp.licenseFiles.some((f) => !f.vendored) && !hasCopyrightHolderInFiles(fullComp)) {
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
@@ -1328,24 +1535,28 @@ export function generateNoticesMarkdown(
           `Component ${comp.name}@${comp.version} has no extractable license identifier in '${comp.license}'`
         );
       }
-      const hasAnd = comp.license.includes(' AND ');
-      const isOrExpr = !hasAnd && (comp.license.includes(' OR ') || comp.license.includes('/'));
-      const mappedIds = ids.map((id) => (id === 'LGPL-2.1' || id === 'LGPL-2.1+' ? 'LGPL-2.1-or-later' : id));
-      const validStandardIds = mappedIds.filter((id) => Boolean(standardLicenses[id]));
-
-      let idsToInclude: string[];
-      if (isOrExpr && validStandardIds.length > 0) {
-        idsToInclude = validStandardIds;
-      } else {
-        idsToInclude = mappedIds;
+      // The choices of the expression, from its parse: a conjunct binds every
+      // choice, and a term keeps its exception. Every choice whose texts all
+      // exist is reproduced (MIT OR Apache-2.0 gives both); with none, the
+      // first missing text of the first choice fails.
+      const alternatives = spdxAlternatives(comp.license);
+      if (!alternatives) {
+        throw new Error(`Component ${key} has a license expression that does not parse: '${comp.license}'`);
       }
+      const mapTerm = (term: string) =>
+        term.replace(/^LGPL-2\.1\+?(?= WITH |$)/, 'LGPL-2.1-or-later');
+      const missingTexts = (terms: string[]) =>
+        terms.flatMap((term) => term.split(' WITH ')).filter((id) => !standardLicenses[id]);
+      const mapped = alternatives.map((terms) => terms.map(mapTerm));
+      const reproducible = mapped.filter((terms) => missingTexts(terms).length === 0);
+      if (reproducible.length === 0) {
+        throw new Error(
+          `Component ${comp.name}@${comp.version} requires standard license text for '${missingTexts(mapped[0])[0]}', but no entry exists in ${spdxLicensesFile}`
+        );
+      }
+      const idsToInclude = [...new Set(reproducible.flat())];
 
       for (const id of idsToInclude) {
-        if (!standardLicenses[id]) {
-          throw new Error(
-            `Component ${comp.name}@${comp.version} requires standard license text for '${id}', but no entry exists in ${spdxLicensesFile}`
-          );
-        }
         if (!licenseToComponents.has(id)) {
           licenseToComponents.set(id, []);
         }
@@ -1402,7 +1613,9 @@ export function generateNoticesMarkdown(
       }
       lines.push('');
 
-      let licText = standardLicenses[licKey];
+      // "Apache-2.0 WITH LLVM-exception": the license text, then the exception's.
+      const [licenseId, exceptionId] = licKey.split(' WITH ');
+      let licText = standardLicenses[licenseId];
       const hasPlaceholders =
         /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|author|authors|AUTHOR|AUTHORS)>/i.test(licText) ||
         /<(?:copyright holders|author)>/i.test(licText);
@@ -1446,7 +1659,7 @@ export function generateNoticesMarkdown(
       // not know (a "Copyright (C) <year>" with no author placeholder), fails.
       assertNoTermsPlaceholders(licKey, licText);
 
-      lines.push(makeCodeBlock(licText));
+      lines.push(makeCodeBlock(exceptionId ? `${licText}\n\n${standardLicenses[exceptionId]}` : licText));
       lines.push('');
     }
   }
@@ -1462,7 +1675,10 @@ export function generateNoticesMarkdown(
     const holdersByLicense = new Map<string, string[]>();
     const noHolder = 'No copyright line in the header that declares this license';
     for (const comp of bundledComponents) {
-      for (const b of findBundledCodeUnderOtherLicenses(comp, new Set(Object.keys(standardLicenses)))) {
+      for (const b of bundledOf(comp)) {
+        // A header under a declared license is covered by the package's text;
+        // its holders are listed with the package.
+        if (b.declared) continue;
         if (!byLicense.has(b.license)) byLicense.set(b.license, []);
         if (!holdersByLicense.has(b.license)) holdersByLicense.set(b.license, []);
         holdersByLicense.get(b.license)!.push(...(b.notices.length > 0 ? b.notices : [noHolder]).map((n) => `${n} (${comp.name})`));
@@ -1488,10 +1704,8 @@ export function generateNoticesMarkdown(
         lines.push(...byLicense.get(licKey)!);
         lines.push('');
         // "Apache-2.0 WITH LLVM-exception": the license text, then the exception's.
+        // The scan fails on a license or exception without a standard text.
         const [licenseId, exceptionId] = licKey.split(' WITH ');
-        if (exceptionId && !standardLicenses[exceptionId]) {
-          throw new Error(`Bundled code under ${licKey} needs the text of '${exceptionId}', but no entry exists in ${spdxLicensesFile}`);
-        }
         // A text with a holder placeholder (BSD) takes the header's copyright lines.
         const text = standardLicenses[licenseId].replace(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|owner|author|authors)>/g,

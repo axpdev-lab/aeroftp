@@ -26,6 +26,7 @@ import {
   hasCopyrightHolderInFiles,
   findBundledCodeUnderOtherLicenses,
   licenseTermsOf,
+  vendoredFolders,
 } from '../../scripts/gen-third-party-notices.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -462,6 +463,48 @@ test('readPackageFiles: a vendored library keeps its license at any depth, tests
   }
 });
 
+test('readPackageFiles: files in a nested REUSE license folder are vendored license texts, a source folder named license is not', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vendored-licenses-dir-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE-APACHE', 'Apache License\nVersion 2.0, January 2004');
+    write('vendor/lib/LICENSES/MIT.txt', 'MIT License\n\nCopyright (c) 2019 Vendored Lib Authors\n\nPermission is hereby granted.');
+    write('vendor/lib/LICENSES/BSD-3-Clause.txt', 'Copyright (c) 2019 Vendored Lib Authors\nRedistribution and use in source and binary forms');
+    write('vendor/lib/LICENSES/README.md', 'The license texts of this folder.');
+    write('vendor/lib/src/x.c', '/* Copyright (c) 2019 Vendored Lib Authors */');
+    write('src/license/mod.rs', '// license checks');
+    write('src/license/README', 'license module');
+    const { licenseFiles, noticeFiles } = readPackageFiles(tmpDir, 'reuse-vendoring@1.0.0');
+    const vendored = licenseFiles.filter((f) => f.vendored).map((f) => f.filename).sort();
+    assert.deepStrictEqual(vendored, ['vendor/lib/LICENSES/BSD-3-Clause.txt', 'vendor/lib/LICENSES/MIT.txt']);
+    assert.deepStrictEqual(licenseFiles.filter((f) => !f.vendored).map((f) => f.filename), ['LICENSE-APACHE']);
+    assert.deepStrictEqual(noticeFiles, []);
+    const comp = { name: 'reuse-vendoring', version: '1.0.0', license: 'Apache-2.0', source: 'cargo', packageDir: tmpDir, authors: [], licenseFiles, noticeFiles };
+    // The vendored code is the folder that holds LICENSES/, not LICENSES/ itself.
+    assert.deepStrictEqual(vendoredFolders(comp), ['vendor/lib']);
+    // The MIT text is vendored: it does not cover the package's own license.
+    const onlyVendored = { ...comp, license: 'MIT', licenseFiles: licenseFiles.filter((f) => f.vendored) };
+    const { groupedTexts, componentsWithoutFiles } = groupLicenseTexts([onlyVendored]);
+    assert.deepStrictEqual(componentsWithoutFiles.map((c) => c.name), ['reuse-vendoring']);
+    const mit = groupedTexts.flatMap((g) => g.components).find((c) => c.filename === 'vendor/lib/LICENSES/MIT.txt');
+    assert.ok(mit && mit.vendored, 'the nested MIT text is listed as vendored');
+    // A header whose text the vendored code's LICENSES/ ships is covered by it;
+    // the same identifier outside that code has no text and fails.
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    write('vendor/lib/LICENSES/Foo-Shipped-1.0.txt', 'Foo Shipped License 1.0: use freely.');
+    write('vendor/lib/src/y.c', '/* SPDX-License-Identifier: Foo-Shipped-1.0 */\n');
+    const shipped = { ...comp, ...readPackageFiles(tmpDir, 'reuse-vendoring@1.0.0') };
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(shipped, known), []);
+    write('other/z.c', '/* SPDX-License-Identifier: Foo-Shipped-1.0 */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(shipped, known), /bundles other\/z\.c under 'Foo-Shipped-1\.0', but no standard text exists for 'Foo-Shipped-1\.0'/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('an anchor leads to license text: an SPDX document or a notice file is no license text', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spdx-document-fixture-'));
   try {
@@ -530,7 +573,10 @@ test('bundled code under a license the package does not declare: its header lice
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     // A license file in the same folder does not hide a header: which license
     // libbar/COPYING grants is not known.
+    // A header under the declared ISC (alone or as a choice) is covered by the
+    // package's text and keeps its holders as declared.
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
+      { license: 'ISC', notices: ['Copyright (c) Wrapper Author'], files: ['lib/either.js', 'lib/index.js'], headers: [], declared: true },
       { license: 'BSD-3-Clause', notices: ['Copyright (c) 2004 Bar Project'], files: ['libbar/src/bar.c'], headers: [] },
       { license: 'MIT', notices: ['Copyright (c) Project Nayuki.'], files: ['lib/index.js'], headers: [] },
     ]);
@@ -631,6 +677,9 @@ test('bundled code headers: the copyright may follow the identifier or be an SPD
     };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), [
+      // The next header of src/index.js is under the declared ISC: its holder
+      // stays with it, never with the MIT block before it.
+      { license: 'ISC', notices: ['Copyright (c) 2023 Next Header'], files: ['src/index.js'], headers: [], declared: true },
       {
         license: 'MIT',
         notices: [
@@ -713,10 +762,114 @@ test('bundled code headers: own permission text, an exception, and holder lines 
 
     // An exception with no standard text fails instead of dropping it.
     write('ggml/other.hpp', '// SPDX-License-Identifier: Apache-2.0 WITH Unknown-exception\n');
-    assert.throws(() => generateNoticesMarkdown([comp], []), /Bundled code under Apache-2\.0 WITH Unknown-exception needs the text of 'Unknown-exception'/);
+    assert.throws(() => generateNoticesMarkdown([comp], []), /bundles ggml\/other\.hpp under 'Apache-2\.0 WITH Unknown-exception', but no standard text exists for 'Unknown-exception'/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('bundled code: a header license with no standard text fails, a declared or reproducible choice still passes', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-missing-text-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'ISC License\n\nCopyright (c) 2015 Wrapper Author\n\nPermission to use, copy, modify.');
+    write('lib/covered.js', '// SPDX-License-Identifier: ISC OR Foo-1.0\n');
+    write('lib/choice.js', '// Copyright (c) 2016 Choice Vendor\n// SPDX-License-Identifier: Foo-1.0 OR MIT\n');
+    const comp = { name: 'missing-text-pkg', version: '1.0.0', license: 'ISC', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'missing-text-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    // A declared choice covers the header; otherwise the first reproducible choice is taken.
+    assert.deepStrictEqual(
+      findBundledCodeUnderOtherLicenses(comp, known).map((b) => [b.license, b.files, Boolean(b.declared)]),
+      [['ISC', ['lib/covered.js'], true], ['MIT', ['lib/choice.js'], false]]
+    );
+    // BSD-2-Clause is a license, but without its text the notices cannot reproduce it.
+    write('lib/bsd.c', '/* Copyright (c) 2017 Bsd Vendor\n * SPDX-License-Identifier: BSD-2-Clause */\n');
+    const withoutBsd = new Set([...known].filter((id) => id !== 'BSD-2-Clause'));
+    assert.throws(
+      () => findBundledCodeUnderOtherLicenses(comp, withoutBsd),
+      /missing-text-pkg@1\.0\.0 bundles lib\/bsd\.c under 'BSD-2-Clause', but no standard text exists for 'BSD-2-Clause'/
+    );
+    // A choice with text still passes when the other has none.
+    fs.writeFileSync(path.join(tmpDir, 'lib/bsd.c'), '/* SPDX-License-Identifier: BSD-2-Clause OR MIT */\n');
+    assert.deepStrictEqual(
+      findBundledCodeUnderOtherLicenses(comp, withoutBsd).map((b) => [b.license, b.files]),
+      [['ISC', ['lib/covered.js']], ['MIT', ['lib/bsd.c', 'lib/choice.js']]]
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: an unstarred block comment is read whole, its holder and its own terms are reproduced', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-unstarred-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    const terms = 'Redistribution and use in source and binary forms, with or without modification, are permitted provided that this notice is kept and the Unstarred clause is honoured.';
+    write('vendor/unstarred.c', `int before;\n/* Copyright (c) 2001 Adjacent Holder */\n/*\nCopyright (c) 2019 Unstarred Vendor\n\n${terms}\n\nSPDX-License-Identifier: BSD-2-Clause\n*/\nint x;\n/* Copyright (c) 2002 After Holder */\n`);
+    const comp = { name: 'unstarred-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'unstarred-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const found = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual(found.map((b) => [b.license, b.notices, b.files]), [['BSD-2-Clause', ['Copyright (c) 2019 Unstarred Vendor'], ['vendor/unstarred.c']]]);
+    assert.strictEqual(found[0].headers[0].text, `Copyright (c) 2019 Unstarred Vendor\n\n${terms}\n\nSPDX-License-Identifier: BSD-2-Clause`);
+    const md = generateNoticesMarkdown([comp], []);
+    const bsd = md.slice(md.indexOf('### Bundled Code: BSD-2-Clause'));
+    assert.match(bsd, /\n {2}- Copyright \(c\) 2019 Unstarred Vendor\n/);
+    assert.ok(bsd.includes(terms), 'the shipped permission text is reproduced');
+    assert.doesNotMatch(bsd, /Adjacent Holder|After Holder/);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a header under the declared license keeps its holder beside the package, without a second text', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundled-declared-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    const mit = 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.';
+    write('LICENSE', mit);
+    write('lib/vendor.js', '/*\n * Copyright (c) 2018 Vendor Author\n * SPDX-License-Identifier: MIT\n */\n');
+    const comp = { name: 'declared-pkg', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'declared-pkg@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    assert.ok(md.includes('Copyright (c) 2020 Wrapper Author'));
+    assert.match(md, /\n {2}- Copyright \(c\) 2018 Vendor Author \(in a source header under MIT\)\n/);
+    assert.doesNotMatch(md, /### Bundled Code: MIT/);
+    assert.strictEqual(md.split('Permission is hereby granted, free of charge.').length - 1, 1, 'the MIT text appears once');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('standard-license fallback: choices come from the parsed expression, a conjunct is never dropped, an exception keeps its text', () => {
+  const fallback = (name, license) => ({ name, version: '1.0.0', license, source: 'cargo', licenseFiles: [], noticeFiles: [], authors: ['Fallback Author'] });
+  // A tab-separated AND binds both choices: BSD-3-Clause-Clear has no text, so this fails.
+  assert.throws(
+    () => generateNoticesMarkdown([fallback('test-clear', '(MIT OR Apache-2.0)\tAND\tBSD-3-Clause-Clear')], []),
+    /test-clear@1\.0\.0 requires standard license text for 'BSD-3-Clause-Clear'/
+  );
+  // An OR with one reproducible choice stays valid through it.
+  const sspl = generateNoticesMarkdown([fallback('test-sspl', 'MIT OR SSPL-1.0')], []);
+  assert.match(sspl, /### Standard License: MIT\n/);
+  assert.doesNotMatch(sspl, /### Standard License: SSPL/);
+  // The exception stays with its license: the license text, then the exception's.
+  const standard = JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'));
+  const llvm = generateNoticesMarkdown([fallback('test-llvm', 'Apache-2.0 WITH LLVM-exception')], []);
+  const section = llvm.slice(llvm.indexOf('### Standard License: Apache-2.0 WITH LLVM-exception'));
+  assert.ok(section.length > 0 && llvm.includes('### Standard License: Apache-2.0 WITH LLVM-exception'));
+  assert.ok(section.includes(standard['Apache-2.0']) && section.indexOf(standard['Apache-2.0']) < section.indexOf(standard['LLVM-exception']));
+  assert.throws(
+    () => generateNoticesMarkdown([fallback('test-unknown-exc', 'Apache-2.0 WITH Unknown-exception')], []),
+    /test-unknown-exc@1\.0\.0 requires standard license text for 'Unknown-exception'/
+  );
 });
 
 test('bundled code: a leftover placeholder in the reproduced text fails', () => {

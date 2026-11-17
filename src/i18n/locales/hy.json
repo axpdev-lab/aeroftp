@@ -1874,7 +1874,8 @@
                 "vaultFormat": "Պահոցի ձևաչափ",
                 "zipArchives": "ZIP արխիվներ"
             },
-            "thirdPartyLicenses": "Երրորդ կողմի լիցենզիաներ"
+            "thirdPartyLicenses": "Երրորդ կողմի լիցենզիաներ",
+            "thirdPartyLicensesOpenFailed": "Չհաջողվեց բացել լիցենզիայի ծանուցումները։ Դրանք առկա են առցանց՝ {url}"
         },
         "support": {
             "title": "Աջակցել AeroFTP-ին",

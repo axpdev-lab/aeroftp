@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Valvformat",
                 "zipArchives": "ZIP-arkiv"
             },
-            "thirdPartyLicenses": "Tredjepartslicenser"
+            "thirdPartyLicenses": "Tredjepartslicenser",
+            "thirdPartyLicensesOpenFailed": "Licensmeddelandena kunde inte öppnas. De finns online på {url}"
         },
         "support": {
             "title": "Stöd AeroFTP",

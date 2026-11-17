@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Formato da caixa forte",
                 "zipArchives": "Arquivos ZIP"
             },
-            "thirdPartyLicenses": "Licenzas de terceiros"
+            "thirdPartyLicenses": "Licenzas de terceiros",
+            "thirdPartyLicensesOpenFailed": "Non se puideron abrir os avisos de licenza. Están dispoñibles en liña en {url}"
         },
         "support": {
             "title": "Apoia AeroFTP",

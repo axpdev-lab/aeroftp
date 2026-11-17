@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Hvelvformat",
                 "zipArchives": "ZIP-arkiver"
             },
-            "thirdPartyLicenses": "Tredjepartslicenser"
+            "thirdPartyLicenses": "Tredjepartslicenser",
+            "thirdPartyLicensesOpenFailed": "Kunne ikke åpne lisensmerknadene. De er tilgjengelige på nett på {url}"
         },
         "support": {
             "title": "Støtt AeroFTP",

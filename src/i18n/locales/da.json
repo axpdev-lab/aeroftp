@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Boksformat",
                 "zipArchives": "ZIP-arkiver"
             },
-            "thirdPartyLicenses": "Tredjepartslicenser"
+            "thirdPartyLicenses": "Tredjepartslicenser",
+            "thirdPartyLicensesOpenFailed": "Licensoplysningerne kunne ikke åbnes. De er tilgængelige online på {url}"
         },
         "support": {
             "title": "Støt AeroFTP",

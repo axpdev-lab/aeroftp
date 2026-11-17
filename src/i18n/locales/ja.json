@@ -1881,7 +1881,8 @@
                 "vaultFormat": "ボールト形式",
                 "zipArchives": "ZIP アーカイブ"
             },
-            "thirdPartyLicenses": "サードパーティのライセンス"
+            "thirdPartyLicenses": "サードパーティのライセンス",
+            "thirdPartyLicensesOpenFailed": "ライセンス通知を開けませんでした。オンラインの {url} で確認できます"
         },
         "support": {
             "title": "AeroFTPを支援",

@@ -1881,7 +1881,8 @@
                 "vaultFormat": "ভল্ট ফরম্যাট",
                 "zipArchives": "ZIP আর্কাইভ"
             },
-            "thirdPartyLicenses": "তৃতীয় পক্ষের লাইসেন্স"
+            "thirdPartyLicenses": "তৃতীয় পক্ষের লাইসেন্স",
+            "thirdPartyLicensesOpenFailed": "লাইসেন্স নোটিশ খোলা যায়নি। এগুলো অনলাইনে পাওয়া যাবে {url} এ"
         },
         "support": {
             "title": "AeroFTP সমর্থন করুন",

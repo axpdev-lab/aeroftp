@@ -1881,7 +1881,8 @@
                 "vaultFormat": "保险库格式",
                 "zipArchives": "ZIP 归档"
             },
-            "thirdPartyLicenses": "第三方许可证"
+            "thirdPartyLicenses": "第三方许可证",
+            "thirdPartyLicensesOpenFailed": "无法打开许可证声明。可在线查看：{url}"
         },
         "support": {
             "title": "支持 AeroFTP",

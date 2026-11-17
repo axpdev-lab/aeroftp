@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Tresorformat",
                 "zipArchives": "ZIP-Archive"
             },
-            "thirdPartyLicenses": "Drittanbieter-Lizenzen"
+            "thirdPartyLicenses": "Drittanbieter-Lizenzen",
+            "thirdPartyLicensesOpenFailed": "Die Lizenzhinweise konnten nicht geöffnet werden. Sie sind online unter {url} verfügbar"
         },
         "support": {
             "title": "AeroFTP unterstützen",

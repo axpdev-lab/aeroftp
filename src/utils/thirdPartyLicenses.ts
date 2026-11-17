@@ -59,12 +59,14 @@ export async function getCandidateNoticePaths(
 /**
  * Open the third-party license notices file in the system default reader.
  * Tries local bundled files first (resolved resource then absolute Linux paths),
- * falls back to GitHub repository URL.
+ * falls back to GitHub repository URL. Reports success: false when the URL
+ * opener rejects or resolves false (nothing was opened); an opener that
+ * resolves without a value counts as opened.
  */
 export async function openThirdPartyLicenses(
   candidatesFetcher: () => Promise<string[]> = getCandidateNoticePaths,
   opener: (path: string) => Promise<void> = (path: string) => invoke<void>('open_local_file', { path }),
-  urlOpener: (url: string) => Promise<void> = openUrl
+  urlOpener: (url: string) => Promise<boolean | void> = openUrl
 ): Promise<{ success: boolean; target: string }> {
   const candidates = await candidatesFetcher();
 
@@ -79,8 +81,8 @@ export async function openThirdPartyLicenses(
 
   // Fallback to online repository version
   try {
-    await urlOpener(GITHUB_NOTICES_URL);
-    return { success: true, target: GITHUB_NOTICES_URL };
+    const opened = await urlOpener(GITHUB_NOTICES_URL);
+    return { success: opened !== false, target: GITHUB_NOTICES_URL };
   } catch (err) {
     console.error('Failed to open third-party licenses:', err);
     return { success: false, target: GITHUB_NOTICES_URL };

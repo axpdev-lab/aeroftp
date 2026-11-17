@@ -1881,7 +1881,8 @@
                 "vaultFormat": "볼트 형식",
                 "zipArchives": "ZIP 아카이브"
             },
-            "thirdPartyLicenses": "타사 라이선스"
+            "thirdPartyLicenses": "타사 라이선스",
+            "thirdPartyLicensesOpenFailed": "라이선스 고지를 열 수 없습니다. 온라인 {url} 에서 확인할 수 있습니다"
         },
         "support": {
             "title": "AeroFTP 지원",

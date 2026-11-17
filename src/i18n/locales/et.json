@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Hoidla vorming",
                 "zipArchives": "ZIP-arhiivid"
             },
-            "thirdPartyLicenses": "Kolmandate osapoolte litsentsid"
+            "thirdPartyLicenses": "Kolmandate osapoolte litsentsid",
+            "thirdPartyLicensesOpenFailed": "Litsentsiteavitusi ei õnnestunud avada. Need on veebis saadaval aadressil {url}"
         },
         "support": {
             "title": "Toeta AeroFTP-d",

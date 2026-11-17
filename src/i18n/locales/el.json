@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Μορφή θησαυροφυλακίου",
                 "zipArchives": "Αρχεία ZIP"
             },
-            "thirdPartyLicenses": "Άδειες τρίτων"
+            "thirdPartyLicenses": "Άδειες τρίτων",
+            "thirdPartyLicensesOpenFailed": "Δεν ήταν δυνατό το άνοιγμα των ειδοποιήσεων αδειών χρήσης. Είναι διαθέσιμες online στη διεύθυνση {url}"
         },
         "support": {
             "title": "Υποστηρίξτε το AeroFTP",

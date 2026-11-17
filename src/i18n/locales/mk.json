@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Формат на трезорот",
                 "zipArchives": "ZIP архиви"
             },
-            "thirdPartyLicenses": "Лиценци од трети страни"
+            "thirdPartyLicenses": "Лиценци од трети страни",
+            "thirdPartyLicensesOpenFailed": "Не можеше да се отворат известувањата за лиценците. Достапни се на интернет на {url}"
         },
         "support": {
             "title": "Поддржи AeroFTP",

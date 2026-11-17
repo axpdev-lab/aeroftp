@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Fformat y gladdgell",
                 "zipArchives": "Archifau ZIP"
             },
-            "thirdPartyLicenses": "Trwyddedau trydydd parti"
+            "thirdPartyLicenses": "Trwyddedau trydydd parti",
+            "thirdPartyLicensesOpenFailed": "Methwyd agor yr hysbysiadau trwydded. Maent ar gael ar-lein yn {url}"
         },
         "support": {
             "title": "Cefnogi AeroFTP",

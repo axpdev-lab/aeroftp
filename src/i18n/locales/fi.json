@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Holvin muoto",
                 "zipArchives": "ZIP-arkistot"
             },
-            "thirdPartyLicenses": "Kolmannen osapuolen lisenssit"
+            "thirdPartyLicenses": "Kolmannen osapuolen lisenssit",
+            "thirdPartyLicensesOpenFailed": "Lisenssi-ilmoituksia ei voitu avata. Ne ovat verkossa osoitteessa {url}"
         },
         "support": {
             "title": "Tue AeroFTP:tä",

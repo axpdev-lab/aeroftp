@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2024-2026 axpnet (see AI-TRANSPARENCY.md)
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+
+const shellOpen = vi.hoisted(() => vi.fn());
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: shellOpen }));
 import packageJson from '../../package.json';
 import {
   openThirdPartyLicenses,
@@ -99,6 +102,60 @@ describe('thirdPartyLicenses', () => {
       expect(res.success).toBe(true);
       expect(res.target).toBe(GITHUB_NOTICES_URL);
       expect(mockUrlOpener).toHaveBeenCalledWith(GITHUB_NOTICES_URL);
+    });
+
+    describe('the default URL opener', () => {
+      afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+        shellOpen.mockReset();
+      });
+      const noLocalFile = () => Promise.resolve(['/invalid/path']);
+      const failingOpener = () => Promise.reject(new Error('Not found'));
+
+      it('reports failure when the shell fails and window.open opens nothing', async () => {
+        shellOpen.mockRejectedValue(new Error('shell unavailable'));
+        const windowOpen = vi.fn().mockReturnValue(null);
+        vi.stubGlobal('window', { open: windowOpen });
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const res = await openThirdPartyLicenses(noLocalFile, failingOpener);
+
+        expect(windowOpen).toHaveBeenCalledWith(GITHUB_NOTICES_URL, '_blank');
+        expect(res).toEqual({ success: false, target: GITHUB_NOTICES_URL });
+      });
+
+      it('reports success when the shell fails and window.open opens a window', async () => {
+        shellOpen.mockRejectedValue(new Error('shell unavailable'));
+        vi.stubGlobal('window', { open: vi.fn().mockReturnValue({}) });
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        const res = await openThirdPartyLicenses(noLocalFile, failingOpener);
+
+        expect(res).toEqual({ success: true, target: GITHUB_NOTICES_URL });
+      });
+
+      it('reports success when the shell opens the URL', async () => {
+        shellOpen.mockResolvedValue(undefined);
+        const windowOpen = vi.fn();
+        vi.stubGlobal('window', { open: windowOpen });
+
+        const res = await openThirdPartyLicenses(noLocalFile, failingOpener);
+
+        expect(shellOpen).toHaveBeenCalledWith(GITHUB_NOTICES_URL);
+        expect(windowOpen).not.toHaveBeenCalled();
+        expect(res).toEqual({ success: true, target: GITHUB_NOTICES_URL });
+      });
+    });
+
+    it('reports failure when an injected URL opener resolves false or rejects', async () => {
+      const noLocalFile = () => Promise.resolve(['/invalid/path']);
+      const failingOpener = vi.fn().mockRejectedValue(new Error('Not found'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      expect(await openThirdPartyLicenses(noLocalFile, failingOpener, vi.fn().mockResolvedValue(false))).toEqual({ success: false, target: GITHUB_NOTICES_URL });
+      expect(await openThirdPartyLicenses(noLocalFile, failingOpener, vi.fn().mockRejectedValue(new Error('x')))).toEqual({ success: false, target: GITHUB_NOTICES_URL });
+      vi.restoreAllMocks();
     });
 
     it('points to immutable release tag ref instead of main branch', () => {

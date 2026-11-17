@@ -10,7 +10,7 @@ type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
  */
 export async function openOnGitLab(
     invoke: Invoke,
-    open: (url: string) => Promise<void>,
+    open: (url: string) => Promise<unknown>,
     path: string,
     isDir: boolean,
 ): Promise<void> {

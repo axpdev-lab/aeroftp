@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Format sejfu",
                 "zipArchives": "Archiwa ZIP"
             },
-            "thirdPartyLicenses": "Licencje podmiotów trzecich"
+            "thirdPartyLicenses": "Licencje podmiotów trzecich",
+            "thirdPartyLicensesOpenFailed": "Nie udało się otworzyć informacji o licencjach. Są dostępne online pod adresem {url}"
         },
         "support": {
             "title": "Wesprzyj AeroFTP",

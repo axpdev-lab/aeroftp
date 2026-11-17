@@ -1881,7 +1881,8 @@
                 "vaultFormat": "वॉल्ट प्रारूप",
                 "zipArchives": "ZIP संग्रह"
             },
-            "thirdPartyLicenses": "तृतीय-पक्ष लाइसेंस"
+            "thirdPartyLicenses": "तृतीय-पक्ष लाइसेंस",
+            "thirdPartyLicensesOpenFailed": "लाइसेंस सूचनाएँ नहीं खोली जा सकीं। ये ऑनलाइन {url} पर उपलब्ध हैं"
         },
         "support": {
             "title": "AeroFTP का समर्थन करें",

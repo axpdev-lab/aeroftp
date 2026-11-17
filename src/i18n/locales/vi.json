@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Định dạng kho bảo mật",
                 "zipArchives": "Tệp nén ZIP"
             },
-            "thirdPartyLicenses": "Giấy phép bên thứ ba"
+            "thirdPartyLicenses": "Giấy phép bên thứ ba",
+            "thirdPartyLicensesOpenFailed": "Không thể mở thông báo giấy phép. Bạn có thể xem trực tuyến tại {url}"
         },
         "support": {
             "title": "Hỗ trợ AeroFTP",

@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Széfformátum",
                 "zipArchives": "ZIP-archívumok"
             },
-            "thirdPartyLicenses": "Harmadik féltől származó licencek"
+            "thirdPartyLicenses": "Harmadik féltől származó licencek",
+            "thirdPartyLicensesOpenFailed": "A licencközlemények nem nyithatók meg. Online elérhetők a következő címen: {url}"
         },
         "support": {
             "title": "Támogassa az AeroFTP-t",

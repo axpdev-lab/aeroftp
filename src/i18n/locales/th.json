@@ -1881,7 +1881,8 @@
                 "vaultFormat": "รูปแบบห้องนิรภัย",
                 "zipArchives": "ไฟล์บีบอัด ZIP"
             },
-            "thirdPartyLicenses": "สัญญาอนุญาตของบุคคลที่สาม"
+            "thirdPartyLicenses": "สัญญาอนุญาตของบุคคลที่สาม",
+            "thirdPartyLicensesOpenFailed": "ไม่สามารถเปิดประกาศเกี่ยวกับสัญญาอนุญาตได้ ดูได้ทางออนไลน์ที่ {url}"
         },
         "support": {
             "title": "สนับสนุน AeroFTP",

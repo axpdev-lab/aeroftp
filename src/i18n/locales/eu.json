@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Kutxa gotorraren formatua",
                 "zipArchives": "ZIP artxiboak"
             },
-            "thirdPartyLicenses": "Hirugarrenen lizentziak"
+            "thirdPartyLicenses": "Hirugarrenen lizentziak",
+            "thirdPartyLicensesOpenFailed": "Ezin izan dira lizentzia-oharrak ireki. Linean daude eskuragarri hemen: {url}"
         },
         "support": {
             "title": "Lagundu AeroFTP",

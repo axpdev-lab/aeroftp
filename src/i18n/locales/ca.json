@@ -1881,7 +1881,8 @@
                 "vaultFormat": "Format de la caixa forta",
                 "zipArchives": "Arxius ZIP"
             },
-            "thirdPartyLicenses": "Llicències de tercers"
+            "thirdPartyLicenses": "Llicències de tercers",
+            "thirdPartyLicensesOpenFailed": "No s'han pogut obrir els avisos de llicència. Estan disponibles en línia a {url}"
         },
         "support": {
             "title": "Donar Suport a AeroFTP",
