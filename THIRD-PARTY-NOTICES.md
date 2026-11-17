@@ -28961,7 +28961,6 @@ DEALINGS IN THE SOFTWARE.
 
 **Used by component(s):**
 - `open@5.4.5` (cargo, file: `LICENSE.md`)
-  - No copyright notice is shipped in the package
 
 ```text
 The MIT License (MIT)
@@ -35651,7 +35650,6 @@ limitations under the License.
 
 **Used by component(s):**
 - `simd-adler32@0.3.10` (cargo, file: `LICENSE.md`)
-  - No copyright notice is shipped in the package
 
 ```text
 MIT License

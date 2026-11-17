@@ -831,8 +831,8 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
 }
 
 export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
-  const holderRegex = /(copyright|\(c\)|©)\s*(\(c\)|©)?\s*([0-9]{4}|[A-Z])/i;
-  const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner/i;
+  const holderRegex = /(copyright|\(c\)|©)\s*(\(c\)|©)?\s*[`'"\[\(<]*([0-9]{4}|[A-Z])/i;
+  const boilerplateRegex = /above copyright|copyright holders|copyright notice|copyright owner|copyright license/i;
   return [...comp.licenseFiles, ...comp.noticeFiles].some((f) =>
     f.content.split('\n').some((l) => holderRegex.test(l) && !boilerplateRegex.test(l))
   );
@@ -907,7 +907,7 @@ export function generateNoticesMarkdown(
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];
   const compMap = new Map<string, ComponentInfo>();
   for (const c of allComponents) {
-    compMap.set(`${c.name}@${c.version}`, c);
+    compMap.set(`${c.source}:${c.name}@${c.version}`, c);
   }
   const { groupedTexts, componentsWithoutFiles } = groupLicenseTexts(allComponents);
 
@@ -1013,7 +1013,7 @@ export function generateNoticesMarkdown(
     lines.push('**Used by component(s):**');
     for (const comp of group.components) {
       lines.push(`- \`${comp.name}@${comp.version}\` (${comp.source}, file: \`${comp.filename}\`)`);
-      const fullComp = compMap.get(`${comp.name}@${comp.version}`);
+      const fullComp = compMap.get(`${comp.source}:${comp.name}@${comp.version}`);
       if (fullComp && fullComp.licenseFiles.length > 0 && !hasCopyrightHolderInFiles(fullComp)) {
         const excluded = [...fullComp.licenseFiles, ...fullComp.noticeFiles].map((f) => f.filename);
         const pkgNotices = findPackageCopyrightNotices(fullComp.packageDir, excluded);

@@ -1106,3 +1106,103 @@ test('holder-free license: extracts source notices for components with holder-fr
     /- `ident_case@1\.0\.1` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2017 Serde Developers \(src\/lib\.rs\)/
   );
 });
+
+test('hasCopyrightHolderInFiles: recognizes markdown backticks and brackets in copyright notices and does not misclassify them as absent', () => {
+  const compBackticks = {
+    licenseFiles: [{ filename: 'LICENSE.md', content: 'Copyright © `2015` `Sebastian Thiel`\n\nPermission is hereby granted...\n' }],
+    noticeFiles: [],
+  };
+  const compBrackets = {
+    licenseFiles: [{ filename: 'LICENSE.md', content: 'Copyright (c) [2021] [Marvin Countryman]\n\nPermission is hereby granted...\n' }],
+    noticeFiles: [],
+  };
+  assert.strictEqual(hasCopyrightHolderInFiles(compBackticks), true);
+  assert.strictEqual(hasCopyrightHolderInFiles(compBrackets), true);
+
+  const noticesFile = path.join(ROOT, 'THIRD-PARTY-NOTICES.md');
+  const noticesContent = fs.readFileSync(noticesFile, 'utf8');
+  assert.doesNotMatch(noticesContent, /- `open@5\.4\.5`[^\n]*\n\s+- No copyright notice is shipped in the package/);
+  assert.doesNotMatch(noticesContent, /- `simd-adler32@0\.3\.10`[^\n]*\n\s+- No copyright notice is shipped in the package/);
+});
+
+test('hasCopyrightHolderInFiles: Apache boilerplate "Grant of Copyright License" is not classified as holder and extracts source notices', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'apache-boilerplate-fixture-'));
+  try {
+    fs.writeFileSync(
+      path.join(tmpDir, 'LICENSE'),
+      'Apache License\nVersion 2.0, January 2004\n\n2. Grant of Copyright License.\nSubject to the terms...\n'
+    );
+    fs.mkdirSync(path.join(tmpDir, 'src'));
+    fs.writeFileSync(
+      path.join(tmpDir, 'src', 'lib.rs'),
+      '// Copyright 2024 Apache Fixture Author\npub fn foo() {}\n'
+    );
+
+    const readFiles = readPackageFiles(tmpDir, 'Apache-2.0');
+    assert.strictEqual(hasCopyrightHolderInFiles({ licenseFiles: readFiles.licenseFiles, noticeFiles: [] }), false);
+
+    const comp = {
+      name: 'fixture-apache',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'Apache-2.0',
+      authors: ['Apache Author'],
+      repository: 'https://example.com/apache',
+      packageDir: tmpDir,
+      licenseFiles: readFiles.licenseFiles,
+      noticeFiles: readFiles.noticeFiles,
+    };
+
+    const out = generateNoticesMarkdown([comp], []);
+    assert.match(
+      out,
+      /- `fixture-apache@1\.0\.0` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2024 Apache Fixture Author \(src\/lib\.rs\)/
+    );
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('compMap: distinguishes Cargo and npm components with identical name and version', () => {
+  const tmpDirCargo = fs.mkdtempSync(path.join(os.tmpdir(), 'eco-cargo-'));
+  const tmpDirNpm = fs.mkdtempSync(path.join(os.tmpdir(), 'eco-npm-'));
+  try {
+    fs.writeFileSync(path.join(tmpDirCargo, 'LICENSE'), 'MIT License\n\nPermission is hereby granted...\n');
+    fs.mkdirSync(path.join(tmpDirCargo, 'src'));
+    fs.writeFileSync(path.join(tmpDirCargo, 'src', 'lib.rs'), '// Copyright 2024 Cargo Eco Author\n');
+
+    fs.writeFileSync(path.join(tmpDirNpm, 'LICENSE'), 'MIT License\n\nPermission is hereby granted...\n');
+    fs.writeFileSync(path.join(tmpDirNpm, 'index.js'), '// Copyright 2024 Npm Eco Author\n');
+
+    const cargoComp = {
+      name: 'shared-name',
+      version: '1.0.0',
+      source: 'cargo',
+      license: 'MIT',
+      authors: ['Cargo Author'],
+      repository: 'https://example.com/cargo',
+      packageDir: tmpDirCargo,
+      licenseFiles: [{ filename: 'LICENSE', content: 'MIT License\n\nPermission is hereby granted...\n' }],
+      noticeFiles: [],
+    };
+
+    const npmComp = {
+      name: 'shared-name',
+      version: '1.0.0',
+      source: 'npm',
+      license: 'MIT',
+      authors: ['Npm Author'],
+      repository: 'https://example.com/npm',
+      packageDir: tmpDirNpm,
+      licenseFiles: [{ filename: 'LICENSE', content: 'MIT License\n\nPermission is hereby granted...\n' }],
+      noticeFiles: [],
+    };
+
+    const out = generateNoticesMarkdown([cargoComp], [npmComp]);
+    assert.match(out, /- `shared-name@1\.0\.0` \(cargo, file: `LICENSE`\)\n\s+- Copyright 2024 Cargo Eco Author \(src\/lib\.rs\)/);
+    assert.match(out, /- `shared-name@1\.0\.0` \(npm, file: `LICENSE`\)\n\s+- Copyright 2024 Npm Eco Author \(index\.js\)/);
+  } finally {
+    fs.rmSync(tmpDirCargo, { recursive: true, force: true });
+    fs.rmSync(tmpDirNpm, { recursive: true, force: true });
+  }
+});
