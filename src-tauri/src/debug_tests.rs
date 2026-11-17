@@ -1136,7 +1136,38 @@ pub async fn debug_test_provider_selftest(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::linear_time::assert_linear;
+
+    /// Whether the scan reads `text` as one JSON document: it decodes the
+    /// string tokens of a document, and the whole text of anything else.
+    fn is_json_document(text: &str) -> bool {
+        serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok()
+    }
+
+    /// `linear_time::assert_linear` for the redaction scans. Their path
+    /// depends on whether the whole text is one JSON document, so the whole
+    /// and its parts must agree on that, or each side times a different scan.
+    fn assert_linear<R>(
+        what: &str,
+        n: usize,
+        input: impl Fn(usize) -> String,
+        run: impl Fn(&str) -> R,
+    ) {
+        let (whole, part) = (input(n), input(n / 10));
+        assert_eq!(
+            is_json_document(&whole),
+            is_json_document(&part),
+            "{what}: the whole and its parts take different paths (JSON document whole: {})",
+            is_json_document(&whole)
+        );
+        crate::linear_time::assert_linear(what, n, input, run);
+    }
+
+    #[test]
+    #[should_panic(expected = "take different paths")]
+    fn the_ratio_refuses_parts_that_are_json_when_the_whole_is_not() {
+        let log = |n: usize| vec![r#"{"v":"x"}"#; n / 10_000].join("\n");
+        assert_linear("JSON lines", 100_000, log, redact_url_userinfo);
+    }
 
     #[derive(Deserialize)]
     struct RedactionCase {
@@ -1165,16 +1196,18 @@ mod tests {
             .collect()
     }
 
-    /// A log of `n / 10_000` findings, each a URL with a 1 KB payload
+    /// A JSON array of `n / 10_000` findings, each a URL with a 1 KB payload
     /// serialized inside twelve levels of JSON. Each level escapes the quotes
-    /// and backslashes of the ones below, about 16 KB per finding, so the log
-    /// grows with `n` as a whole: one URL with an `n`-byte payload carried
-    /// those 16 KB once, and its tenth parts carried them ten times.
+    /// and backslashes of the ones below, about 16 KB per finding, so the
+    /// array grows with `n` as a whole: one URL with an `n`-byte payload
+    /// carried those 16 KB once, and its tenth parts carried them ten times.
+    /// The whole and each part are one JSON document, so both take the same
+    /// scan.
     fn twelve_level_log(n: usize) -> String {
         let finding = (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(1_000)), |inner, _| {
             serde_json::json!({ "v": inner }).to_string()
         });
-        vec![finding; n / 10_000].join("\n")
+        format!("[{}]", vec![finding; n / 10_000].join(","))
     }
 
     /// The nesting input catches a quadratic: work quadratic in its bytes is
