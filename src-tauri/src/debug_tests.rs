@@ -1137,36 +1137,70 @@ pub async fn debug_test_provider_selftest(
 mod tests {
     use super::*;
 
-    /// Whether the scan reads `text` as one JSON document: it decodes the
-    /// string tokens of a document, and the whole text of anything else.
-    fn is_json_document(text: &str) -> bool {
-        serde_json::from_str::<serde::de::IgnoredAny>(text).is_ok()
+    /// The two ways the scan reads a text: one JSON document by its string
+    /// tokens, or anything else as a whole decoded body.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum ScanPath {
+        Document,
+        Text,
+    }
+    use ScanPath::{Document, Text};
+
+    fn scan_path(text: &str) -> ScanPath {
+        match serde_json::from_str::<serde::de::IgnoredAny>(text) {
+            Ok(_) => Document,
+            Err(_) => Text,
+        }
     }
 
-    /// `linear_time::assert_linear` for the redaction scans. Their path
-    /// depends on whether the whole text is one JSON document, so the whole
-    /// and its parts must agree on that, or each side times a different scan.
+    /// `linear_time::assert_linear` for the redaction scans, on the path the
+    /// input is meant to take: the whole and its parts must both take it, or
+    /// each side times a different scan, or both time one the input does not
+    /// mean to test.
+    fn assert_linear_on<R>(
+        path: ScanPath,
+        what: &str,
+        n: usize,
+        input: impl Fn(usize) -> String,
+        run: impl Fn(&str) -> R,
+    ) {
+        for (side, text) in [("whole", input(n)), ("tenth part", input(n / 10))] {
+            assert_eq!(
+                scan_path(&text),
+                path,
+                "{what}: the {side} takes a different path"
+            );
+        }
+        crate::linear_time::assert_linear(what, n, input, run);
+    }
+
+    /// `assert_linear_on` for an input that is not one JSON document.
     fn assert_linear<R>(
         what: &str,
         n: usize,
         input: impl Fn(usize) -> String,
         run: impl Fn(&str) -> R,
     ) {
-        let (whole, part) = (input(n), input(n / 10));
-        assert_eq!(
-            is_json_document(&whole),
-            is_json_document(&part),
-            "{what}: the whole and its parts take different paths (JSON document whole: {})",
-            is_json_document(&whole)
-        );
-        crate::linear_time::assert_linear(what, n, input, run);
+        assert_linear_on(Text, what, n, input, run);
     }
 
     #[test]
-    #[should_panic(expected = "take different paths")]
+    #[should_panic(expected = "JSON lines: the tenth part takes a different path")]
     fn the_ratio_refuses_parts_that_are_json_when_the_whole_is_not() {
         let log = |n: usize| vec![r#"{"v":"x"}"#; n / 10_000].join("\n");
         assert_linear("JSON lines", 100_000, log, redact_url_userinfo);
+    }
+
+    #[test]
+    #[should_panic(expected = "no document: the whole takes a different path")]
+    fn the_ratio_refuses_a_document_input_that_is_not_json_on_either_side() {
+        assert_linear_on(
+            Document,
+            "no document",
+            100_000,
+            |n| "{".repeat(n),
+            redact_url_userinfo,
+        );
     }
 
     #[derive(Deserialize)]
@@ -1225,6 +1259,13 @@ mod tests {
                 .map(|i| sampled[..i].iter().map(|b| b ^ sampled[i]).sum::<u64>())
                 .sum::<u64>()
         };
+        for n in [100_000, 10_000] {
+            assert_eq!(
+                scan_path(&twelve_level_log(n)),
+                Document,
+                "twelve levels at {n}"
+            );
+        }
         let (whole, parts) = crate::linear_time::whole_and_parts(100_000, twelve_level_log, pairs);
         assert!(
             whole >= parts * crate::linear_time::BOUND,
@@ -1237,25 +1278,27 @@ mod tests {
     /// the same time whole as in ten parts, through the whole pipeline too.
     #[test]
     fn the_url_userinfo_scan_stays_linear_on_adversarial_input() {
-        type Input = (&'static str, usize, fn(usize) -> String);
+        type Input = (&'static str, usize, ScanPath, fn(usize) -> String);
         let inputs: [Input; 18] = [
-            ("backslashes after a colon", 200_000, |n| {
+            ("backslashes after a colon", 200_000, Text, |n| {
                 format!("ftp://bob:{}x", "\\".repeat(n))
             }),
-            ("backslashes after an escaped colon", 200_000, |n| {
+            ("backslashes after an escaped colon", 200_000, Text, |n| {
                 format!("ftp://bob\\:{}", "\\".repeat(n))
             }),
-            ("colons", 200_000, |n| format!("ftp://{}", ":".repeat(n))),
-            ("bare ://", 100_000, |n| {
+            ("colons", 200_000, Text, |n| {
+                format!("ftp://{}", ":".repeat(n))
+            }),
+            ("bare ://", 100_000, Text, |n| {
                 format!("{}{}", "x".repeat(n), "://".repeat(n))
             }),
-            ("schemes", 50_000, |n| "ftp://ftp://".repeat(n)),
+            ("schemes", 50_000, Text, |n| "ftp://ftp://".repeat(n)),
             // D1: long whitespace and many strings, valid JSON and not, and
             // a large valid JSON document with URLs throughout.
-            ("whitespace in a token", 200_000, |n| {
+            ("whitespace in a token", 200_000, Document, |n| {
                 format!("{{\"a\":\"{}ftp://u:p@h\"}}", " ".repeat(n))
             }),
-            ("a JSON array of URLs", 20_000, |n| {
+            ("a JSON array of URLs", 20_000, Document, |n| {
                 serde_json::to_string(
                     &(0..n)
                         .map(|k| format!("ftp://u{k}:p@h{k}/x"))
@@ -1263,11 +1306,11 @@ mod tests {
                 )
                 .unwrap()
             }),
-            ("strings then text", 20_000, |n| {
+            ("strings then text", 20_000, Text, |n| {
                 serde_json::to_string(&vec!["s"; n]).unwrap() + " tail"
             }),
-            ("quotes", 200_000, |n| "\"".repeat(n) + "ftp://u:p@h"),
-            ("a JSON document of rows", 20_000, |n| {
+            ("quotes", 200_000, Text, |n| "\"".repeat(n) + "ftp://u:p@h"),
+            ("a JSON document of rows", 20_000, Document, |n| {
                 serde_json::json!({ "rows": (0..n).map(|k| serde_json::json!({
                     "id": k,
                     "url": format!("https://user{k}:secret@host{k}.example/p"),
@@ -1277,8 +1320,8 @@ mod tests {
             }),
             // S1: 20k escaped tokens, each decoded once; a document of 20k
             // URLs serialized inside one string; twelve levels of nesting.
-            ("escaped tokens", 20_000, escaped_url_tokens),
-            ("URLs serialized in a string", 20_000, |n| {
+            ("escaped tokens", 20_000, Document, escaped_url_tokens),
+            ("URLs serialized in a string", 20_000, Document, |n| {
                 serde_json::json!({ "log": serde_json::to_string(
                     &(0..n)
                         .map(|k| format!("ftp://u{k}:p@h{k}/x"))
@@ -1287,28 +1330,33 @@ mod tests {
                 .unwrap() })
                 .to_string()
             }),
-            ("twelve levels of nesting", 100_000, twelve_level_log),
+            (
+                "twelve levels of nesting",
+                100_000,
+                Document,
+                twelve_level_log,
+            ),
             // X2: long lines that are not JSON, full of backslashes, decoded
             // as a string body at every level: a backslash run halves at each one
             // (chains that re-form an escape are R1's, below).
-            ("a backslash run", 400_000, |n| {
+            ("a backslash run", 400_000, Text, |n| {
                 format!("log: {} https:\\/\\/bob:hunter2@h/p", "\\".repeat(n))
             }),
-            ("backslashes between letters", 100_000, |n| {
+            ("backslashes between letters", 100_000, Text, |n| {
                 format!("log: {} https:\\/\\/bob:hunter2@h/p", "x\\y".repeat(n))
             }),
-            ("escaped slashes", 200_000, |n| {
+            ("escaped slashes", 200_000, Text, |n| {
                 format!("log: {}", "\\/".repeat(n))
             }),
-            ("cut unicode escapes", 100_000, |n| {
+            ("cut unicode escapes", 100_000, Text, |n| {
                 format!("log: {}\\u0040", "\\u00".repeat(n))
             }),
-            ("an unterminated token", 200_000, |n| {
+            ("an unterminated token", 200_000, Text, |n| {
                 format!("log: {{\"a\":\"{}{}\"", "x".repeat(n), "\\".repeat(16))
             }),
         ];
-        for (what, n, input) in inputs {
-            assert_linear(what, n, input, redact_url_userinfo);
+        for (what, n, path, input) in inputs {
+            assert_linear_on(path, what, n, input, redact_url_userinfo);
         }
         // X2: masked at its level, whatever the backslashes before it.
         type Line = fn(usize) -> String;
