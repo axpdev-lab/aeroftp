@@ -44167,6 +44167,12 @@ async fn cmd_export_filezilla(
     };
 
     match export_filezilla(&exportable, &collected.passwords, &target_path) {
+        // Nothing written, as for the other formats: the file at the
+        // destination is left as it was.
+        Ok(0) => {
+            emit_empty_export(json, &collected.skipped);
+            4
+        }
         Ok(count) => {
             emit_export_success(
                 json,
