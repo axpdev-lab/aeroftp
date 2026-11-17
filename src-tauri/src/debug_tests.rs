@@ -1165,6 +1165,40 @@ mod tests {
             .collect()
     }
 
+    /// A log of `n / 10_000` findings, each a URL with a 1 KB payload
+    /// serialized inside twelve levels of JSON. Each level escapes the quotes
+    /// and backslashes of the ones below, about 16 KB per finding, so the log
+    /// grows with `n` as a whole: one URL with an `n`-byte payload carried
+    /// those 16 KB once, and its tenth parts carried them ten times.
+    fn twelve_level_log(n: usize) -> String {
+        let finding = (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(1_000)), |inner, _| {
+            serde_json::json!({ "v": inner }).to_string()
+        });
+        vec![finding; n / 10_000].join("\n")
+    }
+
+    /// The nesting input catches a quadratic: work quadratic in its bytes is
+    /// past the bound. As one URL with a 100k payload, the twelve levels'
+    /// fixed escapes gave the ten parts 2.3 times the whole's bytes, and the
+    /// same work read under the bound.
+    #[test]
+    fn a_quadratic_on_the_twelve_level_input_is_past_the_bound() {
+        // Quadratic in the bytes, scaled down: every 100th byte against
+        // every earlier one.
+        let pairs = |text: &str| {
+            let bytes = text.as_bytes();
+            let sampled: Vec<u64> = bytes.iter().step_by(100).map(|&b| u64::from(b)).collect();
+            (0..sampled.len())
+                .map(|i| sampled[..i].iter().map(|b| b ^ sampled[i]).sum::<u64>())
+                .sum::<u64>()
+        };
+        let (whole, parts) = crate::linear_time::whole_and_parts(100_000, twelve_level_log, pairs);
+        assert!(
+            whole >= parts * crate::linear_time::BOUND,
+            "a quadratic read as linear: {whole:?} whole, {parts:?} in ten parts"
+        );
+    }
+
     /// H9: the URL userinfo scan is linear by construction: long
     /// adversarial inputs (backslashes with no `@`, colons, bare `://`) take
     /// the same time whole as in ten parts, through the whole pipeline too.
@@ -1220,11 +1254,7 @@ mod tests {
                 .unwrap() })
                 .to_string()
             }),
-            ("twelve levels of nesting", 100_000, |n| {
-                (0..12).fold(format!("ftp://u:p@h/{}", "x".repeat(n)), |inner, _| {
-                    serde_json::json!({ "v": inner }).to_string()
-                })
-            }),
+            ("twelve levels of nesting", 100_000, twelve_level_log),
             // X2: long lines that are not JSON, full of backslashes, decoded
             // as a string body at every level: a backslash run halves at each one
             // (chains that re-form an escape are R1's, below).

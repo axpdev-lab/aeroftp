@@ -17,32 +17,61 @@ use std::time::{Duration, Instant};
 /// The input is cut in this many parts.
 const PARTS: usize = 10;
 /// Whole over parts at or past this is not linear.
-const BOUND: u32 = 3;
+pub(crate) const BOUND: u32 = 3;
+
+/// The ten parts hold this share of the whole's bytes, at most, either way.
+/// A generator with a fixed overhead (a wrapper, a prefix) gives the parts
+/// more bytes in all than the whole: at 10 % over, a step quadratic in the
+/// bytes still reads about 8 times slower whole; at 2.3 times over (twelve
+/// levels of JSON around a 10k payload) it read 1.9 and passed.
+const EQUAL_WORK: f64 = 0.10;
 
 /// The best time of `run` on `input(n)` whole and on `input(n / PARTS)`
 /// PARTS times, each result kept until the clock is read. Inputs and results
 /// go through `black_box`, so an optimized build cannot drop or move the work.
-fn whole_and_parts<R>(
+/// The two sides alternate which one runs first, so neither always gets the
+/// warmer or the colder start.
+pub(crate) fn whole_and_parts<R>(
     n: usize,
     input: impl Fn(usize) -> String,
     run: impl Fn(&str) -> R,
 ) -> (Duration, Duration) {
     let whole = input(n);
     let parts: Vec<String> = (0..PARTS).map(|_| input(n / PARTS)).collect();
-    let mut best_whole = Duration::MAX;
-    let mut best_parts = Duration::MAX;
-    for _ in 0..5 {
+    let parts_len: usize = parts.iter().map(String::len).sum();
+    let share = parts_len as f64 / whole.len() as f64;
+    assert!(
+        (share - 1.0).abs() <= EQUAL_WORK,
+        "not equal work: {} bytes whole, {parts_len} in {PARTS} parts",
+        whole.len()
+    );
+    let time_whole = || {
         let started = Instant::now();
         let kept = black_box(run(black_box(&whole)));
-        best_whole = best_whole.min(started.elapsed());
+        let elapsed = started.elapsed();
         drop(kept);
+        elapsed
+    };
+    let time_parts = || {
         let started = Instant::now();
         let kept: Vec<R> = parts
             .iter()
             .map(|part| black_box(run(black_box(part))))
             .collect();
-        best_parts = best_parts.min(started.elapsed());
+        let elapsed = started.elapsed();
         drop(kept);
+        elapsed
+    };
+    let mut best_whole = Duration::MAX;
+    let mut best_parts = Duration::MAX;
+    for sample in 0..5 {
+        if sample % 2 == 0 {
+            best_whole = best_whole.min(time_whole());
+            best_parts = best_parts.min(time_parts());
+        } else {
+            best_parts = best_parts.min(time_parts());
+            best_whole = best_whole.min(time_whole());
+        }
     }
     (best_whole, best_parts)
 }
@@ -80,5 +109,14 @@ mod tests {
             whole >= parts * BOUND,
             "quadratic work read as linear: {whole:?} whole, {parts:?} in {PARTS} parts"
         );
+    }
+
+    /// A fixed overhead per input gives the parts more work than the whole,
+    /// which hides a quadratic: the helper refuses such an input.
+    #[test]
+    #[should_panic(expected = "not equal work")]
+    fn it_refuses_an_input_whose_parts_hold_more_bytes() {
+        let wrapped = |n: usize| format!("{}{}", "w".repeat(16_000), "x".repeat(n));
+        whole_and_parts(100_000, wrapped, sum);
     }
 }
