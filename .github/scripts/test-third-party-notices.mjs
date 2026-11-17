@@ -28,6 +28,7 @@ import {
   licenseTermsOf,
   vendoredFolders,
   isSpdxHeaderLine,
+  holdersOf,
   assertNoGeneratedPlaceholders,
   KNOWN_SPDX_TAG_MENTIONS,
 } from '../../scripts/gen-third-party-notices.ts';
@@ -988,6 +989,79 @@ test('assertNoGeneratedPlaceholders: a placeholder fails in generated text, not 
   assert.throws(() => assertNoGeneratedPlaceholders('- authors: see repository maintainers\n', []), /unpopulated placeholders/);
 });
 
+test('readPackageFiles: a root license folder follows the rule of a nested one', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'root-license-dir-fixture-'));
+  try {
+    // Only a README in LICENSES/: no license text, so the standard text is used.
+    fs.mkdirSync(path.join(tmpDir, 'LICENSES'));
+    fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'README.md'), 'The license texts of this package.\n');
+    const only = readPackageFiles(tmpDir, 'test-readme-only@1.0.0');
+    assert.deepStrictEqual([...only.licenseFiles, ...only.noticeFiles], []);
+    const comp = { name: 'test-readme-only', version: '1.0.0', license: 'MIT', source: 'npm', packageDir: tmpDir, authors: ['Readme Author'], ...only };
+    assert.match(generateNoticesMarkdown([comp], []), /### Standard License: MIT\n/);
+    // The British spelling is a license folder too, as in vendored code.
+    fs.rmSync(path.join(tmpDir, 'LICENSES'), { recursive: true });
+    fs.mkdirSync(path.join(tmpDir, 'licence'));
+    fs.writeFileSync(path.join(tmpDir, 'licence', 'MIT.txt'), 'MIT License\n\nCopyright (c) 2020 Licence Author\n\nPermission is hereby granted.');
+    assert.deepStrictEqual(readPackageFiles(tmpDir, 'x@1').licenseFiles.map((f) => f.filename), ['licence/MIT.txt']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a license text in the package LICENSES/ covers its own headers, as a vendored one covers its code', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'root-reuse-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
+    write('LICENSES/Foo-Own-1.0.txt', 'Foo Own License 1.0: use freely.');
+    write('src/y.c', '/* SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    const comp = { name: 'root-reuse', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), []);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('declared header holders: a holder is named by the package only when it is the same complete holder', () => {
+  assert.deepStrictEqual(holdersOf('MIT License\n\nCopyright (c) 2020 Alice Smith\n\n  - Intel Corporation (Copyright 2012-2021)\nPermission is hereby granted.'), ['alice smith', 'intel corporation']);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exact-holder-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Alice Smith\n\n  - Intel Corporation (Copyright 2012-2021)\n\nPermission is hereby granted, free of charge.');
+    write('src/a.c', '/* Copyright (c) 2021 Alice\n * SPDX-License-Identifier: MIT */\n');
+    write('src/b.c', '/* Copyright (C) 2019 Alice Smith.\n * SPDX-License-Identifier: MIT */\n');
+    write('src/c.c', '/* Copyright (c) 2014, Intel Corporation. All Rights Reserved.\n * SPDX-License-Identifier: MIT */\n');
+    write('build.bat', '@echo off\nREM -- Copyright Batch Vendor\nREM -- SPDX-License-Identifier: MIT\n');
+    const comp = { name: 'exact-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'exact-holder@1.0.0') };
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /^ {2}- Copyright \(c\) 2021 Alice \(in a source header under MIT\)$/m, 'Alice is not Alice Smith');
+    assert.doesNotMatch(md, /Alice Smith\. \(in a source header/, 'the same holder is attributed by the package');
+    assert.doesNotMatch(md, /Intel Corporation\. All Rights Reserved\. \(in a source header/, 'a holder of the credits list is attributed by the package');
+    assert.match(md, /^ {2}- Copyright Batch Vendor \(in a source header under MIT\)$/m, 'a REM header names its holder');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('findPackageCopyrightNotices: a notice after any accepted comment leader is found', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'leader-notice-fixture-'));
+  try {
+    fs.writeFileSync(path.join(tmpDir, 'build.bat'), '@echo off\nREM -- Copyright Batch Vendor\n');
+    fs.writeFileSync(path.join(tmpDir, 'x.lua'), '-- Copyright Lua Vendor\n');
+    assert.deepStrictEqual(findPackageCopyrightNotices(tmpDir, [], []).map((n) => n.notice).sort(), ['Copyright Batch Vendor', 'Copyright Lua Vendor']);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('isSpdxHeaderLine: a comment line is a header whatever precedes the tag, prose and list items are not', () => {
   const at = (l) => l.indexOf('SPDX-License-Identifier:');
   const header = (l, rel = 'src/a.c') => isSpdxHeaderLine(l, rel, at(l));
@@ -1064,6 +1138,7 @@ test('readPackageFiles: a source file named after a license word at the root is 
     fs.mkdirSync(path.join(tmpDir, 'LICENSES'));
     fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'MIT.txt'), 'MIT License\n\nPermission is hereby granted.');
     fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'build.rs'), 'fn main() {}\n');
+    fs.writeFileSync(path.join(tmpDir, 'LICENSES', 'README.md'), 'The license texts of this package.\n');
     const files = readPackageFiles(tmpDir, 'root-source@1.0.0');
     assert.deepStrictEqual(files.licenseFiles.map((f) => f.filename), ['LICENSE.Apache_2.0', 'LICENSES/MIT.txt']);
     // An HTML notice document is a notice, reproduced whole.

@@ -4639,6 +4639,8 @@ DEALINGS IN THE SOFTWARE.
 - `wmi@0.18.4` (cargo, file: `LICENSE-APACHE`)
   - No copyright notice is shipped in the package
 - `wry@0.55.1` (cargo, file: `LICENSE-APACHE`)
+  - Copyright 2020-2023 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
+  - Copyright 2020-2024 Tauri Programme within The Commons Conservancy (in a source header under Apache-2.0, MIT)
 - `x509-parser@0.18.1` (cargo, file: `LICENSE-APACHE`)
 - `xattr@1.6.1` (cargo, file: `LICENSE-APACHE`)
 - `xz2@0.1.7` (cargo, file: `LICENSE-APACHE`)

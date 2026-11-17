@@ -541,6 +541,9 @@ const LICENSE_DIR = /^licen[sc]es?$/i;
 // a source folder named license/ (src/license/mod.rs) holds code, and a
 // README there describes the folder.
 const LICENSE_DIR_TEXT_FILE = /^(?!(?:readme|changelog|index|makefile)(?:\.|$))(?:[^.]+(?:\.[^.]+)*\.(?:txt|md|markdown|rst)|[^.]+)$/i;
+// One rule for a license folder at the root and inside vendored code:
+// LICENSES/MIT.txt is a text, LICENSES/README.md and LICENSES/build.rs are not.
+const isLicenseDirText = (name: string) => LICENSE_DIR_TEXT_FILE.test(name) && !SOURCE_FILE.test(name);
 
 export function readPackageFiles(
   dir: string,
@@ -587,14 +590,14 @@ export function readPackageFiles(
       } else if (/^(licen[sc]e|copying|unlicense)/i.test(f)) {
         licenseFiles.push({ filename: f, content: fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim() });
       }
-    } else if (entry.isDirectory() && /^licenses?$/i.test(entry.name)) {
-      // 3. Scan REUSE / standard license subdirectories (LICENSES/, licenses/, license/)
+    } else if (entry.isDirectory() && LICENSE_DIR.test(entry.name)) {
+      // 3. Scan REUSE / standard license subdirectories (LICENSES/, licenses/,
+      // license/, licence/) with the rule of a nested one (isLicenseDirText).
       const subDir = path.join(dir, entry.name);
       try {
         const subEntries = fs.readdirSync(subDir, { withFileTypes: true });
         for (const sub of subEntries) {
-          // A source file is code here too (LICENSES/build.rs).
-          if (sub.isFile() && !SOURCE_FILE.test(sub.name)) {
+          if (sub.isFile() && isLicenseDirText(sub.name)) {
             const fullPath = path.join(subDir, sub.name);
             const filename = `${entry.name}/${sub.name}`;
             const content = fs.readFileSync(fullPath, 'utf8').replace(/\r\n/g, '\n').trim();
@@ -624,7 +627,7 @@ export function readPackageFiles(
             } else if (
               sub.isFile() &&
               ((VENDORED_LICENSE_FILE.test(sub.name) && !/^(?:licen[sc]e|copying)[-_][a-z]+$/.test(sub.name)) ||
-                (LICENSE_DIR.test(path.basename(d)) && LICENSE_DIR_TEXT_FILE.test(sub.name))) &&
+                (LICENSE_DIR.test(path.basename(d)) && isLicenseDirText(sub.name))) &&
               // The declared license_file is the package's own, read by step 1.
               !(declaredLicenseFile && path.resolve(d, sub.name) === path.resolve(dir, declaredLicenseFile))
             ) {
@@ -737,7 +740,7 @@ export function findPackageCopyrightNotices(
         continue;
       }
       let line = rawLine
-        .replace(/^\s*(?:\/\/[\/!]?|\/\*+|\*+|\#+|<!--)\s*/, '')
+        .replace(COMMENT_LEADER, '')
         .replace(/(?:\*\/|-->)\s*$/, '')
         .trim();
       if (!line) continue;
@@ -1008,6 +1011,27 @@ export function holderOfNotice(notice: string): string {
     .trim();
 }
 
+/** A holder compared without case, spacing or a trailing period. */
+export function holderKey(holder: string): string {
+  return holder.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;\s]+$/, '').trim();
+}
+
+/**
+ * The holders a text names, as holderKey gives them: from its copyright lines,
+ * and from a credits list that puts the notice after the name ("- Intel
+ * Corporation (Copyright 2012-2021)", aws-lc's LICENSE).
+ */
+export function holdersOf(text: string): string[] {
+  const holders: string[] = [];
+  for (const raw of text.split('\n')) {
+    const l = raw.replace(COMMENT_LEADER, '').replace(/^SPDX-FileCopyrightText:\s*/i, 'Copyright ').trim();
+    const credit = l.match(/^(?:[-*]\s+)?(.+?)\s*\((?:copyright|\(c\)|©)\s*[0-9]{4}[^)]*\)$/i);
+    if (credit) holders.push(holderKey(credit[1]));
+    else if (/^(?:copyright\b|\(c\)|©)/i.test(l)) holders.push(holderKey(holderOfNotice(l)));
+  }
+  return holders.filter((h) => h.length > 0);
+}
+
 /**
  * SPDX-License-Identifier values in shipped headers that name no license, each
  * with where it was found and what it stands for. They are left out of the
@@ -1032,7 +1056,8 @@ export const KNOWN_SPDX_TAG_MENTIONS: Record<string, string> = {};
 // Lisp and INI (`;`), Lua, SQL and Haskell (`--`, `{-`), TeX (`%`), ARM
 // assembly (`@`), DCL (`$!`), HTML (`<!--`), OCaml (`(*`), batch and m4
 // (`REM --`, `dnl`).
-const COMMENT_LEADER = /^\s*(?:\/\/+!?|\/\*+!?|\*+\/?|#+|;+|--+|%+|@(?=\s)|\$!|<!--|\{-|\(\*|(?:rem|dnl)\b(?:\s*--)?)/i;
+const COMMENT_LEADER_ALTERNATIVES = String.raw`(?:\/\/+!?|\/\*+!?|\*+\/?|#+|;+|--+|%+|@(?=\s)|\$!|<!--|\{-|\(\*|(?:[Rr][Ee][Mm]|[Dd][Nn][Ll])\b(?:\s*--)?)`;
+const COMMENT_LEADER = new RegExp(String.raw`^\s*${COMMENT_LEADER_ALTERNATIVES}`);
 
 /**
  * Whether a line that carries an SPDX-License-Identifier tag at `at` is a
@@ -1073,11 +1098,12 @@ export function findBundledCodeUnderOtherLicenses(
   knownMentions: Record<string, string> = KNOWN_SPDX_TAG_MENTIONS
 ): { license: string; notices: string[]; files: string[]; headers: { text: string; files: string[] }[]; declared?: true }[] {
   const declared = new Set(extractSpdxLicenseIds(comp.license));
-  // The license texts a REUSE folder of vendored code ships, by identifier
-  // (the file name) and the folder of the code they cover.
+  // The license texts a REUSE folder ships, by identifier (the file name) and
+  // the folder of the code they cover: the vendored code's folder, or the
+  // whole package for its own LICENSES/ at the root.
   const shippedTexts = comp.licenseFiles
-    .filter((f) => f.vendored && LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
-    .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: vendoredRoot(f.filename) }));
+    .filter((f) => LICENSE_DIR.test(path.posix.basename(path.posix.dirname(f.filename))))
+    .map((f) => ({ id: path.posix.basename(f.filename).replace(/\.(?:txt|md|markdown|rst)$/i, ''), root: f.vendored ? vendoredRoot(f.filename) : '' }));
   const found = new Map<string, { notices: string[]; files: string[]; headers: { text: string; files: string[] }[] }>();
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
   // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
@@ -1132,7 +1158,7 @@ export function findBundledCodeUnderOtherLicenses(
         // header with its own terms is still reproduced.
         const shippedTerm = (t: string) =>
           t.split(' WITH ').every(
-            (id) => !knownLicenseIds.has(id) && shippedTexts.some((x) => x.id === id && entryRel.startsWith(`${x.root}/`))
+            (id) => !knownLicenseIds.has(id) && shippedTexts.some((x) => x.id === id && (x.root === '' || entryRel.startsWith(`${x.root}/`)))
           );
         const declaredTerm = (t: string) => declared.has(t.split(' WITH ')[0]);
         const undeclaredOf = (terms: string[]) => terms.filter((t) => !declaredTerm(t) && !shippedTerm(t));
@@ -1280,7 +1306,7 @@ export function hasCopyrightHolderInFiles(comp: ComponentInfo): boolean {
   // "Copyright has been waived" out. A bare "(c)" at the start
   // of a line is a list item in license texts (Apache-2.0 4(c) "(c) You must
   // retain ..."), so it counts only with a year, above.
-  const lead = String.raw`^\s*(?:(?:\/\/+|\/\*+|\*+|#+|--+|;+)\s*)?`;
+  const lead = String.raw`^\s*(?:${COMMENT_LEADER_ALTERNATIVES}\s*)?`;
   const namedRegex = new RegExp(
     lead +
       String.raw`(?:[Pp]ortions(?:\s+of)?\s+|[Oo]riginal\s+[Ww]ork:?\s*)?(?:(?:[Cc]opyrights?|COPYRIGHTS?)\s*(?:\([cC]\)|©)\s*[\x60'"\[\(<]*[A-Za-z0-9.]|(?:[Cc]opyrights?|COPYRIGHTS?|©|SPDX-FileCopyrightText:|PackageCopyrightText:)\s*[\x60'"\[\(<]*[A-Z0-9])`
@@ -1572,11 +1598,13 @@ export function generateNoticesMarkdown(
         const compKey = `${comp.source}:${comp.name}@${comp.version}`;
         if (!listedDeclaredHolders.has(compKey)) {
           listedDeclaredHolders.add(compKey);
-          // A holder the package's own files already name is attributed there.
-          const ownText = fullComp.licenseFiles.filter((f) => !f.vendored).map((f) => f.content).join('\n');
+          // A holder the package's own files already name is attributed there:
+          // the same complete holder, not a name inside a longer one ("Alice"
+          // is not "Alice Smith").
+          const ownHolders = new Set(fullComp.licenseFiles.filter((f) => !f.vendored).flatMap((f) => holdersOf(f.content)));
           const byNotice = new Map<string, string[]>();
           for (const b of bundledOf(fullComp).filter((x) => x.declared)) {
-            for (const n of b.notices.filter((x) => !ownText.includes(holderOfNotice(x)))) {
+            for (const n of b.notices.filter((x) => !ownHolders.has(holderKey(holderOfNotice(x))))) {
               if (!byNotice.has(n)) byNotice.set(n, []);
               if (!byNotice.get(n)!.includes(b.license)) byNotice.get(n)!.push(b.license);
             }
