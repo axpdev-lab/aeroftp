@@ -1091,9 +1091,17 @@ fn parse_nextcloud_versions_listing(xml: &str) -> Result<Vec<ListedVersion>, Pro
 }
 
 /// The version id of a versions listing href: its last decoded segment.
-fn nextcloud_version_id_of_href(href: &str) -> Option<String> {
+/// The version id of a row of the versions answer for `file_id`: only a
+/// direct child of `versions/<file_id>/`. A row under another file's id (a
+/// server or proxy answering for 43 in the listing of 42) is not this file's,
+/// and binding it to 42 would let a delete remove 42's version of that time.
+fn nextcloud_version_id_of_href(href: &str, file_id: &str) -> Option<String> {
     let path = href.split(['?', '#']).next().unwrap_or("");
-    let last = path.trim_end_matches('/').rsplit('/').next()?;
+    let mut segments = path.trim_end_matches('/').rsplit('/');
+    let last = segments.next()?;
+    if decode_one_segment(segments.next()?) != file_id || segments.next()? != "versions" {
+        return None;
+    }
     let id = decode_one_segment(last);
     nextcloud_trash_id_is_one_segment(&id).then_some(id)
 }
@@ -3229,6 +3237,17 @@ impl WebDavProvider {
     /// [`super::CURRENT_VERSION_ID`] (the file itself, listed or not), then
     /// the earlier ones newest first, each id bound to the file id
     /// ([`nextcloud_bound_version_id`]).
+    /// A disconnected provider sends no version request: `disconnect` keeps
+    /// the client and the credentials, so a list, restore or delete still
+    /// queued for it would reach the server otherwise.
+    fn require_connected(&self) -> Result<(), ProviderError> {
+        if self.connected {
+            Ok(())
+        } else {
+            Err(ProviderError::NotConnected)
+        }
+    }
+
     async fn nextcloud_list_versions(
         &mut self,
         path: &str,
@@ -3272,7 +3291,7 @@ impl WebDavProvider {
             .into_iter()
             .filter(|row| !row.is_collection)
             .filter_map(|row| {
-                let version = nextcloud_version_id_of_href(&row.href)?;
+                let version = nextcloud_version_id_of_href(&row.href, &file_id)?;
                 let epoch = version.parse::<i64>().unwrap_or(0);
                 let id = if mtime > 0 && epoch == mtime {
                     super::CURRENT_VERSION_ID.to_string()
@@ -6074,6 +6093,7 @@ impl StorageProvider for WebDavProvider {
             return super::mega_df::mega_list_versions(path).await;
         }
         if self.supports_nextcloud_versions() {
+            self.require_connected()?;
             return self.nextcloud_list_versions(path).await;
         }
         Err(ProviderError::NotSupported("list_versions".to_string()))
@@ -6089,6 +6109,7 @@ impl StorageProvider for WebDavProvider {
             return super::mega_df::mega_download_version(path, version_id, local_path).await;
         }
         if self.supports_nextcloud_versions() {
+            self.require_connected()?;
             return self
                 .nextcloud_download_version(path, version_id, local_path)
                 .await;
@@ -6101,6 +6122,7 @@ impl StorageProvider for WebDavProvider {
             return super::mega_df::mega_restore_version(path, version_id).await;
         }
         if self.supports_nextcloud_versions() {
+            self.require_connected()?;
             return self.nextcloud_restore_version(path, version_id).await;
         }
         Err(ProviderError::NotSupported("restore_version".to_string()))
@@ -6108,6 +6130,7 @@ impl StorageProvider for WebDavProvider {
 
     async fn delete_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         if self.supports_nextcloud_versions() {
+            self.require_connected()?;
             return self.nextcloud_delete_version(path, version_id).await;
         }
         Err(ProviderError::NotSupported("delete_version".to_string()))
@@ -7573,6 +7596,7 @@ mod tests {
 <d:response><d:href>/remote.php/dav/files/user/b.txt</d:href><d:propstat><d:prop><oc:fileid>43</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 <d:response><d:href>/remote.php/dav/files/user/off.txt</d:href><d:propstat><d:prop><oc:fileid>44</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 <d:response><d:href>/remote.php/dav/files/user/big.txt</d:href><d:propstat><d:prop><oc:fileid>45</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/files/user/d.txt</d:href><d:propstat><d:prop><oc:fileid>46</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 <d:response><d:href>/remote.php/dav/files/user/other/c.txt</d:href><d:propstat><d:prop><oc:fileid>99</oc:fileid></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
 </d:multistatus>"#,
                         ),
@@ -7596,6 +7620,20 @@ mod tests {
                             reply(207, &" ".repeat(super::NEXTCLOUD_VERSIONS_MAX_BYTES as usize + 1))
                         }
                         ("PROPFIND", "/remote.php/dav/versions/user/versions/99/") => reply(207, ""),
+                        ("PROPFIND", "/remote.php/dav/versions/user/versions/46/") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/versions/user/versions/46/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/46/1700000100</d:href><d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+<d:response><d:href>/remote.php/dav/versions/user/versions/43/1700000000</d:href><d:propstat><d:prop><d:getcontentlength>8</d:getcontentlength><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
+                        ("PROPFIND", "/remote.php/dav/files/user/d.txt") => reply(
+                            207,
+                            r#"<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">
+<d:response><d:href>/remote.php/dav/files/user/d.txt</d:href><d:propstat><d:prop><d:getcontentlength>6</d:getcontentlength><d:getlastmodified>Wed, 15 Nov 2023 10:00:00 GMT</d:getlastmodified><d:resourcetype/></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>
+</d:multistatus>"#,
+                        ),
                         ("MOVE", "/remote.php/dav/versions/user/versions/42/1700000500") => {
                             reply(500, "<error>user=user password=hunter2-pass token=tok-abc123</error>")
                         }
@@ -7641,6 +7679,52 @@ mod tests {
                 .unwrap();
         provider.connected = true;
         provider
+    }
+
+    /// `disconnect` keeps the client and the credentials: a version list,
+    /// download, restore or delete still queued for the provider sent its
+    /// MOVE or DELETE. A disconnected provider sends nothing.
+    #[tokio::test]
+    async fn a_disconnected_provider_sends_no_version_request() {
+        let (base, log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        provider.disconnect().await.expect("disconnect");
+        let local = tempfile::tempdir().unwrap();
+        let local = local.path().join("v").to_string_lossy().into_owned();
+        assert!(matches!(
+            provider.list_versions("/a.txt").await,
+            Err(ProviderError::NotConnected)
+        ));
+        assert!(matches!(
+            provider
+                .download_version("/a.txt", "42:1700000000", &local)
+                .await,
+            Err(ProviderError::NotConnected)
+        ));
+        assert!(matches!(
+            provider.restore_version("/a.txt", "42:1700000000").await,
+            Err(ProviderError::NotConnected)
+        ));
+        assert!(matches!(
+            provider.delete_version("/a.txt", "42:1700000500").await,
+            Err(ProviderError::NotConnected)
+        ));
+        server.abort();
+        assert!(log.lock().unwrap().is_empty(), "{:?}", log.lock().unwrap());
+    }
+
+    /// The versions answer for d.txt (file id 46) also carries a row of
+    /// file 43 with a time of its own: bound to 46 it read as a version of
+    /// d.txt, and a delete of it removed 46's version of that time. Only the
+    /// rows under versions/46/ are listed.
+    #[tokio::test]
+    async fn a_version_row_of_another_file_id_is_not_listed() {
+        let (base, _log, server) = serve_nextcloud_versions().await;
+        let mut provider = nextcloud_versions_provider(&base);
+        let versions = provider.list_versions("/d.txt").await.expect("versions");
+        server.abort();
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["current", "46:1700000100"]);
     }
 
     /// An author with an entity in it arrives as Text pieces around a

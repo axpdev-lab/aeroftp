@@ -15,10 +15,12 @@
 # `mega-ls -l /f.dat` lists that one 1000-byte file, as MEGAcmd 2.6 lists a
 # file path; `mega-ls -l /same` lists a folder holding a file of its own name,
 # opened by the `path:` line MEGAcmd 2.6 writes before a folder's listing.
-# `mega-ls -l --versions /v.txt` lists v.txt and its chain of three, the
-# current one first, as MEGAcmd 2.6.0 lists it (measured 2026-11-16);
-# `/w.txt` has a current version older in time than the one below it (a
-# restore keeps the old time) and `/x.txt` two versions of one time. Every
+# `mega-ls -l --versions --show-handles /v.txt` lists v.txt and its chain of
+# three, the current one first, each with its handle, as MEGAcmd 2.6.0 lists
+# it (measured 2026-11-17); `/w.txt` has a current version older in time than
+# the one below it (a restore keeps the old time), `/x.txt` two versions of
+# one time, and `/y.txt` gains a new current version after its first listing
+# (a file put at the path by another client). Every
 # mega-get source is appended to get.log, its local target to
 # get-targets.log, and every mega-put target to put.log; a file
 # get-writes-then-fails makes mega-get write 500 bytes and then refuse. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
@@ -47,28 +49,38 @@ case "$(basename "$0")" in
             [ -f "$here/$listing" ] && cat "$here/$listing"
             exit 0
         fi
-        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/v.txt" ]; then
-            echo 'FLAGS VERS      SIZE            DATE       NAME'
-            echo '----    3           13 16Nov2026 15:53:00 v.txt'
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/v.txt" ]; then
+            echo 'FLAGS VERS      SIZE            DATE          HANDLE NAME'
+            echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt'
             echo ''
             echo 'Versions of v.txt:'
-            echo '----    3           13 16Nov2026 15:53:00 v.txt#1794840780'
-            echo '----    2           12 16Nov2026 15:52:57 v.txt#1794840777'
-            echo '----    1            8 16Nov2026 15:52:55 v.txt#1794840775'
+            echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt#1794840780'
+            echo '----    2           12 16Nov2026 15:52:57 H:vAAAAAA2 v.txt#1794840777'
+            echo '----    1            8 16Nov2026 15:52:55 H:vAAAAAA1 v.txt#1794840775'
             exit 0
         fi
-        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/w.txt" ]; then
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/w.txt" ]; then
             echo 'Versions of w.txt:'
-            echo '----    3            8 16Nov2026 15:51:40 w.txt#1794840700'
-            echo '----    2           13 16Nov2026 15:53:10 w.txt#1794840790'
-            echo '----    1            8 16Nov2026 15:53:00 w.txt#1794840780'
+            echo '----    3            8 16Nov2026 15:51:40 H:wAAAAAA3 w.txt#1794840700'
+            echo '----    2           13 16Nov2026 15:53:10 H:wAAAAAA2 w.txt#1794840790'
+            echo '----    1            8 16Nov2026 15:53:00 H:wAAAAAA1 w.txt#1794840780'
             exit 0
         fi
-        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "/x.txt" ]; then
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/x.txt" ]; then
             echo 'Versions of x.txt:'
-            echo '----    3           13 16Nov2026 15:53:10 x.txt#1794840790'
-            echo '----    2           12 16Nov2026 15:52:57 x.txt#1794840777'
-            echo '----    1            8 16Nov2026 15:52:57 x.txt#1794840777'
+            echo '----    3           13 16Nov2026 15:53:10 H:xAAAAAA3 x.txt#1794840790'
+            echo '----    2           12 16Nov2026 15:52:57 H:xAAAAAA2 x.txt#1794840777'
+            echo '----    1            8 16Nov2026 15:52:57 H:xAAAAAA1 x.txt#1794840777'
+            exit 0
+        fi
+        if [ "$1" = "-l" ] && [ "$2" = "--versions" ] && [ "$3" = "--show-handles" ] && [ "$4" = "/y.txt" ]; then
+            echo 'Versions of y.txt:'
+            if [ -f "$here/y-listed" ]; then
+                echo '----    4            9 16Nov2026 15:54:00 H:yAAAAAA9 y.txt#1794840840'
+            fi
+            touch "$here/y-listed"
+            echo '----    2            7 16Nov2026 15:53:00 H:yAAAAAA2 y.txt#1794840780'
+            echo '----    1            5 16Nov2026 15:52:00 H:yAAAAAA1 y.txt#1794840720'
             exit 0
         fi
         if [ "$1" = "-l" ] && [ "$2" = "/" ]; then

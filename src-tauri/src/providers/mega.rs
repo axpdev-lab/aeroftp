@@ -1410,20 +1410,27 @@ impl StorageProvider for MegaCmdProvider {
         let abs_path = self.resolve_path(path);
         refuse_mega_wildcard_name(&abs_path)?;
         let output = self
-            .run_mega_cmd_with_reauth("mega-ls", &["-l", "--versions", &abs_path])
+            .run_mega_cmd_with_reauth(
+                "mega-ls",
+                &["-l", "--versions", "--show-handles", &abs_path],
+            )
             .await?;
-        // Each id is the modification time of that version. MEGAcmd lists
-        // the current one first (measured on 2.6.0); its time can be older
-        // than an earlier version's (a restore uploads old contents with
-        // their old time), so the place tells it, not the time.
-        let versions = super::mega_df::parse_mega_ls_versions(&output);
-        let head = versions.first().map(|v| v.id.clone());
-        let epoch = |v: &FileVersion| v.id.parse::<i64>().unwrap_or(0);
+        // Each id is the handle of that version (`H:...`), which names that
+        // one node (measured on 2.6.0: `mega-get H:<handle>` fetches that
+        // version). The `<path>#<time>` address MEGAcmd also takes picks the
+        // first version of a time, and names a literal file for a short name.
+        // MEGAcmd lists the current one first; its time can be older than an
+        // earlier version's (a restore uploads old contents with their old
+        // time), so the place tells it, not the time.
+        let rows = parse_mega_ls_version_handles(&output);
+        let head = rows.first().map(|(v, _)| v.id.clone());
+        let times: std::collections::HashMap<String, i64> =
+            rows.iter().map(|(v, time)| (v.id.clone(), *time)).collect();
         Ok(super::versions_current_first(
-            versions,
+            rows.into_iter().map(|(v, _)| v).collect(),
             |v| Some(&v.id) == head.as_ref(),
             || None,
-            epoch,
+            |v| times.get(&v.id).copied().unwrap_or(0),
         ))
     }
 
@@ -1433,7 +1440,7 @@ impl StorageProvider for MegaCmdProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        let temp = self.fetch_version_to_temp(path, version_id).await?;
+        let (temp, _) = self.fetch_version_to_temp(path, version_id).await?;
         // Rename into place, or copy where the temp folder is on another
         // file system; the guard removes whatever is left.
         if tokio::fs::rename(&temp.0, local_path).await.is_err() {
@@ -1449,7 +1456,20 @@ impl StorageProvider for MegaCmdProvider {
     /// chain intact.
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         let abs_path = self.resolve_path(path);
-        let temp = self.fetch_version_to_temp(path, version_id).await?;
+        let (temp, head) = self.fetch_version_to_temp(path, version_id).await?;
+        // mega-put names the file by its path, which MEGAcmd resolves when it
+        // runs: a file put at the path while the version downloaded would be
+        // overwritten. The path must still hold the version listed current.
+        let now = self.list_versions(path).await?;
+        let now = now.first().map(|v| v.id.clone());
+        if now != head {
+            return Err(ProviderError::NotFound(format!(
+                "{path} changed while the version downloaded (current version {}, now {}): \
+                 list its versions again",
+                head.as_deref().unwrap_or("none"),
+                now.as_deref().unwrap_or("none")
+            )));
+        }
         let local_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
         self.run_mega_transfer_with_reauth("mega-put", &[&local_arg, &abs_path], Some(&|_| {}))
             .await
@@ -1697,48 +1717,35 @@ impl MegaCmdProvider {
         Ok(())
     }
 
-    /// Fetch one version of `path` (`mega-get "<path>#<id>"`) to a fresh
-    /// temp file, removed when the returned guard goes. `mega-get` never
-    /// overwrites a local file, so the target is a new name that MEGAcmd
-    /// creates (0600, measured on 2.6.0); the id is the epoch MEGAcmd lists,
-    /// digits only, so nothing else can ride on the `#` address.
+    /// Fetch one version of `path` (`mega-get H:<handle>`) to a fresh temp
+    /// file, removed when the returned guard goes, with the handle listed
+    /// current then. `mega-get` never overwrites a local file, so the target
+    /// is a new name that MEGAcmd creates (0600, measured on 2.6.0).
     async fn fetch_version_to_temp(
         &mut self,
         path: &str,
         version_id: &str,
-    ) -> Result<MegaTempFile, ProviderError> {
-        if version_id.is_empty() || !version_id.bytes().all(|b| b.is_ascii_digit()) {
+    ) -> Result<(MegaTempFile, Option<String>), ProviderError> {
+        if !is_mega_handle(version_id) {
             return Err(ProviderError::InvalidPath(format!(
                 "'{version_id}' is not a MEGA version id"
             )));
         }
-        let abs_path = self.resolve_path(path);
-        refuse_mega_wildcard_name(&abs_path)?;
-        // `<path>#<time>` takes the first version of that time: two of them
-        // (contents written in one second, or a version restored with its
-        // old time) cannot be told apart, so neither is fetched.
+        refuse_mega_wildcard_name(&self.resolve_path(path))?;
+        // A handle names any node: it is fetched only as one of this file's
+        // versions.
         let listed = self.list_versions(path).await?;
-        match listed.iter().filter(|v| v.id == version_id).count() {
-            0 => {
-                return Err(ProviderError::NotFound(format!(
-                    "{path} has no version {version_id}"
-                )))
-            }
-            1 => {}
-            _ => {
-                return Err(ProviderError::NotSupported(format!(
-                    "Two versions of {path} carry the time {version_id}: MEGAcmd addresses a \
-                     version by its time and cannot tell them apart. Download it from the MEGA \
-                     app instead"
-                )))
-            }
+        if !listed.iter().any(|v| v.id == version_id) {
+            return Err(ProviderError::NotFound(format!(
+                "{path} has no version {version_id}"
+            )));
         }
+        let head = listed.first().map(|v| v.id.clone());
         let temp = MegaTempFile::new("aeroftp_mega_version");
         let temp_arg = Self::normalize_local_path_for_cli(&temp.0.to_string_lossy());
-        let versioned = format!("{abs_path}#{version_id}");
-        self.run_mega_transfer_with_reauth("mega-get", &[&versioned, &temp_arg], Some(&|_| {}))
+        self.run_mega_transfer_with_reauth("mega-get", &[version_id, &temp_arg], Some(&|_| {}))
             .await?;
-        Ok(temp)
+        Ok((temp, head))
     }
 
     /// The argument that names the existing node at `path` for MEGAcmd: the
@@ -1982,6 +1989,56 @@ fn refuse_mega_wildcard_name(path: &str) -> Result<(), ProviderError> {
 }
 
 /// The one handle a `--show-handles` listing gives for `name`, or why not.
+/// Whether `id` is a MEGAcmd handle address (`H:` and the handle's
+/// base64url letters), so nothing else rides on the `mega-get` argument.
+fn is_mega_handle(id: &str) -> bool {
+    id.strip_prefix("H:").is_some_and(|handle| {
+        !handle.is_empty()
+            && handle
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    })
+}
+
+/// The rows of `mega-ls -l --versions --show-handles` after its
+/// `Versions of` line (flags, versions, size, date, time, handle,
+/// `name#<time>`), each with the time of its name, as MEGAcmd 2.6.0 lists
+/// them (measured 2026-11-17). The handle is the version id.
+fn parse_mega_ls_version_handles(output: &str) -> Vec<(FileVersion, i64)> {
+    let mut rows = Vec::new();
+    let mut in_versions = false;
+    for raw in output.lines() {
+        let trimmed = raw.trim_start();
+        if trimmed.starts_with("Versions of ") {
+            in_versions = true;
+            continue;
+        }
+        if !in_versions || trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 7 || !is_mega_handle(parts[5]) {
+            continue;
+        }
+        let name = parts[6..].join(" ");
+        let time = name
+            .rsplit_once('#')
+            .and_then(|(_, time)| time.parse::<i64>().ok())
+            .unwrap_or(0);
+        rows.push((
+            FileVersion {
+                id: parts[5].to_string(),
+                modified: Some(format!("{} {}", parts[3], parts[4])),
+                size: parts[2].parse::<u64>().unwrap_or(0),
+                modified_by: None,
+                deleted: false,
+            },
+            time,
+        ));
+    }
+    rows
+}
+
 fn unique_handle_for(listing: &str, name: &str) -> Result<String, ProviderError> {
     unique_handle_for_kind(listing, name, false)
 }
@@ -3184,7 +3241,7 @@ mod tests {
         let ids: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
         assert_eq!(
             ids,
-            [("1794840780", 13), ("1794840777", 12), ("1794840775", 8)]
+            [("H:vAAAAAA3", 13), ("H:vAAAAAA2", 12), ("H:vAAAAAA1", 8)]
         );
     }
 
@@ -3196,49 +3253,72 @@ mod tests {
         let (mut provider, _dir) = provider_with_stand_in_versions();
         let versions = provider.list_versions("/w.txt").await.expect("versions");
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
-        assert_eq!(ids, ["1794840700", "1794840790", "1794840780"]);
+        assert_eq!(ids, ["H:wAAAAAA3", "H:wAAAAAA2", "H:wAAAAAA1"]);
     }
 
-    /// Two versions of one time have one `#<time>` address: neither is
-    /// fetched, a version of a time no other one carries is.
+    /// Two versions of one time had one `<path>#<time>` address, which
+    /// MEGAcmd resolves to the first of them: each is fetched by its own
+    /// handle.
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_megacmd_version_whose_time_is_shared_is_not_fetched() {
+    async fn two_megacmd_versions_of_one_time_are_fetched_by_their_handles() {
         let (mut provider, dir) = provider_with_stand_in_versions();
         let local = tempfile::tempdir().expect("tempdir");
-        let target = local.path().join("old.txt");
-        let downloaded = provider
-            .download_version("/x.txt", "1794840777", target.to_str().unwrap())
-            .await;
-        let restored = provider.restore_version("/x.txt", "1794840777").await;
-        for outcome in [&downloaded, &restored] {
-            assert!(
-                matches!(outcome, Err(ProviderError::NotSupported(m)) if m.contains("cannot tell them apart")),
-                "{outcome:?}"
-            );
+        for (id, name) in [("H:xAAAAAA2", "two.txt"), ("H:xAAAAAA1", "one.txt")] {
+            provider
+                .download_version("/x.txt", id, local.path().join(name).to_str().unwrap())
+                .await
+                .expect("download");
         }
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:xAAAAAA2", "H:xAAAAAA1"]);
+    }
+
+    /// A handle names any node: one that is not among the file's versions
+    /// is NotFound, and nothing is fetched.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_handle_that_is_not_a_version_of_the_file_is_not_fetched() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let local = tempfile::tempdir().expect("tempdir");
+        let target = local.path().join("old.txt");
+        let outcome = provider
+            .download_version("/v.txt", "H:xAAAAAA2", target.to_str().unwrap())
+            .await;
+        assert!(
+            matches!(outcome, Err(ProviderError::NotFound(_))),
+            "{outcome:?}"
+        );
         assert!(stand_in_log(&dir, "get.log").is_empty());
+    }
+
+    /// mega-put names the file by its path: a file put there while the
+    /// version downloaded was overwritten by the restore. The current
+    /// version is listed again first, and a new one stops the restore.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_megacmd_restore_stops_when_the_file_changed_meanwhile() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        let outcome = provider.restore_version("/y.txt", "H:yAAAAAA1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::NotFound(m)) if m.contains("changed while")),
+            "{outcome:?}"
+        );
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:yAAAAAA1"]);
         assert!(stand_in_log(&dir, "put.log").is_empty());
-        assert!(!target.exists());
-        provider
-            .download_version("/x.txt", "1794840790", target.to_str().unwrap())
-            .await
-            .expect("an unshared time is fetched");
-        assert_eq!(stand_in_log(&dir, "get.log"), ["/x.txt#1794840790"]);
     }
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_megacmd_version_is_downloaded_from_its_epoch_address() {
+    async fn a_megacmd_version_is_downloaded_from_its_handle() {
         let (mut provider, dir) = provider_with_stand_in_versions();
         let local = tempfile::tempdir().expect("tempdir");
         let target = local.path().join("old.txt");
         provider
-            .download_version("/v.txt", "1794840775", target.to_str().unwrap())
+            .download_version("/v.txt", "H:vAAAAAA1", target.to_str().unwrap())
             .await
             .expect("download");
         assert_eq!(std::fs::metadata(&target).unwrap().len(), 1000);
-        assert_eq!(stand_in_log(&dir, "get.log"), ["/v.txt#1794840775"]);
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA1"]);
         assert!(stand_in_log(&dir, "put.log").is_empty());
     }
 
@@ -3247,18 +3327,26 @@ mod tests {
     async fn a_megacmd_version_is_restored_by_uploading_it_over_the_file() {
         let (mut provider, dir) = provider_with_stand_in_versions();
         provider
-            .restore_version("/v.txt", "1794840777")
+            .restore_version("/v.txt", "H:vAAAAAA2")
             .await
             .expect("restore");
-        assert_eq!(stand_in_log(&dir, "get.log"), ["/v.txt#1794840777"]);
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA2"]);
         assert_eq!(stand_in_log(&dir, "put.log"), ["/v.txt"]);
     }
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn a_megacmd_version_id_that_is_not_an_epoch_is_refused_before_any_command() {
+    async fn a_megacmd_version_id_that_is_not_a_handle_is_refused_before_any_command() {
         let (mut provider, dir) = provider_with_stand_in_versions();
-        for id in ["", "1#2", "../1794840775", "17948 40775"] {
+        for id in [
+            "",
+            "1794840775",
+            "H:",
+            "H:a/b",
+            "/v.txt#1794840775",
+            "H:ab cd",
+            "-q",
+        ] {
             let outcome = provider.restore_version("/v.txt", id).await;
             assert!(
                 matches!(outcome, Err(ProviderError::InvalidPath(_))),
@@ -3285,12 +3373,12 @@ mod tests {
         let local = tempfile::tempdir().expect("tempdir");
         let target = local.path().join("old.txt");
         let downloaded = provider
-            .download_version("/v.txt", "1794840775", target.to_str().unwrap())
+            .download_version("/v.txt", "H:vAAAAAA1", target.to_str().unwrap())
             .await;
         assert!(downloaded.is_err(), "{downloaded:?}");
         assert!(!stand_in_get_target(&dir).exists());
         assert!(!target.exists());
-        let restored = provider.restore_version("/v.txt", "1794840775").await;
+        let restored = provider.restore_version("/v.txt", "H:vAAAAAA1").await;
         assert!(restored.is_err(), "{restored:?}");
         assert!(stand_in_log(&dir, "put.log").is_empty());
     }
@@ -3302,7 +3390,7 @@ mod tests {
         std::fs::write(dir.path().join("put-slow"), "").unwrap();
         let stopped = tokio::time::timeout(
             std::time::Duration::from_millis(500),
-            provider.restore_version("/v.txt", "1794840777"),
+            provider.restore_version("/v.txt", "H:vAAAAAA2"),
         )
         .await;
         assert!(stopped.is_err(), "the restore ended before the stop");
