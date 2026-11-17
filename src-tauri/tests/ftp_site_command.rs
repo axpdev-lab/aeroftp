@@ -517,7 +517,9 @@ async fn a_burst_of_preliminary_replies_is_followed_in_linear_time() {
         let run = run_site_command(
             &mut provider,
             "RESCAN",
-            &SiteOptions::with_reply_timeout_secs(60),
+            // No settle window: it is a fixed wait per exchange, paid once
+            // whole and ten times in parts, and would hide the reading.
+            &SiteOptions::with_reply_timeout_secs(60).with_settle(Duration::ZERO),
         )
         .await;
         let elapsed = started.elapsed();
