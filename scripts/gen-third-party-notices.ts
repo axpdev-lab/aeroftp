@@ -1704,16 +1704,23 @@ export function renderNotices(
   // The bundled headers of each package, read once: the package listing takes
   // the holders of a license the package declares, the bundled-code section
   // the others.
+  // One read of the standard-text table per render: the header
+  // classification, the standard texts and the bundled-code section all use it.
+  let standardLicenses: Record<string, string> | undefined;
+  const readStandardLicenses = (): Record<string, string> => {
+    if (!standardLicenses) {
+      if (!fs.existsSync(spdxLicensesFile)) {
+        throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
+      }
+      standardLicenses = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8')) as Record<string, string>;
+    }
+    return standardLicenses;
+  };
   const bundledCache = new Map<ComponentInfo, ReturnType<typeof findBundledCodeUnderOtherLicenses>>();
   let knownLicenseIds: Set<string> | undefined;
   const bundledOf = (comp: ComponentInfo) => {
     if (!comp.packageDir) return [];
-    if (!knownLicenseIds) {
-      if (!fs.existsSync(spdxLicensesFile)) {
-        throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
-      }
-      knownLicenseIds = new Set(Object.keys(JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'))));
-    }
+    if (!knownLicenseIds) knownLicenseIds = new Set(Object.keys(readStandardLicenses()));
     if (!bundledCache.has(comp)) bundledCache.set(comp, findBundledCodeUnderOtherLicenses(comp, knownLicenseIds));
     return bundledCache.get(comp)!;
   };
@@ -1911,16 +1918,6 @@ export function renderNotices(
     const compat = choices.filter((terms) => isGplCompatible(terms.join(' AND ')));
     return compat.length > 0 ? compat : choices;
   };
-  let standardLicenses: Record<string, string> | undefined;
-  const readStandardLicenses = (): Record<string, string> => {
-    if (!standardLicenses) {
-      if (!fs.existsSync(spdxLicensesFile)) {
-        throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
-      }
-      standardLicenses = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8')) as Record<string, string>;
-    }
-    return standardLicenses;
-  };
   const standardTextTerms = new Map<ComponentInfo, string[][]>();
   for (const comp of allComponents) {
     const ownTexts = comp.licenseFiles.filter((f) => !f.vendored && f.content.trim().length > 0).map((f) => f.content);
@@ -2117,10 +2114,7 @@ export function renderNotices(
   // Code bundled under a license its package does not declare.
   const bundledComponents = allComponents.filter((c) => c.packageDir);
   if (bundledComponents.length > 0) {
-    if (!fs.existsSync(spdxLicensesFile)) {
-      throw new Error(`Standard SPDX licenses file is required but missing at ${spdxLicensesFile}`);
-    }
-    const standardLicenses: Record<string, string> = JSON.parse(fs.readFileSync(spdxLicensesFile, 'utf8'));
+    const standardTexts = readStandardLicenses();
     const byLicense = new Map<string, string[]>();
     const holdersByLicense = new Map<string, string[]>();
     const noHolder = 'No copyright line in the header that declares this license';
@@ -2133,7 +2127,7 @@ export function renderNotices(
         // package (its own and the ones shipped beside vendored code) is
         // reproduced below.
         if (b.declared) {
-          const standardTerms = licenseTermsOf(standardLicenses[b.license.split(' WITH ')[0]] ?? '');
+          const standardTerms = licenseTermsOf(standardTexts[b.license.split(' WITH ')[0]] ?? '');
           const ownTerms = new Set(comp.licenseFiles.map((f) => licenseTermsOf(f.content)));
           for (const h of b.headers) {
             const terms = licenseTermsOf(h.text);
@@ -2155,7 +2149,7 @@ export function renderNotices(
           ...(b.notices.length > 0 ? b.notices.map((n) => `  - ${n}`) : [`  - ${noHolder}`])
         );
         // A header is reproduced only when its terms differ from the standard text's.
-        const standardTerms = licenseTermsOf(standardLicenses[b.license.split(' WITH ')[0]] ?? '');
+        const standardTerms = licenseTermsOf(standardTexts[b.license.split(' WITH ')[0]] ?? '');
         for (const h of b.headers.filter((x) => licenseTermsOf(x.text) !== standardTerms)) {
           byLicense.get(b.license)!.push('', `  Header with its own terms, as shipped in ${h.files.map((f) => `\`${f}\``).join(', ')}:`, '', makeVerbatimBlock(h.text), '');
         }
@@ -2175,12 +2169,12 @@ export function renderNotices(
         // The scan fails on a license or exception without a standard text.
         const [licenseId, exceptionId] = licKey.split(' WITH ');
         // A text with a holder placeholder (BSD) takes the header's copyright lines.
-        const text = standardLicenses[licenseId].replace(
+        const text = standardTexts[licenseId].replace(
           /Copyright \([cC]\) <(?:year|YEAR)> <(?:copyright holders|COPYRIGHT HOLDERS|owner|author|authors)>/g,
           () => holdersByLicense.get(licKey)!.join('\n')
         );
         assertNoTermsPlaceholders(licKey, text);
-        lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardLicenses[exceptionId]}` : text));
+        lines.push(makeCodeBlock(exceptionId ? `${text}\n\n${standardTexts[exceptionId]}` : text));
         lines.push('');
       }
     }

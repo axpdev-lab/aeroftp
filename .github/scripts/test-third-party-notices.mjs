@@ -854,6 +854,30 @@ test('vendored license files: they keep their text but neither cover the package
   }
 });
 
+test('standard texts: one render reads the SPDX table once, for the header classification, the standard texts and the bundled code', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spdx-once-fixture-'));
+  const original = fs.readFileSync;
+  try {
+    fs.mkdirSync(path.join(tmpDir, 'src'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, 'src', 'x.c'), '/* Copyright (c) 2001 Alpha Vendor\n * SPDX-License-Identifier: BSD-3-Clause */\n');
+    const comp = { name: 'once-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Once Author'], ...readPackageFiles(tmpDir, 'once-pkg@1.0.0') };
+    let reads = 0;
+    fs.readFileSync = (file, ...rest) => {
+      if (path.resolve(String(file)) === path.resolve(SPDX_STANDARD_LICENSES_FILE)) reads += 1;
+      return original(file, ...rest);
+    };
+    syncBuiltinESMExports();
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /## Standard License Texts for Dependencies that Need Them/);
+    assert.match(md, /## Bundled Code Under Other Licenses/);
+    assert.strictEqual(reads, 1);
+  } finally {
+    fs.readFileSync = original;
+    syncBuiltinESMExports();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
 test('anchors: a licensing exception links to its vendored text, the package anchor to its own license', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exception-anchor-fixture-'));
   try {
