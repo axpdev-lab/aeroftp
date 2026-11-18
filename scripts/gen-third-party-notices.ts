@@ -1500,29 +1500,11 @@ export function noOwnNoticeLine(comp: ComponentInfo): string {
 }
 
 /**
- * The holder a copyright line names, without the keyword, the years and a
- * trailing "All rights reserved": "Copyright (c) 2019-2024 Tauri Programme" is
- * "Tauri Programme".
- */
-export function holderOfNotice(notice: string): string {
-  return notice
-    .replace(/^\s*(?:(?:copyright|\(c\)|©)\s*)+/i, '')
-    .replace(/^(?:[0-9]{4}(?:\s*[-,–]\s*(?:[0-9]{4}|present))*[-,–\s]*)+/i, '')
-    .replace(/\.?\s*all rights reserved\.?.*$/i, '')
-    .replace(/[.,;\s]+$/, '')
-    .trim();
-}
-
-/** A holder compared without case, spacing or a trailing period. */
-export function holderKey(holder: string): string {
-  return holder.toLowerCase().replace(/\s+/g, ' ').replace(/[.,;\s]+$/, '').trim().replace(/^the /, '');
-}
-
-/**
- * A whole copyright notice compared without case, spacing, the spelling of
- * its sign or a trailing period, and without an SPDX tag that follows it on
- * the same line: the years and the scope stay, so the same holder with other
- * years is another notice.
+ * A whole copyright notice compared without case, spacing, the spelling or
+ * presence of its sign ("Copyright (c) 2020 X", "© 2020 X" and "Copyright
+ * 2020 X" are one notice) or a trailing period, and without an SPDX tag that
+ * follows it on the same line: the years and the scope stay, so the same
+ * holder with other years is another notice.
  */
 export function noticeKey(notice: string): string {
   return notice
@@ -1533,7 +1515,8 @@ export function noticeKey(notice: string): string {
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .replace(/[.,;\s]+$/, '')
-    .trim();
+    .trim()
+    .replace(/^(?:copyright ?)?\(c\) ?/, 'copyright ');
 }
 
 /** The copyright notices a text carries, as noticeKey gives them. */
@@ -1543,22 +1526,6 @@ export function noticesOf(text: string): string[] {
     .map((raw) => raw.replace(COMMENT_LEADER, '').replace(/^SPDX-FileCopyrightText:\s*/i, 'Copyright ').trim())
     .filter((l) => /^(?:copyright\b|\(c\)|©)/i.test(l))
     .map(noticeKey);
-}
-
-/**
- * The holders a text names, as holderKey gives them: from its copyright lines,
- * and from a credits list that puts the notice after the name ("- Intel
- * Corporation (Copyright 2012-2021)", aws-lc's LICENSE).
- */
-export function holdersOf(text: string): string[] {
-  const holders: string[] = [];
-  for (const raw of text.split('\n')) {
-    const l = raw.replace(COMMENT_LEADER, '').replace(/^SPDX-FileCopyrightText:\s*/i, 'Copyright ').trim();
-    const credit = l.match(/^(?:[-*]\s+)?(.+?)\s*\((?:copyright|\(c\)|©)\s*[0-9]{4}[^)]*\)$/i);
-    if (credit) holders.push(holderKey(credit[1]));
-    else if (/^(?:copyright\b|\(c\)|©)/i.test(l)) holders.push(holderKey(holderOfNotice(l)));
-  }
-  return holders.filter((h) => h.length > 0);
 }
 
 /**
@@ -2498,13 +2465,13 @@ export function renderNotices(
         const compKey = comp.instance;
         if (!listedDeclaredHolders.has(compKey)) {
           listedDeclaredHolders.add(compKey);
-          // A holder the package's own files already name is attributed there:
-          // the same complete holder, not a name inside a longer one ("Alice"
-          // is not "Alice Smith").
-          const ownHolders = new Set(fullComp.licenseFiles.filter((f) => !f.vendored).flatMap((f) => holdersOf(f.content)));
+          // A notice the package's own files already carry is attributed
+          // there. Whole notices are compared, as for the sources below: the
+          // same holder with other years or another scope is another notice.
+          const ownNotices = new Set(fullComp.licenseFiles.filter((f) => !f.vendored).flatMap((f) => noticesOf(f.content)));
           const byNotice = new Map<string, string[]>();
           for (const b of bundledOf(fullComp).filter((x) => x.declared)) {
-            for (const n of b.notices.filter((x) => !ownHolders.has(holderKey(holderOfNotice(x))))) {
+            for (const n of b.notices.filter((x) => !ownNotices.has(noticeKey(x)))) {
               if (!byNotice.has(n)) byNotice.set(n, []);
               if (!byNotice.get(n)!.includes(b.license)) byNotice.get(n)!.push(b.license);
             }

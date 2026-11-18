@@ -31,15 +31,12 @@ import {
   licenseTermsOf,
   vendoredFolders,
   isSpdxHeaderLine,
-  holdersOf,
   assertNoGeneratedPlaceholders,
   renderNotices,
   parseMode,
   writeNoticesFile,
   npmInstallsHere,
   noticesLinkFrom,
-  holderKey,
-  holderOfNotice,
   npmAuthors,
   reviewedLicenseTerms,
   standardTextId,
@@ -1590,10 +1587,15 @@ test('source notices: a package whose license names a holder still lists the oth
     write('README.md', '(c) 2015 - Present - The Wrapper Author\n');
     // The very notice the license carries, in another spelling: not listed again.
     write('src/same.rs', '// COPYRIGHT © 2020  Wrapper Author.\n');
+    // Source headers under the declared license: the license's holder with
+    // other years is another notice, the license's own notice is not.
+    write('src/hdr.c', '/*\n * Copyright (c) 2024 Wrapper Author\n * SPDX-License-Identifier: MIT\n */\nint h;\n');
+    write('src/hdr2.c', '/*\n * Copyright (c) 2020 Wrapper Author\n * SPDX-License-Identifier: MIT\n */\nint g;\n');
     const comp = { name: 'extra-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: ['Wrapper Author'], ...readPackageFiles(tmpDir, 'extra-holder@1.0.0') };
     const md = generateNoticesMarkdown([comp], []);
     const entry = md.slice(md.indexOf('`extra-holder@1.0.0`'), md.indexOf('```', md.indexOf('`extra-holder@1.0.0`')));
     assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), [
+      '  - Copyright (c) 2024 Wrapper Author (in a source header under MIT)',
       '  - (c) 2015 - Present - The Wrapper Author (README.md)',
       '  - Copyright (c) 2021 Contributor Two (src/lib.rs)',
       '  - Copyright (c) 2022 Wrapper Author. (src/own.rs)',
@@ -1648,15 +1650,6 @@ test('source notices: a notice read from a string literal, a source map, a READM
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
-});
-
-test('holders: a dash after the years and a leading "The" name the same holder', () => {
-  const key = (n) => holderKey(holderOfNotice(n));
-  assert.strictEqual(key('(c) 2015 - Present - The Tauri Programme within The Commons Conservancy.'), key('Copyright (c) 2017 - Present Tauri Programme within The Commons Conservancy'));
-  assert.strictEqual(key('Copyright 2014 The Rust Project Developers.'), key('Copyright 2015 Rust Project Developers'));
-  // A holder whose name only starts like another stays apart.
-  assert.notStrictEqual(key('Copyright 2020 Theodore Smith'), key('Copyright 2020 Odore Smith'));
-  assert.notStrictEqual(key('Copyright 2020 Alice'), key('Copyright 2020 Alice Smith'));
 });
 
 test('bundled code: an unstarred block comment is read whole, its holder and its own terms are reproduced', () => {
@@ -2039,7 +2032,7 @@ test('AppImage: every bundled library ships the copyright file of the package th
     // from, so the build fails instead of naming it.
     const ldLine = (n, p) => `\t${n} (libc6,x86-64) => ${p}\n`;
     write('ldcache', `4 libs found in cache \`/etc/ld.so.cache'\n${ldLine('libwebkit2gtk-4.1.so.0', '/usr/local/lib/libwebkit2gtk-4.1.so.0')}${ldLine('libgtk-3.so.0', `${A}/libgtk-3.so.0`)}${ldLine('libfoo.so.1', `${A}/libfoo.so.1`)}`);
-    fails(/fallback\/libwebkit2gtk-4\.1\.so\.0: only package libwebkit2gtk-4\.1-0 installs that name, but the loader resolves it \(ldconfig -p\) to a file that package does not own/);
+    fails(/fallback\/libwebkit2gtk-4\.1\.so\.0: only package libwebkit2gtk-4\.1-0 installs that name, but the loader resolves it \(ldconfig -p\) to \/usr\/local\/lib\/libwebkit2gtk-4\.1\.so\.0, a file that package does not own/);
     ldcache(['libwebkit2gtk-4.1.so.0', 'libgtk-3.so.0', 'libfoo.so.1']);
     run();
     // A library no package installed, a package without its copyright file
@@ -2271,8 +2264,7 @@ test('bundled code: a license text in the package LICENSES/ covers its own heade
   }
 });
 
-test('declared header holders: a holder is named by the package only when it is the same complete holder', () => {
-  assert.deepStrictEqual(holdersOf('MIT License\n\nCopyright (c) 2020 Alice Smith\n\n  - Intel Corporation (Copyright 2012-2021)\nPermission is hereby granted.'), ['alice smith', 'intel corporation']);
+test('declared header notices: a notice the package files carry is not repeated, another holder, year or scope is listed', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exact-holder-fixture-'));
   try {
     const write = (rel, content) => {
@@ -2283,12 +2275,14 @@ test('declared header holders: a holder is named by the package only when it is 
     write('src/a.c', '/* Copyright (c) 2021 Alice\n * SPDX-License-Identifier: MIT */\n');
     write('src/b.c', '/* Copyright (C) 2019 Alice Smith.\n * SPDX-License-Identifier: MIT */\n');
     write('src/c.c', '/* Copyright (c) 2014, Intel Corporation. All Rights Reserved.\n * SPDX-License-Identifier: MIT */\n');
+    write('src/d.c', '/* COPYRIGHT © 2020  Alice Smith.\n * SPDX-License-Identifier: MIT */\n');
     write('build.bat', '@echo off\nREM -- Copyright Batch Vendor\nREM -- SPDX-License-Identifier: MIT\n');
     const comp = { name: 'exact-holder', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'exact-holder@1.0.0') };
     const md = generateNoticesMarkdown([comp], []);
     assert.match(md, /^ {2}- Copyright \(c\) 2021 Alice \(in a source header under MIT\)$/m, 'Alice is not Alice Smith');
-    assert.doesNotMatch(md, /Alice Smith\. \(in a source header/, 'the same holder is attributed by the package');
-    assert.doesNotMatch(md, /Intel Corporation\. All Rights Reserved\. \(in a source header/, 'a holder of the credits list is attributed by the package');
+    assert.match(md, /^ {2}- Copyright \(C\) 2019 Alice Smith\. \(in a source header under MIT\)$/m, 'the license holder with other years is another notice');
+    assert.match(md, /^ {2}- Copyright \(c\) 2014, Intel Corporation\. All Rights Reserved\. \(in a source header under MIT\)$/m, 'a notice the credits list does not carry is listed');
+    assert.doesNotMatch(md, /2020 {1,2}Alice Smith\.? \(in a source header/, 'the notice the license carries is attributed by the package');
     assert.match(md, /^ {2}- Copyright Batch Vendor \(in a source header under MIT\)$/m, 'a REM header names its holder');
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });

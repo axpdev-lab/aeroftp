@@ -89,6 +89,7 @@ if ! owners="$(
                 p = ll[i]; sub(/.* => /, "", p)
                 ld[nm "\t" norm(p)] = 1
                 ldname[nm] = 1
+                ldpath[nm] = ldpath[nm] (ldpath[nm] == "" ? "" : " ") p
             }
         }
         NR == FNR { rel[++libs] = $1; name[libs] = $2; tail[libs] = $3; want[$2] = 1; next }
@@ -117,7 +118,7 @@ if ! owners="$(
                         split(parts[j], f, "\t")
                         if (parts[j] != "" && ((name[i] "\t" f[1]) in ld)) own = 1
                     }
-                    print rel[i] "\t" (own ? "" : "!") pkgs
+                    print rel[i] "\t" (own ? pkgs : "!" pkgs " " ldpath[name[i]])
                     continue
                 }
                 # The system path that ends with the path in the AppDir.
@@ -166,7 +167,9 @@ for rel in "${LIBS[@]}"; do
         continue
     fi
     if [ "${pkg:0:1}" = "!" ]; then
-        missing+=("$rel: only package ${pkg#!} installs that name, but the loader resolves it (ldconfig -p) to a file that package does not own")
+        # "!<package> <the path(s) the loader resolves the name to>"
+        sole="${pkg#!}"
+        missing+=("$rel: only package ${sole%% *} installs that name, but the loader resolves it (ldconfig -p) to ${sole#* }, a file that package does not own")
         continue
     fi
     if [ "${pkg:0:1}" = "?" ]; then
