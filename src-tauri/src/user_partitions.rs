@@ -3370,9 +3370,11 @@ pub(crate) fn replace_user_credential_if_unchanged(
 /// IMMEDIATE transaction, or the vault's cross-process write lock, taken
 /// inside that transaction when the legacy owner reads the vault, so no row
 /// appears in between. `Ok(false)`: the copy changed since `expected` was
-/// read, and nothing is written. Only that copy is written: readers prefer
-/// the row, and the legacy owner falls back to the vault, so each of them
-/// reads the replacement.
+/// read, and nothing is written. The legacy owner's other copy (the vault
+/// key after a row write, the row after a vault-only write) then follows on
+/// a best-effort basis, by its own compare-and-write on what it holds, while
+/// `same_chain` says it holds the chain `expected` held (the same chain in
+/// other bytes included); a copy that holds another chain is left as it is.
 pub(crate) fn replace_owner_aware_if_unchanged(
     store: &CredentialStore,
     user: Option<i64>,
@@ -3380,6 +3382,7 @@ pub(crate) fn replace_owner_aware_if_unchanged(
     credential_type: &str,
     expected: Option<&str>,
     replacement: &str,
+    same_chain: &dyn Fn(&str, &str) -> bool,
 ) -> Result<bool, String> {
     let vault = || -> Result<bool, String> {
         match expected {
@@ -3402,15 +3405,18 @@ pub(crate) fn replace_owner_aware_if_unchanged(
                 let conn = open_or_init_cli()?;
                 if let Some(owner) = nonprofile_secret_owner(&conn)? {
                     let root_key = Zeroizing::new(store.derive_user_partition_wrapping_key());
-                    replace_user_credential_if_unchanged(
-                        &conn,
-                        &root_key,
-                        owner,
-                        credential_id,
-                        credential_type,
-                        (expected, replacement),
-                        false,
-                    )?;
+                    let row = get_user_credential_for(&conn, &root_key, owner, credential_id)?;
+                    if let Some(row) = row.filter(|row| same_chain(expected, row)) {
+                        replace_user_credential_if_unchanged(
+                            &conn,
+                            &root_key,
+                            owner,
+                            credential_id,
+                            credential_type,
+                            (&row, replacement),
+                            false,
+                        )?;
+                    }
                 }
                 Ok(())
             };
@@ -3474,8 +3480,17 @@ pub(crate) fn replace_owner_aware_if_unchanged(
         // after the commit, so no vault lock is taken inside the
         // transaction. A copy that holds another chain stays.
         if let Some(expected) = expected.filter(|_| owner) {
-            if let Err(e) = store.replace_secret_if_unchanged(credential_id, expected, replacement)
-            {
+            let follow = || -> Result<(), String> {
+                if let Some(copy) = get_optional_secret(store, credential_id)?
+                    .filter(|copy| same_chain(expected, copy))
+                {
+                    store
+                        .replace_secret_if_unchanged(credential_id, &copy, replacement)
+                        .map_err(|e| e.to_string())?;
+                }
+                Ok(())
+            };
+            if let Err(e) = follow() {
                 log::warn!("Conditional credential write: the vault copy did not follow: {e}");
             }
         }
@@ -3501,17 +3516,24 @@ fn chain_deletion_key(
     Ok(format!("chain_deleted:{tag}"))
 }
 
-/// How many times `account` was deleted for `owner`, by any process: a
-/// rotation filed before the last deletion is not handed out again
+/// The deletions of a refresh chain's key, by any process: how many began,
+/// and how many completed. A rotation filed before the last completed one
+/// is not handed out again, and none is handed out while one is in progress
 /// (`load_refresh_chain` in providers/jottacloud.rs).
-pub(crate) fn chain_deletions(
-    store: &CredentialStore,
-    owner: Option<i64>,
-    account: &str,
-) -> Result<u64, String> {
-    init_or_migrate_cli(store)?;
-    let conn = open_or_init_cli()?;
-    let key = chain_deletion_key(store, owner, account)?;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ChainDeletions {
+    pub(crate) began: u64,
+    pub(crate) completed: u64,
+}
+
+impl ChainDeletions {
+    /// No deletion in progress.
+    pub(crate) fn settled(&self) -> bool {
+        self.began == self.completed
+    }
+}
+
+fn read_chain_deletions(conn: &Connection, key: &str) -> Result<ChainDeletions, String> {
     let value: Option<String> = conn
         .query_row(
             "SELECT value FROM global_state WHERE key = ?1",
@@ -3520,34 +3542,115 @@ pub(crate) fn chain_deletions(
         )
         .optional()
         .map_err(|e| format!("Read chain deletions: {e}"))?;
-    Ok(value.and_then(|v| v.parse().ok()).unwrap_or(0))
+    let Some(value) = value else {
+        return Ok(ChainDeletions {
+            began: 0,
+            completed: 0,
+        });
+    };
+    let parsed = value
+        .split_once(':')
+        .and_then(|(b, c)| Some((b.parse().ok()?, c.parse().ok()?)));
+    match parsed {
+        Some((began, completed)) => Ok(ChainDeletions { began, completed }),
+        None => Err("Read chain deletions: unreadable value".to_string()),
+    }
 }
 
-/// Count one more deletion of `account` for `owner`, before the key is
-/// deleted ([`chain_deletions`]).
-pub(crate) fn record_chain_deletion(
+fn write_chain_deletions(
+    conn: &Connection,
+    key: &str,
+    update: impl FnOnce(ChainDeletions) -> ChainDeletions,
+) -> Result<ChainDeletions, String> {
+    let tx = rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| format!("Begin chain deletion: {e}"))?;
+    let next = update(read_chain_deletions(&tx, key)?);
+    upsert_global_state(
+        &tx,
+        key,
+        &format!("{}:{}", next.began, next.completed),
+        now_ms(),
+    )?;
+    tx.commit()
+        .map_err(|e| format!("Commit chain deletion: {e}"))?;
+    Ok(next)
+}
+
+/// Write the raw deletion count of `account` for `owner` (test only).
+#[cfg(test)]
+pub(crate) fn set_chain_deletions_raw(
     store: &CredentialStore,
     owner: Option<i64>,
     account: &str,
+    value: &str,
+) -> Result<(), String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
+        .map_err(|e| e.to_string())?;
+    upsert_global_state(
+        &tx,
+        &chain_deletion_key(store, owner, account)?,
+        value,
+        now_ms(),
+    )?;
+    tx.commit().map_err(|e| e.to_string())
+}
+
+/// The deletions of `account` for `owner` ([`ChainDeletions`]).
+
+pub(crate) fn chain_deletions(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<ChainDeletions, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    read_chain_deletions(&conn, &chain_deletion_key(store, owner, account)?)
+}
+
+/// Count a deletion of `account` for `owner` as begun, before anything is
+/// deleted; gives its number, for [`end_chain_deletion`].
+pub(crate) fn begin_chain_deletion(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+) -> Result<u64, String> {
+    init_or_migrate_cli(store)?;
+    let conn = open_or_init_cli()?;
+    let key = chain_deletion_key(store, owner, account)?;
+    write_chain_deletions(&conn, &key, |d| ChainDeletions {
+        began: d.began + 1,
+        completed: d.completed,
+    })
+    .map(|d| d.began)
+}
+
+/// End deletion `number` of `account` for `owner`: completed when `done`,
+/// else taken back (while no later one began), so a delete that failed
+/// leaves a rotation kept for the key as usable as before it.
+pub(crate) fn end_chain_deletion(
+    store: &CredentialStore,
+    owner: Option<i64>,
+    account: &str,
+    number: u64,
+    done: bool,
 ) -> Result<(), String> {
     init_or_migrate_cli(store)?;
     let conn = open_or_init_cli()?;
     let key = chain_deletion_key(store, owner, account)?;
-    let tx = rusqlite::Transaction::new_unchecked(&conn, rusqlite::TransactionBehavior::Immediate)
-        .map_err(|e| format!("Begin chain deletion: {e}"))?;
-    let count: u64 = tx
-        .query_row(
-            "SELECT value FROM global_state WHERE key = ?1",
-            params![key],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(|e| format!("Read chain deletions: {e}"))?
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0);
-    upsert_global_state(&tx, &key, &(count + 1).to_string(), now_ms())?;
-    tx.commit()
-        .map_err(|e| format!("Commit chain deletion: {e}"))
+    write_chain_deletions(&conn, &key, |d| match done {
+        true => ChainDeletions {
+            began: d.began,
+            completed: d.completed.max(number),
+        },
+        false if d.began == number && d.completed < number => ChainDeletions {
+            began: number - 1,
+            completed: d.completed,
+        },
+        false => d,
+    })
+    .map(|_| ())
 }
 
 /// Guard an implicit GUI account during a global/memory token update. Resolve
@@ -5303,7 +5406,7 @@ pub(crate) fn delete_credential_dual_with(
     unmirror: impl FnOnce(i64) -> Result<(), String>,
 ) -> Result<(), String> {
     let user_id = active_user();
-    crate::providers::jottacloud::delete_refresh_chain(user_id, credential_id, || {
+    crate::providers::jottacloud::delete_refresh_chain(store, user_id, credential_id, || {
         if let Some(user) = private_account_delete(user_id, credential_id)? {
             return delete_partition_credential_checked(user, credential_id);
         }
@@ -5325,7 +5428,7 @@ pub fn delete_credential_for_user_dual(
     user_id: i64,
     credential_id: &str,
 ) -> Result<(), String> {
-    crate::providers::jottacloud::delete_refresh_chain(Some(user_id), credential_id, || {
+    crate::providers::jottacloud::delete_refresh_chain(store, Some(user_id), credential_id, || {
         if let Some(user) = private_account_delete(Some(user_id), credential_id)? {
             return delete_partition_credential_checked(user, credential_id);
         }
