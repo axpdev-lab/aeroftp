@@ -40,7 +40,7 @@ The steps below apply to code contributions. For UI and design proposals, follow
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
 4. Run the local checks in [Development and Pre-Push Gates](#development-and-pre-push-gates)
-5. Commit **with a sign-off** (`git commit -s -m 'Add amazing feature'`), see [Sign-off](#sign-off-developer-certificate-of-origin)
+5. Commit **with a sign-off** (`git commit -s -m 'Add amazing feature'`), see [Sign-off](#sign-off-developer-certificate-of-origin); signing the commit is optional, see [Commit Signing](#commit-signing)
 6. Push (`git push origin feature/amazing-feature`)
 7. Open a Pull Request
 
@@ -186,6 +186,16 @@ The name and email must match the commit author. If you forget, `git commit --am
 The sign-off certifies the [Developer Certificate of Origin](DCO) 1.1: in short, that you wrote the contribution yourself, or that you have the right to submit it under the project's licence. It is a statement about the origin of the code, not a transfer of anything: **you keep the copyright in your contribution**.
 
 AeroFTP deliberately uses a DCO rather than a Contributor Licence Agreement. A CLA would ask you to grant rights beyond the project's licence, and that is not something this project needs from you.
+
+## Commit Signing
+
+Signing a commit is not the same as signing it off. The `Signed-off-by` line is a statement you make about where the code comes from; a signature is cryptographic proof of who created the commit. AeroFTP requires the first from everyone and **does not require the second from contributors**.
+
+- **Merged pull requests are signed on `main`.** Pull requests are squash-merged, and GitHub signs the merge commit with its own key, so a merged pull request shows as Verified on `main` whether or not your branch commits were signed.
+- **The "Enforce - Commit Signing" check is advisory.** It verifies the commits of each pull request against the policy in [`.chainguard/source.yaml`](.chainguard/source.yaml), which lists the maintainers' signing keys. On a pull request from a contributor it will usually fail; that does not block the merge and you do not need to do anything about it.
+- **Maintainers sign their commits** with the GPG keys published on their GitHub account (one key per workstation), or with [gitsign](https://github.com/sigstore/gitsign) keyless signatures. A maintainer commit that fails the check is a signal worth investigating before merging.
+
+If you sign your commits anyway, for example with a GPG or SSH key added to your GitHub account, GitHub shows them as Verified on your pull request. See GitHub's guide on [signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
 
 ## Test Requirements
 
