@@ -539,7 +539,6 @@ struct GetUploadUrlResponse {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct UploadFileResponse {
-    #[allow(dead_code)]
     file_id: String,
     file_name: String,
 }
@@ -3844,14 +3843,17 @@ impl StorageProvider for B2Provider {
         // B2 has no "restore" verb: we replay the chosen version as a fresh
         // upload via b2_copy_file (server-side, no client byte transfer). The
         // copy becomes the new latest version with the original fileName.
-        match self.copy_file_to(version_id, &key).await {
-            Ok(_) => {}
+        let copied = match self.copy_file_to(version_id, &key).await {
+            Ok(copied) => copied,
             Err(e) if is_b2_token_failure(&e) && self.maybe_reauth(&e).await => {
-                self.copy_file_to(version_id, &key).await?;
+                self.copy_file_to(version_id, &key).await?
             }
             Err(e) => return Err(e),
-        }
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        };
+        // The copy answers with the file id it made, which must then be the
+        // version on top.
+        let preflight = selected.map(|p| p.made_current(Some(copied.file_id)));
+        super::confirm_version_restored(self, path, preflight.as_ref()).await
     }
 
     // ─── Share links ───────────────────────────────────────────────────────

@@ -20,8 +20,20 @@ const MEGA_WEBDAV_TIMEOUT_SECS: u64 = 30;
 /// Metadata key used to carry the GUI registry preset id through ProviderConfig.
 pub const PROVIDER_ID_META_KEY: &str = "_aeroftp_provider_id";
 
+#[cfg(test)]
+thread_local! {
+    /// The folder a test links the MEGAcmd stand-in into, for the commands
+    /// this thread runs (a `#[tokio::test]` runs on one thread).
+    static TEST_CMD_DIR: std::cell::RefCell<Option<std::path::PathBuf>> =
+        const { std::cell::RefCell::new(None) };
+}
+
 /// Resolve MEGAcmd executable path (checks PATH and common install locations).
 pub(crate) fn resolve_mega_cmd(cmd: &str) -> String {
+    #[cfg(test)]
+    if let Some(dir) = TEST_CMD_DIR.with(|dir| dir.borrow().clone()) {
+        return dir.join(cmd).to_string_lossy().into_owned();
+    }
     #[cfg(windows)]
     {
         let program_files =
@@ -297,6 +309,21 @@ pub async fn mega_restore_version(
             super::mega::MEGA_VERSIONING_OFF.into(),
         ));
     }
+    // mega-put names the file by its path: a file put there while the
+    // version downloaded would be overwritten. The path must still hold the
+    // version listed current, as in the native provider.
+    let now = mega_version_rows(&path)
+        .await?
+        .first()
+        .map(|v| v.id.clone());
+    if now != head {
+        return Err(ProviderError::NotFound(format!(
+            "{path} changed while the version downloaded (current version {}, now {}): list \
+             its versions again",
+            head.as_deref().unwrap_or("none"),
+            now.as_deref().unwrap_or("none")
+        )));
+    }
     let temp_str = temp.0.to_string_lossy().to_string();
     let output = run_mega_cmd_capture("mega-put", &[&temp_str, &path]).await?;
     if !output.status.success() {
@@ -304,14 +331,14 @@ pub async fn mega_restore_version(
     }
     let not_taken = || {
         ProviderError::TransferFailed(format!(
-            "{path} does not hold the restored version after the upload: list its versions \
-             again"
+            "{path} does not hold the restored version after the upload: MEGA did not take \
+             it, or someone else wrote it meanwhile; list its versions again"
         ))
     };
-    let top = mega_version_rows(&path)
+    let (top, top_size) = mega_version_rows(&path)
         .await?
         .first()
-        .map(|v| v.id.clone())
+        .map(|v| (v.id.clone(), v.size))
         .ok_or_else(not_taken)?;
     let check = super::VersionTempFile::new("aeroftp_megacheck");
     let check_str = check.0.to_string_lossy().to_string();
@@ -320,11 +347,19 @@ pub async fn mega_restore_version(
         return Err(not_taken());
     }
     let (fetched, local) = (check.0.clone(), temp.0.clone());
-    let same = tokio::task::spawn_blocking(move || super::mega::same_bytes(&fetched, &local))
-        .await
-        .map_err(|e| ProviderError::Other(e.to_string()))?
-        .map_err(ProviderError::IoError)?;
+    let same = tokio::task::spawn_blocking(move || {
+        super::mega::fetched_is_version(&fetched, top_size, &local)
+    })
+    .await
+    .map_err(|e| ProviderError::Other(e.to_string()))?
+    .map_err(ProviderError::IoError)?;
     if !same {
+        return Err(not_taken());
+    }
+    // The bytes read are those of the handle, whatever the path holds now:
+    // that version must still be on top after the read.
+    let still = mega_version_rows(&path).await?;
+    if still.first().map(|v| v.id.as_str()) != Some(top.as_str()) {
         return Err(not_taken());
     }
     Ok(())
@@ -830,6 +865,73 @@ Total size taken up by file versions:     31457280 bytes (30.0 MB)
     /// Three versions written in one second (measured 2026-11-18, all
     /// `#1795020505`) keep three ids, each fetched as itself; a handle that
     /// is not in the file's chain, or an epoch id, is refused.
+    /// The MEGAcmd stand-in (tests/fixtures/megacmd_shim.sh) linked into a
+    /// folder this thread's MEGAcmd commands run from, with `flags` set.
+    #[cfg(unix)]
+    fn bridge_on_stand_in(flags: &[&str]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let shim =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/megacmd_shim.sh");
+        for name in ["mega-ls", "mega-get", "mega-put", "mega-userattr"] {
+            std::os::unix::fs::symlink(&shim, dir.path().join(name)).unwrap();
+        }
+        for flag in flags {
+            std::fs::write(dir.path().join(flag), "").unwrap();
+        }
+        TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = Some(dir.path().to_path_buf()));
+        dir
+    }
+
+    #[cfg(unix)]
+    fn bridge_log(dir: &tempfile::TempDir, name: &str) -> Vec<String> {
+        std::fs::read_to_string(dir.path().join(name))
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    /// The bridge restores by a put at the path: a file put there while the
+    /// version downloaded (y.txt gains a new current version after its first
+    /// listing) is not overwritten. A put that MEGA ignored, whose check read
+    /// of the head (13 bytes listed) stops at 8 bytes equal to the restored
+    /// version, is not the restore. A head that changes after the check read
+    /// is not the restore either; the same restore with nothing else written
+    /// is done.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_bridge_restore_is_done_only_on_the_head_it_checked() {
+        let dir = bridge_on_stand_in(&[]);
+        let replaced = mega_restore_version("/y.txt", "H:yAAAAAA1").await;
+        assert!(
+            matches!(&replaced, Err(ProviderError::NotFound(m)) if m.contains("changed while")),
+            "{replaced:?}"
+        );
+        assert!(bridge_log(&dir, "put.log").is_empty());
+
+        let dir = bridge_on_stand_in(&["put-ignored", "head-get-prefix-of-1"]);
+        let cut = mega_restore_version("/v.txt", "H:vAAAAAA1").await;
+        assert!(
+            matches!(&cut, Err(ProviderError::TransferFailed(m)) if m.contains("did not take")),
+            "{cut:?}"
+        );
+        assert_eq!(bridge_log(&dir, "get.log"), ["H:vAAAAAA1", "H:vAAAAAA3"]);
+
+        let _dir = bridge_on_stand_in(&["foreign-after-check"]);
+        let overwritten = mega_restore_version("/v.txt", "H:vAAAAAA2").await;
+        assert!(
+            matches!(&overwritten, Err(ProviderError::TransferFailed(_))),
+            "{overwritten:?}"
+        );
+
+        let dir = bridge_on_stand_in(&[]);
+        mega_restore_version("/v.txt", "H:vAAAAAA2")
+            .await
+            .expect("restore");
+        assert_eq!(bridge_log(&dir, "put.log"), ["/v.txt"]);
+        TEST_CMD_DIR.with(|cmd_dir| *cmd_dir.borrow_mut() = None);
+    }
+
     #[test]
     fn versions_of_one_second_keep_distinct_ids_on_the_bridge() {
         let output = "\

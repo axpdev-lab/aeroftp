@@ -8414,25 +8414,26 @@ mod tests {
     async fn a_nextcloud_version_is_restored_by_a_move_to_restore_target() {
         let (base, log, server) = serve_nextcloud_versions().await;
         let mut provider = nextcloud_versions_provider(&base);
-        // A bare version id, as a caller may type it, addresses the file at
-        // the path as it is now.
+        // A bare version id, as a caller may type it, is the listed version
+        // of that label of the file at the path, and its restore is checked
+        // as a bound one: a.txt still holds its 20 bytes after the MOVE, so
+        // that restore is not done; r.txt shows the 8 restored bytes.
+        let unchanged = provider.restore_version("/a.txt", "1700000000").await;
+        assert!(
+            matches!(&unchanged, Err(ProviderError::TransferFailed(m)) if m.contains("20 bytes")),
+            "{unchanged:?}"
+        );
         provider
-            .restore_version("/a.txt", "1700000000")
+            .restore_version("/r.txt", "1700000000")
             .await
             .expect("restore");
         server.abort();
         let log = log.lock().unwrap().clone();
-        assert_eq!(
-            log.last().map(String::as_str),
-            Some(
-                format!(
-                    "MOVE /remote.php/dav/versions/user/versions/42/1700000000 -> \
-                     {base}/remote.php/dav/versions/user/restore/target"
-                )
-                .as_str()
-            ),
-            "{log:?}"
+        let restore_move = format!(
+            "MOVE /remote.php/dav/versions/user/versions/50/1700000000 -> \
+             {base}/remote.php/dav/versions/user/restore/target"
         );
+        assert!(log.contains(&restore_move), "{log:?}");
     }
 
     /// Nextcloud answers the restore MOVE 201 even when its rollback failed

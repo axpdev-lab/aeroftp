@@ -97,6 +97,8 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
       onRestore?.();
     } catch (err) {
       setActionError(String(err));
+      // A refused or unconfirmed restore may still have changed the file: list again before another one.
+      await loadVersions();
     } finally {
       ops.end(version.id);
     }
@@ -115,6 +117,7 @@ export function FileVersionsDialog({ generation, filePath, fileName, onClose, on
       await loadVersions();
     } catch (err) {
       setActionError(String(err));
+      await loadVersions();
     } finally {
       ops.end(version.id);
     }

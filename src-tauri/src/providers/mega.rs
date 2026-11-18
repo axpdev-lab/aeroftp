@@ -1608,8 +1608,11 @@ impl StorageProvider for MegaCmdProvider {
                  take it, or someone else wrote it meanwhile; list its versions again"
             ))
         };
-        let top = after.first().map(|v| v.id.clone()).ok_or_else(not_taken)?;
-        if !self.version_bytes_match(&top, &temp.0).await? {
+        let (top, top_size) = after
+            .first()
+            .map(|v| (v.id.clone(), v.size))
+            .ok_or_else(not_taken)?;
+        if !self.version_bytes_match(&top, top_size, &temp.0).await? {
             return Err(not_taken());
         }
         let still = self.list_versions(path).await?;
@@ -1919,6 +1922,7 @@ impl MegaCmdProvider {
     async fn version_bytes_match(
         &mut self,
         handle: &str,
+        listed_size: u64,
         local: &std::path::Path,
     ) -> Result<bool, ProviderError> {
         let current = MegaTempFile::new("aeroftp_mega_check");
@@ -1931,7 +1935,7 @@ impl MegaCmdProvider {
                 ))
             })?;
         let (fetched, local) = (current.0.clone(), local.to_path_buf());
-        tokio::task::spawn_blocking(move || same_bytes(&fetched, &local))
+        tokio::task::spawn_blocking(move || fetched_is_version(&fetched, listed_size, &local))
             .await
             .map_err(|e| ProviderError::Other(e.to_string()))?
             .map_err(ProviderError::IoError)
@@ -2179,6 +2183,23 @@ fn thumbnail_mime(bytes: &[u8]) -> Option<&'static str> {
 
 /// Whether the files at `a` and `b` hold the same bytes, read a block at a
 /// time (a version can be large).
+/// Whether `fetched`, a version read back by its handle, is the whole of the
+/// version listed (a regular file of `listed_size` bytes) and holds the bytes
+/// of `local`: a read cut short that still exits 0 is a prefix, which can
+/// equal a shorter version.
+pub(crate) fn fetched_is_version(
+    fetched: &std::path::Path,
+    listed_size: u64,
+    local: &std::path::Path,
+) -> std::io::Result<bool> {
+    let whole = std::fs::symlink_metadata(fetched)
+        .is_ok_and(|meta| meta.file_type().is_file() && meta.len() == listed_size);
+    if !whole {
+        return Ok(false);
+    }
+    same_bytes(fetched, local)
+}
+
 pub(crate) fn same_bytes(a: &std::path::Path, b: &std::path::Path) -> std::io::Result<bool> {
     use std::io::Read;
     if std::fs::metadata(a)?.len() != std::fs::metadata(b)?.len() {
@@ -3717,6 +3738,25 @@ mod tests {
         let versions = provider.list_versions("/v.txt").await.unwrap();
         let rows: Vec<(&str, u64)> = versions.iter().map(|v| (v.id.as_str(), v.size)).collect();
         assert_eq!(rows[..2], [("H:vAAAAAA4", 12), ("H:vAAAAAA3", 13)]);
+    }
+
+    /// A put MEGA ignored leaves the 13-byte head H:vAAAAAA3, whose check
+    /// read stops after 8 bytes equal to the restored H:vAAAAAA1 with a zero
+    /// exit: a read shorter than the head listed is not its bytes, and the
+    /// restore is not done.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_check_read_shorter_than_the_listed_head_is_not_the_restore() {
+        let (mut provider, dir) = provider_with_stand_in_versions();
+        for flag in ["put-ignored", "head-get-prefix-of-1"] {
+            std::fs::write(dir.path().join(flag), "").unwrap();
+        }
+        let outcome = provider.restore_version("/v.txt", "H:vAAAAAA1").await;
+        assert!(
+            matches!(&outcome, Err(ProviderError::TransferFailed(m)) if m.contains("did not take")),
+            "{outcome:?}"
+        );
+        assert_eq!(stand_in_log(&dir, "get.log"), ["H:vAAAAAA1", "H:vAAAAAA3"]);
     }
 
     /// MEGAcmd can say a put failed on stdout with a non-zero exit: the

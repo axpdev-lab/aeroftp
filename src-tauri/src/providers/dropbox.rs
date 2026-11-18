@@ -2146,9 +2146,16 @@ impl StorageProvider for DropboxProvider {
             "rev": version_id
         });
 
-        let _: serde_json::Value = self.rpc_call("files/restore", &body).await?;
+        let restored: serde_json::Value = self.rpc_call("files/restore", &body).await?;
         info!("Restored {} to revision {}", path, version_id);
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        // The answer is the file as restored, with the revision the restore
+        // made, which must then be the one on top.
+        let made = restored
+            .get("rev")
+            .and_then(|rev| rev.as_str())
+            .map(str::to_string);
+        let preflight = selected.map(|p| p.made_current(made));
+        super::confirm_version_restored(self, path, preflight.as_ref()).await
     }
 
     fn supports_thumbnails(&self) -> bool {

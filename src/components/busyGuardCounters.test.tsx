@@ -163,7 +163,7 @@ it('FileVersionsDialog: the guard stays busy until every version operation finis
     expect(onClose).toHaveBeenCalledTimes(1);
 });
 
-it('FileVersionsDialog: every command carries the generation it was opened on, and a refused action is shown', async () => {
+it('FileVersionsDialog: every command carries the generation it was opened on, a refused action is shown, and a refused restore or purge lists again', async () => {
     const calls: Array<[string, Record<string, unknown>]> = [];
     vi.mocked(pickSave).mockResolvedValueOnce('/tmp/f_v1.txt');
     vi.mocked(invoke).mockImplementation(async (cmd, args) => {
@@ -193,7 +193,7 @@ it('FileVersionsDialog: every command carries the generation it was opened on, a
     expect(alert()).toBe('refused provider_delete_version');
     expect(rows()).toBe(2);
     const sent = calls.map(([cmd]) => cmd);
-    expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_delete_version']);
+    expect(sent).toEqual(['provider_list_versions', 'provider_download_version', 'provider_restore_version', 'provider_list_versions', 'provider_delete_version', 'provider_list_versions']);
     for (const [cmd, args] of calls) expect([cmd, args.generation]).toEqual([cmd, 7]);
 });
 

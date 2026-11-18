@@ -8379,8 +8379,25 @@ impl StorageProvider for S3Provider {
 
         match response.status() {
             StatusCode::OK | StatusCode::CREATED | StatusCode::NO_CONTENT => {
+                // CopyObject can answer 200 before the copy ends and still
+                // fail in its body: the whole body is read, and an `<Error>`
+                // in it is the answer. The version the copy made is named in
+                // `x-amz-version-id`, and must then be the current one.
+                let made = response
+                    .headers()
+                    .get("x-amz-version-id")
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::to_string);
+                let status = response.status();
+                let body = super::version_listing_text(response).await?;
+                if let Some(failure) = copy_answer_error(&body) {
+                    return Err(ProviderError::ServerError(format!(
+                        "Restore version failed ({status}): {failure}"
+                    )));
+                }
                 info!("Restored '{}' to version '{}'", key, version_id);
-                super::confirm_version_restored(self, path, selected.as_ref()).await
+                let preflight = selected.map(|p| p.made_current(made));
+                super::confirm_version_restored(self, path, preflight.as_ref()).await
             }
             status => {
                 let body = response.text().await.unwrap_or_default();
@@ -9381,6 +9398,25 @@ fn build_batch_delete_xml(chunk: &[(String, Option<String>)]) -> Vec<u8> {
     }
     xml.push_str("</Delete>");
     xml.into_bytes()
+}
+
+/// The failure a 2xx CopyObject body carries (`<Error>` with its code and
+/// message), or `None` for a completed copy.
+fn copy_answer_error(body: &str) -> Option<String> {
+    if !body.to_ascii_lowercase().contains("<error>") {
+        return None;
+    }
+    let tag = |name: &str| {
+        body.split(&format!("<{name}>"))
+            .nth(1)
+            .and_then(|s| s.split(&format!("</{name}>")).next())
+            .map(sanitize_api_error)
+    };
+    Some(format!(
+        "{} - {}",
+        tag("Code").unwrap_or_else(|| "CopyError".into()),
+        tag("Message").unwrap_or_else(|| "the copy did not complete".into())
+    ))
 }
 
 /// Parse the `<Error>` elements of an S3 `DeleteResult` (batch delete) body.
@@ -13265,6 +13301,10 @@ mod tests {
         versions_xml: Option<&'static str>,
         /// ListObjectVersions answers 403 (no `s3:ListBucketVersions`).
         versions_denied: bool,
+        /// The versions listed once a copy was answered (a restore made).
+        versions_after_copy: Option<&'static str>,
+        /// A copy's 200 answer: its `x-amz-version-id` (empty: none) and body.
+        copy_answer: Option<(&'static str, &'static str)>,
     }
 
     impl Default for TigrisDoubleConfig {
@@ -13274,6 +13314,8 @@ mod tests {
                 stats: None,
                 versions_xml: None,
                 versions_denied: false,
+                versions_after_copy: None,
+                copy_answer: None,
             }
         }
     }
@@ -13296,9 +13338,11 @@ mod tests {
         ));
         let log: TigrisLog = Arc::default();
         let (store, seen) = (Arc::clone(&bucket), Arc::clone(&log));
+        let copied = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (store, seen) = (Arc::clone(&store), Arc::clone(&seen));
+                let copied = Arc::clone(&copied);
                 async move {
                     let method = req.method().as_str().to_string();
                     let headers: HashMap<String, String> = req
@@ -13379,7 +13423,13 @@ mod tests {
                         "GET" if key.is_empty() && query.contains_key("versions") => reply(
                             200,
                             &[],
-                            config.versions_xml.unwrap_or("<ListVersionsResult/>").as_bytes().to_vec(),
+                            config
+                                .versions_after_copy
+                                .filter(|_| copied.load(std::sync::atomic::Ordering::SeqCst))
+                                .or(config.versions_xml)
+                                .unwrap_or("<ListVersionsResult/>")
+                                .as_bytes()
+                                .to_vec(),
                         ),
                         "GET" if key.is_empty() => {
                             let prefix = query.get("prefix").cloned().unwrap_or_default();
@@ -13469,6 +13519,17 @@ mod tests {
                                 None => body.to_vec(),
                             };
                             store.insert(key, data);
+                            if headers.contains_key("x-amz-copy-source") {
+                                copied.store(true, std::sync::atomic::Ordering::SeqCst);
+                                if let Some((version, answer)) = config.copy_answer {
+                                    let named: Vec<(&str, String)> = if version.is_empty() {
+                                        Vec::new()
+                                    } else {
+                                        vec![("x-amz-version-id", version.to_string())]
+                                    };
+                                    return reply(200, &named, answer.as_bytes().to_vec());
+                                }
+                            }
                             reply(200, &[], b"<CopyObjectResult></CopyObjectResult>".to_vec())
                         }
                         "DELETE" => {
@@ -15299,6 +15360,50 @@ mod tests {
             "{restored:?}"
         );
         assert_eq!(copies(&log), 1);
+    }
+
+    /// A CopyObject 200 can carry its failure in the body, and names the
+    /// version it made in `x-amz-version-id`: a restore is done only when the
+    /// body is a completed copy and that version is the one on top, so an
+    /// `<Error>` body, or a write of the same length by someone else, is not
+    /// taken for the restore.
+    #[tokio::test]
+    async fn an_s3_restore_is_done_only_when_its_own_copy_completed_and_is_on_top() {
+        const BEFORE: &str = r#"<ListVersionsResult><IsTruncated>false</IsTruncated>
+<Version><Key>docs/a.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v2</VersionId><IsLatest>true</IsLatest><LastModified>2026-11-05T11:00:00.000Z</LastModified><Size>4</Size></Version>
+</ListVersionsResult>"#;
+        const AFTER: &str = r#"<ListVersionsResult><IsTruncated>false</IsTruncated>
+<Version><Key>docs/a.txt</Key><VersionId>v1</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T10:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v2</VersionId><IsLatest>false</IsLatest><LastModified>2026-11-05T11:00:00.000Z</LastModified><Size>4</Size></Version>
+<Version><Key>docs/a.txt</Key><VersionId>v3</VersionId><IsLatest>true</IsLatest><LastModified>2026-11-05T12:00:00.000Z</LastModified><Size>4</Size></Version>
+</ListVersionsResult>"#;
+        let restore = |copy_answer: (&'static str, &'static str)| async move {
+            let config = TigrisDoubleConfig {
+                versions_xml: Some(BEFORE),
+                versions_after_copy: Some(AFTER),
+                copy_answer: Some(copy_answer),
+                ..Default::default()
+            };
+            let (mut provider, _, _) = tigris_double(&[("docs/a.txt", "AAAA")], config).await;
+            provider.restore_version("/docs/a.txt", "v1").await
+        };
+        let failed = restore((
+            "v3",
+            "<Error><Code>InternalError</Code><Message>late</Message></Error>",
+        ))
+        .await;
+        assert!(
+            matches!(&failed, Err(ProviderError::ServerError(m)) if m.contains("InternalError")),
+            "{failed:?}"
+        );
+        let foreign = restore(("v4", "<CopyObjectResult></CopyObjectResult>")).await;
+        assert!(
+            matches!(&foreign, Err(ProviderError::TransferFailed(m)) if m.contains("v4")),
+            "{foreign:?}"
+        );
+        let done = restore(("v3", "<CopyObjectResult></CopyObjectResult>")).await;
+        assert!(done.is_ok(), "{done:?}");
     }
 
     /// A key whose contents were purged and whose delete marker remains

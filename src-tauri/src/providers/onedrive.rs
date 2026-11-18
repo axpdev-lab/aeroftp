@@ -1309,10 +1309,21 @@ impl OneDriveProvider {
             return Ok(id.clone());
         }
 
+        self.live_item_id(path).await
+    }
+
+    /// The item id `path` names on the server now, cached afresh. A version
+    /// action is bound to the item its versions were listed from, so it reads
+    /// the path live: a cached id still names an item moved away from the
+    /// path, which the binding check would then accept.
+    async fn live_item_id(&mut self, path: &str) -> Result<String, ProviderError> {
+        let path = path.trim_matches('/');
+        if path.is_empty() {
+            return Ok("root".to_string());
+        }
         let item = self.get_item(path).await?;
         self.trim_cache_if_needed();
         self.path_cache.insert(path.to_string(), item.id.clone());
-
         Ok(item.id)
     }
 
@@ -2484,7 +2495,7 @@ impl StorageProvider for OneDriveProvider {
         &mut self,
         path: &str,
     ) -> Result<Vec<super::FileVersion>, ProviderError> {
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let url = format!("{}/versions", self.api_item(&item_id));
 
         let response = self
@@ -2559,7 +2570,7 @@ impl StorageProvider for OneDriveProvider {
         version_id: &str,
         local_path: &str,
     ) -> Result<(), ProviderError> {
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
             "{}/versions/{}/content",
@@ -2588,7 +2599,7 @@ impl StorageProvider for OneDriveProvider {
 
     async fn restore_version(&mut self, path: &str, version_id: &str) -> Result<(), ProviderError> {
         let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
-        let item_id = self.resolve_path(path).await?;
+        let item_id = self.live_item_id(path).await?;
         let label = super::version_label_of_file(version_id, &item_id, path)?;
         let url = format!(
             "{}/versions/{}/restoreVersion",
@@ -3382,6 +3393,11 @@ mod tests {
                         ("POST", "/v1.0/me/drive/items/F1/versions/2.0/restoreVersion") => {
                             axum::http::StatusCode::NO_CONTENT.into_response()
                         }
+                        ("GET", "/v1.0/me/drive/root:/f.txt") => axum::Json(serde_json::json!({
+                            "id": "F1", "name": "f.txt", "size": 5, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
                         _ => axum::http::StatusCode::NOT_FOUND.into_response(),
                     }
                 }
@@ -3435,21 +3451,29 @@ mod tests {
 
     /// A OneDrive version is a label of its item (`2.0`): listed bound to
     /// item F1, it is refused once the path names item F2 (a replacement
-    /// with its own `2.0`), before any request for F2's versions. A version
-    /// body answered 206 is not the whole version: the destination keeps its
-    /// bytes. The 200 answer is written whole.
+    /// with its own `2.0`), before any request for a version. The item is
+    /// read from the server, not from the id cached when the versions were
+    /// listed: F1 moved away and F2 put at the path leaves F1 in the cache.
+    /// A version body answered 206 is not the whole version: the destination
+    /// keeps its bytes. The 200 answer is written whole.
     #[tokio::test]
     async fn a_onedrive_version_is_bound_to_its_item_and_needs_its_whole_body() {
         use axum::response::IntoResponse;
         use std::sync::{Arc, Mutex};
         let seen: Arc<Mutex<Vec<String>>> = Arc::default();
-        let log = Arc::clone(&seen);
+        let at_path: Arc<Mutex<&'static str>> = Arc::new(Mutex::new("F2"));
+        let (log, item) = (Arc::clone(&seen), Arc::clone(&at_path));
         let app = axum::Router::new().fallback(axum::routing::any(
             move |method: axum::http::Method, uri: axum::http::Uri| {
-                let log = Arc::clone(&log);
+                let (log, item) = (Arc::clone(&log), Arc::clone(&item));
                 async move {
                     log.lock().unwrap().push(format!("{method} {}", uri.path()));
                     match uri.path() {
+                        "/v1.0/me/drive/root:/f.txt" => axum::Json(serde_json::json!({
+                            "id": *item.lock().unwrap(), "name": "f.txt", "size": 5, "file": {},
+                            "parentReference": { "path": "/drive/root:" },
+                        }))
+                        .into_response(),
                         "/v1.0/me/drive/items/F1/versions/2.0/content" => {
                             (axum::http::StatusCode::OK, "whole").into_response()
                         }
@@ -3475,34 +3499,48 @@ mod tests {
         let out = dir.path().join("f.txt");
         std::fs::write(&out, "mine").unwrap();
         let to = out.to_str().unwrap();
+        // Listed from F1, cached as F1; the server now has F2 at the path.
         provider
             .path_cache
-            .insert("f.txt".to_string(), "F2".to_string());
+            .insert("f.txt".to_string(), "F1".to_string());
         assert!(provider
             .download_version("/f.txt", "F1:2.0", to)
             .await
             .is_err());
+        assert!(provider.restore_version("/f.txt", "F1:2.0").await.is_err());
         assert!(provider
             .download_version("/f.txt", "2.0", to)
             .await
             .is_err());
-        assert!(
-            seen.lock().unwrap().is_empty(),
+        let versions_asked = |seen: &Mutex<Vec<String>>| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.contains("/versions"))
+                .cloned()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            versions_asked(&seen)
+                .iter()
+                .filter(|r| r.contains("/items/F1/"))
+                .count(),
+            0,
             "{:?}",
             seen.lock().unwrap()
         );
-        provider
-            .path_cache
-            .insert("f.txt".to_string(), "F3".to_string());
+        assert_eq!(
+            provider.path_cache.get("f.txt").map(String::as_str),
+            Some("F2")
+        );
+        *at_path.lock().unwrap() = "F3";
         let partial = provider.download_version("/f.txt", "F3:2.0", to).await;
         assert!(
             matches!(&partial, Err(ProviderError::TransferFailed(m)) if m.contains("not the whole version")),
             "{partial:?}"
         );
         assert_eq!(std::fs::read_to_string(&out).unwrap(), "mine");
-        provider
-            .path_cache
-            .insert("f.txt".to_string(), "F1".to_string());
+        *at_path.lock().unwrap() = "F1";
         provider
             .download_version("/f.txt", "F1:2.0", to)
             .await

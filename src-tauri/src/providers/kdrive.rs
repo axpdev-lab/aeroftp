@@ -154,7 +154,6 @@ struct ShareLinkData {
 #[derive(Debug, Deserialize)]
 struct KDriveVersion {
     id: i64,
-    #[allow(dead_code)]
     file_id: Option<i64>,
     size: Option<i64>,
     created_at: Option<i64>,
@@ -172,12 +171,15 @@ struct KDriveVersion {
 /// Each id is bound to the file id it was listed from
 /// ([`super::bind_version_to_file`]): a version id is an integer the API
 /// scopes by file in its URL, so a bare one sent after another file took the
-/// path could reach that file's version of the same number.
+/// path could reach that file's version of the same number. A row that names
+/// another file (`file_id`) is not listed: its number would address the
+/// version of the same number of this file.
 fn versions_in_dialog_order(
     mut versions: Vec<KDriveVersion>,
     file: &RemoteEntry,
     file_id: i64,
 ) -> Vec<FileVersion> {
+    versions.retain(|v| v.file_id.is_none_or(|listed| listed == file_id));
     let file_id = file_id.to_string();
     versions.sort_by_key(|v| std::cmp::Reverse(v.created_at.unwrap_or(0)));
     let past = versions.iter().map(|v| {
@@ -3608,5 +3610,23 @@ mod tests {
         let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
         assert_eq!(ids, ["7:current", "7:3", "7:2", "7:1"]);
         assert_eq!(versions[0].size, 20);
+    }
+
+    /// A row of file 12 in the answer for file 11 would be bound `11:2`, and
+    /// its number would then fetch or restore revision 2 of file 11: it is
+    /// not listed. A row that names no file stays.
+    #[test]
+    fn a_kdrive_version_row_of_another_file_is_not_listed() {
+        let listed: Vec<super::KDriveVersion> = serde_json::from_str(
+            r#"[{"id":2,"file_id":12,"size":7,"created_at":1794841200},
+                {"id":3,"file_id":11,"size":9,"created_at":1794841300},
+                {"id":4,"size":5,"created_at":1794841400}]"#,
+        )
+        .expect("parse");
+        let mut file = super::RemoteEntry::directory("v.txt".into(), "/v.txt".into());
+        file.is_dir = false;
+        let versions = super::versions_in_dialog_order(listed, &file, 11);
+        let ids: Vec<&str> = versions.iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["11:current", "11:4", "11:3"]);
     }
 }

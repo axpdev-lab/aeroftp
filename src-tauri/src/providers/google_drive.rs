@@ -1456,6 +1456,72 @@ impl GoogleDriveProvider {
         Ok(session_uri)
     }
 
+    /// The revisions of `file` in dialog order (its head first), every page.
+    async fn revisions_of(
+        &mut self,
+        file: &DriveFile,
+    ) -> Result<Vec<super::FileVersion>, ProviderError> {
+        // Every page: Drive answers at most `pageSize` revisions per call
+        // (200 when it is not set), with a `nextPageToken` while more remain.
+        let mut versions = Vec::new();
+        let mut token: Option<String> = None;
+        let mut seen = std::collections::HashSet::new();
+        loop {
+            let mut url = format!(
+                "{}/files/{}/revisions?fields=nextPageToken,revisions(id,modifiedTime,size,lastModifyingUser)&pageSize=1000",
+                self.drive_api(),
+                file.id
+            );
+            if let Some(ref token) = token {
+                url.push_str("&pageToken=");
+                url.push_str(&urlencoding::encode(token));
+            }
+            let response = self
+                .client
+                .get(&url)
+                .header(AUTHORIZATION, self.auth_header().await?)
+                .send()
+                .await
+                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
+            if !response.status().is_success() {
+                let text = super::version_listing_text(response)
+                    .await
+                    .unwrap_or_default();
+                return Err(ProviderError::Other(format!(
+                    "List revisions failed: {}",
+                    sanitize_api_error(&text)
+                )));
+            }
+            let body = super::version_listing_text(response).await?;
+            let (page, next) = revision_page(&body)?;
+            versions.extend(page);
+            match next {
+                Some(next) if !next.is_empty() && seen.insert(next.clone()) => token = Some(next),
+                Some(_) => {
+                    return Err(ProviderError::ParseError(
+                        "Google Drive revisions pagination did not advance".into(),
+                    ))
+                }
+                None => break,
+            }
+        }
+        // The head revision is the current contents (Drive lists it among
+        // the others, oldest first). It is read after the list, so a file
+        // uploaded in between has a head the list does not hold: its size
+        // and time come with it, for that row.
+        let head = match self.head_revision(&file.id).await? {
+            // Drive gives a head revision id to files with binary content
+            // only: a Docs, Sheets or Slides file lists its revisions in
+            // order, the last one its current contents.
+            None if is_workspace_file(file) => versions
+                .iter()
+                .max_by_key(|v| super::version_time_millis(v.modified.as_deref()))
+                .cloned(),
+            head => head,
+        };
+        revisions_in_dialog_order(versions, head)
+    }
+
     /// The file whose revisions `path` addresses.
     async fn revision_file(&mut self, path: &str) -> Result<DriveFile, ProviderError> {
         let file_path_is_absolute = path.starts_with('/');
@@ -2702,66 +2768,7 @@ impl StorageProvider for GoogleDriveProvider {
             .ok_or_else(|| ProviderError::NotFound(path.to_string()))?;
         // A Docs, Sheets or Slides file lists its revisions too; only their
         // download and restore are refused ([`refuse_workspace_revisions`]).
-
-        // Every page: Drive answers at most `pageSize` revisions per call
-        // (200 when it is not set), with a `nextPageToken` while more remain.
-        let mut versions = Vec::new();
-        let mut token: Option<String> = None;
-        let mut seen = std::collections::HashSet::new();
-        loop {
-            let mut url = format!(
-                "{}/files/{}/revisions?fields=nextPageToken,revisions(id,modifiedTime,size,lastModifyingUser)&pageSize=1000",
-                self.drive_api(),
-                file.id
-            );
-            if let Some(ref token) = token {
-                url.push_str("&pageToken=");
-                url.push_str(&urlencoding::encode(token));
-            }
-            let response = self
-                .client
-                .get(&url)
-                .header(AUTHORIZATION, self.auth_header().await?)
-                .send()
-                .await
-                .map_http_err(|e| ProviderError::ConnectionFailed(e.to_string()))?;
-            if !response.status().is_success() {
-                let text = super::version_listing_text(response)
-                    .await
-                    .unwrap_or_default();
-                return Err(ProviderError::Other(format!(
-                    "List revisions failed: {}",
-                    sanitize_api_error(&text)
-                )));
-            }
-            let body = super::version_listing_text(response).await?;
-            let (page, next) = revision_page(&body)?;
-            versions.extend(page);
-            match next {
-                Some(next) if !next.is_empty() && seen.insert(next.clone()) => token = Some(next),
-                Some(_) => {
-                    return Err(ProviderError::ParseError(
-                        "Google Drive revisions pagination did not advance".into(),
-                    ))
-                }
-                None => break,
-            }
-        }
-        // The head revision is the current contents (Drive lists it among
-        // the others, oldest first). It is read after the list, so a file
-        // uploaded in between has a head the list does not hold: its size
-        // and time come with it, for that row.
-        let head = match self.head_revision(&file.id).await? {
-            // Drive gives a head revision id to files with binary content
-            // only: a Docs, Sheets or Slides file lists its revisions in
-            // order, the last one its current contents.
-            None if is_workspace_file(&file) => versions
-                .iter()
-                .max_by_key(|v| super::version_time_millis(v.modified.as_deref()))
-                .cloned(),
-            head => head,
-        };
-        revisions_in_dialog_order(versions, head)
+        self.revisions_of(&file).await
     }
 
     async fn download_version(
@@ -2792,7 +2799,12 @@ impl StorageProvider for GoogleDriveProvider {
         // revision downloads is left alone, the revision goes back to its own
         // file.
         let file = self.revision_file(path).await?;
-        let selected = super::refuse_a_restore_that_changes_nothing(self, path, version_id).await?;
+        // Listed from that file, before and after, not from the path again:
+        // the revision ids are its own. A listing that fails decides nothing.
+        let selected = match self.revisions_of(&file).await {
+            Ok(listed) => Some(super::restore_preflight(&listed, path, version_id)?),
+            Err(_) => None,
+        };
         // The head revision is the file itself: sending it again would only
         // add a copy of the current contents on top.
         if self
@@ -2818,8 +2830,15 @@ impl StorageProvider for GoogleDriveProvider {
         Self::write_revision(response, &mut out).await?;
         drop(out);
         let local = temp.0.to_string_lossy().into_owned();
-        self.upload_into(&local, path, Some(file.id), None).await?;
-        super::confirm_version_restored(self, path, selected.as_ref()).await
+        self.upload_into(&local, path, Some(file.id.clone()), None)
+            .await?;
+        match selected {
+            Some(preflight) => {
+                let after = self.revisions_of(&file).await;
+                super::restore_confirmed(after, path, &preflight)
+            }
+            None => Ok(()),
+        }
     }
 
     fn supports_thumbnails(&self) -> bool {
@@ -4003,6 +4022,37 @@ mod tests {
         provider_on_drive_paged(tree, usize::MAX).await
     }
 
+    /// A Drive double's answer for a file's revisions and its head: r1 (the
+    /// 13 bytes "content of r1" the doubles send for it) and r2 on top; once
+    /// a PATCH sent new contents, r3 (those 13 bytes) on top. `None` for any
+    /// other request.
+    fn drive_revisions_answer(url: &reqwest::Url, patched: bool) -> Option<serde_json::Value> {
+        let revision = |id: &str, size: &str, day: u8| {
+            serde_json::json!({ "id": id, "size": size,
+                "modifiedTime": format!("2026-11-0{day}T10:00:00Z") })
+        };
+        let mut revisions = vec![revision("r1", "13", 1), revision("r2", "5", 2)];
+        if patched {
+            revisions.push(revision("r3", "13", 3));
+        }
+        if url.path().ends_with("/revisions") {
+            return Some(serde_json::json!({ "revisions": revisions }));
+        }
+        let fields = url
+            .query_pairs()
+            .find(|(k, _)| k == "fields")
+            .map(|(_, v)| v.to_string())
+            .unwrap_or_default();
+        if !fields.starts_with("headRevisionId") {
+            return None;
+        }
+        let head = revisions.last()?;
+        Some(
+            serde_json::json!({ "headRevisionId": head["id"], "size": head["size"],
+            "modifiedTime": head["modifiedTime"] }),
+        )
+    }
+
     /// [`provider_on_drive`] answering a search `page_size` files at a time,
     /// with a `nextPageToken` while files remain.
     async fn provider_on_drive_paged(
@@ -4015,10 +4065,11 @@ mod tests {
         use std::sync::{Arc, Mutex};
         let patches: Arc<Mutex<Vec<String>>> = Arc::default();
         let seen = Arc::clone(&patches);
+        let patched = Arc::new(std::sync::atomic::AtomicBool::new(false));
         use axum::response::IntoResponse;
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
-                let seen = Arc::clone(&seen);
+                let (seen, patched) = (Arc::clone(&seen), Arc::clone(&patched));
                 async move {
                     let method = req.method().as_str().to_string();
                     let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
@@ -4026,6 +4077,7 @@ mod tests {
                         .await
                         .unwrap();
                     if method == "PATCH" {
+                        patched.store(true, std::sync::atomic::Ordering::SeqCst);
                         let id = url.path().rsplit('/').next().unwrap_or("").to_string();
                         seen.lock()
                             .unwrap()
@@ -4044,6 +4096,12 @@ mod tests {
                     if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
                         let id = url.path().rsplit('/').next().unwrap_or("").to_string();
                         return format!("content of {id}").into_response();
+                    }
+                    if let Some(answer) = drive_revisions_answer(
+                        &url,
+                        patched.load(std::sync::atomic::Ordering::SeqCst),
+                    ) {
+                        return axum::Json(answer).into_response();
                     }
                     let q = url
                         .query_pairs()
@@ -4274,6 +4332,7 @@ mod tests {
         let app =
             axum::Router::new().fallback(axum::routing::any(move |req: axum::extract::Request| {
                 let (seen, searched) = (Arc::clone(&seen), Arc::clone(&searched));
+                let patched = !seen.lock().unwrap().is_empty();
                 async move {
                     let method = req.method().as_str().to_string();
                     let url = reqwest::Url::parse(&format!("http://h{}", req.uri())).unwrap();
@@ -4293,6 +4352,9 @@ mod tests {
                     }
                     if url.query_pairs().any(|(k, v)| k == "alt" && v == "media") {
                         return "content of r1".into_response();
+                    }
+                    if let Some(answer) = drive_revisions_answer(&url, patched) {
+                        return axum::Json(answer).into_response();
                     }
                     // The first search finds F1; F2 is there from then on.
                     let n = searched.fetch_add(1, std::sync::atomic::Ordering::SeqCst);

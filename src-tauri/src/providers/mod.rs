@@ -821,51 +821,119 @@ pub async fn refuse_a_deleted_version<P: StorageProvider + ?Sized>(
     refuse_a_listed_marker(&versions, version_id)
 }
 
+/// What [`refuse_a_restore_that_changes_nothing`] listed before a restore,
+/// for [`confirm_version_restored`]: the row of the version selected and the
+/// row that was current then.
+#[derive(Debug, Clone)]
+pub struct RestorePreflight {
+    pub selected: FileVersion,
+    pub before: FileVersion,
+    /// The id the server gave the version the restore made current (S3
+    /// `x-amz-version-id`), when its answer names one: row 0 must then be it.
+    pub made_current: Option<String>,
+}
+
+impl RestorePreflight {
+    /// The preflight with the id the restore answer gave its new current
+    /// version ([`Self::made_current`]); an empty one names nothing.
+    pub fn made_current(mut self, id: Option<String>) -> Self {
+        self.made_current = id.filter(|id| !id.trim().is_empty());
+        self
+    }
+}
+
 /// Refuse to restore `version_id` of `path` when the restore cannot change
 /// anything: a delete marker, as [`refuse_a_deleted_version`], or row 0 of
 /// the list, the current version, which is the file itself (a restore of it
 /// would only add a copy of the current contents on top, or be refused by
 /// the server in its own words). A deleted file's row 0 is its deletion, so
 /// its last contents below stay restorable. A listing that fails decides
-/// nothing, as there.
-/// The listed row of `version_id` comes back (`None` when the listing failed
-/// or does not hold it), for [`confirm_version_restored`].
+/// nothing, as there; a listing that does not hold the id refuses it before
+/// any call (the path now holds another file, or the id was mistyped). A bare
+/// label (`1700000000`) is the listed row bound to a file with that label
+/// (`42:1700000000`), as the providers that bind ids still accept one.
+/// The rows listed come back (`None` when the listing failed), for
+/// [`confirm_version_restored`].
 pub async fn refuse_a_restore_that_changes_nothing<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
     version_id: &str,
-) -> Result<Option<FileVersion>, ProviderError> {
+) -> Result<Option<RestorePreflight>, ProviderError> {
     let Ok(versions) = provider.list_versions(path).await else {
         return Ok(None);
     };
-    refuse_a_listed_marker(&versions, version_id)?;
-    if versions
-        .first()
-        .is_some_and(|current| current.id == version_id && !current.deleted)
-    {
+    restore_preflight(&versions, path, version_id).map(Some)
+}
+
+/// [`refuse_a_restore_that_changes_nothing`] on the rows listed.
+pub(crate) fn restore_preflight(
+    versions: &[FileVersion],
+    path: &str,
+    version_id: &str,
+) -> Result<RestorePreflight, ProviderError> {
+    refuse_a_listed_marker(versions, version_id)?;
+    let Some(selected) = versions.iter().find(|v| listed_as(v, version_id)).cloned() else {
+        return Err(ProviderError::NotFound(format!(
+            "Version {version_id} is not among the versions {path} lists now: list its \
+             versions again"
+        )));
+    };
+    let before = versions[0].clone();
+    if before.id == selected.id && !before.deleted {
         return Err(ProviderError::NotSupported(
             "This is already the current version".into(),
         ));
     }
-    Ok(versions.into_iter().find(|v| v.id == version_id))
+    Ok(RestorePreflight {
+        selected,
+        before,
+        made_current: None,
+    })
+}
+
+/// Whether `row` is the version `version_id` names: its own id, or, for a
+/// bare label, the label of a row bound to a file ([`bind_version_to_file`]).
+fn listed_as(row: &FileVersion, version_id: &str) -> bool {
+    row.id == version_id
+        || (!version_id.contains(':')
+            && row
+                .id
+                .split_once(':')
+                .is_some_and(|(_, label)| label == version_id))
 }
 
 /// After a restore the server answered with success: the file's current
 /// version, listed again, must hold what the selected one held, as far as a
-/// listing tells (its size, and not a deletion). Most restore answers prove
-/// nothing (204, `{}`, an empty 201), and a 200 can still carry a failure
-/// (S3 CopyObject). `selected` `None` (the listing before the restore failed
-/// or did not hold the id) decides nothing, as in
+/// listing tells (its size, and not a deletion), and must not be the row
+/// that was current before, unchanged (same id, time and size: a restore
+/// the server dropped, which a size alone cannot tell when both versions
+/// have the same length). When the answer named the version it made current
+/// ([`RestorePreflight::made_current`]), row 0 must be that one, so a write
+/// of the same length by someone else meanwhile is not taken for the
+/// restore. Most restore answers prove nothing (204, `{}`, an empty 201),
+/// and a 200 can still carry a failure (S3 CopyObject). A preflight of
+/// `None` (the listing before the restore failed) decides nothing, as in
 /// [`refuse_a_restore_that_changes_nothing`]; a listing that fails now does
 /// not confirm the restore.
 pub async fn confirm_version_restored<P: StorageProvider + ?Sized>(
     provider: &mut P,
     path: &str,
-    selected: Option<&FileVersion>,
+    preflight: Option<&RestorePreflight>,
 ) -> Result<(), ProviderError> {
-    let Some(selected) = selected else {
+    let Some(preflight) = preflight else {
         return Ok(());
     };
+    let versions = provider.list_versions(path).await;
+    restore_confirmed(versions, path, preflight)
+}
+
+/// [`confirm_version_restored`] on the listing read after the restore.
+pub(crate) fn restore_confirmed(
+    versions: Result<Vec<FileVersion>, ProviderError>,
+    path: &str,
+    preflight: &RestorePreflight,
+) -> Result<(), ProviderError> {
+    let selected = &preflight.selected;
     let not_restored = |held: String| {
         ProviderError::TransferFailed(format!(
             "The server answered the restore of {path}, but its current version {held}, not \
@@ -873,16 +941,36 @@ pub async fn confirm_version_restored<P: StorageProvider + ?Sized>(
             selected.size
         ))
     };
-    let versions = provider
-        .list_versions(path)
-        .await
-        .map_err(|e| not_restored(format!("could not be read ({e})")))?;
-    match versions.first() {
-        Some(current) if !current.deleted && current.size == selected.size => Ok(()),
-        Some(current) if current.deleted => Err(not_restored("is a deletion".into())),
-        Some(current) => Err(not_restored(format!("holds {} bytes", current.size))),
-        None => Err(not_restored("is not listed".into())),
+    let versions = versions.map_err(|e| not_restored(format!("could not be read ({e})")))?;
+    let Some(current) = versions.first() else {
+        return Err(not_restored("is not listed".into()));
+    };
+    if current.deleted {
+        return Err(not_restored("is a deletion".into()));
     }
+    if current.size != selected.size {
+        return Err(not_restored(format!("holds {} bytes", current.size)));
+    }
+    if let Some(made) = &preflight.made_current {
+        if &current.id != made {
+            return Err(not_restored(format!(
+                "is {}, not the version {made} the restore made",
+                current.id
+            )));
+        }
+        return Ok(());
+    }
+    let before = &preflight.before;
+    if current.id == before.id
+        && current.modified == before.modified
+        && current.size == before.size
+        && current.deleted == before.deleted
+    {
+        return Err(not_restored(
+            "is still the one it was before the restore".into(),
+        ));
+    }
+    Ok(())
 }
 
 fn refuse_a_listed_marker(versions: &[FileVersion], version_id: &str) -> Result<(), ProviderError> {
@@ -909,6 +997,68 @@ pub fn version_time_millis(modified: Option<&str>) -> i64 {
 #[cfg(test)]
 mod versions_order_tests {
     use super::*;
+
+    fn sized(id: &str, size: u64, modified: &str) -> FileVersion {
+        FileVersion {
+            id: id.to_string(),
+            modified: Some(modified.to_string()),
+            size,
+            modified_by: None,
+            deleted: false,
+        }
+    }
+
+    #[test]
+    fn a_version_the_listing_does_not_hold_is_refused_and_a_bare_label_is_its_bound_row() {
+        let listed = vec![
+            sized("12:current", 4, "2026-11-18T10:00:00Z"),
+            sized("12:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        assert!(matches!(
+            restore_preflight(&listed, "/a.txt", "11:2"),
+            Err(ProviderError::NotFound(_))
+        ));
+        let bare = restore_preflight(&listed, "/a.txt", "2").unwrap();
+        assert_eq!(bare.selected.id, "12:2");
+        assert_eq!(bare.before.id, "12:current");
+        assert!(matches!(
+            restore_preflight(&listed, "/a.txt", "current"),
+            Err(ProviderError::NotSupported(_))
+        ));
+    }
+
+    #[test]
+    fn a_same_size_restore_is_confirmed_only_when_the_current_row_changed() {
+        let listed = vec![
+            sized("7:current", 4, "2026-11-18T10:00:00Z"),
+            sized("7:2", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "7:2").unwrap();
+        let unchanged = restore_confirmed(Ok(listed.clone()), "/a.txt", &preflight);
+        assert!(matches!(unchanged, Err(ProviderError::TransferFailed(_))));
+        let mut restored = listed.clone();
+        restored[0].modified = Some("2026-11-18T10:05:00Z".into());
+        assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+    }
+
+    #[test]
+    fn a_restore_that_names_its_new_version_is_confirmed_only_by_that_version_on_top() {
+        let listed = vec![
+            sized("v2", 4, "2026-11-18T10:00:00Z"),
+            sized("v1", 4, "2026-11-17T10:00:00Z"),
+        ];
+        let preflight = restore_preflight(&listed, "/a.txt", "v1")
+            .unwrap()
+            .made_current(Some("v3".into()));
+        let mut foreign = listed.clone();
+        foreign.insert(0, sized("v9", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(foreign), "/a.txt", &preflight).is_err());
+        let mut restored = listed.clone();
+        restored.insert(0, sized("v3", 4, "2026-11-18T10:05:00Z"));
+        assert!(restore_confirmed(Ok(restored), "/a.txt", &preflight).is_ok());
+        let failed = Err(ProviderError::NetworkError("cut".into()));
+        assert!(restore_confirmed(failed, "/a.txt", &preflight).is_err());
+    }
 
     fn row(id: &str, secs: i64) -> FileVersion {
         FileVersion {

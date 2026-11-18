@@ -6270,8 +6270,12 @@ mod tests {
     ) {
         let versions = std::sync::Arc::new(std::sync::Mutex::new(vec!["V2", "V1"]));
         let deleted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // A restore makes the version the current file under its own code
+        // (V1, with its own upload time), as FileLu does.
+        let restored = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         provider_against(move |origin, path, query| {
             let deleted_now = deleted.load(std::sync::atomic::Ordering::SeqCst);
+            let restored_now = restored.load(std::sync::atomic::Ordering::SeqCst);
             let root = query.get("folder_path").map(String::as_str) == Some("/");
             let page_one = query.get("page").is_none_or(|p| p == "1");
             match path {
@@ -6282,8 +6286,16 @@ mod tests {
                     r#"{"status":200,"result":{"files":[],"folders":[{"name":"d","fld_id":7}]}}"#
                         .to_string()
                 }
+                "/apiv2/folder/list" if restored_now => {
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"V1","size":9,"uploaded":"2026-11-01 11:31:51"}],"folders":[]}}"#
+                        .to_string()
+                }
                 "/apiv2/folder/list" => {
-                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9}],"folders":[]}}"#
+                    r#"{"status":200,"result":{"files":[{"name":"f.txt","file_code":"CUR","size":9,"uploaded":"2026-11-01 11:32:01"}],"folders":[]}}"#
+                        .to_string()
+                }
+                "/api/file/versions" if query.get("file_code").map(String::as_str) == Some("V1") => {
+                    r#"{"status":200,"msg":"OK","result":{"versions":[],"file_code":"V1","keep":10,"days":30}}"#
                         .to_string()
                 }
                 "/api/file/versions"
@@ -6327,6 +6339,7 @@ mod tests {
                     if let Some(status) = mutation_failure {
                         format!("!{status} lost")
                     } else {
+                        restored.store(true, std::sync::atomic::Ordering::SeqCst);
                         r#"{"status":200,"msg":"OK"}"#.to_string()
                     }
                 }

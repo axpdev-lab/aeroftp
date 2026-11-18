@@ -43,7 +43,10 @@
 # its target: it writes a " (1)" sibling, as MEGAcmd does. With versioning-off the
 # listing after a put is the one file row MEGAcmd prints for a single version. `mega-thumbnail /photo.jpg <out>` writes the first bytes of a JPEG
 # to <out>; for `/plain.txt`, a file with no thumbnail, it writes nothing and
-# exits 9 with MEGAcmd's "Not found", as measured the same day.
+# exits 9 with MEGAcmd's "Not found", as measured the same day. With
+# foreign-after-check another client writes /v.txt once the version a put
+# added was read back, and with head-get-prefix-of-1 a read of the head
+# H:vAAAAAA3 stops after 8 bytes equal to H:vAAAAAA1.
 here=$(dirname "$0")
 case "$(basename "$0")" in
     mega-ls)
@@ -78,6 +81,9 @@ case "$(basename "$0")" in
             echo '----    3           13 16Nov2026 15:53:00 H:vAAAAAA3 v.txt'
             echo ''
             echo 'Versions of v.txt:'
+            if [ -f "$here/foreign-on-top" ]; then
+                echo "----    6 $(cat "$here/put-size-v.txt") 16Nov2026 15:55:00 H:vAAAAAA6 v.txt#1794840900"
+            fi
             if [ -f "$here/put-size-v.txt" ]; then
                 echo "----    5 $(cat "$here/put-size-v.txt") 16Nov2026 15:54:00 H:vAAAAAA4 v.txt#1794840840"
             fi
@@ -275,6 +281,17 @@ case "$(basename "$0")" in
         fi
         echo "$1" >> "$here/get.log"
         echo "$2" >> "$here/get-targets.log"
+        # foreign-after-check: another client writes /v.txt (H:vAAAAAA6 on
+        # top, the size of the put) once the version the put added was read.
+        if [ "$1" = H:vAAAAAA4 ] && [ -f "$here/foreign-after-check" ]; then
+            touch "$here/foreign-on-top"
+        fi
+        # head-get-prefix-of-1: a read of the 13-byte head H:vAAAAAA3 stops
+        # after 8 bytes that equal H:vAAAAAA1, with a zero exit.
+        if [ "$1" = H:vAAAAAA3 ] && [ -f "$here/head-get-prefix-of-1" ]; then
+            printf '11111111' > "$2"
+            exit 0
+        fi
         if [ -f "$here/get-writes-then-fails" ]; then
             dd if=/dev/zero of="$2" bs=500 count=1 2>/dev/null
             # Not a transient text: the provider would retry a reset.
