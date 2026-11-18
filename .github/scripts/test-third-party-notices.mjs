@@ -2593,6 +2593,32 @@ const fencedBlockAfter = (md, anchorTag) => {
   return m[2];
 };
 
+test('release workflow: every publish job requires a job that checks the notices against the lockfiles', () => {
+  const workflow = fs.readFileSync(path.join(ROOT, '.github/workflows/build.yml'), 'utf8');
+  // The jobs, by id, with their text up to the next job.
+  const jobsAt = workflow.indexOf('\njobs:\n');
+  assert.ok(jobsAt !== -1);
+  const jobs = new Map();
+  const parts = workflow.slice(jobsAt + 7).split(/\n(?=  [a-z0-9_-]+:\n)/);
+  for (const part of parts) {
+    const m = /^ {2}([a-z0-9_-]+):\n/.exec(part.replace(/^\n/, ''));
+    if (m) jobs.set(m[1], part);
+  }
+  const runsCheck = (id) => /\n {8}run: npm run check:licenses\n/.test(jobs.get(id) ?? '');
+  assert.ok(runsCheck('linux-validate'), 'linux-validate runs npm run check:licenses');
+  // Publishing jobs: the ones that publish on a tag.
+  const publishing = [...jobs.keys()].filter((id) => /^(?:publish-|build-snap$)/.test(id));
+  assert.deepStrictEqual(publishing.sort(), ['build-snap', 'publish-flatpark', 'publish-github-release', 'publish-winget']);
+  for (const id of publishing) {
+    const job = jobs.get(id);
+    const needs = /\n {4}needs: \[([^\]]*)\]/.exec(job);
+    assert.ok(needs && needs[1].split(',').map((s) => s.trim()).includes('linux-validate'), `${id} needs linux-validate`);
+    // `if: !cancelled()` would run a job whose needs failed: the condition
+    // must require linux-validate's success explicitly.
+    assert.match(job, /\n {4}if: \$\{\{[^\n]*needs\.linux-validate\.result == 'success'/, `${id} requires linux-validate to succeed`);
+  }
+});
+
 test('anchor destinations: an anchor counts only outside fenced text, a quoted one does not', () => {
   const quotedOnly = 'Intro\n\n```text\nA license that quotes <a id="exception-x"></a> in its text.\n```\n';
   assert.strictEqual(anchorIdsOutsideFences(quotedOnly).has('exception-x'), false, 'a quoted anchor is no destination');

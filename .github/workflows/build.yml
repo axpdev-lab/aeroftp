@@ -130,6 +130,13 @@ jobs:
             node scripts/check-version-sites.mjs
           fi
 
+      # The packages ship THIRD-PARTY-NOTICES.md as committed, and checks.yml
+      # does not run on tags: a tag whose notices do not match its lockfiles
+      # would publish them. Every publish job (GitHub release, snap, winget,
+      # FlatPark) requires this job's success, so the check gates them all.
+      - name: Third-party license notices match the lockfiles
+        run: npm run check:licenses
+
       - name: TypeScript type check
         run: npx tsc --noEmit
 
