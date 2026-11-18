@@ -12816,6 +12816,10 @@ mod abandoned_command_tests {
     /// line it read from it.
     const CLOSED: &str = "<CONNECTION CLOSED>";
 
+    /// What the server logs once a late reply has been written to the
+    /// connection that asked for it.
+    const LATE_REPLY_WRITTEN: &str = "<LATE REPLY WRITTEN>";
+
     /// A server that logs every command line and answers each one, the
     /// passive-mode request as `passive` says. It keeps reading, so a QUIT
     /// sent afterwards would still reach the log, and logs [`CLOSED`] when the
@@ -12854,6 +12858,10 @@ mod abandoned_command_tests {
         while let Ok(Some(line)) = lines.next_line().await {
             log.lock().unwrap().push(line.clone());
             let cmd = line.split_whitespace().next().unwrap_or("").to_uppercase();
+            let late = matches!(
+                (cmd.as_str(), passive),
+                ("PASV" | "EPSV", Passive::Late) | ("DELE", Passive::LateDele)
+            );
             let reply = match cmd.as_str() {
                 "PASV" | "EPSV" if passive == Passive::Silent => continue,
                 "PASV" | "EPSV" if passive == Passive::Late => {
@@ -12874,6 +12882,9 @@ mod abandoned_command_tests {
             if write.write_all(reply.as_bytes()).await.is_err() {
                 return;
             }
+            if late {
+                log.lock().unwrap().push(LATE_REPLY_WRITTEN.to_string());
+            }
         }
     }
 
@@ -12893,20 +12904,32 @@ mod abandoned_command_tests {
     }
 
     fn sent(log: &Mutex<Vec<String>>, command: &str) -> bool {
-        log.lock()
-            .unwrap()
-            .iter()
-            .any(|line| line.to_uppercase().starts_with(command))
+        sent_any(log, &[command])
     }
 
-    /// Waits until the server has read `command` (or logged [`CLOSED`]): a
-    /// fixed wait is too short on a busy runner, or lets a late line pass.
+    fn sent_any(log: &Mutex<Vec<String>>, commands: &[&str]) -> bool {
+        log.lock().unwrap().iter().any(|line| {
+            let line = line.to_uppercase();
+            commands.iter().any(|command| line.starts_with(command))
+        })
+    }
+
+    /// Waits until the server has read `command` (or logged [`CLOSED`] or
+    /// [`LATE_REPLY_WRITTEN`]): a fixed wait is too short on a busy runner,
+    /// or lets a late line pass.
     async fn until_sent(log: &Mutex<Vec<String>>, command: &str) {
+        until_any_sent(log, &[command]).await;
+    }
+
+    /// [`until_sent`] for the first of `commands` the server reads, under
+    /// one deadline: a waiter per command would let one fail while another
+    /// command is already in the log.
+    async fn until_any_sent(log: &Mutex<Vec<String>>, commands: &[&str]) {
         let deadline = Instant::now() + Duration::from_secs(10);
-        while !sent(log, command) {
+        while !sent_any(log, commands) {
             assert!(
                 Instant::now() < deadline,
-                "the server never read {command}: {:?}",
+                "the server never read any of {commands:?}: {:?}",
                 log.lock().unwrap()
             );
             tokio::time::sleep(Duration::from_millis(5)).await;
@@ -12920,12 +12943,7 @@ mod abandoned_command_tests {
         let mut provider = connected(port).await;
         // What a Cancel of the foreground listing does: the listing future is
         // dropped while it waits for the passive-mode reply.
-        let passive = async {
-            tokio::select! {
-                _ = until_sent(&log, "PASV") => {}
-                _ = until_sent(&log, "EPSV") => {}
-            }
-        };
+        let passive = until_any_sent(&log, &["PASV", "EPSV"]);
         tokio::select! {
             _ = provider.list("/") => panic!("the server never answers the passive-mode request"),
             _ = passive => {}
@@ -12964,8 +12982,10 @@ mod abandoned_command_tests {
             _ = provider.delete("/a.txt") => panic!("the DELE reply comes after the client gave up"),
             _ = until_sent(&log, "DELE") => {}
         }
-        // The late `250` goes out now, before the next command.
+        // The late `250` goes out now and is on the first connection before
+        // the next command starts.
         release.notify_one();
+        until_sent(&log, LATE_REPLY_WRITTEN).await;
         let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
             .await
             .expect("the command must end")
@@ -12992,12 +13012,7 @@ mod abandoned_command_tests {
     async fn the_next_command_after_an_abandoned_one_redials_instead_of_reading_its_late_reply() {
         let (port, log, release) = server(Passive::Late).await;
         let mut provider = connected(port).await;
-        let passive = async {
-            tokio::select! {
-                _ = until_sent(&log, "PASV") => {}
-                _ = until_sent(&log, "EPSV") => {}
-            }
-        };
+        let passive = until_any_sent(&log, &["PASV", "EPSV"]);
         tokio::select! {
             _ = provider.list("/") => panic!("the passive-mode reply comes after the client gave up"),
             _ = passive => {}
@@ -13005,6 +13020,7 @@ mod abandoned_command_tests {
         // The late `227` lands on the first connection before the next
         // command runs. Read there, it would be taken as that command's reply.
         release.notify_one();
+        until_sent(&log, LATE_REPLY_WRITTEN).await;
         let path = tokio::time::timeout(Duration::from_secs(5), provider.pwd())
             .await
             .expect("the command must end")
