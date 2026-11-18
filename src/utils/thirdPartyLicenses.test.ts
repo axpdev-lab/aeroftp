@@ -158,6 +158,18 @@ describe('thirdPartyLicenses', () => {
         expect(JSON.stringify(warn.mock.calls)).not.toContain('dummy-token-1234');
       });
 
+      it('logs a fixed diagnostic when the shell or window.open rejects with the URL, never the URL', async () => {
+        const secret = 'https://gitlab.example.com/private-group/private-project/-/blob/main/secret-path.txt';
+        shellOpen.mockRejectedValue(new Error(`Command xdg-open ${secret} failed`));
+        vi.stubGlobal('window', { open: vi.fn(() => { throw new SyntaxError(`Invalid URL ${secret}`); }) });
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await expect(openUrl(secret)).resolves.toBe(false);
+        expect(error).toHaveBeenCalledTimes(2);
+        const logged = error.mock.calls.flat().map((arg) => (arg instanceof Error ? `${arg.message} ${arg.stack ?? ''}` : String(arg))).join(' ');
+        expect(logged).not.toContain('private-project');
+      });
+
       it('reports success when the shell opens the URL', async () => {
         shellOpen.mockResolvedValue(undefined);
         const windowOpen = vi.fn();

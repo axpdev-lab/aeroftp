@@ -42,6 +42,14 @@ fn temp_dir() -> PathBuf {
     std::env::temp_dir()
 }
 
+/// The path with a trailing backslash, which `if exist` finds only when it
+/// names a directory, empty or not.
+fn as_directory(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_owned();
+    s.push("\\");
+    PathBuf::from(s)
+}
+
 /// Convert a Rust path into a CMD-friendly quoted string. Doubles any
 /// embedded `"` (rare in real paths) and wraps in `"..."`.
 fn quote_for_cmd(path: &Path) -> String {
@@ -626,8 +634,9 @@ del /F /Q {new} >nul 2>&1
     // open in an editor that does not share writes refuses the copy: it is
     // retried like a CLI exe, then the installed one is kept and the log
     // says so. `copy` onto a directory writes inside it, so a directory with
-    // the document's name, found before any attempt, is left as it is,
-    // nothing is copied into it, and the log says so.
+    // the document's name, empty or not, found before any attempt, is left
+    // as it is, nothing is copied into it, and the log says so. `if exist`
+    // on the path with a trailing backslash is true for a directory only.
     let docs = [
         (&staged.new_marker, "portable.marker"),
         (&staged.new_readme, "README.txt"),
@@ -642,7 +651,7 @@ del /F /Q {new} >nul 2>&1
         copy_block.push_str(&format!(
             r#"set RETRY=0
 :doc_{i}
-if exist {dst_children} goto doc_{i}_dir
+if exist {dst_as_dir} goto doc_{i}_dir
 copy /Y {src} {dst} >nul 2>&1
 if not errorlevel 1 goto doc_{i}_done
 set /a RETRY+=1
@@ -656,7 +665,7 @@ goto doc_{i}
 "#,
             src = quote_for_cmd(src),
             dst = quote_for_cmd(&exe_dir.join(name)),
-            dst_children = quote_for_cmd(&exe_dir.join(name).join("*")),
+            dst_as_dir = quote_for_cmd(&as_directory(&exe_dir.join(name))),
         ));
     }
 
@@ -1195,6 +1204,37 @@ mod tests {
             b"sentinel"
         );
         assert_eq!(names_in(&dir), vec!["THIRD-PARTY-NOTICES.md".to_string()]);
+        assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
+        assert_eq!(read(&fx, "README.txt"), b"new readme");
+        assert_eq!(read(&fx, "LICENSE.txt"), b"new license");
+        assert!(!fx.staged.stage_dir.exists());
+        let log = std::fs::read_to_string(&fx.log).expect("log");
+        assert_eq!(
+            log.trim_end(),
+            "[windows_update_helper][WARN] portable update: THIRD-PARTY-NOTICES.md is a directory, copied nothing into it"
+        );
+    }
+
+    /// An empty directory with a document's name is a directory too: the
+    /// helper copies nothing into it and says so.
+    #[test]
+    fn an_empty_directory_at_a_document_path_is_left_empty_and_the_log_says_so() {
+        let mut fx = fixture();
+        for (name, old, new) in DOC_FILES {
+            std::fs::write(fx.staged.stage_dir.join(name), new).expect("staged file");
+            if name != "THIRD-PARTY-NOTICES.md" {
+                std::fs::write(fx.app.join(name), old).expect("installed file");
+            }
+        }
+        let dir = fx.app.join("THIRD-PARTY-NOTICES.md");
+        std::fs::create_dir(&dir).expect("empty directory at the document path");
+        fx.staged.new_readme = Some(fx.staged.stage_dir.join("README.txt"));
+        fx.staged.new_license = Some(fx.staged.stage_dir.join("LICENSE.txt"));
+        fx.staged.new_notices = Some(fx.staged.stage_dir.join("THIRD-PARTY-NOTICES.md"));
+        let script = script_for(&fx);
+        run(&fx, &runnable(&script));
+        assert!(dir.is_dir());
+        assert!(names_in(&dir).is_empty());
         assert_eq!(read(&fx, "AeroFTP.exe"), NEW_EXE);
         assert_eq!(read(&fx, "README.txt"), b"new readme");
         assert_eq!(read(&fx, "LICENSE.txt"), b"new license");

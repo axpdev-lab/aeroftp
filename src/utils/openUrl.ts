@@ -34,14 +34,16 @@ export async function openUrl(url: string): Promise<boolean> {
   try {
     await open(url);
     return true;
-  } catch (error) {
-    console.error('Failed to open URL:', error);
+  } catch {
+    // The rejection is not logged: it can carry the launcher's command line,
+    // and with it the URL.
+    console.error('Failed to open URL');
     // Fallback: try window.open (won't work in Tauri but useful for dev).
     // It returns null when it opens nothing and can throw.
     try {
       return window.open(url, '_blank') !== null;
-    } catch (fallbackError) {
-      console.error('Failed to open URL in a new window:', fallbackError);
+    } catch {
+      console.error('Failed to open URL in a new window');
       return false;
     }
   }
