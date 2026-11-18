@@ -42,6 +42,13 @@ export interface ComponentInfo {
   noticeFiles: { filename: string; content: string; vendored?: boolean }[];
   authors?: string[];
   packageDir?: string;
+  /** Which installed package this is (Cargo package id, npm lockfile path): two sources can ship the same name and version. */
+  instance?: string;
+}
+
+/** The key of one installed package: its instance when known, else its source, name and version. */
+export function instanceKey(c: { source: string; name: string; version: string; instance?: string }): string {
+  return c.instance ?? `${c.source}:${c.name}@${c.version}`;
 }
 
 /**
@@ -955,6 +962,7 @@ export function collectCargoDependencies(): ComponentInfo[] {
       noticeFiles,
       authors: pkg.authors,
       packageDir: crateDir,
+      instance: `cargo:${pkg.id}`,
     });
   }
 
@@ -1058,6 +1066,7 @@ export function collectNpmDependencies(
       license: pkgInfo.license || 'Unknown',
       repository: pkgInfo.homepage || undefined,
       source: 'npm',
+      instance: `npm:${pkgPath}`,
       authors: npmAuthors(installed),
       licenseFiles,
       noticeFiles,
@@ -1367,14 +1376,14 @@ function uncoveredLicenseTerms(
 
 interface LicenseTextGroup {
   text: string;
-  components: { name: string; version: string; filename: string; source: string; isLicenseText: boolean; vendored: boolean }[];
+  components: { name: string; version: string; filename: string; source: string; instance: string; isLicenseText: boolean; vendored: boolean }[];
 }
 
 export function groupLicenseTexts(components: ComponentInfo[]): {
   groupedTexts: LicenseTextGroup[];
   componentsWithoutFiles: ComponentInfo[];
 } {
-  const textMap = new Map<string, { name: string; version: string; filename: string; source: string; isLicenseText: boolean; vendored: boolean }[]>();
+  const textMap = new Map<string, LicenseTextGroup['components']>();
   const componentsWithoutFiles: ComponentInfo[] = [];
 
   for (const c of components) {
@@ -1403,6 +1412,7 @@ export function groupLicenseTexts(components: ComponentInfo[]): {
         version: c.version,
         filename: f.filename,
         source: c.source,
+        instance: instanceKey(c),
         isLicenseText: f.isLicenseText,
         vendored: Boolean(f.vendored),
       });
@@ -2207,7 +2217,7 @@ export function renderNotices(
   const allComponents = [...sortedCargoDeps, ...sortedNpmDeps];
   const compMap = new Map<string, ComponentInfo>();
   for (const c of allComponents) {
-    compMap.set(`${c.source}:${c.name}@${c.version}`, c);
+    compMap.set(instanceKey(c), c);
   }
   // The bundled headers of each package, read once: the package listing takes
   // the holders of a license the package declares, the bundled-code section
@@ -2377,7 +2387,7 @@ export function renderNotices(
   // which then goes to the whole text, or to the standard texts reproduced
   // for the component below.
   const carriesALicense = (c: LicenseTextGroup['components'][number], text: string) => {
-    const comp = compMap.get(`${c.source}:${c.name}@${c.version}`);
+    const comp = compMap.get(c.instance);
     if (!comp) return true;
     const standard = readStandardLicenses();
     const reviewed = reviewedLicenseTerms();
@@ -2430,12 +2440,12 @@ export function renderNotices(
     lines.push('**Used by component(s):**');
     for (const comp of group.components) {
       lines.push(`- \`${comp.name}@${comp.version}\` (${comp.source}, file: \`${comp.filename}\`)`);
-      const fullComp = compMap.get(`${comp.source}:${comp.name}@${comp.version}`);
+      const fullComp = compMap.get(comp.instance);
       if (fullComp && comp.vendored && fullComp.packageDir) {
         // The notices of vendored code, from its own folder, listed once: a
         // REUSE folder gives the same code several license texts.
         const dir = vendoredRoot(comp.filename);
-        const rootKey = `${comp.source}:${comp.name}@${comp.version}:${dir}`;
+        const rootKey = `${comp.instance}:${dir}`;
         if (listedVendoredRoots.has(rootKey)) {
           lines.push(`  - The notices of \`${dir}/\` are listed with \`${listedVendoredRoots.get(rootKey)}\``);
           continue;
@@ -2456,7 +2466,7 @@ export function renderNotices(
         // The package's files name its holders, so its files are not scanned:
         // the holders of bundled headers under its own license are listed
         // here, once per package.
-        const compKey = `${comp.source}:${comp.name}@${comp.version}`;
+        const compKey = comp.instance;
         if (!listedDeclaredHolders.has(compKey)) {
           listedDeclaredHolders.add(compKey);
           // A holder the package's own files already name is attributed there:

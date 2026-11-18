@@ -1586,6 +1586,27 @@ test('source notices: a package whose license names a holder still lists the oth
   }
 });
 
+test('source notices: two installed packages with one name and version keep their own holders', () => {
+  const dirs = [fs.mkdtempSync(path.join(os.tmpdir(), 'same-name-a-')), fs.mkdtempSync(path.join(os.tmpdir(), 'same-name-b-'))];
+  try {
+    const comps = ['Alpha', 'Beta'].map((who, i) => {
+      fs.writeFileSync(path.join(dirs[i], 'LICENSE'), `MIT License\n\nCopyright (c) 2020 ${who} Wrapper\n\nPermission is hereby granted,\nfree of charge, to any person.`);
+      fs.mkdirSync(path.join(dirs[i], 'src'));
+      fs.writeFileSync(path.join(dirs[i], 'src/lib.rs'), `// Copyright (c) 2021 ${who} Contributor\nfn a() {}\n`);
+      // The registry crate and its git fork: same name and version, two package ids.
+      return { name: 'twin', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: dirs[i], instance: `cargo:twin 1.0.0 (source ${i})`, authors: [`${who} Wrapper`], ...readPackageFiles(dirs[i], 'twin@1.0.0') };
+    });
+    const md = generateNoticesMarkdown(comps, []);
+    for (const who of ['Alpha', 'Beta']) {
+      const at = md.indexOf(`Copyright (c) 2020 ${who} Wrapper`);
+      const entry = md.slice(md.lastIndexOf('### Notice Entry', at), at);
+      assert.deepStrictEqual(entry.match(/^ {2}- .*$/gm), [`  - Copyright (c) 2021 ${who} Contributor (src/lib.rs)`], entry);
+    }
+  } finally {
+    for (const d of dirs) fs.rmSync(d, { recursive: true, force: true });
+  }
+});
+
 test('source notices: a notice read from a string literal, a source map, a README or a man page is the notice alone', () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'notice-shape-fixture-'));
   try {
