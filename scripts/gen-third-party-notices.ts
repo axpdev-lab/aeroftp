@@ -1026,6 +1026,110 @@ function shareOf(part: Set<string>, whole: Set<string>): number {
   return part.size === 0 ? 0 : n / part.size;
 }
 
+// The replaceable parts of a standard text, as its SPDX template marks them
+// (`<alt match=".+">`): a file names its own holder there ("Neither the name
+// of Example Corp nor ..."). Only these may differ from the standard words.
+const STANDARD_TEXT_SLOTS: Record<string, string[]> = {
+  'BSD-2-Clause': ['the copyright holders and contributors', 'the copyright holder or contributors'],
+  'BSD-3-Clause': ['the copyright holders and contributors', 'the copyright holder or contributors', 'the copyright holder'],
+  ISC: ['the author'],
+  MIT: ['the authors or copyright holders'],
+};
+// Words a shipped text may insert inside one sentence of a standard text
+// ("this permission notice (including the next paragraph) shall be
+// included"), and the words a slot may hold. Between two sentences any text
+// may stand: a license with an added clause still carries every standard one.
+const SENTENCE_INSERT_WORDS = 8;
+const SLOT_WORDS = 16;
+const URL_TEXT = /<?\bhttps?:\/\/[^\s>)]+>?|\bwww\.[^\s>)]+/gi;
+
+// Reviewed spellings of one standard word: the verb after a slot agrees
+// with the holder it names ("THE AUTHORS DISCLAIM", rustls-webpki and
+// untrusted, for ISC's "THE AUTHOR DISCLAIMS").
+const EQUIVALENT_TERM_WORDS: Record<string, string> = { disclaims: 'disclaim' };
+
+// The words of a license text as the terms comparison reads them: no
+// attribution lines and no URLs, without list markers (`1.`, `(a)`) or
+// single letters, which shipped texts number differently.
+function termWords(text: string): string[] {
+  return licenseTermsOf(text.replace(URL_TEXT, ' '))
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 1 && !/^[0-9]+$/.test(w))
+    .map((w) => EQUIVALENT_TERM_WORDS[w] ?? w);
+}
+
+// The sentences of a standard text's terms, each a list of words, with null
+// where a slot stands. The title lines before the terms, and what follows
+// the terms (the appendix on how to apply them, an exhibit), are no terms.
+function standardSentences(id: string, text: string): (string | null)[][] {
+  const terms = text.split(/END OF TERMS AND CONDITIONS|How to Apply These Terms|^\s*APPENDIX\b|^\s*Exhibit A\b/im)[0];
+  const lines = terms.split('\n');
+  let start = 0;
+  while (start < lines.length && lines[start].trim().split(/\s+/).filter(Boolean).length < 10) start++;
+  const slots = (STANDARD_TEXT_SLOTS[id] ?? []).map((s) => s.split(' ')).sort((a, b) => b.length - a.length);
+  return licenseTermsOf(lines.slice(start).join('\n'))
+    .split(/(?<=[.;:])\s+/)
+    .map((sentence) => {
+      const words = termWords(sentence);
+      const out: (string | null)[] = [];
+      for (let i = 0; i < words.length; ) {
+        const slot = slots.find((s) => s.every((w, k) => words[i + k] === w));
+        if (slot) {
+          if (out[out.length - 1] !== null) out.push(null);
+          i += slot.length;
+        } else out.push(words[i++]);
+      }
+      return out;
+    })
+    .filter((s) => s.some((w) => w !== null));
+}
+
+/**
+ * Whether a shipped file carries the whole standard text: every sentence of
+ * its terms, in order, each word of a sentence within a few inserted words of
+ * the one before, and other words only in a slot. Similarity finds the
+ * candidate texts; this decides coverage, so a text with a clause removed
+ * (Apache-2.0 without section 4(a)) still gets the standard text.
+ */
+export function carriesWholeStandardText(id: string, standardText: string, fileText: string): boolean {
+  const file = termWords(fileText);
+  const at = new Map<string, number[]>();
+  file.forEach((w, i) => {
+    if (!at.has(w)) at.set(w, []);
+    at.get(w)!.push(i);
+  });
+  let from = 0;
+  for (const sentence of standardSentences(id, standardText)) {
+    // The file positions where the sentence so far can end, earliest first.
+    let ends: number[] | null = null;
+    let gap = SENTENCE_INSERT_WORDS;
+    for (const word of sentence) {
+      if (word === null) {
+        gap = SLOT_WORDS;
+        continue;
+      }
+      const positions = (at.get(word) ?? []).filter((p) => p >= from);
+      if (ends === null) ends = positions;
+      else {
+        // Both lists ascend: a position follows when an end lies in
+        // [p - gap - 1, p - 1].
+        const next: number[] = [];
+        let k = 0;
+        for (const p of positions) {
+          while (k < ends.length && ends[k] < p - gap - 1) k++;
+          if (k < ends.length && ends[k] < p) next.push(p);
+        }
+        ends = next;
+      }
+      gap = SENTENCE_INSERT_WORDS;
+      if (ends.length === 0) return false;
+    }
+    from = ends![0] + 1;
+  }
+  return true;
+}
+
 // The 6-grams of each standard text, and the seam 6-grams that distinguish a
 // shorter text from the longer standard texts that contain it, built once per
 // standard licenses file.
@@ -1063,11 +1167,17 @@ function uncoveredLicenseTerms(
   }
   const { texts: standard, seams } = standardShingles.get(standardLicenses)!;
   const files = ownTexts.map(termShingles);
-  const carries = (id: string, file: Set<string>) =>
+  // Similarity names the standard texts a file is a version of; a file covers
+  // a term only when it carries that text whole (carriesWholeStandardText).
+  const similar = (id: string, file: Set<string>) =>
     shareOf(standard.get(id)!, file) >= LICENSE_TEXT_SHARE &&
     (!seams.has(id) || shareOf(seams.get(id)!, file) >= 0.5);
+  const carriesAt = (id: string, i: number) =>
+    similar(id, files[i]) && carriesWholeStandardText(id, standardLicenses[id], ownTexts[i]);
+  // A version of a standard text with a clause removed is still that text,
+  // never a grant of its own for a term with no standard text.
   const nonStandardFiles = files.filter(
-    (f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => carries(other, f))
+    (f, i) => PERMISSION_TEXT.test(ownTexts[i]) && ![...standard.keys()].some((other) => similar(other, f))
   ).length;
   const left = choices.map((terms) => {
     let freeNonStandard = nonStandardFiles;
@@ -1075,7 +1185,7 @@ function uncoveredLicenseTerms(
       const parts = term.split(' WITH ');
       if (!parts.every((id) => standard.has(id) || freeNonStandard > 0)) return true;
       for (const id of parts) {
-        if (standard.has(id) ? !files.some((f) => carries(id, f)) : freeNonStandard-- <= 0) return true;
+        if (standard.has(id) ? !files.some((_, i) => carriesAt(id, i)) : freeNonStandard-- <= 0) return true;
       }
       return false;
     });

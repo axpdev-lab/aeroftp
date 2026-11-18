@@ -597,6 +597,62 @@ test('standard SPDX texts: accepts OR branch present in standard licenses withou
   assert.match(md, /dual-licensed-crate@1\.0\.0/);
 });
 
+test('standard SPDX texts: a shipped text covers a term only when it carries every clause, similarity alone is not coverage', () => {
+  const comp = (name, license, files) => ({
+    name,
+    version: '1.0.0',
+    license,
+    source: 'cargo',
+    authors: ['Clause Author'],
+    licenseFiles: files.map(([filename, content]) => ({ filename, content })),
+    noticeFiles: [],
+  });
+  // A phrase of the standard text, whatever line breaks the text has.
+  const words = (phrase, flags = '') => new RegExp(phrase.split(' ').map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+'), flags);
+  const standardFor = (license, text) => [...generateNoticesMarkdown([comp('test-clauses', license, [['LICENSE', text]])], []).matchAll(/^### Standard License: (.+)$/gm)].map((m) => m[1]);
+  const apache = shippedLicense('', 'Apache-2.0');
+  assert.deepStrictEqual(standardFor('Apache-2.0', apache), [], 'the whole text covers its term');
+  const no4a = apache.replace(words('(a) You must give any other recipients of the Work or Derivative Works a copy of this License; and'), '');
+  assert.notStrictEqual(no4a, apache);
+  assert.deepStrictEqual(standardFor('Apache-2.0', no4a), ['Apache-2.0'], 'section 4(a) removed keeps the standard text');
+  const no3 = apache.slice(0, apache.indexOf('3. Grant of Patent License')) + apache.slice(apache.indexOf('4. Redistribution'));
+  assert.deepStrictEqual(standardFor('Apache-2.0', no3), ['Apache-2.0'], 'the patent grant removed, though its words repeat the copyright grant');
+  // Shipped texts insert words, add clauses and number lists their own way: still the whole text.
+  const mit = shippedLicense('MIT License\n\nCopyright (c) 2020 Clause Holder', 'MIT');
+  const inserted = mit.replace(words('this permission notice shall'), 'this permission notice (including the next paragraph) shall');
+  assert.notStrictEqual(inserted, mit);
+  assert.deepStrictEqual(standardFor('MIT', inserted), []);
+  const extraClause = mit.replace(words('substantial portions of the Software.'), 'substantial portions of the Software.\n\nDistributions of modified copies shall replace the Original Author\'s bug reporting addresses with those of the parties responsible for the changes, or remove them entirely.');
+  assert.notStrictEqual(extraClause, mit);
+  assert.deepStrictEqual(standardFor('MIT', extraClause), []);
+  const noCondition = mit.replace(words('The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.'), '');
+  assert.notStrictEqual(noCondition, mit);
+  assert.deepStrictEqual(standardFor('MIT', noCondition), ['MIT'], 'the notice condition removed keeps the standard text');
+  // A slot of the SPDX template holds the holder's own name; nothing else may change.
+  const bsd3 = shippedLicense('Copyright (c) 2019 Example Corp', 'BSD-3-Clause');
+  const named = bsd3.replace(words('the copyright holder nor'), 'Example Corp nor').replace(words('THE COPYRIGHT HOLDERS AND CONTRIBUTORS'), 'EXAMPLE CORP AND ITS CONTRIBUTORS').replace(words('THE COPYRIGHT HOLDER OR CONTRIBUTORS'), 'EXAMPLE CORP');
+  assert.strictEqual(named.match(/copyright holder/gi), null);
+  assert.deepStrictEqual(standardFor('BSD-3-Clause', named), []);
+  const bulleted = bsd3.replace(/^\s*([123])\. /gm, '* ');
+  assert.notStrictEqual(bulleted, bsd3);
+  assert.deepStrictEqual(standardFor('BSD-3-Clause', bulleted), []);
+  const endorse = bsd3.replace(words('without specific prior written permission'), 'with specific prior written permission');
+  assert.notStrictEqual(endorse, bsd3);
+  assert.deepStrictEqual(standardFor('BSD-3-Clause', endorse), ['BSD-3-Clause'], 'one word changed outside a slot keeps the standard text');
+  const isc = shippedLicense('Copyright (c) 2015 Clause Holder', 'ISC');
+  const plural = isc.replace(words('THE AUTHOR DISCLAIMS'), 'THE AUTHORS DISCLAIM').replace(words('THE AUTHOR BE LIABLE'), 'THE AUTHORS BE LIABLE');
+  assert.notStrictEqual(plural, isc);
+  assert.deepStrictEqual(standardFor('ISC', plural), [], 'the verb agrees with a plural holder');
+  assert.ok(isc.search(words('IN NO EVENT SHALL THE AUTHOR BE LIABLE')) > 0);
+  const noLiability = isc.slice(0, isc.search(words('IN NO EVENT SHALL THE AUTHOR BE LIABLE')));
+  assert.deepStrictEqual(standardFor('ISC', noLiability), ['ISC']);
+  // A version of a standard text with a clause removed is no grant of its own for a term with no standard text.
+  assert.throws(
+    () => generateNoticesMarkdown([comp('test-clauses', 'Apache-2.0 AND bzip2-1.0.6', [['LICENSE', no4a]])], []),
+    /Component test-clauses@1\.0\.0 requires standard license text for 'bzip2-1\.0\.6'/
+  );
+});
+
 test('standard SPDX texts: every term of the chosen license needs its text, an own file covers only the terms whose text it carries', () => {
   const mit = shippedLicense('MIT License\n\nCopyright (c) 2020 Term Holder', 'MIT');
   const apache = shippedLicense('', 'Apache-2.0');
