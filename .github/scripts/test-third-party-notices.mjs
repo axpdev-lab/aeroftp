@@ -516,12 +516,12 @@ test('readPackageFiles: files in a nested REUSE license folder are vendored lice
     // A header whose text the vendored code's LICENSES/ ships is covered by it;
     // the same identifier outside that code has no text and fails.
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
-    write('vendor/lib/LICENSES/Foo-Shipped-1.0.txt', 'Foo Shipped License 1.0: use freely.');
-    write('vendor/lib/src/y.c', '/* SPDX-License-Identifier: Foo-Shipped-1.0 */\n');
+    write('vendor/lib/LICENSES/FSFULLR.txt', 'Copyright 2010 Free Software Foundation. This file is free software; the Free Software Foundation gives unlimited permission to copy, distribute and modify it.');
+    write('vendor/lib/src/y.c', '/* SPDX-License-Identifier: FSFULLR */\n');
     const shipped = { ...comp, ...readPackageFiles(tmpDir, 'reuse-vendoring@1.0.0') };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(shipped, known), []);
-    write('other/z.c', '/* SPDX-License-Identifier: Foo-Shipped-1.0 */\n');
-    assert.throws(() => findBundledCodeUnderOtherLicenses(shipped, known), /bundles other\/z\.c under 'Foo-Shipped-1\.0', but no standard text exists for 'Foo-Shipped-1\.0'/);
+    write('other/z.c', '/* SPDX-License-Identifier: FSFULLR */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(shipped, known), /bundles other\/z\.c under 'FSFULLR', but no standard text exists for 'FSFULLR'/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -784,7 +784,10 @@ test('bundled code headers: own permission text, an exception, and holder lines 
 
     // An exception with no standard text fails instead of dropping it.
     write('ggml/other.hpp', '// SPDX-License-Identifier: Apache-2.0 WITH Unknown-exception\n');
-    assert.throws(() => generateNoticesMarkdown([comp], []), /bundles ggml\/other\.hpp under 'Apache-2\.0 WITH Unknown-exception', but no standard text exists for 'Unknown-exception'/);
+    // An exception the policy does not know fails before its text is looked
+    // for; a known license with no text fails on the text (FSFULLR outside the
+    // folder that ships it, in the REUSE vendoring test).
+    assert.throws(() => generateNoticesMarkdown([comp], []), /bundles ggml\/other\.hpp under 'Apache-2\.0 WITH Unknown-exception', and no choice of it is compatible with GPL-3\.0/);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -1038,22 +1041,22 @@ test('bundled code: a license text in the package LICENSES/ covers its own heade
       fs.writeFileSync(path.join(tmpDir, rel), content);
     };
     write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted.');
-    write('LICENSES/Foo-Own-1.0.txt', 'Foo Own License 1.0: use freely.');
-    write('src/y.c', '/* SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    write('LICENSES/SAX-PD-2.0.txt', 'SAX 2.0 is free and in the public domain.');
+    write('src/y.c', '/* SPDX-License-Identifier: SAX-PD-2.0 */\n');
     const comp = { name: 'root-reuse', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
     const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(comp, known), []);
     // A header covered by that text keeps a holder the package's files do not
     // name: nothing else lists it, because the package's own holders stop the
     // source scan.
-    write('src/z.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    write('src/z.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: SAX-PD-2.0 */\n');
     const withHolder = { ...comp, ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
-    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(withHolder, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['Foo-Own-1.0', ['Copyright (c) 2018 Other Source Author'], ['src/z.c'], 0, true]]);
-    assert.match(generateNoticesMarkdown([withHolder], []), /^ {2}- Copyright \(c\) 2018 Other Source Author \(in a source header under Foo-Own-1\.0\)$/m);
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(withHolder, known).map((b) => [b.license, b.notices, b.files, b.headers.length, b.declared]), [['SAX-PD-2.0', ['Copyright (c) 2018 Other Source Author'], ['src/z.c'], 0, true]]);
+    assert.match(generateNoticesMarkdown([withHolder], []), /^ {2}- Copyright \(c\) 2018 Other Source Author \(in a source header under SAX-PD-2\.0\)$/m);
     // The same header inside vendored code is listed with that code's folder,
     // not twice.
     write('vend/lib/COPYING', 'Copyright (c) 2018 Other Source Author\nRedistribution and use in source and binary forms.');
-    write('vend/lib/w.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: Foo-Own-1.0 */\n');
+    write('vend/lib/w.c', '/* Copyright (c) 2018 Other Source Author\n * SPDX-License-Identifier: SAX-PD-2.0 */\n');
     fs.rmSync(path.join(tmpDir, 'src/z.c'));
     const vendoredCase = { ...comp, ...readPackageFiles(tmpDir, 'root-reuse@1.0.0') };
     assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(vendoredCase, known), []);
@@ -1103,6 +1106,60 @@ test('bundled code: a header whose only license is a known typo keeps a holder t
     const md = generateNoticesMarkdown([comp], []);
     assert.match(md, /^ {2}- Copyright 2022-2022 Typo Header Author \(in a source header under Apache-2\.inner\)$/m);
     assert.doesNotMatch(md, /Copyright 2020 Wrapper Author \(in a source header/, 'the package names this holder itself');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: an OCaml or Haskell header ends at its closer, as a C one does', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'closer-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    write('lib/one.ml', '(* Copyright (c) 2019 OCaml Line Author *)\n(* SPDX-License-Identifier: BSD-2-Clause *)\nlet x = 1\n');
+    write('lib/block.ml', '(*\n Copyright (c) 2019 OCaml Block Author\n SPDX-License-Identifier: BSD-2-Clause\n*)\nlet y = (*p*) 2\n');
+    write('lib/b.hs', '{- Copyright (c) 2018 Haskell Author\n   SPDX-License-Identifier: BSD-2-Clause -}\nmodule B where\n');
+    write('lib/c.c', '/* Copyright (c) 2017 C Author\n * SPDX-License-Identifier: BSD-2-Clause */\nint f(int *p) { return (*p); }\n');
+    const comp = { name: 'closer-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'closer-pkg@1.0.0') };
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    const bundled = findBundledCodeUnderOtherLicenses(comp, known);
+    assert.deepStrictEqual(bundled.map((b) => [b.license, [...b.files].sort(), [...b.notices].sort()]), [
+      ['BSD-2-Clause', ['lib/b.hs', 'lib/block.ml', 'lib/c.c', 'lib/one.ml'], ['Copyright (c) 2017 C Author', 'Copyright (c) 2018 Haskell Author', 'Copyright (c) 2019 OCaml Block Author', 'Copyright (c) 2019 OCaml Line Author']],
+    ]);
+    const md = generateNoticesMarkdown([comp], []);
+    assert.match(md, /### Bundled Code: BSD-2-Clause\n/);
+    assert.match(md, /Redistribution and use in source and binary forms/);
+    for (const holder of ['OCaml Line Author', 'OCaml Block Author', 'Haskell Author', 'C Author']) assert.match(md, new RegExp(`^ {2}- Copyright \\(c\\) \\d{4} ${holder}$`, 'm'));
+    assert.doesNotMatch(md, /\*\)|-\}/, 'no closer is left in a tag or a holder line');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('bundled code: a header license goes through the GPL-3.0 policy, however it is covered', () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'header-policy-fixture-'));
+  try {
+    const write = (rel, content) => {
+      fs.mkdirSync(path.dirname(path.join(tmpDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(tmpDir, rel), content);
+    };
+    write('LICENSE', 'MIT License\n\nCopyright (c) 2020 Wrapper Author\n\nPermission is hereby granted, free of charge.');
+    write('vendor/lib/LICENSES/GPL-2.0-only.txt', 'GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991');
+    write('vendor/lib/x.c', '/* Copyright (c) 2001 Vendored Author\n * SPDX-License-Identifier: GPL-2.0-only */\n');
+    const make = () => ({ name: 'policy-pkg', version: '1.0.0', license: 'MIT', source: 'cargo', packageDir: tmpDir, authors: [], ...readPackageFiles(tmpDir, 'policy-pkg@1.0.0') });
+    const known = new Set(Object.keys(JSON.parse(fs.readFileSync(SPDX_STANDARD_LICENSES_FILE, 'utf8'))));
+    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /policy-pkg@1\.0\.0 bundles vendor\/lib\/x\.c under 'GPL-2\.0-only', and no choice of it is compatible with GPL-3\.0/);
+    // A choice that is compatible is taken instead.
+    write('vendor/lib/x.c', '/* Copyright (c) 2001 Vendored Author\n * SPDX-License-Identifier: GPL-2.0-only OR MIT */\n');
+    assert.deepStrictEqual(findBundledCodeUnderOtherLicenses(make(), known).map((b) => [b.license, b.declared]), [['MIT', true]]);
+    // A header under its own license, not declared by the package, fails the same way.
+    write('vendor/lib/x.c', '/* SPDX-License-Identifier: SSPL-1.0 */\n');
+    assert.throws(() => findBundledCodeUnderOtherLicenses(make(), known), /under 'SSPL-1\.0', and no choice of it is compatible/);
+    // The permissive texts libssh2 ships beside its code stay accepted.
+    for (const id of ['FSFULLR', 'curl', 'SAX-PD-2.0']) assert.strictEqual(isGplCompatible(id), true, id);
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }

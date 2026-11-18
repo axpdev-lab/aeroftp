@@ -7,6 +7,10 @@ type Invoke = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
  * Open the GitLab page of a file or folder in the browser. The backend builds
  * the URL (`gitlab_get_web_url`): it knows the instance base for self-hosted
  * GitLab, the working branch, and encodes branch and path segments.
+ *
+ * Rejects when the opener reports that nothing was opened (openUrl resolves
+ * false instead of rejecting), so the caller's error handler still shows the
+ * failure. The message carries no URL.
  */
 export async function openOnGitLab(
     invoke: Invoke,
@@ -15,5 +19,7 @@ export async function openOnGitLab(
     isDir: boolean,
 ): Promise<void> {
     const url = await invoke<string>('gitlab_get_web_url', { path, isDir });
-    await open(url);
+    if ((await open(url)) === false) {
+        throw new Error('Could not open the GitLab page in the browser');
+    }
 }

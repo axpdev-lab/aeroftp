@@ -28,6 +28,16 @@ describe('View on GitLab', () => {
         expect(open).toHaveBeenCalledWith('https://gitlab.example.com/g/p/-/blob/main/docs/a%20b.md');
     });
 
+    it('rejects without the URL when nothing was opened, and succeeds on true or no result', async () => {
+        const url = 'https://gitlab.example.com/g/p/-/blob/main/secret-path.md';
+        const invoke = vi.fn(async () => url);
+        const failed = openOnGitLab(invoke as never, vi.fn(async () => false), '/secret-path.md', false);
+        await expect(failed).rejects.toThrow('Could not open the GitLab page in the browser');
+        await failed.catch((err: unknown) => expect(String(err)).not.toContain('secret-path'));
+        await expect(openOnGitLab(invoke as never, vi.fn(async () => true), '/a.md', false)).resolves.toBeUndefined();
+        await expect(openOnGitLab(invoke as never, vi.fn(async () => {}), '/a.md', false)).resolves.toBeUndefined();
+    });
+
     it('is offered in the GitLab context menu, for one selected entry', () => {
         // Label and action are checked inside the one item the GitLab
         // single-selection guard pushes: anywhere in App.tsx, both strings
@@ -35,7 +45,8 @@ describe('View on GitLab', () => {
         const block = gitlabMenuBlock(appSource);
         expect(block.match(/items\.push\(/g) ?? []).toHaveLength(1);
         expect(block).toContain("label: t('gitlab.viewOnGitlab')");
-        expect(block).toContain('openOnGitLab(invoke, openUrl, file.path, file.is_dir)');
+        // Its rejection reaches the user through the menu's error handler.
+        expect(block).toContain('openOnGitLab(invoke, openUrl, file.path, file.is_dir).catch((err) => notify.error(String(err)))');
     });
 
     it('opens external pages through openUrl, never window.open', () => {

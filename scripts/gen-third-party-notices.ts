@@ -300,6 +300,12 @@ export const COMPATIBLE_SPDX_ATOMS = new Set([
   'BSD-2-Clause',
   'BSD-3-Clause',
   'BSD-3-Clause-Clear',
+  // Permissive texts met in bundled source headers (libssh2): the FSF
+  // Unlimited License, the curl license (an MIT/X variant) and the SAX
+  // public domain dedication.
+  'FSFULLR',
+  'curl',
+  'SAX-PD-2.0',
   'LGPL-2.1',
   'LGPL-2.1-or-later',
   'LGPL-2.1+',
@@ -741,7 +747,7 @@ export function findPackageCopyrightNotices(
       }
       let line = rawLine
         .replace(COMMENT_LEADER, '')
-        .replace(/(?:\*\/|-->)\s*$/, '')
+        .replace(COMMENT_CLOSER_AT_END, '')
         .trim();
       if (!line) continue;
 
@@ -760,7 +766,7 @@ export function findPackageCopyrightNotices(
         line.match(/(?:copyright\s*(?:\([cC]\)|©)\s*[0-9]{4}|copyright\s+[0-9]{4}|\([cC]\)\s*[0-9]{4}|©\s*[0-9]{4})\s*\S.*/i);
       if (match) {
         // A notice inside a minified line ends where its comment does.
-        let cleaned = match[0].replace(/\s*(?:\*\/|-->).*$/, '').replace(/(?:\\n)?"[);,\s]*$/, '').trim();
+        let cleaned = match[0].replace(FROM_COMMENT_CLOSER, '').replace(/(?:\\n)?"[);,\s]*$/, '').trim();
         cleaned = cleaned.replace(/\s*\([A-Za-z0-9\.\s\-]+ [Ll]icense\)\.?$/, '');
         cleaned = cleaned.replace(/\s+See the\b.*/i, '');
         cleaned = cleaned.trim();
@@ -1061,6 +1067,23 @@ export const KNOWN_SPDX_TAG_MENTIONS: Record<string, string> = {};
 const COMMENT_LEADER_ALTERNATIVES = String.raw`(?:\/\/+!?|\/\*+!?|\*+\/?|#+|;+|--+|%+|@(?=\s)|\$!|<!--|\{-|\(\*|(?:[Rr][Ee][Mm]|[Dd][Nn][Ll])\b(?:\s*--)?)`;
 const COMMENT_LEADER = new RegExp(String.raw`^\s*${COMMENT_LEADER_ALTERNATIVES}`);
 
+// The block comments among those leaders, with their closers: C (`/* */`),
+// OCaml (`(* *)`), Haskell (`{- -}`), HTML (`<!-- -->`). Every place that
+// strips or finds a comment's end uses this one list.
+const COMMENT_BLOCKS: [open: string, close: string][] = [
+  ['/*', '*/'],
+  ['(*', '*)'],
+  ['{-', '-}'],
+  ['<!--', '-->'],
+];
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const COMMENT_CLOSER_ALTERNATIVES = `(?:${COMMENT_BLOCKS.map(([, close]) => escapeRegExp(close)).join('|')})`;
+const COMMENT_CLOSER = new RegExp(COMMENT_CLOSER_ALTERNATIVES);
+const COMMENT_CLOSER_AT_END = new RegExp(`${COMMENT_CLOSER_ALTERNATIVES}\\s*$`);
+// A closer and what follows it on the line (a minified line goes on with code).
+const FROM_COMMENT_CLOSER = new RegExp(`\\s*${COMMENT_CLOSER_ALTERNATIVES}.*$`);
+const BLOCK_OPENER_AT_START = new RegExp(`^\\s*(?:${COMMENT_BLOCKS.map(([open]) => escapeRegExp(open)).join('|')})`);
+
 /**
  * Whether a line that carries an SPDX-License-Identifier tag at `at` is a
  * license header: a comment line in a source file (its leader decides, not
@@ -1111,7 +1134,9 @@ export function findBundledCodeUnderOtherLicenses(
   // The comment styles isSpdxHeaderLine accepts, so a header block keeps its
   // copyright and permission lines in each of them (`REM --`, `$!`, `@`).
   const isCommentLine = (l: string) => COMMENT_LEADER.test(l);
-  const stripLeader = (l: string) => l.replace(COMMENT_LEADER, '').replace(/^\s/, '').replace(/\s*(?:\*\/|-->|-\}|\*\)).*$/, '').trimEnd();
+  // The tag's expression ends before a comment closer (`*/`, `*)`, `-}`, `-->`).
+  const SPDX_TAG = new RegExp(`SPDX-License-Identifier:\\s*(.+?)\\s*${COMMENT_CLOSER_ALTERNATIVES}?\\s*$`);
+  const stripLeader = (l: string) => l.replace(COMMENT_LEADER, '').replace(/^\s/, '').replace(FROM_COMMENT_CLOSER, '').trimEnd();
   const walk = (dir: string, rel: string) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const entryRel = rel ? `${rel}/${entry.name}` : entry.name;
@@ -1124,7 +1149,7 @@ export function findBundledCodeUnderOtherLicenses(
       if (buf.subarray(0, 8000).includes(0)) continue;
       const lines = buf.toString('utf8').split(/\r?\n/);
       lines.forEach((line, i) => {
-        const m = line.match(/SPDX-License-Identifier:\s*(.+?)\s*(?:\*\/|-->)?\s*$/);
+        const m = line.match(SPDX_TAG);
         if (!m) return;
         // The choices of the header's expression. One whose licenses the
         // package declares covers the code: its holders are still kept, as
@@ -1152,7 +1177,18 @@ export function findBundledCodeUnderOtherLicenses(
             `${comp.name}@${comp.version} has a malformed SPDX-License-Identifier in ${entryRel}: '${m[1]}'. If the line only mentions the tag, add ${JSON.stringify(mentionKey)} with the reason to KNOWN_SPDX_TAG_MENTIONS`
           );
         }
-        const alternatives = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
+        const nonTypo = parsed.filter((terms) => !terms.some((t) => t.split(' WITH ')[0] in UNREPRODUCIBLE_HEADER_IDS));
+        // Bundled code is distributed with AeroFTP like the package that ships
+        // it, so a header's license goes through the policy main applies to a
+        // package's declared license, whichever way it is covered (declared,
+        // a shipped text, its own entry): only a choice compatible with GPL-3.0
+        // is taken, and a header with none fails.
+        const alternatives = nonTypo.filter((terms) => isGplCompatible(terms.join(' AND ')));
+        if (nonTypo.length > 0 && alternatives.length === 0) {
+          throw new Error(
+            `${comp.name}@${comp.version} bundles ${entryRel} under '${m[1]}', and no choice of it is compatible with GPL-3.0: review the dependency before shipping it`
+          );
+        }
         // A term is covered by the package's declared license. A license with no
         // standard text is also covered by the text the package ships beside the
         // vendored code (libssh2/LICENSES/FSFULLR.txt for
@@ -1198,35 +1234,55 @@ export function findBundledCodeUnderOtherLicenses(
         // The whole comment block around the identifier, up to its start and
         // end, never into the next header.
         // Inside a block comment the block runs from its opening to its
-        // closing delimiter, whether or not its lines are starred.
+        // closing delimiter, whether or not its lines are starred. A C opener
+        // may follow code on its line; the others open a line, since `(*` and
+        // `{-` also occur in code (`f(*p)`).
         let open = -1;
-        for (let k = i; k >= 0 && k > i - 80; k--) {
-          if (/\/\*/.test(lines[k]) && (k === i || !/\*\//.test(lines[k].slice(lines[k].lastIndexOf('/*'))))) {
-            open = k;
-            break;
+        let pair: [string, string] = COMMENT_BLOCKS[0];
+        for (const [opener, closer] of COMMENT_BLOCKS) {
+          const opensHere = (l: string) => (opener === '/*' ? l.includes(opener) : l.trimStart().startsWith(opener));
+          for (let k = i; k >= 0 && k > i - 80; k--) {
+            if (opensHere(lines[k]) && (k === i || !lines[k].slice(lines[k].lastIndexOf(opener)).includes(closer))) {
+              if (k > open) {
+                open = k;
+                pair = [opener, closer];
+              }
+              break;
+            }
+            if (k < i && lines[k].includes(closer)) break;
           }
-          if (k < i && /\*\//.test(lines[k])) break;
         }
         let close = -1;
         if (open !== -1) {
+          const [opener, closer] = pair;
           for (let k = i; k < lines.length && k < i + 80; k++) {
-            if (/\*\//.test(k === open ? lines[k].slice(lines[k].lastIndexOf('/*') + 2) : lines[k])) {
+            if ((k === open ? lines[k].slice(lines[k].lastIndexOf(opener) + opener.length) : lines[k]).includes(closer)) {
               close = k;
               break;
             }
           }
         }
+        // A comment that opens and closes on its own line is whole: a run of
+        // them is one header (`(* Copyright ... *)` above `(* SPDX ... *)`),
+        // as a run of line comments is.
+        const wholeLine = (l: string) => BLOCK_OPENER_AT_START.test(l) && COMMENT_CLOSER_AT_END.test(l);
         let start = i;
         let end = i;
-        if (open !== -1 && close !== -1) {
+        if (open !== -1 && close !== -1 && !(open === i && close === i && wholeLine(lines[i]))) {
           start = open;
           end = close;
         } else {
-          while (start > 0 && start > i - 80 && !/^\s*\/\*/.test(lines[start]) && isCommentLine(lines[start - 1])) {
-            if (/\*\//.test(lines[start - 1])) break;
+          while (start > 0 && start > i - 80 && (wholeLine(lines[start]) || !BLOCK_OPENER_AT_START.test(lines[start])) && isCommentLine(lines[start - 1])) {
+            if (COMMENT_CLOSER.test(lines[start - 1]) && !wholeLine(lines[start - 1])) break;
             start--;
           }
-          while (!/\*\//.test(lines[end]) && end + 1 < lines.length && end < i + 80 && isCommentLine(lines[end + 1]) && !/^\s*\/\*/.test(lines[end + 1])) {
+          while (
+            (wholeLine(lines[end]) || !COMMENT_CLOSER.test(lines[end])) &&
+            end + 1 < lines.length &&
+            end < i + 80 &&
+            isCommentLine(lines[end + 1]) &&
+            (wholeLine(lines[end + 1]) || !BLOCK_OPENER_AT_START.test(lines[end + 1]))
+          ) {
             end++;
           }
         }
